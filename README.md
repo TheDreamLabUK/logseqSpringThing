@@ -147,42 +147,98 @@ classDiagram
 ```mermaid
 sequenceDiagram
     participant Client
+    participant WebXRVisualization
+    participant GraphDataManager
     participant Server
+    participant ServerGraphSimulation
     participant GitHub
-    participant GraphSimulation
-    participant WebSocket
-    participant RAGFlow
+    participant OpenWebUIAPI
+    participant RAGFlowIntegration
 
-    Client->>Server: GET /graph-data
-    Server->>Server: loadGraphData()
-    Server-->>Client: Send initial graph data
+    activate Server
+    Server->>Server: initialize()
+    Server->>Server: initializeHttpsOptions()
+    Server->>Server: initializeGPU()
+    Server->>Server: create HTTPS server & WebSocket server
+    Server->>Server: listen on port 8443
+    Server->>Server: refreshGraphData()
     Server->>GitHub: fetchMarkdownMetadata()
-    GitHub-->>Server: Return metadata
+    GitHub-->>Server: Markdown file metadata
     Server->>Server: compareAndIdentifyUpdates()
-    Server->>GitHub: fetchAndUpdateFiles()
-    GitHub-->>Server: Return file contents
-    Server->>Server: buildEdges()
-    Server->>Server: saveGraphData()
-    Server->>WebSocket: Send updated graph data
-    WebSocket-->>Client: Receive updated graph data
-
-    Client->>Server: POST /api/chat/init
-    Server->>RAGFlow: createConversation()
-    RAGFlow-->>Server: Return conversation ID
-    Server-->>Client: Send conversation ID
-
-    Client->>Server: POST /api/chat/message
-    Server->>RAGFlow: sendMessage()
-    RAGFlow-->>Server: Return response
-    Server-->>Client: Send chat response
-
-    loop Animation
-        Client->>Client: requestAnimationFrame()
-        Client->>GraphSimulation: updateNodePositions()
-        GraphSimulation-->>Client: Return updated positions
-        Client->>Client: updateGraphObjects()
-        Client->>Client: render()
+    loop for each file to update
+        Server->>GitHub: fetch file content
+        GitHub-->>Server: file content
+        Server->>Server: save file content & metadata
+        
+        %% OpenWebUI Processing Step %%
+        Server->>OpenWebUIAPI: send file for processing
+        OpenWebUIAPI-->>Server: processed file & JSON metadata
+        Server->>Server: store processed file & metadata
+        Server->>Server: generate edges and nodes from raw & processed files
     end
+    Server->>Server: buildEdges()
+    Server->>Server: loadGraphData()
+    Server->>ServerGraphSimulation: initialize(graphData)
+    Server->>ServerGraphSimulation: startSimulation()
+    
+    activate Client
+    Client->>WebXRVisualization: initialize()
+    WebXRVisualization->>GraphSimulation: initialize()
+    WebXRVisualization->>Interface: initialize()
+    WebXRVisualization->>ChatManager: initialize()
+    WebXRVisualization->>GraphDataManager: initialize()
+    
+    GraphDataManager->>Server: WebSocket connection
+    Server-->>GraphDataManager: Connection established
+    
+    Client->>Server: /graph-data (HTTP)
+    Server-->>Client: graph data (JSON)
+    
+    GraphDataManager->>Server: { type: 'startSimulation' } (WebSocket)
+    
+    loop Simulation loop
+        ServerGraphSimulation->>ServerGraphSimulation: computeForces()
+        ServerGraphSimulation->>ServerGraphSimulation: updatePositions()
+        ServerGraphSimulation->>GraphDataManager: { type: 'nodePositions', positions: [...] } (WebSocket)
+        GraphDataManager->>GraphSimulation: updateNodePositions(positions)
+        GraphSimulation->>WebXRVisualization: updateGraph()
+    end
+    
+    Client->>ChatManager: sendMessage(question)
+    ChatManager->>Server: /api/chat/message (HTTP)
+    Server->>RAGFlowIntegration: sendMessage(conversationId, message)
+    RAGFlowIntegration-->>Server: response
+    Server-->>ChatManager: response (HTTP)
+    ChatManager->>WebXRVisualization: updateChatDisplay(response)
+    
+    Client->>Interface: user input (e.g., SpaceMouse movement)
+    Interface->>WebXRVisualization: updateCameraPosition()
+    
+    Client->>Server: /refresh-graph (HTTP)
+    Server->>Server: refreshGraphData()
+    Server->>GitHub: fetchMarkdownMetadata()
+    GitHub-->>Server: Markdown file metadata
+    Server->>Server: compareAndIdentifyUpdates()
+    loop for each file to update
+        Server->>GitHub: fetch file content
+        GitHub-->>Server: file content
+        Server->>Server: save file content & metadata
+        
+        %% OpenWebUI Processing Step %%
+        Server->>OpenWebUIAPI: send file for processing
+        OpenWebUIAPI-->>Server: processed file & JSON metadata
+        Server->>Server: store processed file & metadata
+        Server->>Server: generate edges and nodes from raw & processed files
+    end
+    Server->>Server: buildEdges()
+    Server->>Server: loadGraphData()
+    Server->>ServerGraphSimulation: updateGraphData(newGraphData)
+    ServerGraphSimulation->>GraphDataManager: { type: 'graphUpdate', data: newGraphData } (WebSocket)
+    GraphDataManager->>GraphSimulation: updateData(newGraphData)
+    GraphSimulation->>WebXRVisualization: updateGraph()
+    
+    deactivate Client
+    deactivate Server
 ```
 
 ## Key Components
