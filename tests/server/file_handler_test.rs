@@ -3,12 +3,12 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn test_fetch_and_process_files() {
-        let app_state = AppState {
-            graph_data: Arc::new(RwLock::new(Default::default())),
-            file_cache: Arc::new(RwLock::new(Default::default())),
-        };
+        let app_state = AppState::new(
+            Arc::new(RwLock::new(Default::default())),
+            Arc::new(RwLock::new(Default::default())),
+        );
 
-        let result = fetch_and_process_files(&app_state).await;
+        let result = fetch_and_process_files(app_state).await;
         assert!(result.is_ok());
         let processed_files = result.unwrap();
         // Assuming we expect two processed files
