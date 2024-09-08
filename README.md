@@ -136,10 +136,10 @@ sequenceDiagram
         Server->>GitHub: fetch file content
         GitHub-->>Server: file content
         Server->>Server: save file content & metadata
-        
         Server->>OpenWebUIAPI: send file for processing
-        OpenWebUIAPI-->>Server: processed file & JSON metadata
-        Server->>Server: store processed file & metadata
+        OpenWebUIAPI-->>Server: processed file
+        Server->>Server: store processed file & generated metadata
+        Server->>GitHub: Submit file pull request
         Server->>Server: generate edges and nodes from raw & processed files
     end
     Server->>Server: build_edges()
