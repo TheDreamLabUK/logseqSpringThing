@@ -76,70 +76,164 @@ The 2D graph seen there is fine, but a bit useless. I wanted something I can exp
 ```mermaid
 classDiagram
     class Server {
-        -PROCESSED_STORAGE_PATH: string
-        -MARKDOWN_STORAGE_PATH: string
-        -GRAPH_DATA_PATH: string
-        -GITHUB_OWNER: string
-        -GITHUB_REPO: string
-        -GITHUB_DIRECTORY: string
-        -GITHUB_ACCESS_TOKEN: string
-        -RAGFLOW_BASE_URL: string
-        -RAGFLOW_API_KEY: string
+        +start()
         +initialize()
-        +initializeHttpsOptions()
-        +loadGraphData()
-        +saveGraphData()
-        +fetchMarkdownMetadata()
-        +compareAndIdentifyUpdates()
-        +fetchAndUpdateFiles()
-        +extractReferences()
-        +buildEdges()
-        +refreshGraphData()
-        +createConversation()
-        +sendMessage()
-    }
-
-    class GraphSimulation {
-        -nodes: array
-        -edges: array
-        -simulation: ForceSimulation
-        +initSimulation()
-        +updateData(nodes, edges)
-        +tick()
-        +updateNodePositions()
-    }
-
-    class WebXRVisualization {
-        -scene: THREE.Scene
-        -camera: THREE.PerspectiveCamera
-        -renderer: THREE.WebGLRenderer
-        -graphObjects: object
-        +init()
-        +setupXR()
-        +animate()
-        +updateGraphObjects()
-        +loadData()
+        +listen(port: int)
         +setupWebSocket()
     }
 
-    class RAGFlowIntegration {
-        -conversationId: string
+    class App {
+        +initialize()
+        +setMiddleware()
+        +setRoutes()
+        +startServer()
+    }
+
+    class GraphController {
+        +getGraphData(req: Request, res: Response)
+        +refreshGraph(req: Request, res: Response)
+    }
+
+    class FileController {
+        +fetchAndProcessFiles(req: Request, res: Response)
+    }
+
+    class RAGFlowController {
+        +sendMessage(req: Request, res: Response)
+    }
+
+    class GraphService {
+        +getGraphData()
+        +refreshGraphData()
+        +buildEdges()
+    }
+
+    class FileService {
+        +fetchFilesFromGitHub()
+        +compareAndIdentifyUpdates(githubFiles: Array)
+        +sendToOpenWebUI(file: String)
+        +saveFileMetadata(metadata: Object)
+    }
+
+    class RAGFlowService {
+        +createConversation(userId: String)
+        +sendMessage(conversationId: String, message: String)
+        +getChatHistory(conversationId: String)
+    }
+
+    class OpenWebUiService {
+        +processFile(file: String)
+    }
+
+    class GraphModel {
+        +graphData: Object
+        +edges: Array
+        +nodes: Array
+    }
+
+    class MetadataModel {
+        +fileName: String
+        +lastModified: Date
+        +processedFile: String
+        +originalFile: String
+    }
+
+    class NodeModel {
+        +id: String
+        +label: String
+        +metadata: Object
+    }
+
+    class WebSocketUtils {
+        +setupWebSocket()
+        +broadcastMessage(message: String)
+    }
+
+    class GPUUtils {
+        +initializeGPU()
+        +computeForces()
+        +updatePositions()
+    }
+
+    class Client {
+        +start()
+        +initialize()
+        +connectWebSocket()
+    }
+
+    class WebXRVisualization {
+        +initScene()
+        +initCamera()
+        +initRenderer()
+        +updateGraph(data: Object)
+        +animate()
+    }
+
+    class GraphSimulation {
+        +initialize(nodes: Array, edges: Array)
+        +updateGraph()
+        +tick()
+    }
+
+    class Interface {
+        +initSpaceMouse()
+        +handleInput(event: Object)
+        +updateCameraPosition()
+    }
+
+    class ChatManager {
         +initializeChat()
-        +sendQuestion()
-        +displayAnswer()
+        +sendMessage(question: String)
+        +updateChatDisplay(response: Object)
     }
 
-    class WebSocket {
-        +onmessage()
-        +send()
+    class GraphDataManager {
+        +connectWebSocket()
+        +handleMessage(event: Object)
+        +sendStartSimulation()
+        +sendStopSimulation()
+        +sendSetSimulationParams(params: Object)
     }
 
-    Server --> GraphSimulation: Provides data
-    Server --> WebSocket: Sends updates
-    WebXRVisualization --> GraphSimulation: Uses for layout
-    WebXRVisualization --> WebSocket: Receives updates
-    WebXRVisualization --> RAGFlowIntegration: Integrates chat
-    Server --> RAGFlowIntegration: Manages conversations
+    class ThreeSetup {
+        +initThreeScene()
+        +initThreeCamera()
+    }
+
+    class ThreeGraph {
+        +renderGraph(nodes: Array, edges: Array)
+    }
+
+    class XRSetup {
+        +initXR()
+    }
+
+    class XRInteraction {
+        +handleXRInput()
+    }
+
+    Server --> App
+    Server --> WebSocketUtils
+    Server --> GPUUtils
+    App --> GraphController
+    App --> FileController
+    App --> RAGFlowController
+    GraphController --> GraphService
+    FileController --> FileService
+    RAGFlowController --> RAGFlowService
+    FileService --> OpenWebUiService
+    FileService --> MetadataModel
+    GraphService --> GraphModel
+    GraphModel --> NodeModel
+    WebXRVisualization --> GraphSimulation
+    WebXRVisualization --> Interface
+    WebXRVisualization --> ChatManager
+    WebXRVisualization --> GraphDataManager
+    GraphDataManager --> Client
+    WebXRVisualization --> ThreeSetup
+    WebXRVisualization --> ThreeGraph
+    WebXRVisualization --> XRSetup
+    WebXRVisualization --> XRInteraction
 ```
 
 ### Sequence Diagram
