@@ -217,14 +217,14 @@ sequenceDiagram
     loop for each file to update
         Server->>GitHub: fetch file content
         GitHub-->>Server: file content
-        Server->>Server: save file content & metadata
+        Server->>Server: save file content & Update Metadata
         
         %% OpenWebUI Processing Step %%
         Server->>OpenWebUIAPI: send file for processing
-        OpenWebUIAPI-->>Server: processed file & JSON metadata
-        Server->>Server: store processed file & metadata
+        OpenWebUIAPI-->>Server: processed file 
+        Server->>Server: store processed file & create or update metadata
         Server->>Server: generate edges and nodes from raw & processed files
-    end
+        Server->>Server: update all metadata
     Server->>Server: buildEdges()
     Server->>Server: loadGraphData()
     Server->>ServerGraphSimulation: initialize(graphData)
