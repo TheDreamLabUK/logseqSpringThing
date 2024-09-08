@@ -11,7 +11,12 @@ async fn test_fetch_and_process_files() {
 
     let result = fetch_and_process_files(&app_state).await;
     assert!(result.is_ok());
+    
     let processed_files = result.unwrap();
-    assert!(!processed_files.is_empty());
-    // Add more specific assertions based on the expected behavior of fetch_and_process_files
+
+    // Assuming we expect two processed files
+    assert_eq!(processed_files.len(), 2); 
+    // Here you can check actual file contents 
+    assert!(processed_files.contains(&"expected_file_name_1".to_string()));
+    assert!(processed_files.contains(&"expected_file_name_2".to_string()));
 }

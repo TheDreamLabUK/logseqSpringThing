@@ -33,6 +33,8 @@ async fn test_refresh_graph() {
     let result = refresh_graph(&app_state).await;
     assert!(result.is_ok());
     let graph_data = result.unwrap();
-    // Add more specific assertions based on the expected behavior of refresh_graph
-    assert!(graph_data.nodes.len() > 0 || graph_data.edges.len() > 0);
+   
+    // Assuming some nodes and edges should be generated
+    assert!(graph_data.nodes.len() > 0); // Ensure we have nodes
+    assert!(graph_data.edges.len() > 0); // Ensure we have edges
 }
