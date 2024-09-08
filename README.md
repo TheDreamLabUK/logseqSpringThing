@@ -165,6 +165,30 @@ classDiagram
     class XRInteraction {
         +handleXRInput()
     }
+
+    Server --> App
+    Server --> WebSocketUtils
+    Server --> GPUUtils
+    App --> GraphController
+    App --> FileController
+    App --> RAGFlowController
+    GraphController --> GraphService
+    FileController --> FileService
+    RAGFlowController --> RAGFlowService
+    FileService --> OpenWebUiService
+    FileService --> MetadataModel
+    GraphService --> GraphModel
+    GraphModel --> NodeModel
+    WebXRVisualization --> GraphSimulation
+    WebXRVisualization --> Interface
+    WebXRVisualization --> ChatManager
+    WebXRVisualization --> GraphDataManager
+    GraphDataManager --> Client
+    WebXRVisualization --> ThreeSetup
+    WebXRVisualization --> ThreeGraph
+    WebXRVisualization --> XRSetup
+    WebXRVisualization --> XRInteraction
+
 ```
 
 ### Sequence Diagram
