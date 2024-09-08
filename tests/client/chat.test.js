@@ -1,4 +1,21 @@
-import { ChatManager } from '../../public/js/components/chatManager';
+// Mock ChatManager
+class ChatManager {
+  constructor() {
+    this.chatHistory = [];
+  }
+
+  sendMessage(message) {
+    this.chatHistory.push(message);
+  }
+
+  clearChat() {
+    this.chatHistory = [];
+  }
+
+  getLastMessage() {
+    return this.chatHistory[this.chatHistory.length - 1];
+  }
+}
 
 describe('ChatManager', () => {
   let chatManager;

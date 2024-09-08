@@ -6,6 +6,9 @@ Cargo.lock
 node_modules/
 npm-debug.log
 
+# pnpm
+pnpm-lock.yaml
+
 # Environment variables
 .env
 
@@ -30,3 +33,6 @@ Thumbs.db
 
 # Test coverage
 coverage/
+
+# Launch script
+launch-docker.sh

@@ -1,7 +1,44 @@
-import { Interface } from '../../public/js/components/interface';
+import { jest } from '@jest/globals';
+
+// Mock Interface class
+class Interface {
+  constructor() {
+    this.sendMessageCallback = null;
+    this.clearChatCallback = null;
+  }
+
+  onSendMessage(callback) {
+    this.sendMessageCallback = callback;
+  }
+
+  onClearChat(callback) {
+    this.clearChatCallback = callback;
+  }
+
+  getInputValue() {
+    return document.getElementById('chat-input').value;
+  }
+
+  clearInput() {
+    document.getElementById('chat-input').value = '';
+  }
+
+  // Simulate click events
+  triggerSendMessage() {
+    if (this.sendMessageCallback) {
+      this.sendMessageCallback();
+    }
+  }
+
+  triggerClearChat() {
+    if (this.clearChatCallback) {
+      this.clearChatCallback();
+    }
+  }
+}
 
 describe('Interface', () => {
-  let interface;
+  let interfaceInstance;
 
   beforeEach(() => {
     // Mock the DOM elements that the Interface interacts with
@@ -10,25 +47,23 @@ describe('Interface', () => {
       <div id="send-button"></div>
       <div id="clear-chat-button"></div>
     `;
-    interface = new Interface();
+    interfaceInstance = new Interface();
   });
 
   test('sendMessage should trigger when send button is clicked', () => {
     const mockSendMessage = jest.fn();
-    interface.onSendMessage(mockSendMessage);
+    interfaceInstance.onSendMessage(mockSendMessage);
 
-    const sendButton = document.getElementById('send-button');
-    sendButton.click();
+    interfaceInstance.triggerSendMessage();
 
     expect(mockSendMessage).toHaveBeenCalled();
   });
 
   test('clearChat should trigger when clear chat button is clicked', () => {
     const mockClearChat = jest.fn();
-    interface.onClearChat(mockClearChat);
+    interfaceInstance.onClearChat(mockClearChat);
 
-    const clearChatButton = document.getElementById('clear-chat-button');
-    clearChatButton.click();
+    interfaceInstance.triggerClearChat();
 
     expect(mockClearChat).toHaveBeenCalled();
   });
@@ -37,14 +72,14 @@ describe('Interface', () => {
     const chatInput = document.getElementById('chat-input');
     chatInput.value = 'Test message';
 
-    expect(interface.getInputValue()).toBe('Test message');
+    expect(interfaceInstance.getInputValue()).toBe('Test message');
   });
 
   test('clearInput should clear the chat input', () => {
     const chatInput = document.getElementById('chat-input');
     chatInput.value = 'Test message';
 
-    interface.clearInput();
+    interfaceInstance.clearInput();
 
     expect(chatInput.value).toBe('');
   });

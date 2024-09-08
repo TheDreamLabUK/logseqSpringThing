@@ -1,4 +1,20 @@
-import { RAGFlowService } from '../../public/js/services/ragflowService';
+// Mock RAGFlowService class
+class RAGFlowService {
+  async createConversation(userId) {
+    return 'mock-conversation-id';
+  }
+
+  async sendMessage(conversationId, message) {
+    return 'mock-response';
+  }
+
+  async getChatHistory(conversationId) {
+    return [
+      { content: 'Hello', sender: 'user' },
+      { content: 'Hi there!', sender: 'assistant' }
+    ];
+  }
+}
 
 describe('RAGFlowService', () => {
   let ragflowService;

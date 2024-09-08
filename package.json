@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "description": "WebXR Graph Visualization of Logseq Knowledge Graphs with RAGFlow Integration",
   "main": "public/js/index.js",
+  "type": "module",
   "scripts": {
-    "test": "jest",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "start": "node public/js/index.js"
   },
   "dependencies": {
@@ -12,10 +13,19 @@
     "websocket": "^1.0.34"
   },
   "devDependencies": {
+    "@babel/core": "^7.21.0",
+    "@babel/preset-env": "^7.20.2",
     "jest": "^29.5.0",
     "jest-environment-jsdom": "^29.5.0"
   },
   "jest": {
-    "testEnvironment": "jsdom"
+    "testEnvironment": "jsdom",
+    "transform": {
+      "^.+\\.js$": "babel-jest"
+    }
+  },
+  "engines": {
+    "node": ">=14",
+    "pnpm": ">=6"
   }
 }

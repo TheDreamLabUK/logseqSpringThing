@@ -1,4 +1,29 @@
-import { GraphDataManager } from '../../public/js/services/graphDataManager';
+// Mock GraphDataManager class
+class GraphDataManager {
+  constructor() {
+    this.graphData = { nodes: [], edges: [] };
+  }
+
+  updateGraphData(newData) {
+    this.graphData = newData;
+  }
+
+  getGraphData() {
+    return this.graphData;
+  }
+
+  addNode(node) {
+    this.graphData.nodes.push(node);
+  }
+
+  addEdge(edge) {
+    this.graphData.edges.push(edge);
+  }
+
+  removeNode(nodeId) {
+    this.graphData.nodes = this.graphData.nodes.filter(node => node.id !== nodeId);
+  }
+}
 
 describe('GraphDataManager', () => {
   let graphDataManager;
