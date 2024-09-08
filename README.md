@@ -1,45 +1,26 @@
 # WebXR Graph Visualization of Logseq Knowledge Graphs with RAGFlow Integration
 
-This project visualizes privately hosted GitHub Markdown files created by LogSeq and integrates with RAGFlow for question answering capabilities in a 3D, WebXR-compatible environment.
+This project visualises privately hosted GitHub Markdown files created by LogSeq and integrates with RAGFlow for question-answering capabilities in a 3D, WebXR-compatible environment.
 
-![image](https://github.com/user-attachments/assets/fcbd6eb1-e2a1-4fea-a3df-4303b17e2b48)
-
-![image](https://github.com/user-attachments/assets/873809d5-d8bd-44c3-884c-ce9418e273ef)
-
-![image](./optimized-output.gif)
+![Graph Visualization](./optimized-output.gif)
 
 ## Project Overview
 
-This application transforms a LogSeq personal knowledge base into an interactive 3D graph, viewable in mixed reality. It automatically parses pages from a private GitHub repository, processes them via OpenWebUI, and creates a force-directed 3D graph using WebXR and Three.js. The processed and raw files are analyzed, and JSON metadata is generated for both versions, enabling a comparison of graph nodes and edges.
+This application transforms a LogSeq personal knowledge base into an interactive 3D graph, viewable in mixed reality. It automatically parses pages from a private GitHub repository, processes them via OpenWebUI, and creates a force-directed 3D graph using WebXR and Three.js. The processed and raw files are analysed, and JSON metadata is generated for both versions, enabling a comparison of graph nodes and edges.
 
 Key features include:
-- **3D Visualization** of knowledge graph nodes and edges
+- **3D Visualisation** of knowledge graph nodes and edges
 - **WebXR Compatibility** for immersive exploration
 - **OpenWebUI API Integration** for file pre-processing
 - **Integration with RAGFlow** for AI-powered question answering
 - **Real-Time Updates** via WebSocket for both client and server
-- **Mandatory GPU Acceleration** on the server-side for graph computations
+- **Mandatory GPU Acceleration** on the server-side for graph computations using WebGPU
 - **Optional GPU Acceleration** on the client-side for enhanced performance
 - **One-Time File Pre-Processing** for GitHub file updates, comparing processed and raw files
 
-## Key Technical Features
-
-### WebSocket Integration
-
-WebSockets are crucial for real-time communication between the client and server:
-
-- **Server-side** (`websocketUtils.js`): Manages WebSocket connections, broadcasts updates to connected clients, and handles incoming messages.
-- **Client-side** (`websocketService.js` and `graphDataManager.js`): Establishes connection with the server, sends user actions, and receives real-time graph updates.
-
-### GPU Acceleration
-
-- **Server-side** (`gpuUtils.js`): Mandatory GPU acceleration for efficient graph computations, force calculations, and position updates.
-- **Client-side** (`gpuUtils.js`): Optional GPU acceleration for enhanced performance in graph rendering and local computations. Falls back to CPU processing if GPU is not available.
-
-
 ## Architecture
 
-The project consists of server-side and client-side components, with well-defined classes and services based on the diagram below:
+The project consists of a Rust-based server running in a Docker container and a JavaScript client-side application.
 
 ### Class Diagram
 
@@ -48,163 +29,91 @@ classDiagram
     class Server {
         +start()
         +initialize()
-        +listen(port: int)
+        +listen(port: u16)
         +setupWebSocket()
     }
 
-    class App {
-        +initialize()
-        +setMiddleware()
-        +setRoutes()
-        +startServer()
+    class AppState {
+        +graph_data: Arc<RwLock<GraphData>>
+        +file_cache: Arc<RwLock<HashMap<String, String>>>
     }
 
-    class GraphController {
-        +getGraphData(req: Request, res: Response)
-        +refreshGraph(req: Request, res: Response)
+    class GraphHandler {
+        +get_graph_data(State<AppState>)
+        +refresh_graph(State<AppState>)
     }
 
-    class FileController {
-        +fetchAndProcessFiles(req: Request, res: Response)
+    class FileHandler {
+        +fetch_and_process_files(State<AppState>)
     }
 
-    class RAGFlowController {
-        +sendMessage(req: Request, res: Response)
+    class RAGFlowHandler {
+        +send_message(State<AppState>, Json<Message>)
     }
 
     class GraphService {
-        +getGraphData()
-        +refreshGraphData()
-        +buildEdges()
+        +get_graph_data(AppState)
+        +refresh_graph_data(AppState)
+        +build_edges(AppState)
     }
 
     class FileService {
-        +fetchFilesFromGitHub()
-        +compareAndIdentifyUpdates(githubFiles: Array)
-        +sendToOpenWebUI(file: String)
-        +saveFileMetadata(metadata: Object)
+        +fetch_files_from_github()
+        +compare_and_identify_updates(github_files: Vec<String>)
+        +send_to_openwebui(file: String)
+        +save_file_metadata(metadata: Metadata)
     }
 
     class RAGFlowService {
-        +createConversation(userId: String)
-        +sendMessage(conversationId: String, message: String)
-        +getChatHistory(conversationId: String)
+        +create_conversation(user_id: String)
+        +send_message(conversation_id: String, message: String)
+        +get_chat_history(conversation_id: String)
     }
 
     class OpenWebUiService {
-        +processFile(file: String)
+        +process_file(file: String)
     }
 
-    class GraphModel {
-        +graphData: Object
-        +edges: Array
-        +nodes: Array
+    class GraphData {
+        +edges: Vec<Edge>
+        +nodes: Vec<Node>
     }
 
-    class MetadataModel {
-        +fileName: String
-        +lastModified: Date
-        +processedFile: String
-        +originalFile: String
+    class Metadata {
+        +file_name: String
+        +last_modified: DateTime<Utc>
+        +processed_file: String
+        +original_file: String
     }
 
-    class NodeModel {
+    class Node {
         +id: String
         +label: String
-        +metadata: Object
+        +metadata: HashMap<String, String>
     }
 
-    class WebSocketUtils {
-        +setupWebSocket()
-        +broadcastMessage(message: String)
+    class WebSocketManager {
+        +setup_websocket()
+        +broadcast_message(message: String)
     }
 
-    class GPUUtils {
-        +initializeGPU()
-        +computeForces()
-        +updatePositions()
+    class GPUCompute {
+        +initialize_gpu()
+        +compute_forces()
+        +update_positions()
     }
 
-    class Client {
-        +start()
-        +initialize()
-        +connectWebSocket()
-    }
-
-    class WebXRVisualization {
-        +initScene()
-        +initCamera()
-        +initRenderer()
-        +updateGraph(data: Object)
-        +animate()
-    }
-
-    class GraphSimulation {
-        +initialize(nodes: Array, edges: Array)
-        +updateGraph()
-        +tick()
-    }
-
-    class Interface {
-        +initSpaceMouse()
-        +handleInput(event: Object)
-        +updateCameraPosition()
-    }
-
-    class ChatManager {
-        +initializeChat()
-        +sendMessage(question: String)
-        +updateChatDisplay(response: Object)
-    }
-
-    class GraphDataManager {
-        +connectWebSocket()
-        +handleMessage(event: Object)
-        +sendStartSimulation()
-        +sendStopSimulation()
-        +sendSetSimulationParams(params: Object)
-    }
-
-    class ThreeSetup {
-        +initThreeScene()
-        +initThreeCamera()
-    }
-
-    class ThreeGraph {
-        +renderGraph(nodes: Array, edges: Array)
-    }
-
-    class XRSetup {
-        +initXR()
-    }
-
-    class XRInteraction {
-        +handleXRInput()
-    }
-
-    Server --> App
-    Server --> WebSocketUtils
-    Server --> GPUUtils
-    App --> GraphController
-    App --> FileController
-    App --> RAGFlowController
-    GraphController --> GraphService
-    FileController --> FileService
-    RAGFlowController --> RAGFlowService
+    Server --> AppState
+    Server --> WebSocketManager
+    Server --> GPUCompute
+    AppState --> GraphData
+    GraphHandler --> GraphService
+    FileHandler --> FileService
+    RAGFlowHandler --> RAGFlowService
     FileService --> OpenWebUiService
-    FileService --> MetadataModel
-    GraphService --> GraphModel
-    GraphModel --> NodeModel
-    WebXRVisualization --> GraphSimulation
-    WebXRVisualization --> Interface
-    WebXRVisualization --> ChatManager
-    WebXRVisualization --> GraphDataManager
-    GraphDataManager --> Client
-    WebXRVisualization --> ThreeSetup
-    WebXRVisualization --> ThreeGraph
-    WebXRVisualization --> XRSetup
-    WebXRVisualization --> XRInteraction
-
+    FileService --> Metadata
+    GraphService --> GraphData
+    GraphData --> Node
 ```
 
 ### Sequence Diagram
@@ -222,29 +131,28 @@ sequenceDiagram
 
     activate Server
     Server->>Server: initialize()
-    Server->>Server: initializeHttpsOptions()
-    Server->>Server: initializeGPU()
+    Server->>Server: setup_https_options()
+    Server->>Server: initialize_gpu()
     Server->>Server: create HTTPS server & WebSocket server
     Server->>Server: listen on port 8443
-    Server->>Server: refreshGraphData()
-    Server->>GitHub: fetchMarkdownMetadata()
+    Server->>Server: refresh_graph_data()
+    Server->>GitHub: fetch_markdown_metadata()
     GitHub-->>Server: Markdown file metadata
-    Server->>Server: compareAndIdentifyUpdates()
+    Server->>Server: compare_and_identify_updates()
     loop for each file to update
         Server->>GitHub: fetch file content
         GitHub-->>Server: file content
         Server->>Server: save file content & metadata
         
-        %% OpenWebUI Processing Step %%
         Server->>OpenWebUIAPI: send file for processing
         OpenWebUIAPI-->>Server: processed file & JSON metadata
         Server->>Server: store processed file & metadata
         Server->>Server: generate edges and nodes from raw & processed files
     end
-    Server->>Server: buildEdges()
-    Server->>Server: loadGraphData()
-    Server->>ServerGraphSimulation: initialize(graphData)
-    Server->>ServerGraphSimulation: startSimulation()
+    Server->>Server: build_edges()
+    Server->>Server: load_graph_data()
+    Server->>ServerGraphSimulation: initialize(graph_data)
+    Server->>ServerGraphSimulation: start_simulation()
     
     activate Client
     Client->>WebXRVisualization: initialize()
@@ -256,82 +164,80 @@ sequenceDiagram
     GraphDataManager->>Server: WebSocket connection
     Server-->>GraphDataManager: Connection established
     
-    Client->>Server: /graph-data (HTTP)
+    Client->>Server: GET /graph-data
     Server-->>Client: graph data (JSON)
     
     GraphDataManager->>Server: { type: 'startSimulation' } (WebSocket)
     
     loop Simulation loop
-        ServerGraphSimulation->>ServerGraphSimulation: computeForces()
-        ServerGraphSimulation->>ServerGraphSimulation: updatePositions()
+        ServerGraphSimulation->>ServerGraphSimulation: compute_forces()
+        ServerGraphSimulation->>ServerGraphSimulation: update_positions()
         ServerGraphSimulation->>GraphDataManager: { type: 'nodePositions', positions: [...] } (WebSocket)
         GraphDataManager->>GraphSimulation: updateNodePositions(positions)
         GraphSimulation->>WebXRVisualization: updateGraph()
     end
     
     Client->>ChatManager: sendMessage(question)
-    ChatManager->>Server: /api/chat/message (HTTP)
-    Server->>RAGFlowIntegration: sendMessage(conversationId, message)
+    ChatManager->>Server: POST /api/chat/message
+    Server->>RAGFlowIntegration: send_message(conversation_id, message)
     RAGFlowIntegration-->>Server: response
-    Server-->>ChatManager: response (HTTP)
+    Server-->>ChatManager: response
     ChatManager->>WebXRVisualization: updateChatDisplay(response)
     
     Client->>Interface: user input (e.g., SpaceMouse movement)
     Interface->>WebXRVisualization: updateCameraPosition()
     
-    Client->>Server: /refresh-graph (HTTP)
-    Server->>Server: refreshGraphData()
-    Server->>GitHub: fetchMarkdownMetadata()
+    Client->>Server: POST /refresh-graph
+    Server->>Server: refresh_graph_data()
+    Server->>GitHub: fetch_markdown_metadata()
     GitHub-->>Server: Markdown file metadata
-    Server->>Server: compareAndIdentifyUpdates()
+    Server->>Server: compare_and_identify_updates()
     loop for each file to update
         Server->>GitHub: fetch file content
         GitHub-->>Server: file content
         Server->>Server: save file content & metadata
         
-        %% OpenWebUI Processing Step %%
         Server->>OpenWebUIAPI: send file for processing
         OpenWebUIAPI-->>Server: processed file & JSON metadata
         Server->>Server: store processed file & metadata
         Server->>Server: generate edges and nodes from raw & processed files
     end
-    Server->>Server: buildEdges()
-    Server->>Server: loadGraphData()
-    Server->>ServerGraphSimulation: updateGraphData(newGraphData)
-    ServerGraphSimulation->>GraphDataManager: { type: 'graphUpdate', data: newGraphData } (WebSocket)
-    GraphDataManager->>GraphSimulation: updateData(newGraphData)
+    Server->>Server: build_edges()
+    Server->>Server: load_graph_data()
+    Server->>ServerGraphSimulation: update_graph_data(new_graph_data)
+    ServerGraphSimulation->>GraphDataManager: { type: 'graphUpdate', data: new_graph_data } (WebSocket)
+    GraphDataManager->>GraphSimulation: updateData(new_graph_data)
     GraphSimulation->>WebXRVisualization: updateGraph()
     
     deactivate Client
     deactivate Server
-
 ```
 
 ## File Structure
 
-### Server-Side
+### Server-Side (Rust)
 
-- **Controllers**: `server/src/controllers/`
-  - `graphController.js`: Handles graph data requests
-  - `fileController.js`: Manages file operations and GitHub interactions
-  - `ragflowController.js`: Handles RAGFlow API interactions
+- **src/**
+  - `main.rs`: Entry point for the Rust server
+  - `app_state.rs`: Shared application state
+  - `handlers/`
+    - `graph_handler.rs`: Handles graph data requests
+    - `file_handler.rs`: Manages file operations and GitHub interactions
+    - `ragflow_handler.rs`: Handles RAGFlow API interactions
+  - `services/`
+    - `graph_service.rs`: Core graph processing and management
+    - `file_service.rs`: File handling and OpenWebUI integration
+    - `ragflow_service.rs`: RAGFlow conversation management
+    - `openwebui_service.rs`: Interaction with OpenWebUI API
+  - `models/`
+    - `graph.rs`: Graph data structures
+    - `metadata.rs`: File metadata representation
+    - `node.rs`: Graph node structure
+  - `utils/`
+    - `websocket_manager.rs`: Server-side WebSocket management
+    - `gpu_compute.rs`: GPU acceleration for server-side computations using WebGPU
 
-- **Services**: `server/src/services/`
-  - `graphService.js`: Core graph processing and management
-  - `fileService.js`: File handling and OpenWebUI integration
-  - `ragflowService.js`: RAGFlow conversation management
-  - `openWebUiService.js`: Interaction with OpenWebUI API
-
-- **Models**: `server/src/models/`
-  - `graphModel.js`: Graph data structure
-  - `metadataModel.js`: File metadata representation
-  - `nodeModel.js`: Graph node structure
-
-- **Utilities**: `server/src/utils/`
-  - `websocketUtils.js`: Server-side WebSocket management
-  - `gpuUtils.js`: GPU acceleration for server-side computations
-
-### Client-Side
+### Client-Side (JavaScript)
 
 - **Core**: `public/js/`
   - `index.js`: Entry point for client-side application
@@ -344,7 +250,9 @@ sequenceDiagram
   - `chatManager.js`: Manages chat interface and RAGFlow interactions
 
 - **Services**: `public/js/services/`
-  - `graphDataManager.js`: Manages graph data and WebSocket communication
+ 
+
+ - `graphDataManager.js`: Manages graph data and WebSocket communication
   - `websocketService.js`: Client-side WebSocket handling
 
 - **ThreeJS Components**: `public/js/threeJS/`
@@ -357,7 +265,7 @@ sequenceDiagram
 
 - **Utilities**: `public/js/`
   - `gpuUtils.js`: Optional GPU acceleration for client-side computations
-  
+
 ### Tests
 
 Unit tests are provided for all major components, both on the server and client side, under the `tests` directory.
@@ -367,7 +275,7 @@ Unit tests are provided for all major components, both on the server and client 
 ### Prerequisites
 
 - Docker
-- Node.js
+- Rust (for local development)
 - GitHub Personal Access Token
 - RAGFlow API Key
 - OpenWebUI API
@@ -395,7 +303,8 @@ Unit tests are provided for all major components, both on the server and client 
 
 3. Build and run with Docker:
    ```bash
-   ./start_docker.sh
+   docker build -t webxr-graph .
+   docker run -p 8443:8443 --gpus all webxr-graph
    ```
 
 4. Access the application at `https://localhost:8443` using a WebXR-compatible browser.
@@ -403,9 +312,10 @@ Unit tests are provided for all major components, both on the server and client 
 ## Development Status
 
 The project is under active development. Areas of focus include:
-- Finalizing the integration with OpenWebUI for file processing.
-- Expanding unit tests and improving test coverage.
-- Optimizing the GPU-based graph simulation for larger datasets.
+- Optimising WebGPU integration for graph computations
+- Finalising the integration with OpenWebUI for file processing
+- Expanding unit tests and improving test coverage
+- Enhancing the Rust-based server performance
 
 ## Contributing
 
@@ -416,5 +326,3 @@ Contributions are welcome! Please submit issues or pull requests.
 This project is licensed under the Creative Commons CC0 license.
 
 ---
-
-This updated `README.md` reflects the architecture and design changes, including the OpenWebUI integration and the separation of concerns across various components. Let me know if you’d like to refine anything further!
