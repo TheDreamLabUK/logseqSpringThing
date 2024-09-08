@@ -4,6 +4,12 @@ This project visualises privately hosted GitHub Markdown files created by LogSeq
 
 ![Graph Visualization](./optimized-output.gif)
 
+
+![image](https://github.com/user-attachments/assets/fcbd6eb1-e2a1-4fea-a3df-4303b17e2b48)
+
+![image](https://github.com/user-attachments/assets/873809d5-d8bd-44c3-884c-ce9418e273ef)
+
+
 ## Project Overview
 
 This application transforms a LogSeq personal knowledge base into an interactive 3D graph, viewable in mixed reality. It automatically parses pages from a private GitHub repository, processes them via OpenWebUI, and creates a force-directed 3D graph using WebXR and Three.js. The processed and raw files are analysed, and JSON metadata is generated for both versions, enabling a comparison of graph nodes and edges.
@@ -30,77 +36,64 @@ classDiagram
         +start()
         +initialize()
         +listen(port: u16)
-        +setupWebSocket()
+        +setup_websocket()
     }
-
     class AppState {
         +graph_data: Arc<RwLock<GraphData>>
         +file_cache: Arc<RwLock<HashMap<String, String>>>
     }
-
     class GraphHandler {
-        +get_graph_data(State<AppState>)
-        +refresh_graph(State<AppState>)
+        +get_graph_data(State<AppState>) -> Result<Json<GraphData>>
+        +refresh_graph(State<AppState>) -> Result<Json<GraphData>>
     }
-
     class FileHandler {
-        +fetch_and_process_files(State<AppState>)
+        +fetch_and_process_files(State<AppState>) -> Result<Json<Vec<String>>>
     }
-
     class RAGFlowHandler {
-        +send_message(State<AppState>, Json<Message>)
+        +send_message(State<AppState>, Json<Message>) -> Result<Json<Response>>
     }
-
     class GraphService {
-        +get_graph_data(AppState)
-        +refresh_graph_data(AppState)
-        +build_edges(AppState)
+        +get_graph_data(AppState) -> Result<GraphData>
+        +refresh_graph_data(AppState) -> Result<GraphData>
+        +build_edges(AppState) -> Result<Vec<Edge>>
     }
-
     class FileService {
-        +fetch_files_from_github()
-        +compare_and_identify_updates(github_files: Vec<String>)
-        +send_to_openwebui(file: String)
-        +save_file_metadata(metadata: Metadata)
+        +fetch_files_from_github() -> Result<Vec<GithubFile>>
+        +compare_and_identify_updates(github_files: Vec<GithubFile>) -> Result<Vec<String>>
+        +send_to_openwebui(file: String) -> Result<ProcessedFile>
+        +save_file_metadata(metadata: Metadata) -> Result<()>
     }
-
     class RAGFlowService {
-        +create_conversation(user_id: String)
-        +send_message(conversation_id: String, message: String)
-        +get_chat_history(conversation_id: String)
+        +create_conversation(user_id: String) -> Result<String>
+        +send_message(conversation_id: String, message: String) -> Result<String>
+        +get_chat_history(conversation_id: String) -> Result<Vec<Message>>
     }
-
     class OpenWebUiService {
-        +process_file(file: String)
+        +process_file(file: String) -> Result<ProcessedFile>
     }
-
     class GraphData {
         +edges: Vec<Edge>
         +nodes: Vec<Node>
     }
-
     class Metadata {
         +file_name: String
         +last_modified: DateTime<Utc>
         +processed_file: String
         +original_file: String
     }
-
     class Node {
         +id: String
         +label: String
         +metadata: HashMap<String, String>
     }
-
     class WebSocketManager {
-        +setup_websocket()
-        +broadcast_message(message: String)
+        +setup_websocket() -> Result<()>
+        +broadcast_message(message: String) -> Result<()>
     }
-
     class GPUCompute {
-        +initialize_gpu()
-        +compute_forces()
-        +update_positions()
+        +initialize_gpu() -> Result<()>
+        +compute_forces() -> Result<()>
+        +update_positions() -> Result<()>
     }
 
     Server --> AppState
@@ -326,3 +319,4 @@ Contributions are welcome! Please submit issues or pull requests.
 This project is licensed under the Creative Commons CC0 license.
 
 ---
+
