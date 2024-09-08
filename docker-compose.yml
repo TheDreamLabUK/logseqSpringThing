@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  webxr-graph:
+    build: .
+    ports:
+      - "8443:8443"
+    environment:
+      - RUST_LOG=info
+    volumes:
+      - .:/usr/src/app
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

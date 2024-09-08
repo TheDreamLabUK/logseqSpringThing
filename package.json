@@ -1,0 +1,21 @@
+{
+  "name": "webxr-graph",
+  "version": "1.0.0",
+  "description": "WebXR Graph Visualization of Logseq Knowledge Graphs with RAGFlow Integration",
+  "main": "public/js/index.js",
+  "scripts": {
+    "test": "jest",
+    "start": "node public/js/index.js"
+  },
+  "dependencies": {
+    "three": "^0.150.1",
+    "websocket": "^1.0.34"
+  },
+  "devDependencies": {
+    "jest": "^29.5.0",
+    "jest-environment-jsdom": "^29.5.0"
+  },
+  "jest": {
+    "testEnvironment": "jsdom"
+  }
+}

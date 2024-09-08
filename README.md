@@ -243,9 +243,7 @@ sequenceDiagram
   - `chatManager.js`: Manages chat interface and RAGFlow interactions
 
 - **Services**: `public/js/services/`
- 
-
- - `graphDataManager.js`: Manages graph data and WebSocket communication
+  - `graphDataManager.js`: Manages graph data and WebSocket communication
   - `websocketService.js`: Client-side WebSocket handling
 
 - **ThreeJS Components**: `public/js/threeJS/`
@@ -267,8 +265,9 @@ Unit tests are provided for all major components, both on the server and client 
 
 ### Prerequisites
 
-- Docker
+- Docker with NVIDIA GPU support
 - Rust (for local development)
+- Node.js and npm (for local development)
 - GitHub Personal Access Token
 - RAGFlow API Key
 - OpenWebUI API
@@ -294,13 +293,45 @@ Unit tests are provided for all major components, both on the server and client 
    OPENWEBUI_API=http://your_openwebui_url/
    ```
 
-3. Build and run with Docker:
+### Running with Docker
+
+1. Build and run the Docker container:
    ```bash
-   docker build -t webxr-graph .
-   docker run -p 8443:8443 --gpus all webxr-graph
+   docker-compose up --build
    ```
 
-4. Access the application at `https://localhost:8443` using a WebXR-compatible browser.
+2. Access the application at `https://localhost:8443` using a WebXR-compatible browser.
+
+### Local Development
+
+1. Install Rust dependencies:
+   ```bash
+   cargo build
+   ```
+
+2. Install JavaScript dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Run the Rust server:
+   ```bash
+   cargo run
+   ```
+
+4. Serve the frontend (you may need to set up a separate web server)
+
+### Running Tests
+
+- For Rust tests:
+  ```bash
+  cargo test
+  ```
+
+- For JavaScript tests:
+  ```bash
+  npm test
+  ```
 
 ## Development Status
 
@@ -319,4 +350,3 @@ Contributions are welcome! Please submit issues or pull requests.
 This project is licensed under the Creative Commons CC0 license.
 
 ---
-
