@@ -1,12 +1,14 @@
+use super::node::Node;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct GraphData {
-    pub edges: Vec<Edge>,
     pub nodes: Vec<Node>,
+    pub edges: Vec<Edge>,
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Edge {
-    // Define Edge fields
+    pub source: String,
+    pub target: String,
 }

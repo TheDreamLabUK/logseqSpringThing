@@ -1,18 +1,21 @@
+use crate::AppState;
+use crate::models::graph::{GraphData, Edge};
+
 pub struct GraphService;
 
 impl GraphService {
     pub fn get_graph_data(state: &AppState) -> Result<GraphData, std::io::Error> {
-        // Logic to get graph data
+        // Implementation goes here
         Ok(GraphData::default())
     }
 
     pub fn refresh_graph_data(state: &AppState) -> Result<GraphData, std::io::Error> {
-        // Logic to refresh graph data
+        // Implementation goes here
         Ok(GraphData::default())
     }
 
     pub fn build_edges(state: &AppState) -> Result<Vec<Edge>, std::io::Error> {
-        // Logic to build edges
+        // Implementation goes here
         Ok(Vec::new())
     }
 }

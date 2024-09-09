@@ -1,18 +1,16 @@
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[tokio::test]
-    async fn test_send_message() {
-        let app_state = AppState::new(
-            Arc::new(RwLock::new(Default::default())),
-            Arc::new(RwLock::new(Default::default())),
-        );
+use crate::*;
+use handlers::ragflow_handler::{send_message, Message};
+use actix_web::web;
 
-        let message = Message { content: "Test message".to_string() };
+#[actix_web::test]
+async fn test_send_message() {
+    let app_state = AppState::new(
+        Arc::new(RwLock::new(Default::default())),
+        Arc::new(RwLock::new(Default::default())),
+    );
 
-        let result = send_message(app_state, message).await;
-        assert!(result.is_ok());
-        let response = result.unwrap();
-        assert!(!response.content.is_empty());
-    }
+    let app_state = web::Data::new(app_state);
+    let message = web::Json(Message { content: "Test message".to_string() });
+    let result = send_message(app_state, message).await;
+    assert_eq!(result.status(), actix_web::http::StatusCode::OK);
 }

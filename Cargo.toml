@@ -3,6 +3,14 @@ name = "webxr-graph"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "webxr_graph"
+path = "src/lib.rs"
+
+[[bin]]
+name = "webxr-graph"
+path = "src/main.rs"
+
 [dependencies]
 tokio = { version = "1.28", features = ["full"] }
 warp = "0.3"

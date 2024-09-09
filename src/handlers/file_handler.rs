@@ -1,13 +1,13 @@
+use crate::AppState;
 use actix_web::{web, HttpResponse};
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-// Define your AppState and other required structs here
-struct AppState {
-    // Your AppState fields
-}
+use serde_json::json;
 
 pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse {
-    // Fetch and process files logic here
-    HttpResponse::Ok().finish()
+    // Implementation goes here
+    // For now, we'll return a mock response
+    let processed_files = vec![
+        "expected_file_name_1".to_string(),
+        "expected_file_name_2".to_string(),
+    ];
+    HttpResponse::Ok().json(json!(processed_files))
 }

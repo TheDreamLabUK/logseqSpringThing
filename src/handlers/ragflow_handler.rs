@@ -1,13 +1,13 @@
+use crate::AppState;
 use actix_web::{web, HttpResponse};
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use serde::{Deserialize, Serialize};
 
-// Define your AppState and other required structs here
-struct AppState {
-    // Your AppState fields
+#[derive(Deserialize, Serialize)]
+pub struct Message {
+    pub content: String,
 }
 
 pub async fn send_message(state: web::Data<AppState>, message: web::Json<Message>) -> HttpResponse {
-    // Send message logic here
-    HttpResponse::Ok().finish()
+    // Implementation goes here
+    HttpResponse::Ok().json(message.0)
 }

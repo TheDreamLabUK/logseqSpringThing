@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use crate::models::graph::GraphData;
 
 pub struct AppState {
     pub graph_data: Arc<RwLock<GraphData>>,
