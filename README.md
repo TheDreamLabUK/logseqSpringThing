@@ -304,6 +304,58 @@ Unit tests are provided for all major components, both on the server and client 
 
 ### Local Development
 
+
+### Running Tests
+
+- For Rust tests:
+  ```bash
+  cargo test
+  ```
+
+- For JavaScript tests:
+  ```bash
+  npm test
+  ```
+
+### Test Coverage
+
+We have implemented comprehensive test coverage for both server-side and client-side components:
+
+#### Server-side Tests (Rust)
+
+- **Unit Tests**: Located in `tests/server/` directory
+  - `app_state_test.rs`: Tests for AppState functionality
+  - `metadata_test.rs`: Tests for Metadata struct and its methods
+  - `file_handler_test.rs`: Tests for file handling operations
+  - `graph_service_test.rs`: Tests for graph processing and management
+  - `openwebui_service_test.rs`: Tests for OpenWebUI API interactions
+  - `ragflow_service_test.rs`: Tests for RAGFlow service operations
+
+- **Integration Tests**: Located in `tests/server/integration_tests.rs`
+  - End-to-end workflow tests
+  - Graph update workflow tests
+
+#### Client-side Tests (JavaScript)
+
+- Located in `tests/client/` directory
+  - `interface.test.js`: Tests for user interface components
+  - `graphService.test.js`: Tests for client-side graph data management
+  - `websocketService.test.js`: Tests for WebSocket communication
+  - ... (other client-side test files)
+
+Our test suite follows best practices for Test-Driven Development (TDD):
+- Extensive use of mocking for API interactions and external services
+- Comprehensive coverage of both success and error scenarios
+- Integration tests to ensure proper interaction between components
+
+To run all tests and view coverage reports:
+
+```bash
+cargo test --all-features --no-fail-fast
+npm run test -- --coverage
+```
+
+
 1. Install Rust dependencies:
    ```bash
    cargo build
@@ -350,3 +402,17 @@ Contributions are welcome! Please submit issues or pull requests.
 This project is licensed under the Creative Commons CC0 license.
 
 ---
+
+
+## Development Status
+
+The project is under active development. Recent improvements include:
+- Enhanced test coverage for both server-side and client-side components
+- Implementation of integration tests for end-to-end workflows
+- Improved mocking for API interactions in OpenWebUiService and RAGFlowService
+
+Areas of ongoing focus include:
+- Optimising WebGPU integration for graph computations
+- Finalising the integration with OpenWebUI for file processing
+- Expanding unit tests and improving test coverage
+- Enhancing the Rust-based server performance
