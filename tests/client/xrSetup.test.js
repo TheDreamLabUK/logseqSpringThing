@@ -1,12 +1,10 @@
 import { setupXRSession } from '../../public/js/xr/xrSetup';
 
-// Declare jest directly
-const jest = require('jest-mock');
-
 describe('XRSetup', () => {
   test('setupXRSession should set up XR session correctly', () => {
-    console.log = jest.fn(); // Mock console.log
+    const consoleSpy = jest.spyOn(console, 'log');
     setupXRSession();
-    expect(console.log).toHaveBeenCalledWith('Setting up XR session...');
+    expect(consoleSpy).toHaveBeenCalledWith('Setting up XR session...');
+    consoleSpy.mockRestore();
   });
 });
