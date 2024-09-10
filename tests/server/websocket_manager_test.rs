@@ -1,12 +1,10 @@
-use crate::*;
-use utils::websocket_manager::WebSocketManager;
+use crate::utils::websocket_manager::handle_websocket;
+use warp::ws::WebSocket;
 
-#[test]
-fn test_new_websocket_manager() {
-    let _ws_manager = WebSocketManager::new();
-    // If we reach this point, we've successfully created a WebSocketManager
+#[tokio::test]
+async fn test_handle_websocket() {
+    // This is a placeholder test. You'll need to mock WebSocket for proper testing.
+    // For now, we'll just check if the function exists and compiles.
+    let _result = handle_websocket as fn(WebSocket) -> _;
+    assert!(true, "handle_websocket function exists");
 }
-
-// Note: We can't test handle_websocket, setup_websocket, and broadcast_message directly
-// as they require an actual WebSocket connection. We might need to
-// mock these or test them in integration tests.

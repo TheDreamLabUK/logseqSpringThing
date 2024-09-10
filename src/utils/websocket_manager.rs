@@ -1,36 +1,34 @@
-use tokio::sync::mpsc;
-use futures::{StreamExt, SinkExt};
-use warp::ws::{Message, WebSocket};
+use actix_web::{web, Error, HttpRequest, HttpResponse};
+use actix_web_actors::ws;
+use actix::prelude::*;
 
-pub struct WebSocketManager;
+pub async fn handle_websocket(req: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
+    ws::start(WebSocketSession::new(), &req, stream)
+}
 
-impl WebSocketManager {
-    pub fn new() -> Self {
-        WebSocketManager
+struct WebSocketSession;
+
+impl WebSocketSession {
+    fn new() -> Self {
+        WebSocketSession
     }
+}
 
-    pub async fn handle_websocket(&self, ws: WebSocket) {
-        let (mut ws_sender, mut ws_receiver) = ws.split();
-        let (tx, mut rx) = mpsc::channel(32);
+impl Actor for WebSocketSession {
+    type Context = ws::WebsocketContext<Self>;
 
-        tokio::task::spawn(async move {
-            while let Some(message) = rx.recv().await {
-                ws_sender.send(message).await.unwrap();
-            }
-        });
+    fn started(&mut self, ctx: &mut Self::Context) {
+        // Handle connection established
+    }
+}
 
-        while let Some(result) = ws_receiver.next().await {
-            match result {
-                Ok(msg) => {
-                    if msg.is_text() || msg.is_binary() {
-                        tx.send(msg).await.unwrap();
-                    }
-                }
-                Err(e) => {
-                    eprintln!("websocket error: {:?}", e);
-                    break;
-                }
-            }
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        match msg {
+            Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
+            Ok(ws::Message::Text(text)) => ctx.text(text),
+            Ok(ws::Message::Binary(bin)) => ctx.binary(bin),
+            _ => (),
         }
     }
 }

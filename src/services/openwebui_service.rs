@@ -1,10 +1,15 @@
-use crate::services::file_service::ProcessedFile;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct ProcessedFile {
+    pub content: String,
+}
 
 pub struct OpenWebUiService;
 
 impl OpenWebUiService {
     pub async fn process_file(file: String) -> Result<ProcessedFile, reqwest::Error> {
-        // Implementation goes here
-        Ok(ProcessedFile::default())
+        // Placeholder implementation
+        Ok(ProcessedFile { content: format!("Processed: {}", file) })
     }
 }
