@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod server {
     pub mod file_service_test;
+    pub mod perplexity_service_test;
     // Add other server test modules here as needed
 }
 
