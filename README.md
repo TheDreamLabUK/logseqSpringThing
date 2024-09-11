@@ -12,12 +12,12 @@ This project visualises privately hosted GitHub Markdown files created by LogSeq
 
 ## Project Overview
 
-This application transforms a LogSeq personal knowledge base into an interactive 3D graph, viewable in mixed reality. It automatically parses pages from a private GitHub repository, processes them via OpenWebUI, and creates a force-directed 3D graph using WebXR and Three.js. The processed and raw files are analysed, and JSON metadata is generated for both versions, enabling a comparison of graph nodes and edges.
+This application transforms a LogSeq personal knowledge base into an interactive 3D graph, viewable in mixed reality. It automatically parses pages from a private GitHub repository, and processes them via perplexity API to update and provide additional citations. These changes are submitted back to the source repo as PRs. It then builds it's own edge linkages between connected nodes, with edges as a function of the bidirectionsl references between any two nodes. Both processed and raw files are analysed, and JSON metadata is generated for both versions, enabling a comparison of graph nodes and edges. This figure is further nuanced by the richness of the citation and web links in the connected nodes. All this is combined into a force-directed 3D graph using WebXR and Three.js. The visual graph can be interrogated via Microsoft graphRAG in a text interface.
 
 Key features include:
 - **3D Visualisation** of knowledge graph nodes and edges
 - **WebXR Compatibility** for immersive exploration
-- **OpenWebUI API Integration** for file pre-processing
+- **Rust calls to Perplexity AI** for file pre-processing
 - **Integration with RAGFlow** for AI-powered question answering
 - **Real-Time Updates** via WebSocket for both client and server
 - **Mandatory GPU Acceleration** on the server-side for graph computations using WebGPU
@@ -119,7 +119,7 @@ sequenceDiagram
     participant Server
     participant ServerGraphSimulation
     participant GitHub
-    participant OpenWebUIAPI
+    participant PerplexityAPI
     participant RAGFlowIntegration
 
     activate Server
@@ -136,8 +136,8 @@ sequenceDiagram
         Server->>GitHub: fetch file content
         GitHub-->>Server: file content
         Server->>Server: save file content & metadata
-        Server->>OpenWebUIAPI: send file for processing
-        OpenWebUIAPI-->>Server: processed file
+        Server->>PerplexityAPI: send file for processing
+        PerplexityAPI-->>Server: processed file
         Server->>Server: store processed file & generated metadata
         Server->>GitHub: Submit file pull request
         Server->>Server: generate edges and nodes from raw & processed files
@@ -191,7 +191,7 @@ sequenceDiagram
         Server->>Server: save file content & metadata
         
         Server->>OpenWebUIAPI: send file for processing
-        OpenWebUIAPI-->>Server: processed file & JSON metadata
+        PerplexityAPI-->>Server: processed file & JSON metadata
         Server->>Server: store processed file & metadata
         Server->>Server: generate edges and nodes from raw & processed files
     end
@@ -221,7 +221,7 @@ sequenceDiagram
     - `graph_service.rs`: Core graph processing and management
     - `file_service.rs`: File handling and OpenWebUI integration
     - `ragflow_service.rs`: RAGFlow conversation management
-    - `openwebui_service.rs`: Interaction with OpenWebUI API
+    - `perplexity_service.rs`: Interaction with Perplexity API
   - `models/`
     - `graph.rs`: Graph data structures
     - `metadata.rs`: File metadata representation
@@ -270,7 +270,7 @@ Unit tests are provided for all major components, both on the server and client 
 - Node.js and npm (for local development)
 - GitHub Personal Access Token
 - RAGFlow API Key
-- OpenWebUI API
+- Perplexity API
 - GPU-enabled server for mandatory server-side acceleration
 - (Optional) GPU-enabled client device for enhanced performance
 
