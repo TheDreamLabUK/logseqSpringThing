@@ -19,8 +19,11 @@ log = "0.4"
 thiserror = "1.0"
 futures = "0.3"
 lazy_static = "1.4"
+pulldown-cmark = "0.9"
+config = { version = "0.13", features = ["toml"] }
 
 [dev-dependencies]
 mockall = "0.11"
 tempfile = "3.2"
 tokio-test = "0.4"
+mockito = "0.31"

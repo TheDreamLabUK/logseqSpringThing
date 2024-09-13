@@ -1,6 +1,7 @@
 use actix_web::{web, HttpResponse};
 use crate::AppState;
-use crate::services::file_service::{FileService, RealGitHubService, RealOpenWebUIService};
+use crate::services::file_service::{FileService, RealGitHubService};
+use crate::services::perplexity_service::{PerplexityService, RealPerplexityService};
 
 pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse {
     match FileService::fetch_files_from_github::<RealGitHubService>().await {
@@ -11,7 +12,7 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
 
                     for file_name in &updated_files {
                         if let Some(file) = github_files.iter().find(|f| f.name == *file_name) {
-                            match FileService::send_to_openwebui::<RealOpenWebUIService>(file.content.clone()).await {
+                            match RealPerplexityService::process_file(file.content.clone()).await {
                                 Ok(processed_file) => {
                                     let metadata = crate::models::metadata::Metadata {
                                         file_name: file.name.clone(),

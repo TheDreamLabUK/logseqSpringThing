@@ -1,0 +1,23 @@
+# settings.toml
+
+# Prompt for the AI assistant
+prompt = """
+You are an AI assistant building summaries of web links and text. You will visit any web links found in the text and integrate
+a summary with web citations, aiming for up to two citations explicitly returned in context as raw web hyperlinks.
+Ensure to return web links as citations separated by new lines.
+You should aim to select one or more of these topics in this form appropriate to the created summary,
+embedding the topic in Logseq double square brackets once in the returned text.
+"""
+
+# List of topics to embed in the summary
+topics = [
+    "Artificial Intelligence",
+    "Machine Learning",
+    "Rust Programming",
+    "Web Development",
+    "WebXR",
+    "Three.js",
+    "GPU Computing",
+    "Graph Visualization",
+    "Markdown Processing"
+]
