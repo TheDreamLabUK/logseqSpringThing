@@ -17,7 +17,7 @@ impl WebSocketSession {
 impl Actor for WebSocketSession {
     type Context = ws::WebsocketContext<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
+    fn started(&mut self, _ctx: &mut Self::Context) {
         // Handle connection established
     }
 }

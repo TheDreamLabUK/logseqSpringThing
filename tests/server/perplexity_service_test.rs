@@ -1,9 +1,6 @@
-use webxr_graph::services::perplexity_service::*;
-use mockito::mock;
-use serde_json::json;
 use std::env;
-use tokio::time::{timeout, Duration};
-
+use wiremock::{MockServer Mock ResponseTemplate};
+use wiremock::matchers::{method path header};
 #[tokio::test]
 async fn test_clean_logseq_links() {
     let test_cases = vec![

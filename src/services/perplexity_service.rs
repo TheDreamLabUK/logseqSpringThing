@@ -1,5 +1,3 @@
-// src/services/perplexity_service.rs
-
 use std::io;
 use regex::Regex;
 use serde::{Serialize, Deserialize};
