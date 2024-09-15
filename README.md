@@ -302,6 +302,140 @@ Unit tests are provided for all major components, both on the server and client 
 
 2. Access the application at `https://localhost:8443` using a WebXR-compatible browser.
 
+## Network Considerations
+
+
+Memory updated
+To optimize network efficiency when updating node positions in a force-directed graph over WebSocket, especially for scaling with a large number of nodes and frequent updates, consider the following strategies:
+
+1. Use Delta Updates (Differences)
+Instead of sending the absolute position of each node on every update, send only the delta (change) in position. Since each node's position is typically updated incrementally, this reduces the size of the data transmitted.
+
+Reasoning: The delta is smaller and more compressible than absolute positions, especially when the changes are minor.
+Implementation: On the server, calculate the change (delta_x, delta_y, delta_z) in position for each node and send those values. The client updates the node position incrementally.
+json
+Copy code
+{
+  "node_id": "A",
+  "delta": [0.1, -0.2, 0.05]
+}
+Pros:
+
+Reduces bandwidth usage significantly for small, frequent updates.
+Scales well with more nodes, as fewer bytes per node are transmitted.
+Cons:
+
+Requires reliable order of messages, so ensure WebSocket guarantees message ordering (which it generally does).
+2. Quaternions for Rotation
+If the nodes or edges require rotation (e.g., 3D visualizations), using quaternions for orientation updates instead of Euler angles or rotation matrices is optimal.
+
+Reasoning: Quaternions are more compact and efficient for representing rotations. They also avoid gimbal lock, common with Euler angles.
+Implementation: Instead of transmitting a full rotation matrix or angles, send a quaternion array ([x, y, z, w]).
+json
+Copy code
+{
+  "node_id": "A",
+  "quat": [0.707, 0, 0, 0.707]
+}
+Pros:
+
+Compact representation of orientation.
+Efficient to transmit and avoids precision issues over time.
+Cons:
+
+Quaternions require client-side handling (which is supported by Three.js).
+3. Sparse Updates (Only Update Moving Nodes)
+Only send updates for nodes whose positions or rotations have changed significantly (based on a threshold).
+
+Reasoning: Many nodes in a force-directed graph may not move or move very little. Updating only the nodes that change beyond a certain threshold drastically reduces unnecessary transmissions.
+Implementation: Server tracks each node’s last known position/rotation and only sends updates if the difference exceeds a certain threshold.
+json
+Copy code
+[
+  {
+    "node_id": "A",
+    "delta": [0.05, -0.03, 0.01]
+  },
+  {
+    "node_id": "B",
+    "delta": [0.2, 0.1, 0]
+  }
+]
+Pros:
+
+Prevents overwhelming the network with redundant updates.
+Ideal for graphs where only small portions of the graph change frequently.
+Cons:
+
+Some latency may occur for certain updates if nodes move slowly but steadily.
+4. Compression of Updates
+Apply lightweight compression to WebSocket messages (like gzip or Brotli) on the server side before sending, and decompress on the client.
+
+Reasoning: Graph update data is often repetitive and highly compressible.
+Implementation: WebSocket servers (and clients) often support built-in compression. Use this feature to reduce bandwidth usage.
+Pros:
+
+Significant bandwidth reduction for large graphs.
+Compression libraries are standard in WebSocket implementations.
+Cons:
+
+Adds minimal CPU overhead on both server and client.
+Some browsers and WebSocket libraries may need specific configurations.
+5. Batch Updates
+Group several node updates into a single WebSocket message rather than sending individual updates for each node. This reduces the number of messages and the overhead of each transmission.
+
+Reasoning: WebSocket messages have a fixed overhead. Sending fewer messages, each containing more data, is more efficient.
+Implementation: Accumulate updates over a short period (e.g., 50ms) and send them as a batch.
+json
+Copy code
+{
+  "batch": [
+    {
+      "node_id": "A",
+      "delta": [0.1, 0.05, -0.1]
+    },
+    {
+      "node_id": "B",
+      "delta": [0, 0.03, 0.2]
+    }
+  ]
+}
+Pros:
+
+Reduces WebSocket overhead for each update.
+Better performance for large-scale graphs with many nodes updating simultaneously.
+Cons:
+
+Adds slight delay between updates (though minimal and configurable).
+6. Client-Side Interpolation
+Use client-side interpolation to smooth out the position transitions between updates. This reduces the number of server-to-client messages needed for smoother animations.
+
+Reasoning: Sending fewer updates and letting the client interpolate positions results in smoother animations with fewer updates.
+Implementation: On each update, send the position and velocity or next expected position of a node. The client can interpolate between the last known position and the next expected one.
+json
+Copy code
+{
+  "node_id": "A",
+  "target_position": [1.0, 2.0, 1.5],
+  "velocity": [0.1, -0.2, 0.05]
+}
+Pros:
+
+Reduces the frequency of updates needed.
+Smoother visual transitions.
+Cons:
+
+Requires more client-side computation for interpolation.
+Summary of Strategies:
+Delta Updates: Send only position changes to minimize data size.
+Quaternions for Rotation: More efficient and stable than Euler angles.
+Sparse Updates: Only update nodes that moved significantly.
+Compression: Use WebSocket compression for large graphs.
+Batching: Send updates in batches to reduce overhead.
+Client-Side Interpolation: Reduce update frequency by interpolating on the client.
+By combining delta updates, quaternions (for orientation), sparse updates, and batching, you can significantly reduce network bandwidth usage and improve scalability as your force-directed graph grows in size. Additionally, client-side interpolation can smooth out any visual delays, further enhancing the user experience while keeping network traffic manageable.
+
+
 ### Local Development
 
 
