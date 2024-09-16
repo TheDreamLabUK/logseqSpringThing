@@ -16,7 +16,6 @@ use config::ConfigError;
 use crate::config::Settings;
 use crate::services::file_service::ProcessedFile;
 
-/// Custom error type for Perplexity operations
 #[derive(Error, Debug)]
 pub enum PerplexityError {
     #[error("IO error: {0}")]
@@ -34,7 +33,6 @@ pub enum PerplexityError {
 }
 
 lazy_static! {
-    /// HTTP client used for making API requests
     static ref API_CLIENT: Client = Client::builder()
         .timeout(Duration::from_secs(
             env::var("API_CLIENT_TIMEOUT")
@@ -45,7 +43,6 @@ lazy_static! {
         .build()
         .expect("Failed to build API client");
 
-    /// Semaphore to limit the number of concurrent API requests
     static ref REQUEST_SEMAPHORE: Semaphore = Semaphore::new(
         env::var("MAX_CONCURRENT_REQUESTS")
             .unwrap_or_else(|_| "5".to_string())
@@ -54,23 +51,101 @@ lazy_static! {
     );
 }
 
-/// Processes a markdown content string by splitting it into blocks and sending each block to the Perplexity API.
-///
-/// # Arguments
-///
-/// * `file_content` - The content of the markdown file as a string.
-///
-/// # Returns
-///
-/// A `Result` containing the processed content or a `PerplexityError`.
-pub async fn process_markdown(file_content: &str) -> Result<String, PerplexityError> {
-    // Load settings from settings.toml
-    let settings = Settings::new()?;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PerplexityRequest {
+    pub model: String,
+    pub messages: Vec<Message>,
+    pub max_tokens: Option<u32>,
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub return_citations: Option<bool>,
+    pub stream: Option<bool>,
+    pub presence_penalty: Option<f32>,
+    pub frequency_penalty: Option<f32>,
+}
 
-    // Split the content into markdown blocks
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Message {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PerplexityResponse {
+    pub id: Option<String>,
+    pub model: Option<String>,
+    pub object: Option<String>,
+    pub created: Option<u64>,
+    pub choices: Vec<Choice>,
+    pub usage: Option<Usage>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Choice {
+    pub index: u32,
+    pub finish_reason: Option<String>,
+    pub message: Message,
+    pub delta: Option<Delta>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Delta {
+    pub content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Usage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
+#[async_trait]
+pub trait ApiClient {
+    async fn post_json(
+        &self,
+        url: &str,
+        body: &PerplexityRequest,
+        api_key: &str,
+    ) -> Result<String, PerplexityError>;
+}
+
+pub struct RealApiClient {
+    client: Client,
+}
+
+impl RealApiClient {
+    pub fn new() -> Self {
+        Self {
+            client: Client::new(),
+        }
+    }
+}
+
+#[async_trait]
+impl ApiClient for RealApiClient {
+    async fn post_json(
+        &self,
+        url: &str,
+        body: &PerplexityRequest,
+        api_key: &str,
+    ) -> Result<String, PerplexityError> {
+        let response = self
+            .client
+            .post(url)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .json(body)
+            .send()
+            .await?
+            .text()
+            .await?;
+        Ok(response)
+    }
+}
+
+pub async fn process_markdown(file_content: &str, settings: &Settings, api_client: &dyn ApiClient) -> Result<String, PerplexityError> {
     let blocks = split_markdown_blocks(file_content);
 
-    // Process each block concurrently, respecting the semaphore limit
     let results = stream::iter(blocks.into_iter())
         .map(|block| {
             let prompt = settings.prompt.clone();
@@ -80,8 +155,7 @@ pub async fn process_markdown(file_content: &str) -> Result<String, PerplexityEr
                 let trimmed_block = block.trim().to_string();
                 let context = select_context_blocks(&content, &trimmed_block);
 
-                // Call the Perplexity API with retries
-                let api_response = call_perplexity_api(&prompt, &context, &topics).await?;
+                let api_response = call_perplexity_api(&prompt, &context, &topics, api_client, &settings.perplexity).await?;
                 let processed_block = process_markdown_block(&trimmed_block, &prompt, &topics, &api_response);
                 Ok::<String, PerplexityError>(processed_block)
             }
@@ -95,7 +169,6 @@ pub async fn process_markdown(file_content: &str) -> Result<String, PerplexityEr
         .collect::<Vec<Result<String, PerplexityError>>>()
         .await;
 
-    // Collect and join the processed blocks
     let processed_content = results.into_iter()
         .collect::<Result<Vec<String>, PerplexityError>>()?
         .join("\n");
@@ -103,37 +176,24 @@ pub async fn process_markdown(file_content: &str) -> Result<String, PerplexityEr
     Ok(processed_content)
 }
 
-/// Calls the Perplexity API with the given prompt and context.
-///
-/// # Arguments
-///
-/// * `prompt` - The prompt to provide to the AI.
-/// * `context` - The context for the AI to consider.
-/// * `topics` - A list of topics to embed in the summary.
-///
-/// # Returns
-///
-/// A `Result` containing the API response as a string or a `PerplexityError`.
-pub async fn call_perplexity_api(prompt: &str, context: &[String], topics: &[String]) -> Result<String, PerplexityError> {
-    // Acquire a permit from the semaphore to limit concurrent requests
+pub async fn call_perplexity_api(
+    prompt: &str,
+    context: &[String],
+    topics: &[String],
+    api_client: &dyn ApiClient,
+    perplexity_config: &crate::config::PerplexityConfig,
+) -> Result<String, PerplexityError> {
     let _permit = REQUEST_SEMAPHORE.acquire().await.unwrap();
 
-    // Load Perplexity API configuration
-    let settings = Settings::new()?;
-    let perplexity_config = &settings.perplexity;
-
-    // Retrieve retry configurations
     let max_retries: u32 = env::var("MAX_RETRIES").unwrap_or_else(|_| "3".to_string()).parse().unwrap_or(3);
     let retry_delay: u64 = env::var("RETRY_DELAY").unwrap_or_else(|_| "5".to_string()).parse().unwrap_or(5);
 
-    // Construct the system message with topics
     let system_message = format!(
         "{}\nRelevant category topics are: {}.",
         prompt.trim(),
         topics.join(", ")
     );
 
-    // Build the request payload
     let request = PerplexityRequest {
         model: perplexity_config.model.clone(),
         messages: vec![
@@ -158,33 +218,10 @@ pub async fn call_perplexity_api(prompt: &str, context: &[String], topics: &[Str
         frequency_penalty: Some(perplexity_config.frequency_penalty),
     };
 
-    // Attempt the API call with retries
     for attempt in 1..=max_retries {
-        match API_CLIENT
-            .post("https://api.perplexity.ai/chat/completions")
-            .header("Authorization", format!("Bearer {}", perplexity_config.api_key))
-            .json(&request)
-            .send()
-            .await
-        {
-            Ok(response) => {
-                if response.status().is_success() {
-                    let response_text = response.text().await?;
-                    return parse_perplexity_response(&response_text);
-                } else {
-                    error!(
-                        "API request failed with status {} on attempt {} of {}",
-                        response.status(),
-                        attempt,
-                        max_retries
-                    );
-                    if attempt < max_retries {
-                        sleep(Duration::from_secs(retry_delay)).await;
-                        continue;
-                    } else {
-                        return Err(PerplexityError::Api(format!("API request failed with status {}", response.status())));
-                    }
-                }
+        match api_client.post_json(&perplexity_config.api_base_url, &request, &perplexity_config.api_key).await {
+            Ok(response_text) => {
+                return parse_perplexity_response(&response_text);
             }
             Err(e) => {
                 error!("API request encountered an error: {} on attempt {} of {}", e, attempt, max_retries);
@@ -192,7 +229,7 @@ pub async fn call_perplexity_api(prompt: &str, context: &[String], topics: &[Str
                     sleep(Duration::from_secs(retry_delay)).await;
                     continue;
                 } else {
-                    return Err(PerplexityError::Reqwest(e));
+                    return Err(e);
                 }
             }
         }
@@ -201,15 +238,6 @@ pub async fn call_perplexity_api(prompt: &str, context: &[String], topics: &[Str
     Err(PerplexityError::Api("Max retries reached, API request failed".to_string()))
 }
 
-/// Parses the Perplexity API response.
-///
-/// # Arguments
-///
-/// * `response_text` - The raw response text from the API.
-///
-/// # Returns
-///
-/// A `Result` containing the content of the AI's message or a `PerplexityError`.
 fn parse_perplexity_response(response_text: &str) -> Result<String, PerplexityError> {
     match serde_json::from_str::<PerplexityResponse>(response_text) {
         Ok(parsed_response) => {
@@ -227,15 +255,6 @@ fn parse_perplexity_response(response_text: &str) -> Result<String, PerplexityEr
     }
 }
 
-/// Splits markdown content into blocks using a markdown parser.
-///
-/// # Arguments
-///
-/// * `content` - The markdown content as a string slice.
-///
-/// # Returns
-///
-/// A vector of strings representing individual blocks.
 fn split_markdown_blocks(content: &str) -> Vec<String> {
     let parser = Parser::new(content);
     let mut blocks = Vec::new();
@@ -275,51 +294,18 @@ fn split_markdown_blocks(content: &str) -> Vec<String> {
     blocks
 }
 
-/// Selects context blocks related to the active block.
-///
-/// # Arguments
-///
-/// * `content` - The full content of the markdown file.
-/// * `active_block` - The block currently being processed.
-///
-/// # Returns
-///
-/// A vector of strings representing the context blocks.
 pub fn select_context_blocks(_content: &str, active_block: &str) -> Vec<String> {
-    // For now, only return the active block
     vec![active_block.to_string()]
 }
 
-/// Cleans Logseq links from the input text.
-///
-/// # Arguments
-///
-/// * `input` - The input text containing Logseq links.
-///
-/// # Returns
-///
-/// A string with Logseq links cleaned.
 pub fn clean_logseq_links(input: &str) -> String {
     let re = Regex::new(r"\[\[(.*?)\]\]").unwrap();
     re.replace_all(input, "$1").to_string()
 }
 
-/// Processes an individual markdown block by integrating the API response.
-///
-/// # Arguments
-///
-/// * `input` - The original markdown block.
-/// * `prompt` - The prompt used for processing.
-/// * `topics` - The list of topics.
-/// * `api_response` - The response from the Perplexity API.
-///
-/// # Returns
-///
-/// A string representing the processed markdown block.
 pub fn process_markdown_block(input: &str, prompt: &str, topics: &[String], api_response: &str) -> String {
     let cleaned_input = clean_logseq_links(input);
 
-    // Use the format! macro for better readability
     format!(
         "- ```\n{}```\nPrompt: {}\nTopics: {}\nResponse: {}",
         cleaned_input.trim_start_matches("- ").trim_end(),
@@ -329,110 +315,17 @@ pub fn process_markdown_block(input: &str, prompt: &str, topics: &[String], api_
     )
 }
 
-/// Struct representing a Perplexity API request
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PerplexityRequest {
-    /// The model to use
-    pub model: String,
-    /// The messages to send in the conversation
-    pub messages: Vec<Message>,
-    /// Maximum number of tokens
-    pub max_tokens: Option<u32>,
-    /// Temperature setting
-    pub temperature: Option<f32>,
-    /// Top-p setting
-    pub top_p: Option<f32>,
-    /// Whether to return citations
-    pub return_citations: Option<bool>,
-    /// Whether to stream responses
-    pub stream: Option<bool>,
-    /// Presence penalty setting
-    pub presence_penalty: Option<f32>,
-    /// Frequency penalty setting
-    pub frequency_penalty: Option<f32>,
-}
-
-/// Struct representing a message in the Perplexity API conversation
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Message {
-    /// The role of the message sender (e.g., "system", "user", "assistant")
-    pub role: String,
-    /// The content of the message
-    pub content: String,
-}
-
-/// Struct representing the Perplexity API response
-#[derive(Debug, Deserialize)]
-pub struct PerplexityResponse {
-    /// Unique identifier for the response
-    pub id: Option<String>,
-    /// Model used for the response
-    pub model: Option<String>,
-    /// Type of the object returned
-    pub object: Option<String>,
-    /// Timestamp of creation
-    pub created: Option<u64>,
-    /// List of choices returned by the API
-    pub choices: Vec<Choice>,
-    /// Usage information
-    pub usage: Option<Usage>,
-}
-
-/// Struct representing a choice in the Perplexity API response
-#[derive(Debug, Deserialize)]
-pub struct Choice {
-    /// Index of the choice
-    pub index: u32,
-    /// Reason for finishing
-    pub finish_reason: Option<String>,
-    /// Message content
-    pub message: Message,
-    /// Delta updates (if streaming)
-    pub delta: Option<Delta>,
-}
-
-/// Struct representing delta updates in the Perplexity API response
-#[derive(Debug, Deserialize)]
-pub struct Delta {
-    /// Content of the delta
-    pub content: Option<String>,
-}
-
-/// Struct representing usage information in the Perplexity API response
-#[derive(Debug, Deserialize)]
-pub struct Usage {
-    /// Number of tokens in the prompt
-    pub prompt_tokens: u32,
-    /// Number of tokens in the completion
-    pub completion_tokens: u32,
-    /// Total number of tokens
-    pub total_tokens: u32,
-}
-
-/// Trait representing the PerplexityService interface
 #[async_trait]
 pub trait PerplexityService {
-    /// Processes a file's content using the Perplexity API
-    async fn process_file(file_content: String) -> Result<ProcessedFile, PerplexityError>;
+    async fn process_file(file_content: String, settings: &Settings, api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError>;
 }
 
-/// Real implementation of the PerplexityService trait.
 pub struct RealPerplexityService;
 
 #[async_trait]
 impl PerplexityService for RealPerplexityService {
-    /// Processes the given file content using the Perplexity API
-    ///
-    /// # Arguments
-    ///
-    /// * `file_content` - The content of the markdown file as a string.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the processed content wrapped in `ProcessedFile`, or a `PerplexityError`.
-    async fn process_file(file_content: String) -> Result<ProcessedFile, PerplexityError> {
-        // Process the markdown content
-        let processed_content = process_markdown(&file_content).await?;
+    async fn process_file(file_content: String, settings: &Settings, api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError> {
+        let processed_content = process_markdown(&file_content, settings, api_client).await?;
         Ok(ProcessedFile { content: processed_content })
     }
 }

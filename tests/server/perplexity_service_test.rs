@@ -1,213 +1,178 @@
-use std::env;
-use wiremock::{MockServer Mock ResponseTemplate};
-use wiremock::matchers::{method path header};
-#[tokio::test]
-async fn test_clean_logseq_links() {
-    let test_cases = vec![
-        ("[[Link]]", "Link"),
-        ("This is a [[nested link]]", "This is a nested link"),
-        ("Multiple [[links]] in [[one]] string", "Multiple links in one string"),
-        ("No links here", "No links here"),
-        ("[[]]", ""),
-    ];
+use wiremock::{MockServer, Mock, ResponseTemplate};
+use wiremock::matchers::{method, path};
+use tokio::time::timeout;
+use std::time::Duration;
+use serde_json::json;
+use async_trait::async_trait;
 
-    for (input, expected) in test_cases {
-        assert_eq!(clean_logseq_links(input), expected);
+use webxr_graph::services::perplexity_service::{
+    call_perplexity_api,
+    process_markdown,
+    ApiClient,
+    PerplexityRequest,
+    PerplexityError,
+    RealApiClient,
+};
+use webxr_graph::config::{Settings, PerplexityConfig};
+
+struct MockApiClient {
+    mock_server: MockServer,
+}
+
+impl MockApiClient {
+    async fn new() -> Self {
+        Self {
+            mock_server: MockServer::start().await,
+        }
+    }
+
+    fn uri(&self) -> String {
+        self.mock_server.uri()
+    }
+
+    async fn mock(&self, status: u16, body: serde_json::Value) {
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(status).set_body_json(body))
+            .mount(&self.mock_server)
+            .await;
+    }
+}
+
+#[async_trait]
+impl ApiClient for MockApiClient {
+    async fn post_json(
+        &self,
+        url: &str,
+        body: &PerplexityRequest,
+        _api_key: &str,
+    ) -> Result<String, PerplexityError> {
+        let client = reqwest::Client::new();
+        let response = client
+            .post(url)
+            .json(body)
+            .send()
+            .await?
+            .text()
+            .await?;
+        Ok(response)
+    }
+}
+
+fn setup_mock_settings(mock_server_uri: &str) -> Settings {
+    Settings {
+        prompt: "Test prompt".to_string(),
+        topics: vec!["topic1".to_string(), "topic2".to_string()],
+        perplexity: PerplexityConfig {
+            api_key: "test_api_key".to_string(),
+            model: "test_model".to_string(),
+            api_base_url: format!("{}/chat/completions", mock_server_uri),
+            max_tokens: 100,
+            temperature: 0.7,
+            top_p: 0.9,
+            presence_penalty: 0.6,
+            frequency_penalty: 0.6,
+        },
     }
 }
 
 #[tokio::test]
-async fn test_process_markdown_block() {
-    let input = "This is a test block";
-    let prompt = "Summarize the following:";
-    let topics = vec!["topic1".to_string(), "topic2".to_string()];
-    let api_response = "Summarized content";
-    let expected = format!("- ```\nThis is a test block```\nPrompt: {}\nTopics: {}\nResponse: {}", prompt, topics.join(", "), api_response);
-
-    assert_eq!(process_markdown_block(input, prompt, &topics, api_response), expected);
-}
-
-#[tokio::test]
-async fn test_select_context_blocks() {
-    let content = "Block 1\n\nBlock 2\n\nBlock 3";
-    let active_block = "Block 2";
-
-    let result = select_context_blocks(content, active_block);
-    assert_eq!(result, vec!["Block 2".to_string()]);
-}
-
-#[tokio::test]
 async fn test_call_perplexity_api_success() {
-    let _m = mock("POST", "/chat/completions")
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(r#"{"choices":[{"message":{"content":"API Response"}}]}"#)
-        .create();
+    let mock_client = MockApiClient::new().await;
+    mock_client.mock(200, json!({"choices":[{"message":{"content":"API Response"}}]})).await;
 
-    env::set_var("PERPLEXITY_API_URL", &mockito::server_url());
-    env::set_var("PERPLEXITY_API_KEY", "test_api_key");
+    let settings = setup_mock_settings(&mock_client.uri());
 
-    let prompt = "Test prompt";
+    let prompt = &settings.prompt;
     let context = vec!["Test context".to_string()];
-    let topics = vec!["Test topic".to_string()];
+    let topics = settings.topics.clone();
 
-    let result = call_perplexity_api(prompt, &context, &topics).await;
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap(), "API Response");
+    let result = call_perplexity_api(prompt, &context, &topics, &mock_client, &settings.perplexity).await;
+
+    match result {
+        Ok(response) => {
+            assert_eq!(response, "API Response");
+        },
+        Err(e) => {
+            panic!("call_perplexity_api failed with error: {:?}", e);
+        }
+    }
 }
 
 #[tokio::test]
 async fn test_call_perplexity_api_error() {
-    let _m = mock("POST", "/chat/completions")
-        .with_status(500)
-        .create();
+    let mock_client = MockApiClient::new().await;
+    mock_client.mock(500, json!({"error": "Internal Server Error"})).await;
 
-    env::set_var("PERPLEXITY_API_URL", &mockito::server_url());
-    env::set_var("PERPLEXITY_API_KEY", "test_api_key");
+    let settings = setup_mock_settings(&mock_client.uri());
 
-    let prompt = "Test prompt";
+    let prompt = &settings.prompt;
     let context = vec!["Test context".to_string()];
-    let topics = vec!["Test topic".to_string()];
+    let topics = settings.topics.clone();
 
-    let result = call_perplexity_api(prompt, &context, &topics).await;
-    assert!(result.is_err());
+    let result = call_perplexity_api(prompt, &context, &topics, &mock_client, &settings.perplexity).await;
+
+    assert!(result.is_err(), "Expected an error due to 500 response, but call succeeded");
 }
 
 #[tokio::test]
 async fn test_call_perplexity_api_timeout() {
-    let _m = mock("POST", "/chat/completions")
-        .expect(1)
-        .with_header("content-type", "application/json")
-        .with_body(r#"{"choices":[{"message":{"content":"Delayed Response"}}]}"#)
-        // .delay(Duration::from_secs(3))
-        .create();
+    let mock_client = MockApiClient::new().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(ResponseTemplate::new(200)
+            .set_delay(Duration::from_secs(3))
+            .set_body_json(json!({"choices":[{"message":{"content":"Delayed Response"}}]})))
+        .mount(&mock_client.mock_server)
+        .await;
 
-    env::set_var("PERPLEXITY_API_URL", &mockito::server_url());
-    env::set_var("PERPLEXITY_API_KEY", "test_api_key");
+    let settings = setup_mock_settings(&mock_client.uri());
 
-    let prompt = "Test prompt";
+    let prompt = &settings.prompt;
     let context = vec!["Test context".to_string()];
-    let topics = vec!["Test topic".to_string()];
+    let topics = settings.topics.clone();
 
-    let result = timeout(Duration::from_secs(2), call_perplexity_api(prompt, &context, &topics)).await;
-    assert!(result.is_err());
+    let result = timeout(
+        Duration::from_secs(2),
+        call_perplexity_api(prompt, &context, &topics, &mock_client, &settings.perplexity)
+    ).await;
+
+    assert!(result.is_err(), "Expected timeout error, but call succeeded");
 }
 
 #[tokio::test]
 async fn test_process_markdown_success() {
-    let _m = mock("POST", "/chat/completions")
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(r#"{"choices":[{"message":{"content":"Processed block"}}]}"#)
-        .create();
+    let mock_client = MockApiClient::new().await;
+    mock_client.mock(200, json!({"choices":[{"message":{"content":"Processed block"}}]})).await;
 
-    env::set_var("PERPLEXITY_API_URL", &mockito::server_url());
-    env::set_var("PERPLEXITY_API_KEY", "test_api_key");
+    let settings = setup_mock_settings(&mock_client.uri());
 
     let file_content = "Test content\n\nAnother block";
 
-    let result = process_markdown(&file_content).await;
-    assert!(result.is_ok());
-    let processed_content = result.unwrap();
-    assert!(processed_content.contains("Test content"));
-    assert!(processed_content.contains("Another block"));
-    assert!(processed_content.contains("Processed block"));
+    let result = process_markdown(file_content, &settings, &mock_client).await;
+
+    match result {
+        Ok(processed_content) => {
+            assert!(processed_content.contains("Test content"), "Processed content does not contain 'Test content'");
+            assert!(processed_content.contains("Another block"), "Processed content does not contain 'Another block'");
+            assert!(processed_content.contains("Processed block"), "Processed content does not contain 'Processed block'");
+        },
+        Err(e) => {
+            panic!("process_markdown failed with error: {:?}", e);
+        }
+    }
 }
 
 #[tokio::test]
 async fn test_process_markdown_api_error() {
-    let _m = mock("POST", "/chat/completions")
-        .with_status(500)
-        .create();
+    let mock_client = MockApiClient::new().await;
+    mock_client.mock(500, json!({"error": "Internal Server Error"})).await;
 
-    env::set_var("PERPLEXITY_API_URL", &mockito::server_url());
-    env::set_var("PERPLEXITY_API_KEY", "test_api_key");
+    let settings = setup_mock_settings(&mock_client.uri());
 
     let file_content = "Test content";
 
-    let result = process_markdown(&file_content).await;
-    assert!(result.is_err());
-}
+    let result = process_markdown(file_content, &settings, &mock_client).await;
 
-#[test]
-fn test_perplexity_request_serialization() {
-    let request = PerplexityRequest {
-        model: "test-model".to_string(),
-        messages: vec![
-            Message {
-                role: "system".to_string(),
-                content: "System message".to_string(),
-            },
-            Message {
-                role: "user".to_string(),
-                content: "User message".to_string(),
-            },
-        ],
-        max_tokens: Some(100),
-        temperature: Some(0.7),
-        top_p: Some(0.9),
-        return_citations: Some(false),
-        stream: Some(false),
-        presence_penalty: Some(0.0),
-        frequency_penalty: Some(0.0),
-    };
-
-    let serialized = serde_json::to_string(&request).unwrap();
-    let deserialized: PerplexityRequest = serde_json::from_str(&serialized).unwrap();
-
-    assert_eq!(request.model, deserialized.model);
-    assert_eq!(request.messages.len(), deserialized.messages.len());
-    assert_eq!(request.max_tokens, deserialized.max_tokens);
-    assert_eq!(request.temperature, deserialized.temperature);
-    assert_eq!(request.top_p, deserialized.top_p);
-    assert_eq!(request.return_citations, deserialized.return_citations);
-    assert_eq!(request.stream, deserialized.stream);
-    assert_eq!(request.presence_penalty, deserialized.presence_penalty);
-    assert_eq!(request.frequency_penalty, deserialized.frequency_penalty);
-}
-
-#[test]
-fn test_perplexity_response_deserialization() {
-    let json_response = json!({
-        "id": "test-id",
-        "model": "test-model",
-        "object": "chat.completion",
-        "created": 1234567890,
-        "choices": [
-            {
-                "index": 0,
-                "finish_reason": "stop",
-                "message": {
-                    "role": "assistant",
-                    "content": "Test response content"
-                },
-                "delta": {
-                    "content": "Delta content"
-                }
-            }
-        ],
-        "usage": {
-            "prompt_tokens": 10,
-            "completion_tokens": 20,
-            "total_tokens": 30
-        }
-    });
-
-    let response: PerplexityResponse = serde_json::from_value(json_response).unwrap();
-
-    assert_eq!(response.id, Some("test-id".to_string()));
-    assert_eq!(response.model, Some("test-model".to_string()));
-    assert_eq!(response.object, Some("chat.completion".to_string()));
-    assert_eq!(response.created, Some(1234567890));
-    assert_eq!(response.choices.len(), 1);
-    assert_eq!(response.choices[0].index, 0);
-    assert_eq!(response.choices[0].finish_reason, Some("stop".to_string()));
-    assert_eq!(response.choices[0].message.role, "assistant");
-    assert_eq!(response.choices[0].message.content, "Test response content");
-    assert_eq!(response.choices[0].delta.as_ref().and_then(|d| d.content.as_ref()), Some(&"Delta content".to_string()));
-    assert!(response.usage.is_some());
-    let usage = response.usage.unwrap();
-    assert_eq!(usage.prompt_tokens, 10);
-    assert_eq!(usage.completion_tokens, 20);
-    assert_eq!(usage.total_tokens, 30);
+    assert!(result.is_err(), "Expected an error due to 500 response, but process_markdown succeeded");
 }

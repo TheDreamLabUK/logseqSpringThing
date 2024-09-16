@@ -1,10 +1,9 @@
 use webxr_graph::services::file_service::*;
 use webxr_graph::models::metadata::Metadata;
 use webxr_graph::services::perplexity_service::{PerplexityService, PerplexityError};
-use webxr_graph::{GithubFile, GitHubService, ProcessedFile, FileService};
+use webxr_graph::{GithubFile, GitHubService, ProcessedFile};
 use async_trait::async_trait;
 use mockall::predicate::*;
-use std::env;
 
 mockall::mock! {
     pub GitHubService {}

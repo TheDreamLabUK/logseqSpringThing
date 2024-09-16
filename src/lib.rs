@@ -12,6 +12,12 @@ pub use models::node::Node;
 pub use models::metadata::Metadata;
 pub use services::file_service::{FileService, GitHubService, GithubFile, ProcessedFile};
 pub use services::perplexity_service::{
+    ApiClient,
+    PerplexityRequest,
+    PerplexityError,
+    call_perplexity_api,
+    process_markdown,
+    RealApiClient,
     PerplexityService,
     PerplexityError,
     call_perplexity_api,
