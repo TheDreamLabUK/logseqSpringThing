@@ -60,7 +60,7 @@ classDiagram
     class FileService {
         +fetch_files_from_github() -> Result<Vec<GithubFile>>
         +compare_and_identify_updates(github_files: Vec<GithubFile>) -> Result<Vec<String>>
-        +send_to_openwebui(file: String) -> Result<ProcessedFile>
+        +send_to_perplexity(file: String) -> Result<ProcessedFile>
         +save_file_metadata(metadata: Metadata) -> Result<()>
     }
     class RAGFlowService {
@@ -68,7 +68,7 @@ classDiagram
         +send_message(conversation_id: String, message: String) -> Result<String>
         +get_chat_history(conversation_id: String) -> Result<Vec<Message>>
     }
-    class OpenWebUiService {
+    class PerplexityService {
         +process_file(file: String) -> Result<ProcessedFile>
     }
     class GraphData {
@@ -103,7 +103,7 @@ classDiagram
     GraphHandler --> GraphService
     FileHandler --> FileService
     RAGFlowHandler --> RAGFlowService
-    FileService --> OpenWebUiService
+    FileService --> PerplexityService
     FileService --> Metadata
     GraphService --> GraphData
     GraphData --> Node
@@ -190,7 +190,7 @@ sequenceDiagram
         GitHub-->>Server: file content
         Server->>Server: save file content & metadata
         
-        Server->>OpenWebUIAPI: send file for processing
+        Server->>Perplexity: send file for processing
         PerplexityAPI-->>Server: processed file & JSON metadata
         Server->>Server: store processed file & metadata
         Server->>Server: generate edges and nodes from raw & processed files
@@ -219,7 +219,7 @@ sequenceDiagram
     - `ragflow_handler.rs`: Handles RAGFlow API interactions
   - `services/`
     - `graph_service.rs`: Core graph processing and management
-    - `file_service.rs`: File handling and OpenWebUI integration
+    - `file_service.rs`: File handling and Perplexity integration
     - `ragflow_service.rs`: RAGFlow conversation management
     - `perplexity_service.rs`: Interaction with Perplexity API
   - `models/`
@@ -290,7 +290,7 @@ Unit tests are provided for all major components, both on the server and client 
    GITHUB_DIRECTORY=path/to/markdown/files
    RAGFLOW_API_KEY=your_ragflow_api_key_here
    RAGFLOW_BASE_URL=http://your_ragflow_base_url/v1/
-   OPENWEBUI_API=http://your_openwebui_url/
+   PERPLEXITY_API=http://your_perplexity_url/
    ```
 
 ### Running with Docker
@@ -462,7 +462,6 @@ We have implemented comprehensive test coverage for both server-side and client-
   - `metadata_test.rs`: Tests for Metadata struct and its methods
   - `file_handler_test.rs`: Tests for file handling operations
   - `graph_service_test.rs`: Tests for graph processing and management
-  - `openwebui_service_test.rs`: Tests for OpenWebUI API interactions
   - `ragflow_service_test.rs`: Tests for RAGFlow service operations
 
 - **Integration Tests**: Located in `tests/server/integration_tests.rs`
@@ -523,7 +522,7 @@ npm run test -- --coverage
 
 The project is under active development. Areas of focus include:
 - Optimising WebGPU integration for graph computations
-- Finalising the integration with OpenWebUI for file processing
+- Finalising the integration with Perplexity for file processing
 - Expanding unit tests and improving test coverage
 - Enhancing the Rust-based server performance
 
@@ -543,10 +542,10 @@ This project is licensed under the Creative Commons CC0 license.
 The project is under active development. Recent improvements include:
 - Enhanced test coverage for both server-side and client-side components
 - Implementation of integration tests for end-to-end workflows
-- Improved mocking for API interactions in OpenWebUiService and RAGFlowService
+- Improved mocking for API interactions in PerplexityService and RAGFlowService
 
 Areas of ongoing focus include:
 - Optimising WebGPU integration for graph computations
-- Finalising the integration with OpenWebUI for file processing
+- Finalising the integration with Perplexity for file processing
 - Expanding unit tests and improving test coverage
 - Enhancing the Rust-based server performance

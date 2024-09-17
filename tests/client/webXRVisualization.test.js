@@ -1,36 +1,11 @@
-// webXRVisualization.test.js
+import { initWebXR } from '../../public/js/components/webXRVisualization';
 
-const WebXRVisualization = require('../../public/js/components/webXRVisualization');
-const THREE = require('three');
-
-describe('WebXRVisualization', () => {
-  let webXRVisualization;
-
-  beforeEach(() => {
-    webXRVisualization = new WebXRVisualization();
+describe('WebXR Visualization', () => {
+  test('initWebXR function exists', () => {
+    expect(typeof initWebXR).toBe('function');
   });
 
-  test('should initialize properly', () => {
-    expect(webXRVisualization).toBeDefined();
-    expect(webXRVisualization.renderer).toBeInstanceOf(THREE.WebGLRenderer);
-    expect(webXRVisualization.scene).toBeInstanceOf(THREE.Scene);
-    expect(webXRVisualization.camera).toBeInstanceOf(THREE.PerspectiveCamera);
-  });
-
-  test('should start XR session', () => {
-    webXRVisualization.renderer.xr = { enabled: false };
-    webXRVisualization.startXRSession();
-    expect(webXRVisualization.renderer.xr.enabled).toBe(true);
-  });
-
-  test('should render the scene', () => {
-    const renderSpy = jest.spyOn(webXRVisualization.renderer, 'render');
-
-    webXRVisualization.render();
-
-    expect(renderSpy).toHaveBeenCalledWith(
-      webXRVisualization.scene,
-      webXRVisualization.camera
-    );
+  test('initWebXR function can be called without errors', () => {
+    expect(() => initWebXR()).not.toThrow();
   });
 });

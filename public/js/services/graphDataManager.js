@@ -1,20 +1,29 @@
 export class GraphDataManager {
-  constructor() {
-    this.ws = null;
-    this.data = null;
+  constructor(webSocket) {
+    this.webSocket = webSocket;
+    this.graphData = { nodes: [], edges: [] };
+    console.log('Initializing graph data manager...');
   }
 
-  connectWebSocket(url) {
-    this.ws = new WebSocket(url);
-    this.ws.onmessage = (event) => {
-      this.data = JSON.parse(event.data);
-      console.log('Received data:', this.data);
-    };
+  async fetchInitialData() {
+    const response = await fetch('/api/graph-data');
+    this.graphData = await response.json();
+    return this.graphData;
   }
 
-  requestGraphData() {
-    if (this.ws) {
-      this.ws.send(JSON.stringify({ type: 'getGraphData' }));
+  handleWebSocketMessage(message) {
+    const data = JSON.parse(message.data);
+    if (data.type === 'update') {
+      this.graphData = data.data;
     }
+  }
+
+  sendWebSocketMessage(message) {
+    this.webSocket.send(JSON.stringify(message));
+  }
+
+  getGraphData() {
+    console.log('Getting graph data');
+    return this.graphData;
   }
 }

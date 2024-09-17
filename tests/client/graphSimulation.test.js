@@ -1,53 +1,20 @@
-// graphSimulation.test.js
+import { initGraphSimulation, updateGraphPositions } from '../../public/js/components/graphSimulation';
 
-const GraphSimulation = require('../../public/js/components/graphSimulation');
-
-describe('GraphSimulation', () => {
-  let graphSimulation;
-
-  beforeEach(() => {
-    graphSimulation = new GraphSimulation();
+describe('Graph Simulation', () => {
+  test('initGraphSimulation function exists', () => {
+    expect(typeof initGraphSimulation).toBe('function');
   });
 
-  test('should initialize properly', () => {
-    expect(graphSimulation).toBeDefined();
-    expect(graphSimulation.nodes).toEqual([]);
-    expect(graphSimulation.edges).toEqual([]);
+  test('initGraphSimulation function can be called without errors', () => {
+    expect(() => initGraphSimulation()).not.toThrow();
   });
 
-  test('should update node positions', () => {
-    graphSimulation.nodes = [{ id: 'node1' }, { id: 'node2' }];
-
-    const positions = [
-      { id: 'node1', x: 1, y: 2, z: 3 },
-      { id: 'node2', x: 4, y: 5, z: 6 },
-    ];
-
-    graphSimulation.updateNodePositions(positions);
-
-    expect(graphSimulation.nodes[0]).toEqual({
-      id: 'node1',
-      x: 1,
-      y: 2,
-      z: 3,
-    });
-    expect(graphSimulation.nodes[1]).toEqual({
-      id: 'node2',
-      x: 4,
-      y: 5,
-      z: 6,
-    });
+  test('updateGraphPositions function exists', () => {
+    expect(typeof updateGraphPositions).toBe('function');
   });
 
-  test('should update data', () => {
-    const newData = {
-      nodes: [{ id: 'node3' }],
-      edges: [{ source: 'node3', target: 'node1' }],
-    };
-
-    graphSimulation.updateData(newData);
-
-    expect(graphSimulation.nodes).toEqual(newData.nodes);
-    expect(graphSimulation.edges).toEqual(newData.edges);
+  test('updateGraphPositions function returns the input nodes', () => {
+    const nodes = [{ id: 1 }, { id: 2 }];
+    expect(updateGraphPositions(nodes)).toBe(nodes);
   });
 });

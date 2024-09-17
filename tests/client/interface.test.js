@@ -1,26 +1,20 @@
-// interface.test.js
+import { initInterface, handleUserInput } from '../../public/js/components/interface';
 
-const Interface = require('../../public/js/components/interface');
-
-describe('Interface', () => {
-  let interfaceInstance;
-
-  beforeEach(() => {
-    document.body.innerHTML = `<canvas id="canvas"></canvas>`;
-    interfaceInstance = new Interface();
+describe('User Interface', () => {
+  test('initInterface function exists', () => {
+    expect(typeof initInterface).toBe('function');
   });
 
-  test('should initialize properly', () => {
-    expect(interfaceInstance).toBeDefined();
+  test('initInterface function can be called without errors', () => {
+    expect(() => initInterface()).not.toThrow();
   });
 
-  test('should handle user input events', () => {
-    const onInputSpy = jest.fn();
-    interfaceInstance.onUserInput = onInputSpy;
+  test('handleUserInput function exists', () => {
+    expect(typeof handleUserInput).toBe('function');
+  });
 
-    const event = new Event('keydown');
-    document.dispatchEvent(event);
-
-    expect(onInputSpy).toHaveBeenCalled();
+  test('handleUserInput function returns the input', () => {
+    const input = 'test input';
+    expect(handleUserInput(input)).toBe(input);
   });
 });

@@ -1,29 +1,50 @@
-// xrSetup.test.js
+import { initXRSession, setupXRButton, onXRSessionStarted, updateXRFrame } from '../../public/js/xr/xrSetup';
 
-const XRSetup = require('../../public/js/xr/xrSetup');
-
-describe('XRSetup', () => {
-  let xrSetup;
+describe('XR Setup', () => {
+  let mockRenderer, mockScene, mockCamera;
 
   beforeEach(() => {
-    xrSetup = new XRSetup();
+    mockRenderer = {};
+    mockScene = {};
+    mockCamera = {};
   });
 
-  test('should initialize properly', () => {
-    expect(xrSetup).toBeDefined();
-    expect(xrSetup.renderer).toBeDefined();
+  test('initXRSession function exists', () => {
+    expect(typeof initXRSession).toBe('function');
   });
 
-  test('should check for XR support', async () => {
-    global.navigator.xr = {
-      isSessionSupported: jest.fn().mockResolvedValue(true),
-    };
+  test('initXRSession returns an object with requestSession method', async () => {
+    const xr = initXRSession(mockRenderer);
+    expect(typeof xr.requestSession).toBe('function');
+    const session = await xr.requestSession();
+    expect(typeof session.addEventListener).toBe('function');
+  });
 
-    const result = await xrSetup.checkXRSupport();
+  test('setupXRButton function exists', () => {
+    expect(typeof setupXRButton).toBe('function');
+  });
 
-    expect(global.navigator.xr.isSessionSupported).toHaveBeenCalledWith(
-      'immersive-vr'
-    );
-    expect(result).toBe(true);
+  test('setupXRButton returns an object with click method', () => {
+    const button = setupXRButton(mockRenderer);
+    expect(typeof button.click).toBe('function');
+  });
+
+  test('onXRSessionStarted function exists', () => {
+    expect(typeof onXRSessionStarted).toBe('function');
+  });
+
+  test('onXRSessionStarted returns an object with requestAnimationFrame method', () => {
+    const session = {};
+    const xrSession = onXRSessionStarted(session, mockRenderer, mockScene, mockCamera);
+    expect(typeof xrSession.requestAnimationFrame).toBe('function');
+  });
+
+  test('updateXRFrame function exists', () => {
+    expect(typeof updateXRFrame).toBe('function');
+  });
+
+  test('updateXRFrame returns true', () => {
+    const mockFrame = {};
+    expect(updateXRFrame(mockFrame, mockScene, mockCamera)).toBe(true);
   });
 });

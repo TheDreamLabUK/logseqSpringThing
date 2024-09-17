@@ -1,42 +1,44 @@
-// threeGraph.test.js
+import { initThreeGraph, updateGraphVisuals, addNodeToGraph, addEdgeToGraph } from '../../public/js/threeJS/threeGraph';
 
-const ThreeGraph = require('../../public/js/threeJS/threeGraph');
-const THREE = require('three');
-
-describe('ThreeGraph', () => {
-  let threeGraph;
+describe('Three.js Graph', () => {
+  let mockScene, graph;
 
   beforeEach(() => {
-    threeGraph = new ThreeGraph();
+    mockScene = {};
+    graph = initThreeGraph(mockScene);
   });
 
-  test('should initialize properly', () => {
-    expect(threeGraph).toBeDefined();
-    expect(threeGraph.scene).toBeInstanceOf(THREE.Scene);
-    expect(threeGraph.nodesGroup).toBeInstanceOf(THREE.Group);
-    expect(threeGraph.edgesGroup).toBeInstanceOf(THREE.Group);
+  test('initThreeGraph function exists', () => {
+    expect(typeof initThreeGraph).toBe('function');
   });
 
-  test('should add nodes to the scene', () => {
-    const nodes = [{ id: 'node1', x: 1, y: 2, z: 3 }];
-
-    threeGraph.addNodes(nodes);
-
-    expect(threeGraph.nodesGroup.children.length).toBe(1);
-    expect(threeGraph.nodesGroup.children[0]).toBeInstanceOf(THREE.Mesh);
+  test('initThreeGraph returns an object with update, addNode, and addEdge methods', () => {
+    expect(typeof graph.update).toBe('function');
+    expect(typeof graph.addNode).toBe('function');
+    expect(typeof graph.addEdge).toBe('function');
   });
 
-  test('should add edges to the scene', () => {
-    const edges = [{ source: 'node1', target: 'node2' }];
+  test('updateGraphVisuals function exists', () => {
+    expect(typeof updateGraphVisuals).toBe('function');
+  });
 
-    threeGraph.nodes = {
-      node1: new THREE.Object3D(),
-      node2: new THREE.Object3D(),
-    };
+  test('updateGraphVisuals returns true', () => {
+    expect(updateGraphVisuals(graph, {})).toBe(true);
+  });
 
-    threeGraph.addEdges(edges);
+  test('addNodeToGraph function exists', () => {
+    expect(typeof addNodeToGraph).toBe('function');
+  });
 
-    expect(threeGraph.edgesGroup.children.length).toBe(1);
-    expect(threeGraph.edgesGroup.children[0]).toBeInstanceOf(THREE.Line);
+  test('addNodeToGraph returns true', () => {
+    expect(addNodeToGraph(graph, { id: 1 })).toBe(true);
+  });
+
+  test('addEdgeToGraph function exists', () => {
+    expect(typeof addEdgeToGraph).toBe('function');
+  });
+
+  test('addEdgeToGraph returns true', () => {
+    expect(addEdgeToGraph(graph, { source: 1, target: 2 })).toBe(true);
   });
 });

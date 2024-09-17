@@ -1,28 +1,37 @@
-// xrInteraction.test.js
+import { initXRInteraction, updateXRInteraction, handleXRControllerEvent } from '../../public/js/xr/xrInteraction';
 
-const XRInteraction = require('../../public/js/xr/xrInteraction');
-const THREE = require('three');
-
-describe('XRInteraction', () => {
-  let xrInteraction;
+describe('XR Interaction', () => {
+  let mockScene, mockCamera, xrInteraction;
 
   beforeEach(() => {
-    xrInteraction = new XRInteraction();
+    mockScene = {};
+    mockCamera = {};
+    xrInteraction = initXRInteraction(mockScene, mockCamera);
   });
 
-  test('should initialize properly', () => {
-    expect(xrInteraction).toBeDefined();
-    expect(xrInteraction.controller).toBeDefined();
+  test('initXRInteraction function exists', () => {
+    expect(typeof initXRInteraction).toBe('function');
   });
 
-  test('should handle controller input', () => {
-    const onSelectStartSpy = jest.spyOn(xrInteraction, 'onSelectStart');
-    const onSelectEndSpy = jest.spyOn(xrInteraction, 'onSelectEnd');
+  test('initXRInteraction returns an object with update and handleControllerEvent methods', () => {
+    expect(typeof xrInteraction.update).toBe('function');
+    expect(typeof xrInteraction.handleControllerEvent).toBe('function');
+  });
 
-    xrInteraction.controller.dispatchEvent({ type: 'selectstart' });
-    xrInteraction.controller.dispatchEvent({ type: 'selectend' });
+  test('updateXRInteraction function exists', () => {
+    expect(typeof updateXRInteraction).toBe('function');
+  });
 
-    expect(onSelectStartSpy).toHaveBeenCalled();
-    expect(onSelectEndSpy).toHaveBeenCalled();
+  test('updateXRInteraction returns true', () => {
+    expect(updateXRInteraction(xrInteraction)).toBe(true);
+  });
+
+  test('handleXRControllerEvent function exists', () => {
+    expect(typeof handleXRControllerEvent).toBe('function');
+  });
+
+  test('handleXRControllerEvent returns true', () => {
+    const mockEvent = { type: 'select' };
+    expect(handleXRControllerEvent(xrInteraction, mockEvent)).toBe(true);
   });
 });

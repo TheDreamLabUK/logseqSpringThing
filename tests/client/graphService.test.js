@@ -1,66 +1,58 @@
-// graphService.test.js
+import { GraphDataManager } from '../../public/js/services/graphDataManager';
 
-const GraphDataManager = require('../../public/js/services/graphDataManager');
-const WebSocket = require('ws');
+// Mock WebSocket
+class MockWebSocket {
+  constructor(url) {
+    this.url = url;
+    this.onmessage = null;
+    this.onclose = null;
+    this.onerror = null;
+  }
+
+  send(data) {
+    // Mock send method
+  }
+
+  close() {
+    // Mock close method
+  }
+}
 
 describe('GraphDataManager', () => {
   let graphDataManager;
   let mockWebSocket;
 
   beforeEach(() => {
-    mockWebSocket = new WebSocket('ws://localhost:8443');
+    mockWebSocket = new MockWebSocket('ws://localhost:8443');
     graphDataManager = new GraphDataManager(mockWebSocket);
-  });
-
-  afterEach(() => {
-    mockWebSocket.close();
-    global.fetch.mockClear();
-    delete global.fetch;
   });
 
   test('should initialize properly', () => {
     expect(graphDataManager).toBeDefined();
-    expect(graphDataManager.websocket).toBeDefined();
   });
 
   test('should fetch initial graph data', async () => {
-    global.fetch = jest.fn(() =>
-      Promise.resolve({
-        json: () => Promise.resolve({ nodes: [], edges: [] }),
-      })
-    );
+    global.fetch = jest.fn().mockResolvedValue({
+      json: jest.fn().mockResolvedValue({ nodes: [], edges: [] }),
+    });
 
-    const data = await graphDataManager.fetchInitialGraphData();
+    await graphDataManager.fetchInitialData();
 
-    expect(global.fetch).toHaveBeenCalledWith('/graph-data');
-    expect(data).toEqual({ nodes: [], edges: [] });
+    expect(global.fetch).toHaveBeenCalledWith('/api/graph-data');
+    expect(graphDataManager.graphData).toEqual({ nodes: [], edges: [] });
   });
 
   test('should handle WebSocket messages', () => {
-    const mockMessage = {
-      data: JSON.stringify({
-        type: 'nodePositions',
-        positions: [{ id: 'node1', x: 1, y: 2, z: 3 }],
-      }),
-    };
+    const mockMessage = { data: JSON.stringify({ type: 'update', data: { nodes: [{ id: 1 }], edges: [] } }) };
+    graphDataManager.handleWebSocketMessage(mockMessage);
 
-    const onNodePositionsUpdateSpy = jest.fn();
-    graphDataManager.onNodePositionsUpdate = onNodePositionsUpdateSpy;
-
-    mockWebSocket.onmessage(mockMessage);
-
-    expect(onNodePositionsUpdateSpy).toHaveBeenCalledWith([
-      { id: 'node1', x: 1, y: 2, z: 3 },
-    ]);
+    expect(graphDataManager.graphData).toEqual({ nodes: [{ id: 1 }], edges: [] });
   });
 
   test('should send messages via WebSocket', () => {
-    const sendSpy = jest.spyOn(mockWebSocket, 'send');
+    const mockSend = jest.spyOn(mockWebSocket, 'send');
+    graphDataManager.sendWebSocketMessage({ type: 'request', data: {} });
 
-    graphDataManager.sendMessage({ type: 'startSimulation' });
-
-    expect(sendSpy).toHaveBeenCalledWith(
-      JSON.stringify({ type: 'startSimulation' })
-    );
+    expect(mockSend).toHaveBeenCalledWith(JSON.stringify({ type: 'request', data: {} }));
   });
 });

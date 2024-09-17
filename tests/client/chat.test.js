@@ -1,61 +1,61 @@
-// chat.test.js
+import { ChatManager } from '../../public/js/components/chatManager';
 
-const ChatManager = require('../../public/js/components/chatManager');
-const WebSocket = require('ws');
+// Mock WebSocket
+class MockWebSocket {
+  constructor(url) {
+    this.url = url;
+    this.onmessage = null;
+    this.onclose = null;
+    this.onerror = null;
+  }
+
+  send(data) {
+    // Mock send method
+  }
+
+  close() {
+    // Mock close method
+  }
+}
 
 describe('ChatManager', () => {
   let chatManager;
   let mockWebSocket;
 
   beforeEach(() => {
-    mockWebSocket = new WebSocket('ws://localhost:8443');
+    mockWebSocket = new MockWebSocket('ws://localhost:8443');
     chatManager = new ChatManager(mockWebSocket);
-  });
-
-  afterEach(() => {
-    mockWebSocket.close();
   });
 
   test('should initialize properly', () => {
     expect(chatManager).toBeDefined();
-    expect(chatManager.websocket).toBeDefined();
   });
 
   test('should send a message via WebSocket', () => {
-    const sendSpy = jest.spyOn(mockWebSocket, 'send');
-    const message = 'Hello, RAGFlow!';
-    chatManager.sendMessage(message);
-    expect(sendSpy).toHaveBeenCalledWith(
-      JSON.stringify({
-        type: 'chatMessage',
-        content: message,
-      })
-    );
+    const mockSend = jest.spyOn(mockWebSocket, 'send');
+    chatManager.sendMessage('Hello, World!');
+
+    expect(mockSend).toHaveBeenCalledWith(JSON.stringify({ type: 'chat', message: 'Hello, World!' }));
   });
 
   test('should handle incoming messages', () => {
-    const mockMessage = {
-      data: JSON.stringify({
-        type: 'chatResponse',
-        content: 'Response from RAGFlow',
-      }),
-    };
+    const mockMessage = { data: JSON.stringify({ type: 'chat', message: 'Hello from server!' }) };
+    const mockUpdateChatDisplay = jest.fn();
+    chatManager.updateChatDisplay = mockUpdateChatDisplay;
 
-    const onMessageReceivedSpy = jest.fn();
-    chatManager.onMessageReceived = onMessageReceivedSpy;
+    chatManager.handleWebSocketMessage(mockMessage);
 
-    mockWebSocket.onmessage(mockMessage);
-
-    expect(onMessageReceivedSpy).toHaveBeenCalledWith('Response from RAGFlow');
+    expect(mockUpdateChatDisplay).toHaveBeenCalledWith('Hello from server!');
   });
 
   test('should handle WebSocket errors', () => {
-    const errorEvent = new Error('WebSocket error');
-    const onErrorSpy = jest.fn();
-    chatManager.onError = onErrorSpy;
+    const mockConsoleError = jest.spyOn(console, 'error').mockImplementation();
+    const mockError = new Error('WebSocket error');
 
-    mockWebSocket.onerror(errorEvent);
+    chatManager.handleWebSocketError(mockError);
 
-    expect(onErrorSpy).toHaveBeenCalledWith(errorEvent);
+    expect(mockConsoleError).toHaveBeenCalledWith('WebSocket error:', mockError);
+
+    mockConsoleError.mockRestore();
   });
 });
