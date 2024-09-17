@@ -1,30 +1,65 @@
-export function initThreeGraph(scene) {
-  // Three.js graph initialization logic here
-  console.log('Initializing Three.js graph');
-  return {
-    update: () => console.log('Updating Three.js graph'),
-    addNode: (node) => console.log('Adding node to Three.js graph:', node),
-    addEdge: (edge) => console.log('Adding edge to Three.js graph:', edge),
-  };
-}
+import * as THREE from 'three';
+import { ForceGraph3D } from '3d-force-graph';
 
-export function updateGraphVisuals(graph, data) {
-  // Update graph visuals logic here
-  console.log('Updating graph visuals with data:', data);
-  graph.update();
-  return true;
-}
+export class ForceGraph {
+  constructor(scene) {
+    this.scene = scene;
+    this.nodes = [];
+    this.links = [];
+    this.graph = ForceGraph3D()(document.createElement('div'))
+      .graphData({ nodes: this.nodes, links: this.links })
+      .onEngineTick(() => this.renderGraph());
+  }
 
-export function addNodeToGraph(graph, node) {
-  // Add node to graph logic here
-  console.log('Adding node to graph:', node);
-  graph.addNode(node);
-  return true;
-}
+  addNode(node) {
+    this.nodes.push(node);
+    this.updateGraphData();
+  }
 
-export function addEdgeToGraph(graph, edge) {
-  // Add edge to graph logic here
-  console.log('Adding edge to graph:', edge);
-  graph.addEdge(edge);
-  return true;
+  addLink(link) {
+    this.links.push(link);
+    this.updateGraphData();
+  }
+
+  updateNodePosition(node, position) {
+    Object.assign(node, position);
+  }
+
+  updateGraphData() {
+    this.graph.graphData({ nodes: this.nodes, links: this.links });
+  }
+
+  renderGraph() {
+    // This method is called on each engine tick
+    // Update Three.js objects based on force-graph positions
+    this.nodes.forEach(node => {
+      if (node.threeObject) {
+        node.threeObject.position.set(node.x, node.y, node.z);
+      } else {
+        const geometry = new THREE.SphereGeometry(5);
+        const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const sphere = new THREE.Mesh(geometry, material);
+        sphere.position.set(node.x, node.y, node.z);
+        this.scene.add(sphere);
+        node.threeObject = sphere;
+      }
+    });
+
+    this.links.forEach(link => {
+      if (link.threeObject) {
+        const start = this.nodes.find(n => n.id === link.source);
+        const end = this.nodes.find(n => n.id === link.target);
+        link.threeObject.geometry.setFromPoints([start, end]);
+      } else {
+        const geometry = new THREE.BufferGeometry().setFromPoints([
+          this.nodes.find(n => n.id === link.source),
+          this.nodes.find(n => n.id === link.target)
+        ]);
+        const material = new THREE.LineBasicMaterial({ color: 0xffffff });
+        const line = new THREE.Line(geometry, material);
+        this.scene.add(line);
+        link.threeObject = line;
+      }
+    });
+  }
 }

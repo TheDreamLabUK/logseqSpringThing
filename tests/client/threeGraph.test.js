@@ -1,44 +1,48 @@
-import { initThreeGraph, updateGraphVisuals, addNodeToGraph, addEdgeToGraph } from '../../public/js/threeJS/threeGraph';
+import * as THREE from 'three';
+import { ForceGraph } from '../../public/js/threeJS/threeGraph';
 
-describe('Three.js Graph', () => {
-  let mockScene, graph;
+jest.mock('three');
+
+describe('ForceGraph', () => {
+  let forceGraph;
+  let mockScene;
 
   beforeEach(() => {
-    mockScene = {};
-    graph = initThreeGraph(mockScene);
+    mockScene = new THREE.Scene();
+    forceGraph = new ForceGraph(mockScene);
   });
 
-  test('initThreeGraph function exists', () => {
-    expect(typeof initThreeGraph).toBe('function');
+  test('should initialize with an empty graph', () => {
+    expect(forceGraph.nodes).toEqual([]);
+    expect(forceGraph.links).toEqual([]);
   });
 
-  test('initThreeGraph returns an object with update, addNode, and addEdge methods', () => {
-    expect(typeof graph.update).toBe('function');
-    expect(typeof graph.addNode).toBe('function');
-    expect(typeof graph.addEdge).toBe('function');
+  test('should add nodes to the graph', () => {
+    forceGraph.addNode({ id: 1 });
+    forceGraph.addNode({ id: 2 });
+    expect(forceGraph.nodes.length).toBe(2);
   });
 
-  test('updateGraphVisuals function exists', () => {
-    expect(typeof updateGraphVisuals).toBe('function');
+  test('should add links to the graph', () => {
+    forceGraph.addNode({ id: 1 });
+    forceGraph.addNode({ id: 2 });
+    forceGraph.addLink({ source: 1, target: 2 });
+    expect(forceGraph.links.length).toBe(1);
   });
 
-  test('updateGraphVisuals returns true', () => {
-    expect(updateGraphVisuals(graph, {})).toBe(true);
+  test('should update node positions', () => {
+    const node = { id: 1 };
+    forceGraph.addNode(node);
+    forceGraph.updateNodePosition(node, { x: 1, y: 2, z: 3 });
+    expect(node.x).toBe(1);
+    expect(node.y).toBe(2);
+    expect(node.z).toBe(3);
   });
 
-  test('addNodeToGraph function exists', () => {
-    expect(typeof addNodeToGraph).toBe('function');
-  });
-
-  test('addNodeToGraph returns true', () => {
-    expect(addNodeToGraph(graph, { id: 1 })).toBe(true);
-  });
-
-  test('addEdgeToGraph function exists', () => {
-    expect(typeof addEdgeToGraph).toBe('function');
-  });
-
-  test('addEdgeToGraph returns true', () => {
-    expect(addEdgeToGraph(graph, { source: 1, target: 2 })).toBe(true);
+  test('should render the graph', () => {
+    const mockRender = jest.fn();
+    forceGraph.render = mockRender;
+    forceGraph.renderGraph();
+    expect(mockRender).toHaveBeenCalled();
   });
 });
