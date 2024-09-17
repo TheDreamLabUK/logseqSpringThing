@@ -21,3 +21,14 @@ topics = [
     "Graph Visualization",
     "Markdown Processing"
 ]
+
+# Perplexity API configuration
+[perplexity]
+api_key = "your_actual_api_key"       # Replace with your actual API key
+model = "test-model"                  # Model name, e.g., "test-model"
+api_base_url = "http://mock-server.test"  # URL of the API endpoint or mock server
+max_tokens = 100                      # Maximum number of tokens
+temperature = 0.7                     # Sampling temperature
+top_p = 0.9                           # Nucleus sampling parameter
+presence_penalty = 0.0                # Presence penalty
+frequency_penalty = 0.0               # Frequency penalty

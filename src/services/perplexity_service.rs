@@ -82,11 +82,13 @@ pub struct PerplexityResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct Choice {
+    #[serde(default)]
     pub index: u32,
     pub finish_reason: Option<String>,
     pub message: Message,
     pub delta: Option<Delta>,
 }
+
 
 #[derive(Debug, Deserialize)]
 pub struct Delta {

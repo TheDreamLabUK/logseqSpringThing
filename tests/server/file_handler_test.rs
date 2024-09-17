@@ -1,7 +1,18 @@
-use crate::*;
-use handlers::file_handler::fetch_and_process_files;
-use actix_web::web;
-use actix_web::body::to_bytes;
+use std::sync::{Arc, RwLock};
+use actix_web::{web, body::to_bytes, test, http::StatusCode};
+use serde_json::json;
+
+// Import your AppState and GraphData structs
+use crate::AppState;
+use crate::models::graph::GraphData;
+
+// Import the function to be tested
+use crate::handlers::file_handler::fetch_and_process_files;
+
+// Import the services and models
+use crate::services::file_service::{GithubFile, GitHubService, FileService, ProcessedFile};
+use crate::services::perplexity_service::{PerplexityService, ApiClient, PerplexityError};
+use crate::config::{Settings, PerplexityConfig};
 
 #[actix_web::test]
 async fn test_fetch_and_process_files() {

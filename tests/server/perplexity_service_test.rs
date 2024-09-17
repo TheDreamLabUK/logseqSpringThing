@@ -78,8 +78,25 @@ fn setup_mock_settings(mock_server_uri: &str) -> Settings {
 #[tokio::test]
 async fn test_call_perplexity_api_success() {
     let mock_client = MockApiClient::new().await;
-    mock_client.mock(200, json!({"choices":[{"message":{"role": "assistant", "content":"API Response"}}]})).await;
-
+    mock_client.mock(200, json!({
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "API Response"
+                },
+                "finish_reason": null,
+                "delta": null
+            }
+        ],
+        "id": null,
+        "model": null,
+        "object": null,
+        "created": null,
+        "usage": null
+    })).await;
+    
     let settings = setup_mock_settings(&mock_client.uri());
 
     let prompt = &settings.prompt;
@@ -142,8 +159,25 @@ async fn test_call_perplexity_api_timeout() {
 #[tokio::test]
 async fn test_process_markdown_success() {
     let mock_client = MockApiClient::new().await;
-    mock_client.mock(200, json!({"choices":[{"message":{"role": "assistant", "content":"Processed block"}}]})).await;
-
+    mock_client.mock(200, json!({
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Processed block"
+                },
+                "finish_reason": null,
+                "delta": null
+            }
+        ],
+        "id": null,
+        "model": null,
+        "object": null,
+        "created": null,
+        "usage": null
+    })).await;
+    
     let settings = setup_mock_settings(&mock_client.uri());
 
     let file_content = "Test content\n\nAnother block";
