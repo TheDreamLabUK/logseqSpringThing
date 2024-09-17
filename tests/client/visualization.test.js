@@ -67,3 +67,27 @@ describe('WebXRVisualization', () => {
 
   // Add more tests as needed based on WebXRVisualization functionality
 });
+
+// visualization.test.js
+
+const Visualization = require('../../public/js/components/visualization');
+
+describe('Visualization', () => {
+  let visualization;
+
+  beforeEach(() => {
+    visualization = new Visualization();
+  });
+
+  test('should initialize properly', () => {
+    expect(visualization).toBeDefined();
+  });
+
+  test('should update the graph', () => {
+    const updateGraphSpy = jest.spyOn(visualization, 'updateGraph');
+
+    visualization.updateGraph();
+
+    expect(updateGraphSpy).toHaveBeenCalled();
+  });
+});

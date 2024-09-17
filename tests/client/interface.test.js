@@ -1,10 +1,26 @@
-import { initInterface } from '../../public/js/components/interface';
+// interface.test.js
+
+const Interface = require('../../public/js/components/interface');
 
 describe('Interface', () => {
-  test('initInterface should initialize interface correctly', () => {
-    const consoleSpy = jest.spyOn(console, 'log');
-    initInterface();
-    expect(consoleSpy).toHaveBeenCalledWith('Initializing interface...');
-    consoleSpy.mockRestore();
+  let interfaceInstance;
+
+  beforeEach(() => {
+    document.body.innerHTML = `<canvas id="canvas"></canvas>`;
+    interfaceInstance = new Interface();
+  });
+
+  test('should initialize properly', () => {
+    expect(interfaceInstance).toBeDefined();
+  });
+
+  test('should handle user input events', () => {
+    const onInputSpy = jest.fn();
+    interfaceInstance.onUserInput = onInputSpy;
+
+    const event = new Event('keydown');
+    document.dispatchEvent(event);
+
+    expect(onInputSpy).toHaveBeenCalled();
   });
 });

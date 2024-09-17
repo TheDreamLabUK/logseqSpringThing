@@ -1,61 +1,66 @@
-// Mock GraphDataManager class
-class GraphDataManager {
-  constructor() {
-    this.graphData = { nodes: [], edges: [] };
-  }
+// graphService.test.js
 
-  updateGraphData(newData) {
-    this.graphData = newData;
-  }
-
-  getGraphData() {
-    return this.graphData;
-  }
-
-  addNode(node) {
-    this.graphData.nodes.push(node);
-  }
-
-  addEdge(edge) {
-    this.graphData.edges.push(edge);
-  }
-
-  removeNode(nodeId) {
-    this.graphData.nodes = this.graphData.nodes.filter(node => node.id !== nodeId);
-  }
-}
+const GraphDataManager = require('../../public/js/services/graphDataManager');
+const WebSocket = require('ws');
 
 describe('GraphDataManager', () => {
   let graphDataManager;
+  let mockWebSocket;
 
   beforeEach(() => {
-    graphDataManager = new GraphDataManager();
+    mockWebSocket = new WebSocket('ws://localhost:8443');
+    graphDataManager = new GraphDataManager(mockWebSocket);
   });
 
-  test('updateGraphData should update the graph data', () => {
-    const newData = { nodes: [{ id: '1', label: 'Node 1' }], edges: [{ source: '1', target: '2' }] };
-    graphDataManager.updateGraphData(newData);
-    expect(graphDataManager.getGraphData()).toEqual(newData);
+  afterEach(() => {
+    mockWebSocket.close();
+    global.fetch.mockClear();
+    delete global.fetch;
   });
 
-  test('addNode should add a new node to the graph', () => {
-    const newNode = { id: '1', label: 'New Node' };
-    graphDataManager.addNode(newNode);
-    expect(graphDataManager.getGraphData().nodes).toContainEqual(newNode);
+  test('should initialize properly', () => {
+    expect(graphDataManager).toBeDefined();
+    expect(graphDataManager.websocket).toBeDefined();
   });
 
-  test('addEdge should add a new edge to the graph', () => {
-    const newEdge = { source: '1', target: '2' };
-    graphDataManager.addEdge(newEdge);
-    expect(graphDataManager.getGraphData().edges).toContainEqual(newEdge);
+  test('should fetch initial graph data', async () => {
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        json: () => Promise.resolve({ nodes: [], edges: [] }),
+      })
+    );
+
+    const data = await graphDataManager.fetchInitialGraphData();
+
+    expect(global.fetch).toHaveBeenCalledWith('/graph-data');
+    expect(data).toEqual({ nodes: [], edges: [] });
   });
 
-  test('removeNode should remove a node from the graph', () => {
-    const node = { id: '1', label: 'Node to remove' };
-    graphDataManager.addNode(node);
-    graphDataManager.removeNode('1');
-    expect(graphDataManager.getGraphData().nodes).not.toContainEqual(node);
+  test('should handle WebSocket messages', () => {
+    const mockMessage = {
+      data: JSON.stringify({
+        type: 'nodePositions',
+        positions: [{ id: 'node1', x: 1, y: 2, z: 3 }],
+      }),
+    };
+
+    const onNodePositionsUpdateSpy = jest.fn();
+    graphDataManager.onNodePositionsUpdate = onNodePositionsUpdateSpy;
+
+    mockWebSocket.onmessage(mockMessage);
+
+    expect(onNodePositionsUpdateSpy).toHaveBeenCalledWith([
+      { id: 'node1', x: 1, y: 2, z: 3 },
+    ]);
   });
 
-  // Add more tests as needed based on GraphDataManager functionality
+  test('should send messages via WebSocket', () => {
+    const sendSpy = jest.spyOn(mockWebSocket, 'send');
+
+    graphDataManager.sendMessage({ type: 'startSimulation' });
+
+    expect(sendSpy).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'startSimulation' })
+    );
+  });
 });

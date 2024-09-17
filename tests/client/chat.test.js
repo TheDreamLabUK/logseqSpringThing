@@ -1,46 +1,61 @@
-// Mock ChatManager
-class ChatManager {
-  constructor() {
-    this.chatHistory = [];
-  }
+// chat.test.js
 
-  sendMessage(message) {
-    this.chatHistory.push(message);
-  }
-
-  clearChat() {
-    this.chatHistory = [];
-  }
-
-  getLastMessage() {
-    return this.chatHistory[this.chatHistory.length - 1];
-  }
-}
+const ChatManager = require('../../public/js/components/chatManager');
+const WebSocket = require('ws');
 
 describe('ChatManager', () => {
   let chatManager;
+  let mockWebSocket;
 
   beforeEach(() => {
-    chatManager = new ChatManager();
+    mockWebSocket = new WebSocket('ws://localhost:8443');
+    chatManager = new ChatManager(mockWebSocket);
   });
 
-  test('sendMessage should add message to chat history', () => {
-    const message = 'Hello, World!';
+  afterEach(() => {
+    mockWebSocket.close();
+  });
+
+  test('should initialize properly', () => {
+    expect(chatManager).toBeDefined();
+    expect(chatManager.websocket).toBeDefined();
+  });
+
+  test('should send a message via WebSocket', () => {
+    const sendSpy = jest.spyOn(mockWebSocket, 'send');
+    const message = 'Hello, RAGFlow!';
     chatManager.sendMessage(message);
-    expect(chatManager.chatHistory).toContain(message);
+    expect(sendSpy).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: 'chatMessage',
+        content: message,
+      })
+    );
   });
 
-  test('clearChat should empty chat history', () => {
-    chatManager.sendMessage('Test message');
-    chatManager.clearChat();
-    expect(chatManager.chatHistory).toHaveLength(0);
+  test('should handle incoming messages', () => {
+    const mockMessage = {
+      data: JSON.stringify({
+        type: 'chatResponse',
+        content: 'Response from RAGFlow',
+      }),
+    };
+
+    const onMessageReceivedSpy = jest.fn();
+    chatManager.onMessageReceived = onMessageReceivedSpy;
+
+    mockWebSocket.onmessage(mockMessage);
+
+    expect(onMessageReceivedSpy).toHaveBeenCalledWith('Response from RAGFlow');
   });
 
-  test('getLastMessage should return the most recent message', () => {
-    const messages = ['First', 'Second', 'Third'];
-    messages.forEach(msg => chatManager.sendMessage(msg));
-    expect(chatManager.getLastMessage()).toBe('Third');
-  });
+  test('should handle WebSocket errors', () => {
+    const errorEvent = new Error('WebSocket error');
+    const onErrorSpy = jest.fn();
+    chatManager.onError = onErrorSpy;
 
-  // Add more tests as needed based on ChatManager functionality
+    mockWebSocket.onerror(errorEvent);
+
+    expect(onErrorSpy).toHaveBeenCalledWith(errorEvent);
+  });
 });

@@ -1,10 +1,29 @@
-import { setupXRSession } from '../../public/js/xr/xrSetup';
+// xrSetup.test.js
+
+const XRSetup = require('../../public/js/xr/xrSetup');
 
 describe('XRSetup', () => {
-  test('setupXRSession should set up XR session correctly', () => {
-    const consoleSpy = jest.spyOn(console, 'log');
-    setupXRSession();
-    expect(consoleSpy).toHaveBeenCalledWith('Setting up XR session...');
-    consoleSpy.mockRestore();
+  let xrSetup;
+
+  beforeEach(() => {
+    xrSetup = new XRSetup();
+  });
+
+  test('should initialize properly', () => {
+    expect(xrSetup).toBeDefined();
+    expect(xrSetup.renderer).toBeDefined();
+  });
+
+  test('should check for XR support', async () => {
+    global.navigator.xr = {
+      isSessionSupported: jest.fn().mockResolvedValue(true),
+    };
+
+    const result = await xrSetup.checkXRSupport();
+
+    expect(global.navigator.xr.isSessionSupported).toHaveBeenCalledWith(
+      'immersive-vr'
+    );
+    expect(result).toBe(true);
   });
 });

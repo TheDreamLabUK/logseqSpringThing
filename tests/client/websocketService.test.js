@@ -67,3 +67,56 @@ describe('WebSocketService', () => {
 
   // Add more tests as needed based on WebSocketService functionality
 });
+
+
+another approach?
+
+// websocketService.test.js
+
+const WebsocketService = require('../../public/js/services/websocketService');
+const WebSocket = require('ws');
+
+describe('WebsocketService', () => {
+  let websocketService;
+  let mockWebSocket;
+
+  beforeEach(() => {
+    mockWebSocket = new WebSocket('ws://localhost:8443');
+    websocketService = new WebsocketService(mockWebSocket);
+  });
+
+  afterEach(() => {
+    mockWebSocket.close();
+  });
+
+  test('should initialize properly', () => {
+    expect(websocketService).toBeDefined();
+    expect(websocketService.websocket).toBeDefined();
+  });
+
+  test('should send messages via WebSocket', () => {
+    const sendSpy = jest.spyOn(mockWebSocket, 'send');
+
+    websocketService.sendMessage({ type: 'testMessage' });
+
+    expect(sendSpy).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'testMessage' })
+    );
+  });
+
+  test('should handle incoming messages', () => {
+    const mockMessage = {
+      data: JSON.stringify({ type: 'testResponse', data: 'Test Data' }),
+    };
+
+    const onMessageReceivedSpy = jest.fn();
+    websocketService.onMessageReceived = onMessageReceivedSpy;
+
+    mockWebSocket.onmessage(mockMessage);
+
+    expect(onMessageReceivedSpy).toHaveBeenCalledWith({
+      type: 'testResponse',
+      data: 'Test Data',
+    });
+  });
+});
