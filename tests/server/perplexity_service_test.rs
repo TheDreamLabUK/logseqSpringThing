@@ -11,7 +11,6 @@ use webxr_graph::services::perplexity_service::{
     ApiClient,
     PerplexityRequest,
     PerplexityError,
-    RealApiClient,
 };
 use webxr_graph::config::{Settings, PerplexityConfig};
 
@@ -79,7 +78,7 @@ fn setup_mock_settings(mock_server_uri: &str) -> Settings {
 #[tokio::test]
 async fn test_call_perplexity_api_success() {
     let mock_client = MockApiClient::new().await;
-    mock_client.mock(200, json!({"choices":[{"message":{"content":"API Response"}}]})).await;
+    mock_client.mock(200, json!({"choices":[{"message":{"role": "assistant", "content":"API Response"}}]})).await;
 
     let settings = setup_mock_settings(&mock_client.uri());
 
@@ -122,7 +121,7 @@ async fn test_call_perplexity_api_timeout() {
         .and(path("/chat/completions"))
         .respond_with(ResponseTemplate::new(200)
             .set_delay(Duration::from_secs(3))
-            .set_body_json(json!({"choices":[{"message":{"content":"Delayed Response"}}]})))
+            .set_body_json(json!({"choices":[{"message":{"role": "assistant", "content":"Delayed Response"}}]})))
         .mount(&mock_client.mock_server)
         .await;
 
@@ -143,7 +142,7 @@ async fn test_call_perplexity_api_timeout() {
 #[tokio::test]
 async fn test_process_markdown_success() {
     let mock_client = MockApiClient::new().await;
-    mock_client.mock(200, json!({"choices":[{"message":{"content":"Processed block"}}]})).await;
+    mock_client.mock(200, json!({"choices":[{"message":{"role": "assistant", "content":"Processed block"}}]})).await;
 
     let settings = setup_mock_settings(&mock_client.uri());
 

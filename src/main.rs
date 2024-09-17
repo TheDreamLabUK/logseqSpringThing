@@ -5,12 +5,22 @@ use webxr_graph::models::graph::GraphData;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
+use webxr_graph::config::Settings;
+use webxr_graph::services::perplexity_service::RealApiClient;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let file_cache = Arc::new(RwLock::new(HashMap::new()));
     let graph_data = Arc::new(RwLock::new(GraphData::default()));
-    let app_state = web::Data::new(AppState { file_cache, graph_data });
+    let settings = Settings::new().unwrap();
+    let api_client = Arc::new(RealApiClient::new());
+
+    let app_state = web::Data::new(AppState {
+        graph_data,
+        file_cache,
+        settings,
+        api_client,
+    });
 
     HttpServer::new(move || {
         App::new()

@@ -101,7 +101,7 @@ pub struct Usage {
 }
 
 #[async_trait]
-pub trait ApiClient {
+pub trait ApiClient: Send + Sync {
     async fn post_json(
         &self,
         url: &str,
@@ -316,7 +316,7 @@ pub fn process_markdown_block(input: &str, prompt: &str, topics: &[String], api_
 }
 
 #[async_trait]
-pub trait PerplexityService {
+pub trait PerplexityService: Send + Sync {
     async fn process_file(file_content: String, settings: &Settings, api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError>;
 }
 

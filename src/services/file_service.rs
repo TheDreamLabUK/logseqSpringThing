@@ -1,13 +1,14 @@
 // src/services/file_service.rs
 
 use crate::models::metadata::Metadata;
+use crate::config::Settings;
 use serde::{Deserialize, Serialize};
 use dotenv::dotenv;
 use std::env;
 use reqwest::Client;
 use async_trait::async_trait;
 use log::info;
-use crate::services::perplexity_service::{PerplexityService, PerplexityError};
+use crate::services::perplexity_service::{PerplexityService, PerplexityError, ApiClient};
 
 /// Struct representing a file fetched from GitHub
 #[derive(Serialize, Deserialize, Clone)]
@@ -49,8 +50,12 @@ impl FileService {
     }
 
     /// Processes the file content using the provided PerplexityService implementation
-    pub async fn process_with_perplexity<T: PerplexityService>(file_content: String) -> Result<ProcessedFile, PerplexityError> {
-        T::process_file(file_content).await
+    pub async fn process_with_perplexity<T: PerplexityService>(
+        file_content: String,
+        settings: &Settings,
+        api_client: &dyn ApiClient
+    ) -> Result<ProcessedFile, PerplexityError> {
+        T::process_file(file_content, settings, api_client).await
     }
 
     /// Saves metadata about a file

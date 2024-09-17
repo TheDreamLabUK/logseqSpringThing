@@ -1,25 +1,34 @@
 use webxr_graph::services::file_service::*;
 use webxr_graph::models::metadata::Metadata;
-use webxr_graph::services::perplexity_service::{PerplexityService, PerplexityError};
-use webxr_graph::{GithubFile, GitHubService, ProcessedFile};
+use webxr_graph::services::perplexity_service::{PerplexityService, PerplexityError, ApiClient};
+use webxr_graph::{GithubFile, ProcessedFile, PerplexityRequest};
 use async_trait::async_trait;
 use mockall::predicate::*;
+use std::sync::Arc;
+use webxr_graph::config::{Settings, PerplexityConfig};
 
 mockall::mock! {
     pub GitHubService {}
 
     #[async_trait]
-    impl GitHubService for GitHubService {
+    impl webxr_graph::services::file_service::GitHubService for GitHubService {
         async fn fetch_files() -> Result<Vec<GithubFile>, reqwest::Error>;
     }
 }
 
-mockall::mock! {
-    pub PerplexityService {}
+struct MockPerplexityService;
 
-    #[async_trait]
-    impl PerplexityService for PerplexityService {
-        async fn process_file(file_content: String) -> Result<ProcessedFile, PerplexityError>;
+#[async_trait]
+impl PerplexityService for MockPerplexityService {
+    async fn process_file(file_content: String, _settings: &Settings, _api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError> {
+        Ok(ProcessedFile { content: format!("Processed: {}", file_content) })
+    }
+}
+
+#[async_trait]
+impl ApiClient for MockPerplexityService {
+    async fn post_json(&self, _url: &str, _body: &PerplexityRequest, _api_key: &str) -> Result<String, PerplexityError> {
+        Ok(String::from("mock"))
     }
 }
 
@@ -66,15 +75,25 @@ fn test_compare_and_identify_updates() {
 
 #[tokio::test]
 async fn test_process_with_perplexity() {
-    let ctx = MockPerplexityService::process_file_context();
     let file_content = "test content".to_string();
-    ctx.expect()
-        .with(eq(file_content.clone()))
-        .times(1)
-        .returning(|_| Ok(ProcessedFile { content: "processed content".to_string() }));
+    let settings = Settings {
+        prompt: "Test Prompt".to_string(),
+        topics: vec!["topic1".to_string()],
+        perplexity: PerplexityConfig {
+            api_key: "test_key".to_string(),
+            model: "test_model".to_string(),
+            api_base_url: "http://localhost".to_string(),
+            max_tokens: 100,
+            temperature: 0.7,
+            top_p: 0.9,
+            presence_penalty: 0.5,
+            frequency_penalty: 0.5,
+        },
+    };
+    let api_client = Arc::new(MockPerplexityService);
 
-    let result = FileService::process_with_perplexity::<MockPerplexityService>(file_content.clone()).await.unwrap();
-    assert_eq!(result.content, "processed content");
+    let result = FileService::process_with_perplexity::<MockPerplexityService>(file_content.clone(), &settings, &*api_client).await.unwrap();
+    assert_eq!(result.content, "Processed: test content");
 }
 
 #[test]

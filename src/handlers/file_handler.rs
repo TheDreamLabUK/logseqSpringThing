@@ -12,7 +12,11 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
 
                     for file_name in &updated_files {
                         if let Some(file) = github_files.iter().find(|f| f.name == *file_name) {
-                            match RealPerplexityService::process_file(file.content.clone()).await {
+                            match RealPerplexityService::process_file(
+                                file.content.clone(),
+                                &state.settings,
+                                &*state.api_client as &dyn crate::services::perplexity_service::ApiClient
+                            ).await {
                                 Ok(processed_file) => {
                                     let metadata = crate::models::metadata::Metadata {
                                         file_name: file.name.clone(),
