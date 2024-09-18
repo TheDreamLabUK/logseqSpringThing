@@ -1,77 +1,97 @@
-import { RagflowService } from '../../public/js/services/ragflowService';
+import { RAGflowService } from '../../public/js/services/ragflowService';
 
-describe('RAGFlowService', () => {
+describe('RAGflowService', () => {
   let ragflowService;
+  let mockSocket;
 
   beforeEach(() => {
-    ragflowService = new RagflowService();
-    global.fetch = jest.fn();
+    mockSocket = {
+      send: jest.fn(),
+      onmessage: null,
+      onerror: null,
+      onclose: null
+    };
+    ragflowService = new RAGflowService(mockSocket);
   });
 
-  afterEach(() => {
-    global.fetch.mockClear();
-    delete global.fetch;
+  test('RAGflowService initializes correctly', () => {
+    expect(ragflowService.socket).toBe(mockSocket);
   });
 
-  test('should initialize properly', () => {
-    expect(ragflowService).toBeInstanceOf(RagflowService);
+  test('sendQuery sends a query through WebSocket', () => {
+    const query = 'What is RAG?';
+    ragflowService.sendQuery(query);
+
+    expect(mockSocket.send).toHaveBeenCalledWith(JSON.stringify({
+      type: 'ragflowQuery',
+      question: query
+    }));
   });
 
-  test('should create a new conversation', async () => {
-    global.fetch.mockResolvedValueOnce({
-      json: () => Promise.resolve({ conversationId: '12345' }),
-    });
+  test('handleResponse processes RAGflow response correctly', () => {
+    const mockResponse = {
+      type: 'ragflowResponse',
+      response: 'RAG stands for Retrieval-Augmented Generation.'
+    };
+    const mockCallback = jest.fn();
 
-    const conversationId = await ragflowService.createConversation('user1');
+    ragflowService.handleResponse(JSON.stringify(mockResponse), mockCallback);
 
-    expect(global.fetch).toHaveBeenCalledWith('/api/ragflow/conversations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: 'user1' }),
-    });
-
-    expect(conversationId).toBe('12345');
+    expect(mockCallback).toHaveBeenCalledWith('RAG stands for Retrieval-Augmented Generation.');
   });
 
-  test('should send a message', async () => {
-    global.fetch.mockResolvedValueOnce({
-      json: () => Promise.resolve({ response: 'Hello, user!' }),
-    });
+  test('handleResponse ignores non-RAGflow responses', () => {
+    const mockResponse = {
+      type: 'otherResponse',
+      data: 'Some other data'
+    };
+    const mockCallback = jest.fn();
 
-    const response = await ragflowService.sendMessage('12345', 'Hi there');
+    ragflowService.handleResponse(JSON.stringify(mockResponse), mockCallback);
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      '/api/ragflow/conversations/12345/messages',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'Hi there' }),
-      }
-    );
-
-    expect(response).toBe('Hello, user!');
+    expect(mockCallback).not.toHaveBeenCalled();
   });
 
-  test('should get chat history', async () => {
-    const mockHistory = [
-      { content: 'Hello', sender: 'user' },
-      { content: 'Hi there!', sender: 'assistant' }
-    ];
+  test('handleError calls error callback', () => {
+    const mockError = new Error('WebSocket error');
+    const mockErrorCallback = jest.fn();
 
-    global.fetch.mockResolvedValueOnce({
-      json: () => Promise.resolve(mockHistory),
-    });
+    ragflowService.handleError(mockError, mockErrorCallback);
 
-    const history = await ragflowService.getChatHistory('12345');
+    expect(mockErrorCallback).toHaveBeenCalledWith('Error: Unable to connect to the server. Please try again later.');
+  });
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      '/api/ragflow/conversations/12345/history',
-      {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
+  test('handleClose calls close callback', () => {
+    const mockCloseCallback = jest.fn();
 
-    expect(history).toEqual(mockHistory);
+    ragflowService.handleClose(mockCloseCallback);
+
+    expect(mockCloseCallback).toHaveBeenCalledWith('Connection lost. Attempting to reconnect...');
+  });
+
+  test('setupWebSocket sets up WebSocket event handlers', () => {
+    const mockHandleResponse = jest.fn();
+    const mockHandleError = jest.fn();
+    const mockHandleClose = jest.fn();
+
+    ragflowService.setupWebSocket(mockHandleResponse, mockHandleError, mockHandleClose);
+
+    expect(typeof mockSocket.onmessage).toBe('function');
+    expect(typeof mockSocket.onerror).toBe('function');
+    expect(typeof mockSocket.onclose).toBe('function');
+
+    // Test onmessage handler
+    const mockMessage = { data: JSON.stringify({ type: 'ragflowResponse', response: 'Test response' }) };
+    mockSocket.onmessage(mockMessage);
+    expect(mockHandleResponse).toHaveBeenCalledWith('Test response');
+
+    // Test onerror handler
+    const mockError = new Error('WebSocket error');
+    mockSocket.onerror(mockError);
+    expect(mockHandleError).toHaveBeenCalled();
+
+    // Test onclose handler
+    mockSocket.onclose();
+    expect(mockHandleClose).toHaveBeenCalled();
   });
 });

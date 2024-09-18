@@ -1,5 +1,6 @@
-import './app';
+import { App } from './app.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('Application Loaded');
+    const app = new App();
+    app.start();
 });

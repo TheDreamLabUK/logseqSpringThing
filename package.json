@@ -4,15 +4,19 @@
   "description": "WebXR Graph Visualization",
   "main": "server.js",
   "scripts": {
-    "test": "pnpm exec jest",
+    "test": "jest",
     "start": "node server.js"
   },
   "dependencies": {
+    "3d-force-graph": "^1.70.10",
     "express": "^4.17.1",
-    "three": "^0.128.0",
-    "3d-force-graph": "^1.70.10"
+    "three": "^0.128.0"
   },
   "devDependencies": {
-    "jest": "^27.0.6"
+    "@babel/core": "^7.25.2",
+    "@babel/plugin-transform-runtime": "^7.25.4",
+    "@babel/preset-env": "^7.25.4",
+    "babel-jest": "^27.5.1",
+    "jest": "^27.5.1"
   }
 }

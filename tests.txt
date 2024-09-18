@@ -1,0 +1,5 @@
+
+> webxr-graph@1.0.0 test /mnt/mldata/githubs/logseqSpringThing
+> jest
+
+ ELIFECYCLE  Test failed. See above for more details.

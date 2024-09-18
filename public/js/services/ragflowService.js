@@ -1,29 +1,41 @@
-export class RagflowService {
-  async createConversation(userId) {
-    const response = await fetch('/api/ragflow/conversations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
-    });
-    const data = await response.json();
-    return data.conversationId;
+export class RAGflowService {
+  constructor(socket) {
+    this.socket = socket;
   }
 
-  async sendMessage(conversationId, message) {
-    const response = await fetch(`/api/ragflow/conversations/${conversationId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
-    });
-    const data = await response.json();
-    return data.response;
+  sendQuery(query) {
+    this.socket.send(JSON.stringify({
+      type: 'ragflowQuery',
+      question: query
+    }));
   }
 
-  async getChatHistory(conversationId) {
-    const response = await fetch(`/api/ragflow/conversations/${conversationId}/history`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    return await response.json();
+  handleResponse(responseData, callback) {
+    const response = JSON.parse(responseData);
+    if (response.type === 'ragflowResponse') {
+      callback(response.response);
+    }
+  }
+
+  handleError(error, errorCallback) {
+    errorCallback('Error: Unable to connect to the server. Please try again later.');
+  }
+
+  handleClose(closeCallback) {
+    closeCallback('Connection lost. Attempting to reconnect...');
+  }
+
+  setupWebSocket(handleResponse, handleError, handleClose) {
+    this.socket.onmessage = (event) => {
+      this.handleResponse(event.data, handleResponse);
+    };
+
+    this.socket.onerror = (error) => {
+      this.handleError(error, handleError);
+    };
+
+    this.socket.onclose = () => {
+      this.handleClose(handleClose);
+    };
   }
 }

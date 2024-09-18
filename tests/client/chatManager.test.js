@@ -1,51 +1,64 @@
 import { ChatManager } from '../../public/js/components/chatManager';
 
-describe('Chat Manager', () => {
+describe('ChatManager', () => {
   let chatManager;
   let mockWebSocket;
 
   beforeEach(() => {
-    mockWebSocket = { send: jest.fn() };
+    mockWebSocket = {
+      send: jest.fn()
+    };
     chatManager = new ChatManager(mockWebSocket);
+    console.log = jest.fn(); // Mock console.log
+    console.error = jest.fn(); // Mock console.error
   });
 
-  test('ChatManager can be instantiated', () => {
-    expect(chatManager).toBeInstanceOf(ChatManager);
+  test('ChatManager initializes correctly', () => {
+    expect(chatManager.webSocket).toBe(mockWebSocket);
+    expect(console.log).toHaveBeenCalledWith('Initializing chat manager...');
   });
 
-  test('sendMessage method exists', () => {
-    expect(typeof chatManager.sendMessage).toBe('function');
-  });
-
-  test('sendMessage method sends a message via WebSocket', () => {
-    const message = 'test message';
+  test('sendMessage sends message through WebSocket', () => {
+    const message = 'Test message';
     chatManager.sendMessage(message);
+
+    expect(console.log).toHaveBeenCalledWith('Sending message:', message);
     expect(mockWebSocket.send).toHaveBeenCalledWith(JSON.stringify({ type: 'chat', message }));
   });
 
-  test('handleWebSocketMessage method exists', () => {
-    expect(typeof chatManager.handleWebSocketMessage).toBe('function');
+  test('handleWebSocketMessage processes chat messages correctly', () => {
+    const updateChatDisplaySpy = jest.spyOn(chatManager, 'updateChatDisplay');
+    const mockMessage = {
+      data: JSON.stringify({ type: 'chat', message: 'Test chat message' })
+    };
+
+    chatManager.handleWebSocketMessage(mockMessage);
+
+    expect(updateChatDisplaySpy).toHaveBeenCalledWith('Test chat message');
   });
 
-  test('handleWebSocketMessage method processes incoming messages', () => {
-    const mockUpdateChatDisplay = jest.fn();
-    chatManager.updateChatDisplay = mockUpdateChatDisplay;
+  test('handleWebSocketMessage ignores non-chat messages', () => {
+    const updateChatDisplaySpy = jest.spyOn(chatManager, 'updateChatDisplay');
+    const mockMessage = {
+      data: JSON.stringify({ type: 'other', message: 'Test other message' })
+    };
 
-    const message = { data: JSON.stringify({ type: 'chat', message: 'Hello!' }) };
-    chatManager.handleWebSocketMessage(message);
+    chatManager.handleWebSocketMessage(mockMessage);
 
-    expect(mockUpdateChatDisplay).toHaveBeenCalledWith('Hello!');
+    expect(updateChatDisplaySpy).not.toHaveBeenCalled();
   });
 
-  test('handleWebSocketError method exists', () => {
-    expect(typeof chatManager.handleWebSocketError).toBe('function');
+  test('updateChatDisplay logs received message', () => {
+    const message = 'Test received message';
+    chatManager.updateChatDisplay(message);
+
+    expect(console.log).toHaveBeenCalledWith('Received message:', message);
   });
 
-  test('handleWebSocketError method logs errors', () => {
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+  test('handleWebSocketError logs error message', () => {
     const error = new Error('Test error');
     chatManager.handleWebSocketError(error);
-    expect(consoleSpy).toHaveBeenCalledWith('WebSocket error:', error);
-    consoleSpy.mockRestore();
+
+    expect(console.error).toHaveBeenCalledWith('WebSocket error:', error);
   });
 });
