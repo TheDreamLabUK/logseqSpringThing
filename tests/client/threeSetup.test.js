@@ -35,8 +35,19 @@ describe('Three.js Setup', () => {
   });
 
   test('updateSceneSize returns true', () => {
+    const mockTexture = {
+      image: {
+        data: new Float32Array(16), // Or appropriate size based on your test
+      },
+    };
+    THREE.DataTexture.mockImplementation(() => mockTexture);
+    
     const mockRenderer = { setSize: jest.fn() };
-    const mockCamera = {};
+    const mockCamera = {
+      position: { z: 0 },
+      updateProjectionMatrix: jest.fn(),
+    };
+    THREE.PerspectiveCamera.mockImplementation(() => mockCamera); 
     expect(updateSceneSize(mockRenderer, mockCamera, 800, 600)).toBe(true);
     expect(mockRenderer.setSize).toHaveBeenCalledWith(800, 600);
   });

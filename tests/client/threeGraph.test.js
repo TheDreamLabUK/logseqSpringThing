@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { ForceGraph } from '../../public/js/threeJS/threeGraph';
 
 jest.mock('three', () => {

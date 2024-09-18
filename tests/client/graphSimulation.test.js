@@ -1,6 +1,4 @@
 import { GraphSimulation } from '../../public/js/components/graphSimulation';
-import * as THREE from 'three';
-import { GPUComputationRenderer } from 'three/examples/jsm/misc/GPUComputationRenderer.js';
 
 jest.mock('three');
 jest.mock('three/examples/jsm/misc/GPUComputationRenderer.js');

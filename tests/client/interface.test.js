@@ -66,7 +66,7 @@ describe('uInterface', () => {
       scrollHeight: 100
     };
     mockDocument.getElementById.mockReturnValue(mockChatMessages);
-
+    uInterface.createChatInterface();
     uInterface.addChatMessage('User', 'Test message');
 
     expect(mockDocument.createElement).toHaveBeenCalledWith('p');
