@@ -1,7 +1,4 @@
 import { WebXRVisualization } from '../../public/js/components/webXRVisualization';
-import * as THREE from 'three';
-import { VRButton } from 'three/examples/jsm/webxr/VRButton';
-import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory';
 
 jest.mock('three');
 jest.mock('three/examples/jsm/webxr/VRButton');

@@ -4,8 +4,10 @@
   "description": "WebXR Graph Visualization",
   "main": "server.js",
   "scripts": {
+    "start": "node server.js",
     "test": "jest",
-    "start": "node server.js"
+    "build": "babel src --out-dir dist",
+    "watch": "babel src --out-dir dist --watch"
   },
   "dependencies": {
     "3d-force-graph": "^1.70.10",
@@ -13,10 +15,15 @@
     "three": "^0.128.0"
   },
   "devDependencies": {
+    "@babel/cli": "^7.25.0",
     "@babel/core": "^7.25.2",
     "@babel/plugin-transform-runtime": "^7.25.4",
     "@babel/preset-env": "^7.25.4",
     "babel-jest": "^27.5.1",
-    "jest": "^27.5.1"
+    "jest": "^27.5.1",
+    "jest-node-exports-resolver": "^1.1.6"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }

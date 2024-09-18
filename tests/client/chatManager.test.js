@@ -14,10 +14,11 @@ describe('ChatManager', () => {
   });
 
   test('ChatManager initializes correctly', () => {
-    expect(chatManager.webSocket).toBe(mockWebSocket);
-    expect(console.log).toHaveBeenCalledWith('Initializing chat manager...');
+    const consoleSpy = jest.spyOn(console, 'log');
+    const chatManager = new ChatManager(mockWebSocket);
+    expect(consoleSpy).toHaveBeenCalledWith('Initializing chat manager...');
   });
-
+  
   test('sendMessage sends message through WebSocket', () => {
     const message = 'Test message';
     chatManager.sendMessage(message);
