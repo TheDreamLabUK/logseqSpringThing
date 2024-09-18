@@ -2,20 +2,22 @@ module.exports = {
   testEnvironment: 'jsdom',
   moduleFileExtensions: ['js', 'json', 'mjs'],
   transform: {
-    '^.+\\.mjs$': 'babel-jest', // Transforms .mjs files with Babel
-    '^.+\\.[jt]sx?$': 'babel-jest', // Transforms JS and JSX
+    '^.+\\.(js|mjs)$': 'babel-jest',
   },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/public/js/$1',
+    '^three$': '<rootDir>/node_modules/three/build/three.js',
+    '^three/examples/jsm/(.*)$': '<rootDir>/node_modules/three/examples/jsm/$1',
+    '^3d-force-graph$': '<rootDir>/node_modules/3d-force-graph/dist/3d-force-graph.js',
   },
   testMatch: ['<rootDir>/tests/client/**/*.test.js'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   transformIgnorePatterns: [
-    '/node_modules/(?!three|3d-force-graph|other-es-modules)' // Ensures ES modules are not ignored
+    '/node_modules/(?!(three|3d-force-graph)/)'
   ],
   globals: {
-    'babel-jest': {
-      useESModules: true, // Ensures ES module support in Babel
+    'ts-jest': {
+      useESM: true,
     },
   },
 };

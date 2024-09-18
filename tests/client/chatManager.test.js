@@ -8,9 +8,8 @@ describe('ChatManager', () => {
     mockWebSocket = {
       send: jest.fn()
     };
-    chatManager = new ChatManager(mockWebSocket);
     console.log = jest.fn(); // Mock console.log
-    console.error = jest.fn(); // Mock console.error
+    chatManager = new ChatManager(mockWebSocket);
   });
 
   test('ChatManager initializes correctly', () => {
@@ -27,35 +26,27 @@ describe('ChatManager', () => {
   });
 
   test('handleWebSocketMessage processes chat messages correctly', () => {
-    const updateChatDisplaySpy = jest.spyOn(chatManager, 'updateChatDisplay');
     const mockMessage = {
       data: JSON.stringify({ type: 'chat', message: 'Test chat message' })
     };
 
     chatManager.handleWebSocketMessage(mockMessage);
 
-    expect(updateChatDisplaySpy).toHaveBeenCalledWith('Test chat message');
+    expect(console.log).toHaveBeenCalledWith('Received message:', 'Test chat message');
   });
 
   test('handleWebSocketMessage ignores non-chat messages', () => {
-    const updateChatDisplaySpy = jest.spyOn(chatManager, 'updateChatDisplay');
     const mockMessage = {
       data: JSON.stringify({ type: 'other', message: 'Test other message' })
     };
 
     chatManager.handleWebSocketMessage(mockMessage);
 
-    expect(updateChatDisplaySpy).not.toHaveBeenCalled();
-  });
-
-  test('updateChatDisplay logs received message', () => {
-    const message = 'Test received message';
-    chatManager.updateChatDisplay(message);
-
-    expect(console.log).toHaveBeenCalledWith('Received message:', message);
+    expect(console.log).not.toHaveBeenCalledWith('Received message:', 'Test other message');
   });
 
   test('handleWebSocketError logs error message', () => {
+    console.error = jest.fn(); // Mock console.error
     const error = new Error('Test error');
     chatManager.handleWebSocketError(error);
 

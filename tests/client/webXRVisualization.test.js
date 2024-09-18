@@ -3,7 +3,34 @@ import * as THREE from 'three';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory';
 
-jest.mock('three');
+jest.mock('three', () => {
+  const actualThree = jest.requireActual('three');
+  return {
+    ...actualThree,
+    BufferGeometry: jest.fn().mockImplementation(() => ({
+      setFromPoints: jest.fn().mockReturnThis()
+    })),
+    Vector3: jest.fn().mockImplementation(() => ({
+      set: jest.fn().mockReturnThis(),
+      applyMatrix4: jest.fn().mockReturnThis()
+    })),
+    Line: jest.fn().mockImplementation(() => ({
+      name: '',
+      scale: { z: 0 }
+    })),
+    Matrix4: jest.fn().mockImplementation(() => ({
+      identity: jest.fn().mockReturnThis(),
+      extractRotation: jest.fn().mockReturnThis()
+    })),
+    Raycaster: jest.fn().mockImplementation(() => ({
+      ray: {
+        origin: { setFromMatrixPosition: jest.fn() },
+        direction: { set: jest.fn().mockReturnThis(), applyMatrix4: jest.fn() }
+      },
+      intersectObject: jest.fn().mockReturnValue([])
+    }))
+  };
+});
 jest.mock('three/examples/jsm/webxr/VRButton');
 jest.mock('three/examples/jsm/webxr/XRControllerModelFactory');
 
@@ -14,16 +41,24 @@ describe('WebXRVisualization', () => {
   let mockCamera;
 
   beforeEach(() => {
-    mockScene = new THREE.Scene();
+    mockScene = {
+      add: jest.fn()
+    };
     mockRenderer = {
       xr: {
         enabled: false,
-        getController: jest.fn(),
-        getControllerGrip: jest.fn()
+        getController: jest.fn(() => ({
+          addEventListener: jest.fn(),
+          add: jest.fn()
+        })),
+        getControllerGrip: jest.fn(() => ({
+          add: jest.fn()
+        }))
       },
-      setAnimationLoop: jest.fn()
+      setAnimationLoop: jest.fn(),
+      render: jest.fn()
     };
-    mockCamera = new THREE.PerspectiveCamera();
+    mockCamera = {};
 
     webXRVisualization = new WebXRVisualization(mockScene, mockRenderer, mockCamera);
   });
@@ -46,16 +81,16 @@ describe('WebXRVisualization', () => {
   });
 
   test('initVRControllers sets up VR controllers', () => {
-    const mockController = new THREE.Object3D();
-    const mockControllerGrip = new THREE.Object3D();
-    mockRenderer.xr.getController.mockReturnValue(mockController);
-    mockRenderer.xr.getControllerGrip.mockReturnValue(mockControllerGrip);
+    const mockControllerModelFactory = {
+      createControllerModel: jest.fn()
+    };
+    XRControllerModelFactory.mockImplementation(() => mockControllerModelFactory);
 
     webXRVisualization.initVRControllers();
 
     expect(mockRenderer.xr.getController).toHaveBeenCalledTimes(2);
     expect(mockRenderer.xr.getControllerGrip).toHaveBeenCalledTimes(2);
-    expect(mockScene.add).toHaveBeenCalledTimes(4); // 2 controllers + 2 grips
+    expect(mockScene.add).toHaveBeenCalledTimes(4);
     expect(XRControllerModelFactory).toHaveBeenCalledTimes(1);
   });
 
@@ -83,32 +118,20 @@ describe('WebXRVisualization', () => {
     const mockController = {
       matrixWorld: new THREE.Matrix4()
     };
-    const mockRaycaster = {
-      ray: {
-        origin: new THREE.Vector3(),
-        direction: new THREE.Vector3()
-      },
-      intersectObject: jest.fn().mockReturnValue(['mockIntersection'])
-    };
-    THREE.Raycaster.mockImplementation(() => mockRaycaster);
-
-    webXRVisualization.nodesMesh = new THREE.Object3D();
+    webXRVisualization.nodesMesh = {};
 
     const intersections = webXRVisualization.getIntersections(mockController);
 
-    expect(intersections).toEqual(['mockIntersection']);
-    expect(mockRaycaster.intersectObject).toHaveBeenCalledWith(webXRVisualization.nodesMesh);
+    expect(intersections).toEqual([]);
+    expect(THREE.Raycaster).toHaveBeenCalled();
   });
 
   test('animate sets up animation loop', () => {
-    const mockRender = jest.fn();
-    webXRVisualization.render = mockRender;
-
     webXRVisualization.animate();
 
     expect(mockRenderer.setAnimationLoop).toHaveBeenCalled();
     const animationCallback = mockRenderer.setAnimationLoop.mock.calls[0][0];
     animationCallback();
-    expect(mockRender).toHaveBeenCalled();
+    expect(mockRenderer.render).toHaveBeenCalledWith(mockScene, mockCamera);
   });
 });

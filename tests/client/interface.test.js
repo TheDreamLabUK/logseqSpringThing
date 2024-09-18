@@ -1,7 +1,7 @@
 import { Interface } from '../../public/js/components/interface';
 
 describe('uInterface', () => {
-  let interface;
+  let uInterface;
   let mockDocument;
 
   beforeEach(() => {
@@ -12,7 +12,8 @@ describe('uInterface', () => {
         addEventListener: jest.fn()
       }),
       body: {
-        appendChild: jest.fn()
+        appendChild: jest.fn(),
+        removeChild: jest.fn()
       },
       getElementById: jest.fn().mockReturnValue({
         style: {},
@@ -20,15 +21,15 @@ describe('uInterface', () => {
         appendChild: jest.fn()
       })
     };
-    interface = new Interface(mockDocument);
+    uInterface = new Interface(mockDocument);
   });
 
   test('Interface initializes correctly', () => {
-    expect(interface.document).toBe(mockDocument);
+    expect(uInterface.document).toBe(mockDocument);
   });
 
   test('createUI creates info panel', () => {
-    interface.createUI();
+    uInterface.createUI();
 
     expect(mockDocument.createElement).toHaveBeenCalledWith('div');
     expect(mockDocument.body.appendChild).toHaveBeenCalled();
@@ -36,7 +37,7 @@ describe('uInterface', () => {
 
   test('updateNodeInfoUI updates info panel with node data', () => {
     const mockNode = { id: 1, name: 'Test Node', size: 10 };
-    interface.updateNodeInfoUI(mockNode);
+    uInterface.updateNodeInfoUI(mockNode);
 
     const infoPanel = mockDocument.getElementById('node-info-panel');
     expect(infoPanel.innerHTML).toContain('Test Node');
@@ -44,14 +45,14 @@ describe('uInterface', () => {
   });
 
   test('updateNodeInfoUI hides info panel when no node is selected', () => {
-    interface.updateNodeInfoUI(null);
+    uInterface.updateNodeInfoUI(null);
 
     const infoPanel = mockDocument.getElementById('node-info-panel');
     expect(infoPanel.style.display).toBe('none');
   });
 
   test('createChatInterface creates chat container and elements', () => {
-    interface.createChatInterface();
+    uInterface.createChatInterface();
 
     expect(mockDocument.createElement).toHaveBeenCalledWith('div');
     expect(mockDocument.createElement).toHaveBeenCalledWith('input');
@@ -59,16 +60,23 @@ describe('uInterface', () => {
   });
 
   test('addChatMessage adds message to chat container', () => {
-    interface.createChatInterface();
-    interface.addChatMessage('User', 'Test message');
+    const mockChatMessages = {
+      appendChild: jest.fn(),
+      scrollTop: 0,
+      scrollHeight: 100
+    };
+    mockDocument.getElementById.mockReturnValue(mockChatMessages);
 
-    const chatMessages = mockDocument.getElementById('chat-messages');
-    expect(chatMessages.innerHTML).toContain('User: Test message');
+    uInterface.addChatMessage('User', 'Test message');
+
+    expect(mockDocument.createElement).toHaveBeenCalledWith('p');
+    expect(mockChatMessages.appendChild).toHaveBeenCalled();
+    expect(mockChatMessages.scrollTop).toBe(mockChatMessages.scrollHeight);
   });
 
   test('displayErrorMessage creates and removes error container', () => {
     jest.useFakeTimers();
-    interface.displayErrorMessage('Test error');
+    uInterface.displayErrorMessage('Test error');
 
     expect(mockDocument.createElement).toHaveBeenCalledWith('div');
     expect(mockDocument.body.appendChild).toHaveBeenCalled();

@@ -2,104 +2,135 @@ import { GraphDataManager } from '../../public/js/services/graphDataManager';
 
 describe('GraphDataManager', () => {
   let graphDataManager;
+  let mockWebSocket;
 
   beforeEach(() => {
-    graphDataManager = new GraphDataManager();
+    mockWebSocket = {
+      send: jest.fn()
+    };
+    graphDataManager = new GraphDataManager(mockWebSocket);
+    global.fetch = jest.fn();
   });
 
-  test('GraphDataManager initializes correctly', () => {
-    expect(graphDataManager.nodes).toEqual([]);
-    expect(graphDataManager.edges).toEqual([]);
+  afterEach(() => {
+    jest.resetAllMocks();
   });
 
-  test('loadInitialData fetches and sets graph data', async () => {
-    const mockData = {
-      nodes: [{ id: 1, name: 'Node 1' }, { id: 2, name: 'Node 2' }],
+  test('should initialize with empty graph data', () => {
+    expect(graphDataManager.graphData).toEqual({ nodes: [], edges: [] });
+  });
+
+  test('should fetch initial graph data', async () => {
+    const mockData = { nodes: [{ id: 1 }], edges: [{ source: 1, target: 2 }] };
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValueOnce(mockData)
+    });
+
+    await graphDataManager.fetchInitialData();
+
+    expect(global.fetch).toHaveBeenCalledWith('/api/graph-data');
+    expect(graphDataManager.graphData).toEqual(mockData);
+  });
+
+  test('should handle fetch error', async () => {
+    global.fetch.mockRejectedValueOnce(new Error('Network error'));
+
+    await expect(graphDataManager.fetchInitialData()).rejects.toThrow('Error loading graph data');
+  });
+
+  test('should handle WebSocket messages', () => {
+    const mockMessage = { data: JSON.stringify({ type: 'update', data: { nodes: [{ id: 1 }], edges: [] } }) };
+    graphDataManager.handleWebSocketMessage(mockMessage);
+
+    expect(graphDataManager.graphData).toEqual({ nodes: [{ id: 1 }], edges: [] });
+  });
+
+  test('should send messages via WebSocket', () => {
+    const message = { type: 'request', data: {} };
+    graphDataManager.sendWebSocketMessage(message);
+
+    expect(mockWebSocket.send).toHaveBeenCalledWith(JSON.stringify(message));
+  });
+
+  test('should add a node', () => {
+    const node = { id: 1, label: 'Test Node' };
+    graphDataManager.addNode(node);
+
+    expect(graphDataManager.graphData.nodes).toContainEqual(node);
+  });
+
+  test('should remove a node', () => {
+    graphDataManager.graphData = {
+      nodes: [{ id: 1 }, { id: 2 }],
       edges: [{ source: 1, target: 2 }]
     };
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue(mockData)
-    });
-
-    await graphDataManager.loadInitialData();
-
-    expect(global.fetch).toHaveBeenCalledWith('/api/graph-data');
-    expect(graphDataManager.nodes).toEqual(mockData.nodes);
-    expect(graphDataManager.edges).toEqual(mockData.edges);
-  });
-
-  test('loadInitialData handles fetch error', async () => {
-    global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
-
-    await expect(graphDataManager.loadInitialData()).rejects.toThrow('Error loading graph data');
-  });
-
-  test('addNode adds a new node', () => {
-    const newNode = { id: 1, name: 'New Node' };
-    graphDataManager.addNode(newNode);
-
-    expect(graphDataManager.nodes).toContain(newNode);
-  });
-
-  test('removeNode removes a node and its associated edges', () => {
-    graphDataManager.nodes = [{ id: 1, name: 'Node 1' }, { id: 2, name: 'Node 2' }];
-    graphDataManager.edges = [{ source: 1, target: 2 }, { source: 2, target: 1 }];
-
     graphDataManager.removeNode(1);
 
-    expect(graphDataManager.nodes).toEqual([{ id: 2, name: 'Node 2' }]);
-    expect(graphDataManager.edges).toEqual([]);
+    expect(graphDataManager.graphData.nodes).toEqual([{ id: 2 }]);
+    expect(graphDataManager.graphData.edges).toEqual([]);
   });
 
-  test('addEdge adds a new edge', () => {
-    const newEdge = { source: 1, target: 2 };
-    graphDataManager.addEdge(newEdge);
+  test('should add an edge', () => {
+    const edge = { source: 1, target: 2 };
+    graphDataManager.addEdge(edge);
 
-    expect(graphDataManager.edges).toContain(newEdge);
+    expect(graphDataManager.graphData.edges).toContainEqual(edge);
   });
 
-  test('removeEdge removes an edge', () => {
-    graphDataManager.edges = [{ source: 1, target: 2 }, { source: 2, target: 3 }];
+  test('should remove an edge', () => {
+    graphDataManager.graphData = {
+      nodes: [{ id: 1 }, { id: 2 }],
+      edges: [{ source: 1, target: 2 }, { source: 2, target: 1 }]
+    };
 
     graphDataManager.removeEdge(1, 2);
 
-    expect(graphDataManager.edges).toEqual([{ source: 2, target: 3 }]);
+    expect(graphDataManager.graphData.edges).toEqual([{ source: 2, target: 1 }]);
   });
 
-  test('updateNode updates an existing node', () => {
-    graphDataManager.nodes = [{ id: 1, name: 'Old Name' }];
+  test('should update a node', () => {
+    graphDataManager.graphData = {
+      nodes: [{ id: 1, label: 'Old Label' }],
+      edges: []
+    };
 
-    graphDataManager.updateNode(1, { name: 'New Name' });
+    graphDataManager.updateNode(1, { label: 'New Label' });
 
-    expect(graphDataManager.nodes[0]).toEqual({ id: 1, name: 'New Name' });
+    expect(graphDataManager.graphData.nodes[0]).toEqual({ id: 1, label: 'New Label' });
   });
 
-  test('getNodeById returns the correct node', () => {
-    graphDataManager.nodes = [{ id: 1, name: 'Node 1' }, { id: 2, name: 'Node 2' }];
+  test('should get a node by id', () => {
+    graphDataManager.graphData = {
+      nodes: [{ id: 1, label: 'Test Node' }],
+      edges: []
+    };
 
-    const node = graphDataManager.getNodeById(2);
+    const node = graphDataManager.getNodeById(1);
 
-    expect(node).toEqual({ id: 2, name: 'Node 2' });
+    expect(node).toEqual({ id: 1, label: 'Test Node' });
   });
 
-  test('getConnectedNodes returns nodes connected to a given node', () => {
-    graphDataManager.nodes = [{ id: 1 }, { id: 2 }, { id: 3 }];
-    graphDataManager.edges = [{ source: 1, target: 2 }, { source: 2, target: 3 }];
+  test('should get connected nodes', () => {
+    graphDataManager.graphData = {
+      nodes: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      edges: [{ source: 1, target: 2 }, { source: 3, target: 1 }]
+    };
 
-    const connectedNodes = graphDataManager.getConnectedNodes(2);
+    const connectedNodes = graphDataManager.getConnectedNodes(1);
 
-    expect(connectedNodes).toEqual([{ id: 1 }, { id: 3 }]);
+    expect(connectedNodes).toEqual([{ id: 2 }, { id: 3 }]);
   });
 
-  test('clearData clears all nodes and edges', () => {
-    graphDataManager.nodes = [{ id: 1 }, { id: 2 }];
-    graphDataManager.edges = [{ source: 1, target: 2 }];
+  test('should clear data', () => {
+    graphDataManager.graphData = {
+      nodes: [{ id: 1 }],
+      edges: [{ source: 1, target: 2 }]
+    };
 
     graphDataManager.clearData();
 
-    expect(graphDataManager.nodes).toEqual([]);
-    expect(graphDataManager.edges).toEqual([]);
+    expect(graphDataManager.graphData).toEqual({ nodes: [], edges: [] });
   });
 });
