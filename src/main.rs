@@ -7,9 +7,12 @@ use tokio::sync::RwLock;
 use std::collections::HashMap;
 use webxr_graph::config::Settings;
 use webxr_graph::services::perplexity_service::RealApiClient;
+use env_logger::Env;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    env_logger::init_from_env(Env::default().default_filter_or("info"));
+
     let file_cache = Arc::new(RwLock::new(HashMap::new()));
     let graph_data = Arc::new(RwLock::new(GraphData::default()));
     let settings = Settings::new().unwrap();

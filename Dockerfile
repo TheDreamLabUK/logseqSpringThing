@@ -1,10 +1,20 @@
-# Use an official Rust image as the base image
-FROM rust:1.67 as builder
+# Use NVIDIA CUDA runtime base image with Ubuntu 22.04 and necessary libraries
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04 as builder
 
-# Install NVIDIA GPU support
+# Install necessary dependencies for building Rust applications
 RUN apt-get update && apt-get install -y \
-    libcuda1-384 \
-    nvidia-cuda-toolkit
+    build-essential \
+    gnupg2 \
+    curl \
+    libssl-dev \
+    pkg-config \
+    cmake \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Set the working directory in the container
 WORKDIR /usr/src/app
@@ -15,16 +25,17 @@ COPY Cargo.toml Cargo.lock ./
 # Copy the source code
 COPY src ./src
 
-# Build the application
+# Build the Rust application
 RUN cargo build --release
 
-# Use a smaller base image for the final image
-FROM debian:buster-slim
+# Use the NVIDIA CUDA runtime in the final image
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
-# Install NVIDIA GPU support
+# Install necessary runtime dependencies
 RUN apt-get update && apt-get install -y \
-    libcuda1-384 \
-    nvidia-cuda-toolkit
+    curl \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the built executable from the builder stage
 COPY --from=builder /usr/src/app/target/release/webxr-graph /usr/local/bin/webxr-graph

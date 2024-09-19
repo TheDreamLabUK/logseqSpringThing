@@ -1,169 +1,217 @@
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
+// public/js/components/visualization.js
 
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+/**
+ * Visualization class handles the creation and rendering of the 3D graph using Three.js.
+ */
 export class Visualization {
   constructor() {
+    // Initialize Three.js components
     this.initThreeJS();
-    this.addLights();
-    this.addBackground();
-    this.initPostProcessing();
+
+    // Store references to node and edge meshes for easy updates
+    this.nodeMeshes = new Map();
+    this.edgeMeshes = new Map();
   }
 
+  /**
+   * Initializes Three.js scene, camera, renderer, and controls.
+   */
   initThreeJS() {
+    // Create the scene
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x000000, 0.02);
+    this.scene.fog = new THREE.FogExp2(0x000000, 0.002);
 
+    // Create the camera
     this.camera = new THREE.PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
       0.1,
       1000
     );
-    this.camera.position.set(0, 0, 50);
+    this.camera.position.set(0, 0, 100);
 
+    // Create the renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.xr.enabled = true; // Enable WebXR
     document.body.appendChild(this.renderer.domElement);
 
-    this.controls = new OrbitControls(
-      this.camera,
-      this.renderer.domElement
-    );
+    // Add orbit controls for camera manipulation
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
 
-    window.addEventListener(
-      'resize',
-      this.onWindowResize.bind(this),
-      false
-    );
-  }
-
-  addLights() {
-    // Ambient Light
-    const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+    // Add ambient light to the scene
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     this.scene.add(ambientLight);
 
-    // Point Light
-    const pointLight = new THREE.PointLight(0xffffff, 1);
-    pointLight.position.set(50, 50, 50);
-    this.scene.add(pointLight);
-
-    // Directional Light
-    const directionalLight = new THREE.DirectionalLight(
-      0xffffff,
-      0.5
-    );
-    directionalLight.position.set(-50, -50, -50);
+    // Add directional light to the scene
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    directionalLight.position.set(50, 50, 50);
     this.scene.add(directionalLight);
+
+    // Handle window resize events
+    window.addEventListener('resize', this.onWindowResize.bind(this), false);
   }
 
-  addBackground() {
-    const loader = new THREE.CubeTextureLoader();
-    const texture = loader.load([
-      'path/to/px.jpg',
-      'path/to/nx.jpg',
-      'path/to/py.jpg',
-      'path/to/ny.jpg',
-      'path/to/pz.jpg',
-      'path/to/nz.jpg',
-    ]);
-    this.scene.background = texture;
+  /**
+   * Creates the initial graph visualization based on fetched graph data.
+   * @param {object} graphData - The graph data containing nodes and edges.
+   */
+  createGraph(graphData) {
+    this.createNodeObjects(graphData.nodes);
+    this.createEdgeObjects(graphData.edges);
   }
 
-  initPostProcessing() {
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-
-    const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.5,
-      0.4,
-      0.85
-    );
-    bloomPass.threshold = 0;
-    bloomPass.strength = 1.5;
-    bloomPass.radius = 0;
-    this.composer.addPass(bloomPass);
-  }
-
+  /**
+   * Creates Three.js Mesh objects for each node and adds them to the scene.
+   * @param {Array} nodes - Array of node objects.
+   */
   createNodeObjects(nodes) {
-    const geometry = new THREE.SphereGeometry(1, 32, 32);
+    // Define geometry and material for nodes
+    const geometry = new THREE.SphereGeometry(1.5, 16, 16);
+    const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
 
-    const material = new THREE.MeshStandardMaterial({
-      color: 0xff0000,
-      metalness: 0.7,
-      roughness: 0.2,
-      emissive: 0x111111,
-      envMap: this.scene.background,
+    nodes.forEach(node => {
+      // Create a mesh for each node
+      const mesh = new THREE.Mesh(geometry, material.clone());
+      mesh.position.set(node.x, node.y, node.z);
+      mesh.userData = { id: node.id, name: node.name };
+
+      // Add the mesh to the scene
+      this.scene.add(mesh);
+
+      // Store the mesh in the nodeMeshes map for easy access
+      this.nodeMeshes.set(node.id, mesh);
     });
-
-    this.nodesGroup = new THREE.Group();
-
-    nodes.forEach((node) => {
-      const sphere = new THREE.Mesh(geometry, material);
-      sphere.position.set(node.x || 0, node.y || 0, node.z || 0);
-      this.nodesGroup.add(sphere);
-    });
-
-    this.scene.add(this.nodesGroup);
   }
 
+  /**
+   * Creates Three.js Line objects for each edge and adds them to the scene.
+   * @param {Array} edges - Array of edge objects.
+   */
   createEdgeObjects(edges) {
-    const material = new THREE.LineBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.5,
+    edges.forEach(edge => {
+      const sourceNode = this.nodeMeshes.get(edge.source);
+      const targetNode = this.nodeMeshes.get(edge.target);
+
+      if (sourceNode && targetNode) {
+        // Define geometry for the edge
+        const geometry = new THREE.BufferGeometry();
+        const vertices = new Float32Array([
+          sourceNode.position.x,
+          sourceNode.position.y,
+          sourceNode.position.z,
+          targetNode.position.x,
+          targetNode.position.y,
+          targetNode.position.z,
+        ]);
+        geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+
+        // Define material for the edge
+        const material = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true });
+
+        // Create the line object
+        const line = new THREE.Line(geometry, material);
+
+        // Add the line to the scene
+        this.scene.add(line);
+
+        // Store the line in the edgeMeshes map for easy access
+        this.edgeMeshes.set(`${edge.source}-${edge.target}`, line);
+      }
     });
-
-    const edgesGroup = new THREE.Group();
-
-    edges.forEach((edge) => {
-      const geometry = new THREE.BufferGeometry();
-      const vertices = new Float32Array([
-        edge.source.x || 0,
-        edge.source.y || 0,
-        edge.source.z || 0,
-        edge.target.x || 0,
-        edge.target.y || 0,
-        edge.target.z || 0,
-      ]);
-      geometry.setAttribute(
-        'position',
-        new THREE.BufferAttribute(vertices, 3)
-      );
-
-      const line = new THREE.Line(geometry, material);
-      edgesGroup.add(line);
-    });
-
-    this.scene.add(edgesGroup);
   }
 
-  onWindowResize() {
-    this.camera.aspect =
-      window.innerWidth / window.innerHeight;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(
-      window.innerWidth,
-      window.innerHeight
-    );
-    this.composer.setSize(window.innerWidth, window.innerHeight);
+  /**
+   * Updates the graph visualization based on new graph data received from the server.
+   * @param {object} graphData - The updated graph data containing nodes and edges.
+   */
+  updateGraph(graphData) {
+    // Update nodes
+    graphData.nodes.forEach(node => {
+      const mesh = this.nodeMeshes.get(node.id);
+      if (mesh) {
+        // Update node position
+        mesh.position.set(node.x, node.y, node.z);
+
+        // Optionally, update node properties like color or size
+        // Example: mesh.material.color.set(node.color || 0xff0000);
+      } else {
+        // If the node doesn't exist, create it
+        this.createNodeObjects([node]);
+      }
+    });
+
+    // Remove nodes that no longer exist
+    const existingNodeIds = new Set(graphData.nodes.map(node => node.id));
+    this.nodeMeshes.forEach((mesh, nodeId) => {
+      if (!existingNodeIds.has(nodeId)) {
+        this.scene.remove(mesh);
+        this.nodeMeshes.delete(nodeId);
+      }
+    });
+
+    // Update edges
+    graphData.edges.forEach(edge => {
+      const edgeKey = `${edge.source}-${edge.target}`;
+      const line = this.edgeMeshes.get(edgeKey);
+      const sourceNode = this.nodeMeshes.get(edge.source);
+      const targetNode = this.nodeMeshes.get(edge.target);
+
+      if (line && sourceNode && targetNode) {
+        // Update edge positions
+        const positions = line.geometry.attributes.position.array;
+        positions[0] = sourceNode.position.x;
+        positions[1] = sourceNode.position.y;
+        positions[2] = sourceNode.position.z;
+        positions[3] = targetNode.position.x;
+        positions[4] = targetNode.position.y;
+        positions[5] = targetNode.position.z;
+        line.geometry.attributes.position.needsUpdate = true;
+
+        // Optionally, update edge properties like color or opacity
+        // Example: line.material.color.set(edge.color || 0xffffff);
+      } else if (sourceNode && targetNode) {
+        // If the edge doesn't exist, create it
+        this.createEdgeObjects([edge]);
+      }
+    });
+
+    // Remove edges that no longer exist
+    const existingEdgeKeys = new Set(graphData.edges.map(edge => `${edge.source}-${edge.target}`));
+    this.edgeMeshes.forEach((line, edgeKey) => {
+      if (!existingEdgeKeys.has(edgeKey)) {
+        this.scene.remove(line);
+        this.edgeMeshes.delete(edgeKey);
+      }
+    });
   }
 
-  animate() {
-    requestAnimationFrame(this.animate.bind(this));
+  /**
+   * Renders the scene using the Three.js renderer.
+   */
+  render() {
+    // Update orbit controls for smooth camera movement
     this.controls.update();
 
-    // Rotate the nodes group for some animation
-    if (this.nodesGroup) {
-      this.nodesGroup.rotation.y += 0.001;
-    }
+    // Render the scene
+    this.renderer.render(this.scene, this.camera);
+  }
 
-    // Use composer for post-processing
-    this.composer.render();
+  /**
+   * Handles window resize events by updating camera and renderer dimensions.
+   */
+  onWindowResize() {
+    // Update camera aspect ratio
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+
+    // Update renderer size
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
 }

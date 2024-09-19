@@ -6,10 +6,29 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+# Option to check for rebuild flag
+REBUILD=false
+if [ "$1" == "--rebuild" ]; then
+    REBUILD=true
+fi
+
 # Stop and remove the existing container if it exists
+echo "Stopping and removing existing containers..."
 docker-compose down
 
-# Build and start the new container
-docker-compose up --build -d
+# Optional rebuild
+if [ "$REBUILD" == true ]; then
+    echo "Rebuilding the Docker containers..."
+    docker-compose build --no-cache
+else
+    echo "Skipping rebuild. Starting the containers..."
+fi
+
+# Start the container in detached mode
+docker-compose up -d
+
+# Wait for the containers to be healthy (optional)
+echo "Waiting for containers to be healthy..."
+docker-compose ps
 
 echo "WebXR Graph Visualization container has been launched successfully!"

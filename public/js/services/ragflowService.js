@@ -1,41 +1,49 @@
+// public/js/services/ragflowService.js
+
+/**
+ * RAGflowService manages interactions with the RAGFlow API for AI-powered question answering.
+ */
 export class RAGflowService {
-  constructor(socket) {
-    this.socket = socket;
+  /**
+   * Creates a new RAGflowService instance.
+   * @param {WebsocketService} webSocket - The WebSocket service instance.
+   */
+  constructor(webSocket) {
+    this.webSocket = webSocket;
+    this.setupWebSocketListeners();
   }
 
+  /**
+   * Sets up WebSocket listeners specific to RAGFlow interactions.
+   */
+  setupWebSocketListeners() {
+    // Listen for RAGFlow responses from the server
+    this.webSocket.on('message', (data) => {
+      if (data.type === 'ragflowResponse') {
+        this.handleRAGFlowResponse(data);
+      }
+    });
+  }
+
+  /**
+   * Sends a query to RAGFlow via WebSocket.
+   * @param {string} query - The user's question.
+   */
   sendQuery(query) {
-    this.socket.send(JSON.stringify({
+    this.webSocket.send({
       type: 'ragflowQuery',
       question: query
-    }));
+    });
   }
 
-  handleResponse(responseData, callback) {
-    const response = JSON.parse(responseData);
-    if (response.type === 'ragflowResponse') {
-      callback(response.response);
-    }
-  }
-
-  handleError(error, errorCallback) {
-    errorCallback('Error: Unable to connect to the server. Please try again later.');
-  }
-
-  handleClose(closeCallback) {
-    closeCallback('Connection lost. Attempting to reconnect...');
-  }
-
-  setupWebSocket(handleResponse, handleError, handleClose) {
-    this.socket.onmessage = (event) => {
-      this.handleResponse(event.data, handleResponse);
-    };
-
-    this.socket.onerror = (error) => {
-      this.handleError(error, handleError);
-    };
-
-    this.socket.onclose = () => {
-      this.handleClose(handleClose);
-    };
+  /**
+   * Handles responses from RAGFlow.
+   * @param {object} data - The response data from the server.
+   */
+  handleRAGFlowResponse(data) {
+    const { answer } = data;
+    // Dispatch a custom event or use other mechanisms to pass the answer to ChatManager
+    const event = new CustomEvent('ragflowAnswer', { detail: answer });
+    window.dispatchEvent(event);
   }
 }
