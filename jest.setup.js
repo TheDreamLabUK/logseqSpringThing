@@ -1,22 +1,5 @@
 import * as THREE from 'three';
 
-// Mock Three.js
-jest.mock('three', () => {
-  return {
-    ...jest.requireActual('three'),
-    WebGLRenderer: jest.fn().mockImplementation(() => ({
-      setSize: jest.fn(),
-      render: jest.fn(),
-      shadowMap: {},
-    })),
-    Scene: jest.fn(),
-    PerspectiveCamera: jest.fn(),
-    Vector3: jest.fn(),
-    Raycaster: jest.fn(),
-    Object3D: jest.fn(),
-  };
-});
-
 // Mock other Three.js modules
 jest.mock('three/examples/jsm/controls/OrbitControls', () => ({
   OrbitControls: jest.fn(),
@@ -32,15 +15,6 @@ jest.mock('three/examples/jsm/webxr/XRControllerModelFactory', () => ({
   XRControllerModelFactory: jest.fn(),
 }));
 
-// Mock 3d-force-graph
-jest.mock('3d-force-graph', () => ({
-  ForceGraph3D: jest.fn().mockImplementation(() => ({
-    graphData: jest.fn(),
-    onNodeClick: jest.fn(),
-    onLinkClick: jest.fn(),
-  })),
-}));
-
 // Mock browser globals
 global.URL.createObjectURL = jest.fn();
 global.WebSocket = jest.fn(() => ({
@@ -53,6 +27,9 @@ class WebGLRenderingContext {}
 global.WebGLRenderingContext = WebGLRenderingContext;
 
 // Mock navigator.xr
+if (typeof global.navigator === 'undefined') {
+  global.navigator = {};
+}
 global.navigator.xr = {
   isSessionSupported: jest.fn().mockResolvedValue(true),
   requestSession: jest.fn().mockResolvedValue({}),
@@ -76,4 +53,32 @@ global.ResizeObserver = class ResizeObserver {
   disconnect() {}
 };
 
-// Add any other necessary mocks here
+jest.mock('three', () => {
+  const actualThree = jest.requireActual('three');
+  return {
+    ...actualThree,
+    WebGLRenderer: jest.fn().mockImplementation(() => ({
+      setSize: jest.fn(),
+      render: jest.fn(),
+      domElement: {
+        style: {},
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        clientWidth: 800,
+        clientHeight: 600,
+      },
+      // Include any other necessary properties or methods
+    })),
+    Scene: jest.fn(() => ({
+      add: jest.fn(),
+      remove: jest.fn(),
+      // Include other methods if needed
+    })),
+    PerspectiveCamera: jest.fn(() => ({
+      position: { z: 100 },
+      updateProjectionMatrix: jest.fn(),
+      // Include other methods if needed
+    })),
+    // Do not mock Vector3, Matrix4, Raycaster, Object3D, etc.
+  };
+});

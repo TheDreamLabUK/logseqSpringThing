@@ -3,15 +3,23 @@ import { VRButton } from 'three/examples/jsm/webxr/VRButton';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory';
 
 export class WebXRVisualization {
-  constructor(scene, renderer, camera) {
+  constructor(scene, renderer, camera, websocketService) {
     this.scene = scene;
     this.renderer = renderer;
     this.camera = camera;
+    this.websocketService = websocketService;
     this.controller1 = null;
     this.controller2 = null;
     this.controllerGrip1 = null;
     this.controllerGrip2 = null;
-    this.nodesMesh = null;
+    this.nodes = new Map();
+
+    this.initWebSocket();
+  }
+
+  initWebSocket() {
+    this.websocketService.on('nodePositions', this.updateNodePositions.bind(this));
+    this.websocketService.on('graphUpdate', this.updateGraph.bind(this));
   }
 
   initVR() {
@@ -59,7 +67,7 @@ export class WebXRVisualization {
 
     if (intersections.length > 0) {
       const intersection = intersections[0];
-      this.selectNode(intersection.point);
+      this.selectNode(intersection.object);
     }
   }
 
@@ -72,15 +80,20 @@ export class WebXRVisualization {
     tempMatrix.identity().extractRotation(controller.matrixWorld);
 
     const raycaster = new THREE.Raycaster();
-    raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+    const rayOrigin = new THREE.Vector3();
+    const rayDirection = new THREE.Vector3(0, 0, -1);
 
-    return raycaster.intersectObject(this.nodesMesh);
+    rayOrigin.copy(controller.position);
+    rayDirection.applyMatrix4(tempMatrix);
+
+    raycaster.set(rayOrigin, rayDirection);
+
+    return raycaster.intersectObjects(Array.from(this.nodes.values()));
   }
 
-  selectNode(point) {
+  selectNode(node) {
     // Implement node selection logic here
-    console.log('Node selected at', point);
+    console.log('Node selected:', node);
   }
 
   deselectNode() {
@@ -88,12 +101,39 @@ export class WebXRVisualization {
     console.log('Node deselected');
   }
 
+  updateNodePositions(positions) {
+    positions.forEach(({ id, position }) => {
+      const node = this.nodes.get(id);
+      if (node) {
+        node.position.set(position.x, position.y, position.z);
+      }
+    });
+  }
+
+  updateGraph(graphData) {
+    // Remove old nodes
+    this.nodes.forEach(node => this.scene.remove(node));
+    this.nodes.clear();
+
+    // Add new nodes
+    graphData.nodes.forEach(nodeData => {
+      const geometry = new THREE.SphereGeometry(0.1, 32, 32);
+      const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const nodeMesh = new THREE.Mesh(geometry, material);
+      nodeMesh.position.set(nodeData.x, nodeData.y, nodeData.z);
+      this.scene.add(nodeMesh);
+      this.nodes.set(nodeData.id, nodeMesh);
+    });
+
+    // Update edges (if needed)
+    // ...
+  }
+
   animate() {
     this.renderer.setAnimationLoop(this.render.bind(this));
   }
 
   render() {
-    // Implement render logic here
     this.renderer.render(this.scene, this.camera);
   }
 }

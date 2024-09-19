@@ -1,55 +1,42 @@
 import { WebXRVisualization } from '../../public/js/components/webXRVisualization';
 import * as THREE from 'three';
-import { VRButton } from 'three/examples/jsm/webxr/VRButton';
-import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory';
 
-jest.mock('three', () => {
-  const actualThree = jest.requireActual('three');
-  return {
-    ...actualThree,
-    BufferGeometry: jest.fn().mockImplementation(() => ({
-      setFromPoints: jest.fn().mockReturnThis()
-    })),
-    Vector3: jest.fn().mockImplementation(() => ({
-      set: jest.fn().mockReturnThis(),
-      applyMatrix4: jest.fn().mockReturnThis()
-    })),
-    Line: jest.fn().mockImplementation(() => ({
-      name: '',
-      scale: { z: 0 }
-    })),
-    Matrix4: jest.fn().mockImplementation(() => ({
-      identity: jest.fn().mockReturnThis(),
-      extractRotation: jest.fn().mockReturnThis()
-    })),
-    Raycaster: jest.fn().mockImplementation(() => ({
-      ray: {
-        origin: { setFromMatrixPosition: jest.fn() },
-        direction: { set: jest.fn().mockReturnThis(), applyMatrix4: jest.fn() }
-      },
-      intersectObject: jest.fn().mockReturnValue([])
-    }))
-  };
-});
-jest.mock('three/examples/jsm/webxr/VRButton');
-jest.mock('three/examples/jsm/webxr/XRControllerModelFactory');
+
+jest.mock('three/examples/jsm/webxr/VRButton', () => ({
+  VRButton: {
+    createButton: jest.fn(() => {
+      const button = {};
+      return button;
+    })
+  }
+}));
+
+jest.mock('three/examples/jsm/webxr/XRControllerModelFactory', () => ({
+  XRControllerModelFactory: jest.fn().mockImplementation(() => ({
+    createControllerModel: jest.fn(),
+  })),
+}));
 
 describe('WebXRVisualization', () => {
   let webXRVisualization;
   let mockScene;
   let mockRenderer;
   let mockCamera;
+  let mockWebsocketService;
 
   beforeEach(() => {
     mockScene = {
-      add: jest.fn()
+      add: jest.fn(),
+      remove: jest.fn()
     };
     mockRenderer = {
       xr: {
         enabled: false,
         getController: jest.fn(() => ({
           addEventListener: jest.fn(),
-          add: jest.fn()
+          add: jest.fn(),
+          matrixWorld: new THREE.Matrix4(),
+          position: new THREE.Vector3()
         })),
         getControllerGrip: jest.fn(() => ({
           add: jest.fn()
@@ -59,19 +46,25 @@ describe('WebXRVisualization', () => {
       render: jest.fn()
     };
     mockCamera = {};
+    mockWebsocketService = {
+      on: jest.fn(),
+      send: jest.fn()
+    };
 
-    webXRVisualization = new WebXRVisualization(mockScene, mockRenderer, mockCamera);
+    webXRVisualization = new WebXRVisualization(mockScene, mockRenderer, mockCamera, mockWebsocketService);
   });
 
   test('WebXRVisualization initializes correctly', () => {
     expect(webXRVisualization.scene).toBe(mockScene);
     expect(webXRVisualization.renderer).toBe(mockRenderer);
     expect(webXRVisualization.camera).toBe(mockCamera);
+    expect(webXRVisualization.websocketService).toBe(mockWebsocketService);
+    expect(mockWebsocketService.on).toHaveBeenCalledTimes(2);
   });
 
   test('initVR enables XR and adds VR button', () => {
     document.body.appendChild = jest.fn();
-    VRButton.createButton.mockReturnValue(document.createElement('button'));
+    const { VRButton } = require('three/examples/jsm/webxr/VRButton');
 
     webXRVisualization.initVR();
 
@@ -81,10 +74,7 @@ describe('WebXRVisualization', () => {
   });
 
   test('initVRControllers sets up VR controllers', () => {
-    const mockControllerModelFactory = {
-      createControllerModel: jest.fn()
-    };
-    XRControllerModelFactory.mockImplementation(() => mockControllerModelFactory);
+    const { XRControllerModelFactory } = require('three/examples/jsm/webxr/XRControllerModelFactory');
 
     webXRVisualization.initVRControllers();
 
@@ -95,7 +85,7 @@ describe('WebXRVisualization', () => {
   });
 
   test('onSelectStart handles controller selection', () => {
-    const mockIntersection = { point: new THREE.Vector3() };
+    const mockIntersection = { object: new THREE.Mesh() };
     webXRVisualization.getIntersections = jest.fn().mockReturnValue([mockIntersection]);
     webXRVisualization.selectNode = jest.fn();
 
@@ -103,7 +93,7 @@ describe('WebXRVisualization', () => {
     webXRVisualization.onSelectStart(mockEvent);
 
     expect(webXRVisualization.getIntersections).toHaveBeenCalled();
-    expect(webXRVisualization.selectNode).toHaveBeenCalledWith(mockIntersection.point);
+    expect(webXRVisualization.selectNode).toHaveBeenCalledWith(mockIntersection.object);
   });
 
   test('onSelectEnd handles controller deselection', () => {
@@ -116,14 +106,39 @@ describe('WebXRVisualization', () => {
 
   test('getIntersections returns intersections with nodes', () => {
     const mockController = {
-      matrixWorld: new THREE.Matrix4()
+      matrixWorld: new THREE.Matrix4(),
+      position: new THREE.Vector3(0, 0, 0), // Ensure this is a THREE.Vector3
     };
-    webXRVisualization.nodesMesh = {};
+    webXRVisualization.nodes = new Map([['node1', new THREE.Mesh()]]);
 
     const intersections = webXRVisualization.getIntersections(mockController);
 
     expect(intersections).toEqual([]);
-    expect(THREE.Raycaster).toHaveBeenCalled();
+    expect(webXRVisualization.nodes.size).toBe(1);
+  });
+
+  test('updateNodePositions updates node positions', () => {
+    const mockNode = { position: { set: jest.fn() } };
+    webXRVisualization.nodes = new Map([['node1', mockNode]]);
+
+    webXRVisualization.updateNodePositions([
+      { id: 'node1', position: { x: 1, y: 2, z: 3 } }
+    ]);
+
+    expect(mockNode.position.set).toHaveBeenCalledWith(1, 2, 3);
+  });
+
+  test('updateGraph updates the graph structure', () => {
+    const mockGraphData = {
+      nodes: [
+        { id: 'node1', x: 1, y: 2, z: 3 }
+      ]
+    };
+
+    webXRVisualization.updateGraph(mockGraphData);
+
+    expect(mockScene.add).toHaveBeenCalled();
+    expect(webXRVisualization.nodes.size).toBe(1);
   });
 
   test('animate sets up animation loop', () => {
