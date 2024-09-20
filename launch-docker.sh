@@ -6,29 +6,31 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# Option to check for rebuild flag
-REBUILD=false
-if [ "$1" == "--rebuild" ]; then
-    REBUILD=true
-fi
-
 # Stop and remove the existing container if it exists
 echo "Stopping and removing existing containers..."
-docker-compose down
+docker stop logseqXR &>/dev/null
+docker rm logseqXR &>/dev/null
 
-# Optional rebuild
-if [ "$REBUILD" == true ]; then
-    echo "Rebuilding the Docker containers..."
-    docker-compose build --no-cache
+# Build and start the new container with maximal debug
+echo "Building and starting new container with maximal debug..."
+docker build -t logseq-xr-image .
+docker run -d --name logseqXR \
+    --env-file .env \
+    -p 8443:8443 \
+    --gpus all \
+    -e RUST_LOG=debug \
+    -e RUST_BACKTRACE=1 \
+    logseq-xr-image
+
+# Wait for the container to start
+echo "Waiting for the container to start..."
+sleep 5
+
+# Check if the container is running
+if [ "$(docker ps -q -f name=logseqXR)" ]; then
+    echo "Container logseqXR is now running with maximal debug."
+    echo "You can view the logs with: docker logs -f logseqXR"
 else
-    echo "Skipping rebuild. Starting the containers..."
+    echo "Error: Container logseqXR failed to start. Please check the logs."
+    exit 1
 fi
-
-# Start the container in detached mode
-docker-compose up -d
-
-# Wait for the containers to be healthy (optional)
-echo "Waiting for containers to be healthy..."
-docker-compose ps
-
-echo "WebXR Graph Visualization container has been launched successfully!"

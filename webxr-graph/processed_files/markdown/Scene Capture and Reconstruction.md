@@ -1,0 +1,118 @@
+public:: true
+
+- #Public page automatically published
+- ## NeRFs
+	- **Early Foundations of NeRF:**
+		- **Early Photography and Photosculpture (ca 1850):** Pioneers in photography began experimenting with aerial photogrammetry and photosculptures, creating 3D representations from multiple 2D photographs, laying groundwork for future 3D capture technologies.
+			- [More on early photography](https://hackaday.com/2022/10/02/in-a-way-3d-scanning-is-over-a-century-old/)
+	- **Plenoptic Function and Light Fields (1908 & 1936):**
+		- Gabriel Lippmann introduces the concept of the **plenoptic function** which evolves into the **light field** concept, simplifying the capture and representation of light as it travels through space.
+	- **Advances in Computing and Graphics (1960-1980s):**
+		- The development of lasers, holograms, and computer graphics sets the stage for more advanced 3D representations and the capture of light fields.
+	- **Lightfield Camera Arrays and Image-Based Rendering (2000):**
+		- The introduction of lightfield camera arrays and image-based rendering techniques brings light fields into practical use, although it remains complex and niche.
+			- [Stanford light field camera array 2004](http://graphics.stanford.edu/projects/lightfield/)
+	- **Generative AI and Inverse Rendering Birth of NeRF (2020):**
+		- **Neural Radiance Fields (NeRF):** A breakthrough in 2020 with the introduction of NeRF, offering an efficient way to recreate 3D scenes from 2D images using neural networks.
+			- [First NeRF paper, 2020](https://www.matthewtancik.com/nerf)
+	- **Realtime NeRF and Commercial Applications (2022):**
+		- **NVIDIA's Instant-NGP:** Accelerates NeRF processing, enabling real-time rendering on consumer-grade hardware and facilitating wider adoption and practical applications in various fields.
+			- [NVIDIA instant-ngp 2022](https://github.com/NVlabs/instant-ngp)
+	- **The Future of NeRF:**
+		- The continuous development of NeRF is expected to integrate more seamlessly with web browsers, game engines, and potentially transform large-scale mapping, video conferencing, and real-time interactive applications.
+			- [Google's Project Starline](https://blog.google/technology/research/project-starline-expands-testing/)
+- <iframe src="https://mohamad-shahbazi.github.io/inserf/" style="width: 100%; height: 600px"></iframe>
+- **Links and Image Sources:**
+	- [SceneScript: Reconstructing Scenes With An Autoregressive Structured Language Model | Research AI at Meta](https://ai.meta.com/research/publications/scenescript-reconstructing-scenes-with-an-autoregressive-structured-language-model/)
+		- ![Screenshot 2024-03-22 192251.png](../assets/Screenshot_2024-03-22_192251_1711135500802_0.png)
+	- [RealityCapture 3D Models from Photos and/or Laser Scans (capturingreality.com)](https://www.capturingreality.com/)  **FREE**
+	- [A Short 170 Year History Of Neural Radiance Fields (NeRF), Holograms, And Light Fields](radiancefields.com/history-of-neural-radiance-fields/)
+	- [ProNeRF: Learning Efficient Projection-Aware Ray Sampling for Fine-Grained Implicit Neural Radiance Fields (kaist-viclab.github.io)](https://kaist-viclab.github.io/pronerf-site/)
+	- [Zip-NeRF: Anti-Aliased Grid-Based Neural Radiance Fields](https://jonbarron.info/zipnerf)
+	- [Home](https://github.com/3a1b2c3/seeingSpace/wiki/Hands-on:-Getting-started-and-Nerf-frameworks)
+	- [InseRF: Text-Driven Generative Object Insertion in Neural 3D Scenes (mohamad-shahbazi.github.io)](https://mohamad-shahbazi.github.io/inserf/)
+	- [NeRFLiX: Increased NeRF Quality And Floater Removal | Neural Radiance Fields](https://neuralradiancefields.io/nerflix-increased-nerf-quality-and-floater-removal)
+	- [A Short 170 Year History Of Neural Radiance Fields (NeRF), Holograms, And Light Fields | Neural Radiance Fields](https://neuralradiancefields.io/history-of-neural-radiance-fields)
+	- [Home | MMLab@NTU](https://www.mmlab-ntu.com/project/vtoonify)
+	- [RecolorNeRF](https://sites.google.com/view/recolornerf)
+	- [Rob Sloan on LinkedIn: #nerfstudio #nerfstudio #polycam #nerf #nerfacto #polycam #neuralnetworks… | 11 comments](https://www.linkedin.com/posts/robcsloan_nerfstudio-nerfstudio-polycam-activity-6999169160379297792-SN4F)
+	- [MoyGcc/vid2avatar: Vid2Avatar: 3D Avatar Reconstruction from Videos in the Wild via Self-supervised Scene Decomposition (CVPR2023)](https://github.com/MoyGcc/vid2avatar)
+	- [HumanNeRF: Free-viewpoint Rendering of Moving People from Monocular Video](https://grail.cs.washington.edu/projects/humannerf)
+	- [Axie Infinity: Infinite Opportunity or Infinite Peril?](https://naavik.co/business-breakdowns/axie-infinity)
+	- [NVlabs/instant-ngp](https://github.com/NVlabs/instant-ngp)
+	- [SpecNeRF (limacv.github.io)](https://limacv.github.io/SpecNeRF_web/)
+	- [UniSDF (fangjinhuawang.github.io)](https://fangjinhuawang.github.io/UniSDF/)
+	- [SIGNeRF (jdihlmann.com)](https://signerf.jdihlmann.com/) fast nerf scene editing
+	- [GARField: Group Anything with Radiance Fields](https://www.garfield.studio/)
+	- [Byplay](https://www.byplay.io/) is camera motion tracking for mobile
+	-
+- The neural radiance field Wikipedia is very good [Neural radiance field Wikipedia](https://en.wikipedia.org/wiki/Neural_radiance_field)
+- # LIDAR
+	- [vectr-ucla/direct_lidar_inertial_odometry: [IEEE ICRA'23] A new lightweight LiDAR-inertial odometry algorithm with a novel coarse-to-fine approach in constructing continuous-time trajectories for precise motion correction. (github.com)](https://github.com/vectr-ucla/direct_lidar_inertial_odometry)
+-
+- [Nerfs](https://www.matthewtancik.com/nerf)
+- All of the LIDAR, [[Gaussian splatting and Similar]], [[Gaussian splatting and Similar]] etc are hopefully going to end up in here
+- [History of NeRFs](https://neuralradiancefields.io/history-of-neural-radiance-fields/)
+- waiting on capture
+- use polycam
+	- try the BTS cam?
+- [viewier](https://github.com/sxyu/volrend)
+- Windows NeRF environment to WebGL
+- [install windows NeRF](https://github.com/bycloudai/instant-ngp-Windows)
+- check out mip nerf 360s
+	- [Record3D](https://github.com/marek-simonik/record3d_unity_streaming)
+- [github of links](https://github.com/yenchenlin/awesome-NeRF)
+- [nerfs with polycam](https://www.linkedin.com/posts/robcsloan_nerfstudio-nerfstudio-polycam-activity-6999169160379297792-SN4F?utm_source=share&utm_medium=member_desktop)
+- [Polycam developer mode instructions](https://docs.nerf.studio/en/latest/quickstart/custom_dataset.html#polycam-capture)
+- [Nerf to animated people oneshot](https://elicit3d.github.io/)
+- [4K ultra high res nerfs with code](https://paperswithcode.com/paper/4k-nerf-high-fidelity-neural-radiance-fields)
+- [code](https://github.com/frozoul/4K-NeRF)
+- [city modelling](https://www.reddit.com/r/deeplearning/comments/zowgqn/neural_rendering_reconstruct_your_city_in_3d/)
+- [more city modelling](https://waymo.com/research/block-nerf/)
+- [field guide](https://github.com/3a1b2c3/seeingSpace/wiki/Hands-on:-Getting-started-and-Nerf-frameworks)
+- [NeRF SLAM](https://github.com/ToniRV/NeRF-SLAM)
+- [NeuralUDF surface capture](https://www.xxlong.site/NeuralUDF/)
+- [stablisation paper](https://arxiv.org/abs/2102.06205)
+- [nerfs without neural nets](https://alexyu.net/plenoxels/)
+- [NeuS2: Fast Learning of Neural Implicit Surfaces
+  for Multi-view Reconstruction](https://vcai.mpi-inf.mpg.de/projects/NeuS2/)
+- [Original 2020 nerf paper](https://www.matthewtancik.com/nerf)
+- [Recolour NeRF](https://sites.google.com/view/recolornerf?pli=1)
+- [Volinga Nerf into Unreal](https://volinga.ai/)
+- [Text2Nerf4D](https://make-a-video3d.github.io/)
+- [Robust nerfs which deal with occlusion](https://robustnerf.github.io/public/)
+- [Blender integration](https://github.com/JamesPerlman/NeRFRenderCore/blob/main/src/integrations/blender.cuh)
+- [Rapidnerf VR integration with erase](https://github.com/NVlabs/instant-ngp#vr-controls)
+- [Nerf to large scale geom](https://bakedsdf.github.io/)
+- [ELICIT,ELICIT creates free-viewpoint motion videos from a single image by constructing an animatable NeRF representation in one-shot learning. Offcial website of 'One-shot Implicit Animatable Avatars with Model-based Priors'](https://elicit3d.github.io/)
+- [GitHub frozoul/4K-NeRF: Official implementation of arxiv paper   4K-NeRF: High Fidelity Neural Radiance Fields at Ultra High Resolutions   , Official implementation of arxiv paper   4K-NeRF: High Fidelity Neural Radiance Fields at Ultra High Resolutions   - GitHub frozoul/4K-NeRF: Official implementation of arxiv paper   4K-NeRF: High Fidelity Neural Radiance Fields at Ultra High Resolutions](https://github.com/frozoul/4k-nerf)
+- [ClimateNeRF,-](https://climatenerf.github.io/)
+- [GitHub ToniRV/NeRF-SLAM: NeRF-SLAM: Real-Time Dense Monocular SLAM with Neural Radiance Fields.](https://github.com/tonirv/nerf-slam)
+- [HumanNeRF: Free-viewpoint Rendering of Moving People from Monocular Video,HumanNeRF: Free-viewpoint Rendering of Moving People from Monocular Video](https://grail.cs.washington.edu/projects/humannerf/)
+- [editing nerfs with instructions](https://instruct-nerf2nerf.github.io/)
+- [instruct2nerf twitter thread](https://mobile.twitter.com/bilawalsidhu/status/1638919452392583169)
+- [Render without cuda using just pytorch](https://github.com/taichi-dev/taichi-nerfs)
+- [Nerf with free camera trajectory](https://totoro97.github.io/projects/f2-nerf/)
+- [Language embedded nerfs (LERFS)](https://www.lerf.io/)
+- [Splatting paper, go where you like](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/)
+- [nerf RPN](https://github.com/lyclyc52/NeRF_RPN)
+- [google indoor reconstruction from nerfs](https://ai.googleblog.com/2023/06/reconstructing-indoor-spaces-with-nerf.html)
+- [focal length for capture](https://neuralradiancefields.io/whats-the-best-focal-length-to-take-a-nerf/)
+- The paper [Zip-NeRF](https://jonbarron.info/zipnerf/): Anti-Aliased Grid-Based Neural Radiance Fields" proposes a technique that combines ideas from rendering and signal processing to combat aliasing in grid-based representations of neural radiance fields (NeRF). NeRF's learned mapping from spatial coordinates to colors and volumetric density can be accelerated through the use of grid-based representations, but they lack an explicit understanding of scale and often introduce aliasing. The proposed technique combines mip-NeRF 360 and Instant NGP to yield error rates that are 8%-77% lower than either prior technique and trains 24x faster than mip-NeRF 360. The technique uses multisampling to approximate the average NGP feature over a conical frustum, and the method produces prefiltered renderings that do not flicker or shimmer, even as the camera moves laterally. Moreover, their improvements to proposal network supervision result in a prefiltered proposal output that preserves the foreground object for all frames, preventing an artifact called z-aliasing where foreground content alternately appears and disappears as the camera moves towards or away from the scene content. The proposed method shows promising results for accelerating NeRF training while combating aliasing in grid-based representations.
+- [baked nerf mesh paper](https://bakedsdf.github.io/)
+- [Facebook VR nerf](https://neuralradiancefields.io/venturing-beyond-reality-vr-nerf/)
+- RP-Lidar + Raspberry pi + ROS RTAB-MAP
+- [RTAB-Map](http://introlab.github.io/rtabmap/)
+- [Reality Scan](https://www.unrealengine.com/en-US/blog/realityscan-is-now-free-to-download-on-ios)
+- [Drone SLAM](https://www.youtube.com/watch?v=CEC5UwPV9gY)
+- [Adobe substance3d](https://www.substance3d.com/)
+- [3DPresso](https://3dpresso.ai/viewer?seq=mr3.yg5isic8KGJZ1DAjW5VMc)
+- [Apple point cloud rendering](https://machinelearning.apple.com/research/pointersect)
+- [Nvidia NeuralAngelo](https://research.nvidia.com/labs/dir/neuralangelo/)
+- [OmniMotion track all pixels](https://huggingface.co/papers/2306.05422)
+- [Leica handheld scanner](https://leica-geosystems.com/products/laser-scanners/autonomous-reality-capture/leica-blk2go-handheld-imaging-laser-scanner)
+- [Meshroom open source photogrammetry](https://alicevision.org/#meshroom)
+- [Nira.app](https://nira.app/)
+- [Houdini mesh from google earth](https://github.com/xjorma/EarthMeshHoudini?)
+- [DiffusionLight: Light Probes for Free by Painting a Chrome Ball](https://diffusionlight.github.io/index.html)
+- [MocapEvery (jiyewise.github.io)](https://jiyewise.github.io/projects/MocapEvery/)

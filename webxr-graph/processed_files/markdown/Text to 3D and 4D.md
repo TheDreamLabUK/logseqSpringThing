@@ -1,0 +1,149 @@
+public:: true
+
+
+#Public page utomatically published
+
+- [Luma AI Genie (lumalabs.ai)](https://lumalabs.ai/genie?view=create)
+	- <iframe src="https://lumalabs.ai/luma-web-library" style="width: 100%; height: 600px"></iframe>
+	- <iframe src="https://3d.csm.ai/" style="width: 100%; height: 600px"></iframe>
+	- <iframe src="https://www.meshy.ai/showcase" style="width: 100%; height: 600px"></iframe>
+	- <iframe src="https://research.nvidia.com/labs/toronto-ai/LATTE3D/" style="width: 100%; height: 600px"></iframe>
+- Text to mutliview and texturing id:: 65a5024d-11bb-4737-aef3-af73103fa218
+  id:: 65a5024d-11bb-4737-aef3-af73103fa218
+	- [StableProjectorz](https://stableprojectorz.com/)
+	- {{video https://www.youtube.com/watch?v=IXQg0ITHjtw}}
+	- ![slx-FbyoMFAfi7mbdV0xJ.mp4](../assets/slx-FbyoMFAfi7mbdV0xJ_1707401245057_0.mp4)
+	- ## Leading contenders in Open Source
+		- CRM [[ComfyUI]] implementation
+		- [stabilityai/stable-zero123 · Hugging Face](https://huggingface.co/stabilityai/stable-zero123)
+		- [SUDO-AI-3D/zero123plus: Code repository for Zero123++: a Single Image to Consistent Multi-view Diffusion Base Model. (github.com)](https://github.com/SUDO-AI-3D/zero123plus)
+		- [Y _ STFC HARTREE _ REPORT.docx](../assets/Y_STFC_HARTREE_REPORT_1709806005572_0.docx)
+		- [flowtyone/ComfyUI-Flowty-TripoSR: TripoSR custom node for comfyui (github.com)](https://github.com/flowtyone/ComfyUI-Flowty-TripoSR/tree/master)
+		- [layerdiffusion/LayerDiffuse: Transparent Image Layer Diffusion using Latent Transparency (github.com)](https://github.com/layerdiffusion/LayerDiffuse)
+	- [Paper page LGM: Large Multi-View Gaussian Model for High-Resolution 3D Content Creation (huggingface.co)](https://huggingface.co/papers/2402.05054)
+	-
+	- ![teaser-low.jpg](https://github.com/SUDO-AI-3D/zero123plus/blob/main/resources/teaser-low.jpg?raw=true)
+-
+- ## 3D Modelling Techniques
+	- [Collaborative Control for Geometry-Conditioned PBR Image Generation (unity-research.github.io)](https://unity-research.github.io/holo-gen/)
+	- **CLIP-Forge**
+		- README for zero-shot text-to-shape generation.
+		- [CLIP-Forge GitHub](https://github.com/autodeskailab/clip-forge)
+	- **BlenderGPT**
+		- Plugin for controlling Blender using GPT models.
+		- [BlenderGPT GitHub](https://github.com/gd3kr/BlenderGPT)
+		- [neph1/blender-stable-diffusion-render: A Blender addon for using Stable Diffusion to render texture bakes for objects. (github.com)](https://github.com/neph1/blender-stable-diffusion-render/)
+	- **CLIP-Mesh**
+		- Paper on 3D model generation from text prompts.
+		- [CLIP-Mesh Paper](https://paperswithcode.com/paper/text-to-mesh-without-3d-supervision-using)
+- # Local project
+	- TODO Voice in vircadia
+	- TODO Keyword capture
+	- TODO Mixtral LLM
+	- DONE SDXL single image
+	- DONE Multi Image
+	- DONE Model
+	- TODO Export
+	- TODO Git pages commit
+	- DONE Vircadia update
+- ## Texturing
+	- **Dream Textures**
+		- GitHub conversation on applying textures with text prompts.
+		- [Dream Textures Pull Request](https://github.com/carson-katri/dream-textures/pull/409)
+	- **ComfyTextures**
+		- Automatic texturing using generative diffusion models in [[Unreal]] Engine.
+		- [ComfyTextures GitHub](https://github.com/AlexanderDzhoganov/ComfyTextures)
+- ## Scene scale
+	- [Paper page GALA3D: Towards Text-to-3D Complex Scene Generation via Layout-guided Generative Gaussian Splatting (huggingface.co)](https://huggingface.co/papers/2402.07207)
+	- **Scene-Scale Diffusion**
+		- [Scene-Scale Diffusion GitHub](https://github.com/zoomin-lee/scene-scale-diffusion)
+		- **OnePose++ for Object Pose Estimation**
+			- Paper on keypoint-free pose estimation pipeline.
+			- [OnePose++ Page](https://zju3dv.github.io/onepose_plus_plus/)
+		- **Imagine 3D Software**
+			- Early-stage software for creating 3D effects using text.
+			- [Imagine 3D](https://captures.lumalabs.ai/imagine)
+		- **GET3D by Toronto AI Lab**
+			- Generative model for creating 3D textured shapes.
+			- [GET3D GitHub](https://nv-tlabs.github.io/GET3D/)
+		- **Point·E System**
+			- Generating 3D point clouds from prompts.
+			- [Point·E GitHub](https://github.com/openai/point-e)
+		- **Dream Fields for Text-Guided 3D Object Generation**
+			- Synthesizing 3D objects based on language descriptions.
+			- [Dream Fields](https://ajayj.com/dreamfields)
+		- **LION by Toronto AI Lab**
+			- New approach for 3D shape generation called LION.
+			- [LION](https://nv-tlabs.github.io/LION/)
+		- **3D Highlighter**
+			- System for localizing semantic regions on 3D shapes.
+			- [3D Highlighter Website](https://threedle.github.io/3DHighlighter/)
+		- **VQ-AD Method by NVIDIA and University of Toronto**
+			- Research on compressing feature grids in neural approximations.
+			- [VQ-AD Research Page](https://nv-tlabs.github.io/vqad/)
+		- **MoFusion for Human Motion Synthesis**
+			- Paper on unified model for generating human motion.
+			- [MoFusion GitHub Page](https://ofa-sys.github.io/MoFusion/)
+		- **Software and Tools**
+			- [TomLikesRobots🤖 on X: "Simple Stable Diffusion to Blender: 1. Use Automatic1111's depth map extension (https://t.co/3i4QhbvAV8) to create image (img2img or txt2img) & depth map. 2. Import to Blender using Depth Map Importer https://t.co/8hIUGwWSFX 3. That's it
+			- play around! [[Stable Diffusion]] aiart https://t.co/qr1yhDpHgd" / X (twitter.com)](https://twitter.com/TomLikesRobots/status/1603884188326940674)
+		- **Monster Mash Troubleshooting**
+			- Steps to troubleshoot issues with Monster Mash.
+			- [Monster Mash](https://monstermash.zone/)
+		- **Text2Mesh**
+			- Method for text-driven stylization of 3D mesh.
+			- [Text2Mesh GitHub](https://github.com/threedle/text2mesh)
+		- **Modeling Discussion on Echoes of Somewhere**
+			- Blog post comment section on modeling a robot.
+			- [Modeling a Robot Discussion](https://echoesofsomewhere.com/2023/01/25/modeling-a-robot-with-some-added-difficulty/)
+		- **Reddit Post on Virtual Reality**
+			- Collection of VR-related discussions.
+			- [Reddit VR Post](https://www.reddit.com/r/virtualreality/comments/xvy5dc/3d_generation_from_a_single_image/)
+		- **neThing.xyz**
+			- AI text to 3D CAD model conversion tool.
+			- [neThing.xyz](https://nething.xyz/)
+		- **DreamCraft3D**
+			- Hierarchical 3D generation with a bootstrapped diffusion prior.
+			- [DreamCraft3D](https://mrtornado24.github.io/DreamCraft3D/)
+		- **ReplaceAnything3D**
+			- Text-guided 3D scene editing with compositional neural radiance fields.
+			- [ReplaceAnything3D](https://huggingface.co/papers/2401.17895)
+		- **AGG: Amortized Generative 3D Gaussians**
+			- For single image to 3D conversion.
+			- [AGG](https://ir1d.github.io/AGG/)
+		- **TIP-Editor**
+			- An accurate 3D editor following both text-prompts and image-prompts.
+			- [TIP-Editor](https://huggingface.co/papers/2401.14828)
+		- **Instant Meshes**
+			- Interactive field-aligned mesh generator.
+			- [Instant Meshes GitHub](https://github.com/wjakob/instant-meshes)
+		- **Make-It-3D**
+			- High-fidelity 3D content creation from a single image.
+			- [Make-It-3D](https://make-it-3d.github.io/)
+		- **Vox-E**
+			- Text-guided voxel editing of 3D objects.
+			- [Vox-E Results](https://etaisella.github.io/htmlTutorial2.github.io-index.html/results_real.html)
+		- **Text2Room**
+			- Generating 3D meshes from text prompts.
+			- [Text2Room](https://lukashoel.github.io/text-to-room/)
+		- **VMesh**
+			- Efficient view synthesis with a triangular mesh and a sparse volume.
+			- [VMesh](https://bennyguo.github.io/vmesh/)
+		- **3DFuse**
+			- Robust text-to-3D generation incorporating 3D awareness into 2D models.
+			- [3DFuse](https://ku-cvlab.github.io/3DFuse/)
+		- **Motion Model for Image Animation**
+			- Animating images with a source image and a driving video.
+			- [Thin Plate Spline Motion Model](https://replicate.com/yoyo-nb/thin-plate-spline-motion-model)
+		- **VoxGRAF**
+			- Fast 3D-aware image synthesis with sparse voxel grids.
+			- [VoxGRAF](https://katjaschwarz.github.io/voxgraf/)
+		- **Realistic One-Shot Mesh-Based Human Head Avatars**
+			- Creating avatars from a single photograph.
+			- [ROME Avatars](https://samsunglabs.github.io/rome/)
+- # Pinokio
+	- [twitter link to the render loading below](https://twitter.com/cocktailpeanut/status/1765462787046686968)
+	  {{twitter https://twitter.com/cocktailpeanut/status/1765462787046686968}}
+	-
+- {{twitter https://twitter.com/blizaine/status/1765434684450742764?}}
+	-

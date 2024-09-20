@@ -1,0 +1,121 @@
+public:: true
+
+#Public page automatically published
+
+- # Trust and Safety
+	- Trust and safety (T&S) is crucially important for building ethical and inclu­sive online communities, the landscape is fraught with complex tradeoffs and challenges that make direct involvement difficult for independent researchers and developers like us. As summarized in a recent Atlantic Council report, T&S operates in a high-stakes environment driven by commercial incentives that often conflict with safety objectives. Practitioners face threats of trauma, burnout, and retaliation when enforcing policies.
+		- Established standards, struggles to quantify impact, and relies heavily on the judgement of private companies.
+		- Trust and safety (T&S) emerged as a field to govern risks in online communities. It became crucial as user-generated content platforms scaled.
+		- • The emergence of a professionalized T&S field creates opportunities for collaboration and innovation. But knowledge sharing, tooling, talent pipelines, and metrics need improvement. T&S practitioners, especially content moderators, face high risk of trauma. Their wellbeing requires urgent attention.
+		- • Systemic gaps exist around measuring T&S value, regulation’s impact on incentives, and the role of venture capital. Market failures drive under-investment.
+		- • Adjacent fields like academia, civil society, and media provide crucial external expertise but lack formal inclusion in T&S.
+		- • The gaming industry offers useful insights but has its own major T&S challenges.
+		- • Known harms will spread to new technologies, requiring adaptive solu­tions and proactive design.
+		- • Systemic gaps exist around measurement, regulation, and investment. Creative initiatives needed to realign incentives.
+		- • Philanthropy and government can help address systemic gaps through strategic programs and incentives.
+		- • T&S must balance competing goals like.
+			- Protecting rights vs mitigating harms
+			- Efficiency vs accuracy in enforcement
+			- Reviewer wellbeing vs review needs
+			- Centralized vs decentralized moderation
+			- Growth vs safety investments
+			- Internal process vs external expertise
+			- Reactive enforcement vs proactive design
+- # Corporations as final arbiters of truth
+	- ![Screenshot 2024-04-24 120742.png](../assets/Screenshot_2024-04-24_120742_1713957367294_0.png){:height 841, :width 800}
+	-
+	- This painting is called "The Shah Alam conveying the gift of the Dewani to Lord Clive" and depicts a supposed key moment in the East India Company taking control of Indian territory. Specifically, the painting shows the Mughal Emperor Shah Alam handing over a document to Robert Clive of the East India Company after being defeated at the Battle of Buxar in 1765. The document being transferred granted the East India Company the right to collect taxes (the diwani) in the wealthy Indian provinces of Bengal, Bihar and Orissa. This gave the British shareholder Company control over the finances of these regions. Of course the painting is not historically accurate, being what we now know to be 'fake new'. The actual transfer took place in a private tent, with the emperor forced to sign "with a gun to his head" after his defeat, rather than in a grand public ceremony as the painting depicts. The artist Benjamin West had also never been to India.
+	- Though historically inaccurate, this image may capture a truth - that corporate interests, unchecked, can subsume the sovereignty of nations. The East India Company's reign in India was marked by oppression, famine, and the stripping of resources for the benefit of far-off shareholders. It is a stark lesson in the perils of allowing private entities to wield such dominion over people's lives. Companies like Google and Facebook have become the gatekeepers of knowledge, with algorithms that shape what billions of people see and believe. As they develop sophisticated AI models and collect massive amounts of data, are we entrusting them with the modern equivalent of the East India Company's power?
+	- The diwani painting immortalized a dangerous fiction, the slick PR of Silicon Valley masks the power these firms now command over our minds and societies. The datasets and AI models of these digital colossi are the new currency of truth - and one largely minted behind closed doors. We have seen the consequences again and again:
+		- Tobacco: For decades, Big Tobacco sowed doubt about the dangers of smoking, suppressing research and misleading the public. Millions died as corporate interests trumped scientific truth.
+		- BPA: Chemical companies long insisted BPA plastics were safe, despite mounting evidence of hormone disruption and health risks. Only after massive public pressure did regulators act.
+		- Climate Change: Fossil fuel giants knew the truth about climate change for decades, but funded denial and obfuscation to protect their bottom line. The cost will be borne by generations.
+		- Opioids: Pharmaceutical companies downplayed the addiction risks of opioids, contributing to an epidemic that has claimed hundreds of thousands of lives. Profits were prioritized over people.
+		- [Don’t rejoice yet, Elon Musk and his tech bros-in-arms are winning the global battle for the truth | Carole Cadwalladr | The Guardian](https://www.theguardian.com/commentisfree/article/2024/aug/31/elon-musk-x-brazil-telegram-pavel-durov)
+	- It would be nice to think that we could demand radical transparency, meaningful oversight, and the primacy of public interest over shareholder profits in the construction and deployment of epoch-defining AI.
+	  One potential solution is the development of open source informational agents. These AI systems, built transparently and collaboratively by the global community, could serve as a counterweight to corporate and state-controlled narratives. This is not a trivial undertaking.
+- ## Misinformation vs Disinformation
+	- In Barb McQuade's book, [*Attack from Within: How Disinformation is Sabotaging America*](https://www.goodreads.com/book/show/150065063-attack-from-within), the author explores the pernicious effects of disinformation and its deliberate use to deceive and manipulate the public. This phenomenon, which McQuade distinguishes from the unwitting spread of false information or misinformation, is particularly potent in our digital age where social media amplifies and accelerates the dissemination of falsehoods[1].
+	- McQuade illustrates how disinformation works through a variety of tactics employed by authoritarians throughout history, including Hitler and Mussolini. These tactics, which have been modernised by figures like Steve Bannon and Donald Trump, include promoting a sense of national decline (declinism), exploiting societal fears, demonising and scapegoating specific groups, manipulating emotions over reason, and normalising violence. These methods are used to create a divided society where people are more likely to [choose their political tribe over the truth](https://www.sevenstories.com/books/4577-attack-from-within).
+	- The stakes of disinformation are immense, impacting democracy, the environment, and public safety. Voter suppression laws and a growing distrust in institutions are direct results of sustained disinformation campaigns. In the US, these issues are mirrored in the increasing polarisation and partisanship that make effective governance difficult.
+	- To combat this, McQuade suggests both governmental and personal actions. Governmental actions include regulating social media algorithms to prevent the promotion of sensationalist content and implementing campaign finance reforms to reduce the influence of dark money in politics. On a personal level, improving media literacy and prioritising truth over tribalism are crucial. Educating individuals to critically evaluate information and fostering a culture of scepticism and inquiry are essential steps in this direction.
+	- The recent race riots in the United Kingdom during August 2024 serve as a stark example of the dangers McQuade outlines. Triggered by the tragic stabbing of three young girls in Southport and fuelled by [Russian misinformation](https://insightnews.media/disinformation-spreader-that-fueled-violence-in-the-uk-allegedly-has-russian-traces/) suggesting the attacker was a Muslim asylum seeker, the riots spread rapidly across various UK cities. Social media platforms like Facebook, Telegram, and WhatsApp were instrumental in spreading these false claims and coordinating protests and violent actions. Far-right figures, including Tommy Robinson, amplified these false narratives, leading to widespread unrest and violence, including attacks on mosques and asylum seeker accommodations.
+	- The UK government responded with significant law enforcement measures, making over 400 arrests and considering terrorism charges against some suspects. The situation [highlighted the role of social media](https://www.npr.org/2024/08/05/nx-s1-5063345/misinformation-online-fueled-all-out-race-riots-in-the-united-kingdom) in creating a permissive environment for violence and herd mentality, as well as the difficulties authorities face in curbing the spread of misinformation.
+- ## What's changing
+	- There may now be an inflection point in the organisational topology of the internet, because of trust abuses by the incumbent providers like [[Facebook Meta]] and [Google](https://archive.ph/AVRL9). This moment has been calling itself Web3, but the moniker is fraught with problems, and somewhat meaningless. The drivers are real.
+	- `The Metaverse' is coming, in some form, at some point. Everyone is positioning in case it's "soon". It's not at all clear what it is, or if people want it, but the best of the emergent narrative looks like the older field of "digital society" and that obviously should not be dismissed lightly.
+		- Large scale `social' & immersive metaverse is suffering poor adoption, failing as it has in the past. It's likely that the market need has been overstated. More advanced and popular (closed) games based solutions do not serve societal or business needs.
+		- AI / ML will soon act as an accelerant to this, but the timing is still unclear, and likely still years away.
+		- The closest contenders at this time are Roblox for social and play, VRChat for more serious users, and Nvidia Omniverse for high end business to business metaverse.
+		- From a business perspective metaverse is the worst of the remote collaboration tool-kits, and undermines flow, productivity, and interpersonal trust. Metaverse is probably technology for technologies sake at this time, but the investment is real.
+	- Social media may be changing slightly, with less focus on old platforms like Facebook and Twitter, more on high intensity media shorts like TikTok, and a separate movement toward more decentralised platforms like Mastadon, Bluesky, Nostr etc. This is potentially a bifurcation.
+- ## [](https://github.com/flossverse#digital-society) Digital Society
+	- Digital society may be a more tangible and less hyped term to build around, and extends out into the more compelling spatial and augmented reality technologies, web, and digital money and trust.
+	- Emerging markets, less developed nations, indeed much of the world is excluded from many of the tools that are taken for granted in `Western' digital society. They do not necessarily have the identification, banking rails, or compute power to engage fully. Our focus is on Africa and India.
+	- Industry has noted the risk, and failures of Meta across both metaverse, and digital currency, and have latched onto "open metaverse" as a narrative, to de-risk their interest. The current open offerings in metaverse and social media are muddy and confused.
+	- A truth seems to have been missed; that open digital society should mean open source digital society. There are some options, but they are under developed. We would like to contribute to this by applying our decades of telecollaboration research.
+	- The UK seems to be endorsing significant controls and restrictions on internet usage. This compliance overhead will price small companies out of large scale social experiences. Company walled gardens are less impacted (as per the slack service model), and this is an opportunity if tied to real business use cases.
+	- This will likely add fuel to the fire of innovation and push users into disparate platforms.
+- ## [](https://github.com/flossverse#augmented-intelligence) Augmented Intelligence
+	- AI & machine learning and especially generative art is further blurring these boundaries. A better term for AI/ML is supported creativity and/or augmented intelligence. While current models such as GPT3.5 and LAION based generative systems are already causing a global stir, and [[large language models]] are already forcing global debate about general AI.
+	- Trust, accessibility, governance, and safeguarding, are hard problems, and made more complex by unrecorded social flow in immersive social VR.
+	- It is likely that the major players in AI at this time will simply leverage their models as "soft power", in the final analysis simply masking more advertising revenue, [which is their lifeblood.](https://gerrymcgovern.com/ai-is-not-your-friend/)
+	- The challenge is to build a topologically flat, inclusive, permissionless, federated, and open digital society, with economically empowered ML and AI actors, which can mediate governance issues, transparently, according to well constructed custom schemas, between cryptographically verifiable economic users (human or AI).
+	- New open source [supported creativity, augmented intelligence] tooling from Stability and Llama potentially removes many of the problems with accessibility, creativity, language barriers, safeguarding, and governance. This is a huge, complex, and fast moving area, but tremendously exciting.
+	- Using new image generation ML it may be possible to build new kind of collaborative global networks for creative industries, ideating in simplistic immersive spaces while instantly creating scenes which can be stylised using verbal commands in real-time. This may open up and enfranchise fresh ideas from a wider cultural pool.
+	- Such teams could be far more ad-hoc by experimenting with the designs outlined in this book. This kind of genuine digital society use case is something sorely lacking in large scale attempts such as Meta Horizons. It need not be complex or large scale, but it must be secure, trusted, and task appropriate. We think we can deliver this and conversations with the industry suggest that there is excitement and cautious appetite.
+	- With focus on decentralized and generative technologies, we believe the greatest value we can provide is advancing capabilities that empower users and diversify governance models. Directly mediating harms involves subjective tradeoffs we are not comfortable imposing on others. Our goal is to expand possibilities for human flourishing, while avoiding direct content moderation that restricts expression based on our own limited perspec­tives. We aim to enable solutions, not dictate them. As the report advocates, addressing T&S issues requires a broad coalition encompassing civil society, government, academia, and industry.
+- # Centralised AI and inequality
+	- Negative:
+		- Centralised AI systems are exacerbating global inequality, with those already in power benefiting the most economically and in decision-making
+		- AI and automation have the potential to be labour-saving, increase unemployment, and concentrate wealth among a small fraction of highly skilled individuals and leading countries
+		- The proliferation of AI threatens to reverse economic gains made by developing countries in recent decades, worsening poverty and inequality
+		- AI technologies may be unsuited to local contexts and conditions in the developing world
+		- Existing digital divides, lack of infrastructure and human capital put developing countries at a disadvantage in AI development and governance
+		- AI could lead to monopolisation of data and decision-making by a small number of powerful entities, weakening civil society and political representation
+	- Potential positive impacts and mitigations:
+		- Economic policies, taxation, redistribution and global governance reforms could help mitigate adverse impacts of AI on inequality and share prosperity more widely
+		- Developing countries may benefit from focusing AI strategies on key sectors like agriculture, services and digital infrastructure
+		- Global rules around data, competition, IP and information flows could be designed to benefit developing nations
+		- Harnessing bottom-up youth innovation and entrepreneurship in AI could help drive inclusion
+		- Some positive signs are emerging from national AI policies focused on inclusion in certain countries
+		- Steering AI research and development to maximise social value and redistributing power in AI governance could make systems more suitable to diverse global contexts
+		- Non-distortionary taxation could potentially compensate those displaced or disadvantaged by AI to enable Pareto improvements
+		- Local inferencing on virtually ubiquitous mobile phones could enable people to work and learn in their own language and style without internet charges, potentially mitigating inequalities
+	- I
+- ## AI as soft power
+	- ### Combating conspiracies
+	- [twitter link to the render loading below](https://twitter.com/DG_Rand/status/1775618798717911424)
+	  {{twitter https://twitter.com/DG_Rand/status/1775618798717911424}}
+	  
+	  https://osf.io/preprints/psyarxiv/xcwdn
+- ### Creating opinions
+	- [twitter link to the render loading below](https://twitter.com/manoelribeiro/status/1771168737917354316)
+	  {{twitter https://twitter.com/manoelribeiro/status/1771168737917354316}}
+- # Comments from Katherine Maher (Signal / Wikipedia)
+	- Extracted from [Katherine Maher on the Future of Trusted Information
+		- Possible](https://www.possible.fm/podcasts/katherinemaher/)
+	- **Key Challenge**: Institutions historically unresponsive to diverse populations, exposed by the internet.
+	- **Impact of Internet**: Exposes institutional failures, raising awareness and expectations for better service delivery.
+	- #### Trust Beyond Misinformation
+		- **Primary Trust Issue**: Expectations from institutions about their function and responsiveness, not just misinformation.
+		- **Media Trust**: Questions around media trust and social media's role are secondary to larger institutional trust issues.
+	- #### Technological Influence and Governance
+		- **Role of Technology**: Technology has distanced people from effective engagement methods.
+		- **Citizens’ Assemblies**: Suggested as a tool for constructive discourse and finding common ground on divisive issues.
+		- **Institutional Deconstruction**: Concerns over both long-term and short-term anti-institutional movements.
+	- #### Constructive Discourse and Policy Engagement
+		- **Building Discourse Infrastructure**: Importance of constructing understanding and expanding public discourse.
+		- **Loyal Opposition**: Emphasizes engaging with opposition to foster constructive improvements.
+	- #### Wikipedia’s Approach to Scale
+		- **Anti-Scale Philosophy**: Wikipedia operates through micro-communities, allowing for diverse expertise and governance continuity.
+		- **Democratic Governance**: The need for democratic governance to articulate its value proposition for public participation.
+	- #### Internet Norms and Dissent
+		- **Challenges in Establishing Norms**: Varying global expectations make establishing internet norms complex.
+		- **Codes of Conduct and Policies**: Essential for constructive online discourse and handling dissent.
+	- #### Data and AI Model Training
+		- **Differentiating Data Types**: Consent crucial for private data like health and communication.
+		- **Content Utilization for AI**: Wikipedia's approach to offering consistent, accountable API access for model training.
+	- #### Future Potential and AI Empowerment
+		- **Empowering Future Generations**: Focus on computer literacy and AI tools to enable problem-solving and innovation.
+		- **15-Year Vision**: Potential for a more computer-literate generation, capable of addressing community-specific problems.

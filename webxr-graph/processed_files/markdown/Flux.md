@@ -1,0 +1,75 @@
+public:: true
+
+-
+- ### Reddit: Flux dev lora training use SimpleTuner
+	- [This web link has been automatically summarised](https://www.reddit.com/r/StableDiffusion/comments/1epl454/flux_dev_lora_training_use_simpletuner_it_works/)
+	  Title: Flux dev lora training use SimpleTuner, it works with 4090. Detail:
+		- [SimpleTuner/documentation/quickstart/FLUX.md at main · bghira/SimpleTuner (github.com)](https://github.com/bghira/SimpleTuner/blob/main/documentation/quickstart/FLUX.md)
+	- [Finetuning Flux Dev on a 3090! (Local LoRA Training) - YouTube](https://www.youtube.com/watch?v=HzGW_Kyermg)
+- ### Flux+ Detailer: Photorealistic Model Overview
+- [This web link has been automatically summarised](https://civitai.com/models/636355/flux-detailer?modelVersionId=712060)
+	- **Model Overview**
+		- Flux+ Detailer is a photorealism model developed by Black Forest Labs under a non-commercial license. It excels in deep semantic comprehension, capturing emotions and detailed understanding of paragraphs.
+		- The model uses a curated dataset to enhance image generation, providing quality and precision.
+	- **Technical Information**
+		- Identified as LoRA type with a base model of Flux.1, it underwent 2,500 training steps and one epoch.
+		- SafeTensor file format offered at 21.39 MB, confirmed as verified.
+	- **Usage and Workflows**
+		- Designed for use with ComfyUI and accompanied by workflows to optimise usage.
+		- Users are encouraged to redownload the updated versions as both versions are consolidated into one file.
+	- **Community and Support**
+		- Very positive reviews from 919 users underline its reliability.
+		- Acknowledgments to users and testers, highlighting collaborative development efforts.
+		  Topics: Deep Learning, Model Optimisation and Performance, Open Generative AI tools
+	- [https://cointelegraph.com/news/half-10-most-valuable-companies-making-metaverse-hardware](https://cointelegraph.com/news/half-10-most-valuable-companies-making-metaverse-hardware)
+	- [https://medium.com/firebird-technologies/auto-analyst-2-0-the-ai-data-analytics-system-26aec602928e](https://medium.com/firebird-technologies/auto-analyst-2-0-the-ai-data-analytics-system-26aec602928e)
+- # ComfyUI's Innovative Flux Inpainting
+	- [This web link has been automatically summarised](https://openart.ai/workflows/cgtips/comfyui---flux-inpainting-technique/cto0IyTgL6FpwGD6qbaA)
+	- ComfyUI introduces the [[Flux]] , an advanced [[artificial intelligence|AI]] image generation model available in three variants:
+		- FLUX.1 [pro] for superior performance;
+		- FLUX.1 [dev] for efficient non-commercial applications;
+		- FLUX.1 [schnell] for rapid local development.
+	- These models are designed to excel in prompt adherence, visual quality, and output diversity, making them ideal for various image generation tasks.
+	- Video tutorials are available via the YouTube channel CgTopTips, offering guidance on using these models effectively.
+	- The page provides links to essential resources like sample images and detailed node configurations, showcasing the underlying architecture of the [[ComfyUI]] platform.
+	- Node details include a range of primitive and custom nodes, such as FluxGuidance, BasicGuider, SamplerCustomAdvanced, and more.
+	- The platform supports different operations like image loading and resizing, inpainting model conditioning, and advanced diffusion techniques.
+	- Despite the comprehensive offering, there are no user reviews or discussions available at the moment.
+	  Topics: artificial intelligence, Flux Inpainting Technique, ComfyUI
+- # Training
+	- If using the Fp8 dev Flux model, to get good results make sure and use the fp8_e4m3fn version.
+	- Use the lora at about strength of 0.7-.75. Higher strengths will increase likelihood of generating the little details better but also increase chances of unwanted artifacts like messy fingers and other unwanted things. Lowering the strength below 0.7 will increase the cohesion of the image.
+	- In comfy for the model sampling flux node make sure and use the mas_shift strength of .5 and base_shift at 0.5 respectively.
+	- Use Euler as the sampler and Beta as the scheduler with 25 steps minimum.
+	- Higher resolutions like 1024x1400 or 1024x1216 seem to produce best results. Also use 2x3 aspect ratio (portrait) for best results.
+	- It was trained on 100 images and manual caption pair's all in "cowboy shot" where the subject is seen from thighs up, so the images generated with this lora will be very biased in that camera shot and angle. A person seen from different angles can be generated successfully with good quality but you need to reduce the strength of the lora to prevent mutations and other cohesion issues for other angles, so play around with the strength of the lora for best results in your use case.
+	- This lora was trained on an A100 using the simple tuner training script (props to the dev!). The lora was trained on an fp16 dev base flux model, during training it was using about 27gb worth of VRAM for the following settings. The training speeds are about 2.3 sec/it on the A100. We used prodigy with constant, 64 rank and 64 alpha, bf16, gamma 5. No dropout used, batch size of 1 (batch size 1 yields better results versus using any other batch size).
+	- It takes quite a while for the concept to converge decently at about 350 steps per image minimum and 650 steps per image for good results. Lots of tests were performed to converge on the best hyperparameters and this is what we settled on (more testing needed for manual hyperparameters as I expect a large speedup with use of adam8w and such..).
+	- Some other notes of interest. We trained on an fp8 flux variant and results were just as good as the fp16 flux model at the cost of 2x convergence speed. That means it now took 700 minimum steps to converge on the subject decently and 1400 steps to converge on a good result. Training on an fp8 flux model took about 16.3gb worth of vram with our settings so I don't see a reason training cant happen on any card that has that VRAM, and possibly with some optimizations maybe could even happen on cards with 16gb of vram for fp8 lora training.
+- ## Controlnet
+	- https://huggingface.co/XLabs-AI/flux-controlnet-collections [[Controlnet and similar]]
+		- [[ComfyWorkFlows]] [x-flux-comfyui/workflows at main · XLabs-AI/x-flux-comfyui (github.com)](https://github.com/XLabs-AI/x-flux-comfyui/tree/main/workflows)
+		-
+- ## Resources
+	- [(2047) Discord | #💡-announcement | XLabs AI](https://discord.com/channels/1271080914692341801/1271086905743638591)
+	- whatever this mad thing is [[FLUX] Diagram of UNET / DiT and exotic merging methods (v8.01) | Civitai](https://civitai.com/articles/3409/flux-diagram-of-unet-dit-and-exotic-merging-methods-v7)
+	- [XLabs-AI/x-flux-comfyui (github.com)](https://github.com/XLabs-AI/x-flux-comfyui) [[Flux]] [[ComfyUI]]
+	- https://www.reddit.com/r/StableDiffusion/comments/1er8q13/an_updated_flux_canny_controlnet_released_by/ [[Flux]] [[Stable Diffusion]] [[Controlnet and similar]]
+	- https://huggingface.co/kudzueye/boreal-flux-dev-v2 [[Flux]] [[LoRA DoRA etc]]
+	- https://github.com/camenduru/comfyui-colab/blob/main/workflow/flux_image_to_image.json [[flux]] [[ComfyWorkFlows]]
+	- [Text Guided Flux Inpainting - a Hugging Face Space by Gradio-Community](https://huggingface.co/spaces/Gradio-Community/Text-guided-Flux-Inpainting) [[Segmentation and Identification]]
+	- [(17) Post | Feed | LinkedIn](https://www.linkedin.com/feed/update/urn:li:activity:7230251219888316417/) [[KOHYA Dreambooth and similar]] [[Flux]]
+	- https://huggingface.co/alimama-creative/FLUX.1-dev-Controlnet-Inpainting-Alpha [[Controlnet and similar]] [[Flux]]
+	- https://github.com/cocktailpeanut/fluxgym [[Flux]]
+	- https://civitai.com/models/731324 [[Flux]] Social Media Image Generator [[Death of the Internet]]
+	- [docs/docs/getting-started/env-configuration.md at improve-flux-docs · JohnTheNerd/docs (github.com)](https://github.com/JohnTheNerd/docs/blob/improve-flux-docs/docs/getting-started/env-configuration.md) [[Flux]] [[ComfyUI]] [[Open Webui and Pipelines]]
+	- https://github.com/camenduru/comfyui-colab/blob/main/workflow/flux_image_to_image.json [[flux]]
+	- [city96/ComfyUI-GGUF: GGUF Quantization support for native ComfyUI models (github.com)](https://github.com/city96/ComfyUI-GGUF) [[ComfyUI]] [[Model Optimisation and Performance]] [[Flux]]
+		- [Excuse me? GGUF quants are possible on Flux now! : r/StableDiffusion (reddit.com)](https://www.reddit.com/r/StableDiffusion/comments/1eslcg0/excuse_me_gguf_quants_are_possible_on_flux_now/)
+	-
+	- https://github.com/comfyanonymous/ComfyUI/commit/d0b7ab88ba0f1cb4ab16e0425f5229e60c934536 [[Flux]] [[Model Optimisation and Performance]]
+	- https://medium.com/@furkangozukara/ultimate-flux-lora-training-tutorial-windows-and-cloud-deployment-abb72f21cbf8 [[Flux]] [[LoRA]]
+	- https://github.com/ToTheBeginning/PuLID [[Face Swap]] [[Flux]] [[style transfer]]
+		- https://huggingface.co/spaces/yanze/PuLID-FLUX
+		- ![image.png](../assets/image_1726490585592_0.png)
+		-

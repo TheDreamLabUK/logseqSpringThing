@@ -1,0 +1,127 @@
+public:: true
+
+- # Cyber security and cryptography are coproximate.
+	- ## Case Study: CrowdStrike Global Outage
+		- ### Fallout and Disruptions
+			- The recent CrowdStrike global outage had far-reaching effects across various sectors:
+				- **Air Travel**: Major disruptions occurred, with Sydney Airport and Virgin Australia reporting a "complete ground stop" due to the outage ([Reuters](https://www.reuters.com/technology/global-cyber-outage-grounds-flights-hits-media-financial-telecoms-2024-07-19/)).
+				- **Banks and Finance**: Institutions such as Bendigo Bank, ANZ, Commonwealth Bank, and Bank of Queensland faced significant issues, evidenced by numerous user reports on Downdetector ([AP News](https://apnews.com/live/internet-global-outage-crowdstrike-microsoft-downtime)).
+				- **Healthcare**: Hospitals and Australian government agencies, including Centrelink and MyGov, were impacted ([Al Jazeera](https://www.aljazeera.com/news/2024/7/20/slow-recovery-after-crowdstrike-update-sparks-global-it-outage)).
+				- **Media**: Networks of multiple media organizations, including the ABC, SBS, Channel 7, Channel 9, and News Corp Australia, were disrupted ([Reuters](https://www.reuters.com/technology/global-cyber-outage-grounds-flights-hits-media-financial-telecoms-2024-07-19/)).
+				- **Retail**: Retail outlets experienced difficulties in processing electronic payments, affecting shoppers' experiences ([AP News](https://apnews.com/live/internet-global-outage-crowdstrike-microsoft-downtime)).
+		- ### Technical Reasons
+			- The outage was traced to a specific defect in a content update for Windows hosts:
+				- **Falcon Sensor Issue**: The update led to blue screen errors and crashes on Windows systems, while Mac and Linux hosts remained unaffected ([CrowdStrike Blog](https://www.crowdstrike.com/blog/statement-on-falcon-content-update-for-windows-hosts/)).
+				- **Channel File Problem**: The channel file "C-00000291*.sys" with a timestamp of 0409 UTC was identified as the culprit. A reverted version with a timestamp of 0527 UTC was deployed to rectify the issue ([CrowdStrike Blog](https://www.crowdstrike.com/blog/statement-on-falcon-content-update-for-windows-hosts/)).
+	- ### Postulated Bad Actors
+		- Despite the technical nature of the outage, there were concerns about potential exploitation:
+		- **Potential Exploitation**: CrowdStrike CEO George Kurtz highlighted that "bad actors will try to exploit events like this," underscoring the persistent challenges in cybersecurity, especially with Microsoft systems ([Al Jazeera](https://www.aljazeera.com/news/2024/7/20/slow-recovery-after-crowdstrike-update-sparks-global-it-outage)).
+	- ### Hypothetical Technical Reasons
+		- The root cause was linked to a recent global rollout of a tech update from CrowdStrike, which contained the problematic channel file ([CrowdStrike Blog](https://www.crowdstrike.com/blog/statement-on-falcon-content-update-for-windows-hosts/)).
+	- ### Possible Economic Fallout
+		- The outage had significant economic repercussions:
+			- **Global Impact**: Described as the "largest IT outage in history," the incident had widespread economic implications across various sectors ([Reuters](https://www.reuters.com/technology/global-cyber-outage-grounds-flights-hits-media-financial-telecoms-2024-07-19/)).
+			- **Financial Services**: Disruptions in financial services and general practitioners' offices led to losses and transaction delays ([AP News](https://apnews.com/live/internet-global-outage-crowdstrike-microsoft-downtime)).
+			- **Stock Market Impact**: Shares of CrowdStrike and Microsoft experienced declines in premarket trading following the outage ([Reuters](https://www.reuters.com/technology/global-cyber-outage-grounds-flights-hits-media-financial-telecoms-2024-07-19/)).
+	- ### Response
+		- CrowdStrike provided detailed workaround steps to mitigate the issue:
+			- **Workaround Steps**: Instructions included rebooting hosts, deleting problematic files, and rolling back to previous snapshots ([CrowdStrike Blog](https://www.crowdstrike.com/blog/statement-on-falcon-content-update-for-windows-hosts/)).
+			- **AWS and Azure Environments**: Specific guidance was provided for these environments to address the issue effectively ([CrowdStrike Blog](https://www.crowdstrike.com/blog/statement-on-falcon-content-update-for-windows-hosts/)).
+	- ## Broader Implications for Cyber Security
+	- ### AI Risks and Mitigations
+		- The increasing integration of AI in various domains presents new security challenges:
+			- **Malicious AI Models**: Instances of AI models with backdoors, such as those found on [Hugging Face](https://www.bleepingcomputer.com/news/security/malicious-ai-models-on-hugging-face-backdoor-users-machines/), demonstrate the need for vigilant security measures.
+			- **Adversarial Machine Learning**: Understanding attacks and mitigations is crucial, as outlined in the NIST publication ["Adversarial Machine Learning: A Taxonomy and Terminology of Attacks and Mitigations"](https://csrc.nist.gov/pubs/ai/100/2/e2023/final).
+	- ### Enhancing Cybersecurity Measures
+		- Given the evolving threat landscape, enhancing cybersecurity measures is imperative:
+			- **Infrastructure Vulnerabilities**: The CrowdStrike incident highlights the vulnerabilities in digital infrastructure and the need for robust cybersecurity practices ([Reuters](https://www.reuters.com/technology/global-cyber-outage-grounds-flights-hits-media-financial-telecoms-2024-07-19/)).
+			- **Dependency on Technology Providers**: Reevaluating dependencies on specific providers and adopting more resilient design principles can mitigate the risks of large-scale outages ([Al Jazeera](https://www.aljazeera.com/news/2024/7/20/slow-recovery-after-crowdstrike-update-sparks-global-it-outage)).
+- [Open Generative AI tools](https://github.com/AbdBarho/stable-diffusion-webui-docker)
+	- - [[]]The GitHub repository "AbdBarho/stable-diffusion-webui-docker" offers an easy Docker setup for Stable Diffusion, featuring a user-friendly UI.
+	- Users can run Stable Diffusion on their machines with a nice UI without hassle.
+	- The repository provides multiple UI options for stable diffusion, including AUTOMATIC1111 and ComfyUI.
+	- Contributions to the project are welcome after creating a discussion about the problem and proposed contribution.
+	- The authors disclaim responsibility for any content generated using the interface, outlining restrictions in the license.
+	- Special thanks are extended to contributors of projects like AUTOMATIC1111/stable-diffusion-webui and Sygil-webui.
+	- The project is based on topics like Docker, PyTorch, Gradio, Docker-compose, and Stable Diffusion.
+- [Adversarial Machine Learning: A Taxonomy and Terminology of Attacks and Mitigations](https://csrc.nist.gov/pubs/ai/100/2/e2023/final)
+	- [[]]The web page discusses the NIST Trustworthy and Responsible AI report on adversarial machine learning (AML). Here is a summary based on the provided content:
+	- The report develops a taxonomy and terminology in the field of AML, surveying literature to build a conceptual hierarchy.
+		- Includes key ML methods, lifecycle stages of attacks, attacker goals, and capabilities in the learning process.
+		- Provides methods for mitigating attacks and identifies open challenges for AI system security.
+	- The terminology aligns with AML literature and includes a glossary for non-experts to define key terms.
+	- Aims to inform standards and practice guides for assessing and managing AI system security.
+	- Keywords: artificial intelligence, machine learning, attack taxonomy, evasion, data poisoning, privacy breach, attack mitigation, chatbot, generative models, trojan attack, backdoor attack.
+	- Topics: Security and Privacy (advanced persistent threats, botnets, information sharing, intrusion detection & prevention, malware), Technologies (artificial intelligence).
+	  
+	  If you need further assistance or a specific focus on any aspect, feel free to ask.
+- [Here Come the AI Worms](https://www.wired.com/story/here-come-the-ai-worms/)
+- - [[]]Advances in generative AI systems like OpenAI's ChatGPT and Google's Gemini are leading to the creation of AI worms capable of spreading between systems, potentially stealing data or deploying malware.
+	- Researchers have demonstrated the first generative AI worm, Morris II, which targets email assistants using ChatGPT and Gemini, showing how these worms can exploit vulnerabilities.
+	- The worms are created using self-replicating prompts that exploit the AI systems' responses, similar to traditional cyberattack methods like SQL injection and buffer overflow.
+	- Security experts warn that the future risk of generative AI worms is significant, especially when AI applications are given autonomy to perform actions on behalf of users.
+	- Recommendations include implementing traditional security measures, monitoring AI outputs, and ensuring human oversight to prevent harmful actions.
+	- Developers are advised to be vigilant and consider potential risks and security flaws in AI ecosystem designs, as generative AI worms could pose a serious threat to data security.
+	  
+	  The web page discusses the rise of generative AI systems and the emerging threat of AI worms that exploit vulnerabilities in these systems for malicious purposes, highlighting the importance of robust security measures and human oversight in AI development.
+- [Check your IP address & website security](https://checkcybersecurity.service.ncsc.gov.uk/ip-check)
+- [[]]Unable to access or summarize the content at [https://checkcybersecurity.service.ncsc.gov.uk/ip-check](https://checkcybersecurity.service.ncsc.gov.uk/ip-check)
+- [Stealing Part of a Production Language Model](https://huggingface.co/papers/2403.06634)
+- - [[]]The paper arXiv:2403.06634 discusses a model-stealing attack capable of extracting specific information from black-box production language models, such as OpenAI's ChatGPT and Google's PaLM-2.
+- The attack can reveal the embedding projection layer of a transformer model and has successfully extracted the entire projection matrix of OpenAI's Ada and Babbage language models at a low cost.
+- The research reveals hidden dimensions of 1024 and 2048 for the mentioned black-box models and estimates the cost of extracting the projection matrix of the gpt-3.5-turbo model.
+- The paper also proposes potential defenses and mitigations against such attacks and discusses future implications of extending this attack method.
+- [GitHub: llm-hacking-database](https://github.com/pdparchitect/llm-hacking-database)
+- - [[]]The GitHub repository pdparchitect/llm-hacking-database focuses on attacks against Large Language Models (LLMs) and provides techniques for hacking/jailbreaking LLMs. Some attack types include context exhaustion, code introspection, prompt leaking, character override, emotional recall, living off the land (LOTL), parameter bombing, injection, poisoning, fault tolerance testing, and kill switch considerations.
+- Examples of jailbreaking tactics are outlined, including exploiting applications like a password guessing game, leak identification in chat platforms, and injection attacks using file names.
+- Defence strategies mentioned involve fine-tuning LLMs and prompt-leak detection to mitigate vulnerabilities.
+- Contributions to the repository are encouraged through pull requests, and the repository aims to compile jailbreaking techniques for LLMs akin to other notable security databases like the Google Hacking Database and RSnake's XSS Cheat Sheet.
+- Docker version of [[Open Generative AI tools]] for Linux [AbdBarho/stable-diffusion-webui-docker: Easy Docker setup for Stable Diffusion with user-friendly UI (github.com)](https://github.com/AbdBarho/stable-diffusion-webui-docker)
+- - [[]]The web page is about the AbdBarho/stable-diffusion-webui-docker repository, providing an easy Docker setup for Stable Diffusion with a user-friendly UI.
+	- Users can run Stable Diffusion on their machine with a nice UI hassle-free.
+	- Features multiple UIs for stable diffusion, including AUTOMATIC1111 and ComfyUI.
+	- Contributors are welcome but need to adhere to the license restrictions prohibiting sharing harmful content or misinformation.
+	- Acknowledges projects like AUTOMATIC1111/stable-diffusion-webui, InvokeAI, CompVis/stable-diffusion, Sygil-webui, and more.
+- Relevant topics: docker, pytorch
+- [Malicious AI models on Hugging Face backdoor users’ machines (bleepingcomputer.com)](https://www.bleepingcomputer.com/news/security/malicious-ai-models-on-hugging-face-backdoor-users-machines/)
+- [[]]I'm unable to summarize the content of the web page as it appears to be inaccessible. If you have another page or topic you'd like me to summarize, please feel free to provide it.
+- [AI 100-2 E2023, Adversarial Machine Learning: A Taxonomy and Terminology of Attacks and Mitigations | CSRC (nist.gov)](https://csrc.nist.gov/pubs/ai/100/2/e2023/final)
+- [[]]The web page provides a NIST report on Adversarial Machine Learning (AML) that establishes a taxonomy and terminology for AML concepts, attacks, and mitigations. The report surveys AML literature to categorize ML methods, attack lifecycle stages, attacker goals, and capabilities. It offers methods for mitigating attacks and highlights challenges in AI system security management. The terminology aligns with AML literature and includes a glossary for non-expert readers. The aim is to standardize language in understanding evolving AML landscapes, aiding in assessing and managing AI system security.
+  
+  Topics covered in the document include:
+- Adversarial Machine Learning
+- Artificial intelligence
+- Machine learning
+- Attack taxonomy
+- Evasion
+- Data poisoning
+- Privacy breach
+- Attack mitigation
+- Data modality
+- Generative models
+- Large language model
+- Trojan attack
+- Backdoor attack
+- Security and Privacy
+- Advanced persistent threats
+- Botnets
+- Information sharing
+- Intrusion detection & prevention
+- Malware
+- Technologies
+- Artificial intelligence
+- [Here Come the AI Worms | WIRED](https://www.wired.com/story/here-come-the-ai-worms/)
+- - [[]]As AI systems like ChatGPT and Gemini advance, concerns about potential cyberattacks increase.
+	- Researchers have developed a generative AI worm, Morris II, capable of spreading between systems to steal data and deploy malware.
+	- The worm targets generative AI email assistants to extract data from emails and send spam messages, bypassing security measures.
+	- Security vulnerabilities like prompt injections and jailbreaks can compromise AI systems' safety rules, allowing for malicious actions.
+	- The research highlights the risks posed by generative AI worms and the importance of addressing bad architecture design within the AI ecosystem.
+	- Companies like Google and OpenAI are urged to enhance system resilience and implement methods to counter harmful input.
+	- Potential future risks of generative AI worms spreading in various applications are emphasised by security experts.
+	- Recommendations to mitigate worm risks involve traditional security approaches and ensuring human oversight in AI actions.
+	- Developers creating AI systems should be vigilant about security risks and incorporate appropriate measures to safeguard against potential attacks.
+- [Check your IP address & website security NCSC.GOV.UK](https://checkcybersecurity.service.ncsc.gov.uk/ip-check)
+- [[]]Unable to access or summarize the content at [https://checkcybersecurity.service.ncsc.gov.uk/ip-check](https://checkcybersecurity.service.ncsc.gov.uk/ip-check)
+- [Paper page Stealing Part of a Production Language Model (huggingface.co)](https://huggingface.co/papers/2403.06634)
+- [[]]The web page discusses a model-stealing attack on language models such as OpenAI's ChatGPT and Google's PaLM-2. The attack successfully extracts the embedding projection layer of transformer models, revealing hidden dimensions of 1024 and 2048 for specific models. The research outlines the attack's cost efficiency and suggests potential defenses against such attacks. The page also mentions related papers on training data leakage and adversarial attacks on large language models.
+- [pdparchitect/llm-hacking-database: This repository contains various attack against Large Language Models. (github.com)](https://github.com/pdparchitect/llm-hacking-database) [[Jailbreaking]]

@@ -1,0 +1,31 @@
+public:: true
+
+- #Public page
+	 - automatically published
+- # Most threatened roles
+	- UK dept of education [10-30% can be automated away.](https://assets.publishing.service.gov.uk/media/656856b8cc1ec500138eef49/Gov.UK_Impact_of_AI_on_UK_Jobs_and_Training.pdf#:~:text=It%20has%20been%20estimated%20that%2010-30%25%20of%20jobs,the%20potential%20benefits%20advances%20in%20AI%20will%20bring.)
+	- id:: 659a9231-eed0-4503-b1c7-ec6fdc4a3ae4 | #  | Exposure to all AI applications | Exposure to large language modelling | |----|--------------------------------|--------------------------------------| | 1  | Management consultants and business analysts* | Telephone salespersons | | 2  | Financial managers and directors | Solicitors* | | 3  | Charted and certified accountants | Psychologists* | | 4  | Psychologists* | Further education teaching professionals | | 5  | Purchasing managers and directors | Market and street traders and assistants | | 6  | Actuaries, economists and statisticians | Legal professionals n.e.c.* | | 7  | Business and financial project management professionals | Credit controllers* | | 8  | Finance and investment analysts and advisers | Human resource administration occupations* | | 9  | Legal professionals n.e.c.* | Public relations professionals | | 10 | Business and related associate professionals n.e.c. | Management consultant and business analysts* | | 11 | Credit controllers* | Market research interviewers | | 12 | Solicitors* | Local government administrative occupations | | 13 | Civil engineers | Clergy | | 14 | Education advisers and school inspectors* | Higher education teaching professionals | | 15 | Human resources administrative occupations* | Collector salespersons and credit agents | | 16 | Business, research and administrative professionals n.e.c. | Education advisers and school inspectors* | | 17 | Financial accounts managers | Human resource managers and directors | | 18 | Bookkeepers, payroll managers and wages clerks | National government administrative occupations* | | 19 | National government administrative occupations* | Vocational and industrial trainers and instructors | | 20 | Marketing associate professionals | Social and humanities scientists |
+- # Mass Layoff tracker
+	- 2023
+		- Recent layoffs at [Microsoft](https://www.theverge.com/2023/1/18/23560315/microsoft-job-cuts-layoffs-2023-tech) (10,000 jobs or 5 percent of the workforce),
+		- [Amazon](https://www.theverge.com/2023/1/18/23560874/amazon-layoffs-18000-january-november) (18,000 jobs / 6 percent)
+		- [Meta](https://www.theverge.com/2022/11/9/23448926/meta-layoffs-2022) (11,000 / 13 percent).
+		- [Google lays off hundreds working on its voice-activated assistant | Semafor](https://www.semafor.com/article/01/10/2024/google-lays-off-hundreds-working-on-its-voice-activated-assistant)
+		- [Duolingo's AI-driven jobs cuts are a no brainer – here's why | ITPro](https://www.itpro.com/technology/artificial-intelligence/duolingos-ai-driven-jobs-cuts-are-a-no-brainer-heres-why)
+	- 2024 so far
+		- PayPal cuts 9% of workforce
+		- UPS cuts +12,000 roles
+		- Microsoft cuts +1,900 roles
+		- Twitch cuts 35% of workforce
+		- Unity Software 25%
+		- Brex 20%
+		- Discord 17%
+		- Wayfair 13%
+		- Riot Games 11%
+		- Duolingo 10%
+		- Rent the Runway 10%
+		- eBay 9%
+		- Blackrock 3%
+		- Citigroug cuts 20,000 roles
+		- Google cuts +1,000
+		- Amazon cuts several hundred roles

@@ -1,0 +1,23 @@
+{
+  "sha": "51f13dced52c382898d5baaf1ec48862c8a1a725",
+  "hyperlinks": [
+    "https://huggingface.co/docs/transformers/main/quantization",
+    "https://arxiv.org/abs/1803.03635",
+    "https://www.tensorflow.org/lite/performance/post_training_quantization",
+    "https://arxiv.org/abs/1710.03740",
+    "https://www.tensorflow.org/lite",
+    "https://pytorch.org/docs/stable/quantization.html",
+    "https://onnxruntime.ai/docs/performance/quantization.html",
+    "https://www.reddit.com/r/LocalLLaMA/comments/1ba55rj/overview_of_gguf_quantization_methods/",
+    "https://www.linkedin.com/posts/maryammiradi_machinelearning-ai-datascience-activity-7179427786799861760-WFtN/",
+    "https://media.licdn.com/dms/image/D4E22AQHw_nWSZpbsyQ/feedshare-shrink_800/0/1711708970372?e=1714608000&v=beta&t=ZQCj26yY9vyZLbOegFQ97DYGWAmZno_65zrwVm31X5g",
+    "https://www.microsoft.com/en-us/research/publication/the-truth-is-in-there-improving-reasoning-in-language-models-with-layer-selective-rank-reduction/",
+    "https://github.com/pratyushasharma/laser",
+    "https://github.com/huggingface/optimum-nvidia",
+    "https://arxiv.org/pdf/2401.15077.pdf",
+    "https://github.com/run-ai/llmperf",
+    "https://emsime.substack.com/p/the-dawn-of-1-bit-large-language",
+    "https://arxiv.org/abs/2402.17764",
+    "https://thegenerality.com/agi/"
+  ]
+}

@@ -1,0 +1,37 @@
+public:: true
+
+- # Games sector dominates entertainment
+	- ![1713196618774.jpeg](../assets/1713196618774_1713258422046_0.jpeg)
+	- Traditional engines like Unity, [[Unreal]], [[Roblox]] , and [[NVIDIA Omniverse]] may become outdated [[Disruption]].
+		- They're something like 15 years old and designed for a past era of computing.
+		- The rise of generative AI, cloud computing, and new spatial platforms is poised to transform 3D creation.
+		- Future engines might start with simple text prompts for creation, making them more accessible and reducing barriers for new creators.
+		- Proposed engines should be modular, cloud-based, and adaptable to different project needs, avoiding the bloat of current engines.
+		- There is opportunity for the traditional engines to pivot here, but they are struggling with their size already.
+		- A key feature will be real-time collaboration and version control in a cloud-based environment.
+		- This suggests that user experience in these engines should be flexible and cater to different skill levels and roles.
+		- New engines might initially focus on specific genres, art styles, or platforms, rather than trying to cover all use cases.
+		- The interoperable [Open Universal Scene Descriptor](https://openusd.org/release/index.html) might be the key enabler.
+		- There could be significant change in the entertainment industry, with more diverse and interactive content as a result of these advancements.
+		- [Fiero
+		- Create 2D games without a single line of code! (fierogameengine.com)](https://fierogameengine.com/)
+		- [They are starting to hide away the AI component and just focus on workflows like Sprite Fusion](https://www.spritefusion.com/)
+	- <iframe src="https://miao-ai-lab.github.io/LARP/" style="width: 800px; height: 400px"></iframe>
+	- [LARP: Language-Agent Role Play for Open-World Games (arxiv.org)](https://arxiv.org/pdf/2312.17653.pdf)
+		- Plenty of fun tools for game makers, but distributors are quite ossified, and access to distribution may be patchy.
+		- Steam has [softened it's stance.](https://store.steampowered.com/news/group/4145017/view/3862463747997849618)
+		- Latency and cost are still prohibitive **in game**.
+		- Tools for builders
+		- Blender has been leading the way with open source plugins appearing all the time.
+		- [Scenario
+		- AI-generated game assets](https://www.scenario.com/)
+		- LoRA training.
+		- Already plenty to play with [LinkedIn](https://www.linkedin.com/feed/update/urn:li:activity:7148068781314002944/) and [AI-Powered Creativity: Innovating Look Development with Stable Diffusion & ComfyUI](https://www.youtube.com/watch?v=CLPvdbFUNqw)
+	- ![1704232411233.mp4](../assets/1704232411233_1704298954869_0.mp4){:height 100, :width 400}
+		- [Create an AI Robot NPC using Hugging Face Transformers 🤗 and Unity Sentis (substack.com)](https://thomassimonini.substack.com/p/create-an-ai-robot-npc-using-hugging?utm_campaign=post&utm_medium=web)
+		- {{video https://www.youtube.com/watch?v=iZ_20vK94hc}}
+		-
+- [GigaxGames/gigax: LLM-powered NPCs running on your hardware (github.com)](https://github.com/GigaxGames/gigax)
+- {{video https://www.youtube.com/watch?v=_KFbT6eph5A}}
+-
+-

@@ -1,0 +1,133 @@
+public:: true
+
+- #Public page automatically published
+- TODO This is historically one of the oldest sections of the knowledge graph and it shows. Needs sorting [[MUST 🔴]]
+- # GPT-4o (Omni) and mini
+	- The latest iteration in OpenAI's series of generative language models, offers a wide range of advanced capabilities.
+	- Use of the powerful model is free. Around 7% of Americans use the model daily.
+	- ### Key Capabilities of GPT-4o
+		- **Visual Analysis for Education**
+			- **Description**: GPT-4o can visually analyze math problems, objects for language translation, paintings for historical context, and products for online reviews. This feature provides detailed and contextual explanations, enhancing the learning experience.
+			- **Use Case**: Integration with augmented reality devices like Meta Rayban glasses to offer real-time educational support for students, language learners, and hobbyists.
+		- **Teams Meeting Assistant**
+			- **Description**: GPT-4o functions as an AI assistant during Microsoft Teams meetings, capable of summarizing minutes, identifying action items, retrieving relevant information from company databases, and assisting with data analysis tasks such as creating charts and reporting trends.
+			- **Use Case**: Improves meeting productivity by handling administrative tasks and providing insights during discussions.
+		- **Advanced Language Translation**
+			- **Description**: GPT-4o offers advanced language translation capabilities, capturing conversational context and intonation for more natural and accurate translations.
+			- **Use Case**: Facilitates real-time multilingual conversations, potentially integrating with devices like AirPods to break down language barriers in personal and professional interactions.
+		- **Screen Sharing for Coding Assistance**
+			- **Description**: Allows users to share their screens with GPT-4o for real-time guidance on coding tasks, debugging, and other technical work, including non-programming tasks like Excel analysis and PowerPoint creation.
+			- **Use Case**: Provides on-the-spot assistance for professionals across various fields, enhancing productivity and efficiency.
+		- **AI Interactions**
+			- **Description**: Demonstrates the ability of two GPT-4o instances to interact seamlessly, including having conversations and performing tasks together, such as singing.
+			- **Use Case**: Paves the way for AI influencers on social media platforms and collaborative AI systems that can work together across different domains and data sets.
+		- **AI Pet Training**
+			- **Description**: Utilizes vision capabilities to assist in training pets by connecting to smart devices like treat dispensers, observing and responding to a pet's behavior to provide real-time guidance and training.
+			- **Use Case**: Helps pet owners train their animals more effectively and ensure consistent training routines.
+		- **Dual AI Brainstorming**
+			- **Description**: Allows users to engage with two distinct GPT-4o personalities simultaneously for dynamic and comprehensive brainstorming sessions.
+			- **Use Case**: Facilitates creative problem-solving by offering balanced insights from different viewpoints, such as optimistic vs. pessimistic perspectives.
+		- **Accessibility for the Visually Impaired**
+			- **Description**: Interprets and describes visual inputs from devices like Meta Rayban glasses, helping visually impaired individuals navigate their surroundings and identify objects.
+			- **Use Case**: Enhances independence by providing real-time descriptions of the environment, such as distinguishing between different objects.
+		- **Text to 3D Conversion**
+			- **Description**: Converts textual descriptions into detailed 3D models, enabling users to visualize concepts and objects described in text.
+			- **Use Case**: Useful for designers, architects, educators, and others needing to create or understand complex three-dimensional structures from written descriptions.
+		- **Enhanced Emotional Intelligence**
+			- **Description**: Understands and responds to emotional cues in text and speech more effectively, providing empathetic and contextually appropriate responses.
+			- **Use Case**: Improves interactions in customer service, therapy, and personal assistance by addressing the emotional needs of users.
+		- **Advanced Personalization**
+			- **Description**: Customizes interactions based on individual user preferences, history, and behavior, ensuring relevant recommendations and assistance.
+			- **Use Case**: Enhances the overall user experience in applications such as learning, entertainment, and daily tasks.
+		- **Real-Time Multimodal Interaction**
+			- **Description**: Integrates text, voice, and visual inputs to provide a seamless and interactive user experience.
+			- **Use Case**: Ideal for virtual assistants, interactive learning platforms, and customer service applications where users can engage using multiple forms of input simultaneously.
+		- ![1722893096005.jpeg](../assets/1722893096005_1722893626363_0.jpeg)
+- ## AI Development and Innovations
+	- ### Showcases of Advanced GPT Models and Workflows
+		- **Advanced GPTs on GitHub**: A collection of custom GPTs featuring advanced workflows and operational logic ([GitHub Repository](https://github.com/nerority/Advanced-GPTs)).
+	- ### Open-Source ChatGPT Equivalents and UI Enhancements
+		- **Mintplex-Labs on GitHub**: An open-source ChatGPT equivalent experience for both open and closed source LLMs, embedders, and vector databases, supporting unlimited documents and users ([GitHub Repository](https://github.com/Mintplex-Labs/anything-llm)).
+		- **mckaywrigley/chatbot-ui on GitHub**: An open-source ChatGPT UI ([GitHub Repository](https://github.com/mckaywrigley/chatbot-ui)).
+	- ### Integration of GPT with Other AI Technologies
+		- **Stable Diffusion, Whisper, and GPT-3 Combination**: A developer's project combining these technologies to create a futuristic design assistant ([The Decoder Article](https://the-decoder.com/developer-combines-stable-diffusion-whisper-and-gpt-3-for-a-futuristic-design-assistant)).
+	- ### Self-Improvement of GPT Models
+		- **GPT-4 Can Improve Itself**: Featuring Reflexion, HuggingGPT, Bard Upgrade, and more ([YouTube Video](https://youtu.be/5SgJKZLBrmg)).
+	- ## AI Tools and Extensions
+		- ### Browser Extensions for Enhancing ChatGPT
+			- **AIPRM for ChatGPT**: A browser extension that adds various enhancements to ChatGPT ([Chrome Web Store](https://chrome.google.com/webstore/detail/aiprm-for-chatgpt/ojnbohmppadfgpejeebfnmnknjdlckgj)).
+		- ### AI-Driven Content Creation and Manipulation Tools
+			- **3D-GPT in Blender**: Generates 3D worlds in Blender using GPT ([The Decoder Article](https://the-decoder.com/3d-gpt-generates-3d-worlds-in-blender)).
+	- **Writing Stable Diffusion Prompts with GPT**: Using GPT to write prompts for Stable Diffusion ([Dreamlike Guide](https://dreamlike.art/guides/using-openai-chat-gpt-to-write-stable-diffusion-prompts)).
+	- ## AI Ethics and Security
+		- ### Discussions on AI-Generated Content
+			- **AI-Generated Fake News**: Concerns about AI making up fake news articles ([The Guardian Article](https://www.theguardian.com/commentisfree/2023/apr/06/ai-chatgpt-guardian-technology-risks-fake-article)).
+		- ### Security and Privacy Concerns
+			- **AI Model Hacking**: Discussions on potential security breaches and privacy issues with AI models ([Reddit Discussion](https://old.reddit.com/r/ChatGPT/comments/11wkw5z/has_chatgpt_or_me_been_hacked_ive_never_had_these)).
+	- ## Educational Content and Tutorials
+		- ### Creating Your Own AI Models and Bots
+			- **Custom ChatGPT Bots**: Tutorials on creating your own ChatGPT chatbot with business content ([CustomGPT.ai](https://customgpt.ai/)).
+			- **GPT Voice Assistant**: Guide on creating a GPT voice assistant with infinite chat memory in Python ([Medium Article](https://medium.com/@jordanlgibbs/how-to-create-your-own-gpt-voice-assistant-with-infinite-chat-memory-in-python-d8b8e93f6b21)).
+		- ## AI in Media and Entertainment
+			- ### AI in Broadcasting and Content Creation
+				- **RadioGPT**: The world’s first AI-driven radio station ([Interesting Engineering Article](https://interestingengineering.com/innovation/radiogpt-worlds-first-ai-radio-station)).
+			- ### Podcasts and Interviews on AI
+				- **Code Interpreter and GPT 4.5**: Discussions on the advancements and implications of these technologies ([Spotify Podcast](https://open.spotify.com/episode/0sFi0yG6kpTVKE0WVtRhTZ?si=te1jwhxCTWa-kJWwq3RxCA)).
+		- ## AI Models and Technical Discussions
+			- ### New AI Model Releases
+				- **GPT4-x-Alpaca-13B-Native-4bit-128g**: Technical discussions on the new model and its capabilities ([GitHub Discussion](https://github.com/oobabooga/text-generation-webui/discussions/727)).
+			- ### Deep Dives into GPT Model Capabilities
+				- **GPTZero Case Study**: Exploring the false positives in GPT model detections ([Gonzo Knows Article](https://gonzoknows.com/posts/GPTZero-Case-Study)).
+-
+- # Unsorted Links
+- A bunch more GPTs [nerority/Advanced-GPTs: Showcase of my custom GPTs, featuring advanced workflows and operational logic. (github.com)](https://github.com/nerority/Advanced-GPTs)
+- [AIPRM for ChatGPT](https://chrome.google.com/webstore/detail/aiprm-for-chatgpt/ojnbohmppadfgpejeebfnmnknjdlckgj)
+-
+- [Code Interpreter == GPT 4.5 (w/ Simon Willison, Alex Volkov, Aravind Srinivas, Alex Graveley, et al.)](https://open.spotify.com/episode/0sFi0yG6kpTVKE0WVtRhTZ?si=te1jwhxCTWa-kJWwq3RxCA%22)
+- [Create Your Own ChatGPT ChatBOT With ALL Your Business Content](https://customgpt.ai/)
+-
+- [GPTZero Case Study (Exploring False Positives)](https://gonzoknows.com/posts/GPTZero-Case-Study/%22)
+- [Has ChatGPT or me been hacked? Ive never had these conversations..](https://old.reddit.com/r/ChatGPT/comments/11wkw5z/has_chatgpt_or_me_been_hacked_ive_never_had_these)
+- [How to Create Your Own GPT Voice Assistant with Infinite Chat Memory in Python](https://medium.com/@jordanlgibbs/how-to-create-your-own-gpt-voice-assistant-with-infinite-chat-memory-in-python-d8b8e93f6b21)
+- [Introducing ChatGPT](https://openai.com/blog/chatgpt)
+- [March | 2023 | Ars Technica](https://arstechnica.com/information-technology/2023/03/you-can-now-run-a-gpt-3-level-ai-model-on-your-laptop-phone-and-raspberry-pi/%7D%7Barticle)
+- [Mintplex-Labs/anything-llm: Open-source ChatGPT equivalent experience for both open and close source LLMs, embedders, and vector databases. Supports unlimited documents, threads, and concurrent users and management all in a very clean UI.](https://github.com/Mintplex-Labs/anything-llm)
+- [New model: gpt4-x-alpaca-13b-native-4bit-128g !! · oobabooga text-generation-webui · Discussion #727](https://github.com/oobabooga/text-generation-webui/discussions/727%7D%7BAnonymous)
+- [RadioGPT: 'World’s first' AI-driven radio station is here](https://interestingengineering.com/innovation/radiogpt-worlds-first-ai-radio-station)
+- [Scientists begin building AI for scientific discovery using tech behind ChatGPT](https://techxplore.com/news/2023-10-scientists-ai-scientific-discovery-tech.html)
+- [State of GPT | BRK216HFS](https://www.youtube.com/watch?v=bZQun8Y4L2A%22%3E)
+- [THE DECODER](https://the-decoder.com/developer-combines-stable-diffusion-whisper-and-gpt-3-for-a-futuristic-design-assistant/%7D%7BVoice)
+- [TheBloke/starchat-beta-GPTQ · Hugging Face](https://huggingface.co/TheBloke/starchat-beta-GPTQ)
+- [Using openai chat gpt to write stable diffusion prompts%22](https://dreamlike.art/guides/using-openai-chat-gpt-to-write-stable-diffusion-prompts%22)
+- [Using openai chat gpt to write stable diffusion prompts%7 d%7 btrain](https://dreamlike.art/guides/using-openai-chat-gpt-to-write-stable-diffusion-prompts%7D%7Btrain)
+- [What is ChatGPT? | OpenAI Help Center](https://help.openai.com/en/articles/6783457-chatgpt-general-faq%7D%7Bexplicit)
+- [Yhyu13/30B-Lazarus-gptq-4bit at main](https://huggingface.co/Yhyu13/30B-Lazarus-gptq-4bit/tree/main)
+- [Zain Kahn on LinkedIn: 1,000+ AI tools were released in March. ChatGPT is just the tip of the… | 345 comments](https://www.linkedin.com/posts/zainkahn_1000-ai-tools-were-released-in-march-activity-7048285306101358592-4wAA?amp%3Butm_medium=member_android%22%2F%3E)
+- [mckaywrigley/chatbot-ui: An open source ChatGPT UI.](https://github.com/mckaywrigley/chatbot-ui)
+- [sahil280114/chatGPT-multimodal-bot](https://github.com/sahil280114/chatGPT-multimodal-bot)
+- [ztjhz/BetterChatGPT](https://github.com/ztjhz/BetterChatGPT)
+- [#215 – Wojciech Zaremba: OpenAI Codex, GPT-3, Robotics, and the Future of AI](https://open.spotify.com/episode/6pIHwP4wxd9xYZAxvMS6I2?dl_branch=1&si=d41LWZ6CSWmbucGf-AasPQ)
+- [#367 – Sam Altman: OpenAI CEO on GPT-4, ChatGPT, and the Future of AI](https://open.spotify.com/episode/6rAOusZcsuNtCv8mefmwND?nd=1&si=3a17aef004df4982)
+- [3D-GPT generates 3D worlds in Blender](https://the-decoder.com/3d-gpt-generates-3d-worlds-in-blender)
+- [6 Ways ChatGPT Code Interpreter Is Already Being Used](https://www.youtube.com/watch?v=1MM2nqVw8h8)
+- [Can GPT-3 AI write comedy?](https://robmanuelfuckyeah.substack.com/p/someone-needs-to-stop-me-playing)
+- [Carlos E. Perez on Twitter / X](https://twitter.com/IntuitMachine/status/1608690077139599360%7D%7Bchatgpt)
+- [ChatGPT political compass](https://www.gptoverflow.link/question/1519492600837443584/chatgpt-political-compass%7D%7Bpolitical)
+- [Code Interpreter == GPT 4.5 (w/ Simon Willison, Alex Volkov, Aravind Srinivas, Alex Graveley, et al.)](https://open.spotify.com/episode/0sFi0yG6kpTVKE0WVtRhTZ?si=te1jwhxCTWa-kJWwq3RxCA%22)
+- [Developer combines Stable Diffusion, Whisper and GPT-3 for a futuristic design assistant](https://the-decoder.com/developer-combines-stable-diffusion-whisper-and-gpt-3-for-a-futuristic-design-assistant)
+- [George Hotz: Tiny Corp, Twitter, AI Safety, Self-Driving, GPT, AGI & God | Lex Fridman Podcast #387](https://youtu.be/dNrTrx42DGQ?si=V6VtK4zWgeHbS8CP)
+- [Introducing GPT-Furr, Cat-GPT’s meowst sassy, all-knowing system.](https://www.cat-gpt.com/)
+- [Microsoft just announced a SURPRISE media event taking place tomorrow](https://www.windowscentral.com/microsoft/microsoft-surprise-event-chatgpt-openai-bing-2023)
+- [Narrative Manipulation: Convincing Chat GPT to Write a Python Program to Eradicate Humanity](https://zacdenham.com/blog/narrative-manipulation-convincing-gpt-chat-to-write-a-python-program-to-eradicate-humanity)
+- [New model: gpt4-x-alpaca-13b-native-4bit-128g !! · oobabooga text-generation-webui · Discussion #727](https://github.com/oobabooga/text-generation-webui/discussions/727%22)
+- [New model: gpt4-x-alpaca-13b-native-4bit-128g !! · oobabooga text-generation-webui · Discussion #727](https://github.com/oobabooga/text-generation-webui/discussions/727%7D%7BAnonymous)
+- [Prompt injection attacks against GPT-3](https://simonwillison.net/2022/Sep/12/prompt-injection)
+- [Sam Altman: OpenAI CEO on GPT-4, ChatGPT, and the Future of AI | Lex Fridman Podcast #367](https://m.youtube.com/watch?feature=youtu.be%7D%7BSam&v=L_Guz73e6fw%5C)
+- [Stack Overflow bans ChatGPT as 'substantially harmful'](https://www.theregister.com/2022/12/05/stack_overflow_bans_chatgpt)
+- [Stephen Wolfram Answers Live Questions About ChatGPT](https://youtu.be/zLnhg9kir3Q%7D%7BStephen)
+- [Using openai chat gpt to write stable diffusion prompts%22](https://dreamlike.art/guides/using-openai-chat-gpt-to-write-stable-diffusion-prompts%22)
+- [Using openai chat gpt to write stable diffusion prompts%7 d%7 btrain](https://dreamlike.art/guides/using-openai-chat-gpt-to-write-stable-diffusion-prompts%7D%7Btrain)
+- [What is Auto-GPT? | Blog](https://stablecog.com/blog/what-is-auto-gpt)
+- [You can now run a GPT-3-level AI model on your laptop, phone, and Raspberry Pi](https://arstechnica.com/information-technology/2023/03/you-can-now-run-a-gpt-3-level-ai-model-on-your-laptop-phone-and-raspberry-pi/%22)
+- [sahil280114/chatGPT-multimodal-bot](https://github.com/sahil280114/chatGPT-multimodal-bot)
+-

@@ -1,0 +1,117 @@
+public:: true
+
+	- **Majors**
+	- There are several very strong [[Large language models]] Gemini, Claude, and ChatGPT, Llama, and Grok
+	- [[Comparison of GPT4 and Gemini Ultra]]
+	- [[OpenAI]]
+	- Valued at $29B and are talking about a new raise that would value them at $100B behind only SpaceX as a private US company. [[Update Cycle]]
+	- [[ChatGPT]]
+		- GPT-3 and GPT-4 revolutionized natural language processing, laying the groundwork for more advanced models. Improving upon its predecessors with increased token capacity and complexity, handling nuanced prompts with greater accuracy.
+		- Continues to innovate in the field, pushing the boundaries of what AI can understand and generate in human language using Natural Language Processing.
+		- [[Mixture of Experts]] model for speed and flexibility
+		- World leading functionality and rapid development
+			- Pioneering the next generation of conversational AI with more contextually aware and responsive bots.
+			- GPT-4 Turbo (DevDay 2023) seems like a scale optimised downgrade of sorts, but GPT-4.5 is due soon.
+			- A more efficient model supporting a 128K token context window, optimized for performance, and more affordable than GPT-4.
+		- GPTs
+			- Powerful [[Knowledge Graphing and RAG]] integration in a #kubernautes virtual machine, with a custom prompt.
+			- Access to most of the useful Python Libraries.
+			- Can be called through the API, and return structured data. [Actions
+	- OpenAI API](https://platform.openai.com/docs/actions)
+	- Assistants API
+		- Enables developers to create complex, agent-like AI applications that understand and execute tasks intelligently.
+		- Custom GPTs and the GPT Store coming 2024
+		- Offers a platform for developers to customize and monetize their AI applications, fostering a community of AI innovation.
+	- Custom Models
+		- Tailored AI models for organizations with specific needs, allowing deep integration with unique workflows and data ecosystems.
+		- [[Copyright]] Shield
+		- Provides legal protection for users of OpenAI's platform, defending against [[copyright]] infringement claims.
+	- Google
+		- Search Algorithms
+		- Continuously improving search relevance and accuracy through advanced AI and machine learning.
+		- Google Assistant to become Gemini and offer paid "Ultra" at beginning Feb.
+			- Deep integration with their online productivity tools.
+			- [Google Bard update: Image generation and Gemini Pro adds more languages (blog.google)](https://blog.google/products/bard/google-bard-gemini-pro-image-generation/)
+			- [Bard (google.com)](https://bard.google.com/chat) with Gemini Pro: Starting today, you can try out Bard with Gemini Pro for text-based prompts in the UK. We’ve specifically tuned Gemini Pro in Bard to be far more capable at things like understanding and summarising, reasoning, coding, and planning.
+			- Image Analysis through their GPT3.5 equivalent [[Gemini]] model.
+		- Enhancing user interaction with AI through natural language processing and machine learning.
+		- Their Nano model which runs on phones might be a significant portent of the future.
+	- Mistral
+		- French company, and the only major player in Europe. [[Politics, Law, Privacy]] seem to be shaping around a bet on their success. They currently have 2 models which are unconstrained by guardrails and very high quality. They have a larger model accessible through API and their prices are very low.
+	- Inflection
+		- [Inflection](https://inflection.ai/)
+		- Pi is the best of the "conversational AI" interfaces.
+	- Waymo
+		- Leading in autonomous driving technology, using AI to improve safety and efficiency.
+	- IBM
+		- Watson
+		- A trailblazer in AI for business, offering solutions across various sectors.
+	- Data Analysis
+		- Utilizing AI to transform big data into actionable insights.
+		- Natural Language Understanding
+		- Enhancing machine's understanding of human language nuances.
+	- Microsoft
+		- Azure AI
+		- Providing a suite of AI services and cognitive APIs to build intelligent applications.
+		- Azure Machine Learning
+		- A cloud-based platform for building, training, and deploying machine learning models at scale.
+		- Microsoft Bot Framework
+		- A comprehensive framework for building enterprise-grade conversational AI experiences.
+		- Tiny models like the MIT licensed Phi-2 from Microsoft are very exciting.
+			- [(Phi-2 is now 8k context!)](https://www.reddit.com/r/LocalLLaMA/comments/194mmki/selfextend_works_for_phi2_now_looks_good/)
+	- Amazon
+		- E-commerce Recommendations
+		- Personalizing shopping experiences with machine learning-powered recommendations.
+		- Alexa
+		- The voice of smart homes, Alexa continues to evolve with AI, understanding and assisting with more complex tasks.
+		- Warehouse Automation
+		- AI and robotics are streamlining Amazon's warehouse operations for increased efficiency.
+		- Amazon Bedrock
+		- A fully managed service for building and scaling generative AI applications, utilizing foundation models.
+		- Amazon Titan Embeddings
+		- Converts text into numerical representations to power search and personalization features, supporting over 25 languages.
+	- Meta
+		- Content Recommendations
+		- Using AI to curate personalized content feeds for users.
+		- Facial Recognition
+		- Developing sophisticated AI to recognize and verify identities.
+		- Content Moderation
+		- Imagine with Meta AI standalone Image system
+		- Employing AI to monitor and manage the vast content on its platform.
+		- [VentureBeat
+		- Meta data larger than common crawl](https://venturebeat.com/ai/inside-metas-ai-strategy-zuckerberg-stresses-compute-open-source-and-training-data/)
+			- Llama 3 positioned to be competitive with OpenAI but open source?
+		- Tesla
+		- Autopilot
+		- Innovating with AI for advanced driver-assistance systems.
+		- Self-Driving Cars
+		- Pioneering autonomous vehicle technology with sophisticated AI algorithms.
+		- Grok (LLM)
+			- A witty and satirical AI chatbot that pulls in real-time information, Grok signifies Tesla's expansion into AI-driven communication.
+	- NVIDIA
+		- AI Hardware
+		- Designing cutting-edge GPUs and systems to power AI computing.
+		- GPUs
+		- Accelerating AI with powerful graphics processing units.
+		- Data Centers
+		- Building AI-[[Infrastructure]] to support the increasing demands of machine learning workloads.
+		- Autonomous Vehicles
+		- Contributing to the AI ecosystem with technology for self-driving vehicles.
+		- Salesforce
+		- CRM with Predictive Analytics
+		- Integrating AI to anticipate customer needs and enhance engagement.
+		- Chatbots
+		- Improving customer service with AI-powered chatbots.
+		- Marketing Automation
+		- Leveraging AI to automate and personalize marketing campaigns.
+	- Adobe
+		- Creative Software with AI
+		- Infusing AI into creative software to augment the design process.
+		- Photoshop
+			- Using AI to streamline complex editing tasks with intuitive tools.
+		- Illustrator
+			- AI assists in creating vector graphics with precision and ease.
+- **Notable Minors**
+	- Channel 1
+		- AI News with translation of footage {{tweet https://twitter.com/channel1_ai/status/1734591810033373231}}
+-

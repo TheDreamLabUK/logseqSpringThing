@@ -1,0 +1,173 @@
+public:: true
+
+- #Public page automatically published
+- This isn't a new problem, but seems perhaps to be accelerating.
+	- ![image.png](../assets/image_1707220464151_0.png){:height 853, :width 500}
+- https://twitter.com/emollick/status/1741287767773163626?
+	- {{tweet https://twitter.com/emollick/status/1741287767773163626?}}
+- ## Google search is broken. Google lied.
+	- [An Anonymous Source Shared Thousands of Leaked Google Search API Documents with Me; Everyone in SEO Should See Them](https://sparktoro.com/blog/an-anonymous-source-shared-thousands-of-leaked-google-search-api-documents-with-me-everyone-in-seo-should-see-them/)
+		- "Google no longer rewards scrappy, clever, SEO-savvy operators who know all the right tricks. They reward established brands, search-measurable forms of popularity, and established domains that searchers already know and click. From 1998 – 2018 (or so), one could reasonable start a powerful marketing flywheel with SEO for Google. In 2024, I don’t think that’s realistic, at least, not on the English-language web in competitive sectors."
+	- [Google Search Is Now a Giant Hallucination (gizmodo.com)](https://gizmodo.com/google-search-ai-overview-giant-hallucination-1851499031) [[Death of the Internet]] [[Google]]
+	- [The new AI Google search is incredibly wasteful](https://www.scientificamerican.com/article/what-do-googles-ai-answers-cost-the-environment/)
+	- {{renderer :linkpreview,https://www.scientificamerican.com/article/what-do-googles-ai-answers-cost-the-environment/}}
+- ## AI augmented search is wasteful
+	- ![Screenshot 2024-06-13 091134.png](../assets/Screenshot_2024-06-13_091134_1718266390338_0.png){:width 600}
+		- In conversation with [Doug Weir, Director of the Conflict and Climate Observatory.](https://ceobs.org/)
+	-
+	- ### Energy Consumption and Climate Impact of AI search
+		- The rapid adoption in internet search has significant [implications for energy consumption](https://www.theverge.com/2023/10/10/23911059/ai-climate-impact-google-openai-chatgpt-energy) and climate change, and excluding much of the world from viable knowledge discovery.
+		- **Data Centers and Energy Use**
+			- GenAI relies on massive data centers, which consume [substantial amounts of energy](https://mit-genai.pubpub.org/pub/8ulgrckc/release/2). Talk is now shifting to gigawatt datacentres [[Leopold Aschenbrenner]] . The International Energy Agency (IEA) projects that data centers' electricity consumption will double by 2026, equivalent to Japan's current total consumption. These data centers are primarily powered by fossil fuels, [contributing significantly to greenhouse gas emissions](https://e360.yale.edu/features/artificial-intelligence-climate-energy-emissions).
+			- Training a single AI model can emit up to 626,000 pounds of carbon dioxide equivalent, nearly five times the lifetime emissions of the average American car.
+			- The carbon footprint of GenAI models is exacerbated by their [energy-intensive nature](https://www.technologyreview.com/2023/12/01/1084189/making-an-image-with-generative-ai-uses-as-much-energy-as-charging-your-phone/) and the need for frequent hardware replacements, which contribute to electronic waste.
+		- **Comparison to Traditional Search**:
+			- Adding AI to Google Search increases its energy use more than tenfold, potentially matching the electricity usage of a small country like Ireland.
+			- In contrast, traditional search engines like Google's original search engine use significantly less energy, with an estimated 0.3 watt-hours per search.
+	- ### The Intersection of Payments, Search, and AI
+		- The current landscape of web architecture, search engine dynamics, and AI integrations signify a pivotal moment, denoted by the convergence of payments, AI-enhanced search, and evolving economic models.
+		- #### AI-Driven Search Engines
+			- Search GPT, developed by OpenAI, marks a significant shift in search engine technology. Unlike traditional search engines such as Google, which rely heavily on indexing publicly available web data, Search GPT utilises advanced AI to deliver more contextually relevant responses with enhanced citations. This development represents a rethinking of the web's infrastructure, prioritising AI's interpretative abilities.
+		- #### Data Acquisition and Copyright Issues
+			- The evolution of search technologies brings forward complex ethical and copyright dilemmas. Unlike Google's traditional web-crawling approach, OpenAI has established partnerships with various publishing entities to avoid legal disputes over data scraping. This shift towards formal agreements for data access is indicative of a broader trend where data becomes a monetised commodity rather than a publicly available resource.
+		- #### Economic Models and Monetisation Strategies
+			- The transition from free data access to paid partnerships reflects a deeper change in economic models within the digital landscape. OpenAI's partnerships with major publishers for Search GPT indicate a movement towards a more closed, monetised web. These partnerships enable OpenAI to offer its AI-driven services legally and more sustainably, albeit at a higher operational cost, potentially offset by future advertising revenues or subscription models.
+		- #### Regulatory and Market Dynamics
+			- Regulatory environments are likely to influence the battle between traditional search engines and AI-driven alternatives. The European Union's challenges in legislating competition within the search market underscore the dominance of established entities like Google. However, AI-driven search engines like Search GPT might benefit from regulatory shifts aiming to break monopolistic hold, thereby fostering competition and innovation.
+		- #### User Behaviour and Adoption
+			- A critical factor in the success of AI-driven search engines will be user adoption. While AI-enhanced search engines promise more accurate and contextually relevant results, there remains scepticism about whether users will transition from well-known traditional search engines like Google. Improvements in AI capabilities must demonstrate a substantial enhancement in user experience to effectively drive this behavioural shift.
+		- #### Cloud Infrastructure and Competitive Dynamics
+			- Microsoft's role as a cloud infrastructure provider for both Bing and OpenAI highlights the strategic importance of cloud services in the AI and search engine landscape. The partnership dynamics between Microsoft and OpenAI, despite their competitive products, underscore the centrality of cloud infrastructure in supporting AI technologies.
+		- #### Revenue Models and Financial Viability
+			- The financial success of AI-driven search engines will hinge on their ability to generate revenue and offset operational costs. Traditional search engines like Google have perfected ad-based revenue models. AI-driven alternatives, however, must navigate establishing similarly effective monetisation strategies, potentially through a mix of subscription-based models and advertising revenue.
+		- ### Economic Exclusion
+			- The nexus where payments, search, and AI converge marks a transformative period for the internet. The traditional model of free data access and ad-supported revenue is being challenged by AI capabilities necessitating paid data agreements and enhanced monetisation strategies. This evolution impacts everything from user behaviour and regulatory frameworks to financial viability and market competition, signalling a profound shift in the digital ecosystem.
+			- **Global Accessibility**:
+				- Despite the growing adoption of GENAI, approximately 33% of the global population remains offline, limiting access to these energy-intensive tools.
+				- **Cost and Accessibility Barriers**:
+					- The high energy costs associated with GENAI data centers are passed on to users, making these services less accessible to those in lower-income regions or with limited internet infrastructure.
+					- The economic burden of GENAI adoption can further exacerbate existing digital divides, excluding those who cannot afford the necessary infrastructure or energy costs.
+				- **Alternative Approaches**:
+					- Researchers suggest that more specialized, less carbon-intensive models could be used for specific tasks, [reducing energy consumption](https://www.techtarget.com/sustainability/feature/Generative-AIs-sustainability-problems-explained) and making these tools more accessible to a broader audience.
+					- The only other option is a phase transition to a new internet paradigm, with higher signal to noise, through aligned incentives and cryptographically assured end points.
+- ## Computers breeding humans
+	- It's indesputible that dating app algorithms have been "matchmaking" humans against numerical criteria for a long time. It's possible there's are third generation "matched" users of the apps now, since computers were first [applied to this in 1964](https://www.datingadvice.com/online-dating/history-of-online-dating).
+		- "Cofounder of the RIZZ app here. We got inspired to build RIZZ a while back when we noticed the sheer volume of people asking for dating conversational help in the Tinder subreddit. Tons of people, both guys and girls, struggle with online dating. In fact, the statistics show that most are not successful with it. So how can they improve? Many go on Reddit asking for help. Or asking their friends for advice. Most simply can’t afford a dating coach. I believe AI can level the playing field, enabling people to enhance their flirting skills and boost confidence when interacting with new people. We launched just over a year ago and have learned so much up to this point. We still have so much to do to make our vision a reality."
+	- It seems not it'll be bots talking to bots, under the guidance of algos, leading to dystopian babies.
+- ## Billionaires are monetising users
+	- Advertising is a "Rube Goldberg Machine" that has twisted incentives and is no longer fully scrutable.
+		- [You Think You Know How Misinformation Spreads? Welcome to the Hellhole of Programmatic Advertising | WIRED](https://www.wired.com/story/death-of-truth-misinformation-advertising/)
+	- ### People have noticed
+		- Science fiction author and all round thinker Cory Doctorow has been highlighting all this for a long time
+		- [Platform decay - Doctorow](https://en.wikipedia.org/wiki/Enshittification?)
+		- {{renderer :linkpreview,https://pluralistic.net/2024/04/04/teach-me-how-to-shruggie/}}
+			- https://pluralistic.net/2024/04/04/teach-me-how-to-shruggie/
+		- [‘Enshittification’ is coming for absolutely everything (ft.com)](https://www.ft.com/content/6fb1602d-a08b-4a8c-bac0-047b7d64aba5)
+		- {{renderer :linkpreview,https://www.benlandautaylor.com/p/the-ddos-attack-of-academic-bullshit}}
+			- https://www.benlandautaylor.com/p/the-ddos-attack-of-academic-bullshit
+		- {{renderer :linkpreview,https://injuly.in/blog/darker-internet/index.html}}
+			- https://injuly.in/blog/darker-internet/index.html
+		- {{renderer :linkpreview,https://www.wheresyoured.at/are-we-watching-the-internet-die/}}
+			- https://www.wheresyoured.at/are-we-watching-the-internet-die/
+		- <iframe src="https://www.theguardian.com/technology/article/2024/may/19/spam-junk-slop-the-latest-wave-of-ai-behind-the-zombie-internet" style="width: 100%; height: 600px"></iframe>
+- ## Attention is too concentrated
+	- We have become dependant on algorithmically generated personal feeds, we have lost the capacity to explore our digital society
+		- [Where have all the websites gone? (fromjason.xyz)](https://www.fromjason.xyz/p/notebook/where-have-all-the-websites-gone/)
+	- These platforms are very vulnerable and exposed to manipulation, especially as the previous guardrails are removed for profit margins.
+	- These technologies are reductionist, which feels like a shortcut, but is actually a simplification across the manifold of American English, and is likely making people intellectually lazy.
+	- Increasingly there will be no other choice, trending toward [[Human vs AI]].
+- ## Changes to information sources
+	- Social media platforms, particularly Facebook and Instagram, are undergoing a significant shift by reducing the emphasis on political content. Meta, the parent company of these platforms, has introduced measures to minimize the presence of political content, such as the launch of the Threads app, which aims to de-emphasize news and politics ([The Verge](https://www.theverge.com/2022/10/24/23425082/meta-threads-app-political-news-content-reduction-facebook-instagram)).
+	- This move is part of a broader trend where social media giants are altering their algorithms to prioritize personal content over news and politics, potentially impacting public engagement and democracy ([The New York Times](https://www.nytimes.com/2022/10/24/technology/meta-threads-political-content.html)).
+	- Simultaneously, the influence of traditional or [[legacy media]] is experiencing a substantial decline. With the rise of social media and digital platforms, the reach and impact of legacy media have been radically reduced, leading to a transformation in the way information is disseminated and consumed.
+		- Note that many are now signing deals with [[OpenAI]] etc
+	- Twitter has also undergone significant changes and is perceived as a mere shadow of its former self. The platform has been criticized for various issues, including the spread of misinformation, harassment, and a decline in user engagement.
+		- Twitter / X is now likely to join a 'race to the bottom', with [NSFW communities](https://techcrunch.com/2024/03/29/x-confirms-plans-for-nsfw-communities/?) driven by GenAI bots likely taking the platform by storm.
+		- [Twitch U-turns on 'artistic nudity' policy - BBC News](https://www.bbc.co.uk/news/technology-67747949)
+	- TikTok, a Chinese-owned social media platform, has been gaining prominence and is characterized by its opaque nature. As it ascends in popularity, concerns have been raised about its potential impact on shaping public opinion and its susceptibility to external influence.
+	- Amidst these changes, there is a notable shift towards "the private internet," including chat groups, Discord, fringe social media platforms, and Telegram groups. This trend has led to the fragmentation of views and discussions, raising concerns about the potential for echo chambers and polarization.
+- ## AI Advertising Trojan Horse Sites
+	- Fake sites which cater to name based searches such as minor celebrities are automatically updated thousands of times a day to rise to the top of Google searchs.
+	- [The rise of obituary spam - The Verge](https://www.theverge.com/24065145/ai-obituary-spam-generative-clickbait)
+	- [Celebrity Wiki ⋆ Richest People, Trending Biography, Famous Birthdays! (celebsagewiki.com)](https://www.celebsagewiki.com/)
+- ## The Dark Forest Thesis
+	- [The Dark Forest Theory of the Internet | by Yancey Strickler | Medium](https://ystrickler.medium.com/the-dark-forest-theory-of-the-internet-7dc3e68a7cb1)
+	- [The Expanding Dark Forest and Generative AI (maggieappleton.com)](https://maggieappleton.com/ai-dark-forest)
+	- In Liu Cixin's sci-fi trilogy *The Three Body Problem*, the dark forest theory suggests that the universe is full of life, but it remains silent and hidden to survive, like animals in a dark forest at night when predators are out.
+	- The internet is becoming like a dark forest:
+		- In response to ads, tracking, trolling, hype, and predatory behaviors, people are retreating to safer, private spaces online
+		- These "dark forests" of the internet are non-indexed, non-optimized, and non-gamified environments where depressurized conversation is possible
+		- Examples include private channels, group chats, and newsletters sent to select groups
+		- Podcasts are another "dark forest" where meaning is expressed through intonation and interaction, allowing for more forgiving communication compared to the internet at large
+- ## Bots Proliferate
+	- ![paste (6).png](../assets/paste_(6)_1718746134411_0.png)
+	-
+	- Jailbroken foundation models can already solve Capcha human checks, and this will soon be possible with open source models. At this point the internet will possibly explode with bot activity.
+		- ![1706810932954.jpeg](../assets/1706810932954_1717339896749_0.jpeg){:width 600}
+	- It's important to note that as the web dies, we will increasingly be forced to use [[Agents]] to mediate information, and this will mean increased [[Global Inequality]] as the remaining tatters of the free internet become badlands.
+		- [Andrew Gao on X: "the singularity is literally here. Devin ended up talking to ANOTHER AI (McDonalds' AI recruiter)!! The future of the web is #agents talking to agents. Luckily, Devin convinced Olivia to give me an interview :) Peep the video https://t.co/oYJG8JzIIO" / X (twitter.com)](https://twitter.com/itsandrewgao/status/1786880819170320678)
+	- [Andrew Gao on X: "#Devin helped me get a job at McDonalds 🍔🍟 I will have a job post-AGI! (seriously, it's gotten really good at browser automation, watch) 📽️ Part 2: auto-applying to @cognition_labs with Devin 👇🧵 https://t.co/oBm20nOCvx" / X (twitter.com)](https://twitter.com/itsandrewgao/status/1786879644651991549)
+		- {{twitter https://twitter.com/itsandrewgao/status/1786879644651991549}}
+	- Bots that persuade bots that persuade bots
+		- https://www.linkedin.com/posts/emollick_two-weird-things-that-are-going-to-happen-activity-7180768944067072000-Gmtq?
+	- Google search is dying under the shifting signal to noise problem.
+		- [AI Has Made Google Search So Bad People Are Moving to TikTok & Reddit | by Ronke Babajide | Bouncin’ and Behavin’ Blogs | Medium](https://medium.com/bouncin-and-behavin-blogs/ai-has-made-google-search-so-bad-people-are-moving-to-tiktok-reddit-6ac0b4801d2e)
+	- According to Imperva, 47.4% of all internet traffic in 2022 was bots ([reference](https://www.imperva.com/blog/bad-bot-report-2022-edition/)) though this is contested by industry internet tracker [CHEQ](https://cheq.ai/) .
+	- An ex-CIA expert suggested up to 80% of Twitter accounts could be bots ([reference](https://finance.yahoo.com/news/cia-expert-says-80-twitter-222337217.html)).
+		- [The majority of traffic from Elon Musk's X may have been fake during the Super Bowl, report suggests | Mashable](https://mashable.com/article/x-twitter-elon-musk-bots-fake-traffic)
+	- Russian bots are inflating Instagram influencer follower counts into the tens of millions ([reference](https://www.adweek.com/social-marketing/study-15-million-russian-instagram-influencers-followers-are-bots/)).
+	- Ticketmaster says bots snatch up concert tickets before fans get access ([reference](https://www.cnbc.com/2017/05/23/ticketmaster-and-live-nation-face-class-action-lawsuit.html)).
+	- [(1) X (twitter.com)](https://twitter.com/lorda26/status/1753451790778225095) ancient spam account posts a generated image description with no image, drawing swarms of admiring text-spam bots which generate imaginary human reactions (read the replies) to an image which doesn’t actually exist
+- ## Rise of Bots Aligns With Dead Internet Theory
+	- Originally a conspiracy theory, the dead internet theory suggests online activity is increasingly driven by bots, AI and algorithms rather than genuine human interactions. [Wikipedia page on dead internet theory](https://en.wikipedia.org/wiki/Dead_Internet_theory)
+	- Corporations and governments are flooding the internet with bots and AI-generated content to push propaganda and influence behaviour 
+	  ([Deep fakes Verge article](https://www.theverge.com/23341528/ai-fake-faces-personalities-bots-misinformation)). ([Fake Ted Cruz site](https://www.tedcruzforhumanpresident.com/)).
+- ## Concerns Over AI's Influence on Online Content
+	- The collective impact of these developments creates a potentially more precarious environment for the manipulation of public opinion through artificial intelligence (AI). As political discourse becomes decentralized across various platforms and the emphasis on political content diminishes on major social media platforms, there is a growing risk of AI being exploited to manipulate public sentiment and political narratives.
+	- Europol raised concerns about AI's overwhelming presence in online content ([reference](https://www.euractiv.com/section/digital/news/europol-sounds-alarm-on-ai-in-online-content-slamming-tech-giants/)).
+	- Experts warn internet is saturated with bots, [disinformation](https://counterhate.com/research/the-disinformation-dozen/) and biases that undermine perceptions of genuine interactions ([reference](https://www.forbes.com/sites/ajdellinger/2019/04/24/the-bots-that-are-changing-reddit/?sh=7d6d25b94e23)).
+	- The internet is becoming balkanised as large data aggregators like reddit close their APIs and prevent scraping. This is already having a meaningful effect on internet search.
+	- 'Background tokens' is a term used on the [[latent space]] podcast to describe pre LLM unpolluted data. This legacy data is the last state of human discourse.
+	- A fascinating unexpected second order impact of this is that future models may skew more right wing as those sites [welcome the scraping.](https://www.wired.com/story/most-news-sites-block-ai-bots-right-wing-media-welcomes-them/?)
+	- [AI and Leviathan: Part III by Samuel Hammond (secondbest.ca)](https://www.secondbest.ca/p/ai-and-leviathan-part-iii)
+- ## Mental health [[Social contract and jobs]]
+	- [Fraudulent studies are undermining the reliability of systematic reviews – a study of the prevalence of problematic images in preclinical studies of depression | bioRxiv](https://www.biorxiv.org/content/10.1101/2024.02.13.580196v1) [[Death of the Internet]] [[Deepfakes and fraudulent content]]
+	- [Jonathan Haidt Wants You to Take Away Your Kid’s Phone | The New Yorker](https://www.newyorker.com/news/the-new-yorker-interview/jonathan-haidt-wants-you-to-take-away-your-kids-phone)
+		- Jonathan Haidt, a social psychologist and the author of the book "The Anxious Generation: How the Great Rewiring of Childhood is Causing an Epidemic of Mental Illness". The main points covered in the interview are:
+			- Haidt argues that a whole generation has been damaged by growing up with unrestricted access to social media and an overprotected childhood, leading to a sharp increase in anxiety, depression, and self-harm among teenagers, especially girls, starting around 2012.
+			- He attributes this to the rapid adoption of smartphones and social media platforms between 2010 and 2015, which radically changed childhood by replacing real-life interactions and play with excessive screen time and exposure to harmful online content.
+			- Haidt presents evidence from correlational and experimental studies to support his claim that social media use causes mental health issues, while acknowledging the need for more research.
+			- He argues that the benefits of social media are outweighed by its negative impact on child development, as it deprives children of essential real-life experiences, such as play, adventure, and healthy risk-taking.
+			- Haidt advocates for changing social norms and implementing restrictions on social media use, such as banning phones in schools and limiting access to social media platforms for children under 16, rather than an outright ban on technology.
+		- <iframe src="https://jonathanhaidt.com/anxious-generation/" style="width: 100%; height: 600px"></iframe>
+- ## Tik Tok tick tock [[Death of the Internet]] [[Digital Society Surveillance]] [[Politics, Law, Privacy]]
+	- [TikTok is China's next big weapon in the battle for personal data (axios.com)](https://www.axios.com/2019/07/20/tiktok-china-online-privacy-personal-data)
+	- [TikTok: Beneath Its Fun Exterior Lies A Sinister Purpose (forbes.com)](https://www.forbes.com/sites/enriquedans/2020/06/28/tiktok-beneath-its-fun-exterior-lies-a-sinisterpurpose/)
+	- [forbes.com/sites/emilybaker-white/2022/10/20/tiktok-bytedance-surveillance-american-user-data/](https://www.forbes.com/sites/emilybaker-white/2022/10/20/tiktok-bytedance-surveillance-american-user-data/)
+	- [For Gen Z, TikTok Is the New Search Engine - The New York Times (nytimes.com)](https://www.nytimes.com/2022/09/16/technology/gen-z-tiktok-search-engine.html)
+	- [TikTok’s search engine repeatedly delivers misinformation to its majority-young user base, report says | CNN Business](https://edition.cnn.com/2022/09/18/business/tiktok-search-engine-misinformation/)
+	- [Revealed: how TikTok censors videos that do not please Beijing | TikTok | The Guardian](https://www.theguardian.com/technology/2019/sep/25/revealed-how-tiktok-censors-videos-that-do-not-please-beijing)
+	- [The U.S. Is Right to Worry About TikTok | Lawfare (lawfaremedia.org)](https://www.lawfaremedia.org/article/us-right-worry-about-tiktok)
+- # Potential Green Shoots
+	- There is a chance to build on recent advances in long running projects like [[Solid]]. This is all wrapped up with [[webid]] and [[Decentralised Web]] monikers.
+	- Using AI to reduce conspiracy theory beliefs https://osf.io/preprints/psyarxiv/xcwdn [[Trust and Safety]] [[Death of the Internet]] the flips side being that they are very capable of [persuasion](https://www.anthropic.com/news/measuring-model-persuasiveness).
+	- [2403.18802.pdf (arxiv.org)](https://arxiv.org/pdf/2403.18802.pdf) [[Trust and Safety]]
+		- 1) Most surprisingly: "LLM agents can achieve superhuman rating performance" on fact checking when given access to Google!
+		  2) Bigger models are more factual than smaller ones, as expected
+		  3) LLMs are 20x cheaper than human fact-checkers, even taking into account the number of calls the [[Large language models]] had to make.
+		- 4) [AI Outperforms Humans in Moral Judgments - Neuroscience News](https://neurosciencenews.com/ai-llm-morality-26041/)
+	- ### Forcing function to trusted end points
+		- *AI will permanently put an end to the "post truth" era: this is the subject for another post, but clearly our prior epistemic standards no longer apply. the cost of creating arbitrary image or video content is effectively 0, so unsigned content will no longer by considered reliable (once people have learned to lately mistrust online content). to be considered reliable in the future, content will have to be signed, attested to, and timestamped (likely on a blockchain).* - [Carter](https://x.com/nic__carter/status/1797635177973158182)
+	-
+- ## A handy simulator
+	- [Sebby37/Dead-Internet: Y'all thought the dead internet theory wasn't real, but HERE IT IS (github.com)](https://github.com/Sebby37/Dead-Internet)
+- ## Other links
+	- [Nobody Knows What’s Happening Online Anymore - The Atlantic](https://www.theatlantic.com/technology/archive/2023/12/internet-information-trends-virality-tracking/676888/)
+	- [W3C SN dystopia](https://www.w3.org/DesignIssues/diagrams/solid/SN-dystopia.svg)
+	- [Welcome to Geriatric Social Media (theatlantic.com)](https://newsletters.theatlantic.com/galaxy-brain/63609043b606fe00376a82da/welcome-to-geriatric-social-media/)
+	- [Social Media Broke Up With News. So Did Readers. - The Atlantic](https://www.theatlantic.com/technology/archive/2023/11/social-media-news-readership-decline/675890/)
+	- [Technology is the Problem - Shyam Sankar](https://www.shyamsankar.com/p/technology-is-the-problem) [[Death of the Internet]] [[Social contract and jobs]]
+	- [The Toilet Theory of the Internet - The Atlantic](https://www.theatlantic.com/technology/archive/2024/05/google-generative-ai-search-toilet-theory/678411/) [[Death of the Internet]]
+	- [[Death of the Internet]] [John Robb: "Networked Tribalism, AI, and Asteroids" | The Great Simplification #110 - YouTube](https://www.youtube.com/watch?v=b2n_Jk37cLE)
+	-
+-

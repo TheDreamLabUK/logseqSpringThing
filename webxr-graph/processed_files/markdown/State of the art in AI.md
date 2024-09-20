@@ -1,0 +1,67 @@
+public:: true
+
+- #Public page automatically published
+- # A look at 2023
+  id:: 65a2a968-c150-4dca-8ddc-902f29a8d7e0
+	- <iframe src="https://spectrum.ieee.org/ai-index-2024" style="width: 100%; height: 600px"></iframe>
+- # Looking ahead
+	- ## Humans are horrible at forecasting.
+		- These are the same biases identified in [Confusion Of Confusions 1688 : Joseph de la Vega](https://archive.org/details/confusion-of-confusions-1688). We are just awful at it.
+			- Authority bias
+			- Recency bias
+			- Impatience and "do something syndrome"
+		- ```With so much changing so quickly, we need to take predictions with a grain of salt, but that doesn’t mean we can’t say anything useful about the coming year in AI. To ground ourselves, we can start with two quotes that should inform any estimates about the future. The first is Amara’s Law “We tend to overestimate the effect of a technology in the short run and underestimate the effect in the long run.” Social change is slower than technological change. We should not expect to see immediate global effects of AI in a major way, no matter how fast its adoption (and it is remarkably fast), yet we certainly will see it sooner than many people think.```
+			- - from [Signs and Portent by Ethan Mollick
+				- [One Useful Thing](https://www.oneusefulthing.org/p/signs-and-portents)
+		- [[Update Cycle]] reminder to update this page!
+			- [Roy Amara Oxford Reference](https://www.oxfordreference.com/display/10.1093/acref/9780191826719.001.0001/q-oro-ed4-00018679)
+			- [AI Index Report 2024 – Artificial Intelligence Index (stanford.edu)](https://aiindex.stanford.edu/report/)
+			- [I. From GPT-4 to AGI: Counting the OOMs - SITUATIONAL AWARENESS (situational-awareness.ai)](https://situational-awareness.ai/from-gpt-4-to-agi/)
+			- ![photo_2024-06-05_08-47-39.jpg](../assets/photo_2024-06-05_08-47-39_1717573793476_0.jpg){:width 600}
+	- ## [[Hardware and Edge]] because SO much compute is just idling in pockets and desks.
+		- Mercedes and VW now have ChatGPT4 integrated into their cars. Ford have Alexa, and when that inevitably upgrades so will all Fords.
+		- Lots more hardware for consumer AI, lots more Edge and task specific inferencing. Lot more edge meets cloud. Some more local inferencing.
+		- {{tweet [https://twitter.com/llama_index/status/1745148547560059277}}
+		- {{embed ((659e5979-c2de-4138-b2df-ede79790ee6d))}}
+	- ## [[Social contract and jobs]]
+		- {{embed ((659a9229-e9c0-485f-b58a-601b68b7edd0))}}
+	- ## [[Politics, Law, Privacy]]
+		- 🟢 Half the world goes to the polls this year. More than 50 countries, 4B people.
+		- [How OpenAI is approaching 2024 worldwide elections](https://openai.com/blog/how-openai-is-approaching-2024-worldwide-elections)
+		- It's not just deepfakes, but adverts, and influencer material on social media. 100x the number with 1/10th the engagement is still a 10x positive for free.
+			- 🟢 This is Professor [Ethan Mollick | LinkedIn](https://www.linkedin.com/in/emollick/) using HeyGen and 30s of footage to create a deepfake.
+			- [One Useful Thing | Ethan Mollick | Substack](https://www.oneusefulthing.org/) [[Education]] and [[Proprietary Large Language Models]] blog
+				- His most recent post is [Signs and Portents](https://www.oneusefulthing.org/p/signs-and-portents) and you should check it.
+			- ![1704433632082.mp4](../assets/1704433632082_1704449202180_0.mp4)
+		- Autodial chatbots that can have plausible and convincing conversations with voters. I briefly saw someone had made one of these using a $20 GPT subscription.
+		- ![image.png](../assets/image_1704292836040_0.png)
+		- [Kyle Taylor: books, biography](https://www.amazon.co.uk/stores/Kyle-Taylor/author/B09G759JR3?)
+		- He talks about something I have similarly been saying:
+			- In the event of a complete breakdown of trust in digital information channels people will simply choose only to trust their priors.
+			- This is a fracturing of the information space, effectively bubbles of one. [[Death of the Internet]] [[Social contract and jobs]]
+		- ### The UK situation.
+		- Every time a phase change of technology has been introduced there has been a fundamental shift in governance structures. These take time to play out. Electronic communication allowed global awareness of corruption, and there is a well documented breakdown of [[Trust and Safety]] since. We can perhaps see this in the way that leaders are abandoning the pretence of 'norms' in the West.
+		- More agile (emerging?) economies / countries may be able to take far more advantage, if they are allowed to, but make no mistake, the UK is currently well positioned. - 🟢 The UK is systemically well positioned to deal with sudden change, because the vertical integration of ministries allows them to be spun up and down in response to change regardless of the leadership. An agile AND persistent civil service can be effective in times of stress.
+			- [Ian Hogarth to lead UK’s AI Foundation Model Taskforce
+		- he's actually a great choice](https://www.gov.uk/government/news/tech-entrepreneur-ian-hogarth-to-lead-uks-ai-foundation-model-taskforce)
+			- [Welcome to State of AI Report 2023](https://www.stateof.ai/)
+			- America is supportive of UK positioning around [[Trust and Safety]]. They have a compatible legal framework, and we are doing useful work that they are ill positioned to do in exploring the legal space.
+			- This perhaps explains the £2.5B [[Infrastructure]] and training investment plan by Microsoft.
+			- These companies are **as big** as the UK. Beware tech bros bearing gifts?
+			  ![image.png](../assets/image_1704045603470_0.png)
+			- All this makes funding seem disproportionately risk sensitive right now.
+	- ## The big remaining shoe to drop is the robots. 2-5 years?
+	- [This robot can tidy a room without any help | MIT Technology Review](https://www.technologyreview.com/2024/02/01/1087445/this-robot-can-tidy-a-room-without-any-help/)
+	- <iframe src="https://arxiv.org/pdf/2401.12202.pdf" style="width: 100%; height: 600px"></iframe>
+	- ![1705344178256.mp4](../assets/1705344178256_1705352121045_0.mp4)
+	- # To Close
+		- ## The age of the informational Agent
+			- As trust in the internet evolves, the situation will change and adapt as people learn to use informational agents. Intentional UX will allow users to ask their AI to bring them the information they want from a far more decentralised and confusing internet. This will promote incredible diversity in humans as they fracture somewhat into informational enclaves.
+			- Two future scenarios include the rise of AI in Truth Verification and Education. AI will become sophisticated enough to verify the truthfulness of information on the internet, combating the spread of misinformation and ensuring that users have access to accurate and reliable informa- tion. AI will also become an integral part of education, acting as a personalised tutor that adapts to each student's learning style and pace, revolutionising the way we learn and acquire new skills.
+			- Money will change: Next -Later  : Money will increasingly be spent by machines on behalf of human intent. Algorithms will bargain and arbitrage on behalf of their owner/user, for human and machine services, and for ideas, algorithms, and good; globally. This will smooth out the operation of money globally.
+			- Ubiquitous multi-modal UX: Next to Later The future will see the rise of ubiquitous displays, computing [43], and interfaces
+			- screens and projections seamlessly integrated into our environments. These displays will not only provide information and entertainment but will serve as interfaces for our interactions with AI. Gesture may come to the fore, and subvocalisation to talk to personal AIs will be possible.
+	- ### [Industry perspective](https://chat.openai.com/g/g-xhDmZxdJW-industry-predictions-engine/)  << this is 133 industry reports in a GPT I have made.
+	- <iframe src="https://chat.openai.com/share/bbe7c775-b764-40c3-b87e-cf87fdd1a3a7" style="width: 100%; height: 600px"></iframe>
+- [[rework based on gpt]]
+- This is a [[presentation]] slide and the next slide is
