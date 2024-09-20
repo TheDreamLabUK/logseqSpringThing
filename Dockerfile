@@ -25,6 +25,9 @@ COPY Cargo.toml Cargo.lock ./
 # Copy the source code
 COPY src ./src
 
+# Copy settings.toml
+COPY settings.toml ./
+
 # Build the Rust application
 RUN cargo build --release
 
@@ -37,8 +40,14 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
+# Set the working directory
+WORKDIR /app
+
 # Copy the built executable from the builder stage
-COPY --from=builder /usr/src/app/target/release/webxr-graph /usr/local/bin/webxr-graph
+COPY --from=builder /usr/src/app/target/release/webxr-graph /app/webxr-graph
+
+# Copy settings.toml from the builder stage
+COPY --from=builder /usr/src/app/settings.toml /app/settings.toml
 
 # Set the command to run the executable
-CMD ["webxr-graph"]
+CMD ["/app/webxr-graph"]

@@ -24,11 +24,18 @@ topics = [
 
 # Perplexity API configuration
 [perplexity]
-api_key = "your_actual_api_key"       # Replace with your actual API key
-model = "test-model"                  # Model name, e.g., "test-model"
-api_base_url = "http://mock-server.test"  # URL of the API endpoint or mock server
-max_tokens = 100                      # Maximum number of tokens
-temperature = 0.7                     # Sampling temperature
-top_p = 0.9                           # Nucleus sampling parameter
-presence_penalty = 0.0                # Presence penalty
-frequency_penalty = 0.0               # Frequency penalty
+api_key = "default_key"  # This will be overridden by environment variable
+model = "llama-3.1-sonar-small-128k-online"
+api_base_url = "https://api.perplexity.ai/chat/completions"
+max_tokens = 4096
+temperature = 0.5
+top_p = 0.9
+presence_penalty = 0.0
+frequency_penalty = 1.0
+
+# Default configurations (can be overridden by environment variables)
+[default]
+max_concurrent_requests = 5
+max_retries = 3
+retry_delay = 5
+api_client_timeout = 30

@@ -16,6 +16,7 @@ echo "Building and starting new container with maximal debug..."
 docker build -t logseq-xr-image .
 docker run -d --name logseqXR \
     --env-file .env \
+    -e TOPICS="Topic1,Topic2,Topic3" \
     -p 8443:8443 \
     --gpus all \
     -e RUST_LOG=debug \
