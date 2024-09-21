@@ -49,5 +49,8 @@ COPY --from=builder /usr/src/app/target/release/webxr-graph /app/webxr-graph
 # Copy settings.toml from the builder stage
 COPY --from=builder /usr/src/app/settings.toml /app/settings.toml
 
+# Set environment variables
+ENV TOPICS="Artificial Intelligence,Machine Learning,Rust Programming,Web Development,WebXR,Three.js,GPU Computing,Graph Visualization,Markdown Processing"
+
 # Set the command to run the executable
 CMD ["/app/webxr-graph"]

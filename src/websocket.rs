@@ -1,30 +1,44 @@
-use warp::Filter;
-use warp::ws::{Message, WebSocket};
-use futures_util::{StreamExt, SinkExt};
+use actix::{Actor, StreamHandler};
+use actix_web_actors::ws;
+use crate::app_state::AppState;
+use std::sync::Arc;
 
-async fn handle_socket(ws: WebSocket) {
-    let (mut tx, mut rx) = ws.split();
+pub struct WebSocketSession {
+    app_state: Arc<AppState>,
+}
 
-    while let Some(result) = rx.next().await {
-        match result {
-            Ok(msg) => {
-                if let Ok(text) = msg.to_str() {
-                    println!("Received text message: {}", text);
-                    tx.send(Message::text(text)).await.unwrap();
-                }
+impl WebSocketSession {
+    pub fn new(app_state: Arc<AppState>) -> Self {
+        WebSocketSession { app_state }
+    }
+}
+
+impl Actor for WebSocketSession {
+    type Context = ws::WebsocketContext<Self>;
+}
+
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        match msg {
+            Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
+            Ok(ws::Message::Text(text)) => {
+                println!("Received message: {}", text);
+                // Here you can implement the logic to handle incoming messages
+                // For example, updating the graph data or triggering a refresh
             }
-            Err(e) => {
-                eprintln!("WebSocket error: {}", e);
-                break;
-            }
+            Ok(ws::Message::Binary(bin)) => ctx.binary(bin),
+            _ => (),
         }
     }
 }
 
-pub fn websocket_route() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path("ws")
-        .and(warp::ws())
-        .map(|ws: warp::ws::Ws| {
-            ws.on_upgrade(handle_socket)
-        })
+impl WebSocketSession {
+    // Add methods to send updates to the client
+    pub fn send_graph_update(&self, ctx: &mut ws::WebsocketContext<Self>) {
+        // Implement logic to send graph updates to the client
+        // For example:
+        // let graph_data = self.app_state.graph_data.read().await;
+        // let json = serde_json::to_string(&*graph_data).unwrap();
+        // ctx.text(json);
+    }
 }

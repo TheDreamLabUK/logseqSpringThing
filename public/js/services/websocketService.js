@@ -6,10 +6,10 @@
 export class WebsocketService {
   /**
    * Creates a new WebsocketService instance.
-   * @param {string} url - The WebSocket server URL.
+   * @param {string} url - The WebSocket server URL (optional).
    */
   constructor(url) {
-    this.url = url;
+    this.url = url || `wss://${window.location.hostname}:8443`;
     this.socket = null;
     this.listeners = {};
     this.connect();

@@ -2,12 +2,14 @@ use serde::Deserialize;
 use config::{Config, ConfigError, File, Environment};
 use dotenv::dotenv;
 use std::path::Path;
+use std::fs::File as StdFile;
+use std::io::{BufRead, BufReader};
 use log::{info, error};
 
 #[derive(Debug, Deserialize)]
 pub struct Settings {
     pub prompt: String,
-    #[serde(default)]
+    #[serde(skip)]
     pub topics: Vec<String>,
     pub perplexity: PerplexityConfig,
     pub default: DefaultConfig,
@@ -41,8 +43,8 @@ impl Settings {
 
         let mut builder = Config::builder();
 
-        // Load default settings from settings.toml
-        let base_settings_path = Path::new("/app/settings.toml");
+        // Load default settings from settings.toml in the current directory
+        let base_settings_path = Path::new("settings.toml");
         if base_settings_path.exists() {
             info!("Loading default settings from {:?}", base_settings_path);
             builder = builder.add_source(File::from(base_settings_path).required(true));
@@ -61,21 +63,28 @@ impl Settings {
         // Deserialize into Settings struct
         let mut settings: Settings = config_map.try_deserialize()?;
 
-        // Special handling for topics if it's a single string in env var
-        if let Ok(topics_str) = std::env::var("TOPICS") {
-            info!("Overriding topics from environment variable");
-            // Split the string into individual topics
-            settings.topics = topics_str
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-        } else {
-            info!("Using topics from settings.toml");
-        }
+        // Load topics from CSV file
+        settings.topics = Self::load_topics_from_csv("topics.csv")?;
+        info!("Loaded topics: {:?}", settings.topics);
 
         info!("Final parsed configuration: {:#?}", settings);
 
         Ok(settings)
+    }
+
+    fn load_topics_from_csv(file_path: &str) -> Result<Vec<String>, ConfigError> {
+        let file = StdFile::open(file_path).map_err(|e| ConfigError::Message(format!("Failed to open topics.csv: {}", e)))?;
+        let reader = BufReader::new(file);
+        let topics: Vec<String> = reader.lines()
+            .filter_map(Result::ok)
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .collect();
+
+        if topics.is_empty() {
+            Err(ConfigError::Message("No topics found in topics.csv".to_string()))
+        } else {
+            Ok(topics)
+        }
     }
 }
