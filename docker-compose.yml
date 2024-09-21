@@ -4,11 +4,15 @@ services:
   webxr-graph:
     build: .
     ports:
-      - "8443:8443"
+      - "8081:8081"
     environment:
       - RUST_LOG=info
+      - BIND_ADDRESS=0.0.0.0
     volumes:
       - .:/usr/src/app
+      - ./data:/app/data
+    working_dir: /usr/src/app
+    command: /bin/sh -c 'printenv && cargo run'
     deploy:
       resources:
         reservations:

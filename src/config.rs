@@ -63,8 +63,8 @@ impl Settings {
         // Deserialize into Settings struct
         let mut settings: Settings = config_map.try_deserialize()?;
 
-        // Load topics from CSV file
-        settings.topics = Self::load_topics_from_csv("topics.csv")?;
+        // Load topics from CSV file in the new volume
+        settings.topics = Self::load_topics_from_csv("/app/data/topics.csv")?;
         info!("Loaded topics: {:?}", settings.topics);
 
         info!("Final parsed configuration: {:#?}", settings);

@@ -16,6 +16,12 @@ RUN apt-get update && apt-get install -y \
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
+# Set the default Rust toolchain to stable
+RUN /bin/bash -c "source $HOME/.cargo/env && rustup default stable"
+
+# Verify Rust installation
+RUN /bin/bash -c "source $HOME/.cargo/env && rustc --version && cargo --version"
+
 # Set the working directory in the container
 WORKDIR /usr/src/app
 
@@ -29,7 +35,7 @@ COPY src ./src
 COPY settings.toml ./
 
 # Build the Rust application
-RUN cargo build --release
+RUN /bin/bash -c "source $HOME/.cargo/env && cargo build --release"
 
 # Use the NVIDIA CUDA runtime in the final image
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
@@ -46,11 +52,15 @@ WORKDIR /app
 # Copy the built executable from the builder stage
 COPY --from=builder /usr/src/app/target/release/webxr-graph /app/webxr-graph
 
+# Copy Cargo from the builder stage
+COPY --from=builder /root/.cargo /root/.cargo
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 # Copy settings.toml from the builder stage
 COPY --from=builder /usr/src/app/settings.toml /app/settings.toml
 
-# Set environment variables
-ENV TOPICS="Artificial Intelligence,Machine Learning,Rust Programming,Web Development,WebXR,Three.js,GPU Computing,Graph Visualization,Markdown Processing"
+# Expose port 8081
+EXPOSE 8081
 
 # Set the command to run the executable
 CMD ["/app/webxr-graph"]
