@@ -5,18 +5,13 @@ export class GraphDataManager {
     }
 
     requestInitialData() {
-        this.websocketService.send({ type: 'requestInitialData' });
+        this.websocketService.send({ type: 'getInitialData' });
     }
 
     updateGraphData(newData) {
         this.graphData = newData;
+        console.log('Graph data updated:', this.graphData);
     }
 
-    getGraphData() {
-        return this.graphData;
-    }
-
-    requestGraphUpdate() {
-        this.websocketService.send({ type: 'requestGraphUpdate' });
-    }
+    // Add more methods as needed for graph data management
 }

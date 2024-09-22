@@ -1,5 +1,4 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.module.js';
-import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.132.2/examples/jsm/webxr/VRButton.js';
+import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js';
 
 export class WebXRVisualization {
     constructor(graphDataManager) {
@@ -12,88 +11,84 @@ export class WebXRVisualization {
     }
 
     initialize() {
-        this.initScene();
-        this.initCamera();
-        this.initRenderer();
-        this.initVR();
-        this.initLights();
+        this.initThreeJS();
+        this.initWebXR();
         this.animate();
     }
 
-    initScene() {
+    initThreeJS() {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x000000);
-    }
-
-    initCamera() {
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('scene-container').appendChild(this.renderer.domElement);
+
+        // Add some basic lighting
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        this.scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        this.scene.add(directionalLight);
+
         this.camera.position.z = 5;
     }
 
-    initRenderer() {
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.xr.enabled = true;
-        document.getElementById('scene-container').appendChild(this.renderer.domElement);
+    initWebXR() {
+        // Check if WebXR is supported
+        if ('xr' in navigator) {
+            navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+                if (supported) {
+                    const enterVRButton = document.createElement('button');
+                    enterVRButton.textContent = 'Enter VR';
+                    enterVRButton.onclick = this.enterVR.bind(this);
+                    document.body.appendChild(enterVRButton);
+                }
+            });
+        }
     }
 
-    initVR() {
-        document.body.appendChild(VRButton.createButton(this.renderer));
-    }
-
-    initLights() {
-        const ambientLight = new THREE.AmbientLight(0x404040);
-        this.scene.add(ambientLight);
-
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-        directionalLight.position.set(1, 1, 1);
-        this.scene.add(directionalLight);
-    }
-
-    updateVisualization() {
-        const graphData = this.graphDataManager.getGraphData();
-        if (!graphData) return;
-
-        this.updateNodes(graphData.nodes);
-        this.updateEdges(graphData.edges);
-    }
-
-    updateNodes(nodes) {
-        nodes.forEach(node => {
-            if (!this.nodes.has(node.id)) {
-                const geometry = new THREE.SphereGeometry(0.1, 32, 32);
-                const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-                const mesh = new THREE.Mesh(geometry, material);
-                this.scene.add(mesh);
-                this.nodes.set(node.id, mesh);
-            }
-            const nodeMesh = this.nodes.get(node.id);
-            nodeMesh.position.set(node.x, node.y, node.z);
+    enterVR() {
+        navigator.xr.requestSession('immersive-vr').then((session) => {
+            this.renderer.xr.setSession(session);
+            this.renderer.xr.enabled = true;
         });
     }
 
-    updateEdges(edges) {
-        edges.forEach(edge => {
-            const edgeId = `${edge.source}-${edge.target}`;
-            if (!this.edges.has(edgeId)) {
+    updateVisualization() {
+        if (!this.graphDataManager.graphData) return;
+
+        // Clear existing nodes and edges
+        this.nodes.forEach(node => this.scene.remove(node));
+        this.edges.forEach(edge => this.scene.remove(edge));
+        this.nodes.clear();
+        this.edges.clear();
+
+        // Create new nodes
+        this.graphDataManager.graphData.nodes.forEach(nodeData => {
+            const geometry = new THREE.SphereGeometry(0.1, 32, 32);
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const nodeMesh = new THREE.Mesh(geometry, material);
+            nodeMesh.position.set(
+                Math.random() * 10 - 5,
+                Math.random() * 10 - 5,
+                Math.random() * 10 - 5
+            );
+            this.scene.add(nodeMesh);
+            this.nodes.set(nodeData.id, nodeMesh);
+        });
+
+        // Create new edges
+        this.graphDataManager.graphData.edges.forEach(edgeData => {
+            const sourceNode = this.nodes.get(edgeData.source);
+            const targetNode = this.nodes.get(edgeData.target);
+            if (sourceNode && targetNode) {
                 const geometry = new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(edge.source.x, edge.source.y, edge.source.z),
-                    new THREE.Vector3(edge.target.x, edge.target.y, edge.target.z)
+                    sourceNode.position,
+                    targetNode.position
                 ]);
                 const material = new THREE.LineBasicMaterial({ color: 0xffffff });
-                const line = new THREE.Line(geometry, material);
-                this.scene.add(line);
-                this.edges.set(edgeId, line);
-            } else {
-                const line = this.edges.get(edgeId);
-                const positions = line.geometry.attributes.position.array;
-                positions[0] = edge.source.x;
-                positions[1] = edge.source.y;
-                positions[2] = edge.source.z;
-                positions[3] = edge.target.x;
-                positions[4] = edge.target.y;
-                positions[5] = edge.target.z;
-                line.geometry.attributes.position.needsUpdate = true;
+                const edgeLine = new THREE.Line(geometry, material);
+                this.scene.add(edgeLine);
+                this.edges.set(edgeData.id, edgeLine);
             }
         });
     }

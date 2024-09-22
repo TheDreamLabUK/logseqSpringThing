@@ -1,4 +1,3 @@
-# Use NVIDIA CUDA runtime base image with Ubuntu 22.04 and necessary libraries
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04 as builder
 
 # Install necessary dependencies for building Rust applications
@@ -17,10 +16,7 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Set the default Rust toolchain to stable
-RUN /bin/bash -c "source $HOME/.cargo/env && rustup default stable"
-
-# Verify Rust installation
-RUN /bin/bash -c "source $HOME/.cargo/env && rustc --version && cargo --version"
+RUN rustup default stable
 
 # Set the working directory in the container
 WORKDIR /usr/src/app
@@ -35,15 +31,17 @@ COPY src ./src
 COPY settings.toml ./
 
 # Build the Rust application
-RUN /bin/bash -c "source $HOME/.cargo/env && cargo build --release"
+RUN cargo build --release
 
-# Use the NVIDIA CUDA runtime in the final image
+# Final stage
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
-# Install necessary runtime dependencies
+# Install necessary runtime dependencies and nginx
 RUN apt-get update && apt-get install -y \
     curl \
     libssl3 \
+    nginx \
+    openssl \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
@@ -52,15 +50,26 @@ WORKDIR /app
 # Copy the built executable from the builder stage
 COPY --from=builder /usr/src/app/target/release/webxr-graph /app/webxr-graph
 
-# Copy Cargo from the builder stage
-COPY --from=builder /root/.cargo /root/.cargo
-ENV PATH="/root/.cargo/bin:${PATH}"
-
 # Copy settings.toml from the builder stage
 COPY --from=builder /usr/src/app/settings.toml /app/settings.toml
 
-# Expose port 8081
-EXPOSE 8081
+# Copy the data directory
+COPY data /app/data
 
-# Set the command to run the executable
-CMD ["/app/webxr-graph"]
+# Generate self-signed SSL certificate
+RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/nginx-selfsigned.key -out /etc/ssl/certs/nginx-selfsigned.crt -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
+
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Ensure proper permissions for nginx
+RUN chown -R www-data:www-data /var/lib/nginx
+
+# Expose ports for HTTP and HTTPS
+EXPOSE 8080 8443
+
+# Create a startup script
+RUN echo '#!/bin/bash\nnginx\n/app/webxr-graph' > /app/start.sh && chmod +x /app/start.sh
+
+# Set the command to run the startup script
+CMD ["/app/start.sh"]

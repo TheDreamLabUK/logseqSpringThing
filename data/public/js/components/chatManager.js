@@ -11,9 +11,9 @@ export class ChatManager {
         this.sendButton = document.getElementById('send-button');
         this.chatMessages = document.getElementById('chat-messages');
 
-        this.sendButton.addEventListener('click', () => this.sendMessage());
-        this.chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+        this.sendButton.addEventListener('click', this.sendMessage.bind(this));
+        this.chatInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
                 this.sendMessage();
             }
         });
@@ -24,21 +24,21 @@ export class ChatManager {
         if (message) {
             this.websocketService.send({
                 type: 'chatMessage',
-                message: message
+                content: message
             });
-            this.addMessageToChat('You', message);
+            this.displayMessage('You', message);
             this.chatInput.value = '';
         }
     }
 
-    displayResponse(message) {
-        this.addMessageToChat('AI', message);
-    }
-
-    addMessageToChat(sender, message) {
+    displayMessage(sender, message) {
         const messageElement = document.createElement('div');
-        messageElement.innerHTML = `<strong>${sender}:</strong> ${message}`;
+        messageElement.textContent = `${sender}: ${message}`;
         this.chatMessages.appendChild(messageElement);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+    }
+
+    displayResponse(message) {
+        this.displayMessage('AI', message);
     }
 }

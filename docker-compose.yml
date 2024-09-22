@@ -4,19 +4,11 @@ services:
   webxr-graph:
     build: .
     ports:
-      - "8081:8081"
+      - "8443:8443"
     environment:
       - RUST_LOG=info
       - BIND_ADDRESS=0.0.0.0
+      - PORT=8080
     volumes:
-      - .:/usr/src/app
       - ./data:/app/data
-    working_dir: /usr/src/app
-    command: /bin/sh -c 'printenv && cargo run'
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    command: sh -c "service nginx start && /app/webxr-graph"

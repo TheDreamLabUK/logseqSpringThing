@@ -4,16 +4,8 @@ use actix_files as fs;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
-<<<<<<< HEAD
 use env_logger::Env;
-use rustls::{ServerConfig, Certificate, PrivateKey};
-use rustls_pemfile::{certs, pkcs8_private_keys};
-use std::fs::File;
-use std::io::BufReader;
-=======
-env_logger::Env;
 use std::env;
->>>>>>> 5d7df79 (refactor without SSL)
 
 mod websocket;
 mod handlers;
@@ -30,42 +22,16 @@ use crate::websocket::WebSocketSession;
 use crate::config::Settings;
 use crate::services::perplexity_service::RealApiClient;
 
-<<<<<<< HEAD
-fn load_ssl_config() -> ServerConfig {
-    let cert_file = &mut BufReader::new(File::open("cert.pem").unwrap());
-    let key_file = &mut BufReader::new(File::open("key.pem").unwrap());
-    
-    let cert_chain = certs(cert_file)
-        .unwrap()
-        .into_iter()
-        .map(Certificate)
-        .collect();
-    let mut keys: Vec<PrivateKey> = pkcs8_private_keys(key_file)
-        .unwrap()
-        .into_iter()
-        .map(PrivateKey)
-        .collect();
-
-    ServerConfig::builder()
-        .with_safe_defaults()
-        .with_no_client_auth()
-        .with_single_cert(cert_chain, keys.remove(0))
-        .unwrap()
-}
-
-async fn websocket_route(req: HttpRequest, stream: web::Payload, app_state: web::Data<AppState>) -> Result<HttpResponse, Error> {
-    ws::start(WebSocketSession::new(app_state.get_ref().clone()), &req, stream)
-=======
 async fn websocket_route(req: HttpRequest, stream: web::Payload, app_state: web::Data<AppState>) -> Result<HttpResponse, Error> {
     println!("WebSocket route hit");
+    println!("Request headers: {:?}", req.headers());
     let app_state_arc = app_state.into_inner();
     ws::start(WebSocketSession::new(app_state_arc), &req, stream)
->>>>>>> 5d7df79 (refactor without SSL)
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    env_logger::init_from_env(Env::default().default_filter_or("info"));
+    env_logger::init_from_env(Env::default().default_filter_or("debug"));
 
     let file_cache = Arc::new(RwLock::new(HashMap::new()));
     let graph_data = Arc::new(RwLock::new(GraphData::default()));
@@ -79,33 +45,21 @@ async fn main() -> std::io::Result<()> {
         api_client,
     });
 
-    let port = env::var("PORT").unwrap_or_else(|_| "8081".to_string());
+    let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let bind_address = env::var("BIND_ADDRESS").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let bind_address = format!("{}:{}", bind_address, port);
 
-<<<<<<< HEAD
-=======
-    println!("Starting server at http://{}", bind_address);
-    println!("PORT: {}", port);
-    println!("BIND_ADDRESS: {}", env::var("BIND_ADDRESS").unwrap_or_else(|_| "0.0.0.0".to_string()));
+    println!("Starting server at http://{}:{}", bind_address, port);
 
->>>>>>> 5d7df79 (refactor without SSL)
     HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
-            .service(fs::Files::new("/", "/app/data/public").index_file("index.html"))
-            .service(fs::Files::new("/js", "/app/data/public/js").show_files_listing())
-            .service(fs::Files::new("/data", "/app/data").show_files_listing())
+            .service(fs::Files::new("/", "./data/public").index_file("index.html"))
+            .route("/ws", web::get().to(websocket_route))
             .route("/fetch-and-process", web::post().to(fetch_and_process_files))
             .route("/graph-data", web::get().to(get_graph_data))
             .route("/refresh-graph", web::post().to(refresh_graph))
-            .route("/ws", web::get().to(websocket_route))
     })
-<<<<<<< HEAD
-    .bind_rustls("0.0.0.0:8443", ssl_config)?
-=======
-    .bind(bind_address)?
->>>>>>> 5d7df79 (refactor without SSL)
+    .bind(format!("{}:{}", bind_address, port))?
     .run()
     .await
 }

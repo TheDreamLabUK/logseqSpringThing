@@ -63,8 +63,8 @@ impl Settings {
         // Deserialize into Settings struct
         let mut settings: Settings = config_map.try_deserialize()?;
 
-        // Load topics from CSV file in the new volume
-        settings.topics = Self::load_topics_from_csv("/app/data/topics.csv")?;
+        // Load topics from CSV file using a relative path
+        settings.topics = Self::load_topics_from_csv("data/topics.csv")?;
         info!("Loaded topics: {:?}", settings.topics);
 
         info!("Final parsed configuration: {:#?}", settings);
@@ -73,7 +73,11 @@ impl Settings {
     }
 
     fn load_topics_from_csv(file_path: &str) -> Result<Vec<String>, ConfigError> {
-        let file = StdFile::open(file_path).map_err(|e| ConfigError::Message(format!("Failed to open topics.csv: {}", e)))?;
+        let file = StdFile::open(file_path).map_err(|e| {
+            error!("Failed to open topics.csv: {}", e);
+            ConfigError::Message(format!("Failed to open topics.csv: {}. Make sure the file exists in the 'data' directory.", e))
+        })?;
+
         let reader = BufReader::new(file);
         let topics: Vec<String> = reader.lines()
             .filter_map(Result::ok)
@@ -82,6 +86,7 @@ impl Settings {
             .collect();
 
         if topics.is_empty() {
+            error!("No topics found in topics.csv");
             Err(ConfigError::Message("No topics found in topics.csv".to_string()))
         } else {
             Ok(topics)

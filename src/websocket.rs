@@ -2,6 +2,7 @@ use actix::{Actor, StreamHandler};
 use actix_web_actors::ws;
 use crate::app_state::AppState;
 use std::sync::Arc;
+use serde_json::json;
 
 pub struct WebSocketSession {
     app_state: Arc<AppState>,
@@ -23,8 +24,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
             Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
             Ok(ws::Message::Text(text)) => {
                 println!("Received message: {}", text);
-                // Here you can implement the logic to handle incoming messages
-                // For example, updating the graph data or triggering a refresh
+                // Convert ByteString to String
+                let text_str = text.to_string();
+                // Echo the received message back to the client
+                let response = json!({
+                    "type": "echo",
+                    "content": text_str
+                });
+                ctx.text(response.to_string());
             }
             Ok(ws::Message::Binary(bin)) => ctx.binary(bin),
             _ => (),
@@ -33,12 +40,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
 }
 
 impl WebSocketSession {
-    // Add methods to send updates to the client
     pub fn send_graph_update(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        // Implement logic to send graph updates to the client
-        // For example:
-        // let graph_data = self.app_state.graph_data.read().await;
-        // let json = serde_json::to_string(&*graph_data).unwrap();
-        // ctx.text(json);
+        // This method can be implemented later for sending graph updates
+        // For now, we'll just send a dummy update
+        let dummy_update = json!({
+            "type": "graph_update",
+            "content": "Dummy graph update"
+        });
+        ctx.text(dummy_update.to_string());
     }
 }
