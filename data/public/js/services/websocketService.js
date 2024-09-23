@@ -6,10 +6,8 @@ export class WebsocketService {
     }
 
     connect() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        const url = `${protocol}//${host}/ws`;
-
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const url = `${wsProtocol}//${window.location.host}/ws/`; // Ensure /ws/ is appended
         console.log('Attempting to connect to WebSocket at:', url);
         this.socket = new WebSocket(url);
 

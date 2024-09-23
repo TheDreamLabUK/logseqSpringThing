@@ -63,7 +63,7 @@ RUN mkdir -p /etc/nginx/ssl
 RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout /etc/nginx/ssl/selfsigned.key \
     -out /etc/nginx/ssl/selfsigned.crt \
-    -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
+    -subj "/C=US/ST=State/L=City/O=Organization/CN=192.168.0.51"
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
@@ -71,11 +71,11 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Ensure proper permissions for nginx
 RUN chown -R www-data:www-data /var/lib/nginx
 
-# Expose ports for HTTP and HTTPS
-EXPOSE 8080 8443
+# Expose HTTPS
+EXPOSE 8443
 
 # Create a startup script
-RUN echo '#!/bin/bash\nnginx\n/app/webxr-graph' > /app/start.sh && chmod +x /app/start.sh
+RUN echo '#!/bin/bash\nset -e\nnginx\nexec /app/webxr-graph' > /app/start.sh && chmod +x /app/start.sh
 
 # Set the command to run the startup script
 CMD ["/app/start.sh"]
