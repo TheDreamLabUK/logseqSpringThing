@@ -13,14 +13,15 @@ docker run -d --name logseqXR \
   -v "$(pwd)/data:/app/data" \
   -p 8080:8080 \
   -p 8443:8443 \
-  -e PORT=8080 \
+  -e PORT=8443 \
   -e BIND_ADDRESS=0.0.0.0 \
   -e RUST_LOG=debug \
+  -e USE_HTTPS=true \
   logseq-xr-image
 
 echo "Docker container is now running."
-echo "Access the application at https://localhost:8443"
-echo "WebSocket should be available at wss://localhost:8443/ws"
+echo "Access the application at https://192.168.0.51:8443"
+echo "WebSocket should be available at https://://192.168.0.51:8443/ws"
 echo "Note: You may see a security warning in your browser due to the self-signed certificate. This is expected for local development."
 
 # Display container logs

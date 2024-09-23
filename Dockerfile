@@ -56,8 +56,14 @@ COPY --from=builder /usr/src/app/settings.toml /app/settings.toml
 # Copy the data directory
 COPY data /app/data
 
-# Generate self-signed SSL certificate
-RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/nginx-selfsigned.key -out /etc/ssl/certs/nginx-selfsigned.crt -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
+# Create directory for SSL certificates
+RUN mkdir -p /etc/nginx/ssl
+
+# Generate self-signed SSL certificate in the correct location
+RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout /etc/nginx/ssl/selfsigned.key \
+    -out /etc/nginx/ssl/selfsigned.crt \
+    -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
