@@ -1,15 +1,28 @@
 #!/bin/bash
 
-# Check if .env file exists
-if [ ! -f .env ]; then
-    echo "Error: .env file not found. Please create a .env file with the required environment variables."
-    exit 1
-fi
+# Stop and remove existing container
+docker stop logseqXR || true
+docker rm logseqXR || true
 
-# Stop and remove the existing container if it exists
-docker-compose down
+# Build the Docker image
+docker build --no-cache -t logseq-xr-image .
 
-# Build and start the new container
-docker-compose up --build -d
+# Run the Docker container with GPU 0 enabled, correct environment variables, and volume mounts
+docker run -d --name logseqXR \
+  --gpus "device=0" \
+  -v "$(pwd)/data:/app/data" \
+  -p 8443:8443 \
+  -e PORT=8080 \
+  -e BIND_ADDRESS=0.0.0.0 \
+  -e RUST_LOG=debug \
+  -e USE_HTTPS=true \
+  logseq-xr-image
 
-echo "WebXR Graph Visualization container has been launched successfully!"
+echo "Docker container is now running."
+echo "Access the application at https://192.168.0.51:8443"
+echo "WebSocket should be available at wss://192.168.0.51:8443/"
+echo "Note: You may see a security warning in your browser due to the self-signed certificate. This is expected for local development."
+
+# Display container logs
+echo "Container logs:"
+docker logs -f logseqXR

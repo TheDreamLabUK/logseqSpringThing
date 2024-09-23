@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebXR Graph Visualization</title>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+        #scene-container { width: 100vw; height: 100vh; }
+        #chat-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 300px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="scene-container"></div>
+    <div id="chat-container">
+        <div id="chat-messages"></div>
+        <input type="text" id="chat-input" placeholder="Ask a question...">
+        <button id="send-button">Send</button>
+    </div>
+
+    <script type="module" src="/js/app.js"></script>
+</body>
+</html>

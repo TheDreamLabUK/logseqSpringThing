@@ -1,10 +1,22 @@
-# Use an official Rust image as the base image
-FROM rust:1.67 as builder
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04 as builder
 
-# Install NVIDIA GPU support
+# Install necessary dependencies for building Rust applications
 RUN apt-get update && apt-get install -y \
-    libcuda1-384 \
-    nvidia-cuda-toolkit
+    build-essential \
+    gnupg2 \
+    curl \
+    libssl-dev \
+    pkg-config \
+    cmake \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Set the default Rust toolchain to stable
+RUN rustup default stable
 
 # Set the working directory in the container
 WORKDIR /usr/src/app
@@ -15,19 +27,55 @@ COPY Cargo.toml Cargo.lock ./
 # Copy the source code
 COPY src ./src
 
-# Build the application
+# Copy settings.toml
+COPY settings.toml ./
+
+# Build the Rust application
 RUN cargo build --release
 
-# Use a smaller base image for the final image
-FROM debian:buster-slim
+# Final stage
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
-# Install NVIDIA GPU support
+# Install necessary runtime dependencies and nginx
 RUN apt-get update && apt-get install -y \
-    libcuda1-384 \
-    nvidia-cuda-toolkit
+    curl \
+    libssl3 \
+    nginx \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set the working directory
+WORKDIR /app
 
 # Copy the built executable from the builder stage
-COPY --from=builder /usr/src/app/target/release/webxr-graph /usr/local/bin/webxr-graph
+COPY --from=builder /usr/src/app/target/release/webxr-graph /app/webxr-graph
 
-# Set the command to run the executable
-CMD ["webxr-graph"]
+# Copy settings.toml from the builder stage
+COPY --from=builder /usr/src/app/settings.toml /app/settings.toml
+
+# Copy the data directory
+COPY data /app/data
+
+# Create directory for SSL certificates
+RUN mkdir -p /etc/nginx/ssl
+
+# Generate self-signed SSL certificate in the correct location
+RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout /etc/nginx/ssl/selfsigned.key \
+    -out /etc/nginx/ssl/selfsigned.crt \
+    -subj "/C=US/ST=State/L=City/O=Organization/CN=192.168.0.51"
+
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Ensure proper permissions for nginx
+RUN chown -R www-data:www-data /var/lib/nginx
+
+# Expose HTTPS
+EXPOSE 8443
+
+# Create a startup script
+RUN echo '#!/bin/bash\nset -e\nnginx\nexec /app/webxr-graph' > /app/start.sh && chmod +x /app/start.sh
+
+# Set the command to run the startup script
+CMD ["/app/start.sh"]
