@@ -1,16 +1,13 @@
-// vite.config.js
-
 import { defineConfig } from 'vite';
-import three from 'vite-plugin-three';
+import { createHtmlPlugin } from 'vite-plugin-html';
 
 export default defineConfig({
-  root: 'data/public', // Set the root to the public directory
+  root: 'data/public',  // Root directory for your frontend files, including index.html
+  plugins: [createHtmlPlugin()],
   build: {
-    outDir: 'dist', // Output the build into a dist directory
-    emptyOutDir: true, // Clear the output directory before building
-    rollupOptions: {
-      input: 'data/public/index.html', // Ensure correct entry point
-    },
+    outDir: '../../dist',  // Output to dist folder at the root level
+    emptyOutDir: true,     // Clear the output directory before building
+    // Remove rollupOptions.input, let Vite handle it automatically
   },
-  plugins: [three()], // Add the Three.js plugin
+  publicDir: 'assets',  // Ensure static assets are in data/public/assets
 });

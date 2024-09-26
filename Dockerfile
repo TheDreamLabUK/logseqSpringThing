@@ -1,61 +1,25 @@
 # Stage 1: Build the Frontend
 FROM node:latest AS frontend-builder
 
-# Set working directory
 WORKDIR /app/frontend
 
-# Copy frontend package files
-COPY data/public/package.json data/public/pnpm-lock.yaml ./
+# Copy package files and vite config before installing dependencies
+COPY package.json pnpm-lock.yaml ./
+COPY vite.config.js ./
+
+# Copy the public assets
+COPY data/public ./data/public  
 
 # Install pnpm globally
 RUN npm install -g pnpm
 
-# Install frontend dependencies
-RUN pnpm install
+# Clean PNPM store and install dependencies
+RUN pnpm store clean && pnpm install --force
 
-# Copy frontend source files
-COPY data/public ./data/public
-
-# Build the frontend
+# Build the frontend (this will output the 'dist' folder)
 RUN pnpm run build
 
-# Stage 2: Build the Rust Backend
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04 AS backend-builder
-
-# Install necessary dependencies for building Rust applications
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    gnupg2 \
-    curl \
-    libssl-dev \
-    pkg-config \
-    cmake \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Rust using rustup
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Set the default Rust toolchain to stable
-RUN rustup default stable
-
-# Set the working directory in the container
-WORKDIR /usr/src/app
-
-# Copy the Cargo.toml and Cargo.lock files to leverage Docker cache
-COPY Cargo.toml Cargo.lock ./
-
-# Copy the source code
-COPY src ./src
-
-# Copy settings.toml
-COPY settings.toml ./
-
-# Build the Rust application in release mode for optimized performance
-RUN cargo build --release
-
-# Stage 3: Create the Final Image
+# Stage 2: Final Build and Serve
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
 # Install necessary runtime dependencies and nginx
@@ -66,17 +30,13 @@ RUN apt-get update && apt-get install -y \
     openssl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory
 WORKDIR /app
 
-# Copy the built Rust binary from the backend-builder stage
+# Copy the built Rust binary from the backend-builder stage (you should have a backend-builder stage in your setup)
 COPY --from=backend-builder /usr/src/app/target/release/webxr-graph /app/webxr-graph
 
-# Copy the built frontend files from the frontend-builder stage
+# Copy the built frontend files (dist folder) into the public directory in the final container
 COPY --from=frontend-builder /app/frontend/dist /app/data/public/dist
-
-# Copy settings.toml from the backend-builder stage
-COPY --from=backend-builder /usr/src/app/settings.toml /app/settings.toml
 
 # Set up a persistent volume for Markdown files to ensure data persistence
 VOLUME ["/app/data/markdown"]
