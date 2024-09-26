@@ -20,7 +20,7 @@ docker run -d --name logseqXR \
 
 echo "Docker container is now running."
 echo "Access the application at https://192.168.0.51:8443"
-echo "WebSocket should be available at wss://192.168.0.51:8443/"
+echo "WebSocket should be available at https://://192.168.0.51:8443/ws"
 echo "Note: You may see a security warning in your browser due to the self-signed certificate. This is expected for local development."
 
 # Display container logs

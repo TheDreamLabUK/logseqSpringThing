@@ -4,7 +4,7 @@ use crate::AppState;
 use crate::models::graph::GraphData;
 use crate::models::node::Node;
 use crate::models::edge::Edge;
-use log::info;
+use log::{info, warn};
 use std::collections::HashMap;
 use tokio::fs;
 use std::sync::Arc;
@@ -21,7 +21,7 @@ impl GraphService {
     /// 1. Reads all processed Markdown files from the designated directory.
     /// 2. Parses each file to extract nodes and their relationships.
     /// 3. Constructs nodes and edges based on bidirectional references.
-    /// 4. Uses GPUCompute to calculate force-directed layout.
+    /// 4. Uses GPUCompute to calculate force-directed layout if available, otherwise falls back to CPU.
     /// 5. Returns the complete `GraphData` structure.
     ///
     /// # Arguments
@@ -108,7 +108,7 @@ impl GraphService {
 
         info!("Graph data built with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
 
-        // Use GPUCompute to calculate force-directed layout
+        // Calculate layout using GPU if available, otherwise fall back to CPU
         Self::calculate_layout(&state.gpu_compute, &mut graph).await?;
         Ok(graph)
     }
@@ -135,40 +135,107 @@ impl GraphService {
         links
     }
 
-    /// Calculates the force-directed layout using GPUCompute.
+    /// Calculates the force-directed layout using GPUCompute if available, otherwise falls back to CPU.
     ///
     /// # Arguments
     ///
-    /// * `gpu_compute` - Reference to the GPUCompute instance.
+    /// * `gpu_compute` - Optional reference to the GPUCompute instance.
     /// * `graph` - Mutable reference to the GraphData to be updated.
     ///
     /// # Returns
     ///
     /// A `Result` indicating success or failure.
-    async fn calculate_layout(gpu_compute: &Arc<RwLock<GPUCompute>>, graph: &mut GraphData) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Set the graph data in GPUCompute
-        let mut gpu_compute = gpu_compute.write().await; // Acquire write lock
-        gpu_compute.set_graph_data(graph)?;
-        
-        // Perform force calculations
-        gpu_compute.compute_forces()?;
+    async fn calculate_layout(gpu_compute: &Option<Arc<RwLock<GPUCompute>>>, graph: &mut GraphData) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        match gpu_compute {
+            Some(gpu) => {
+                // GPU-based calculation
+                let mut gpu_compute = gpu.write().await; // Acquire write lock
+                gpu_compute.set_graph_data(graph)?;
+                gpu_compute.compute_forces()?;
+                gpu_compute.update_positions()?;
+                let updated_nodes = gpu_compute.get_updated_positions().await?;
 
-        // Update node positions
-        gpu_compute.update_positions()?;
-
-        // Retrieve updated positions from GPUCompute
-        let updated_nodes = gpu_compute.get_updated_positions().await?;
-
-        // Update graph nodes with new positions
-        for (i, node) in graph.nodes.iter_mut().enumerate() {
-            node.x = updated_nodes[i].x;
-            node.y = updated_nodes[i].y;
-            node.z = updated_nodes[i].z;
-            node.vx = updated_nodes[i].vx;
-            node.vy = updated_nodes[i].vy;
-            node.vz = updated_nodes[i].vz;
+                // Update graph nodes with new positions
+                for (i, node) in graph.nodes.iter_mut().enumerate() {
+                    node.x = updated_nodes[i].x;
+                    node.y = updated_nodes[i].y;
+                    node.z = updated_nodes[i].z;
+                    node.vx = updated_nodes[i].vx;
+                    node.vy = updated_nodes[i].vy;
+                    node.vz = updated_nodes[i].vz;
+                }
+            },
+            None => {
+                // CPU-based calculation (fallback)
+                warn!("GPU not available. Falling back to CPU-based layout calculation.");
+                Self::calculate_layout_cpu(graph);
+            }
         }
 
         Ok(())
+    }
+
+    /// CPU-based force-directed layout calculation.
+    ///
+    /// This is a simple implementation and may not be as efficient as the GPU version.
+    /// For production use, you might want to implement a more sophisticated algorithm.
+    fn calculate_layout_cpu(graph: &mut GraphData) {
+        const ITERATIONS: usize = 100;
+        const REPULSION: f32 = 1.0;
+        const ATTRACTION: f32 = 0.01;
+
+        for _ in 0..ITERATIONS {
+            // Calculate repulsive forces
+            for i in 0..graph.nodes.len() {
+                for j in (i + 1)..graph.nodes.len() {
+                    let dx = graph.nodes[j].x - graph.nodes[i].x;
+                    let dy = graph.nodes[j].y - graph.nodes[i].y;
+                    let dz = graph.nodes[j].z - graph.nodes[i].z;
+                    let distance = (dx * dx + dy * dy + dz * dz).sqrt().max(0.1);
+                    let force = REPULSION / (distance * distance);
+                    let fx = force * dx / distance;
+                    let fy = force * dy / distance;
+                    let fz = force * dz / distance;
+
+                    graph.nodes[i].vx -= fx;
+                    graph.nodes[i].vy -= fy;
+                    graph.nodes[i].vz -= fz;
+                    graph.nodes[j].vx += fx;
+                    graph.nodes[j].vy += fy;
+                    graph.nodes[j].vz += fz;
+                }
+            }
+
+            // Calculate attractive forces
+            for edge in &graph.edges {
+                let source = graph.nodes.iter().position(|n| n.id == edge.source).unwrap();
+                let target = graph.nodes.iter().position(|n| n.id == edge.target).unwrap();
+                let dx = graph.nodes[target].x - graph.nodes[source].x;
+                let dy = graph.nodes[target].y - graph.nodes[source].y;
+                let dz = graph.nodes[target].z - graph.nodes[source].z;
+                let distance = (dx * dx + dy * dy + dz * dz).sqrt().max(0.1);
+                let force = ATTRACTION * distance;
+                let fx = force * dx / distance;
+                let fy = force * dy / distance;
+                let fz = force * dz / distance;
+
+                graph.nodes[source].vx += fx;
+                graph.nodes[source].vy += fy;
+                graph.nodes[source].vz += fz;
+                graph.nodes[target].vx -= fx;
+                graph.nodes[target].vy -= fy;
+                graph.nodes[target].vz -= fz;
+            }
+
+            // Update positions
+            for node in &mut graph.nodes {
+                node.x += node.vx;
+                node.y += node.vy;
+                node.z += node.vz;
+                node.vx *= 0.9; // Damping
+                node.vy *= 0.9;
+                node.vz *= 0.9;
+            }
+        }
     }
 }

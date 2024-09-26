@@ -4,3 +4,6 @@ node_modules/
 venv
 bin
 ssl
+data/public/assets
+data/public/dist
+data/public/node_modules

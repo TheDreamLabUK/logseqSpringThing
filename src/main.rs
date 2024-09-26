@@ -1,3 +1,4 @@
+use actix_files::Files;
 use actix_web::{web, App, HttpServer, middleware};
 use crate::handlers::{file_handler, graph_handler, ragflow_handler};
 use crate::config::Settings;
@@ -21,19 +22,18 @@ mod utils;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // Load environment variables.
+    // Load environment variables
     dotenv::dotenv().ok();
     println!("Environment: {:?}", std::env::vars().collect::<Vec<_>>());
 
     // Set RUST_LOG to debug
     std::env::set_var("RUST_LOG", "debug");
 
-    // Initialise logger.
+    // Initialise logger
     env_logger::init();
-
     log::info!("Starting WebXR Graph Server");
 
-    // Load settings.
+    // Load settings
     let settings = match Settings::new() {
         Ok(s) => {
             log::debug!("Successfully loaded settings: {:?}", s);
@@ -48,7 +48,7 @@ async fn main() -> std::io::Result<()> {
     // Debug log for Perplexity API key
     log::debug!("Perplexity API Key: {}", settings.perplexity.perplexity_api_key);
 
-    // Initialise shared application state.
+    // Initialise shared application state
     let file_cache = Arc::new(RwLock::new(HashMap::new()));
     let graph_data = Arc::new(RwLock::new(GraphData::default()));
     let github_service: Arc<dyn GitHubService + Send + Sync> = Arc::new(RealGitHubService::new(settings.github.clone()));
@@ -57,7 +57,16 @@ async fn main() -> std::io::Result<()> {
     let websocket_manager = Arc::new(WebSocketManager::new());
     
     // Initialize GPUCompute
-    let gpu_compute = Arc::new(RwLock::new(GPUCompute::new().await.expect("Failed to initialize GPUCompute"))); 
+    let gpu_compute = match GPUCompute::new().await {
+        Ok(gpu) => {
+            log::info!("GPU initialization successful");
+            Some(Arc::new(RwLock::new(gpu)))
+        },
+        Err(e) => {
+            log::warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
+            None
+        }
+    };
 
     let app_state = web::Data::new(AppState::new(
         graph_data,
@@ -70,34 +79,32 @@ async fn main() -> std::io::Result<()> {
         gpu_compute,
     ));
 
-    // Start HTTP server.
+    // Start HTTP server
     HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
             .wrap(middleware::Logger::default())
-            // Register file handler routes.
+            // Register API routes
             .service(
                 web::scope("/api/files")
                     .route("/fetch", web::get().to(file_handler::fetch_and_process_files))
             )
-            // Register graph handler routes.
             .service(
                 web::scope("/api/graph")
                     .route("/data", web::get().to(graph_handler::get_graph_data))
             )
-            // Register RAGFlow handler routes.
             .service(
                 web::scope("/api/chat")
                     .route("/init", web::post().to(ragflow_handler::init_chat))
                     .route("/message/{conversation_id}", web::post().to(ragflow_handler::send_message))
                     .route("/history/{conversation_id}", web::get().to(ragflow_handler::get_chat_history))
             )
-            // Serve static files (e.g., frontend files).
-            .service(
-                actix_files::Files::new("/", "./public").index_file("index.html")
-            )
-            // WebSocket route.
+            // **Define the WebSocket route first**
             .route("/ws", web::get().to(WebSocketManager::handle_websocket))
+            // **Then serve static files**
+            .service(
+                Files::new("/", "./data/public/dist").index_file("index.html")
+            )
     })
     .bind(("0.0.0.0", 8080))?
     .run()

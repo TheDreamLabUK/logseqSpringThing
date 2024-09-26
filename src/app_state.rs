@@ -29,7 +29,8 @@ pub struct AppState {
     /// WebSocket manager for handling WebSocket connections.
     pub websocket_manager: Arc<WebSocketManager>,
     /// GPU Compute for graph calculations protected by a read-write lock.
-    pub gpu_compute: Arc<RwLock<GPUCompute>>,
+    /// This is an Option as GPU might not be available.
+    pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
 }
 
 impl AppState {
@@ -43,7 +44,7 @@ impl AppState {
         perplexity_service: PerplexityServiceImpl,
         ragflow_service: Arc<RAGFlowService>,
         websocket_manager: Arc<WebSocketManager>,
-        gpu_compute: Arc<RwLock<GPUCompute>>,
+        gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     ) -> Self {
         Self {
             graph_data,

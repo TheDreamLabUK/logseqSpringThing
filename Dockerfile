@@ -1,4 +1,26 @@
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04 as builder
+# Stage 1: Build the Frontend
+FROM node:latest AS frontend-builder
+
+# Set working directory
+WORKDIR /app/frontend
+
+# Copy frontend package files
+COPY data/public/package.json data/public/pnpm-lock.yaml ./
+
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Install frontend dependencies
+RUN pnpm install
+
+# Copy frontend source files
+COPY data/public ./data/public
+
+# Build the frontend
+RUN pnpm run build
+
+# Stage 2: Build the Rust Backend
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04 AS backend-builder
 
 # Install necessary dependencies for building Rust applications
 RUN apt-get update && apt-get install -y \
@@ -33,7 +55,7 @@ COPY settings.toml ./
 # Build the Rust application in release mode for optimized performance
 RUN cargo build --release
 
-# Final stage: Create a minimal runtime image
+# Stage 3: Create the Final Image
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
 # Install necessary runtime dependencies and nginx
@@ -47,14 +69,14 @@ RUN apt-get update && apt-get install -y \
 # Set the working directory
 WORKDIR /app
 
-# Copy the built executable from the builder stage
-COPY --from=builder /usr/src/app/target/release/webxr-graph /app/webxr-graph
+# Copy the built Rust binary from the backend-builder stage
+COPY --from=backend-builder /usr/src/app/target/release/webxr-graph /app/webxr-graph
 
-# Copy settings.toml from the builder stage
-COPY --from=builder /usr/src/app/settings.toml /app/settings.toml
+# Copy the built frontend files from the frontend-builder stage
+COPY --from=frontend-builder /app/frontend/dist /app/data/public/dist
 
-# Copy the data directory
-COPY data /app/data
+# Copy settings.toml from the backend-builder stage
+COPY --from=backend-builder /usr/src/app/settings.toml /app/settings.toml
 
 # Set up a persistent volume for Markdown files to ensure data persistence
 VOLUME ["/app/data/markdown"]
