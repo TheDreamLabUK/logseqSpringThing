@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Rust
+# Install Rust using rustup
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
@@ -21,7 +21,7 @@ RUN rustup default stable
 # Set the working directory in the container
 WORKDIR /usr/src/app
 
-# Copy the Cargo.toml and Cargo.lock files
+# Copy the Cargo.toml and Cargo.lock files to leverage Docker cache
 COPY Cargo.toml Cargo.lock ./
 
 # Copy the source code
@@ -30,10 +30,10 @@ COPY src ./src
 # Copy settings.toml
 COPY settings.toml ./
 
-# Build the Rust application
+# Build the Rust application in release mode for optimized performance
 RUN cargo build --release
 
-# Final stage
+# Final stage: Create a minimal runtime image
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
 # Install necessary runtime dependencies and nginx
@@ -56,6 +56,9 @@ COPY --from=builder /usr/src/app/settings.toml /app/settings.toml
 # Copy the data directory
 COPY data /app/data
 
+# Set up a persistent volume for Markdown files to ensure data persistence
+VOLUME ["/app/data/markdown"]
+
 # Create directory for SSL certificates
 RUN mkdir -p /etc/nginx/ssl
 
@@ -71,10 +74,10 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Ensure proper permissions for nginx
 RUN chown -R www-data:www-data /var/lib/nginx
 
-# Expose HTTPS
+# Expose HTTPS port
 EXPOSE 8443
 
-# Create a startup script
+# Create a startup script that runs nginx and the Rust application
 RUN echo '#!/bin/bash\nset -e\nnginx\nexec /app/webxr-graph' > /app/start.sh && chmod +x /app/start.sh
 
 # Set the command to run the startup script

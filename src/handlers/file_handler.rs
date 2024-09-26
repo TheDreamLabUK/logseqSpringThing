@@ -1,109 +1,81 @@
+// src/handlers/file_handler.rs
+
 use actix_web::{web, HttpResponse};
 use crate::AppState;
 use crate::services::file_service::FileService;
-use dotenv::dotenv;
-use env_logger::Env;
+use crate::services::graph_service::GraphService;
 use log::{info, error, debug};
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use std::collections::HashMap;
+use serde_json::json;
 
+/// Handler for fetching and processing Markdown files from GitHub.
+///
+/// This function performs the following steps:
+/// 1. Fetches Markdown files from a private GitHub repository using the GitHubService.
+/// 2. Processes each file using the PerplexityService to enhance content.
+/// 3. Updates the file cache with the processed content.
+/// 4. Builds or refreshes the graph data structure based on the processed files.
+/// 5. Returns a JSON response containing the names of the processed files.
+///
+/// # Arguments
+///
+/// * `state` - Shared application state.
+///
+/// # Returns
+///
+/// An HTTP response indicating success or failure.
 pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse {
+    info!("Initiating file fetch and processing");
+    
+    // Step 1: Fetch files from GitHub
     match FileService::fetch_and_process_files(&*state.github_service, &state.settings).await {
         Ok(processed_files) => {
+            // Generate unique names for processed files
             let file_names: Vec<String> = processed_files.iter()
-                .enumerate()
-                .map(|(index, _)| format!("processed_file_{}", index))
+                .map(|pf| pf.file_name.clone())
                 .collect();
 
-            log::info!("Successfully processed {} files", processed_files.len());
+            info!("Successfully processed {} files", processed_files.len());
 
-            // Update the file cache
-            let mut file_cache = state.file_cache.write().await;
-            for (name, file) in file_names.iter().zip(processed_files.iter()) {
-                file_cache.insert(name.clone(), file.content.clone());
-                log::debug!("Updated file cache with: {}", name);
+            // Step 2: Update the file cache with processed content
+            {
+                let mut file_cache = state.file_cache.write().await;
+                for processed_file in &processed_files {
+                    file_cache.insert(processed_file.file_name.clone(), processed_file.content.clone());
+                    debug!("Updated file cache with: {}", processed_file.file_name);
+                }
             }
 
-            // Here you would typically update your graph data structure
-            // This is a placeholder for future graph update logic
-            log::info!("Graph data structure should be updated here");
+            // Step 3: Update graph data structure based on processed files
+            match GraphService::build_graph(&state).await {
+                Ok(graph_data) => {
+                    let mut graph = state.graph_data.write().await;
+                    *graph = graph_data.clone();
+                    info!("Graph data structure updated successfully");
 
-            HttpResponse::Ok().json(file_names)
+                    // Broadcast the updated graph to connected WebSocket clients
+                    state.websocket_manager.broadcast_message(&json!({
+                        "type": "graphUpdate",
+                        "data": graph_data,
+                    }).to_string());
+                },
+                Err(e) => {
+                    error!("Failed to build graph data: {}", e);
+                    return HttpResponse::InternalServerError().json(format!("Failed to build graph data: {}", e));
+                }
+            }
+
+            // Step 4: Respond with the list of processed file names
+            HttpResponse::Ok().json(json!({
+                "status": "success",
+                "processed_files": file_names
+            }))
         },
         Err(e) => {
-            log::error!("Error processing files: {:?}", e);
-            HttpResponse::InternalServerError().json(format!("Error processing files: {:?}", e))
+            error!("Error processing files: {:?}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Error processing files: {:?}", e)
+            }))
         }
     }
-}
-
-#[tokio::main]
-async fn main() -> std::io::Result<()> {
-    // Load environment variables
-    dotenv().ok();
-
-    // Initialize logger
-    env_logger::init_from_env(Env::default().default_filter_or("debug"));
-
-    info!("Starting file retrieval test");
-
-    // Create AppState
-    let settings = Settings::new().expect("Failed to load settings");
-    let file_cache = Arc::new(RwLock::new(HashMap::new()));
-    let graph_data = Arc::new(RwLock::new(GraphData::default()));
-    let github_service = Arc::new(RealGitHubService::new());
-
-    let app_state = web::Data::new(AppState {
-        settings,
-        file_cache,
-        graph_data,
-        github_service,
-    });
-
-    // Call fetch_and_process_files
-    info!("Calling fetch_and_process_files");
-    let response = fetch_and_process_files(app_state.clone()).await;
-
-    match response.status() {
-        actix_web::http::StatusCode::OK => {
-            info!("File retrieval and processing successful");
-            let body = response.into_body();
-            match body.try_into_bytes() {
-                Ok(bytes) => {
-                    if let Ok(file_names) = serde_json::from_slice::<Vec<String>>(&bytes) {
-                        info!("Processed files: {:?}", file_names);
-                        
-                        // Print file cache contents
-                        let file_cache = app_state.file_cache.read().await;
-                        for (name, content) in file_cache.iter() {
-                            debug!("File '{}' content preview: {}", name, &content[..content.len().min(50)]);
-                        }
-                    } else {
-                        error!("Failed to parse response body as JSON");
-                    }
-                },
-                Err(e) => error!("Failed to extract response body: {:?}", e),
-            }
-        },
-        _ => {
-            error!("File retrieval and processing failed with status: {}", response.status());
-            let body = response.into_body();
-            match body.try_into_bytes() {
-                Ok(bytes) => {
-                    if let Ok(error_message) = String::from_utf8(bytes.to_vec()) {
-                        error!("Error message: {}", error_message);
-                    } else {
-                        error!("Failed to parse error message");
-                    }
-                },
-                Err(e) => error!("Failed to extract error message: {:?}", e),
-            }
-        }
-    }
-
-    info!("File retrieval test completed");
-
-    Ok(())
-}
 }

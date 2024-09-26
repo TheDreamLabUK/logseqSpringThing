@@ -1,18 +1,38 @@
 // update_positions.wgsl
+
+// Structure representing a node with position and velocity.
+struct Node {
+    position: vec2<f32>,
+    velocity: vec2<f32>,
+}
+
+// Buffer containing all nodes.
 [[block]]
-struct Graph {
-    [[offset(0)]] nodes: array<vec4<f32>>;
-};
+struct NodesBuffer {
+    nodes: array<Node>;
+}
 
-[[group(0), binding(0)]] var<storage, read_write> graph: Graph;
+// Uniform buffer containing delta time for the simulation.
+[[group(0), binding(1)]]
+var<uniform> delta_time: f32;
 
+// Nodes buffer for reading and writing node data.
+[[group(0), binding(0)]]
+var<storage, read_write> nodes_buffer: NodesBuffer;
+
+// Main compute shader function.
 [[stage(compute), workgroup_size(64)]]
-fn main([[builtin(global_invocation_id)]] global_id : vec3<u32>) {
+fn main([[builtin(global_invocation_id)]] global_id: vec3<u32>) {
     let node_id = global_id.x;
-    let n_nodes = arrayLength(&graph.nodes);
+    let n_nodes = arrayLength(&nodes_buffer.nodes);
 
     if (node_id < n_nodes) {
-        graph.nodes[node_id].x = graph.nodes[node_id].x + graph.nodes[node_id].z;
-        graph.nodes[node_id].y = graph.nodes[node_id].y + graph.nodes[node_id].w;
+        var node = nodes_buffer.nodes[node_id];
+
+        // Update node's position based on its velocity.
+        node.position = node.position + node.velocity * delta_time;
+
+        // Write back to the buffer.
+        nodes_buffer.nodes[node_id] = node;
     }
 }

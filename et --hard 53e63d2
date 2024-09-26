@@ -1,0 +1,267 @@
+[33m53e63d2[m[33m ([m[1;36mHEAD -> [m[1;32mlastNight[m[33m, [m[1;31morigin/lastNight[m[33m)[m github token passing issue
+[33m7c33c23[m prettify graph and rust settings updates
+[33m0b994a3[m stash for cargo fix
+[33m9cdc8b9[m cargo build success
+[33mf729786[m code buildout push with o1-mini
+[33m1001b84[m bring main up to date
+[33m6bbf515[m integrating file handling from github
+[33m6224692[m working websockets
+[33mbfe028e[m almost fixed the websockets over https
+[33m21d5cd9[m added in nginx and unified port
+[33mea5ce91[m remove ssl and serve on 8081
+[33mc7f1739[m unify server side ex docker
+[33me9d1a26[m cargo build passes, problem with passing args into main
+[33mdcca59f[m start on docker debug
+[33m5fbde82[m stash
+[33m45eafff[m stuck in unit tests
+[33mf6ea06c[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m edits
+[33m2ca7f0d[m eight out of around 140 test failing
+[33m5e408e1[m more jest setup, pushed all force direction to server side
+[33m32ccadc[m Client side TDD updates and Jest Testing
+[33mb395643[m minimal server on port 3001
+[33m6c69391[m Client and server test suites are passing
+[33m7c61243[m whole fresh set of javascript unit tests (which USED to pass!)
+[33m2532025[m Passing tests
+[33mca0b0ca[m slight progress on perplexity unit test
+[33m1ca3705[m[33m ([m[1;31morigin/abandoned-changes[m[33m, [m[1;32mabandoned-changes[m[33m)[m This is getting further and further from working, will revert
+[33m246946b[m Merge branch 'main' of github.com:jjohare/logseqSpringThing
+[33m2bec4b2[m getting worse
+[33m2c72caf[m Add network efficient to readme
+[33mda2b117[m[33m ([m[1;31morigin/revert-point[m[33m)[m Still integrating and refactoring perplexity module
+[33m35a672b[m partial integration of perplexity module unit test
+[33mb69ccb8[m Update README.md
+[33m1f4c58f[m Filled the github file service stub, passing unit tests
+[33m5343b0c[m added more unit tests to server side, mocks
+[33m2fceb6e[m All unit tests passing on client and server
+[33med485c7[m Rust Unit Tests Passing
+[33mcb3cc35[m stuck in a loop with the unit test and jest on the js client
+[33m67182f2[m Merge branch 'main' of github.com:jjohare/logseqSpringThing
+[33m8120404[m All Unit Tests passing across client and server
+[33m36bdf45[m Update README.md
+[33mc02d33d[m JS tests are passing, Rust files are empty, working through the server side rust TDD.
+[33mb529412[m edits
+[33m84c8682[m edits
+[33mf8ee344[m edits
+[33m6492c48[m edits
+[33mb889038[m edits
+[33mbd1dce0[m edits
+[33m884f8c5[m edits
+[33m77933bf[m update readme
+[33m07f281b[m[33m ([m[1;31morigin/Unit-Testing-Design[m[33m)[m Update README.md
+[33mb3b3f23[m Update README.md
+[33m9b34064[m Update README.md
+[33mfad86ca[m Update README.md
+[33m7366598[m reset project
+[33mce5fbcf[m Update README.md
+[33ma995fdd[m[33m ([m[1;31morigin/working-js[m[33m, [m[1;32mworking-js[m[33m)[m Merge branch 'main' of github.com:jjohare/logseqSpringThing
+[33m89c8dde[m cleanup
+[33m81ebbc7[m[33m ([m[mrefs/original/refs/remotes/origin/main[m[33m, [m[mrefs/original/refs/heads/main[m[33m)[m Update README.md
+[33mb66d705[m Update README.md
+[33ma15d527[m Merge pull request #4 from jjohare/main
+[33m3300401[m Merge pull request #4 from jjohare/main
+[33m8373b40[m Update README.md
+[33m0f3458c[m Update README.md
+[33mfe3cced[m Merge pull request #3 from jjohare/feature-branch
+[33m6e63cd5[m Merge pull request #3 from jjohare/feature-branch
+[33m409d7a7[m working with chat window
+[33m7aa2cc5[m working with chat window
+[33m60b700e[m escape char issue
+[33m613dfc3[m escape char issue
+[33mcb789e9[m init chat fails
+[33ma758481[m init chat fails
+[33m5773efc[m not working yet
+[33mffbebe4[m not working yet
+[33mcce6dec[m Update README.md
+[33mfe53aa2[m Update README.md
+[33m8786f16[m Merge pull request #1 from MITIH-Dreamlab/main
+[33mb7ed362[m Merge pull request #1 from MITIH-Dreamlab/main
+[33mbe9afe7[m Update README.md
+[33m1be590c[m Update README.md
+[33m1b6a938[m Merge pull request #2 from jjohare/serverToRagFlow
+[33mffb2ed9[m Merge pull request #2 from jjohare/serverToRagFlow
+[33ma8841ee[m[33m ([m[mrefs/original/refs/remotes/origin/serverToRagFlow[m[33m)[m Merge branch 'main' into serverToRagFlow
+[33mda779e0[m[33m ([m[1;31morigin/serverToRagFlow[m[33m)[m Merge branch 'main' into serverToRagFlow
+[33mc604d91[m working rag
+[33m28fccbe[m working rag
+[33m1c7b944[m not finding results from the regflow API
+[33mf25a001[m not finding results from the regflow API
+[33mb3446c8[m Update README.md
+[33m760aeb0[m Update README.md
+[33md063d86[m Merge branch 'main' of github.com:MITIH-Dreamlab/JingSpringThing
+[33m9c3539e[m Merge branch 'main' of github.com:MITIH-Dreamlab/JingSpringThing
+[33m55f7e6c[m update readme
+[33m94ed708[m update readme
+[33m360e89b[m Public Commit
+[33me481ac9[m Public Commit
+[33m08b72f4[m Update README.md
+[33m230a131[m Update README.md
+[33m2d10c5f[m add gif
+[33mef97fdb[m add gif
+[33mc5fd0ce[m Update README.md
+[33m3bdef3d[m Update README.md
+[33mc6fe335[m Update README.md
+[33m4d099be[m Update README.md
+[33m3d454c5[m Update README.md
+[33me4d76c4[m Update README.md
+[33mf683992[m working!
+[33m186c757[m working!
+[33m45787f6[m drunkedn mokee
+[33m722bd5d[m drunkedn mokee
+[33m1f4e8e7[m edits
+[33m65581de[m edits
+[33m0a531ec[m edits
+[33m671ce39[m edits
+[33m29b42c8[m edits
+[33mcfb2b0a[m edits
+[33md81eb44[m Update script.js
+[33m4fbd10f[m Update script.js
+[33mb811142[m merge fault
+[33m00e1271[m merge fault
+[33m58d4e69[m Update script.js
+[33mba8ed46[m Update script.js
+[33mbe0f14d[m GPU accelerated
+[33m28de314[m GPU accelerated
+[33m4ebdbbb[m Update script.js
+[33m693ca56[m Update script.js
+[33m6734335[m edits
+[33m793912a[m edits
+[33m7ecdd2e[m edits
+[33mf8fb7e2[m edits
+[33mf92f135[m update link to meta.json extractor
+[33mf811530[m update link to meta.json extractor
+[33ma06e721[m Update README.md
+[33m7260137[m Update README.md
+[33ma0d2e50[m fixed linux docker launcher
+[33mbe7965b[m fixed linux docker launcher
+[33mfc95b36[m add a screenshot
+[33m427390e[m add a screenshot
+[33m8c1ebec[m Merge pull request #1 from jjohare/main
+[33m6679d52[m Merge pull request #1 from jjohare/main
+[33mdc17b50[m Update README.md
+[33m59a5777[m Update README.md
+[33mcb3ecb9[m Cleaned and working WebXR loader
+[33m7608d33[m Cleaned and working WebXR loader
+[33mb29993a[m cleanup ahead of breaking change
+[33ma5e77fb[m cleanup ahead of breaking change
+[33mb3c90be[m decent working loader and maybe springs
+[33mca26652[m decent working loader and maybe springs
+[33m67eabbb[m hunts to origin
+[33m79d807d[m hunts to origin
+[33mf9612ad[m first working loader plus websockets
+[33m00da99f[m first working loader plus websockets
+[33m2c0bf7d[m fixed client, broke the server again
+[33m896f01b[m fixed client, broke the server again
+[33mb8f136b[m fixed client, broke the server again
+[33m9f6330b[m fixed client, broke the server again
+[33m7b4577e[m edges left to do on loader
+[33m45858ca[m edges left to do on loader
+[33m9550260[m chatGPT modernisation
+[33m6e20351[m chatGPT modernisation
+[33m12d7fe8[m still not building edges
+[33m86306a0[m still not building edges
+[33m7532d35[m still not building edges
+[33m4cbbe67[m still not building edges
+[33mb7d5bf9[m more sort of workking no json
+[33mc1bb142[m more sort of workking no json
+[33m5c75fab[m somewhat working
+[33ma25bed6[m somewhat working
+[33m3014ac2[m somewhat working
+[33m222131b[m somewhat working
+[33m5d060c1[m might be half a job
+[33m759d1a4[m might be half a job
+[33m04b62c7[m dabbling with remote vscode
+[33m2d0a420[m dabbling with remote vscode
+[33m1e6e7ae[m edits
+[33m91c73f3[m edits
+[33m24026f9[m working loader on webxl
+[33m3ad0f09[m working loader on webxl
+[33me399b51[m need to fix public storage, node list, full search and replace, and edges
+[33mc4929bd[m need to fix public storage, node list, full search and replace, and edges
+[33m64b2f8e[m mod to gitignore
+[33m5f8d6fe[m mod to gitignore
+[33mc28d1e0[m webxr
+[33m32430cc[m webxr
+[33m5449d99[m webxl version
+[33md94f65e[m webxl version
+[33m896aa6d[m edits
+[33m84933a5[m edits
+[33m4eaa73f[m Merge branch 'main' of github.com:MITIH-Dreamlab/JingSpringThing
+[33md969b57[m Merge branch 'main' of github.com:MITIH-Dreamlab/JingSpringThing
+[33m29b76ee[m edits
+[33m1e9a8ff[m edits
+[33m034b6f3[m Update README.md
+[33m5913754[m Update README.md
+[33mdbb21a9[m edits
+[33m637ddc3[m edits
+[33m92d355b[m edits
+[33m73c32fc[m edits
+[33m221b4eb[m solved the blender init problem
+[33mf31da3d[m solved the blender init problem
+[33m8e9b644[m edits
+[33mbf0b59b[m edits
+[33mf86f76c[m Delete spatialKnowledgeGraphJOH/loaderAndClusters/venv directory
+[33m1c936ee[m Delete spatialKnowledgeGraphJOH/loaderAndClusters/venv directory
+[33m85b61de[m Merge branch 'main' of github.com:MITIH-Dreamlab/JingSpringThing
+[33mcd65ba1[m Merge branch 'main' of github.com:MITIH-Dreamlab/JingSpringThing
+[33mecf57e9[m whole new version added
+[33m4b7aef9[m whole new version added
+[33mf0bd356[m Update README.md
+[33m7e0b09e[m Update README.md
+[33m4fbd40c[m Update README.md
+[33m7a12979[m Update README.md
+[33mbcfcfae[m kinda works loading a bit
+[33m97c458d[m kinda works loading a bit
+[33m444179e[m working loader randomstart
+[33m1121b85[m working loader randomstart
+[33ma537bb0[m edits
+[33m59e5033[m edits
+[33m116dd6d[m springs
+[33mb1d9585[m springs
+[33mb3e25eb[m working local copy JOH
+[33m783b608[m working local copy JOH
+[33mab18cba[m Merge branch 'main' of https://github.com/MITIH-Dreamlab/JingSpringThing
+[33mbb65065[m Merge branch 'main' of https://github.com/MITIH-Dreamlab/JingSpringThing
+[33m8f95339[m updated python code for edges and nodes
+[33me41e6b0[m updated python code for edges and nodes
+[33macd54d7[m Update .gitignore to exclude venv directory and remove venv from tracking
+[33mbc01aa0[m Update .gitignore to exclude venv directory and remove venv from tracking
+[33maf5abc1[m edits
+[33m3472737[m edits
+[33m10a7b7c[m Add .gitignnore to exclude the venv
+[33mb4c4185[m Add .gitignnore to exclude the venv
+[33m1232438[m new names
+[33mad0733f[m new names
+[33m90dea4b[m Add new folder for node and edge vis in Blender
+[33m24e5ed3[m Add new folder for node and edge vis in Blender
+[33m80a1041[m add demo data from John
+[33m35aa4a2[m add demo data from John
+[33m52c7a10[m first code from Jing
+[33mefb0fa1[m first code from Jing
+[33mb6351f7[m Update README.md
+[33m72b40d4[m Update README.md
+[33m748d8f7[m Update README.md
+[33mc7b59cc[m Update README.md
+[33m65f1510[m Create main.py
+[33m175f0a2[m Create main.py
+[33m3cee976[m Create blender_view.py
+[33m2bb9311[m Create blender_view.py
+[33m99b224a[m Create cluster_controller.py
+[33m9919dce[m Create cluster_controller.py
+[33ma601c98[m Create simulation_contoller.py
+[33m4ec53df[m Create simulation_contoller.py
+[33m3172065[m Create data_fetcher.py
+[33m4486a89[m Create data_fetcher.py
+[33ma0efe6d[m Create cluster.py
+[33m4db2a64[m Create cluster.py
+[33meba3b74[m Create world.py
+[33mc576754[m Create world.py
+[33m86311f9[m Create edge.py
+[33m9c861a7[m Create edge.py
+[33m67fd42a[m Create node.py
+[33m7cd645c[m Create node.py
+[33m77b5f3e[m Create vector3.py
+[33me98637d[m Create vector3.py
+[33m770de69[m Update README.md
+[33mb1fc4ba[m Update README.md
+[33m0fabe35[m Initial commit
+[33mbee1659[m Initial commit

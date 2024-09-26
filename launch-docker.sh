@@ -1,8 +1,11 @@
 #!/bin/bash
 
-# Stop and remove existing container
+# Stop and remove existing container, including associated volumes
 docker stop logseqXR || true
-docker rm logseqXR || true
+docker rm -v logseqXR || true
+
+# Remove any dangling volumes (optional)
+# docker volume prune -f
 
 # Build the Docker image
 docker build --no-cache -t logseq-xr-image .
@@ -12,10 +15,7 @@ docker run -d --name logseqXR \
   --gpus "device=0" \
   -v "$(pwd)/data:/app/data" \
   -p 8443:8443 \
-  -e PORT=8080 \
-  -e BIND_ADDRESS=0.0.0.0 \
-  -e RUST_LOG=debug \
-  -e USE_HTTPS=true \
+  --env-file .env \
   logseq-xr-image
 
 echo "Docker container is now running."

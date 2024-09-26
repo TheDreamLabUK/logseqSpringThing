@@ -6,23 +6,23 @@
 export class RAGflowService {
   /**
    * Creates a new RAGflowService instance.
-   * @param {WebsocketService} webSocket - The WebSocket service instance.
+   * @param {WebsocketService} websocketService - The WebSocket service instance.
    */
-  constructor(webSocket) {
-    this.webSocket = webSocket;
-    this.setupWebSocketListeners();
+  constructor(websocketService) {
+      this.websocketService = websocketService;
+      this.setupWebSocketListeners();
   }
 
   /**
    * Sets up WebSocket listeners specific to RAGFlow interactions.
    */
   setupWebSocketListeners() {
-    // Listen for RAGFlow responses from the server
-    this.webSocket.on('message', (data) => {
-      if (data.type === 'ragflowResponse') {
-        this.handleRAGFlowResponse(data);
-      }
-    });
+      // Listen for RAGFlow responses from the server
+      this.websocketService.on('message', (data) => {
+          if (data.type === 'ragflowResponse') {
+              this.handleRAGFlowResponse(data);
+          }
+      });
   }
 
   /**
@@ -30,10 +30,10 @@ export class RAGflowService {
    * @param {string} query - The user's question.
    */
   sendQuery(query) {
-    this.webSocket.send({
-      type: 'ragflowQuery',
-      question: query
-    });
+      this.websocketService.send({
+          type: 'ragflowQuery',
+          question: query
+      });
   }
 
   /**
@@ -41,9 +41,9 @@ export class RAGflowService {
    * @param {object} data - The response data from the server.
    */
   handleRAGFlowResponse(data) {
-    const { answer } = data;
-    // Dispatch a custom event or use other mechanisms to pass the answer to ChatManager
-    const event = new CustomEvent('ragflowAnswer', { detail: answer });
-    window.dispatchEvent(event);
+      const { answer } = data;
+      // Dispatch a custom event to pass the answer to ChatManager
+      const event = new CustomEvent('ragflowAnswer', { detail: answer });
+      window.dispatchEvent(event);
   }
 }

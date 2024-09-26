@@ -9,6 +9,8 @@ services:
       - RUST_LOG=info
       - BIND_ADDRESS=0.0.0.0
       - PORT=8080
+    env_file:
+      - .env
     volumes:
       - ./data:/app/data
     command: sh -c "service nginx start && /app/webxr-graph"
