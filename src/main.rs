@@ -103,7 +103,7 @@ async fn main() -> std::io::Result<()> {
             .route("/ws", web::get().to(WebSocketManager::handle_websocket))
             // **Then serve static files**
             .service(
-                Files::new("/", "./data/public/dist").index_file("index.html")
+                Files::new("/", "/app/data/public/dist").index_file("index.html")
             )
     })
     .bind(("0.0.0.0", 8080))?

@@ -281,21 +281,49 @@ impl Settings {
     fn load_topics_from_csv(&mut self, file_path: &str) -> Result<(), ConfigError> {
         debug!("Loading topics from CSV at path: {}", file_path);
 
+        // Log the absolute path
+        let absolute_path = std::fs::canonicalize(file_path).map_err(|e| {
+            error!("Failed to get absolute path for {}: {}", file_path, e);
+            ConfigError::Message(format!("Failed to get absolute path: {}", e))
+        })?;
+        debug!("Absolute path of topics.csv: {:?}", absolute_path);
+
+        // Check if the file exists
+        if !absolute_path.exists() {
+            error!("topics.csv does not exist at {:?}", absolute_path);
+            return Err(ConfigError::Message(format!("topics.csv does not exist at {:?}", absolute_path)));
+        }
+
         // Attempt to open the CSV file
-        let file = StdFile::open(file_path).map_err(|e| {
-            error!("Failed to open topics.csv: {}", e);
+        let file = StdFile::open(&absolute_path).map_err(|e| {
+            error!("Failed to open topics.csv at {:?}: {}", absolute_path, e);
             ConfigError::Message(format!(
-                "Failed to open topics.csv: {}. Make sure the file exists in the 'data' directory.",
-                e
+                "Failed to open topics.csv at {:?}: {}. Make sure the file exists and has correct permissions.",
+                absolute_path, e
             ))
         })?;
 
         let reader = BufReader::new(file);
         let topics: Vec<String> = reader
             .lines()
-            .filter_map(Result::ok)
-            .map(|line| line.trim().to_string())
-            .filter(|line| !line.is_empty())
+            .enumerate()
+            .filter_map(|(i, line)| {
+                match line {
+                    Ok(l) => {
+                        let trimmed = l.trim().to_string();
+                        if trimmed.is_empty() {
+                            debug!("Skipping empty line {} in topics.csv", i + 1);
+                            None
+                        } else {
+                            Some(trimmed)
+                        }
+                    },
+                    Err(e) => {
+                        error!("Error reading line {} from topics.csv: {}", i + 1, e);
+                        None
+                    }
+                }
+            })
             .collect();
 
         // Update the `topics` field of `Settings`
@@ -303,11 +331,12 @@ impl Settings {
 
         // Validate that at least one topic was loaded
         if self.topics.is_empty() {
-            error!("No topics found in topics.csv");
+            error!("No topics found in topics.csv at {:?}", absolute_path);
             Err(ConfigError::Message(
-                "No topics found in topics.csv".to_string(),
+                format!("No topics found in topics.csv at {:?}", absolute_path)
             ))
         } else {
+            debug!("Successfully loaded {} topics from {:?}", self.topics.len(), absolute_path);
             Ok(())
         }
     }

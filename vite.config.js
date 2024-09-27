@@ -5,9 +5,8 @@ export default defineConfig({
   root: 'data/public',  // Root directory for your frontend files, including index.html
   plugins: [createHtmlPlugin()],
   build: {
-    outDir: '../../dist',  // Output to dist folder at the root level
-    emptyOutDir: true,     // Clear the output directory before building
-    // Remove rollupOptions.input, let Vite handle it automatically
+    outDir: './dist',  // Output to data/public/dist folder
+    emptyOutDir: true,  // Clear the output directory before building
   },
   publicDir: 'assets',  // Ensure static assets are in data/public/assets
 });
