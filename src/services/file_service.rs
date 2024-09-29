@@ -119,41 +119,34 @@ impl GitHubService for RealGitHubService {
     /// A `Result` containing a vector of `GithubFile` or an error.
     async fn fetch_files(&self) -> Result<Vec<GithubFile>, Box<dyn std::error::Error + Send + Sync>> {
         let mut github_files = Vec::new();
-        let mut directories_to_process = vec![self.base_path.clone()];
-
-        // Recursively fetch files from all directories
-        while let Some(current_path) = directories_to_process.pop() {
-            let contents = self.fetch_directory_contents(&current_path).await?;
-
-            for item in contents {
-                let name = item["name"].as_str().unwrap_or("");
-                let item_type = item["type"].as_str().unwrap_or("");
-                let path = item["path"].as_str().unwrap_or("");
-
-                if item_type == "dir" {
-                    // If the item is a directory, add it to the list to be processed
-                    directories_to_process.push(path.to_string());
-                } else if item_type == "file" && name.ends_with(".md") {
-                    // If the item is a Markdown file, fetch its content
-                    if let Some(download_url) = item["download_url"].as_str() {
-                        debug!("Fetching content for file: {}", name);
-                        let content = self.fetch_file_content(download_url).await?;
-                        let sha = item["sha"].as_str().unwrap_or("").to_string();
-
-                        // Add the file to the list of GitHub files
-                        github_files.push(GithubFile {
-                            name: name.to_string(),
-                            content,
-                            sha,
-                        });
-                        debug!("Added file to github_files: {}", name);
-                    }
-                } else {
-                    debug!("Skipping non-markdown file: {}", name);
+        
+        // Only fetch contents from the base path
+        let contents = self.fetch_directory_contents(&self.base_path).await?;
+    
+        for item in contents {
+            let name = item["name"].as_str().unwrap_or("");
+            let item_type = item["type"].as_str().unwrap_or("");
+    
+            if item_type == "file" && name.ends_with(".md") {
+                // If the item is a Markdown file, fetch its content
+                if let Some(download_url) = item["download_url"].as_str() {
+                    debug!("Fetching content for file: {}", name);
+                    let content = self.fetch_file_content(download_url).await?;
+                    let sha = item["sha"].as_str().unwrap_or("").to_string();
+    
+                    // Add the file to the list of GitHub files
+                    github_files.push(GithubFile {
+                        name: name.to_string(),
+                        content,
+                        sha,
+                    });
+                    debug!("Added file to github_files: {}", name);
                 }
+            } else {
+                debug!("Skipping non-markdown file or directory: {}", name);
             }
         }
-
+    
         debug!("Fetched {} markdown files from GitHub", github_files.len());
         Ok(github_files)
     }

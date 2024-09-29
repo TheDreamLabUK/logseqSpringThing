@@ -156,38 +156,45 @@ impl ApiClient for ApiClientImpl {
 /// # Returns
 ///
 /// A `Result` containing the processed Markdown content or an error.
-pub async fn process_markdown(file_content: &str, settings: &Settings, api_client: &dyn ApiClient) -> Result<String, PerplexityError> {
-    let blocks = split_markdown_blocks(file_content);
-
-    let results = stream::iter(blocks.into_iter())
-        .map(|block| {
-            let prompt = settings.prompt.clone();
-            let topics = settings.topics.clone();
-            let content = file_content.to_string();
-            async move {
-                let trimmed_block = block.trim().to_string();
-                let context = select_context_blocks(&content, &trimmed_block);
-
-                let api_response = call_perplexity_api(&prompt, &context, &topics, api_client, &settings.perplexity).await?;
-                let processed_block = process_markdown_block(&trimmed_block, &prompt, &topics, &api_response);
-                Ok::<String, PerplexityError>(processed_block)
-            }
-        })
-        .buffer_unordered(
-            env::var("MAX_CONCURRENT_REQUESTS")
-                .unwrap_or_else(|_| "5".to_string())
-                .parse::<usize>()
-                .unwrap_or(5)
-        )
-        .collect::<Vec<Result<String, PerplexityError>>>()
-        .await;
-
-    let processed_content = results.into_iter()
-        .collect::<Result<Vec<String>, PerplexityError>>()?
-        .join("\n");
-
-    Ok(processed_content)
+pub async fn process_markdown(file_content: &str, _settings: &Settings, _api_client: &dyn ApiClient) -> Result<String, PerplexityError> {
+    // TEMPORARY DISABLE: Perplexity processing is currently disabled.
+    // The function now returns the original content without any processing.
+    // To re-enable, remove this comment and restore the original implementation.
+    Ok(file_content.to_string())
 }
+
+// pub async fn process_markdown(file_content: &str, settings: &Settings, api_client: &dyn ApiClient) -> Result<String, PerplexityError> {
+ //   let blocks = split_markdown_blocks(file_content);
+//
+//    let results = stream::iter(blocks.into_iter())
+//        .map(|block| {
+//            let prompt = settings.prompt.clone();
+//            let topics = settings.topics.clone();
+//            let content = file_content.to_string();
+//            async move {
+//                let trimmed_block = block.trim().to_string();
+//                let context = select_context_blocks(&content, &trimmed_block);
+//
+//                let api_response = call_perplexity_api(&prompt, &context, &topics, api_client, &settings.perplexity).await?;
+//                let processed_block = process_markdown_block(&trimmed_block, &prompt, &topics, &api_response);
+//                Ok::<String, PerplexityError>(processed_block)
+//            }
+//        })
+//        .buffer_unordered(
+//            env::var("MAX_CONCURRENT_REQUESTS")
+//                .unwrap_or_else(|_| "5".to_string())
+//                .parse::<usize>()
+//                .unwrap_or(5)
+//        )
+//        .collect::<Vec<Result<String, PerplexityError>>>()
+//        .await;
+//
+//    let processed_content = results.into_iter()
+//        .collect::<Result<Vec<String>, PerplexityError>>()?
+//        .join("\n");
+//
+//    Ok(processed_content)
+//}
 
 /// Sends a request to the Perplexity API and retrieves the response.
 ///

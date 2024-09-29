@@ -6,12 +6,13 @@ use crate::app_state::AppState;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
-use crate::services::file_service::{GitHubService, RealGitHubService};
+use crate::services::file_service::{GitHubService, RealGitHubService, FileService};
 use crate::services::perplexity_service::PerplexityServiceImpl;
 use crate::services::ragflow_service::RAGFlowService;
 use crate::models::graph::GraphData;
 use crate::utils::websocket_manager::WebSocketManager;
 use crate::utils::gpu_compute::GPUCompute;
+use crate::services::graph_service::GraphService;
 
 mod app_state;
 mod config;
@@ -19,6 +20,42 @@ mod handlers;
 mod models;
 mod services;
 mod utils;
+
+async fn initialize_graph_data(app_state: &web::Data<AppState>) -> std::io::Result<()> {
+    log::info!("Initializing graph data...");
+    
+    match FileService::fetch_and_process_files(&*app_state.github_service, &app_state.settings).await {
+        Ok(processed_files) => {
+            log::info!("Successfully processed {} files", processed_files.len());
+
+            // Update the file cache with processed content
+            {
+                let mut file_cache = app_state.file_cache.write().await;
+                for processed_file in &processed_files {
+                    file_cache.insert(processed_file.file_name.clone(), processed_file.content.clone());
+                }
+            }
+
+            // Update graph data structure based on processed files
+            match GraphService::build_graph(&app_state).await {
+                Ok(graph_data) => {
+                    let mut graph = app_state.graph_data.write().await;
+                    *graph = graph_data;
+                    log::info!("Graph data structure initialized successfully");
+                    Ok(())
+                },
+                Err(e) => {
+                    log::error!("Failed to build graph data: {}", e);
+                    Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to build graph data: {}", e)))
+                }
+            }
+        },
+        Err(e) => {
+            log::error!("Error processing files: {:?}", e);
+            Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Error processing files: {:?}", e)))
+        }
+    }
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -78,6 +115,9 @@ async fn main() -> std::io::Result<()> {
         websocket_manager,
         gpu_compute,
     ));
+
+    // Initialize graph data
+    initialize_graph_data(&app_state).await?;
 
     // Start HTTP server
     HttpServer::new(move || {
