@@ -15,7 +15,7 @@ export class WebsocketService {
      */
     connect() {
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const url = `${wsProtocol}//${window.location.host}/ws/`; // Ensure /ws/ is appended
+        const url = `${wsProtocol}//${window.location.host}/ws`; 
         console.log('Attempting to connect to WebSocket at:', url);
         this.socket = new WebSocket(url);
 
