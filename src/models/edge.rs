@@ -10,7 +10,7 @@ pub struct Edge {
     /// ID of the source node.
     pub source: String,
     /// ID of the target node.
-    pub target: String,
+    pub target_node: String,
     /// Weight of the edge.
     pub weight: f32,
 }
@@ -20,7 +20,7 @@ pub struct Edge {
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct GPUEdge {
     pub source: u32,
-    pub target: u32,
+    pub target_node: u32,
     pub weight: f32,
 }
 
@@ -30,14 +30,14 @@ impl Edge {
     /// # Arguments
     ///
     /// * `source` - ID of the source node.
-    /// * `target` - ID of the target node.
+    /// * `target_node` - ID of the target node.
     /// * `weight` - Weight of the edge.
     ///
     /// # Returns
     ///
     /// A new `Edge` instance.
-    pub fn new(source: String, target: String, weight: f32) -> Self {
-        Edge { source, target, weight }
+    pub fn new(source: String, target_node: String, weight: f32) -> Self {
+        Edge { source, target_node, weight }
     }
 
     /// Converts an `Edge` to a `GPUEdge` using node indices.
@@ -54,10 +54,10 @@ impl Edge {
     /// A `GPUEdge` representing the edge with node indices instead of IDs.
     pub fn to_gpu_edge(&self, nodes: &[Node]) -> GPUEdge {
         let source_index = nodes.iter().position(|n| n.id == self.source).unwrap() as u32;
-        let target_index = nodes.iter().position(|n| n.id == self.target).unwrap() as u32;
+        let target_index = nodes.iter().position(|n| n.id == self.target_node).unwrap() as u32;
         GPUEdge {
             source: source_index,
-            target: target_index,
+            target_node: target_index,
             weight: self.weight,
         }
     }

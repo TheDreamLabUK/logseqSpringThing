@@ -1,4 +1,3 @@
-
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
@@ -6,13 +5,24 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
  * Visualization class handles the creation and rendering of the 3D graph using Three.js.
  */
 export class Visualization {
-  constructor() {
-    // Initialize Three.js components
-    this.initThreeJS();
-
+  constructor(graphDataManager) {
+    this.graphDataManager = graphDataManager;
     // Store references to node and edge meshes for easy updates
     this.nodeMeshes = new Map();
     this.edgeMeshes = new Map();
+  }
+
+  /**
+   * Initializes the visualization.
+   */
+  initialize() {
+    // Initialize Three.js components
+    this.initThreeJS();
+    
+    // Set up animation loop
+    this.animate();
+
+    console.log("Visualization initialized");
   }
 
   /**
@@ -96,7 +106,7 @@ export class Visualization {
   createEdgeObjects(edges) {
     edges.forEach(edge => {
       const sourceNode = this.nodeMeshes.get(edge.source);
-      const targetNode = this.nodeMeshes.get(edge.target);
+      const targetNode = this.nodeMeshes.get(edge.target_node);
 
       if (sourceNode && targetNode) {
         // Define geometry for the edge
@@ -121,7 +131,7 @@ export class Visualization {
         this.scene.add(line);
 
         // Store the line in the edgeMeshes map for easy access
-        this.edgeMeshes.set(`${edge.source}-${edge.target}`, line);
+        this.edgeMeshes.set(`${edge.source}-${edge.target_node}`, line);
       }
     });
   }
@@ -157,10 +167,10 @@ export class Visualization {
 
     // Update edges
     graphData.edges.forEach(edge => {
-      const edgeKey = `${edge.source}-${edge.target}`;
+      const edgeKey = `${edge.source}-${edge.target_node}`;
       const line = this.edgeMeshes.get(edgeKey);
       const sourceNode = this.nodeMeshes.get(edge.source);
-      const targetNode = this.nodeMeshes.get(edge.target);
+      const targetNode = this.nodeMeshes.get(edge.target_node);
 
       if (line && sourceNode && targetNode) {
         // Update edge positions
@@ -182,7 +192,7 @@ export class Visualization {
     });
 
     // Remove edges that no longer exist
-    const existingEdgeKeys = new Set(graphData.edges.map(edge => `${edge.source}-${edge.target}`));
+    const existingEdgeKeys = new Set(graphData.edges.map(edge => `${edge.source}-${edge.target_node}`));
     this.edgeMeshes.forEach((line, edgeKey) => {
       if (!existingEdgeKeys.has(edgeKey)) {
         this.scene.remove(line);
@@ -200,6 +210,14 @@ export class Visualization {
 
     // Render the scene
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+   * Animation loop for continuous rendering.
+   */
+  animate() {
+    requestAnimationFrame(this.animate.bind(this));
+    this.render();
   }
 
   /**

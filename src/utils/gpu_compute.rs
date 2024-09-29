@@ -3,11 +3,13 @@
 use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor};
 use wgpu::util::DeviceExt; // Needed for create_buffer_init
 use std::io::Error;
-use log::{error}; // For logging
+use log::{error, info}; // For logging
 use crate::models::graph::GraphData;
 use crate::models::node::{Node, GPUNode};
 use crate::models::edge::GPUEdge; // Import GPUEdge
 use crate::models::simulation_params::SimulationParams; // Import SimulationParams
+
+const INITIAL_BUFFER_SIZE: u64 = 1024; // 1KB initial size
 
 /// Manages GPU computations for force-directed graph layout using WebGPU.
 ///
@@ -21,7 +23,7 @@ pub struct GPUCompute {
     queue: Queue,
     /// Buffer storing node data (positions, velocities) on the GPU.
     nodes_buffer: Buffer,
-    /// Buffer storing edge data (source, target, weight) on the GPU.
+    /// Buffer storing edge data (source, target_node, weight) on the GPU.
     edges_buffer: Buffer,
     /// Buffer storing simulation parameters (repulsion, attraction, etc.).
     simulation_params_buffer: Buffer,
@@ -29,8 +31,6 @@ pub struct GPUCompute {
     bind_group: BindGroup,
     /// Compute pipeline for the force calculation shader.
     compute_pipeline: ComputePipeline,
-    /// Compute pipeline for the update positions shader.
-    update_positions_pipeline: ComputePipeline,
     /// Number of nodes in the graph.
     num_nodes: u32,
     /// Number of edges in the graph.
@@ -71,12 +71,6 @@ impl GPUCompute {
         let cs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Force Calculation Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("force_calculation.wgsl").into()),
-        });
-
-        // Load the update positions shader from the embedded WGSL source code
-        let update_positions_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Update Positions Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("update_positions.wgsl").into()),
         });
 
         // Create a bind group layout
@@ -135,29 +129,17 @@ impl GPUCompute {
             entry_point: "main",
         });
 
-        // Create a compute pipeline for updating positions
-        let update_positions_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Update Positions Pipeline"),
-            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Pipeline Layout"),
-                bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
-            })),
-            module: &update_positions_module,
-            entry_point: "main",
-        });
-
-        // Create nodes and edges buffers (initially empty)
+        // Create nodes and edges buffers with initial size
         let nodes_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Nodes Buffer"),
-            size: 0,
+            size: INITIAL_BUFFER_SIZE,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
         let edges_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Edges Buffer"),
-            size: 0,
+            size: INITIAL_BUFFER_SIZE,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -190,7 +172,6 @@ impl GPUCompute {
             simulation_params_buffer,
             bind_group,
             compute_pipeline,
-            update_positions_pipeline, // Correctly added here
             num_nodes: 0,
             num_edges: 0,
         })
@@ -211,19 +192,33 @@ impl GPUCompute {
         // Convert Edge to GPUEdge
         let gpu_edges: Vec<GPUEdge> = graph.edges.iter().map(|edge| edge.to_gpu_edge(&graph.nodes)).collect();
 
-        // Resize and update nodes buffer
-        self.nodes_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Nodes Buffer"),
-            contents: bytemuck::cast_slice(&gpu_nodes),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
-        });
+        // Update nodes buffer
+        let nodes_data = bytemuck::cast_slice(&gpu_nodes);
+        if (nodes_data.len() as u64) > self.nodes_buffer.size() {
+            // If the new data is larger than the current buffer, create a new buffer
+            self.nodes_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Nodes Buffer"),
+                contents: nodes_data,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            });
+        } else {
+            // Otherwise, just update the existing buffer
+            self.queue.write_buffer(&self.nodes_buffer, 0, nodes_data);
+        }
 
-        // Resize and update edges buffer
-        self.edges_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Edges Buffer"),
-            contents: bytemuck::cast_slice(&gpu_edges),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        });
+        // Update edges buffer
+        let edges_data = bytemuck::cast_slice(&gpu_edges);
+        if (edges_data.len() as u64) > self.edges_buffer.size() {
+            // If the new data is larger than the current buffer, create a new buffer
+            self.edges_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Edges Buffer"),
+                contents: edges_data,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            });
+        } else {
+            // Otherwise, just update the existing buffer
+            self.queue.write_buffer(&self.edges_buffer, 0, edges_data);
+        }
 
         // Update bind group with new buffers
         self.bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -245,6 +240,7 @@ impl GPUCompute {
             ],
         });
 
+        info!("Updated GPU buffers: {} nodes, {} edges", self.num_nodes, self.num_edges);
         Ok(())
     }
 
@@ -264,34 +260,6 @@ impl GPUCompute {
                 label: Some("Compute Pass"),
             });
             cpass.set_pipeline(&self.compute_pipeline);
-            cpass.set_bind_group(0, &self.bind_group, &[]);
-            cpass.dispatch_workgroups(
-                (self.num_nodes + 63) / 64,
-                1,
-                1,
-            );
-        }
-
-        self.queue.submit(Some(encoder.finish()));
-        Ok(())
-    }
-
-    /// Updates node positions based on computed velocities.
-    ///
-    /// Dispatches the update positions compute shader, which updates the
-    /// positions of the nodes based on their velocities.
-    pub fn update_positions(&self) -> Result<(), Error> {
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Update Positions Encoder"),
-            });
-
-        {
-            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("Update Positions Pass"),
-            });
-            cpass.set_pipeline(&self.update_positions_pipeline);
             cpass.set_bind_group(0, &self.bind_group, &[]);
             cpass.dispatch_workgroups(
                 (self.num_nodes + 63) / 64,

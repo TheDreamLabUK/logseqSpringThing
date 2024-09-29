@@ -84,18 +84,18 @@ impl GraphService {
                         });
 
                         // To avoid duplicate edges, use a sorted tuple as the key.
-                        let (source, target) = if file_name < link.clone() {
+                        let (source, target_node) = if file_name < link.clone() {
                             (file_name.clone(), link.clone())
                         } else {
                             (link.clone(), file_name.clone())
                         };
 
-                        edge_set.entry((source.clone(), target.clone())).or_insert(true);
+                        edge_set.entry((source.clone(), target_node.clone())).or_insert(true);
 
                         // Add edge to graph.edges.
                         graph.edges.push(Edge {
                             source: source.clone(),
-                            target: target.clone(),
+                            target_node: target_node.clone(),
                             weight: 1.0, // You can adjust weight based on criteria.
                         });
                     }
@@ -152,7 +152,6 @@ impl GraphService {
                 let mut gpu_compute = gpu.write().await; // Acquire write lock
                 gpu_compute.set_graph_data(graph)?;
                 gpu_compute.compute_forces()?;
-                gpu_compute.update_positions()?;
                 let updated_nodes = gpu_compute.get_updated_positions().await?;
 
                 // Update graph nodes with new positions
@@ -209,7 +208,7 @@ impl GraphService {
             // Calculate attractive forces
             for edge in &graph.edges {
                 let source = graph.nodes.iter().position(|n| n.id == edge.source).unwrap();
-                let target = graph.nodes.iter().position(|n| n.id == edge.target).unwrap();
+                let target = graph.nodes.iter().position(|n| n.id == edge.target_node).unwrap();
                 let dx = graph.nodes[target].x - graph.nodes[source].x;
                 let dy = graph.nodes[target].y - graph.nodes[source].y;
                 let dz = graph.nodes[target].z - graph.nodes[source].z;

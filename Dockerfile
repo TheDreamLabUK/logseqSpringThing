@@ -33,6 +33,10 @@ RUN apt-get update && apt-get install -y \
     curl \
     libssl-dev \
     pkg-config \
+    libvulkan1 \
+    libvulkan-dev \
+    vulkan-tools \
+    libegl1-mesa-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust
@@ -59,12 +63,14 @@ RUN cargo build --release
 # Stage 3: Create the Final Image
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
-# Install necessary runtime dependencies and nginx
+# Install necessary runtime dependencies, nginx, and GPU libraries
 RUN apt-get update && apt-get install -y \
     curl \
     libssl3 \
     nginx \
     openssl \
+    libvulkan1 \
+    libegl1-mesa \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
