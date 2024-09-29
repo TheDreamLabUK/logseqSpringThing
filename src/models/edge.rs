@@ -11,8 +11,10 @@ pub struct Edge {
     pub source: String,
     /// ID of the target node.
     pub target_node: String,
-    /// Weight of the edge.
+    /// Weight of the edge (representing interconnectedness).
     pub weight: f32,
+    /// Number of direct hyperlinks between the nodes.
+    pub hyperlinks: f32,
 }
 
 /// GPU-compatible representation of an edge.
@@ -22,6 +24,7 @@ pub struct GPUEdge {
     pub source: u32,
     pub target_node: u32,
     pub weight: f32,
+    pub hyperlinks: f32,
 }
 
 impl Edge {
@@ -31,13 +34,14 @@ impl Edge {
     ///
     /// * `source` - ID of the source node.
     /// * `target_node` - ID of the target node.
-    /// * `weight` - Weight of the edge.
+    /// * `weight` - Weight of the edge (interconnectedness).
+    /// * `hyperlinks` - Number of direct hyperlinks between the nodes.
     ///
     /// # Returns
     ///
     /// A new `Edge` instance.
-    pub fn new(source: String, target_node: String, weight: f32) -> Self {
-        Edge { source, target_node, weight }
+    pub fn new(source: String, target_node: String, weight: f32, hyperlinks: f32) -> Self {
+        Edge { source, target_node, weight, hyperlinks }
     }
 
     /// Converts an `Edge` to a `GPUEdge` using node indices.
@@ -59,6 +63,7 @@ impl Edge {
             source: source_index,
             target_node: target_index,
             weight: self.weight,
+            hyperlinks: self.hyperlinks,
         }
     }
 }

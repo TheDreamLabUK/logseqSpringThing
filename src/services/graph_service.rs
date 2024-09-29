@@ -4,12 +4,15 @@ use crate::AppState;
 use crate::models::graph::GraphData;
 use crate::models::node::Node;
 use crate::models::edge::Edge;
+use crate::models::metadata::Metadata;
 use log::{info, warn};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tokio::fs;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::utils::gpu_compute::GPUCompute;
+use serde_json;
+use regex::Regex;
 
 /// Service responsible for building and managing the graph data structure.
 pub struct GraphService;
@@ -18,11 +21,13 @@ impl GraphService {
     /// Builds the graph data structure from processed Markdown files.
     /// 
     /// This function performs the following steps:
-    /// 1. Reads all processed Markdown files from the designated directory.
-    /// 2. Parses each file to extract nodes and their relationships.
-    /// 3. Constructs nodes and edges based on bidirectional references.
-    /// 4. Uses GPUCompute to calculate force-directed layout if available, otherwise falls back to CPU.
-    /// 5. Returns the complete `GraphData` structure.
+    /// 1. Reads the metadata JSON file.
+    /// 2. Creates nodes for each file in the metadata.
+    /// 3. Analyzes content for connections between nodes.
+    /// 4. Extracts hyperlinks from the content.
+    /// 5. Constructs edges based on both interconnectedness and hyperlinks.
+    /// 6. Uses GPUCompute to calculate force-directed layout if available, otherwise falls back to CPU.
+    /// 7. Returns the complete `GraphData` structure.
     ///
     /// # Arguments
     ///
@@ -32,79 +37,77 @@ impl GraphService {
     ///
     /// A `Result` containing the `GraphData` on success or an error on failure.
     pub async fn build_graph(state: &AppState) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
-        info!("Building graph data from processed files");
+        info!("Building graph data from metadata");
 
-        // Define the directory where processed Markdown files are stored.
-        let markdown_dir = "/app/data/markdown";
-
-        // Read the directory entries.
-        let mut entries = fs::read_dir(markdown_dir).await?;
+        let metadata_path = "/app/data/markdown/metadata.json";
+        let metadata_content = fs::read_to_string(metadata_path).await?;
+        let metadata: HashMap<String, Metadata> = serde_json::from_str(&metadata_content)?;
 
         let mut graph = GraphData::default();
         let mut node_map: HashMap<String, Node> = HashMap::new();
-        let mut edge_set: HashMap<(String, String), bool> = HashMap::new();
+        let mut edge_map: HashMap<(String, String), (f32, u32)> = HashMap::new();
 
-        // Iterate over each file in the directory.
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") {
-                let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
-                let content = fs::read_to_string(&path).await?;
+        // Create nodes and analyze content for connections
+        for (file_name, file_metadata) in &metadata {
+            let node_id = file_name.trim_end_matches(".md").to_string();
+            
+            // Create or get the node
+            let node = node_map.entry(node_id.clone()).or_insert(Node {
+                id: node_id.clone(),
+                label: node_id.clone(),
+                metadata: HashMap::new(),
+                x: 0.0, y: 0.0, z: 0.0,
+                vx: 0.0, vy: 0.0, vz: 0.0,
+            });
 
-                // Parse the content to extract links and other metadata.
-                let links = Self::extract_links(&content);
-
-                // Create or update the node in the node_map.
-                node_map.entry(file_name.clone()).or_insert(Node {
-                    id: file_name.clone(),
-                    label: file_name.clone(),
-                    metadata: HashMap::new(),
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                    vx: 0.0,
-                    vy: 0.0,
-                    vz: 0.0,
-                });
-
-                // Iterate over each link to create edges.
-                for link in links {
-                    if link != file_name {
-                        // Ensure both source and target nodes exist.
-                        node_map.entry(link.clone()).or_insert(Node {
-                            id: link.clone(),
-                            label: link.clone(),
-                            metadata: HashMap::new(),
-                            x: 0.0,
-                            y: 0.0,
-                            z: 0.0,
-                            vx: 0.0,
-                            vy: 0.0,
-                            vz: 0.0,
-                        });
-
-                        // To avoid duplicate edges, use a sorted tuple as the key.
-                        let (source, target_node) = if file_name < link.clone() {
-                            (file_name.clone(), link.clone())
+            // Analyze content for connections
+            for (other_file, _) in &metadata {
+                if file_name != other_file {
+                    let other_node_id = other_file.trim_end_matches(".md");
+                    let count = file_metadata.processed_file.matches(other_node_id).count() as f32;
+                    
+                    if count > 0.0 {
+                        let edge_key = if node_id < other_node_id.to_string() {
+                            (node_id.clone(), other_node_id.to_string())
                         } else {
-                            (link.clone(), file_name.clone())
+                            (other_node_id.to_string(), node_id.clone())
                         };
-
-                        edge_set.entry((source.clone(), target_node.clone())).or_insert(true);
-
-                        // Add edge to graph.edges.
-                        graph.edges.push(Edge {
-                            source: source.clone(),
-                            target_node: target_node.clone(),
-                            weight: 1.0, // You can adjust weight based on criteria.
-                        });
+                        
+                        edge_map.entry(edge_key)
+                            .and_modify(|(weight, _)| *weight += count)
+                            .or_insert((count, 0));
                     }
+                }
+            }
+
+            // Extract hyperlinks
+            let links = Self::extract_links(&file_metadata.processed_file);
+            for link in links {
+                if link != node_id {
+                    let edge_key = if node_id < link {
+                        (node_id.clone(), link)
+                    } else {
+                        (link, node_id.clone())
+                    };
+
+                    edge_map.entry(edge_key)
+                        .and_modify(|(_, hyperlinks)| *hyperlinks += 1)
+                        .or_insert((0.0, 1));
                 }
             }
         }
 
-        // Populate the nodes in the graph.
-        graph.nodes = node_map.into_iter().map(|(_, node)| node).collect();
+        // Create edges from the edge map
+        for ((source, target), (weight, hyperlinks)) in edge_map {
+            graph.edges.push(Edge {
+                source,
+                target_node: target,
+                weight,
+                hyperlinks: hyperlinks as f32,
+            });
+        }
+
+        graph.nodes = node_map.into_values().collect();
 
         info!("Graph data built with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
 
@@ -126,7 +129,7 @@ impl GraphService {
     /// A vector of link targets as strings.
     fn extract_links(content: &str) -> Vec<String> {
         let mut links = Vec::new();
-        let re = regex::Regex::new(r"\[\[(.*?)\]\]").unwrap();
+        let re = Regex::new(r"\[\[(.*?)\]\]").unwrap();
         for cap in re.captures_iter(content) {
             if let Some(link) = cap.get(1) {
                 links.push(link.as_str().to_string());
@@ -213,7 +216,7 @@ impl GraphService {
                 let dy = graph.nodes[target].y - graph.nodes[source].y;
                 let dz = graph.nodes[target].z - graph.nodes[source].z;
                 let distance = (dx * dx + dy * dy + dz * dz).sqrt().max(0.1);
-                let force = ATTRACTION * distance;
+                let force = ATTRACTION * distance * edge.weight;
                 let fx = force * dx / distance;
                 let fy = force * dy / distance;
                 let fz = force * dz / distance;
