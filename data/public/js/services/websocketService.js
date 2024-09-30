@@ -17,8 +17,8 @@ export class WebsocketService {
      * Establishes a WebSocket connection to the server.
      */
     connect() {
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const url = `${wsProtocol}//${window.location.host}/ws`; 
+        // Use the specific WebSocket URL
+        const url = 'wss://192.168.0.51:8443/ws';
         console.log('Attempting to connect to WebSocket at:', url);
         this.socket = new WebSocket(url);
 
@@ -31,6 +31,7 @@ export class WebsocketService {
 
         // WebSocket message event
         this.socket.onmessage = (event) => {
+            console.log('Received WebSocket message:', event.data);
             try {
                 const data = JSON.parse(event.data);
                 this.emit('message', data);

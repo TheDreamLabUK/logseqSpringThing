@@ -6,7 +6,7 @@ use crate::models::node::Node;
 use crate::models::edge::Edge;
 use crate::models::metadata::Metadata;
 use log::{info, warn};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use tokio::fs;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -52,7 +52,7 @@ impl GraphService {
             let node_id = file_name.trim_end_matches(".md").to_string();
             
             // Create or get the node
-            let node = node_map.entry(node_id.clone()).or_insert(Node {
+            node_map.entry(node_id.clone()).or_insert(Node {
                 id: node_id.clone(),
                 label: node_id.clone(),
                 metadata: HashMap::new(),

@@ -56,6 +56,27 @@ impl WebSocketSession {
             error!("Failed to serialize JSON response");
         }
     }
+
+    /// Handles the getInitialData request
+    fn handle_get_initial_data(&self, ctx: &mut ws::WebsocketContext<Self>) {
+        let state = self.state.clone();
+        let fut = async move {
+            let graph_data = state.graph_data.read().await;
+            json!({
+                "type": "graphUpdate",
+                "graphData": {
+                    "nodes": graph_data.nodes,
+                    "edges": graph_data.edges,
+                }
+            })
+        };
+
+        let actor_fut = fut.into_actor(self).map(|response, act, ctx| {
+            act.send_json_response(ctx, response);
+        });
+
+        ctx.spawn(actor_fut);
+    }
 }
 
 impl Actor for WebSocketSession {
@@ -106,12 +127,28 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 match serde_json::from_str::<Value>(&text) {
                     Ok(json_data) => {
                         // Process the JSON data here
-                        // For now, we'll just echo it back with a "received" field
-                        let response = json!({
-                            "type": "echo",
-                            "received": json_data,
-                        });
-                        self.send_json_response(ctx, response);
+                        if let Some(msg_type) = json_data["type"].as_str() {
+                            match msg_type {
+                                "getInitialData" => {
+                                    self.handle_get_initial_data(ctx);
+                                },
+                                _ => {
+                                    // For other message types, just echo back for now
+                                    let response = json!({
+                                        "type": "echo",
+                                        "received": json_data,
+                                    });
+                                    self.send_json_response(ctx, response);
+                                }
+                            }
+                        } else {
+                            error!("Received message without a type field");
+                            let error_response = json!({
+                                "type": "error",
+                                "message": "Message type not specified",
+                            });
+                            self.send_json_response(ctx, error_response);
+                        }
                     },
                     Err(e) => {
                         error!("Failed to parse incoming message as JSON: {}", e);

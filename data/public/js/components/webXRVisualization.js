@@ -1,15 +1,15 @@
 // public/js/components/webXRVisualization.js
 
 import * as THREE from 'three';
-import { OrbitControls } from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/jsm/controls/OrbitControls.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { initXRSession, handleXRSession } from '../xr/xrSetup.js';
 import { initXRInteraction } from '../xr/xrInteraction.js';
 import { isGPUAvailable, initGPU, computeOnGPU } from '../gpuUtils.js';
 
 // Import post-processing modules
-import { EffectComposer } from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 
 /**
  * WebXRVisualization class manages the 3D graph visualization with WebXR support.
