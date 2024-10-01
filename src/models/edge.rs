@@ -5,7 +5,7 @@ use bytemuck::{Pod, Zeroable};
 use crate::models::node::Node; // Import Node from the node module
 
 /// Represents an edge connecting two nodes in the graph.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Edge {
     /// ID of the source node.
     pub source: String,

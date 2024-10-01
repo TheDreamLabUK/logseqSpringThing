@@ -4,7 +4,7 @@ use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use actix::prelude::*;
 use crate::AppState;
-use log::{info, error};
+use log::{info, error, debug};
 use std::sync::Mutex;
 use serde_json::{json, Value};
 
@@ -34,6 +34,7 @@ impl WebSocketManager {
         for session in &*sessions {
             session.do_send(BroadcastMessage(message.to_string()));
         }
+        debug!("Broadcasted message to {} sessions", sessions.len());
     }
 }
 
@@ -51,7 +52,8 @@ impl WebSocketSession {
     /// Sends a JSON response to the client.
     fn send_json_response(&self, ctx: &mut ws::WebsocketContext<Self>, data: Value) {
         if let Ok(json_string) = serde_json::to_string(&data) {
-            ctx.text(json_string);
+            ctx.text(json_string.clone());
+            debug!("Sent JSON response: {}", json_string);
         } else {
             error!("Failed to serialize JSON response");
         }
@@ -62,13 +64,15 @@ impl WebSocketSession {
         let state = self.state.clone();
         let fut = async move {
             let graph_data = state.graph_data.read().await;
-            json!({
+            let response = json!({
                 "type": "graphUpdate",
                 "graphData": {
                     "nodes": graph_data.nodes,
                     "edges": graph_data.edges,
                 }
-            })
+            });
+            debug!("Prepared initial graph data: {} nodes, {} edges", graph_data.nodes.len(), graph_data.edges.len());
+            response
         };
 
         let actor_fut = fut.into_actor(self).map(|response, act, ctx| {
@@ -108,6 +112,7 @@ impl Handler<BroadcastMessage> for WebSocketSession {
     /// Handles the broadcast message by sending it to the client.
     fn handle(&mut self, msg: BroadcastMessage, ctx: &mut Self::Context) {
         ctx.text(msg.0);
+        debug!("Broadcasted message to client");
     }
 }
 
@@ -130,6 +135,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                         if let Some(msg_type) = json_data["type"].as_str() {
                             match msg_type {
                                 "getInitialData" => {
+                                    debug!("Handling getInitialData request");
                                     self.handle_get_initial_data(ctx);
                                 },
                                 _ => {
@@ -162,7 +168,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
             },
             Ok(ws::Message::Binary(bin)) => {
                 // Handle binary messages if necessary.
+                let bin_clone = bin.clone();
                 ctx.binary(bin);
+                debug!("Received binary message of {} bytes", bin_clone.len());
             },
             Ok(ws::Message::Close(reason)) => {
                 info!("WebSocket closed: {:?}", reason);

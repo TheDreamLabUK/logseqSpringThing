@@ -5,7 +5,7 @@ use crate::models::graph::GraphData;
 use crate::models::node::Node;
 use crate::models::edge::Edge;
 use crate::models::metadata::Metadata;
-use log::{info, warn};
+use log::{info, warn, debug};
 use std::collections::HashMap;
 use tokio::fs;
 use std::sync::Arc;
@@ -110,9 +110,14 @@ impl GraphService {
         graph.nodes = node_map.into_values().collect();
 
         info!("Graph data built with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
+        debug!("Sample node data: {:?}", graph.nodes.first());
+        debug!("Sample edge data: {:?}", graph.edges.first());
 
         // Calculate layout using GPU if available, otherwise fall back to CPU
         Self::calculate_layout(&state.gpu_compute, &mut graph).await?;
+        
+        debug!("Final sample node data after layout calculation: {:?}", graph.nodes.first());
+        
         Ok(graph)
     }
 
@@ -151,6 +156,7 @@ impl GraphService {
     async fn calculate_layout(gpu_compute: &Option<Arc<RwLock<GPUCompute>>>, graph: &mut GraphData) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match gpu_compute {
             Some(gpu) => {
+                info!("Using GPU for layout calculation");
                 // GPU-based calculation
                 let mut gpu_compute = gpu.write().await; // Acquire write lock
                 gpu_compute.set_graph_data(graph)?;
@@ -166,21 +172,18 @@ impl GraphService {
                     node.vy = updated_nodes[i].vy;
                     node.vz = updated_nodes[i].vz;
                 }
+                debug!("GPU layout calculation complete. Sample updated node: {:?}", graph.nodes.first());
             },
             None => {
-                // CPU-based calculation (fallback)
                 warn!("GPU not available. Falling back to CPU-based layout calculation.");
                 Self::calculate_layout_cpu(graph);
+                debug!("CPU layout calculation complete. Sample updated node: {:?}", graph.nodes.first());
             }
         }
 
         Ok(())
     }
 
-    /// CPU-based force-directed layout calculation.
-    ///
-    /// This is a simple implementation and may not be as efficient as the GPU version.
-    /// For production use, you might want to implement a more sophisticated algorithm.
     fn calculate_layout_cpu(graph: &mut GraphData) {
         const ITERATIONS: usize = 100;
         const REPULSION: f32 = 1.0;

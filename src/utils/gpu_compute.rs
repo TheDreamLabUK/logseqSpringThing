@@ -1,5 +1,3 @@
-// utils/gpu_compute.rs
-
 use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor};
 use wgpu::util::DeviceExt; // Needed for create_buffer_init
 use std::io::Error;
@@ -8,6 +6,7 @@ use crate::models::graph::GraphData;
 use crate::models::node::{Node, GPUNode};
 use crate::models::edge::GPUEdge; // Import GPUEdge
 use crate::models::simulation_params::SimulationParams; // Import SimulationParams
+use rand::Rng; // Import rand for random number generation
 
 const INITIAL_BUFFER_SIZE: u64 = 1024; // 1KB initial size
 
@@ -186,8 +185,15 @@ impl GPUCompute {
         self.num_nodes = graph.nodes.len() as u32;
         self.num_edges = graph.edges.len() as u32;
 
-        // Convert Node to GPUNode
-        let gpu_nodes: Vec<GPUNode> = graph.nodes.iter().map(|node| node.to_gpu_node()).collect();
+        // Convert Node to GPUNode with random initial positions
+        let mut rng = rand::thread_rng();
+        let gpu_nodes: Vec<GPUNode> = graph.nodes.iter().map(|node| {
+            let mut gpu_node = node.to_gpu_node();
+            gpu_node.x = rng.gen_range(-1.0..1.0);
+            gpu_node.y = rng.gen_range(-1.0..1.0);
+            gpu_node.z = rng.gen_range(-1.0..1.0);
+            gpu_node
+        }).collect();
 
         // Convert Edge to GPUEdge
         let gpu_edges: Vec<GPUEdge> = graph.edges.iter().map(|edge| edge.to_gpu_edge(&graph.nodes)).collect();

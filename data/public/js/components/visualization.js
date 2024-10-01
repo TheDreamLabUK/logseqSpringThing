@@ -21,9 +21,12 @@ export class Visualization {
    * @param {CustomEvent} event - The graph data update event.
    */
   handleGraphDataUpdate(event) {
-    console.log("Received graph data update event");
+    console.log("Received graph data update event", event);
     const updatedData = event.detail;
+    console.log("Updated data received:", JSON.stringify(updatedData, null, 2));
     this.updateGraph(updatedData);
+    // Log the graph state after update
+    this.logGraphState();
   }
 
   /**
@@ -37,16 +40,22 @@ export class Visualization {
     // Create initial graph
     const initialData = this.graphDataManager.getGraphData();
     if (initialData) {
-      console.log("Initial graph data available, creating graph");
+      console.log("Initial graph data available:", JSON.stringify(initialData, null, 2));
       this.createGraph(initialData);
     } else {
       console.warn("No initial graph data available");
     }
 
+    // Adjust camera position
+    this.camera.position.set(0, 0, 100);
+    this.camera.lookAt(0, 0, 0);
+
     // Set up animation loop
     this.animate();
 
     console.log("Visualization initialized");
+    // Log the initial graph state
+    this.logGraphState();
   }
 
   /**
@@ -95,6 +104,18 @@ export class Visualization {
     this.scene.add(cube);
     console.log("Debug cube added to the scene");
 
+    // Add debug spheres
+    const sphereGeometry = new THREE.SphereGeometry(5, 32, 32);
+    const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+    const sphere1 = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    sphere1.position.set(50, 50, 50);
+    this.scene.add(sphere1);
+   
+    const sphere2 = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    sphere2.position.set(-50, -50, -50);
+    this.scene.add(sphere2);
+    console.log("Debug spheres added to the scene");
+
     // Add keyboard controls
     document.addEventListener('keydown', (event) => {
       const speed = 1;
@@ -110,6 +131,10 @@ export class Visualization {
           break;
         case 'ArrowRight':
           this.camera.position.x += speed;
+          break;
+        case 'D':
+          // Press 'D' to log the current graph state
+          this.logGraphState();
           break;
       }
       console.log("Camera position:", this.camera.position);
@@ -144,6 +169,7 @@ export class Visualization {
     // Define geometry and material for nodes
     const geometry = new THREE.SphereGeometry(1.5, 16, 16);
     const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    const scale = 0.1; // Adjust this value as needed
 
     nodes.forEach(node => {
       if (!node.hasOwnProperty('x') || !node.hasOwnProperty('y') || !node.hasOwnProperty('z')) {
@@ -152,14 +178,16 @@ export class Visualization {
       }
       // Create a mesh for each node
       const mesh = new THREE.Mesh(geometry, material.clone());
-      mesh.position.set(node.x, node.y, node.z);
-      mesh.userData = { id: node.id, name: node.name };
+      mesh.position.set(node.x * scale, node.y * scale, node.z * scale);
+      mesh.userData = { id: node.id, name: node.name || node.label };
 
       // Add the mesh to the scene
       this.scene.add(mesh);
 
       // Store the mesh in the nodeMeshes map for easy access
       this.nodeMeshes.set(node.id, mesh);
+      
+      console.log(`Node created: id=${node.id}, position=(${mesh.position.x}, ${mesh.position.y}, ${mesh.position.z})`);
     });
     console.log(`${this.nodeMeshes.size} node objects created and added to the scene`);
   }
@@ -198,6 +226,8 @@ export class Visualization {
 
         // Store the line in the edgeMeshes map for easy access
         this.edgeMeshes.set(`${edge.source}-${edge.target_node}`, line);
+        
+        console.log(`Edge created: ${edge.source} -> ${edge.target_node}`);
       } else {
         console.warn(`Unable to create edge: ${edge.source} -> ${edge.target_node}. Nodes not found.`);
       }
@@ -212,12 +242,18 @@ export class Visualization {
   updateGraph(graphData) {
     console.log("Updating graph with data:", JSON.stringify(graphData, null, 2));
     if (graphData && graphData.nodes && graphData.edges) {
+      const scale = 0.1; // Adjust this value as needed
       // Update nodes
       graphData.nodes.forEach(node => {
         const mesh = this.nodeMeshes.get(node.id);
         if (mesh) {
           // Update node position
-          mesh.position.set(node.x, node.y, node.z);
+          if (node.x !== undefined && node.y !== undefined && node.z !== undefined) {
+            mesh.position.set(node.x * scale, node.y * scale, node.z * scale);
+            console.log(`Node updated: id=${node.id}, position=(${mesh.position.x}, ${mesh.position.y}, ${mesh.position.z})`);
+          } else {
+            console.warn(`Node ${node.id} is missing position data:`, node);
+          }
         } else {
           // If the node doesn't exist, create it
           this.createNodeObjects([node]);
@@ -230,6 +266,7 @@ export class Visualization {
         if (!existingNodeIds.has(nodeId)) {
           this.scene.remove(mesh);
           this.nodeMeshes.delete(nodeId);
+          console.log(`Node removed: id=${nodeId}`);
         }
       });
 
@@ -250,9 +287,12 @@ export class Visualization {
           positions[4] = targetNode.position.y;
           positions[5] = targetNode.position.z;
           line.geometry.attributes.position.needsUpdate = true;
+          console.log(`Edge updated: ${edge.source} -> ${edge.target_node}`);
         } else if (sourceNode && targetNode) {
           // If the edge doesn't exist, create it
           this.createEdgeObjects([edge]);
+        } else {
+          console.warn(`Unable to update edge: ${edge.source} -> ${edge.target_node}. Nodes not found.`);
         }
       });
 
@@ -262,6 +302,7 @@ export class Visualization {
         if (!existingEdgeKeys.has(edgeKey)) {
           this.scene.remove(line);
           this.edgeMeshes.delete(edgeKey);
+          console.log(`Edge removed: ${edgeKey}`);
         }
       });
 
@@ -301,5 +342,22 @@ export class Visualization {
 
     // Update renderer size
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  /**
+   * Debug method to log the current state of the graph
+   */
+  logGraphState() {
+    console.log("Current graph state:");
+    console.log(`Nodes: ${this.nodeMeshes.size}`);
+    this.nodeMeshes.forEach((mesh, id) => {
+      console.log(`Node ${id}: position=(${mesh.position.x}, ${mesh.position.y}, ${mesh.position.z})`);
+    });
+    console.log(`Edges: ${this.edgeMeshes.size}`);
+    this.edgeMeshes.forEach((line, key) => {
+      console.log(`Edge ${key}: ${line.geometry.attributes.position.array}`);
+    });
+    console.log("Camera position:", this.camera.position);
+    console.log("Scene children count:", this.scene.children.length);
   }
 }
