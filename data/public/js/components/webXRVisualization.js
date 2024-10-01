@@ -173,7 +173,7 @@ export class WebXRVisualization {
             } else {
                 // Create a new node mesh
                 const geometry = new THREE.SphereGeometry(2, 16, 16);
-                const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+                const material = new THREE.MeshStandardMaterial({ color: 0x1A0B31 });
                 const mesh = new THREE.Mesh(geometry, material);
                 mesh.position.set(node.x, node.y, node.z);
                 mesh.userData = { id: node.id, name: node.label };
