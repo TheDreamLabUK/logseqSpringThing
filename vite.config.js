@@ -2,11 +2,30 @@ import { defineConfig } from 'vite';
 import { createHtmlPlugin } from 'vite-plugin-html';
 
 export default defineConfig({
-  root: 'data/public',  // Root directory for your frontend files, including index.html
+  root: 'data/public',
   plugins: [createHtmlPlugin()],
   build: {
-    outDir: './dist',  // Output to data/public/dist folder
-    emptyOutDir: true,  // Clear the output directory before building
+    outDir: './dist',
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        globals: {
+          'three': 'THREE'
+        }
+      }
+    }
   },
-  publicDir: 'assets',  // Ensure static assets are in data/public/assets
+  publicDir: 'assets',
+  resolve: {
+    alias: {
+      '@': '/data/public',  // Add an alias for cleaner imports
+    }
+  },
+  server: {
+    open: true,
+    port: 3000
+  },
+  optimizeDeps: {
+    include: ['three'],  // Ensure Three.js is optimized
+  }
 });
