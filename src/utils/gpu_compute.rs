@@ -189,9 +189,9 @@ impl GPUCompute {
         let mut rng = rand::thread_rng();
         let gpu_nodes: Vec<GPUNode> = graph.nodes.iter().map(|node| {
             let mut gpu_node = node.to_gpu_node();
-            gpu_node.x = rng.gen_range(-1.0..1.0);
-            gpu_node.y = rng.gen_range(-1.0..1.0);
-            gpu_node.z = rng.gen_range(-1.0..1.0);
+            gpu_node.x = rng.gen_range(-75.0..75.0);
+            gpu_node.y = rng.gen_range(-75.0..75.0);
+            gpu_node.z = rng.gen_range(-75.0..75.0);
             gpu_node
         }).collect();
 

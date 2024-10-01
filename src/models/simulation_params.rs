@@ -15,10 +15,10 @@ pub struct SimulationParams {
 impl Default for SimulationParams {
     fn default() -> Self {
         Self {
-            repulsion_strength: 100.0,
-            attraction_strength: 0.01,
-            damping: 0.95,
-            delta_time: 0.016,
+            repulsion_strength: 30.0,  // Increase this to push nodes further apart
+            attraction_strength: 0.005, // Decrease this to reduce the attraction force
+            damping: 0.95,              // Keep this unchanged to prevent excessive oscillation
+            delta_time: 0.016,          // Standard frame rate delta time, can be kept the same
         }
     }
 }

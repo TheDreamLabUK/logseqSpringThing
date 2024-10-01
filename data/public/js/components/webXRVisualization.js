@@ -99,16 +99,16 @@ export class WebXRVisualization {
         this.composer = new EffectComposer(this.renderer);
         const renderPass = new RenderPass(this.scene, this.camera);
         this.composer.addPass(renderPass);
-
+    
         const bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
-            1.5, // strength
-            0.4, // radius
-            0.85 // threshold
+            5.0, // Increase strength for more bloom
+            0.8, // Increase radius for a broader bloom effect
+            0.85 // Threshold
         );
         this.composer.addPass(bloomPass);
     }
-
+    
     /**
      * Adds lights to the scene.
      */
@@ -268,7 +268,7 @@ export class WebXRVisualization {
                     positions[5] = targetMesh.position.z;
                     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
-                    const material = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true });
+                    const material = new THREE.LineBasicMaterial({ color: 0xff0000, opacity: 0.3, transparent: true });
                     const line = new THREE.Line(geometry, material);
                     this.scene.add(line);
                     this.edgeMeshes.set(edgeKey, line);
@@ -287,34 +287,38 @@ export class WebXRVisualization {
         const shellMaterial = new THREE.MeshBasicMaterial({
             color: 0x00ffff,
             transparent: true,
-            opacity: 0.1,
+            opacity: 0.001, // Make the shells more transparent by reducing opacity
             side: THREE.DoubleSide,
+            depthWrite: false, // Disable depth writing
         });
-
+    
         // Create concentric holographic shells
         for (let i = 0; i < numShells; i++) {
             const radius = 50 + i * shellSpacing;
             const geometry = new THREE.SphereGeometry(radius, 64, 64);
             const shell = new THREE.Mesh(geometry, shellMaterial.clone());
-            shell.material.opacity = 0.2 - i * 0.03; // Decrease opacity for inner shells
+            shell.material.opacity = 0.001 - i * 0.001; // Reduce opacity for each inner shell
             shell.rotationSpeed = 0.001 + i * 0.0005; // Vary rotation speed
+            shell.renderOrder = i; // Set render order
             this.hologramGroup.add(shell);
         }
 
         // Add wireframes to shells
-        this.hologramGroup.children.forEach((shell) => {
+        this.hologramGroup.children.forEach((shell, index) => {
             const wireframeGeometry = new THREE.EdgesGeometry(shell.geometry);
             const wireframeMaterial = new THREE.LineBasicMaterial({
                 color: 0x00ffff,
                 transparent: true,
-                opacity: 0.2,
+                opacity: 0.01, // Make wireframes more transparent if needed
+                depthWrite: false, // Disable depth writing
             });
             const wireframe = new THREE.LineSegments(wireframeGeometry, wireframeMaterial);
+            wireframe.renderOrder = index + numShells; // Ensure wireframes render after shells
             shell.add(wireframe);
         });
 
         this.scene.add(this.hologramGroup);
-
+        
         // Create dynamic particle system
         this.createParticleSystem();
     }
