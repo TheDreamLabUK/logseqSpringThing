@@ -3,155 +3,111 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
 
-/**
- * WebXRVisualization class manages the 3D graph visualization with WebXR support.
- */
 export class WebXRVisualization {
-    /**
-     * Creates a new WebXRVisualization instance.
-     * @param {GraphDataManager} graphDataManager - The GraphDataManager instance.
-     */
     constructor(graphDataManager) {
         console.log('WebXRVisualization constructor called');
         this.graphDataManager = graphDataManager;
 
-        // Three.js essentials
-        this.scene = null;
-        this.camera = null;
-        this.renderer = null;
-        this.controls = null;
-        this.composer = null; // For post-processing
-
-        // GPU acceleration (optional)
-        this.gpu = null;
-        this.isGPUEnabled = false;
-
-        // Mesh pools for nodes, edges, and node labels
-        this.nodeMeshes = new Map();
-        this.edgeMeshes = new Map();
-        this.nodeLabels = new Map(); // Billboard name tags for nodes
-
-        // Holographic elements
-        this.hologramGroup = new THREE.Group();
-        this.particleSystem = null;
-    }
-
-    /**
-     * Initializes the Three.js scene, camera, renderer, controls, GPU setup, and post-processing.
-     */
-    initialize() {
-        console.log('WebXRVisualization initialize method called');
-        try {
-            this.initThreeJS();
-            this.createHologramStructure();
-            window.addEventListener('resize', this.onWindowResize.bind(this), false);
-            this.animate();
-            this.updateVisualization(); // Call updateVisualization after initialization
-        } catch (error) {
-            console.error('Error in WebXRVisualization initialize method:', error);
-        }
-    }
-
-    /**
-     * Initializes the Three.js scene, camera, renderer, controls, and post-processing.
-     */
-    initThreeJS() {
-        console.log('Initializing Three.js components');
-        // Create the scene
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x000000, 0.002); // Add fog for depth effect
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        this.camera.position.set(0, 0, 500);
 
-        // Create the camera
-        this.camera = new THREE.PerspectiveCamera(
-            75,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            2000
-        );
-        this.camera.position.set(0, 0, 100);
-
-        // Create the renderer
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.renderer.outputEncoding = THREE.sRGBEncoding;
-        document.getElementById('scene-container').appendChild(this.renderer.domElement);
+        
+        const container = document.getElementById('scene-container');
+        if (container) {
+            container.appendChild(this.renderer.domElement);
+        } else {
+            console.error("Could not find 'scene-container' element");
+        }
 
-        // Add orbit controls for camera manipulation
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
 
-        // Add lighting to the scene
-        this.addLights();
+        this.composer = null;
 
-        // Initialize post-processing
-        this.initPostProcessing();
+        this.nodeMeshes = new Map();
+        this.edgeMeshes = new Map();
+        this.nodeLabels = new Map();
 
-        console.log('Three.js components initialized');
+        this.hologramGroup = new THREE.Group();
+        this.animationFrameId = null;
+
+        this.initialize();
     }
 
-    /**
-     * Initializes post-processing effects.
-     */
+    initialize() {
+        this.initThreeJS();
+        this.createHologramStructure();
+        window.addEventListener('resize', this.onWindowResize.bind(this), false);
+        this.animate();
+        this.updateVisualization();
+    }
+
+    initThreeJS() {
+        this.scene.fog = new THREE.FogExp2(0x000000, 0.002);
+        this.addLights();
+        this.initPostProcessing();
+    }
+
     initPostProcessing() {
         this.composer = new EffectComposer(this.renderer);
         const renderPass = new RenderPass(this.scene, this.camera);
         this.composer.addPass(renderPass);
-    
-        const bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight),
-            5.0, // Increase strength for more bloom
-            0.8, // Increase radius for a broader bloom effect
-            0.85 // Threshold
-        );
+
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
         this.composer.addPass(bloomPass);
     }
-    
-    /**
-     * Adds lights to the scene.
-     */
+
     addLights() {
-        const ambientLight = new THREE.AmbientLight(0x404040, 1.5); // Soft light
+        const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
         this.scene.add(ambientLight);
 
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(50, 50, 50); // Directional light
+        directionalLight.position.set(50, 50, 50);
         this.scene.add(directionalLight);
     }
 
-    /**
-     * Updates the visualization with new graph data.
-     */
+    createHologramStructure() {
+        const numSpheres = 5;
+        const geometry = new THREE.IcosahedronGeometry(400, 2); // Scaled up by a factor of 10
+        const material = new THREE.MeshBasicMaterial({
+            color: 0xFFD700,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.1
+        });
+
+        for (let i = 0; i < numSpheres; i++) {
+            const sphere = new THREE.Mesh(geometry, material);
+            sphere.position.set(0, 0, 0);
+            this.hologramGroup.add(sphere);
+        }
+        this.scene.add(this.hologramGroup);
+    }
+
     updateVisualization() {
-        console.log('Updating visualization');
         const graphData = this.graphDataManager.getGraphData();
         if (!graphData) {
             console.warn('No graph data available for visualization update');
             return;
         }
-
         this.updateNodes(graphData.nodes);
         this.updateEdges(graphData.edges);
     }
 
-    /**
-     * Updates nodes in the scene and adds billboard name tags.
-     * @param {Array} nodes - Array of node objects.
-     */
     updateNodes(nodes) {
-        console.log('Updating nodes:', nodes.length);
-        const existingNodeIds = new Set(nodes.map((node) => node.id));
+        const existingNodeIds = new Set(nodes.map(node => node.id));
 
-        // Remove nodes that no longer exist
         this.nodeMeshes.forEach((mesh, nodeId) => {
             if (!existingNodeIds.has(nodeId)) {
                 this.scene.remove(mesh);
                 this.nodeMeshes.delete(nodeId);
-
-                // Remove node label
                 const label = this.nodeLabels.get(nodeId);
                 if (label) {
                     this.scene.remove(label);
@@ -160,43 +116,28 @@ export class WebXRVisualization {
             }
         });
 
-        // Add or update nodes and their labels
-        nodes.forEach((node) => {
-            if (this.nodeMeshes.has(node.id)) {
-                const mesh = this.nodeMeshes.get(node.id);
-                mesh.position.set(node.x, node.y, node.z);
-
-                // Update label position
-                const label = this.nodeLabels.get(node.id);
-                if (label) {
-                    label.position.set(node.x, node.y + 5, node.z); // Slightly above the node
-                }
-            } else {
-                // Create a new node mesh
-                const geometry = new THREE.SphereGeometry(2, 16, 16);
+        nodes.forEach(node => {
+            let mesh = this.nodeMeshes.get(node.id);
+            if (!mesh) {
+                const size = node.metadata.fileSize / 1000; // Example scaling factor
+                const geometry = new THREE.SphereGeometry(size, 32, 32);
                 const material = new THREE.MeshStandardMaterial({ color: 0x1A0B31 });
-                const mesh = new THREE.Mesh(geometry, material);
-                mesh.position.set(node.x, node.y, node.z);
-                mesh.userData = { id: node.id, name: node.label };
-
-                // Create a name label (billboard text)
-                const label = this.createNodeLabel(node.label);
-                label.position.set(node.x, node.y + 5, node.z); // Slightly above the node
-
+                mesh = new THREE.Mesh(geometry, material);
                 this.scene.add(mesh);
-                this.scene.add(label);
-
                 this.nodeMeshes.set(node.id, mesh);
+
+                const label = this.createNodeLabel(node.label);
+                this.scene.add(label);
                 this.nodeLabels.set(node.id, label);
             }
+
+            // Update position and label
+            mesh.position.set(node.x, node.y, node.z);
+            const label = this.nodeLabels.get(node.id);
+            label.position.set(node.x, node.y + 5, node.z); // Slightly above the node
         });
     }
 
-    /**
-     * Creates a billboard label for a node.
-     * @param {string} text - The text to display.
-     * @returns {THREE.Sprite} - The label sprite.
-     */
     createNodeLabel(text) {
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
@@ -204,8 +145,8 @@ export class WebXRVisualization {
         const metrics = context.measureText(text);
         const textWidth = metrics.width;
 
-        canvas.width = textWidth + 10; // Add padding
-        canvas.height = 40; // Text height
+        canvas.width = textWidth + 10;
+        canvas.height = 40;
 
         context.fillStyle = 'rgba(0, 0, 0, 0.5)';
         context.fillRect(0, 0, canvas.width, canvas.height);
@@ -216,20 +157,14 @@ export class WebXRVisualization {
         const texture = new THREE.CanvasTexture(canvas);
         const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
         const sprite = new THREE.Sprite(spriteMaterial);
-        sprite.scale.set(canvas.width / 50, canvas.height / 50, 1); // Scale appropriately
+        sprite.scale.set(canvas.width / 50, canvas.height / 50, 1);
 
         return sprite;
     }
 
-    /**
-     * Updates edges in the scene.
-     * @param {Array} edges - Array of edge objects.
-     */
     updateEdges(edges) {
-        console.log('Updating edges:', edges.length);
-        const existingEdgeKeys = new Set(edges.map((edge) => `${edge.source}-${edge.target_node}`));
+        const existingEdgeKeys = new Set(edges.map(edge => `${edge.source}-${edge.target_node}`));
 
-        // Remove edges that no longer exist
         this.edgeMeshes.forEach((line, edgeKey) => {
             if (!existingEdgeKeys.has(edgeKey)) {
                 this.scene.remove(line);
@@ -237,15 +172,31 @@ export class WebXRVisualization {
             }
         });
 
-        // Add or update edges
-        edges.forEach((edge) => {
+        edges.forEach(edge => {
             const edgeKey = `${edge.source}-${edge.target_node}`;
-            if (this.edgeMeshes.has(edgeKey)) {
-                const line = this.edgeMeshes.get(edgeKey);
+            let line = this.edgeMeshes.get(edgeKey);
+            if (!line) {
                 const sourceMesh = this.nodeMeshes.get(edge.source);
                 const targetMesh = this.nodeMeshes.get(edge.target_node);
                 if (sourceMesh && targetMesh) {
-                    const positions = line.geometry.attributes.position.array;
+                    const positions = new Float32Array([
+                        sourceMesh.position.x, sourceMesh.position.y, sourceMesh.position.z,
+                        targetMesh.position.x, targetMesh.position.y, targetMesh.position.z
+                    ]);
+                    const geometry = new THREE.BufferGeometry();
+                    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                    const material = new THREE.LineBasicMaterial({ color: 0xff0000, opacity: 0.3, transparent: true });
+                    line = new THREE.Line(geometry, material);
+                    this.scene.add(line);
+                    this.edgeMeshes.set(edgeKey, line);
+                } else {
+                    console.warn(`Unable to create edge ${edgeKey}: Source or target node not found`);
+                }
+            } else {
+                const positions = line.geometry.attributes.position.array;
+                const sourceMesh = this.nodeMeshes.get(edge.source);
+                const targetMesh = this.nodeMeshes.get(edge.target_node);
+                if (sourceMesh && targetMesh) {
                     positions[0] = sourceMesh.position.x;
                     positions[1] = sourceMesh.position.y;
                     positions[2] = sourceMesh.position.z;
@@ -253,215 +204,30 @@ export class WebXRVisualization {
                     positions[4] = targetMesh.position.y;
                     positions[5] = targetMesh.position.z;
                     line.geometry.attributes.position.needsUpdate = true;
-                }
-            } else {
-                // Create a new edge line
-                const sourceMesh = this.nodeMeshes.get(edge.source);
-                const targetMesh = this.nodeMeshes.get(edge.target_node);
-                if (sourceMesh && targetMesh) {
-                    const geometry = new THREE.BufferGeometry();
-                    const positions = new Float32Array(6); // 2 points * 3 coordinates
-                    positions[0] = sourceMesh.position.x;
-                    positions[1] = sourceMesh.position.y;
-                    positions[2] = sourceMesh.position.z;
-                    positions[3] = targetMesh.position.x;
-                    positions[4] = targetMesh.position.y;
-                    positions[5] = targetMesh.position.z;
-                    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-                    const material = new THREE.LineBasicMaterial({ color: 0xff0000, opacity: 0.3, transparent: true });
-                    const line = new THREE.Line(geometry, material);
-                    this.scene.add(line);
-                    this.edgeMeshes.set(edgeKey, line);
+                } else {
+                    console.warn(`Unable to update edge ${edgeKey}: Source or target node not found`);
                 }
             }
         });
     }
-/**
-     * Creates the holographic structure and particle system.
-     */
-createHologramStructure() {
-    console.log('Creating hologram structure');
-    const numSpheres = 10; // Number of geodesic spheres
-    const sphereSpacing = 30; // Spacing between sphere centers
-    const sphereMaterial = new THREE.MeshBasicMaterial({
-        color: 0xFFD700, // Golden color
-        transparent: true,
-        opacity: 0.1, // Base opacity, some will be more visible
-        side: THREE.DoubleSide,
-        depthWrite: false, 
-    });
 
-    // Create geodesic spheres with varying visibility and truncation
-    for (let i = 0; i < numSpheres; i++) {
-        const radius = 40 + Math.random() * 20;
-        const geometry = new THREE.SphereGeometry(radius, 20, 10);
-        const sphere = new THREE.Mesh(geometry, sphereMaterial.clone());
-        sphere.material.opacity = 0.1 + Math.random() * 0.3;
-        sphere.rotationSpeed = 0.001 + Math.random() * 0.002;
-    
-        sphere.position.set(
-            Math.random() * sphereSpacing - sphereSpacing / 2,
-            Math.random() * sphereSpacing - sphereSpacing / 2,
-            Math.random() * sphereSpacing - sphereSpacing / 2
-        );
-    
-        this.hologramGroup.add(sphere);
-    }
-
-
-    // Add subtle wireframes to some spheres 
-    this.hologramGroup.children.forEach((sphere) => {
-        if (Math.random() < 0.3) { // Add wireframes to only some spheres
-            const wireframeGeometry = new THREE.WireframeGeometry(sphere.geometry);
-            const wireframeMaterial = new THREE.LineBasicMaterial({
-                color: 0xFFD700, 
-                transparent: true,
-                opacity: 0.05, 
-                depthWrite: false, 
-            });
-            const wireframe = new THREE.LineSegments(wireframeGeometry, wireframeMaterial);
-            sphere.add(wireframe); 
-        }
-    });
-
-    this.scene.add(this.hologramGroup);
-
-    // Create enhanced particle system
-    this.createEnhancedParticleSystem(); 
-}
-
-/**
- * Creates an enhanced particle system with trails and variations.
- */
-createEnhancedParticleSystem() {
-    const particleCount = 2000;
-    const particles = new THREE.BufferGeometry();
-    const positions = [];
-    const velocities = [];
-    const sizes = [];
-    const colors = [];
-
-    // Initialize particle positions, velocities, sizes, and colors
-    for (let i = 0; i < particleCount; i++) {
-        const radius = Math.random() * 150;
-        const theta = Math.random() * 2 * Math.PI;
-        const phi = Math.random() * Math.PI;
-
-        const x = radius * Math.sin(phi) * Math.cos(theta);
-        const y = radius * Math.sin(phi) * Math.sin(theta);
-        const z = radius * Math.cos(phi);
-
-        positions.push(x, y, z);
-        velocities.push(Math.random() * 0.04 - 0.02, Math.random() * 0.04 - 0.02, Math.random() * 0.04 - 0.02);
-        sizes.push(Math.random() * 2 + 0.5); // Vary particle sizes
-        colors.push(1, 0.8, 0, Math.random() * 0.5 + 0.5); // Golden color with varying alpha
-    }
-
-    particles.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    particles.setAttribute('velocity', new THREE.Float32BufferAttribute(velocities, 3));
-    particles.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
-    particles.setAttribute('color', new THREE.Float32BufferAttribute(colors, 4));
-
-    // Enhanced particle material with trails
-    const particleMaterial = new THREE.ShaderMaterial({
-        uniforms: {
-            color: { value: new THREE.Color(0xFFD700) },
-        },
-        vertexShader: `
-            attribute float size;
-            attribute vec4 color;
-            varying vec4 vColor;
-
-            void main() {
-                vColor = color;
-                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                gl_PointSize = size * (300.0 / -mvPosition.z); // Size based on distance
-                gl_Position = projectionMatrix * mvPosition;
-            }
-        `,
-        fragmentShader: `
-            varying vec4 vColor;
-
-            void main() {
-                gl_FragColor = vec4(vColor.rgb, vColor.a); 
-            }
-        `,
-        blending: THREE.AdditiveBlending,
-        transparent: true,
-        depthWrite: false,
-    });
-
-    // Create particle system
-    this.particleSystem = new THREE.Points(particles, particleMaterial);
-    this.hologramGroup.add(this.particleSystem);
-}
-
-    /**
-     * Animation loop for continuous rendering.
-     */
     animate() {
-        const animateLoop = () => {
-            requestAnimationFrame(animateLoop);
-            this.controls.update();
-
-            // Rotate holographic shells
-            this.rotateHologram();
-
-            // Update particle system
-            this.updateParticles();
-
-            // Use composer for post-processing if initialized
-            if (this.composer) {
-                this.composer.render();
-            } else {
-                this.renderer.render(this.scene, this.camera);
-            }
-        };
-
-        animateLoop();
-    }
-
-    /**
-     * Rotates the hologram.
-     */
-    rotateHologram() {
-        this.hologramGroup.children.forEach((shell) => {
-            shell.rotation.y += shell.rotationSpeed;
-        });
-    }
-
-    /**
-     * Updates particle positions.
-     */
-    updateParticles() {
-        const positions = this.particleSystem.geometry.attributes.position.array;
-        const velocities = this.particleSystem.geometry.attributes.velocity.array;
-
-        for (let i = 0; i < positions.length; i += 3) {
-            positions[i] += velocities[i] * 0.1;
-            positions[i + 1] += velocities[i + 1] * 0.1;
-            positions[i + 2] += velocities[i + 2] * 0.1;
-
-            // Reset particle if it goes beyond a certain radius
-            const distance = Math.sqrt(
-                positions[i] * positions[i] +
-                positions[i + 1] * positions[i + 1] +
-                positions[i + 2] * positions[i + 2]
-            );
-            if (distance > 150) {
-                positions[i] = positions[i] * -1;
-                positions[i + 1] = positions[i + 1] * -1;
-                positions[i + 2] = positions[i + 2] * -1;
-            }
+        this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
+        this.controls.update();
+        if (this.composer) {
+            this.composer.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
         }
-
-        this.particleSystem.geometry.attributes.position.needsUpdate = true;
     }
 
-    /**
-     * Handles window resize events.
-     */
+    stopAnimation() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+    }
+
     onWindowResize() {
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
