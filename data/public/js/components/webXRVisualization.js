@@ -276,93 +276,140 @@ export class WebXRVisualization {
             }
         });
     }
-
-    /**
+/**
      * Creates the holographic structure and particle system.
      */
-    createHologramStructure() {
-        console.log('Creating hologram structure');
-        const numShells = 5; // Number of concentric shells
-        const shellSpacing = 20; // Spacing between shells
-        const shellMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00ffff,
-            transparent: true,
-            opacity: 0.001, // Make the shells more transparent by reducing opacity
-            side: THREE.DoubleSide,
-            depthWrite: false, // Disable depth writing
-        });
-    
-        // Create concentric holographic shells
-        for (let i = 0; i < numShells; i++) {
-            const radius = 50 + i * shellSpacing;
-            const geometry = new THREE.SphereGeometry(radius, 64, 64);
-            const shell = new THREE.Mesh(geometry, shellMaterial.clone());
-            shell.material.opacity = 0.001 - i * 0.001; // Reduce opacity for each inner shell
-            shell.rotationSpeed = 0.001 + i * 0.0005; // Vary rotation speed
-            shell.renderOrder = i; // Set render order
-            this.hologramGroup.add(shell);
+createHologramStructure() {
+    console.log('Creating hologram structure');
+    const numSpheres = 10; // Number of geodesic spheres
+    const sphereSpacing = 30; // Spacing between sphere centers
+    const sphereMaterial = new THREE.MeshBasicMaterial({
+        color: 0xFFD700, // Golden color
+        transparent: true,
+        opacity: 0.1, // Base opacity, some will be more visible
+        side: THREE.DoubleSide,
+        depthWrite: false, 
+    });
+
+    // Create geodesic spheres with varying visibility and truncation
+    for (let i = 0; i < numSpheres; i++) {
+        const radius = 40 + Math.random() * 20; // Vary radii slightly
+        const geometry = new THREE.SphereGeometry(radius, 20, 10); // Geodesic sphere
+        const sphere = new THREE.Mesh(geometry, sphereMaterial.clone());
+        sphere.material.opacity = 0.1 + Math.random() * 0.3; // Vary opacity
+        sphere.rotationSpeed = 0.001 + Math.random() * 0.002; // Vary rotation speed
+
+        // Truncate spheres randomly (hemispheres or other cuts)
+        if (Math.random() < 0.5) { 
+            const plane = new THREE.Plane(new THREE.Vector3(0, Math.random() - 0.5, Math.random() - 0.5).normalize(), Math.random() * radius * 0.5);
+            const modifier = new THREE.SimplifyModifier();
+            const newGeometry = modifier.modify(geometry.clone().applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(sphere.quaternion)));
+            newGeometry.computeVertexNormals(); // Recalculate normals
+
+            const splitGeometry = newGeometry.toNonIndexed(); // Use non-indexed for clipping
+
+            const clipper = new THREE.Plane(plane.normal, -plane.constant); // Create the clipper
+            const result = THREE.BufferGeometryUtils.mergeVertices(clipper.clipShadows(splitGeometry)); // Apply clipping
+
+            sphere.geometry = result; // Update sphere's geometry
         }
 
-        // Add wireframes to shells
-        this.hologramGroup.children.forEach((shell, index) => {
-            const wireframeGeometry = new THREE.EdgesGeometry(shell.geometry);
+        // Position spheres randomly around a central point
+        sphere.position.set(
+            Math.random() * sphereSpacing - sphereSpacing / 2,
+            Math.random() * sphereSpacing - sphereSpacing / 2,
+            Math.random() * sphereSpacing - sphereSpacing / 2
+        );
+
+        this.hologramGroup.add(sphere);
+    }
+
+    // Add subtle wireframes to some spheres 
+    this.hologramGroup.children.forEach((sphere) => {
+        if (Math.random() < 0.3) { // Add wireframes to only some spheres
+            const wireframeGeometry = new THREE.WireframeGeometry(sphere.geometry);
             const wireframeMaterial = new THREE.LineBasicMaterial({
-                color: 0x00ffff,
+                color: 0xFFD700, 
                 transparent: true,
-                opacity: 0.01, // Make wireframes more transparent if needed
-                depthWrite: false, // Disable depth writing
+                opacity: 0.05, 
+                depthWrite: false, 
             });
             const wireframe = new THREE.LineSegments(wireframeGeometry, wireframeMaterial);
-            wireframe.renderOrder = index + numShells; // Ensure wireframes render after shells
-            shell.add(wireframe);
-        });
-
-        this.scene.add(this.hologramGroup);
-        
-        // Create dynamic particle system
-        this.createParticleSystem();
-    }
-
-    /**
-     * Creates a particle system to simulate energy flow within the hologram.
-     */
-    createParticleSystem() {
-        const particleCount = 1000;
-        const particles = new THREE.BufferGeometry();
-        const positions = [];
-        const velocities = [];
-
-        // Initialize particle positions and velocities
-        for (let i = 0; i < particleCount; i++) {
-            const radius = Math.random() * 100;
-            const theta = Math.random() * 2 * Math.PI;
-            const phi = Math.random() * Math.PI;
-
-            const x = radius * Math.sin(phi) * Math.cos(theta);
-            const y = radius * Math.sin(phi) * Math.sin(theta);
-            const z = radius * Math.cos(phi);
-
-            positions.push(x, y, z);
-            velocities.push(Math.random() * 0.02 - 0.01, Math.random() * 0.02 - 0.01, Math.random() * 0.02 - 0.01);
+            sphere.add(wireframe); 
         }
+    });
 
-        particles.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        particles.setAttribute('velocity', new THREE.Float32BufferAttribute(velocities, 3));
+    this.scene.add(this.hologramGroup);
 
-        // Particle material
-        const particleMaterial = new THREE.PointsMaterial({
-            color: 0xffffff,
-            size: 1,
-            blending: THREE.AdditiveBlending,
-            transparent: true,
-            opacity: 0.7,
-            depthWrite: false,
-        });
+    // Create enhanced particle system
+    this.createEnhancedParticleSystem(); 
+}
 
-        // Create particle system
-        this.particleSystem = new THREE.Points(particles, particleMaterial);
-        this.hologramGroup.add(this.particleSystem);
+/**
+ * Creates an enhanced particle system with trails and variations.
+ */
+createEnhancedParticleSystem() {
+    const particleCount = 2000;
+    const particles = new THREE.BufferGeometry();
+    const positions = [];
+    const velocities = [];
+    const sizes = [];
+    const colors = [];
+
+    // Initialize particle positions, velocities, sizes, and colors
+    for (let i = 0; i < particleCount; i++) {
+        const radius = Math.random() * 150;
+        const theta = Math.random() * 2 * Math.PI;
+        const phi = Math.random() * Math.PI;
+
+        const x = radius * Math.sin(phi) * Math.cos(theta);
+        const y = radius * Math.sin(phi) * Math.sin(theta);
+        const z = radius * Math.cos(phi);
+
+        positions.push(x, y, z);
+        velocities.push(Math.random() * 0.04 - 0.02, Math.random() * 0.04 - 0.02, Math.random() * 0.04 - 0.02);
+        sizes.push(Math.random() * 2 + 0.5); // Vary particle sizes
+        colors.push(1, 0.8, 0, Math.random() * 0.5 + 0.5); // Golden color with varying alpha
     }
+
+    particles.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    particles.setAttribute('velocity', new THREE.Float32BufferAttribute(velocities, 3));
+    particles.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+    particles.setAttribute('color', new THREE.Float32BufferAttribute(colors, 4));
+
+    // Enhanced particle material with trails
+    const particleMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            color: { value: new THREE.Color(0xFFD700) },
+        },
+        vertexShader: `
+            attribute float size;
+            attribute vec4 color;
+            varying vec4 vColor;
+
+            void main() {
+                vColor = color;
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                gl_PointSize = size * (300.0 / -mvPosition.z); // Size based on distance
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `,
+        fragmentShader: `
+            varying vec4 vColor;
+
+            void main() {
+                gl_FragColor = vec4(vColor.rgb, vColor.a); 
+            }
+        `,
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        depthWrite: false,
+    });
+
+    // Create particle system
+    this.particleSystem = new THREE.Points(particles, particleMaterial);
+    this.hologramGroup.add(this.particleSystem);
+}
 
     /**
      * Animation loop for continuous rendering.
