@@ -32,6 +32,8 @@ bytemuck = { version = "1.12", features = ["derive"] }
 futures-intrusive = "0.4"
 anyhow = "1.0"
 rand = "0.8" # Added rand dependency
+rayon = "1.5"
+
 
 [dev-dependencies]
 mockall = "0.11"

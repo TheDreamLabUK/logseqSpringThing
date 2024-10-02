@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
 
 /**
  * WebXRVisualization class manages the 3D graph visualization with WebXR support.
@@ -293,36 +294,21 @@ createHologramStructure() {
 
     // Create geodesic spheres with varying visibility and truncation
     for (let i = 0; i < numSpheres; i++) {
-        const radius = 40 + Math.random() * 20; // Vary radii slightly
-        const geometry = new THREE.SphereGeometry(radius, 20, 10); // Geodesic sphere
+        const radius = 40 + Math.random() * 20;
+        const geometry = new THREE.SphereGeometry(radius, 20, 10);
         const sphere = new THREE.Mesh(geometry, sphereMaterial.clone());
-        sphere.material.opacity = 0.1 + Math.random() * 0.3; // Vary opacity
-        sphere.rotationSpeed = 0.001 + Math.random() * 0.002; // Vary rotation speed
-
-        // Truncate spheres randomly (hemispheres or other cuts)
-        if (Math.random() < 0.5) { 
-            const plane = new THREE.Plane(new THREE.Vector3(0, Math.random() - 0.5, Math.random() - 0.5).normalize(), Math.random() * radius * 0.5);
-            const modifier = new THREE.SimplifyModifier();
-            const newGeometry = modifier.modify(geometry.clone().applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(sphere.quaternion)));
-            newGeometry.computeVertexNormals(); // Recalculate normals
-
-            const splitGeometry = newGeometry.toNonIndexed(); // Use non-indexed for clipping
-
-            const clipper = new THREE.Plane(plane.normal, -plane.constant); // Create the clipper
-            const result = THREE.BufferGeometryUtils.mergeVertices(clipper.clipShadows(splitGeometry)); // Apply clipping
-
-            sphere.geometry = result; // Update sphere's geometry
-        }
-
-        // Position spheres randomly around a central point
+        sphere.material.opacity = 0.1 + Math.random() * 0.3;
+        sphere.rotationSpeed = 0.001 + Math.random() * 0.002;
+    
         sphere.position.set(
             Math.random() * sphereSpacing - sphereSpacing / 2,
             Math.random() * sphereSpacing - sphereSpacing / 2,
             Math.random() * sphereSpacing - sphereSpacing / 2
         );
-
+    
         this.hologramGroup.add(sphere);
     }
+
 
     // Add subtle wireframes to some spheres 
     this.hologramGroup.children.forEach((sphere) => {

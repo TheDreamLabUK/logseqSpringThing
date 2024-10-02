@@ -7,6 +7,7 @@ use crate::AppState;
 use log::{info, error, debug};
 use std::sync::Mutex;
 use serde_json::{json, Value};
+use futures::future::join_all;
 
 /// Manages WebSocket connections and broadcasts updates to connected clients.
 pub struct WebSocketManager {
@@ -29,12 +30,15 @@ impl WebSocketManager {
     }
 
     /// Broadcasts a message to all connected WebSocket clients.
-    pub fn broadcast_message(&self, message: &str) {
-        let sessions = self.sessions.lock().unwrap();
-        for session in &*sessions {
-            session.do_send(BroadcastMessage(message.to_string()));
-        }
+    pub async fn broadcast_message(&self, message: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let sessions = self.sessions.lock().unwrap().clone();
+        let futures = sessions.iter().map(|session| {
+            session.send(BroadcastMessage(message.to_string()))
+        });
+        
+        join_all(futures).await;
         debug!("Broadcasted message to {} sessions", sessions.len());
+        Ok(())
     }
 }
 

@@ -5,14 +5,13 @@ use crate::models::graph::GraphData;
 use crate::models::node::Node;
 use crate::models::edge::Edge;
 use crate::models::metadata::Metadata;
+use crate::utils::gpu_compute::GPUCompute;
 use log::{info, warn, debug};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tokio::fs;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::utils::gpu_compute::GPUCompute;
 use serde_json;
-use regex::Regex;
 
 /// Service responsible for building and managing the graph data structure.
 pub struct GraphService;
@@ -24,123 +23,82 @@ impl GraphService {
     /// 1. Reads the metadata JSON file.
     /// 2. Creates nodes for each file in the metadata.
     /// 3. Analyzes content for connections between nodes.
-    /// 4. Extracts hyperlinks from the content.
-    /// 5. Constructs edges based on both interconnectedness and hyperlinks.
-    /// 6. Uses GPUCompute to calculate force-directed layout if available, otherwise falls back to CPU.
-    /// 7. Returns the complete `GraphData` structure.
+    /// 4. Constructs edges based on both interconnectedness and hyperlinks.
+    /// 5. Uses GPUCompute to calculate force-directed layout if available, otherwise falls back to CPU.
+    /// 6. Returns the complete `GraphData` structure.
     ///
     /// # Arguments
     ///
-    /// * `state` - Shared application state containing settings and file cache.
+    /// * `app_state` - Shared application state containing settings and file cache.
     ///
     /// # Returns
     ///
     /// A `Result` containing the `GraphData` on success or an error on failure.
-    pub async fn build_graph(state: &AppState) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn build_graph(app_state: &AppState) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
         info!("Building graph data from metadata");
-
         let metadata_path = "/app/data/markdown/metadata.json";
         let metadata_content = fs::read_to_string(metadata_path).await?;
         let metadata: HashMap<String, Metadata> = serde_json::from_str(&metadata_content)?;
-
+    
         let mut graph = GraphData::default();
-        let mut node_map: HashMap<String, Node> = HashMap::new();
         let mut edge_map: HashMap<(String, String), (f32, u32)> = HashMap::new();
-
-        // Create nodes and analyze content for connections
-        for (file_name, file_metadata) in &metadata {
+    
+        // Create nodes
+        for (file_name, _) in &metadata {
             let node_id = file_name.trim_end_matches(".md").to_string();
-            
-            // Create or get the node
-            node_map.entry(node_id.clone()).or_insert(Node {
+            graph.nodes.push(Node {
                 id: node_id.clone(),
                 label: node_id.clone(),
-                metadata: HashMap::new(),
+                metadata: HashMap::new(), // Initialize with an empty HashMap
                 x: 0.0, y: 0.0, z: 0.0,
                 vx: 0.0, vy: 0.0, vz: 0.0,
             });
-
-            // Analyze content for connections
+        }
+    
+        // Build edges
+        for (file_name, file_metadata) in &metadata {
+            let node_id = file_name.trim_end_matches(".md").to_string();
             for (other_file, _) in &metadata {
                 if file_name != other_file {
                     let other_node_id = other_file.trim_end_matches(".md");
-                    let count = file_metadata.processed_file.matches(other_node_id).count() as f32;
-                    
+                    let count = file_metadata.topic_counts.get(other_node_id).cloned().unwrap_or(0) as f32;
                     if count > 0.0 {
                         let edge_key = if node_id < other_node_id.to_string() {
                             (node_id.clone(), other_node_id.to_string())
                         } else {
                             (other_node_id.to_string(), node_id.clone())
                         };
-                        
                         edge_map.entry(edge_key)
-                            .and_modify(|(weight, _)| *weight += count)
-                            .or_insert((count, 0));
+                            .and_modify(|(weight, hyperlinks)| {
+                                *weight += count;
+                                *hyperlinks += file_metadata.hyperlink_count as u32;
+                            })
+                            .or_insert((count, file_metadata.hyperlink_count as u32));
                     }
                 }
             }
-
-            // Extract hyperlinks
-            let links = Self::extract_links(&file_metadata.processed_file);
-            for link in links {
-                if link != node_id {
-                    let edge_key = if node_id < link {
-                        (node_id.clone(), link)
-                    } else {
-                        (link, node_id.clone())
-                    };
-
-                    edge_map.entry(edge_key)
-                        .and_modify(|(_, hyperlinks)| *hyperlinks += 1)
-                        .or_insert((0.0, 1));
-                }
-            }
         }
-
-        // Create edges from the edge map
-        for ((source, target), (weight, hyperlinks)) in edge_map {
-            graph.edges.push(Edge {
+    
+        // Convert edge_map to edges
+        graph.edges = edge_map.into_iter().map(|((source, target), (weight, hyperlinks))| {
+            Edge {
                 source,
                 target_node: target,
                 weight,
                 hyperlinks: hyperlinks as f32,
-            });
-        }
-
-        graph.nodes = node_map.into_values().collect();
-
+            }
+        }).collect();
+        
         info!("Graph data built with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
         debug!("Sample node data: {:?}", graph.nodes.first());
         debug!("Sample edge data: {:?}", graph.edges.first());
 
         // Calculate layout using GPU if available, otherwise fall back to CPU
-        Self::calculate_layout(&state.gpu_compute, &mut graph).await?;
+        Self::calculate_layout(&app_state.gpu_compute, &mut graph).await?;
         
         debug!("Final sample node data after layout calculation: {:?}", graph.nodes.first());
         
         Ok(graph)
-    }
-
-    /// Extracts links from the Markdown content.
-    /// 
-    /// This function looks for `[[Link]]` patterns and extracts the link targets.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The Markdown content as a string.
-    ///
-    /// # Returns
-    ///
-    /// A vector of link targets as strings.
-    fn extract_links(content: &str) -> Vec<String> {
-        let mut links = Vec::new();
-        let re = Regex::new(r"\[\[(.*?)\]\]").unwrap();
-        for cap in re.captures_iter(content) {
-            if let Some(link) = cap.get(1) {
-                links.push(link.as_str().to_string());
-            }
-        }
-        links
     }
 
     /// Calculates the force-directed layout using GPUCompute if available, otherwise falls back to CPU.
@@ -184,6 +142,14 @@ impl GraphService {
         Ok(())
     }
 
+    /// Calculates the force-directed layout using CPU.
+    ///
+    /// This function implements a simple force-directed layout algorithm on the CPU.
+    /// It's used as a fallback when GPU computation is not available.
+    ///
+    /// # Arguments
+    ///
+    /// * `graph` - Mutable reference to the GraphData to be updated.
     fn calculate_layout_cpu(graph: &mut GraphData) {
         const ITERATIONS: usize = 100;
         const REPULSION: f32 = 1.0;
@@ -243,4 +209,73 @@ impl GraphService {
             }
         }
     }
-}
+
+    /// Finds the shortest path between two nodes in the graph.
+    ///
+    /// This function implements Dijkstra's algorithm to find the shortest path
+    /// between a start node and an end node in the graph.
+    ///
+    /// # Arguments
+    ///
+    /// * `graph` - Reference to the GraphData.
+    /// * `start` - ID of the start node.
+    /// * `end` - ID of the end node.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a vector of node IDs representing the shortest path,
+    /// or an error if no path is found.
+    pub fn find_shortest_path(graph: &GraphData, start: &str, end: &str) -> Result<Vec<String>, String> {
+        let mut distances: HashMap<String, f32> = HashMap::new();
+        let mut previous: HashMap<String, Option<String>> = HashMap::new();
+        let mut unvisited: HashSet<String> = HashSet::new();
+    
+        for node in &graph.nodes {
+            distances.insert(node.id.clone(), f32::INFINITY);
+            previous.insert(node.id.clone(), None);
+            unvisited.insert(node.id.clone());
+        }
+        distances.insert(start.to_string(), 0.0);
+    
+        while !unvisited.is_empty() {
+            let current = unvisited.iter()
+                .min_by(|a, b| distances[*a].partial_cmp(&distances[*b]).unwrap())
+                .cloned()
+                .unwrap();
+    
+            if current == end {
+                break;
+            }
+    
+            unvisited.remove(&current);
+    
+            for edge in &graph.edges {
+                if edge.source == current || edge.target_node == current {
+                    let neighbor = if edge.source == current { &edge.target_node } else { &edge.source };
+                    if unvisited.contains(neighbor) {
+                        let alt = distances[&current] + edge.weight;
+                        if alt < distances[neighbor] {
+                            distances.insert(neighbor.to_string(), alt);
+                            previous.insert(neighbor.to_string(), Some(current.to_string()));
+                        }
+                    }
+                }
+            }
+        }
+    
+        // Reconstruct path
+        let mut path = Vec::new();
+        let mut current = end.to_string();
+        while let Some(prev) = previous[&current].clone() {
+            path.push(current.clone());
+            current = prev;
+            if current == start {
+                path.push(start.to_string());
+                path.reverse();
+                return Ok(path);
+            }
+        }
+    
+        Err("No path found".to_string())
+    }
+}    
