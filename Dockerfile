@@ -57,6 +57,7 @@ COPY src ./src
 # Copy settings.toml
 COPY settings.toml ./ 
 
+
 # Build the Rust application in release mode for optimized performance
 RUN cargo build --release
 
@@ -90,6 +91,7 @@ COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
 
 # Copy settings.toml from the backend-builder stage
 COPY --from=backend-builder /usr/src/app/settings.toml /app/settings.toml
+COPY --from=backend-builder /usr/src/app/settings.toml /app/data/public/dist/settings.toml
 
 # Set up a persistent volume for Markdown files to ensure data persistence
 VOLUME ["/app/data/markdown"]

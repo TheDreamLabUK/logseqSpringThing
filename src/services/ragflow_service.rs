@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use reqwest::{Client, StatusCode};
-use log::{debug, error};
+use log::{debug, error, info};
 use crate::config::Settings;
 use std::fmt;
 
@@ -52,6 +52,7 @@ pub struct RAGFlowService {
 
 impl RAGFlowService {
     pub fn new(settings: &Settings) -> Self {
+        info!("Creating RAGFlowService with base URL: {}", settings.ragflow.ragflow_api_base_url);
         Self {
             client: Client::new(),
             api_key: settings.ragflow.ragflow_api_key.clone(),
@@ -60,16 +61,21 @@ impl RAGFlowService {
     }
 
     pub async fn create_conversation(&self, user_id: String) -> Result<String, RAGFlowError> {
-        debug!("Creating conversation for user: {}", user_id);
+        info!("Creating conversation for user: {}", user_id);
         let url = format!("{}api/new_conversation", self.base_url);
+        info!("Full URL for create_conversation: {}", url);
+        
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .query(&[("user_id", user_id)])
             .send()
             .await?;
 
+        info!("Response status: {}", response.status());
+
         if response.status().is_success() {
             let result: serde_json::Value = response.json().await?;
+            info!("Successful response: {:?}", result);
             Ok(result["data"]["id"].as_str().unwrap_or("").to_string())
         } else {
             let status = response.status();
@@ -79,22 +85,36 @@ impl RAGFlowService {
         }
     }
 
-    pub async fn send_message(&self, conversation_id: String, message: String) -> Result<ChatResponse, RAGFlowError> {
-        debug!("Sending message to conversation: {}", conversation_id);
+    pub async fn send_message(&self, conversation_id: String, message: String, quote: bool, doc_ids: Option<Vec<String>>, stream: bool) -> Result<ChatResponse, RAGFlowError> {
+        info!("Sending message to conversation: {}", conversation_id);
         let url = format!("{}api/completion", self.base_url);
+        info!("Full URL for send_message: {}", url);
+        
+        let mut request_body = serde_json::json!({
+            "conversation_id": conversation_id,
+            "messages": [{"role": "user", "content": message}],
+            "quote": quote,
+            "stream": stream
+        });
+
+        if let Some(ids) = doc_ids {
+            request_body["doc_ids"] = serde_json::json!(ids.join(","));
+        }
+
+        info!("Request body: {:?}", request_body);
+
         let response = self.client.post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
-            .json(&serde_json::json!({
-                "conversation_id": conversation_id,
-                "messages": [{"role": "user", "content": message}],
-                "stream": false
-            }))
+            .json(&request_body)
             .send()
             .await?;
 
+        info!("Response status: {}", response.status());
+
         if response.status().is_success() {
             let result: ChatResponse = response.json().await?;
+            info!("Successful response: {:?}", result);
             Ok(result)
         } else {
             let status = response.status();
@@ -107,6 +127,7 @@ impl RAGFlowService {
     pub async fn get_chat_history(&self, conversation_id: String) -> Result<ChatResponse, RAGFlowError> {
         debug!("Fetching chat history for conversation: {}", conversation_id);
         let url = format!("{}api/chat/history/{}", self.base_url, conversation_id);
+        debug!("Full URL for get_chat_history: {}", url);
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .send()

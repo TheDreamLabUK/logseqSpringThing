@@ -153,7 +153,7 @@ impl Settings {
             .or_else(|_| config.get_string("ragflow.ragflow_api_key"))
             .unwrap_or_default();
 
-        let base_url = env::var("RAGFLOW_API_BASE_URL") // Ensure the environment variable name matches your setup
+        let base_url = env::var("RAGFLOW_BASE_URL") // Changed from RAGFLOW_API_BASE_URL to RAGFLOW_BASE_URL
             .or_else(|_| config.get_string("ragflow.ragflow_api_base_url"))
             .unwrap_or_default();
 

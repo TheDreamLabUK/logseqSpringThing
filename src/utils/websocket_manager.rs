@@ -1,5 +1,3 @@
-// websocket_manager.rs
-
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use actix::prelude::*;
@@ -8,29 +6,26 @@ use log::{info, error, debug};
 use std::sync::Mutex;
 use serde_json::{json, Value};
 use futures::future::join_all;
-use std::collections::HashMap; // Import HashMap
+use crate::handlers::ragflow_handler::{MessageRequest, InitChatRequest};
+use actix_web::body::MessageBody;
 
-/// Manages WebSocket connections and broadcasts updates to connected clients.
 pub struct WebSocketManager {
     pub sessions: Mutex<Vec<Addr<WebSocketSession>>>,
 }
 
 impl WebSocketManager {
-    /// Creates a new WebSocketManager instance.
     pub fn new() -> Self {
         WebSocketManager {
             sessions: Mutex::new(Vec::new()),
         }
     }
 
-    /// Sets up a WebSocket route handler.
     pub async fn handle_websocket(req: HttpRequest, stream: web::Payload, state: web::Data<AppState>) -> Result<HttpResponse, Error> {
         let session = WebSocketSession::new(state.clone());
         let resp = ws::start(session, &req, stream)?;
         Ok(resp)
     }
 
-    /// Broadcasts a message to all connected WebSocket clients.
     pub async fn broadcast_message(&self, message: &str) -> Result<(), Box<dyn std::error::Error>> {
         let sessions = self.sessions.lock().unwrap().clone();
         let futures = sessions.iter().map(|session| {
@@ -43,18 +38,19 @@ impl WebSocketManager {
     }
 }
 
-/// Represents a WebSocket session with a client.
 pub struct WebSocketSession {
     state: web::Data<AppState>,
+    active_conversation_id: Option<String>,
 }
 
 impl WebSocketSession {
-    /// Creates a new WebSocketSession instance.
     fn new(state: web::Data<AppState>) -> Self {
-        WebSocketSession { state }
+        WebSocketSession { 
+            state,
+            active_conversation_id: None,
+        }
     }
 
-    /// Sends a JSON response to the client.
     fn send_json_response(&self, ctx: &mut ws::WebsocketContext<Self>, data: Value) {
         if let Ok(json_string) = serde_json::to_string(&data) {
             ctx.text(json_string.clone());
@@ -64,43 +60,177 @@ impl WebSocketSession {
         }
     }
 
-    /// Handles the getInitialData request
-    fn handle_get_initial_data(&self, ctx: &mut ws::WebsocketContext<Self>) {
+    fn handle_chat_message(&mut self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
+        match msg["type"].as_str() {
+            Some("initChat") => self.handle_init_chat(ctx, msg),
+            Some("ragflowQuery") => self.handle_ragflow_query(ctx, msg),
+            Some("chatHistory") => self.handle_chat_history(ctx, msg),
+            _ => {
+                error!("Unknown chat message type");
+                self.send_json_response(ctx, json!({
+                    "type": "error",
+                    "message": "Unknown chat message type"
+                }));
+            }
+        }
+    }
+
+    fn handle_init_chat(&mut self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
+        let user_id = msg["userId"].as_str().unwrap_or("default_user").to_string();
         let state = self.state.clone();
-        let fut = async move {
+        ctx.spawn(async move {
+            let init_request = InitChatRequest { user_id };
+            let result = crate::handlers::ragflow_handler::init_chat(state, web::Json(init_request)).await;
+            match result.into_body().try_into_bytes() {
+                Ok(bytes) => {
+                    if let Ok(response) = serde_json::from_slice::<Value>(&bytes) {
+                        let conversation_id = response["data"]["id"].as_str().unwrap_or("").to_string();
+                        json!({
+                            "type": "chatInitResponse",
+                            "success": true,
+                            "conversationId": conversation_id
+                        })
+                    } else {
+                        json!({
+                            "type": "chatInitResponse",
+                            "success": false,
+                            "conversationId": null,
+                            "message": "Failed to parse response"
+                        })
+                    }
+                },
+                Err(_) => json!({
+                    "type": "chatInitResponse",
+                    "success": false,
+                    "conversationId": null,
+                    "message": "Failed to initialize chat"
+                }),
+            }
+        }.into_actor(self).map(|response, act, ctx| {
+            if let Some(conversation_id) = response["conversationId"].as_str() {
+                act.active_conversation_id = Some(conversation_id.to_string());
+            }
+            act.send_json_response(ctx, response);
+        }));
+    }
+
+    fn handle_ragflow_query(&self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
+        let state = self.state.clone();
+        let conversation_id = self.active_conversation_id.clone();
+        
+        ctx.spawn(async move {
+            match conversation_id {
+                Some(conv_id) => {
+                    let message = msg["message"].as_str().unwrap_or("").to_string();
+                    let quote = msg["quote"].as_bool().unwrap_or(false);
+                    let doc_ids = msg["docIds"].as_array().map(|arr| {
+                        arr.iter().filter_map(|v| v.as_str()).map(String::from).collect::<Vec<String>>()
+                    });
+                    let stream = msg["stream"].as_bool().unwrap_or(false);
+
+                    let msg_request = MessageRequest { 
+                        conversation_id: conv_id,
+                        messages: vec![crate::services::ragflow_service::Message {
+                            role: "user".to_string(),
+                            content: message,
+                        }],
+                        quote: Some(quote),
+                        doc_ids,
+                        stream: Some(stream),
+                    };
+                    let result = crate::handlers::ragflow_handler::send_message(state, web::Json(msg_request)).await;
+                    match result.into_body().try_into_bytes() {
+                        Ok(bytes) => {
+                            if let Ok(response) = serde_json::from_slice::<Value>(&bytes) {
+                                json!({
+                                    "type": "ragflowResponse",
+                                    "data": response
+                                })
+                            } else {
+                                json!({
+                                    "type": "error",
+                                    "message": "Failed to parse response"
+                                })
+                            }
+                        },
+                        Err(_) => json!({
+                            "type": "error",
+                            "message": "Failed to send message"
+                        }),
+                    }
+                },
+                None => json!({
+                    "type": "error",
+                    "message": "Chat not initialized. Please initialize chat first."
+                }),
+            }
+        }.into_actor(self).map(|response, act, ctx| {
+            act.send_json_response(ctx, response);
+        }));
+    }
+
+    fn handle_chat_history(&self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
+        let state = self.state.clone();
+        let conversation_id = msg["conversationId"].as_str().unwrap_or("").to_string();
+        ctx.spawn(async move {
+            let result = crate::handlers::ragflow_handler::get_chat_history(state, web::Path::from(conversation_id)).await;
+            match result.into_body().try_into_bytes() {
+                Ok(bytes) => {
+                    if let Ok(history) = serde_json::from_slice::<Value>(&bytes) {
+                        json!({
+                            "type": "chatHistoryResponse",
+                            "data": history
+                        })
+                    } else {
+                        json!({
+                            "type": "error",
+                            "message": "Failed to parse chat history"
+                        })
+                    }
+                },
+                Err(_) => json!({
+                    "type": "error",
+                    "message": "Failed to fetch chat history"
+                }),
+            }
+        }.into_actor(self).map(|response, act, ctx| {
+            act.send_json_response(ctx, response);
+        }));
+    }
+
+    fn handle_graph_update(&self, ctx: &mut ws::WebsocketContext<Self>) {
+        let state = self.state.clone();
+        ctx.spawn(async move {
             let graph_data = state.graph_data.read().await;
-            let file_sizes: HashMap<String, usize> = graph_data.metadata.iter().map(|(key, metadata)| (key.clone(), metadata.file_size)).collect();
-            let response = json!({
+            let nodes_with_file_size: Vec<_> = graph_data.nodes.iter().map(|node| {
+                let mut node_with_metadata = node.clone();
+                if let Some(metadata) = graph_data.metadata.get(&node.id) {
+                    node_with_metadata.metadata.insert("file_size".to_string(), metadata.file_size.to_string());
+                }
+                node_with_metadata
+            }).collect();
+            json!({
                 "type": "graphUpdate",
                 "graphData": {
-                    "nodes": graph_data.nodes,
+                    "nodes": nodes_with_file_size,
                     "edges": graph_data.edges,
-                    "fileSizes": file_sizes, // Include file sizes in the response
                 }
-            });
-            debug!("Prepared initial graph data: {} nodes, {} edges", graph_data.nodes.len(), graph_data.edges.len());
-            response
-        };
-
-        let actor_fut = fut.into_actor(self).map(|response, act, ctx| {
+            })
+        }.into_actor(self).map(|response, act, ctx| {
             act.send_json_response(ctx, response);
-        });
-
-        ctx.spawn(actor_fut);
+        }));
     }
 }
 
 impl Actor for WebSocketSession {
     type Context = ws::WebsocketContext<Self>;
 
-    /// Called when the WebSocket session is started.
     fn started(&mut self, ctx: &mut Self::Context) {
         let addr = ctx.address();
         self.state.websocket_manager.sessions.lock().unwrap().push(addr);
         info!("WebSocket session started. Total sessions: {}", self.state.websocket_manager.sessions.lock().unwrap().len());
     }
 
-    /// Called when the WebSocket session is stopped.
     fn stopped(&mut self, ctx: &mut Self::Context) {
         let addr = ctx.address();
         self.state.websocket_manager.sessions.lock().unwrap().retain(|session| session != &addr);
@@ -108,7 +238,6 @@ impl Actor for WebSocketSession {
     }
 }
 
-/// Message for broadcasting data to WebSocket clients.
 #[derive(Message)]
 #[rtype(result = "()")]
 struct BroadcastMessage(String);
@@ -116,7 +245,6 @@ struct BroadcastMessage(String);
 impl Handler<BroadcastMessage> for WebSocketSession {
     type Result = ();
 
-    /// Handles the broadcast message by sending it to the client.
     fn handle(&mut self, msg: BroadcastMessage, ctx: &mut Self::Context) {
         ctx.text(msg.0);
         debug!("Broadcasted message to client");
@@ -124,7 +252,6 @@ impl Handler<BroadcastMessage> for WebSocketSession {
 }
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
-    /// Handles incoming WebSocket messages from the client.
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Ping(msg)) => {
@@ -135,23 +262,25 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
             },
             Ok(ws::Message::Text(text)) => {
                 info!("Received message from client: {}", text);
-                // Parse the incoming message as JSON
                 match serde_json::from_str::<Value>(&text) {
                     Ok(json_data) => {
-                        // Process the JSON data here
                         if let Some(msg_type) = json_data["type"].as_str() {
                             match msg_type {
                                 "getInitialData" => {
                                     debug!("Handling getInitialData request");
-                                    self.handle_get_initial_data(ctx);
+                                    self.handle_graph_update(ctx);
+                                },
+                                "initChat" | "ragflowQuery" | "chatHistory" => {
+                                    debug!("Handling chat message: {}", msg_type);
+                                    self.handle_chat_message(ctx, json_data);
                                 },
                                 _ => {
-                                    // For other message types, just echo back for now
-                                    let response = json!({
-                                        "type": "echo",
-                                        "received": json_data,
+                                    error!("Received unknown message type: {}", msg_type);
+                                    let error_response = json!({
+                                        "type": "error",
+                                        "message": format!("Unknown message type: {}", msg_type),
                                     });
-                                    self.send_json_response(ctx, response);
+                                    self.send_json_response(ctx, error_response);
                                 }
                             }
                         } else {
@@ -174,7 +303,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 }
             },
             Ok(ws::Message::Binary(bin)) => {
-                // Handle binary messages if necessary.
                 let bin_clone = bin.clone();
                 ctx.binary(bin);
                 debug!("Received binary message of {} bytes", bin_clone.len());

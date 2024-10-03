@@ -48,12 +48,6 @@ export class WebXRVisualization {
 
         this.selectedNode = null;
 
-        // this.spaceMice = new SpaceMice(); // Commented out SpaceMice initialization
-        // this.spaceMice.onData = mouse => {
-        //     console.clear();
-        //     console.log(JSON.stringify(mouse.mice[0], null, 2));
-        // };
-
         this.initialize();
     }
 
@@ -77,11 +71,13 @@ export class WebXRVisualization {
         this.edgeColor = parseInt(settings.visualization.edge_color, 16) || 0xff0000;
         this.hologramColor = parseInt(settings.visualization.hologram_color, 16) || 0xFFD700;
         this.nodeSizeScalingFactor = settings.visualization.node_size_scaling_factor || 1000;
-        this.hologramScale = settings.visualization.hologram_scale || 5;
-        this.hologramOpacity = settings.visualization.hologram_opacity || 0.1;
+        this.hologramScale = settings.visualization.hologram_scale || 1;
+        this.hologramOpacity = (settings.visualization.hologram_opacity || 0.1) * 0.1;
         this.edgeOpacity = settings.visualization.edge_opacity || 0.3;
-        this.labelFontSize = settings.visualization.label_font_size || 48; // Increased font size
+        this.labelFontSize = settings.visualization.label_font_size || 48;
         this.fogDensity = settings.visualization.fog_density || 0.002;
+        this.minNodeSize = settings.visualization.min_node_size || 1;
+        this.maxNodeSize = settings.visualization.max_node_size || 10;
     }
 
     applyDefaultSettings() {
@@ -89,11 +85,13 @@ export class WebXRVisualization {
         this.edgeColor = 0xff0000;
         this.hologramColor = 0xFFD700;
         this.nodeSizeScalingFactor = 1000;
-        this.hologramScale = 5;
-        this.hologramOpacity = 0.1;
+        this.hologramScale = 1;
+        this.hologramOpacity = 0.01;
         this.edgeOpacity = 0.3;
-        this.labelFontSize = 48; // Increased font size
+        this.labelFontSize = 48;
         this.fogDensity = 0.002;
+        this.minNodeSize = 1;
+        this.maxNodeSize = 10;
     }
 
     initThreeJS() {
@@ -107,7 +105,15 @@ export class WebXRVisualization {
         const renderPass = new RenderPass(this.scene, this.camera);
         this.composer.addPass(renderPass);
 
-        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            1.5,  // Strength
+            0.4,  // Radius
+            0.85  // Threshold
+        );
+        bloomPass.strength = 3.0; // Increased bloom strength
+        bloomPass.radius = 1;
+        bloomPass.threshold = 0;
         this.composer.addPass(bloomPass);
     }
 
@@ -122,7 +128,7 @@ export class WebXRVisualization {
 
     createHologramStructure() {
         // Create a Buckminster Fullerene
-        const buckyGeometry = new THREE.IcosahedronGeometry(200 * this.hologramScale, 1);
+        const buckyGeometry = new THREE.IcosahedronGeometry(40 * this.hologramScale, 1);
         const buckyMaterial = new THREE.MeshBasicMaterial({
             color: this.hologramColor,
             wireframe: true,
@@ -130,10 +136,12 @@ export class WebXRVisualization {
             opacity: this.hologramOpacity
         });
         const buckySphere = new THREE.Mesh(buckyGeometry, buckyMaterial);
+        buckySphere.userData.rotationSpeed = 0.0001;
+        buckySphere.layers.enable(1); // Enable bloom for this sphere
         this.hologramGroup.add(buckySphere);
 
         // Create a Geodesic Dome
-        const geodesicGeometry = new THREE.IcosahedronGeometry(150 * this.hologramScale, 1);
+        const geodesicGeometry = new THREE.IcosahedronGeometry(30 * this.hologramScale, 1);
         const geodesicMaterial = new THREE.MeshBasicMaterial({
             color: this.hologramColor,
             wireframe: true,
@@ -141,10 +149,12 @@ export class WebXRVisualization {
             opacity: this.hologramOpacity
         });
         const geodesicDome = new THREE.Mesh(geodesicGeometry, geodesicMaterial);
+        geodesicDome.userData.rotationSpeed = 0.0002;
+        geodesicDome.layers.enable(1); // Enable bloom for this sphere
         this.hologramGroup.add(geodesicDome);
 
         // Create a Normal Triangle Sphere
-        const triangleGeometry = new THREE.SphereGeometry(100 * this.hologramScale, 32, 32);
+        const triangleGeometry = new THREE.SphereGeometry(20 * this.hologramScale, 32, 32);
         const triangleMaterial = new THREE.MeshBasicMaterial({
             color: this.hologramColor,
             wireframe: true,
@@ -152,6 +162,8 @@ export class WebXRVisualization {
             opacity: this.hologramOpacity
         });
         const triangleSphere = new THREE.Mesh(triangleGeometry, triangleMaterial);
+        triangleSphere.userData.rotationSpeed = 0.0003;
+        triangleSphere.layers.enable(1); // Enable bloom for this sphere
         this.hologramGroup.add(triangleSphere);
 
         this.scene.add(this.hologramGroup);
@@ -182,10 +194,19 @@ export class WebXRVisualization {
             }
         });
 
+        const fileSizes = nodes.map(node => parseInt(node.metadata.file_size) || 0);
+        const minFileSize = Math.min(...fileSizes);
+        const maxFileSize = Math.max(...fileSizes);
+
         nodes.forEach(node => {
             let mesh = this.nodeMeshes.get(node.id);
+            const fileSize = parseInt(node.metadata.file_size) || 0;
+            
+            // Calculate normalized size using an exponential function with reduced scaling
+            const normalizedSize = (Math.exp(fileSize / maxFileSize) - 1) / (Math.E - 1);
+            const size = this.minNodeSize + (normalizedSize * (this.maxNodeSize - this.minNodeSize)) / 3;
+
             if (!mesh) {
-                const size = node.metadata.fileSize ? node.metadata.fileSize / this.nodeSizeScalingFactor : 1;
                 const geometry = new THREE.SphereGeometry(size, 32, 32);
                 const material = new THREE.MeshStandardMaterial({ color: this.nodeColor });
                 mesh = new THREE.Mesh(geometry, material);
@@ -195,12 +216,15 @@ export class WebXRVisualization {
                 const label = this.createNodeLabel(node.label);
                 this.scene.add(label);
                 this.nodeLabels.set(node.id, label);
+            } else {
+                // Update existing mesh size
+                mesh.scale.setScalar(size / this.minNodeSize);
             }
 
             // Update position and label
             mesh.position.set(node.x, node.y, node.z);
             const label = this.nodeLabels.get(node.id);
-            label.position.set(node.x, node.y + 5, node.z); // Slightly above the node
+            label.position.set(node.x, node.y + size + 2, node.z); // Adjust label position based on node size
         });
     }
 
@@ -280,6 +304,13 @@ export class WebXRVisualization {
     animate() {
         this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
         this.controls.update();
+        
+        // Rotate hologram spheres
+        this.hologramGroup.children.forEach(child => {
+            child.rotation.x += child.userData.rotationSpeed;
+            child.rotation.y += child.userData.rotationSpeed;
+        });
+
         if (this.composer) {
             this.composer.render();
         } else {

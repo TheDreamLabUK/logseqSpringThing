@@ -46,10 +46,12 @@ impl GraphService {
         // Create nodes
         for (file_name, file_metadata) in &metadata {
             let node_id = file_name.trim_end_matches(".md").to_string();
+            let mut node_metadata = HashMap::new();
+            node_metadata.insert("file_size".to_string(), file_metadata.file_size.to_string());
             graph.nodes.push(Node {
                 id: node_id.clone(),
                 label: node_id.clone(),
-                metadata: HashMap::new(), // Initialize with an empty HashMap
+                metadata: node_metadata, // Populate node metadata
                 x: 0.0, y: 0.0, z: 0.0,
                 vx: 0.0, vy: 0.0, vz: 0.0,
             });
