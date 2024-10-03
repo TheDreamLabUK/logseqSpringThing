@@ -8,6 +8,7 @@ use log::{info, error, debug};
 use std::sync::Mutex;
 use serde_json::{json, Value};
 use futures::future::join_all;
+use std::collections::HashMap; // Import HashMap
 
 /// Manages WebSocket connections and broadcasts updates to connected clients.
 pub struct WebSocketManager {
@@ -68,11 +69,13 @@ impl WebSocketSession {
         let state = self.state.clone();
         let fut = async move {
             let graph_data = state.graph_data.read().await;
+            let file_sizes: HashMap<String, usize> = graph_data.metadata.iter().map(|(key, metadata)| (key.clone(), metadata.file_size)).collect();
             let response = json!({
                 "type": "graphUpdate",
                 "graphData": {
                     "nodes": graph_data.nodes,
                     "edges": graph_data.edges,
+                    "fileSizes": file_sizes, // Include file sizes in the response
                 }
             });
             debug!("Prepared initial graph data: {} nodes, {} edges", graph_data.nodes.len(), graph_data.edges.len());

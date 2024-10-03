@@ -44,7 +44,7 @@ impl GraphService {
         let mut edge_map: HashMap<(String, String), (f32, u32)> = HashMap::new();
     
         // Create nodes
-        for (file_name, _) in &metadata {
+        for (file_name, file_metadata) in &metadata {
             let node_id = file_name.trim_end_matches(".md").to_string();
             graph.nodes.push(Node {
                 id: node_id.clone(),
@@ -53,6 +53,8 @@ impl GraphService {
                 x: 0.0, y: 0.0, z: 0.0,
                 vx: 0.0, vy: 0.0, vz: 0.0,
             });
+            // Add metadata to graph
+            graph.metadata.insert(node_id.clone(), file_metadata.clone());
         }
     
         // Build edges

@@ -4,11 +4,13 @@
 	"description": "Public assets for the project",
 	"main": "index.js",
 	"scripts": {
-	  "build": "vite build"
+		"build": "vite build"
 	},
 	"dependencies": {
-	  "three": "^0.153.0",
-	  "vite": "^4.3.9",
-	  "vite-plugin-html": "^3.2.2"
+		"node-hid": "^3.1.0",
+		"three": "^0.153.0",
+		"toml": "^3.0.0",
+		"vite": "^4.3.9",
+		"vite-plugin-html": "^3.2.2"
 	}
-  }
+}

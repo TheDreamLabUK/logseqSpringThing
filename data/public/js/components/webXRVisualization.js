@@ -3,6 +3,14 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import toml from 'toml';
+
+// Function to load and parse settings.toml
+async function loadSettings() {
+    const response = await fetch('/settings.toml');
+    const text = await response.text();
+    return toml.parse(text);
+}
 
 export class WebXRVisualization {
     constructor(graphDataManager) {
@@ -38,10 +46,25 @@ export class WebXRVisualization {
         this.hologramGroup = new THREE.Group();
         this.animationFrameId = null;
 
+        this.selectedNode = null;
+
+        // this.spaceMice = new SpaceMice(); // Commented out SpaceMice initialization
+        // this.spaceMice.onData = mouse => {
+        //     console.clear();
+        //     console.log(JSON.stringify(mouse.mice[0], null, 2));
+        // };
+
         this.initialize();
     }
 
-    initialize() {
+    async initialize() {
+        try {
+            const settings = await loadSettings();
+            this.applySettings(settings);
+        } catch (error) {
+            console.error('Error loading settings:', error);
+            this.applyDefaultSettings();
+        }
         this.initThreeJS();
         this.createHologramStructure();
         window.addEventListener('resize', this.onWindowResize.bind(this), false);
@@ -49,8 +72,32 @@ export class WebXRVisualization {
         this.updateVisualization();
     }
 
+    applySettings(settings) {
+        this.nodeColor = parseInt(settings.visualization.node_color, 16) || 0x1A0B31;
+        this.edgeColor = parseInt(settings.visualization.edge_color, 16) || 0xff0000;
+        this.hologramColor = parseInt(settings.visualization.hologram_color, 16) || 0xFFD700;
+        this.nodeSizeScalingFactor = settings.visualization.node_size_scaling_factor || 1000;
+        this.hologramScale = settings.visualization.hologram_scale || 5;
+        this.hologramOpacity = settings.visualization.hologram_opacity || 0.1;
+        this.edgeOpacity = settings.visualization.edge_opacity || 0.3;
+        this.labelFontSize = settings.visualization.label_font_size || 48; // Increased font size
+        this.fogDensity = settings.visualization.fog_density || 0.002;
+    }
+
+    applyDefaultSettings() {
+        this.nodeColor = 0x1A0B31;
+        this.edgeColor = 0xff0000;
+        this.hologramColor = 0xFFD700;
+        this.nodeSizeScalingFactor = 1000;
+        this.hologramScale = 5;
+        this.hologramOpacity = 0.1;
+        this.edgeOpacity = 0.3;
+        this.labelFontSize = 48; // Increased font size
+        this.fogDensity = 0.002;
+    }
+
     initThreeJS() {
-        this.scene.fog = new THREE.FogExp2(0x000000, 0.002);
+        this.scene.fog = new THREE.FogExp2(0x000000, this.fogDensity);
         this.addLights();
         this.initPostProcessing();
     }
@@ -74,20 +121,39 @@ export class WebXRVisualization {
     }
 
     createHologramStructure() {
-        const numSpheres = 5;
-        const geometry = new THREE.IcosahedronGeometry(400, 2); // Scaled up by a factor of 10
-        const material = new THREE.MeshBasicMaterial({
-            color: 0xFFD700,
+        // Create a Buckminster Fullerene
+        const buckyGeometry = new THREE.IcosahedronGeometry(200 * this.hologramScale, 1);
+        const buckyMaterial = new THREE.MeshBasicMaterial({
+            color: this.hologramColor,
             wireframe: true,
             transparent: true,
-            opacity: 0.1
+            opacity: this.hologramOpacity
         });
+        const buckySphere = new THREE.Mesh(buckyGeometry, buckyMaterial);
+        this.hologramGroup.add(buckySphere);
 
-        for (let i = 0; i < numSpheres; i++) {
-            const sphere = new THREE.Mesh(geometry, material);
-            sphere.position.set(0, 0, 0);
-            this.hologramGroup.add(sphere);
-        }
+        // Create a Geodesic Dome
+        const geodesicGeometry = new THREE.IcosahedronGeometry(150 * this.hologramScale, 1);
+        const geodesicMaterial = new THREE.MeshBasicMaterial({
+            color: this.hologramColor,
+            wireframe: true,
+            transparent: true,
+            opacity: this.hologramOpacity
+        });
+        const geodesicDome = new THREE.Mesh(geodesicGeometry, geodesicMaterial);
+        this.hologramGroup.add(geodesicDome);
+
+        // Create a Normal Triangle Sphere
+        const triangleGeometry = new THREE.SphereGeometry(100 * this.hologramScale, 32, 32);
+        const triangleMaterial = new THREE.MeshBasicMaterial({
+            color: this.hologramColor,
+            wireframe: true,
+            transparent: true,
+            opacity: this.hologramOpacity
+        });
+        const triangleSphere = new THREE.Mesh(triangleGeometry, triangleMaterial);
+        this.hologramGroup.add(triangleSphere);
+
         this.scene.add(this.hologramGroup);
     }
 
@@ -119,9 +185,9 @@ export class WebXRVisualization {
         nodes.forEach(node => {
             let mesh = this.nodeMeshes.get(node.id);
             if (!mesh) {
-                const size = node.metadata.fileSize / 1000; // Example scaling factor
+                const size = node.metadata.fileSize ? node.metadata.fileSize / this.nodeSizeScalingFactor : 1;
                 const geometry = new THREE.SphereGeometry(size, 32, 32);
-                const material = new THREE.MeshStandardMaterial({ color: 0x1A0B31 });
+                const material = new THREE.MeshStandardMaterial({ color: this.nodeColor });
                 mesh = new THREE.Mesh(geometry, material);
                 this.scene.add(mesh);
                 this.nodeMeshes.set(node.id, mesh);
@@ -141,16 +207,16 @@ export class WebXRVisualization {
     createNodeLabel(text) {
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
-        context.font = '24px Arial';
+        context.font = `${this.labelFontSize}px Arial`;
         const metrics = context.measureText(text);
         const textWidth = metrics.width;
 
         canvas.width = textWidth + 10;
-        canvas.height = 40;
+        canvas.height = 60; // Adjusted height for larger text
 
-        context.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        context.fillStyle = 'rgba(0, 0, 0, 0.5)'; // Inverted color
         context.fillRect(0, 0, canvas.width, canvas.height);
-        context.fillStyle = 'white';
+        context.fillStyle = 'white'; // Inverted text color
         context.textBaseline = 'middle';
         context.fillText(text, 5, canvas.height / 2);
 
@@ -185,7 +251,7 @@ export class WebXRVisualization {
                     ]);
                     const geometry = new THREE.BufferGeometry();
                     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-                    const material = new THREE.LineBasicMaterial({ color: 0xff0000, opacity: 0.3, transparent: true });
+                    const material = new THREE.LineBasicMaterial({ color: this.edgeColor, opacity: this.edgeOpacity, transparent: true });
                     line = new THREE.Line(geometry, material);
                     this.scene.add(line);
                     this.edgeMeshes.set(edgeKey, line);
