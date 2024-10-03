@@ -24,7 +24,8 @@ export class WebXRVisualization {
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(window.devicePixelRatio);
-        this.renderer.outputEncoding = THREE.sRGBEncoding;
+        this.renderer.toneMapping = THREE.ReinhardToneMapping;
+        this.renderer.toneMappingExposure = 1;
         
         const container = document.getElementById('scene-container');
         if (container) {
@@ -72,7 +73,7 @@ export class WebXRVisualization {
         this.hologramColor = parseInt(settings.visualization.hologram_color, 16) || 0xFFD700;
         this.nodeSizeScalingFactor = settings.visualization.node_size_scaling_factor || 1000;
         this.hologramScale = settings.visualization.hologram_scale || 1;
-        this.hologramOpacity = (settings.visualization.hologram_opacity || 0.1) * 0.1;
+        this.hologramOpacity = (settings.visualization.hologram_opacity || 0.1) * 1;
         this.edgeOpacity = settings.visualization.edge_opacity || 0.3;
         this.labelFontSize = settings.visualization.label_font_size || 48;
         this.fogDensity = settings.visualization.fog_density || 0.002;
@@ -86,7 +87,7 @@ export class WebXRVisualization {
         this.hologramColor = 0xFFD700;
         this.nodeSizeScalingFactor = 1000;
         this.hologramScale = 1;
-        this.hologramOpacity = 0.01;
+        this.hologramOpacity = 0.1;
         this.edgeOpacity = 0.3;
         this.labelFontSize = 48;
         this.fogDensity = 0.002;
@@ -107,13 +108,13 @@ export class WebXRVisualization {
 
         const bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
-            1.5,  // Strength
-            0.4,  // Radius
-            0.85  // Threshold
+            2.0,  // Strength (increased for heavier bloom)
+            0.5,  // Radius
+            0.1   // Threshold (lowered to make bloom more visible)
         );
-        bloomPass.strength = 3.0; // Increased bloom strength
-        bloomPass.radius = 1;
         bloomPass.threshold = 0;
+        bloomPass.strength = 3.0;  // Increased bloom strength
+        bloomPass.radius = 1;
         this.composer.addPass(bloomPass);
     }
 
@@ -137,7 +138,7 @@ export class WebXRVisualization {
         });
         const buckySphere = new THREE.Mesh(buckyGeometry, buckyMaterial);
         buckySphere.userData.rotationSpeed = 0.0001;
-        buckySphere.layers.enable(1); // Enable bloom for this sphere
+        buckySphere.layers.enable(1);  // Enable bloom for this sphere
         this.hologramGroup.add(buckySphere);
 
         // Create a Geodesic Dome
@@ -150,7 +151,7 @@ export class WebXRVisualization {
         });
         const geodesicDome = new THREE.Mesh(geodesicGeometry, geodesicMaterial);
         geodesicDome.userData.rotationSpeed = 0.0002;
-        geodesicDome.layers.enable(1); // Enable bloom for this sphere
+        geodesicDome.layers.enable(1);  // Enable bloom for this sphere
         this.hologramGroup.add(geodesicDome);
 
         // Create a Normal Triangle Sphere
@@ -163,7 +164,7 @@ export class WebXRVisualization {
         });
         const triangleSphere = new THREE.Mesh(triangleGeometry, triangleMaterial);
         triangleSphere.userData.rotationSpeed = 0.0003;
-        triangleSphere.layers.enable(1); // Enable bloom for this sphere
+        triangleSphere.layers.enable(1);  // Enable bloom for this sphere
         this.hologramGroup.add(triangleSphere);
 
         this.scene.add(this.hologramGroup);

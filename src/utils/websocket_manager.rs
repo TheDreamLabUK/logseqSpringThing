@@ -21,8 +21,10 @@ impl WebSocketManager {
     }
 
     pub async fn handle_websocket(req: HttpRequest, stream: web::Payload, state: web::Data<AppState>) -> Result<HttpResponse, Error> {
+        info!("New WebSocket connection request");
         let session = WebSocketSession::new(state.clone());
         let resp = ws::start(session, &req, stream)?;
+        info!("WebSocket connection established");
         Ok(resp)
     }
 
@@ -61,6 +63,7 @@ impl WebSocketSession {
     }
 
     fn handle_chat_message(&mut self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
+        info!("Handling chat message: {:?}", msg);
         match msg["type"].as_str() {
             Some("initChat") => self.handle_init_chat(ctx, msg),
             Some("ragflowQuery") => self.handle_ragflow_query(ctx, msg),
@@ -76,6 +79,7 @@ impl WebSocketSession {
     }
 
     fn handle_init_chat(&mut self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
+        info!("Handling init chat request: {:?}", msg);
         let user_id = msg["userId"].as_str().unwrap_or("default_user").to_string();
         let state = self.state.clone();
         ctx.spawn(async move {
@@ -85,12 +89,14 @@ impl WebSocketSession {
                 Ok(bytes) => {
                     if let Ok(response) = serde_json::from_slice::<Value>(&bytes) {
                         let conversation_id = response["data"]["id"].as_str().unwrap_or("").to_string();
+                        info!("Chat initialized with conversation ID: {}", conversation_id);
                         json!({
                             "type": "chatInitResponse",
                             "success": true,
                             "conversationId": conversation_id
                         })
                     } else {
+                        error!("Failed to parse init chat response");
                         json!({
                             "type": "chatInitResponse",
                             "success": false,
@@ -99,12 +105,15 @@ impl WebSocketSession {
                         })
                     }
                 },
-                Err(_) => json!({
-                    "type": "chatInitResponse",
-                    "success": false,
-                    "conversationId": null,
-                    "message": "Failed to initialize chat"
-                }),
+                Err(e) => {
+                    error!("Failed to initialize chat: {:?}", e);
+                    json!({
+                        "type": "chatInitResponse",
+                        "success": false,
+                        "conversationId": null,
+                        "message": "Failed to initialize chat"
+                    })
+                },
             }
         }.into_actor(self).map(|response, act, ctx| {
             if let Some(conversation_id) = response["conversationId"].as_str() {
@@ -115,6 +124,7 @@ impl WebSocketSession {
     }
 
     fn handle_ragflow_query(&self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
+        info!("Handling RAGflow query: {:?}", msg);
         let state = self.state.clone();
         let conversation_id = self.active_conversation_id.clone();
         
@@ -142,27 +152,35 @@ impl WebSocketSession {
                     match result.into_body().try_into_bytes() {
                         Ok(bytes) => {
                             if let Ok(response) = serde_json::from_slice::<Value>(&bytes) {
+                                info!("RAGflow query successful: {:?}", response);
                                 json!({
                                     "type": "ragflowResponse",
                                     "data": response
                                 })
                             } else {
+                                error!("Failed to parse RAGflow response");
                                 json!({
                                     "type": "error",
                                     "message": "Failed to parse response"
                                 })
                             }
                         },
-                        Err(_) => json!({
-                            "type": "error",
-                            "message": "Failed to send message"
-                        }),
+                        Err(e) => {
+                            error!("Failed to send message: {:?}", e);
+                            json!({
+                                "type": "error",
+                                "message": "Failed to send message"
+                            })
+                        },
                     }
                 },
-                None => json!({
-                    "type": "error",
-                    "message": "Chat not initialized. Please initialize chat first."
-                }),
+                None => {
+                    error!("Chat not initialized");
+                    json!({
+                        "type": "error",
+                        "message": "Chat not initialized. Please initialize chat first."
+                    })
+                },
             }
         }.into_actor(self).map(|response, act, ctx| {
             act.send_json_response(ctx, response);
@@ -170,6 +188,7 @@ impl WebSocketSession {
     }
 
     fn handle_chat_history(&self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
+        info!("Handling chat history request: {:?}", msg);
         let state = self.state.clone();
         let conversation_id = msg["conversationId"].as_str().unwrap_or("").to_string();
         ctx.spawn(async move {
@@ -177,21 +196,26 @@ impl WebSocketSession {
             match result.into_body().try_into_bytes() {
                 Ok(bytes) => {
                     if let Ok(history) = serde_json::from_slice::<Value>(&bytes) {
+                        info!("Chat history retrieved successfully");
                         json!({
                             "type": "chatHistoryResponse",
                             "data": history
                         })
                     } else {
+                        error!("Failed to parse chat history");
                         json!({
                             "type": "error",
                             "message": "Failed to parse chat history"
                         })
                     }
                 },
-                Err(_) => json!({
-                    "type": "error",
-                    "message": "Failed to fetch chat history"
-                }),
+                Err(e) => {
+                    error!("Failed to fetch chat history: {:?}", e);
+                    json!({
+                        "type": "error",
+                        "message": "Failed to fetch chat history"
+                    })
+                },
             }
         }.into_actor(self).map(|response, act, ctx| {
             act.send_json_response(ctx, response);
