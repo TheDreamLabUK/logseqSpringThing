@@ -95,6 +95,26 @@
             background-color: rgba(0, 0, 0, 0.8);
         }
 
+        /* Connection status styling */
+        #connection-status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        #connection-status.connected {
+            background-color: #28a745;
+            color: white;
+        }
+
+        #connection-status.disconnected {
+            background-color: #dc3545;
+            color: white;
+        }
+
         /* Responsive adjustments */
         @media (max-width: 600px) {
             #chat-container {
@@ -108,12 +128,20 @@
                 right: 10px;
                 padding: 8px 12px;
             }
+
+            #connection-status {
+                top: 10px;
+                left: 10px;
+            }
         }
     </style>
 </head>
 <body>
     <!-- Container for the 3D scene -->
     <div id="scene-container"></div>
+
+    <!-- Connection status indicator -->
+    <div id="connection-status">Disconnected</div>
 
     <!-- Fullscreen toggle button -->
     <button id="fullscreen-button">Toggle Fullscreen</button>

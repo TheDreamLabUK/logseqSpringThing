@@ -14,9 +14,9 @@ class App {
         this.websocketService = new WebsocketService();
         this.graphDataManager = new GraphDataManager(this.websocketService);
         this.visualization = new WebXRVisualization(this.graphDataManager);
-        this.chatManager = new ChatManager(this.websocketService);
-        this.interface = new Interface(document);
         this.ragflowService = new RAGflowService(this.websocketService);
+        this.chatManager = new ChatManager(this.ragflowService);
+        this.interface = new Interface(document);
         
         this.gpuAvailable = isGPUAvailable();
         if (this.gpuAvailable) {
@@ -31,23 +31,35 @@ class App {
         
         this.websocketService.on('open', () => {
             console.log('WebSocket connection established');
+            this.updateConnectionStatus(true);
             this.graphDataManager.requestInitialData();
-            this.chatManager.initializeConversation();
-        });
-
-        this.websocketService.on('message', (data) => {
-            console.log('Received WebSocket message:', JSON.stringify(data, null, 2));
-            this.handleWebSocketMessage(data);
         });
 
         this.websocketService.on('error', (error) => {
             console.error('WebSocket error:', error);
             this.interface.displayErrorMessage('WebSocket connection error.');
+            this.updateConnectionStatus(false);
         });
 
         this.websocketService.on('close', () => {
             console.log('WebSocket connection closed');
             this.interface.displayErrorMessage('WebSocket connection closed.');
+            this.updateConnectionStatus(false);
+        });
+
+        window.addEventListener('graphDataUpdated', (event) => {
+            console.log('Graph data updated event received');
+            this.visualization.updateVisualization();
+        });
+
+        window.addEventListener('ragflowError', (event) => {
+            console.error('RAGflow error:', event.detail);
+            this.interface.displayErrorMessage(`RAGflow error: ${event.detail}`);
+        });
+
+        window.addEventListener('chatReady', () => {
+            console.log('Chat is ready');
+            this.interface.displayMessage('System', 'Chat is ready. You can start chatting now.');
         });
 
         const fullscreenButton = document.getElementById('fullscreen-button');
@@ -56,33 +68,13 @@ class App {
         } else {
             console.warn('Fullscreen button not found');
         }
-
-        window.addEventListener('graphDataUpdated', (event) => {
-            console.log('Graph data updated event received');
-            this.visualization.updateVisualization();
-        });
     }
 
-    handleWebSocketMessage(data) {
-        switch (data.type) {
-            case 'graphUpdate':
-                console.log('Received graph update');
-                this.graphDataManager.updateGraphData(data.graphData);
-                break;
-            case 'initChatResponse':
-                console.log('Received init chat response');
-                this.chatManager.handleInitChatResponse(data);
-                break;
-            case 'ragflowResponse':
-                console.log('Received RAGflow response');
-                this.chatManager.handleRagflowResponse(data);
-                break;
-            case 'chatHistoryResponse':
-                console.log('Received chat history response');
-                this.chatManager.handleChatHistoryResponse(data);
-                break;
-            default:
-                console.warn('Unhandled message type:', data.type);
+    updateConnectionStatus(isConnected) {
+        const statusElement = document.getElementById('connection-status');
+        if (statusElement) {
+            statusElement.textContent = isConnected ? 'Connected' : 'Disconnected';
+            statusElement.className = isConnected ? 'connected' : 'disconnected';
         }
     }
 

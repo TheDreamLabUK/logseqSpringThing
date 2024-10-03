@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse};
 use crate::AppState;
 use serde::{Serialize, Deserialize};
-use crate::services::ragflow_service::{Message, ChatResponse};
+use crate::services::ragflow_service::{Message, ChatResponse, ChatResponseData};
 use log::{info, error};
 
 #[derive(Serialize, Deserialize)]
@@ -42,11 +42,11 @@ pub async fn send_message(state: web::Data<AppState>, msg: web::Json<MessageRequ
             error!("Error sending message: {}", e);
             HttpResponse::InternalServerError().json(ChatResponse {
                 retcode: 1,
-                data: crate::services::ragflow_service::ChatResponseData {
-                    message: vec![Message {
+                data: ChatResponseData::SingleMessage {
+                    message: Message {
                         role: "system".to_string(),
                         content: format!("Failed to send message: {}", e),
-                    }],
+                    }
                 },
             })
         }
@@ -87,11 +87,11 @@ pub async fn get_chat_history(state: web::Data<AppState>, path: web::Path<String
             error!("Error retrieving chat history: {}", e);
             HttpResponse::InternalServerError().json(ChatResponse {
                 retcode: 1,
-                data: crate::services::ragflow_service::ChatResponseData {
-                    message: vec![Message {
+                data: ChatResponseData::SingleMessage {
+                    message: Message {
                         role: "system".to_string(),
                         content: format!("Failed to fetch chat history: {}", e),
-                    }],
+                    }
                 },
             })
         }

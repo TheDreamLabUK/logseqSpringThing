@@ -111,13 +111,19 @@ async fn main() -> std::io::Result<()> {
         settings,
         github_service,
         perplexity_service,
-        ragflow_service,
-        websocket_manager,
+        ragflow_service.clone(),
+        websocket_manager.clone(),
         gpu_compute,
     ));
 
     // Initialize graph data
     initialize_graph_data(&app_state).await?;
+
+    // Initialize RAGflow conversation
+    if let Err(e) = websocket_manager.initialize(&ragflow_service).await {
+        log::error!("Failed to initialize RAGflow conversation: {:?}", e);
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize RAGflow conversation: {:?}", e)));
+    }
 
     // Start HTTP server
     HttpServer::new(move || {

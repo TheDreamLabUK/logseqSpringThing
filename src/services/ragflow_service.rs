@@ -8,6 +8,7 @@ use std::fmt;
 pub enum RAGFlowError {
     ReqwestError(reqwest::Error),
     StatusError(StatusCode, String),
+    DeserializationError(String),
 }
 
 impl fmt::Display for RAGFlowError {
@@ -15,6 +16,7 @@ impl fmt::Display for RAGFlowError {
         match self {
             RAGFlowError::ReqwestError(e) => write!(f, "Reqwest error: {}", e),
             RAGFlowError::StatusError(status, msg) => write!(f, "Status error ({}): {}", status, msg),
+            RAGFlowError::DeserializationError(msg) => write!(f, "Deserialization error: {}", msg),
         }
     }
 }
@@ -40,8 +42,11 @@ pub struct ChatResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ChatResponseData {
-    pub message: Vec<Message>,
+#[serde(untagged)]
+pub enum ChatResponseData {
+    MessageArray { message: Vec<Message> },
+    SingleMessage { message: Message },
+    Empty {},
 }
 
 pub struct RAGFlowService {
@@ -113,9 +118,19 @@ impl RAGFlowService {
         info!("Response status: {}", response.status());
 
         if response.status().is_success() {
-            let result: ChatResponse = response.json().await?;
-            info!("Successful response: {:?}", result);
-            Ok(result)
+            let response_text = response.text().await?;
+            info!("Raw response: {}", response_text);
+            
+            match serde_json::from_str::<ChatResponse>(&response_text) {
+                Ok(result) => {
+                    info!("Successful response: {:?}", result);
+                    Ok(result)
+                },
+                Err(e) => {
+                    error!("Failed to deserialize response: {}", e);
+                    Err(RAGFlowError::DeserializationError(e.to_string()))
+                }
+            }
         } else {
             let status = response.status();
             let error_message = response.text().await?;
