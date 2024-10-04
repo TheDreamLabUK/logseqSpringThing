@@ -10,6 +10,9 @@ export class WebsocketService {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectInterval = 5000; // 5 seconds
+        this.audioContext = null;
+        this.audioQueue = [];
+        this.isPlaying = false;
         this.connect();
     }
 
@@ -31,14 +34,20 @@ export class WebsocketService {
 
         // WebSocket message event
         this.socket.onmessage = (event) => {
-            console.log('Received WebSocket message:', event.data);
-            try {
-                const data = JSON.parse(event.data);
-                this.emit('message', data);
-            } catch (err) {
-                console.error('Error parsing WebSocket message:', err);
-                console.error('Raw message:', event.data);
-                this.emit('error', { type: 'parse_error', message: err.message, rawData: event.data });
+            if (event.data instanceof Blob) {
+                // Handle binary data (audio)
+                this.handleAudioData(event.data);
+            } else {
+                // Handle JSON data
+                console.log('Received WebSocket message:', event.data);
+                try {
+                    const data = JSON.parse(event.data);
+                    this.emit('message', data);
+                } catch (err) {
+                    console.error('Error parsing WebSocket message:', err);
+                    console.error('Raw message:', event.data);
+                    this.emit('error', { type: 'parse_error', message: err.message, rawData: event.data });
+                }
             }
         };
 
@@ -54,6 +63,70 @@ export class WebsocketService {
             this.emit('close');
             this.reconnect();
         };
+    }
+
+    /**
+     * Handles incoming audio data.
+     * @param {Blob} audioBlob - The audio data as a Blob.
+     */
+    async handleAudioData(audioBlob) {
+        if (!this.audioContext) {
+            console.warn('AudioContext not initialized. Call initAudio() first.');
+            return;
+        }
+
+        try {
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const audioBuffer = await this.decodeWavData(arrayBuffer);
+            this.audioQueue.push(audioBuffer);
+            if (!this.isPlaying) {
+                this.playNextAudio();
+            }
+        } catch (error) {
+            console.error('Error processing audio data:', error);
+            this.emit('error', { type: 'audio_processing_error', message: error.message });
+        }
+    }
+
+    /**
+     * Decodes WAV data into an AudioBuffer.
+     * @param {ArrayBuffer} wavData - The WAV data as an ArrayBuffer.
+     * @returns {Promise<AudioBuffer>} The decoded AudioBuffer.
+     */
+    async decodeWavData(wavData) {
+        return new Promise((resolve, reject) => {
+            this.audioContext.decodeAudioData(wavData, 
+                (buffer) => resolve(buffer),
+                (error) => reject(new Error(`Error decoding WAV data: ${error}`))
+            );
+        });
+    }
+
+    /**
+     * Plays the next audio buffer in the queue.
+     */
+    playNextAudio() {
+        if (this.audioQueue.length === 0) {
+            this.isPlaying = false;
+            return;
+        }
+
+        this.isPlaying = true;
+        const audioBuffer = this.audioQueue.shift();
+        const source = this.audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(this.audioContext.destination);
+        source.onended = () => this.playNextAudio();
+        source.start();
+    }
+
+    /**
+     * Initializes the AudioContext. This should be called after a user interaction.
+     */
+    initAudio() {
+        if (!this.audioContext) {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
     }
 
     /**

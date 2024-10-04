@@ -24,9 +24,9 @@ pub struct AppState {
     pub github_service: Arc<dyn GitHubService + Send + Sync>,
     /// Perplexity service for processing files.
     pub perplexity_service: PerplexityServiceImpl,
-    /// RAGFlow service for chat functionality.
+    /// RAGFlow service for chat functionality and audio streaming.
     pub ragflow_service: Arc<RAGFlowService>,
-    /// WebSocket manager for handling WebSocket connections.
+    /// WebSocket manager for handling WebSocket connections and audio streaming.
     pub websocket_manager: Arc<WebSocketManager>,
     /// GPU Compute for graph calculations protected by a read-write lock.
     /// This is an Option as GPU might not be available.

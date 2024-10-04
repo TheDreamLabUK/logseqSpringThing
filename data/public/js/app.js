@@ -68,6 +68,15 @@ class App {
         } else {
             console.warn('Fullscreen button not found');
         }
+
+        // Initialize audio on first user interaction
+        const initAudioOnInteraction = () => {
+            this.initializeAudio();
+            document.removeEventListener('click', initAudioOnInteraction);
+            document.removeEventListener('touchstart', initAudioOnInteraction);
+        };
+        document.addEventListener('click', initAudioOnInteraction);
+        document.addEventListener('touchstart', initAudioOnInteraction);
     }
 
     updateConnectionStatus(isConnected) {
@@ -89,6 +98,11 @@ class App {
                 document.exitFullscreen();
             }
         }
+    }
+
+    initializeAudio() {
+        console.log('Initializing audio');
+        this.websocketService.initAudio();
     }
 
     start() {

@@ -1,18 +1,19 @@
 use actix_files::Files;
 use actix_web::{web, App, HttpServer, middleware};
-use crate::handlers::{file_handler, graph_handler, ragflow_handler};
-use crate::config::Settings;
-use crate::app_state::AppState;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
+
+use crate::app_state::AppState;
+use crate::config::Settings;
+use crate::handlers::{file_handler, graph_handler, ragflow_handler};
+use crate::models::graph::GraphData;
 use crate::services::file_service::{GitHubService, RealGitHubService, FileService};
 use crate::services::perplexity_service::PerplexityServiceImpl;
 use crate::services::ragflow_service::RAGFlowService;
-use crate::models::graph::GraphData;
+use crate::services::graph_service::GraphService;
 use crate::utils::websocket_manager::WebSocketManager;
 use crate::utils::gpu_compute::GPUCompute;
-use crate::services::graph_service::GraphService;
 
 mod app_state;
 mod config;
@@ -21,6 +22,7 @@ mod models;
 mod services;
 mod utils;
 
+// Initialize graph data
 async fn initialize_graph_data(app_state: &web::Data<AppState>) -> std::io::Result<()> {
     log::info!("Initializing graph data...");
     
@@ -66,7 +68,7 @@ async fn main() -> std::io::Result<()> {
     // Set RUST_LOG to debug
     std::env::set_var("RUST_LOG", "debug");
 
-    // Initialise logger
+    // Initialize logger
     env_logger::init();
     log::info!("Starting WebXR Graph Server");
 
@@ -82,15 +84,12 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // Debug log for Perplexity API key
-    log::debug!("Perplexity API Key: {}", settings.perplexity.perplexity_api_key);
-
-    // Initialise shared application state
+    // Initialize shared application state
     let file_cache = Arc::new(RwLock::new(HashMap::new()));
     let graph_data = Arc::new(RwLock::new(GraphData::default()));
     let github_service: Arc<dyn GitHubService + Send + Sync> = Arc::new(RealGitHubService::new(settings.github.clone()));
     let perplexity_service = PerplexityServiceImpl::new();
-    let ragflow_service = Arc::new(RAGFlowService::new(&settings));
+    let ragflow_service = RAGFlowService::new(&settings);
     let websocket_manager = Arc::new(WebSocketManager::new());
     
     // Initialize GPUCompute
@@ -145,9 +144,9 @@ async fn main() -> std::io::Result<()> {
                     .route("/message/{conversation_id}", web::post().to(ragflow_handler::send_message))
                     .route("/history/{conversation_id}", web::get().to(ragflow_handler::get_chat_history))
             )
-            // **Define the WebSocket route first**
+            // Define the WebSocket route
             .route("/ws", web::get().to(WebSocketManager::handle_websocket))
-            // **Then serve static files**
+            // Serve static files
             .service(
                 Files::new("/", "/app/data/public/dist").index_file("index.html")
             )
