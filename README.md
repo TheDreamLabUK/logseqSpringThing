@@ -1,7 +1,3 @@
-# WebXR Graph Visualization of Logseq Knowledge Graphs with RAGFlow Integration
-
-![image](https://github.com/user-attachments/assets/39dd3101-d616-46d6-8d7a-1d02998eb8d9)
-
 # WebXR Graph Visualisation of Logseq Knowledge Graphs with RAGFlow Integration
 
 ![WebXR Graph Visualization](https://github.com/user-attachments/assets/39dd3101-d616-46d6-8d7a-1d02998eb8d9)
