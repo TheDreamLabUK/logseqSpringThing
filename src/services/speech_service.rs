@@ -10,14 +10,14 @@ use futures::{SinkExt, StreamExt};
 use std::error::Error;
 use std::collections::HashSet;
 use actix::Addr;
-use crate::utils::websocket_manager::{WebSocketSession, BroadcastAudio};
+use crate::utils::websocket_manager::{WebSocketSession, WebSocketManager};
 use crate::services::sonata_service::SonataService;
 
 pub struct SpeechService {
-    sender: Mutex<mpsc::Sender<SpeechCommand>>,
-    sessions: Mutex<HashSet<Addr<WebSocketSession>>>,
+    sender: Arc<Mutex<mpsc::Sender<SpeechCommand>>>,
+    sessions: Arc<Mutex<HashSet<Addr<WebSocketSession>>>>,
     sonata_service: Arc<SonataService>,
-    websocket_manager: Arc<crate::utils::websocket_manager::WebSocketManager>,
+    websocket_manager: Arc<WebSocketManager>,
 }
 
 #[derive(Debug)]
@@ -28,10 +28,10 @@ enum SpeechCommand {
 }
 
 impl SpeechService {
-    pub fn new(sonata_service: Arc<SonataService>, websocket_manager: Arc<crate::utils::websocket_manager::WebSocketManager>) -> Self {
+    pub fn new(sonata_service: Arc<SonataService>, websocket_manager: Arc<WebSocketManager>) -> Self {
         let (tx, rx) = mpsc::channel(100);
-        let sender = Mutex::new(tx);
-        let sessions = Mutex::new(HashSet::new());
+        let sender = Arc::new(Mutex::new(tx));
+        let sessions = Arc::new(Mutex::new(HashSet::new()));
 
         let service = SpeechService {
             sender,
@@ -46,8 +46,6 @@ impl SpeechService {
     }
 
     fn start(&self, mut receiver: mpsc::Receiver<SpeechCommand>) {
-        let sender_clone = self.sender.clone();
-        let sessions_clone = self.sessions.clone();
         let sonata_service = self.sonata_service.clone();
         let websocket_manager = self.websocket_manager.clone();
 
@@ -141,7 +139,7 @@ impl SpeechService {
         });
     }
 
-    pub async fn initialize(&self, settings: &Settings) -> Result<(), Box<dyn Error>> {
+    pub async fn initialize(&self, _settings: &Settings) -> Result<(), Box<dyn Error>> {
         let command = SpeechCommand::Initialize;
         self.sender.lock().await.send(command).await?;
         Ok(())

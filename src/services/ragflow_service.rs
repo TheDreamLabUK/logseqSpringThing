@@ -2,14 +2,12 @@ use reqwest::{Client, StatusCode};
 use log::{error, info};
 use crate::config::Settings;
 use std::fmt;
-use std::process::Stdio;
 use futures::stream::{Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 
 // Import Sonata synthesizer
-use sonata_synth::SonataSpeechSynthesizer;
-use sonata_piper::from_config_path;
+use crate::services::sonata_service::{SonataSpeechSynthesizer, SonataSynthError};
 use std::path::Path;
 
 #[derive(Debug)]
@@ -47,13 +45,12 @@ impl From<std::io::Error> for RAGFlowError {
     }
 }
 
-impl From<sonata_synth::SonataSynthError> for RAGFlowError {
-    fn from(err: sonata_synth::SonataSynthError) -> Self {
+impl From<SonataSynthError> for RAGFlowError {
+    fn from(err: SonataSynthError) -> Self {
         RAGFlowError::SonataError(err.to_string())
     }
 }
 
-#[derive(Clone)]
 pub struct RAGFlowService {
     client: Client,
     api_key: String,
@@ -65,9 +62,7 @@ impl RAGFlowService {
     pub fn new(settings: &Settings) -> Result<Self, RAGFlowError> {
         // Initialize Sonata Synthesizer
         let voice_config_path = &settings.sonata.voice_config_path;
-        let voice = from_config_path(Path::new(voice_config_path))
-            .map_err(|e| RAGFlowError::SonataError(format!("Failed to load voice config: {}", e)))?;
-        let synthesizer = SonataSpeechSynthesizer::new(voice)
+        let synthesizer = SonataSpeechSynthesizer::new(Path::new(voice_config_path))
             .map_err(|e| RAGFlowError::SonataError(format!("Failed to initialize synthesizer: {}", e)))?;
         
         Ok(RAGFlowService {

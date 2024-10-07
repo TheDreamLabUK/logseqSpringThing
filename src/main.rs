@@ -3,6 +3,7 @@ use actix_web::{web, App, HttpServer, middleware};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
+use std::path::Path;
 
 use crate::app_state::AppState;
 use crate::config::Settings;
@@ -92,7 +93,7 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    let sonata_service = Arc::new(SonataService::new(&settings.sonata.voice_config_path).expect("Failed to initialize SonataService"));
+    let sonata_service = Arc::new(SonataService::new(settings.sonata.voice_config_path.as_ref()).expect("Failed to initialize SonataService"));
     let speech_service = Arc::new(SpeechService::new(sonata_service, websocket_manager.clone()));
     speech_service.initialize(&settings).await.expect("Failed to initialize SpeechService");
 

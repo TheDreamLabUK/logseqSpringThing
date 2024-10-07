@@ -37,6 +37,7 @@ RUN apt-get update && apt-get install -y \
     libvulkan-dev \
     vulkan-tools \
     libegl1-mesa-dev \
+    libasound2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust
@@ -77,6 +78,7 @@ RUN apt-get update && apt-get install -y \
     openssl \
     libvulkan1 \
     libegl1-mesa \
+    libasound2 \
     software-properties-common \
     && add-apt-repository ppa:deadsnakes/ppa \
     && apt-get update \

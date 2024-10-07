@@ -23,7 +23,7 @@ topics = [
 ]
 
 [perplexity]
-perplexity_api_key = "your_perplexity_api_key" # Flattened
+perplexity_api_key = "your_perplexity_api_key"
 perplexity_model = "llama-3.1-sonar-small-128k-online"
 perplexity_api_base_url = "https://api.perplexity.ai/chat/completions"
 perplexity_max_tokens = 4096
@@ -33,14 +33,17 @@ perplexity_presence_penalty = 0.0
 perplexity_frequency_penalty = 0.0
 
 [github]
-github_access_token = "your_github_token" # Flattened
+github_access_token = "your_github_token"
 github_owner = "your_github_owner"
 github_repo = "your_github_repo"
 github_directory = "your_github_directory"
 
 [ragflow]
-ragflow_api_key = "your_ragflow_api_key" # Flattened
+ragflow_api_key = "your_ragflow_api_key"
 ragflow_api_base_url = "your_ragflow_base_url"
+
+[openai]
+openai_api_key = "your_openai_api_key"
 
 # Default configurations (can be overridden by environment variables)
 [default]

@@ -43,9 +43,6 @@ pulldown-cmark = "0.9"
 # Asynchronous Traits
 async-trait = "0.1"
 
-# Synchronization Primitives
-tokio::sync::RwLock = "1.0.0"
-
 # Additional Utilities
 futures = "0.3"
 lazy_static = "1.4"
