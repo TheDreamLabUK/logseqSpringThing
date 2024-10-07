@@ -178,4 +178,30 @@ export class WebsocketService {
             this.emit('error', { type: 'send_error', message: 'WebSocket is not open' });
         }
     }
+
+    /**
+     * Sends a RAGFlow query to the server.
+     * @param {string} message - The message to send.
+     * @param {boolean} quote - Whether to include quotes.
+     * @param {string[]} docIds - Document IDs to reference.
+     */
+    sendRagflowQuery(message, quote = false, docIds = null) {
+        this.send({
+            type: 'ragflowQuery',
+            message,
+            quote,
+            docIds
+        });
+    }
+
+    /**
+     * Sends an OpenAI query to the server.
+     * @param {string} message - The message to send.
+     */
+    sendOpenAIQuery(message) {
+        this.send({
+            type: 'openaiQuery',
+            message
+        });
+    }
 }

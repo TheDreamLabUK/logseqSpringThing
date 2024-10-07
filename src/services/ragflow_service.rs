@@ -7,12 +7,18 @@ use futures::stream::{Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 
+// Import Sonata synthesizer
+use sonata_synth::SonataSpeechSynthesizer;
+use sonata_piper::from_config_path;
+use std::path::Path;
+
 #[derive(Debug)]
 pub enum RAGFlowError {
     ReqwestError(reqwest::Error),
     StatusError(StatusCode, String),
     AudioGenerationError(String),
     IoError(std::io::Error),
+    SonataError(String),
 }
 
 impl fmt::Display for RAGFlowError {
@@ -22,6 +28,7 @@ impl fmt::Display for RAGFlowError {
             RAGFlowError::StatusError(status, msg) => write!(f, "Status error ({}): {}", status, msg),
             RAGFlowError::AudioGenerationError(msg) => write!(f, "Audio generation error: {}", msg),
             RAGFlowError::IoError(e) => write!(f, "IO error: {}", e),
+            RAGFlowError::SonataError(msg) => write!(f, "Sonata error: {}", msg),
         }
     }
 }
@@ -40,19 +47,34 @@ impl From<std::io::Error> for RAGFlowError {
     }
 }
 
+impl From<sonata_synth::SonataSynthError> for RAGFlowError {
+    fn from(err: sonata_synth::SonataSynthError) -> Self {
+        RAGFlowError::SonataError(err.to_string())
+    }
+}
+
+#[derive(Clone)]
 pub struct RAGFlowService {
     client: Client,
     api_key: String,
     base_url: String,
+    synthesizer: Arc<SonataSpeechSynthesizer>,
 }
 
 impl RAGFlowService {
-    pub fn new(settings: &Settings) -> Arc<Self> {
-        info!("Creating RAGFlowService with base URL: {}", settings.ragflow.ragflow_api_base_url);
-        Arc::new(Self {
+    pub fn new(settings: &Settings) -> Result<Self, RAGFlowError> {
+        // Initialize Sonata Synthesizer
+        let voice_config_path = &settings.sonata.voice_config_path;
+        let voice = from_config_path(Path::new(voice_config_path))
+            .map_err(|e| RAGFlowError::SonataError(format!("Failed to load voice config: {}", e)))?;
+        let synthesizer = SonataSpeechSynthesizer::new(voice)
+            .map_err(|e| RAGFlowError::SonataError(format!("Failed to initialize synthesizer: {}", e)))?;
+        
+        Ok(RAGFlowService {
             client: Client::new(),
-            api_key: settings.ragflow.ragflow_api_key.clone(),
-            base_url: settings.ragflow.ragflow_api_base_url.clone(),
+            api_key: settings.ragflow.api_key.clone(),
+            base_url: settings.ragflow.base_url.clone(),
+            synthesizer: Arc::new(synthesizer),
         })
     }
 
@@ -81,7 +103,14 @@ impl RAGFlowService {
         }
     }
 
-    pub async fn send_message(&self, conversation_id: String, message: String, quote: bool, doc_ids: Option<Vec<String>>, stream: bool) -> Result<Pin<Box<dyn Stream<Item = Result<Vec<u8>, RAGFlowError>> + Send + 'static>>, RAGFlowError> {
+    pub async fn send_message(
+        &self,
+        conversation_id: String,
+        message: String,
+        quote: bool,
+        doc_ids: Option<Vec<String>>,
+        stream: bool,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<Vec<u8>, RAGFlowError>> + Send + 'static>>, RAGFlowError> {
         info!("Sending message to conversation: {}", conversation_id);
         let url = format!("{}api/completion", self.base_url);
         info!("Full URL for send_message: {}", url);
@@ -107,21 +136,20 @@ impl RAGFlowService {
             .await?;
 
         info!("Response status: {}", response.status());
-
+       
         if response.status().is_success() {
-            let self_clone = Arc::new(self.clone());
+            let synthesizer = Arc::clone(&self.synthesizer);
             let stream = response.bytes_stream().map(move |chunk_result| {
                 match chunk_result {
                     Ok(chunk) => {
                         let text = String::from_utf8_lossy(&chunk);
-                        self_clone.generate_audio_stream(&text)
+                        // Synthesize audio using Sonata
+                        match synthesizer.synthesize(text.as_ref()) {
+                            Ok(audio) => Ok(audio),
+                            Err(e) => Err(RAGFlowError::SonataError(format!("Synthesis failed: {}", e))),
+                        }
                     },
-                    Err(e) => Err(RAGFlowError::from(e)),
-                }
-            }).flat_map(|result| {
-                match result {
-                    Ok(audio) => futures::stream::iter(vec![Ok(audio)]),
-                    Err(e) => futures::stream::iter(vec![Err(e)]),
+                    Err(e) => Err(RAGFlowError::ReqwestError(e)),
                 }
             });
 
@@ -133,27 +161,6 @@ impl RAGFlowService {
             Err(RAGFlowError::StatusError(status, error_message))
         }
     }
-
-    fn generate_audio_stream(&self, text: &str) -> Result<Vec<u8>, RAGFlowError> {
-        let mut child = std::process::Command::new("python3")
-            .arg("/app/src/generate_audio.py")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()?;
-
-        if let Some(mut stdin) = child.stdin.take() {
-            use std::io::Write;
-            stdin.write_all(text.as_bytes())?;
-        }
-
-        let output = child.wait_with_output()?;
-
-        if output.status.success() {
-            Ok(output.stdout)
-        } else {
-            Err(RAGFlowError::AudioGenerationError(String::from_utf8_lossy(&output.stderr).to_string()))
-        }
-    }
 }
 
 impl Clone for RAGFlowService {
@@ -162,6 +169,7 @@ impl Clone for RAGFlowService {
             client: self.client.clone(),
             api_key: self.api_key.clone(),
             base_url: self.base_url.clone(),
+            synthesizer: Arc::clone(&self.synthesizer),
         }
     }
 }

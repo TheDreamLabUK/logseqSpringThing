@@ -7,6 +7,8 @@ use std::sync::{Mutex, Arc};
 use serde_json::{json, Value};
 use futures::future::join_all;
 use futures::StreamExt;
+use tokio::task;
+use std::collections::HashSet;
 
 pub struct WebSocketManager {
     pub sessions: Mutex<Vec<Addr<WebSocketSession>>>,
@@ -46,6 +48,17 @@ impl WebSocketManager {
         debug!("Broadcasted message to {} sessions", sessions.len());
         Ok(())
     }
+
+    pub async fn broadcast_audio(&self, audio: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+        let sessions = self.sessions.lock().unwrap().clone();
+        let futures = sessions.iter().map(|session| {
+            session.send(BroadcastAudio(audio.clone()))
+        });
+        
+        join_all(futures).await;
+        debug!("Broadcasted audio to {} sessions", sessions.len());
+        Ok(())
+    }
 }
 
 pub struct WebSocketSession {
@@ -70,6 +83,7 @@ impl WebSocketSession {
         info!("Handling chat message: {:?}", msg);
         match msg["type"].as_str() {
             Some("ragflowQuery") => self.handle_ragflow_query(ctx, msg),
+            Some("openaiQuery") => self.handle_openai_query(ctx, msg),
             _ => {
                 error!("Unknown chat message type");
                 self.send_json_response(ctx, json!({
@@ -89,6 +103,27 @@ impl WebSocketSession {
         let fut = async move {
             let result = Self::process_ragflow_query(state, conversation_id, msg).await;
             addr.do_send(RAGFlowQueryResult(result));
+        };
+
+        ctx.spawn(actix::fut::wrap_future(fut));
+    }
+
+    fn handle_openai_query(&self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
+        info!("Handling OpenAI query: {:?}", msg);
+        let state = self.state.clone();
+        let addr = ctx.address();
+        
+        let fut = async move {
+            if let Some(message) = msg["message"].as_str() {
+                if let Err(e) = state.speech_service.send_message(message.to_string()).await {
+                    error!("Failed to send message to SpeechService: {}", e);
+                    addr.do_send(OpenAIQueryResult(Err(e.to_string())));
+                } else {
+                    addr.do_send(OpenAIQueryResult(Ok(())));
+                }
+            } else {
+                addr.do_send(OpenAIQueryResult(Err("Invalid message format".to_string())));
+            }
         };
 
         ctx.spawn(actix::fut::wrap_future(fut));
@@ -151,24 +186,44 @@ impl Actor for WebSocketSession {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         let addr = ctx.address();
-        self.state.websocket_manager.sessions.lock().unwrap().push(addr);
+        self.state.websocket_manager.sessions.lock().unwrap().push(addr.clone());
         info!("WebSocket session started. Total sessions: {}", self.state.websocket_manager.sessions.lock().unwrap().len());
+        
+        // Register with SpeechService
+        let speech_service = self.state.speech_service.clone();
+        task::spawn(async move {
+            speech_service.register_session(addr).await;
+        });
     }
 
     fn stopped(&mut self, ctx: &mut Self::Context) {
         let addr = ctx.address();
         self.state.websocket_manager.sessions.lock().unwrap().retain(|session| session != &addr);
         info!("WebSocket session stopped. Total sessions: {}", self.state.websocket_manager.sessions.lock().unwrap().len());
+        
+        // Unregister from SpeechService
+        let speech_service = self.state.speech_service.clone();
+        task::spawn(async move {
+            speech_service.unregister_session(&addr).await;
+        });
     }
 }
 
 #[derive(Message)]
 #[rtype(result = "()")]
-struct BroadcastMessage(String);
+pub struct BroadcastMessage(pub String);
 
 #[derive(Message)]
 #[rtype(result = "()")]
 struct RAGFlowQueryResult(Result<Vec<u8>, String>);
+
+#[derive(Message)]
+#[rtype(result = "()")]
+struct OpenAIQueryResult(Result<(), String>);
+
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct BroadcastAudio(pub Vec<u8>);
 
 impl Handler<BroadcastMessage> for WebSocketSession {
     type Result = ();
@@ -198,6 +253,34 @@ impl Handler<RAGFlowQueryResult> for WebSocketSession {
     }
 }
 
+impl Handler<OpenAIQueryResult> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: OpenAIQueryResult, ctx: &mut Self::Context) {
+        match msg.0 {
+            Ok(()) => {
+                debug!("OpenAI query processed successfully");
+            },
+            Err(e) => {
+                error!("Error in OpenAI query: {}", e);
+                self.send_json_response(ctx, json!({
+                    "type": "error",
+                    "message": e
+                }));
+            }
+        }
+    }
+}
+
+impl Handler<BroadcastAudio> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: BroadcastAudio, ctx: &mut Self::Context) {
+        ctx.binary(msg.0);
+        debug!("Broadcasted audio to client");
+    }
+}
+
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
@@ -217,7 +300,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                                     debug!("Handling getInitialData request");
                                     self.handle_graph_update(ctx);
                                 },
-                                "ragflowQuery" => {
+                                "ragflowQuery" | "openaiQuery" => {
                                     debug!("Handling chat message: {}", msg_type);
                                     self.handle_chat_message(ctx, json_data);
                                 },

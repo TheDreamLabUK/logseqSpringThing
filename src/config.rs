@@ -20,6 +20,9 @@ pub struct Settings {
     #[serde(default)]
     pub github: GitHubConfig,
     pub default: DefaultConfig,
+    pub ragflow: RagFlowSettings,
+    pub sonata: SonataSettings,
+    pub openai: OpenAISettings, // Added OpenAISettings
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -54,6 +57,35 @@ pub struct DefaultConfig {
     pub max_retries: u32,
     pub retry_delay: u64,
     pub api_client_timeout: u64,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct Settings {
+    pub ragflow: RagFlowSettings,
+    pub sonata: SonataSettings,
+    pub openai: OpenAISettings, // Added OpenAISettings
+    // Add other settings as needed
+}
+
+#[derive(Deserialize, Clone)]
+pub struct RagFlowSettings {
+    pub api_key: String,
+    pub base_url: String,
+    // Add other RagFlow-specific settings
+}
+
+#[derive(Deserialize, Clone)]
+pub struct SonataSettings {
+    pub voice_config_path: String,
+    // Add other Sonata-specific settings if needed
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct OpenAISettings {
+    pub api_key: String,
+    pub model: String, // e.g., "gpt-4o-realtime-preview-2024-10-01"
+    pub voice: String, // e.g., "alloy"
+    // Add other OpenAI-specific settings if needed
 }
 
 impl Settings {

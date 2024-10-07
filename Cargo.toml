@@ -36,9 +36,20 @@ rand = "0.8"
 rayon = "1.5"
 bytes = "1.0"
 
+# Sonata dependencies
+sonata = { path = "src/deps/sonata" }
+sonata-synth = { path = "src/deps/sonata/sonata_synth" }
+sonata-piper = { path = "src/deps/sonata/sonata_piper" }
+
+# WebSocket and async dependencies
+tokio-tungstenite = "0.20"
+tungstenite = { version = "0.20", features = ["tokio"] }
+
+# Audio handling (if needed on server side)
+rodio = "0.17"
+
 [dev-dependencies]
 mockall = "0.11"
 tempfile = "3.2"
 tokio-test = "0.4"
 wiremock = "0.5"
-env_logger = "0.10"
