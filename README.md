@@ -7,6 +7,14 @@
 
 This application transforms a LogSeq personal knowledge base into an interactive 3D graph, viewable in mixed reality environments. It automatically parses Markdown files from a privately hosted GitHub repository, processes them via the Perplexity AI API to enhance content, and integrates with RAGFlow for AI-powered question answering. Changes are submitted back to the source repository as pull requests (PRs). The system builds its own edge linkages between connected nodes based on bidirectional references, generating both processed and raw JSON metadata for comparison. This rich metadata, combined with citation and web link data, is visualised using a force-directed 3D graph with WebXR and Three.js. The visual graph can be interactively explored across desktop and immersive AR devices, with real-time updates facilitated by WebSockets.
 
+Inspired by Prof Rob Aspin's work 
+https://github.com/trebornipsa
+
+Integrates Sonata rust wrapper for Piper
+https://github.com/mush42/sonata
+
+![P1080785_1728030359430_0](https://github.com/user-attachments/assets/3ecac4a3-95d7-4c75-a3b2-e93deee565d6)
+
 **Key features include:**
 
 - **3D Visualisation** of knowledge graph nodes and edges with real-time updates
