@@ -1,83 +1,118 @@
 // public/js/components/chatManager.js
 
-/**
- * ChatManager handles the chat interface, sending user messages, and displaying AI responses.
- */
 export class ChatManager {
-    /**
-     * Creates a new ChatManager instance.
-     * @param {WebsocketService} websocketService - The WebSocket service instance.
-     */
-    constructor(websocketService) {
-        this.websocketService = websocketService;
-        this.chatInput = null;
-        this.sendButton = null;
-        this.chatMessages = null;
+  constructor(websocketService) {
+    this.websocketService = websocketService;
+    this.chatInput = null;
+    this.sendButton = null;
+    this.chatMessages = null;
+    this.aiToggle = null;
+    this.isChatReady = false;
+    this.useOpenAI = false;
+  }
+
+  initialize() {
+    this.chatInput = document.getElementById('chat-input');
+    this.sendButton = document.getElementById('send-button');
+    this.chatMessages = document.getElementById('chat-messages');
+    this.aiToggle = document.getElementById('ai-toggle');
+
+    this.sendButton.addEventListener('click', () => this.sendMessage());
+    this.chatInput.addEventListener('keypress', (event) => {
+      if (event.key === 'Enter') {
+        this.sendMessage();
+      }
+    });
+
+    if (this.aiToggle) {
+      this.aiToggle.addEventListener('change', (event) => {
+        this.useOpenAI = event.target.checked;
+        console.log(`Switched to ${this.useOpenAI ? 'OpenAI' : 'RAGFlow'}`);
+      });
+    } else {
+      console.warn('AI toggle not found');
     }
 
-    /**
-     * Initializes the chat interface by setting up DOM elements and event listeners.
-     */
-    initialize() {
-        this.chatInput = document.getElementById('chat-input');
-        this.sendButton = document.getElementById('send-button');
-        this.chatMessages = document.getElementById('chat-messages');
+    this.websocketService.on('open', () => this.handleChatReady());
+    this.websocketService.on('message', (data) => this.handleServerMessage(data));
+    this.websocketService.on('error', (error) => this.handleError(error));
 
-        // Event listener for send button
-        this.sendButton.addEventListener('click', this.sendMessage.bind(this));
+    // Initialize audio
+    this.websocketService.initAudio();
+  }
 
-        // Event listener for 'Enter' key in the chat input
-        this.chatInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
-                this.sendMessage();
-            }
-        });
+  handleChatReady() {
+    console.log("Chat is ready");
+    this.isChatReady = true;
+    this.displayMessage('System', "Chat is ready. You can start chatting now.");
+  }
 
-        // Listen for RAGFlow AI responses
-        window.addEventListener('ragflowAnswer', (event) => {
-            const answer = event.detail;
-            this.displayResponse(answer);
-        });
+  sendMessage() {
+    const message = this.chatInput.value.trim();
+    if (message) {
+      if (!this.isChatReady) {
+        console.error("Chat is not ready yet. Please wait.");
+        this.displayMessage('System', "Chat is not ready yet. Please wait.");
+        return;
+      }
+
+      console.log('Sending message:', message);
+      this.displayMessage('You', message);
+      
+      if (this.useOpenAI) {
+        this.websocketService.sendOpenAIQuery(message);
+      } else {
+        this.websocketService.sendRagflowQuery(message);
+      }
+      
+      this.chatInput.value = '';
     }
+  }
 
-    /**
-     * Sends a user message to the server via WebSocket.
-     */
-    sendMessage() {
-        const message = this.chatInput.value.trim();
-        if (message) {
-            // Display user's message
-            this.displayMessage('You', message);
+  displayMessage(sender, message) {
+    const messageElement = document.createElement('div');
+    messageElement.style.marginBottom = '10px';
+    messageElement.innerHTML = `<strong>${sender}:</strong> ${message}`;
+    this.chatMessages.appendChild(messageElement);
+    this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+  }
 
-            // Send the message to the server
-            this.websocketService.send({
-                type: 'ragflowQuery',
-                question: message
-            });
+  handleServerMessage(data) {
+    console.log("Received server message:", data);
+    if (data.data) {
+      const answer = data.data.answer;
+      const reference = data.data.reference || [];
+      const audioBase64 = data.data.audio;
 
-            // Clear the input field
-            this.chatInput.value = '';
+      if (audioBase64) {
+        // Decode Base64 to binary
+        const binaryAudio = atob(audioBase64);
+        const len = binaryAudio.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryAudio.charCodeAt(i);
         }
-    }
 
-    /**
-     * Displays a message in the chat interface.
-     * @param {string} sender - The sender of the message ('You' or 'AI').
-     * @param {string} message - The message content.
-     */
-    displayMessage(sender, message) {
-        const messageElement = document.createElement('div');
-        messageElement.style.marginBottom = '10px';
-        messageElement.innerHTML = `<strong>${sender}:</strong> ${message}`;
-        this.chatMessages.appendChild(messageElement);
-        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
-    }
+        // Create Blob and Audio URL
+        const blob = new Blob([bytes.buffer], { type: 'audio/wav' });
+        const audioURL = URL.createObjectURL(blob);
+        
+        // Play the audio
+        const audio = new Audio(audioURL);
+        audio.play();
+      } else {
+        console.warn('Audio data not found in JSON response.');
+      }
 
-    /**
-     * Displays an AI response in the chat interface.
-     * @param {string} message - The AI's response.
-     */
-    displayResponse(message) {
-        this.displayMessage('AI', message);
+      this.displayMessage('AI', answer);
+    } else {
+      console.error('Invalid RAGFlow response:', data);
+      this.handleError({ message: 'Invalid response from server' });
     }
+  }
+
+  handleError(error) {
+    console.error("Error:", error);
+    this.displayMessage('System', `Error: ${error.message || 'Unknown error occurred'}`);
+  }
 }
