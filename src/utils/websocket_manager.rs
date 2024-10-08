@@ -7,7 +7,7 @@ use std::sync::{Mutex, Arc};
 use serde_json::{json, Value};
 use futures::future::join_all;
 use futures::StreamExt;
-use crate::utils::audio_processor::AudioProcessor;
+use base64::{Engine as _, engine::general_purpose};
 
 pub struct WebSocketManager {
     pub sessions: Mutex<Vec<Addr<WebSocketSession>>>,
@@ -128,7 +128,7 @@ impl WebSocketSession {
         ctx.spawn(actix::fut::wrap_future(fut));
     }
 
-    async fn process_ragflow_query(state: web::Data<AppState>, conversation_id: Option<String>, msg: Value) -> Result<Vec<u8>, String> {
+    async fn process_ragflow_query(state: web::Data<AppState>, conversation_id: Option<String>, msg: Value) -> Result<(String, Vec<u8>), String> {
         match conversation_id {
             Some(conv_id) => {
                 let message = msg["message"].as_str().unwrap_or("").to_string();
@@ -139,17 +139,19 @@ impl WebSocketSession {
                 let stream = msg["stream"].as_bool().unwrap_or(false);
 
                 match state.ragflow_service.send_message(conv_id, message, quote, doc_ids, stream).await {
-                    Ok(mut audio_stream) => {
-                        let mut response_data = Vec::new();
-                        while let Some(chunk_result) = audio_stream.next().await {
+                    Ok(mut response_stream) => {
+                        let mut answer = String::new();
+                        let mut audio_data = Vec::new();
+                        while let Some(chunk_result) = response_stream.next().await {
                             match chunk_result {
-                                Ok(chunk) => response_data.extend_from_slice(&chunk),
-                                Err(e) => return Err(format!("Error in audio stream: {}", e)),
+                                Ok((chunk_answer, chunk_audio)) => {
+                                    answer.push_str(&chunk_answer);
+                                    audio_data.extend_from_slice(&chunk_audio);
+                                },
+                                Err(e) => return Err(format!("Error in response stream: {}", e)),
                             }
                         }
-                        
-                        // Process the JSON response and extract audio data
-                        AudioProcessor::process_json_response(&response_data)
+                        Ok((answer, audio_data))
                     },
                     Err(e) => Err(format!("Failed to send message: {}", e)),
                 }
@@ -204,7 +206,7 @@ pub struct BroadcastMessage(pub String);
 
 #[derive(Message)]
 #[rtype(result = "()")]
-struct RAGFlowQueryResult(Result<Vec<u8>, String>);
+struct RAGFlowQueryResult(Result<(String, Vec<u8>), String>);
 
 #[derive(Message)]
 #[rtype(result = "()")]
@@ -228,8 +230,16 @@ impl Handler<RAGFlowQueryResult> for WebSocketSession {
 
     fn handle(&mut self, msg: RAGFlowQueryResult, ctx: &mut Self::Context) {
         match msg.0 {
-            Ok(audio_data) => {
-                ctx.binary(audio_data);
+            Ok((answer, audio_data)) => {
+                let audio_base64 = general_purpose::STANDARD.encode(&audio_data);
+                let response = json!({
+                    "type": "ragflowResponse",
+                    "data": {
+                        "answer": answer,
+                        "audio": audio_base64
+                    }
+                });
+                self.send_json_response(ctx, response);
             },
             Err(e) => {
                 error!("Error in RAGFlow query: {}", e);

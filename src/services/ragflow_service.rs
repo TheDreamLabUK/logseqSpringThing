@@ -4,8 +4,8 @@ use crate::config::Settings;
 use std::fmt;
 use futures::stream::{Stream, StreamExt};
 use std::pin::Pin;
-use std::sync::Arc;
 use serde_json::json;
+use crate::utils::audio_processor::AudioProcessor;
 
 #[derive(Debug)]
 pub enum RAGFlowError {
@@ -89,7 +89,7 @@ impl RAGFlowService {
         quote: bool,
         doc_ids: Option<Vec<String>>,
         stream: bool,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<Vec<u8>, RAGFlowError>> + Send + 'static>>, RAGFlowError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<(String, Vec<u8>), RAGFlowError>> + Send + 'static>>, RAGFlowError> {
         info!("Sending message to conversation: {}", conversation_id);
         let url = format!("{}api/completion", self.base_url);
         info!("Full URL for send_message: {}", url);
@@ -119,7 +119,12 @@ impl RAGFlowService {
         if response.status().is_success() {
             let stream = response.bytes_stream().map(move |chunk_result| {
                 match chunk_result {
-                    Ok(chunk) => Ok(chunk.to_vec()),
+                    Ok(chunk) => {
+                        match AudioProcessor::process_json_response(&chunk) {
+                            Ok((answer, audio_data)) => Ok((answer, audio_data)),
+                            Err(e) => Err(RAGFlowError::AudioGenerationError(e)),
+                        }
+                    },
                     Err(e) => Err(RAGFlowError::ReqwestError(e)),
                 }
             });

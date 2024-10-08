@@ -79,12 +79,36 @@ export class ChatManager {
 
   handleServerMessage(data) {
     console.log("Received server message:", data);
-    if (data.type === 'chatMessage') {
-      this.displayMessage('AI', data.content);
-    } else if (data.type === 'error') {
-      this.handleError(data);
+    if (data.data) {
+      const answer = data.data.answer;
+      const reference = data.data.reference || [];
+      const audioBase64 = data.data.audio;
+
+      if (audioBase64) {
+        // Decode Base64 to binary
+        const binaryAudio = atob(audioBase64);
+        const len = binaryAudio.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryAudio.charCodeAt(i);
+        }
+
+        // Create Blob and Audio URL
+        const blob = new Blob([bytes.buffer], { type: 'audio/wav' });
+        const audioURL = URL.createObjectURL(blob);
+        
+        // Play the audio
+        const audio = new Audio(audioURL);
+        audio.play();
+      } else {
+        console.warn('Audio data not found in JSON response.');
+      }
+
+      this.displayMessage('AI', answer);
+    } else {
+      console.error('Invalid RAGFlow response:', data);
+      this.handleError({ message: 'Invalid response from server' });
     }
-    // Note: Audio data is handled automatically by WebsocketService
   }
 
   handleError(error) {

@@ -1,10 +1,10 @@
 use serde::Deserialize;
 use config::{Config, ConfigError, File, Environment};
-use log::{debug, error};
+use log::debug; // Removed unused 'error' import
 use std::fmt;
 use std::env;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Deserialize, Clone)]
 pub struct Settings {
     pub perplexity: PerplexitySettings,
     pub github: GithubSettings,
@@ -47,7 +47,7 @@ pub struct OpenAISettings {
     pub openai_base_url: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct VisualizationSettings {
     pub node_color: String,
     pub edge_color: String,
@@ -60,7 +60,7 @@ pub struct VisualizationSettings {
     pub fog_density: f32,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct DefaultSettings {
     pub max_concurrent_requests: usize,
     pub max_retries: u32,
@@ -68,7 +68,7 @@ pub struct DefaultSettings {
     pub api_client_timeout: u64,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct SonataSettings {
     pub voice_config_path: String,
 }
@@ -131,7 +131,20 @@ impl Settings {
     }
 }
 
-// Implement Debug for settings that contain sensitive information
+impl fmt::Debug for Settings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Settings")
+            .field("perplexity", &self.perplexity)
+            .field("github", &self.github)
+            .field("ragflow", &self.ragflow)
+            .field("openai", &self.openai)
+            .field("visualization", &self.visualization)
+            .field("default", &self.default)
+            .field("sonata", &self.sonata)
+            .finish()
+    }
+}
+
 impl fmt::Debug for PerplexitySettings {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PerplexitySettings")

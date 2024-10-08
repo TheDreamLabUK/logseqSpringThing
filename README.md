@@ -41,7 +41,7 @@ classDiagram
         - visualization: WebXRVisualization
         - chatManager: ChatManager
         - interface: Interface
-        - ragflowService: RAGflowService
+        - ragflowService: RAGFlowService
         + start()
         - initializeEventListeners()
         - toggleFullscreen()
@@ -114,79 +114,64 @@ classDiagram
         - renderUI()
     }
 
-    class RAGflowService {
-        - websocketService: WebsocketService
-        + sendQuery(query: string)
-        - handleRAGFlowResponse(data: object)
-        - setupWebSocketListeners()
+    class RAGFlowService {
+        - settings: Settings
+        - apiClient: ApiClient
+        + askQuestion(question: string): Promise<string>
+        + processAnswer(answer: string): string
     }
 
-    class GraphData {
-        + nodes: Node[]
-        + edges: Edge[]
+    class GraphService {
+        + build_graph(app_state: AppState): Result<GraphData, Box<dyn std::error::Error + Send + Sync>>
+        + calculate_layout(gpu_compute: &GPUCompute, graph: &mut GraphData): Result<(), Box<dyn std::error::Error + Send + Sync>>
     }
 
-    class Node {
-        + id: string
-        + label: string
-        + x: number
-        + y: number
-        + z: number
-        + metadata: any
+    class PerplexityService {
+        + process_markdown(file_content: &str, settings: &Settings, api_client: &dyn ApiClient): Result<String, PerplexityError>
+        + process_markdown_block(input: &str, prompt: &str, topics: &[String], api_response: &str): String
     }
 
-    class Edge {
-        + source: string
-        + target_node: string
-        + weight: number
-        + hyperlinks: number
+    class FileService {
+        + process_files(github_files: Vec<GithubFile>, settings: &Settings, metadata_map: &mut HashMap<String, Metadata>): Result<Vec<ProcessedFile>, Box<dyn std::error::Error + Send + Sync>>
+        + should_process_file(file: &GithubFile): bool
+        + strip_double_brackets(content: &str): String
+        + process_against_topics(content: &str, metadata_map: &HashMap<String, Metadata>): String
+        + count_hyperlinks(content: &str): usize
+        + count_topics(content: &str, metadata_map: &HashMap<String, Metadata>): HashMap<String, usize>
     }
 
-    class GPUCompute {
-        - device: Device
-        - queue: Queue
-        - nodes_buffer: Buffer
-        - edges_buffer: Buffer
-        + set_graph_data(graphData: GraphData)
-        + compute_forces()
-        + get_updated_positions(): Node[]
-    }
-    
     App --> WebsocketService
     App --> GraphDataManager
     App --> WebXRVisualization
     App --> ChatManager
     App --> Interface
-    App --> RAGflowService
-    GraphDataManager --> WebsocketService
-    GraphDataManager --> GraphData
-    WebXRVisualization --> GraphDataManager
-    WebXRVisualization --> Node
-    WebXRVisualization --> Edge
-    WebXRVisualization --> GPUCompute
-    ChatManager --> WebsocketService
-    RAGflowService --> WebsocketService
-    GraphData --> Node
-    GraphData --> Edge
+    App --> RAGFlowService
+    WebsocketService --> GraphDataManager
+    GraphDataManager --> WebXRVisualization
+    ChatManager --> RAGFlowService
+    Interface --> ChatManager
+    Interface --> WebXRVisualization
+    App --> GraphService
+    App --> PerplexityService
+    App --> FileService
 ```
 
 ### Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant Client
-    participant WebXRVisualization
-    participant GraphDataManager
+    participant User
     participant Interface
+    participant App
+    participant WebsocketService
+    participant GraphDataManager
+    participant WebXRVisualization
     participant ChatManager
-    participant Server
+    participant RAGFlowService
+    participant PerplexityService
     participant FileService
     participant GraphService
-    participant ServerGraphSimulation
-    participant GitHub
-    participant PerplexityAPI
-    participant RAGFlowIntegration
-    participant WebSocketManager
+    participant APIClient
     participant GPUCompute
 
     rect rgba(200, 255, 200, 0.1)
@@ -825,9 +810,16 @@ Contributions are welcome! Please follow these steps to contribute:
     git clone https://github.com/yourusername/webxr-graph.git
     cd webxr-graph
     ```
+    ```bash
+    git clone https://github.com/yourusername/webxr-graph.git
+    cd webxr-graph
+    ```
 
 3. **Create a New Branch:**
 
+    ```bash
+    git checkout -b feature/your-feature-name
+    ```
     ```bash
     git checkout -b feature/your-feature-name
     ```
@@ -838,9 +830,15 @@ Contributions are welcome! Please follow these steps to contribute:
     ```bash
     git commit -m "Add feature: your feature description"
     ```
+    ```bash
+    git commit -m "Add feature: your feature description"
+    ```
 
 6. **Push to Your Fork:**
 
+    ```bash
+    git push origin feature/your-feature-name
+    ```
     ```bash
     git push origin feature/your-feature-name
     ```

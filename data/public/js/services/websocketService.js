@@ -34,21 +34,18 @@ export class WebsocketService {
 
         // WebSocket message event
         this.socket.onmessage = (event) => {
-            if (event.data instanceof Blob) {
-                // Handle binary data (audio)
-                console.log('Received binary data:', event.data);
-                this.handleAudioData(event.data);
-            } else {
-                // Handle JSON data
-                console.log('Received WebSocket message:', event.data);
-                try {
-                    const data = JSON.parse(event.data);
+            console.log('Received WebSocket message:', event.data);
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'ragflowResponse') {
+                    this.handleRagflowResponse(data.data);
+                } else {
                     this.emit('message', data);
-                } catch (err) {
-                    console.error('Error parsing WebSocket message:', err);
-                    console.error('Raw message:', event.data);
-                    this.emit('error', { type: 'parse_error', message: err.message, rawData: event.data });
                 }
+            } catch (err) {
+                console.error('Error parsing WebSocket message:', err);
+                console.error('Raw message:', event.data);
+                this.emit('error', { type: 'parse_error', message: err.message, rawData: event.data });
             }
         };
 
@@ -64,6 +61,41 @@ export class WebsocketService {
             this.emit('close');
             this.reconnect();
         };
+    }
+
+    /**
+     * Handles the RAGFlow response containing both text and audio data.
+     * @param {Object} data - The response data containing answer and audio.
+     */
+    handleRagflowResponse(data) {
+        console.log('Handling RAGFlow response:', data);
+        
+        // Emit the text answer
+        this.emit('ragflowAnswer', data.answer);
+
+        // Handle the audio data
+        if (data.audio) {
+            const audioBlob = this.base64ToBlob(data.audio, 'audio/wav');
+            this.handleAudioData(audioBlob);
+        } else {
+            console.warn('No audio data in RAGFlow response');
+        }
+    }
+
+    /**
+     * Converts a base64 string to a Blob.
+     * @param {string} base64 - The base64 encoded string.
+     * @param {string} mimeType - The MIME type of the data.
+     * @returns {Blob} The resulting Blob.
+     */
+    base64ToBlob(base64, mimeType) {
+        const byteCharacters = atob(base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        return new Blob([byteArray], { type: mimeType });
     }
 
     /**

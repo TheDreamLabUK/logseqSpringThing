@@ -1,11 +1,12 @@
 use log::{info, error, warn};
 use serde_json::Value;
-use base64;
+use base64::engine::general_purpose;
+use base64::Engine as _;
 
 pub struct AudioProcessor;
 
 impl AudioProcessor {
-    pub fn process_json_response(response_data: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn process_json_response(response_data: &[u8]) -> Result<(String, Vec<u8>), String> {
         // Parse the JSON response
         let json_response: Value = serde_json::from_slice(response_data)
             .map_err(|e| format!("Failed to parse JSON response: {}", e))?;
@@ -18,11 +19,17 @@ impl AudioProcessor {
             return Err(format!("Error in JSON response: {}", error_msg));
         }
 
+        // Extract the text answer
+        let answer = json_response["data"]["answer"]
+            .as_str()
+            .ok_or_else(|| "Text answer not found in JSON response".to_string())?
+            .to_string();
+
         // Try to extract the audio data from different possible locations
         let audio_data = if let Some(audio) = json_response["data"]["audio"].as_str() {
-            base64::decode(audio).map_err(|e| format!("Failed to decode base64 audio data: {}", e))?
+            general_purpose::STANDARD.decode(audio).map_err(|e| format!("Failed to decode base64 audio data: {}", e))?
         } else if let Some(audio) = json_response["audio"].as_str() {
-            base64::decode(audio).map_err(|e| format!("Failed to decode base64 audio data: {}", e))?
+            general_purpose::STANDARD.decode(audio).map_err(|e| format!("Failed to decode base64 audio data: {}", e))?
         } else {
             // If we can't find the audio data, log the keys present in the JSON and return an error
             warn!("Audio data not found in JSON response. Available keys: {:?}", json_response.as_object().map(|obj| obj.keys().collect::<Vec<_>>()));
@@ -43,6 +50,6 @@ impl AudioProcessor {
             return Err("Audio data too short".to_string());
         }
         
-        Ok(audio_data)
+        Ok((answer, audio_data))
     }
 }

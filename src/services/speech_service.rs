@@ -138,8 +138,10 @@ impl SpeechService {
                                                     if let Some(content) = json_msg["delta"]["text"].as_str() {
                                                         // Process text delta
                                                         debug!("Received text delta: {}", content);
+
                                                         // Synthesize audio using SonataService
                                                         if let Ok(audio_bytes) = sonata_service.synthesize(content).await {
+                                                            info!("Audio synthesis successful, {} bytes generated.", audio_bytes.len());
                                                             // Broadcast audio to all WebSocket sessions
                                                             if let Err(e) = websocket_manager.broadcast_audio(audio_bytes).await {
                                                                 error!("Failed to broadcast audio: {}", e);
