@@ -7,8 +7,6 @@ use std::sync::{Mutex, Arc};
 use serde_json::{json, Value};
 use futures::future::join_all;
 use futures::StreamExt;
-use tokio::task;
-use std::collections::HashSet;
 
 pub struct WebSocketManager {
     pub sessions: Mutex<Vec<Addr<WebSocketSession>>>,
@@ -188,24 +186,12 @@ impl Actor for WebSocketSession {
         let addr = ctx.address();
         self.state.websocket_manager.sessions.lock().unwrap().push(addr.clone());
         info!("WebSocket session started. Total sessions: {}", self.state.websocket_manager.sessions.lock().unwrap().len());
-        
-        // Register with SpeechService
-        let speech_service = self.state.speech_service.clone();
-        task::spawn(async move {
-            speech_service.register_session(addr).await;
-        });
     }
 
     fn stopped(&mut self, ctx: &mut Self::Context) {
         let addr = ctx.address();
         self.state.websocket_manager.sessions.lock().unwrap().retain(|session| session != &addr);
         info!("WebSocket session stopped. Total sessions: {}", self.state.websocket_manager.sessions.lock().unwrap().len());
-        
-        // Unregister from SpeechService
-        let speech_service = self.state.speech_service.clone();
-        task::spawn(async move {
-            speech_service.unregister_session(&addr).await;
-        });
     }
 }
 

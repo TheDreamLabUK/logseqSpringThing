@@ -1,5 +1,5 @@
 use tokio::sync::{mpsc, Mutex};
-use tokio_tungstenite::connect_async;
+use tokio_tungstenite::{connect_async, WebSocketStream, MaybeTlsStream};
 use tungstenite::protocol::Message;
 use serde_json::json;
 use std::sync::Arc;
@@ -8,16 +8,16 @@ use crate::config::Settings;
 use log::{info, error, debug};
 use futures::{SinkExt, StreamExt};
 use std::error::Error;
-use std::collections::HashSet;
-use actix::Addr;
-use crate::utils::websocket_manager::{WebSocketSession, WebSocketManager};
+use crate::utils::websocket_manager::WebSocketManager;
 use crate::services::sonata_service::SonataService;
+use tokio::net::TcpStream;
+use url::Url;
 
 pub struct SpeechService {
     sender: Arc<Mutex<mpsc::Sender<SpeechCommand>>>,
-    sessions: Arc<Mutex<HashSet<Addr<WebSocketSession>>>>,
     sonata_service: Arc<SonataService>,
     websocket_manager: Arc<WebSocketManager>,
+    settings: Settings,
 }
 
 #[derive(Debug)]
@@ -28,16 +28,15 @@ enum SpeechCommand {
 }
 
 impl SpeechService {
-    pub fn new(sonata_service: Arc<SonataService>, websocket_manager: Arc<WebSocketManager>) -> Self {
+    pub fn new(sonata_service: Arc<SonataService>, websocket_manager: Arc<WebSocketManager>, settings: Settings) -> Self {
         let (tx, rx) = mpsc::channel(100);
         let sender = Arc::new(Mutex::new(tx));
-        let sessions = Arc::new(Mutex::new(HashSet::new()));
 
         let service = SpeechService {
             sender,
-            sessions,
             sonata_service,
             websocket_manager,
+            settings,
         };
 
         service.start(rx);
@@ -48,15 +47,19 @@ impl SpeechService {
     fn start(&self, mut receiver: mpsc::Receiver<SpeechCommand>) {
         let sonata_service = self.sonata_service.clone();
         let websocket_manager = self.websocket_manager.clone();
+        let settings = self.settings.clone();
 
         task::spawn(async move {
-            let mut ws_stream = None;
+            let mut ws_stream: Option<WebSocketStream<MaybeTlsStream<TcpStream>>> = None;
 
             while let Some(command) = receiver.recv().await {
                 match command {
                     SpeechCommand::Initialize => {
                         // Initialize WebSocket connection to OpenAI
                         let url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01";
+                        let mut url = Url::parse(url).expect("Failed to parse URL");
+                        url.set_query(Some(&format!("api-key={}", settings.openai.openai_api_key)));
+
                         match connect_async(url).await {
                             Ok((stream, _)) => {
                                 info!("Connected to OpenAI Realtime API");
@@ -139,7 +142,7 @@ impl SpeechService {
         });
     }
 
-    pub async fn initialize(&self, _settings: &Settings) -> Result<(), Box<dyn Error>> {
+    pub async fn initialize(&self) -> Result<(), Box<dyn Error>> {
         let command = SpeechCommand::Initialize;
         self.sender.lock().await.send(command).await?;
         Ok(())
@@ -155,13 +158,5 @@ impl SpeechService {
         let command = SpeechCommand::Close;
         self.sender.lock().await.send(command).await?;
         Ok(())
-    }
-
-    pub async fn register_session(&self, addr: Addr<WebSocketSession>) {
-        self.sessions.lock().await.insert(addr);
-    }
-
-    pub async fn unregister_session(&self, addr: &Addr<WebSocketSession>) {
-        self.sessions.lock().await.remove(addr);
     }
 }

@@ -72,6 +72,9 @@ tungstenite = { version = "0.20", features = ["native-tls"] }
 # Audio Handling
 rodio = "0.17"
 
+# URL Parsing
+url = "2.3"
+
 # Development Dependencies
 [dev-dependencies]
 mockall = "0.11"

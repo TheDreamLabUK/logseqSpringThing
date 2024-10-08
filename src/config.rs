@@ -17,7 +17,7 @@ pub struct Settings {
     pub github: GitHubConfig,
     pub default: DefaultConfig,
     pub sonata: SonataSettings,
-    pub openai: Option<OpenAISettings>,
+    pub openai: OpenAISettings,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -95,7 +95,7 @@ impl Settings {
         settings.load_ragflow_config(&config)?;
         settings.load_perplexity_config(&config)?;
         settings.load_default_config(&config)?;
-        settings.load_openai_config(&config);
+        settings.load_openai_config(&config)?;
         settings.load_topics_from_csv("data/topics.csv")?;
 
         info!("Loaded topics: {:?}", settings.topics);
@@ -262,19 +262,23 @@ impl Settings {
         Ok(())
     }
 
-    fn load_openai_config(&mut self, config: &Config) {
+    fn load_openai_config(&mut self, config: &Config) -> Result<(), ConfigError> {
         debug!("Loading OpenAI config...");
 
         let openai_api_key = env::var("OPENAI_API_KEY")
             .or_else(|_| config.get_string("openai.openai_api_key"))
-            .ok();
+            .unwrap_or_default();
 
-        if let Some(openai_api_key) = openai_api_key {
-            self.openai = Some(OpenAISettings { openai_api_key });
-            debug!("Loaded OpenAI config: {:?}", self.openai);
-        } else {
-            debug!("OpenAI API key not found, skipping OpenAI configuration");
+        self.openai = OpenAISettings { openai_api_key };
+
+        debug!("Loaded OpenAI config: {:?}", self.openai);
+
+        if self.openai.openai_api_key.is_empty() {
+            error!("OpenAI API key is empty");
+            return Err(ConfigError::NotFound("openai.openai_api_key".into()));
         }
+
+        Ok(())
     }
 
     fn load_topics_from_csv(&mut self, file_path: &str) -> Result<(), ConfigError> {

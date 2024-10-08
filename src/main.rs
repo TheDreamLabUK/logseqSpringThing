@@ -94,8 +94,8 @@ async fn main() -> std::io::Result<()> {
     };
 
     let sonata_service = Arc::new(SonataService::new(settings.sonata.voice_config_path.as_ref()).expect("Failed to initialize SonataService"));
-    let speech_service = Arc::new(SpeechService::new(sonata_service, websocket_manager.clone()));
-    speech_service.initialize(&settings).await.expect("Failed to initialize SpeechService");
+    let speech_service = Arc::new(SpeechService::new(sonata_service, websocket_manager.clone(), settings.clone()));
+    speech_service.initialize().await.expect("Failed to initialize SpeechService");
 
     let app_state = web::Data::new(AppState::new(
         graph_data,
