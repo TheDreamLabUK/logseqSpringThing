@@ -173,13 +173,14 @@ sequenceDiagram
     participant GraphService
     participant APIClient
     participant GPUCompute
+    participant Server
 
     rect rgba(200, 255, 200, 0.1)
         activate Server
         Server->>Server: Load env vars & settings (config.rs)
         alt Settings Load Error
             note right of Server: Error handling in main.rs
-            Server-->>Client: Error Response (500)
+            Server-->>User: Error Response (500)
             deactivate Server
         else Settings Loaded
             Server->>Server: Initialize AppState (app_state.rs)
@@ -200,12 +201,12 @@ sequenceDiagram
                     loop For each file
                         FileService->>FileService: should_process_file
                         alt File needs processing
-                            FileService->>PerplexityAPI: process_file (services/perplexity_service.rs)
-                            activate PerplexityAPI
-                                PerplexityAPI->>PerplexityAPI: process_markdown (splits into blocks, calls API)
-                                PerplexityAPI->>PerplexityAPI: call_perplexity_api (multiple times)
-                                PerplexityAPI-->>FileService: Processed content or Error
-                            deactivate PerplexityAPI
+                            FileService->>PerplexityService: process_file (services/perplexity_service.rs)
+                            activate PerplexityService
+                                PerplexityService->>PerplexityService: process_markdown (splits into blocks, calls API)
+                                PerplexityService->>PerplexityService: call_perplexity_api (multiple times)
+                                PerplexityService-->>FileService: Processed content or Error
+                            deactivate PerplexityService
                             alt Perplexity Error
                                 FileService-->>Server: Error
                             else Content Processed
@@ -231,18 +232,18 @@ sequenceDiagram
                     deactivate GPUCompute
                     GraphService-->>Server: GraphData
                 deactivate GraphService
-                Server->>WebSocketManager: broadcast_graph_update (utils/websocket_manager.rs)
-                activate WebSocketManager
-                    WebSocketManager-->>Client: graph_update_message
-                deactivate WebSocketManager
-                Server-->>Client: Success Response
+                Server->>WebsocketService: broadcast_graph_update (utils/websocket_manager.rs)
+                activate WebsocketService
+                    WebsocketService-->>User: graph_update_message
+                deactivate WebsocketService
+                Server-->>User: Success Response
             end
         end
     end
 
-    note right of Client: Initial load
+    note right of User: Initial load
 
-    Client->>WebXRVisualization: initialize()
+    User->>WebXRVisualization: initialize()
     activate WebXRVisualization
         WebXRVisualization->>GraphDataManager: requestInitialData()
         activate GraphDataManager
@@ -253,21 +254,21 @@ sequenceDiagram
         WebXRVisualization->>WebXRVisualization: setupThreeJS()
         WebXRVisualization->>WebXRVisualization: renderScene()
     deactivate WebXRVisualization
-    WebXRVisualization-->>Client: Render 3D Graph
+    WebXRVisualization-->>User: Render 3D Graph
 
-    note right of Client: User interactions
+    note right of User: User interactions
 
-    Client->>Interface: handleUserInput(input)
+    User->>Interface: handleUserInput(input)
     Interface->>ChatManager: sendMessage(input)
-    ChatManager->>RAGFlowIntegration: sendQuery(input)
-    RAGFlowIntegration-->>ChatManager: AI Response
+    ChatManager->>RAGFlowService: sendQuery(input)
+    RAGFlowService-->>ChatManager: AI Response
     ChatManager-->>Interface: Display AI Response
     Interface->>WebXRVisualization: updateGraphData(newData)
-    WebXRVisualization-->>Client: Update Visualization
+    WebXRVisualization-->>User: Update Visualization
 
-    note right of Client: User clicks "Refresh Graph"
+    note right of User: User clicks "Refresh Graph"
 
-    Client->>Server: POST /api/files/fetch (handlers/file_handler.rs)
+    User->>Server: POST /api/files/fetch (handlers/file_handler.rs)
     activate Server
         Server->>FileService: fetch_and_process_files (services/file_service.rs)
         activate FileService
@@ -281,12 +282,12 @@ sequenceDiagram
                 loop For each file
                     FileService->>FileService: should_process_file
                     alt File needs processing
-                        FileService->>PerplexityAPI: process_file (services/perplexity_service.rs)
-                        activate PerplexityAPI
-                            PerplexityAPI->>PerplexityAPI: process_markdown (splits into blocks, calls API)
-                            PerplexityAPI->>PerplexityAPI: call_perplexity_api (multiple times)
-                            PerplexityAPI-->>FileService: Processed content or Error
-                        deactivate PerplexityAPI
+                        FileService->>PerplexityService: process_file (services/perplexity_service.rs)
+                        activate PerplexityService
+                            PerplexityService->>PerplexityService: process_markdown (splits into blocks, calls API)
+                            PerplexityService->>PerplexityService: call_perplexity_api (multiple times)
+                            PerplexityService-->>FileService: Processed content or Error
+                        deactivate PerplexityService
                         alt Perplexity Error
                             FileService-->>Server: Error
                         else Content Processed
@@ -298,11 +299,11 @@ sequenceDiagram
             end
         deactivate FileService
         alt File Processing Error
-            Server->>WebSocketManager: broadcast_error_message (utils/websocket_manager.rs)
-            activate WebSocketManager
-                WebSocketManager-->>Client: error_message
-            deactivate WebSocketManager
-            Server-->>Client: Error Response
+            Server->>WebsocketService: broadcast_error_message (utils/websocket_manager.rs)
+            activate WebsocketService
+                WebsocketService-->>User: error_message
+            deactivate WebsocketService
+            Server-->>User: Error Response
         else Files Processed Successfully
             Server->>GraphService: build_graph (services/graph_service.rs)
             activate GraphService
@@ -316,14 +317,13 @@ sequenceDiagram
                 deactivate GPUCompute
                 GraphService-->>Server: GraphData
             deactivate GraphService
-            Server->>WebSocketManager: broadcast_graph_update (utils/websocket_manager.rs)
-            activate WebSocketManager
-                WebSocketManager-->>Client: graph_update_message
-            deactivate WebSocketManager
-            Server-->>Client: Success Response
+            Server->>WebsocketService: broadcast_graph_update (utils/websocket_manager.rs)
+            activate WebsocketService
+                WebsocketService-->>User: graph_update_message
+            deactivate WebsocketService
+            Server-->>User: Success Response
         end
     deactivate Server
-    deactivate Client
 ```
 
 ## Installation
