@@ -1,6 +1,7 @@
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::{connect_async, WebSocketStream, MaybeTlsStream};
 use tungstenite::protocol::Message;
+use tungstenite::http::Request;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::task;
@@ -56,14 +57,39 @@ impl SpeechService {
                 match command {
                     SpeechCommand::Initialize => {
                         // Initialize WebSocket connection to OpenAI
-                        let url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01";
-                        let mut url = Url::parse(url).expect("Failed to parse URL");
-                        url.set_query(Some(&format!("api-key={}", settings.openai.openai_api_key)));
+                        let url = Url::parse("wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01").expect("Failed to parse URL");
+                        
+                        let request = Request::builder()
+                            .uri(url.as_str())
+                            .header("Authorization", format!("Bearer {}", settings.openai.openai_api_key))
+                            .header("OpenAI-Beta", "realtime=v1")
+                            .header("User-Agent", "WebXR Graph")
+                            .header("Origin", "https://api.openai.com")
+                            .header("Sec-WebSocket-Version", "13")
+                            .header("Sec-WebSocket-Key", tungstenite::handshake::client::generate_key())
+                            .header("Connection", "Upgrade")
+                            .header("Upgrade", "websocket")
+                            .body(())
+                            .expect("Failed to build request");
 
-                        match connect_async(url).await {
+                        match connect_async(request).await {
                             Ok((stream, _)) => {
                                 info!("Connected to OpenAI Realtime API");
                                 ws_stream = Some(stream);
+                                
+                                // Send initial configuration
+                                if let Some(stream) = &mut ws_stream {
+                                    let init_event = json!({
+                                        "type": "response.create",
+                                        "response": {
+                                            "modalities": ["text"],
+                                            "instructions": "Please assist the user.",
+                                        }
+                                    });
+                                    if let Err(e) = stream.send(Message::Text(init_event.to_string())).await {
+                                        error!("Failed to send initial configuration: {}", e);
+                                    }
+                                }
                             },
                             Err(e) => error!("Failed to connect to OpenAI Realtime API: {}", e),
                         }
@@ -93,23 +119,45 @@ impl SpeechService {
                                 info!("Sent message to OpenAI: {}", msg);
                             }
 
+                            // Trigger a response
+                            let response_event = json!({
+                                "type": "response.create"
+                            });
+                            if let Err(e) = write.send(Message::Text(response_event.to_string())).await {
+                                error!("Failed to trigger response: {}", e);
+                            }
+
                             // Handle response from OpenAI
                             while let Some(message) = read.next().await {
                                 match message {
                                     Ok(Message::Text(text)) => {
                                         debug!("Received message from OpenAI: {}", text);
-                                        // Process the incoming message and synthesize audio
                                         if let Ok(json_msg) = serde_json::from_str::<serde_json::Value>(&text) {
-                                            if let Some(content) = json_msg["content"].as_str() {
-                                                // Synthesize audio using Sonata
-                                                match sonata_service.synthesize(content).await {
-                                                    Ok(audio_bytes) => {
-                                                        // Broadcast audio to all WebSocket sessions
-                                                        if let Err(e) = websocket_manager.broadcast_audio(audio_bytes).await {
-                                                            error!("Failed to broadcast audio: {}", e);
+                                            match json_msg["type"].as_str() {
+                                                Some("response.text.delta") => {
+                                                    if let Some(content) = json_msg["delta"]["text"].as_str() {
+                                                        // Process text delta
+                                                        debug!("Received text delta: {}", content);
+                                                        // Synthesize audio using SonataService
+                                                        if let Ok(audio_bytes) = sonata_service.synthesize(content).await {
+                                                            // Broadcast audio to all WebSocket sessions
+                                                            if let Err(e) = websocket_manager.broadcast_audio(audio_bytes).await {
+                                                                error!("Failed to broadcast audio: {}", e);
+                                                            }
+                                                        } else {
+                                                            error!("Failed to synthesize audio");
                                                         }
-                                                    },
-                                                    Err(e) => error!("Failed to synthesize audio: {}", e),
+                                                    }
+                                                },
+                                                Some("response.text.done") => {
+                                                    debug!("Text response complete");
+                                                },
+                                                Some("response.done") => {
+                                                    debug!("Full response complete");
+                                                    break;
+                                                },
+                                                _ => {
+                                                    // Handle other event types as needed
                                                 }
                                             }
                                         }

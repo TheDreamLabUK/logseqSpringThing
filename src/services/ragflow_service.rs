@@ -5,10 +5,7 @@ use std::fmt;
 use futures::stream::{Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
-
-// Import Sonata synthesizer
-use crate::services::sonata_service::{SonataSpeechSynthesizer, SonataSynthError};
-use std::path::Path;
+use serde_json::json;
 
 #[derive(Debug)]
 pub enum RAGFlowError {
@@ -16,7 +13,6 @@ pub enum RAGFlowError {
     StatusError(StatusCode, String),
     AudioGenerationError(String),
     IoError(std::io::Error),
-    SonataError(String),
 }
 
 impl fmt::Display for RAGFlowError {
@@ -26,7 +22,6 @@ impl fmt::Display for RAGFlowError {
             RAGFlowError::StatusError(status, msg) => write!(f, "Status error ({}): {}", status, msg),
             RAGFlowError::AudioGenerationError(msg) => write!(f, "Audio generation error: {}", msg),
             RAGFlowError::IoError(e) => write!(f, "IO error: {}", e),
-            RAGFlowError::SonataError(msg) => write!(f, "Sonata error: {}", msg),
         }
     }
 }
@@ -45,31 +40,20 @@ impl From<std::io::Error> for RAGFlowError {
     }
 }
 
-impl From<SonataSynthError> for RAGFlowError {
-    fn from(err: SonataSynthError) -> Self {
-        RAGFlowError::SonataError(err.to_string())
-    }
-}
-
 pub struct RAGFlowService {
     client: Client,
     api_key: String,
     base_url: String,
-    synthesizer: Arc<SonataSpeechSynthesizer>,
 }
 
 impl RAGFlowService {
     pub fn new(settings: &Settings) -> Result<Self, RAGFlowError> {
-        // Initialize Sonata Synthesizer
-        let voice_config_path = &settings.sonata.voice_config_path;
-        let synthesizer = SonataSpeechSynthesizer::new(Path::new(voice_config_path))
-            .map_err(|e| RAGFlowError::SonataError(format!("Failed to initialize synthesizer: {}", e)))?;
-        
+        let client = Client::new();
+
         Ok(RAGFlowService {
-            client: Client::new(),
-            api_key: settings.ragflow.api_key.clone(),
-            base_url: settings.ragflow.base_url.clone(),
-            synthesizer: Arc::new(synthesizer),
+            client,
+            api_key: settings.ragflow.ragflow_api_key.clone(),
+            base_url: settings.ragflow.ragflow_api_base_url.clone(),
         })
     }
 
@@ -110,7 +94,7 @@ impl RAGFlowService {
         let url = format!("{}api/completion", self.base_url);
         info!("Full URL for send_message: {}", url);
         
-        let mut request_body = serde_json::json!({
+        let mut request_body = json!({
             "conversation_id": conversation_id,
             "messages": [{"role": "user", "content": message}],
             "quote": quote,
@@ -133,17 +117,9 @@ impl RAGFlowService {
         info!("Response status: {}", response.status());
        
         if response.status().is_success() {
-            let synthesizer = Arc::clone(&self.synthesizer);
             let stream = response.bytes_stream().map(move |chunk_result| {
                 match chunk_result {
-                    Ok(chunk) => {
-                        let text = String::from_utf8_lossy(&chunk);
-                        // Synthesize audio using Sonata
-                        match synthesizer.synthesize(text.as_ref()) {
-                            Ok(audio) => Ok(audio),
-                            Err(e) => Err(RAGFlowError::SonataError(format!("Synthesis failed: {}", e))),
-                        }
-                    },
+                    Ok(chunk) => Ok(chunk.to_vec()),
                     Err(e) => Err(RAGFlowError::ReqwestError(e)),
                 }
             });
@@ -156,6 +132,24 @@ impl RAGFlowService {
             Err(RAGFlowError::StatusError(status, error_message))
         }
     }
+
+    pub async fn get_conversation_history(&self, conversation_id: String) -> Result<serde_json::Value, RAGFlowError> {
+        let url = format!("{}api/conversation/{}", self.base_url, conversation_id);
+        let response = self.client.get(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            let history: serde_json::Value = response.json().await?;
+            Ok(history)
+        } else {
+            let status = response.status();
+            let error_message = response.text().await?;
+            error!("Failed to get conversation history. Status: {}, Error: {}", status, error_message);
+            Err(RAGFlowError::StatusError(status, error_message))
+        }
+    }
 }
 
 impl Clone for RAGFlowService {
@@ -164,7 +158,6 @@ impl Clone for RAGFlowService {
             client: self.client.clone(),
             api_key: self.api_key.clone(),
             base_url: self.base_url.clone(),
-            synthesizer: Arc::clone(&self.synthesizer),
         }
     }
 }

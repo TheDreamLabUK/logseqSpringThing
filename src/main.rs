@@ -1,9 +1,10 @@
 use actix_files::Files;
-use actix_web::{web, App, HttpServer, middleware};
+use actix_web::{web, App, HttpServer, middleware, HttpResponse};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::PathBuf;
+use std::env;
 
 use crate::app_state::AppState;
 use crate::config::Settings;
@@ -57,6 +58,13 @@ async fn initialize_graph_data(app_state: &web::Data<AppState>) -> std::io::Resu
     }
 }
 
+async fn test_speech_service(app_state: web::Data<AppState>) -> HttpResponse {
+    match app_state.speech_service.send_message("Hello, OpenAI!".to_string()).await {
+        Ok(_) => HttpResponse::Ok().body("Message sent successfully"),
+        Err(e) => HttpResponse::InternalServerError().body(format!("Error: {}", e)),
+    }
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
@@ -77,9 +85,36 @@ async fn main() -> std::io::Result<()> {
 
     let file_cache = Arc::new(RwLock::new(HashMap::new()));
     let graph_data = Arc::new(RwLock::new(GraphData::default()));
-    let github_service: Arc<dyn GitHubService + Send + Sync> = Arc::new(RealGitHubService::new(settings.github.clone()));
+    
+    let github_service: Arc<dyn GitHubService + Send + Sync> = match RealGitHubService::new(&settings) {
+        Ok(service) => Arc::new(service),
+        Err(e) => {
+            log::error!("Failed to initialize GitHub service: {:?}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHub service: {:?}", e)));
+        }
+    };
+    
     let perplexity_service = PerplexityServiceImpl::new();
-    let ragflow_service = Arc::new(RAGFlowService::new(&settings).expect("Failed to initialize RAGFlowService"));
+    let ragflow_service = match RAGFlowService::new(&settings) {
+        Ok(service) => Arc::new(service),
+        Err(e) => {
+            log::error!("Failed to initialize RAGFlowService: {:?}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize RAGFlowService: {:?}", e)));
+        }
+    };
+
+    // Create a single RAGFlow conversation
+    let ragflow_conversation_id = match ragflow_service.create_conversation("default_user".to_string()).await {
+        Ok(id) => {
+            log::info!("Created RAGFlow conversation with ID: {}", id);
+            id
+        },
+        Err(e) => {
+            log::error!("Failed to create RAGFlow conversation: {:?}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to create RAGFlow conversation: {:?}", e)));
+        }
+    };
+
     let websocket_manager = Arc::new(WebSocketManager::new());
     
     let gpu_compute = match GPUCompute::new().await {
@@ -93,9 +128,18 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    let sonata_service = Arc::new(SonataService::new(settings.sonata.voice_config_path.as_ref()).expect("Failed to initialize SonataService"));
-    let speech_service = Arc::new(SpeechService::new(sonata_service, websocket_manager.clone(), settings.clone()));
-    speech_service.initialize().await.expect("Failed to initialize SpeechService");
+    let sonata_service = match SonataService::new(&PathBuf::from(&settings.sonata.voice_config_path)) {
+        Ok(service) => Arc::new(service),
+        Err(e) => {
+            log::error!("Failed to initialize SonataService: {:?}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize SonataService: {:?}", e)));
+        }
+    };
+    let speech_service = Arc::new(SpeechService::new(sonata_service.clone(), websocket_manager.clone(), settings.clone()));
+    if let Err(e) = speech_service.initialize().await {
+        log::error!("Failed to initialize SpeechService: {:?}", e);
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize SpeechService: {:?}", e)));
+    }
 
     let app_state = web::Data::new(AppState::new(
         graph_data,
@@ -107,14 +151,23 @@ async fn main() -> std::io::Result<()> {
         speech_service,
         websocket_manager.clone(),
         gpu_compute,
+        ragflow_conversation_id,
     ));
 
-    initialize_graph_data(&app_state).await?;
+    if let Err(e) = initialize_graph_data(&app_state).await {
+        log::error!("Failed to initialize graph data: {:?}", e);
+        return Err(e);
+    }
 
     if let Err(e) = websocket_manager.initialize(&ragflow_service).await {
         log::error!("Failed to initialize RAGflow conversation: {:?}", e);
         return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize RAGflow conversation: {:?}", e)));
     }
+
+    let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+    let bind_address = format!("0.0.0.0:{}", port);
+
+    log::info!("Starting server on {}", bind_address);
 
     HttpServer::new(move || {
         App::new()
@@ -131,15 +184,16 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/api/chat")
                     .route("/init", web::post().to(ragflow_handler::init_chat))
-                    .route("/message/{conversation_id}", web::post().to(ragflow_handler::send_message))
-                    .route("/history/{conversation_id}", web::get().to(ragflow_handler::get_chat_history))
+                    .route("/message", web::post().to(ragflow_handler::send_message))
+                    .route("/history", web::get().to(ragflow_handler::get_chat_history))
             )
             .route("/ws", web::get().to(WebSocketManager::handle_websocket))
+            .route("/test_speech", web::get().to(test_speech_service))
             .service(
                 Files::new("/", "/app/data/public/dist").index_file("index.html")
             )
     })
-    .bind(("0.0.0.0", 8080))?
+    .bind(&bind_address)?
     .run()
     .await
 }
