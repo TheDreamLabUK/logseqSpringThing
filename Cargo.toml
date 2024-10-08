@@ -75,6 +75,9 @@ rodio = "0.17"
 # URL Parsing
 url = "2.3"
 
+# Base64 Encoding/Decoding
+base64 = "0.21"
+
 # Development Dependencies
 [dev-dependencies]
 mockall = "0.11"

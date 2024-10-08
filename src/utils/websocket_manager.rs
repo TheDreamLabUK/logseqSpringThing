@@ -7,6 +7,7 @@ use std::sync::{Mutex, Arc};
 use serde_json::{json, Value};
 use futures::future::join_all;
 use futures::StreamExt;
+use crate::utils::audio_processor::AudioProcessor;
 
 pub struct WebSocketManager {
     pub sessions: Mutex<Vec<Addr<WebSocketSession>>>,
@@ -139,14 +140,16 @@ impl WebSocketSession {
 
                 match state.ragflow_service.send_message(conv_id, message, quote, doc_ids, stream).await {
                     Ok(mut audio_stream) => {
-                        let mut audio_data = Vec::new();
+                        let mut response_data = Vec::new();
                         while let Some(chunk_result) = audio_stream.next().await {
                             match chunk_result {
-                                Ok(chunk) => audio_data.extend_from_slice(&chunk),
+                                Ok(chunk) => response_data.extend_from_slice(&chunk),
                                 Err(e) => return Err(format!("Error in audio stream: {}", e)),
                             }
                         }
-                        Ok(audio_data)
+                        
+                        // Process the JSON response and extract audio data
+                        AudioProcessor::process_json_response(&response_data)
                     },
                     Err(e) => Err(format!("Failed to send message: {}", e)),
                 }

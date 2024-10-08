@@ -36,6 +36,7 @@ export class WebsocketService {
         this.socket.onmessage = (event) => {
             if (event.data instanceof Blob) {
                 // Handle binary data (audio)
+                console.log('Received binary data:', event.data);
                 this.handleAudioData(event.data);
             } else {
                 // Handle JSON data
@@ -76,7 +77,10 @@ export class WebsocketService {
         }
 
         try {
+            console.log('Audio Blob size:', audioBlob.size);
+            console.log('Audio Blob type:', audioBlob.type);
             const arrayBuffer = await audioBlob.arrayBuffer();
+            console.log('ArrayBuffer size:', arrayBuffer.byteLength);
             const audioBuffer = await this.decodeWavData(arrayBuffer);
             this.audioQueue.push(audioBuffer);
             if (!this.isPlaying) {
@@ -95,9 +99,30 @@ export class WebsocketService {
      */
     async decodeWavData(wavData) {
         return new Promise((resolve, reject) => {
-            this.audioContext.decodeAudioData(wavData, 
-                (buffer) => resolve(buffer),
-                (error) => reject(new Error(`Error decoding WAV data: ${error}`))
+            // Log the size and first few bytes of the wavData
+            console.log('WAV data size:', wavData.byteLength);
+            const dataView = new DataView(wavData);
+            const firstBytes = Array.from(new Uint8Array(wavData.slice(0, 16))).map(b => b.toString(16).padStart(2, '0')).join(' ');
+            console.log('First 16 bytes:', firstBytes);
+
+            // Check if the data starts with the WAV header "RIFF"
+            const header = new TextDecoder().decode(wavData.slice(0, 4));
+            console.log('Header:', header);
+            if (header !== 'RIFF') {
+                console.error('Invalid WAV header:', header);
+                return reject(new Error(`Invalid WAV header: ${header}`));
+            }
+
+            this.audioContext.decodeAudioData(
+                wavData,
+                (buffer) => {
+                    console.log('Audio successfully decoded:', buffer);
+                    resolve(buffer);
+                },
+                (error) => {
+                    console.error('Error in decodeAudioData:', error);
+                    reject(new Error(`Error decoding WAV data: ${error}`));
+                }
             );
         });
     }
@@ -126,6 +151,9 @@ export class WebsocketService {
     initAudio() {
         if (!this.audioContext) {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            console.log('AudioContext initialized');
+        } else {
+            console.log('AudioContext already initialized');
         }
     }
 
