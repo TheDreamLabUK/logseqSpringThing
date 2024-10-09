@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use futures::future::join_all;
 use futures::StreamExt;
 use base64::{Engine as _, engine::general_purpose};
+use serde::{Deserialize, Serialize};
 
 pub struct WebSocketManager {
     pub sessions: Mutex<Vec<Addr<WebSocketSession>>>,
@@ -58,15 +59,24 @@ impl WebSocketManager {
         debug!("Broadcasted audio to {} sessions", sessions.len());
         Ok(())
     }
+
+    pub async fn broadcast_graph_update(&self, graph_data: &crate::models::graph::GraphData) -> Result<(), Box<dyn std::error::Error>> {
+        let json_data = json!({
+            "type": "graphUpdate",
+            "graphData": graph_data
+        });
+        self.broadcast_message(&json_data.to_string()).await
+    }
 }
 
 pub struct WebSocketSession {
     state: web::Data<AppState>,
+    tts_method: String,
 }
 
 impl WebSocketSession {
     fn new(state: web::Data<AppState>) -> Self {
-        WebSocketSession { state }
+        WebSocketSession { state, tts_method: "sonata".to_string() }
     }
 
     fn send_json_response(&self, ctx: &mut ws::WebsocketContext<Self>, data: Value) {
@@ -78,7 +88,7 @@ impl WebSocketSession {
         }
     }
 
-    fn handle_chat_message(&self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
+    fn handle_chat_message(&mut self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
         info!("Handling chat message: {:?}", msg);
         match msg["type"].as_str() {
             Some("ragflowQuery") => self.handle_ragflow_query(ctx, msg),
@@ -93,7 +103,7 @@ impl WebSocketSession {
         }
     }
 
-    fn handle_ragflow_query(&self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
+    fn handle_ragflow_query(&mut self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
         info!("Handling RAGflow query: {:?}", msg);
         let state = self.state.clone();
         let conversation_id = state.websocket_manager.conversation_id.lock().unwrap().clone();
@@ -107,7 +117,7 @@ impl WebSocketSession {
         ctx.spawn(actix::fut::wrap_future(fut));
     }
 
-    fn handle_openai_query(&self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
+    fn handle_openai_query(&mut self, ctx: &mut ws::WebsocketContext<Self>, msg: Value) {
         info!("Handling OpenAI query: {:?}", msg);
         let state = self.state.clone();
         let addr = ctx.address();
@@ -160,7 +170,7 @@ impl WebSocketSession {
         }
     }
 
-    fn handle_graph_update(&self, ctx: &mut ws::WebsocketContext<Self>) {
+    fn handle_graph_update(&mut self, ctx: &mut ws::WebsocketContext<Self>) {
         let state = self.state.clone();
         ctx.spawn(async move {
             let graph_data = state.graph_data.read().await;
@@ -181,6 +191,60 @@ impl WebSocketSession {
         }.into_actor(self).map(|response, act, ctx| {
             act.send_json_response(ctx, response);
         }));
+    }
+
+    fn handle_client_message(&mut self, msg: &str, ctx: &mut ws::WebsocketContext<Self>) {
+        match serde_json::from_str::<ClientMessage>(msg) {
+            Ok(ClientMessage::SetTTSMethod { method }) => {
+                self.tts_method = method.clone();
+                info!("TTS method set to: {}", method);
+                // Optionally send acknowledgment
+                self.send_json_response(ctx, json!({
+                    "type": "ttsMethodSet",
+                    "method": method
+                }));
+            },
+            Ok(ClientMessage::ChatMessage { message, use_openai }) => {
+                if use_openai {
+                    self.handle_openai_query(ctx, json!({"message": message}));
+                } else {
+                    self.handle_sonata_tts(ctx, message);
+                }
+            },
+            Err(e) => {
+                error!("Failed to parse client message: {}", e);
+                self.send_json_response(ctx, json!({
+                    "type": "error",
+                    "message": "Invalid message format"
+                }));
+            },
+        }
+    }
+
+    fn handle_sonata_tts(&mut self, ctx: &mut ws::WebsocketContext<Self>, message: String) {
+        let state = self.state.clone();
+        let fut = async move {
+            match state.speech_service.synthesize_with_sonata(&message).await {
+                Ok(audio_bytes) => {
+                    let audio_base64 = general_purpose::STANDARD.encode(&audio_bytes);
+                    json!({
+                        "type": "audio",
+                        "audio": audio_base64
+                    })
+                },
+                Err(e) => {
+                    error!("Sonata TTS synthesis failed: {}", e);
+                    json!({
+                        "type": "error",
+                        "message": "TTS synthesis failed"
+                    })
+                },
+            }
+        }.into_actor(self).map(|response, act, ctx| {
+            act.send_json_response(ctx, response);
+        });
+
+        ctx.spawn(fut);
     }
 }
 
@@ -276,7 +340,7 @@ impl Handler<BroadcastAudio> for WebSocketSession {
 
     fn handle(&mut self, msg: BroadcastAudio, ctx: &mut Self::Context) {
         ctx.binary(msg.0);
-        debug!("Broadcasted audio to client");
+        debug!("Broadcasted audio to client using {}", self.tts_method);
     }
 }
 
@@ -291,45 +355,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
             },
             Ok(ws::Message::Text(text)) => {
                 info!("Received message from client: {}", text);
-                match serde_json::from_str::<Value>(&text) {
-                    Ok(json_data) => {
-                        if let Some(msg_type) = json_data["type"].as_str() {
-                            match msg_type {
-                                "getInitialData" => {
-                                    debug!("Handling getInitialData request");
-                                    self.handle_graph_update(ctx);
-                                },
-                                "ragflowQuery" | "openaiQuery" => {
-                                    debug!("Handling chat message: {}", msg_type);
-                                    self.handle_chat_message(ctx, json_data);
-                                },
-                                _ => {
-                                    error!("Received unknown message type: {}", msg_type);
-                                    let error_response = json!({
-                                        "type": "error",
-                                        "message": format!("Unknown message type: {}", msg_type),
-                                    });
-                                    self.send_json_response(ctx, error_response);
-                                }
-                            }
-                        } else {
-                            error!("Received message without a type field");
-                            let error_response = json!({
-                                "type": "error",
-                                "message": "Message type not specified",
-                            });
-                            self.send_json_response(ctx, error_response);
-                        }
-                    },
-                    Err(e) => {
-                        error!("Failed to parse incoming message as JSON: {}", e);
-                        let error_response = json!({
-                            "type": "error",
-                            "message": "Invalid JSON format",
-                        });
-                        self.send_json_response(ctx, error_response);
-                    }
-                }
+                self.handle_client_message(&text, ctx);
             },
             Ok(ws::Message::Binary(bin)) => {
                 let bin_clone = bin.clone();
@@ -343,4 +369,24 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
             _ => (),
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
+enum ClientMessage {
+    #[serde(rename = "setTTSMethod")]
+    SetTTSMethod { method: String },
+    #[serde(rename = "chatMessage")]
+    ChatMessage { message: String, use_openai: bool },
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
+enum ServerMessage {
+    #[serde(rename = "ragflowAnswer")]
+    RagflowAnswer { answer: String },
+    #[serde(rename = "audio")]
+    Audio { audio: String },
+    #[serde(rename = "error")]
+    Error { message: String },
 }

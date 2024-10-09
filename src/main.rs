@@ -3,8 +3,8 @@ use actix_web::{web, App, HttpServer, middleware, HttpResponse};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::env;
+use tokio::time::{interval, Duration};
 
 use crate::app_state::AppState;
 use crate::config::Settings;
@@ -29,7 +29,7 @@ mod utils;
 async fn initialize_graph_data(app_state: &web::Data<AppState>) -> std::io::Result<()> {
     log::info!("Initializing graph data...");
     
-    match FileService::fetch_and_process_files(&*app_state.github_service, &app_state.settings).await {
+    match FileService::fetch_and_process_files(&*app_state.github_service, app_state.settings.clone()).await {
         Ok(processed_files) => {
             log::info!("Successfully processed {} files", processed_files.len());
 
@@ -65,6 +65,26 @@ async fn test_speech_service(app_state: web::Data<AppState>) -> HttpResponse {
     }
 }
 
+async fn randomize_nodes_periodically(app_state: web::Data<AppState>) {
+    let mut interval = interval(Duration::from_secs(30));
+
+    loop {
+        interval.tick().await;
+        
+        // Recalculate graph data
+        if let Err(e) = GraphService::build_graph(&app_state).await {
+            log::error!("Failed to rebuild graph: {}", e);
+            continue;
+        }
+
+        // Notify WebSocket clients about the updated graph data
+        let graph_data = app_state.graph_data.read().await;
+        if let Err(e) = app_state.websocket_manager.broadcast_graph_update(&graph_data).await {
+            log::error!("Failed to broadcast graph update: {}", e);
+        }
+    }
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
@@ -75,7 +95,7 @@ async fn main() -> std::io::Result<()> {
     let settings = match Settings::new() {
         Ok(s) => {
             log::debug!("Successfully loaded settings: {:?}", s);
-            s
+            Arc::new(RwLock::new(s))
         },
         Err(e) => {
             log::error!("Failed to load settings: {:?}", e);
@@ -86,7 +106,7 @@ async fn main() -> std::io::Result<()> {
     let file_cache = Arc::new(RwLock::new(HashMap::new()));
     let graph_data = Arc::new(RwLock::new(GraphData::default()));
     
-    let github_service: Arc<dyn GitHubService + Send + Sync> = match RealGitHubService::new(&settings) {
+    let github_service: Arc<dyn GitHubService + Send + Sync> = match RealGitHubService::new(settings.clone()).await {
         Ok(service) => Arc::new(service),
         Err(e) => {
             log::error!("Failed to initialize GitHub service: {:?}", e);
@@ -95,7 +115,7 @@ async fn main() -> std::io::Result<()> {
     };
     
     let perplexity_service = PerplexityServiceImpl::new();
-    let ragflow_service = match RAGFlowService::new(&settings) {
+    let ragflow_service = match RAGFlowService::new(settings.clone()).await {
         Ok(service) => Arc::new(service),
         Err(e) => {
             log::error!("Failed to initialize RAGFlowService: {:?}", e);
@@ -128,7 +148,7 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    let sonata_service = match SonataService::new(&PathBuf::from(&settings.sonata.voice_config_path)) {
+    let sonata_service = match SonataService::new(settings.clone()).await {
         Ok(service) => Arc::new(service),
         Err(e) => {
             log::error!("Failed to initialize SonataService: {:?}", e);
@@ -144,7 +164,7 @@ async fn main() -> std::io::Result<()> {
     let app_state = web::Data::new(AppState::new(
         graph_data,
         file_cache,
-        settings,
+        settings.clone(),
         github_service,
         perplexity_service,
         ragflow_service.clone(),
@@ -163,6 +183,12 @@ async fn main() -> std::io::Result<()> {
         log::error!("Failed to initialize RAGflow conversation: {:?}", e);
         return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize RAGflow conversation: {:?}", e)));
     }
+
+    // Spawn the randomization task
+    let randomization_state = app_state.clone();
+    tokio::spawn(async move {
+        randomize_nodes_periodically(randomization_state).await;
+    });
 
     let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let bind_address = format!("0.0.0.0:{}", port);

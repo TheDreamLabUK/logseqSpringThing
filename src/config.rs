@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use config::{Config, ConfigError, File, Environment};
-use log::debug; // Removed unused 'error' import
+use log::debug;
 use std::fmt;
 use std::env;
 
@@ -100,7 +100,6 @@ impl Settings {
         if let Ok(base_url) = env::var("RAGFLOW_BASE_URL") {
             config = config.set_override("ragflow.ragflow_api_base_url", base_url)?;
         }
-
         let settings: Settings = config.build()?.try_deserialize()?;
 
         // Debugging: Print loaded settings (exclude sensitive fields)
