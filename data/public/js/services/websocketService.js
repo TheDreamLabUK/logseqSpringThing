@@ -10,9 +10,10 @@ export class WebsocketService {
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
         this.reconnectInterval = 5000; // 5 seconds
-        this.audioContext = null;
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         this.audioQueue = [];
         this.isPlaying = false;
+        this.ttsMethod = 'sonata'; // Default TTS method
         this.connect();
     }
 
@@ -30,6 +31,11 @@ export class WebsocketService {
             console.log('WebSocket connection established');
             this.reconnectAttempts = 0;
             this.emit('open');
+            // Optionally inform server of the default TTS method
+            this.send({
+                type: 'setTTSMethod',
+                method: this.ttsMethod
+            });
         };
 
         // WebSocket message event
@@ -263,5 +269,24 @@ export class WebsocketService {
             type: 'openaiQuery',
             message
         });
+    }
+
+    toggleTTS(useOpenAI) {
+        this.ttsMethod = useOpenAI ? 'openai' : 'sonata';
+        this.send({
+            type: 'setTTSMethod',
+            method: this.ttsMethod
+        });
+    }
+
+    handleServerMessage(data) {
+        if (data.type === 'audio') {
+            this.handleAudioData(data.audio);
+        } else if (data.type === 'answer') {
+            this.emit('ragflowAnswer', data.answer);
+        } else if (data.type === 'error') {
+            this.emit('error', { type: 'server_error', message: data.message });
+        }
+        // ... handle other message types ...
     }
 }

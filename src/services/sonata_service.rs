@@ -1,6 +1,9 @@
 use std::path::Path;
 use std::error::Error;
 use std::fmt;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use crate::config::Settings;
 
 pub struct SonataSpeechSynthesizer {
     // Add necessary fields here
@@ -36,7 +39,9 @@ pub struct SonataService {
 }
 
 impl SonataService {
-    pub fn new(voice_config_path: &Path) -> Result<Self, SonataSynthError> {
+    pub async fn new(settings: Arc<RwLock<Settings>>) -> Result<Self, SonataSynthError> {
+        let settings = settings.read().await;
+        let voice_config_path = Path::new(&settings.sonata.voice_config_path);
         let synthesizer = SonataSpeechSynthesizer::new(voice_config_path)?;
         Ok(SonataService { synthesizer })
     }

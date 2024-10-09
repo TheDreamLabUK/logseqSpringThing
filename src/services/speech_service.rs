@@ -1,4 +1,4 @@
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio_tungstenite::{connect_async, WebSocketStream, MaybeTlsStream};
 use tungstenite::protocol::Message;
 use tungstenite::http::Request;
@@ -18,7 +18,7 @@ pub struct SpeechService {
     sender: Arc<Mutex<mpsc::Sender<SpeechCommand>>>,
     sonata_service: Arc<SonataService>,
     websocket_manager: Arc<WebSocketManager>,
-    settings: Settings,
+    settings: Arc<RwLock<Settings>>,
 }
 
 #[derive(Debug)]
@@ -29,7 +29,7 @@ enum SpeechCommand {
 }
 
 impl SpeechService {
-    pub fn new(sonata_service: Arc<SonataService>, websocket_manager: Arc<WebSocketManager>, settings: Settings) -> Self {
+    pub fn new(sonata_service: Arc<SonataService>, websocket_manager: Arc<WebSocketManager>, settings: Arc<RwLock<Settings>>) -> Self {
         let (tx, rx) = mpsc::channel(100);
         let sender = Arc::new(Mutex::new(tx));
 
@@ -59,9 +59,10 @@ impl SpeechService {
                         // Initialize WebSocket connection to OpenAI
                         let url = Url::parse("wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01").expect("Failed to parse URL");
                         
+                        let settings_read = settings.read().await;
                         let request = Request::builder()
                             .uri(url.as_str())
-                            .header("Authorization", format!("Bearer {}", settings.openai.openai_api_key))
+                            .header("Authorization", format!("Bearer {}", settings_read.openai.openai_api_key))
                             .header("OpenAI-Beta", "realtime=v1")
                             .header("User-Agent", "WebXR Graph")
                             .header("Origin", "https://api.openai.com")
@@ -71,6 +72,7 @@ impl SpeechService {
                             .header("Upgrade", "websocket")
                             .body(())
                             .expect("Failed to build request");
+                        drop(settings_read);
 
                         match connect_async(request).await {
                             Ok((stream, _)) => {
@@ -208,5 +210,9 @@ impl SpeechService {
         let command = SpeechCommand::Close;
         self.sender.lock().await.send(command).await?;
         Ok(())
+    }
+
+    pub async fn synthesize_with_sonata(&self, message: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+        self.sonata_service.synthesize(message).await.map_err(|e| Box::new(e) as Box<dyn Error>)
     }
 }

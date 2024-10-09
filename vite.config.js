@@ -1,13 +1,21 @@
 import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
 import { createHtmlPlugin } from 'vite-plugin-html';
+import path from 'path';
 
 export default defineConfig({
   root: 'data/public',
-  plugins: [createHtmlPlugin()],
+  plugins: [
+    vue(),
+    createHtmlPlugin(),
+  ],
   build: {
-    outDir: './dist',
+    outDir: '../dist', // Output to data/dist
     emptyOutDir: true,
     rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'data/public/index.html'),
+      },
       output: {
         globals: {
           'three': 'THREE'
@@ -18,7 +26,8 @@ export default defineConfig({
   publicDir: 'assets',
   resolve: {
     alias: {
-      '@': '/data/public',  // Add an alias for cleaner imports
+      '@': path.resolve(__dirname, 'data/public'),
+      'vue': 'vue/dist/vue.esm-bundler.js'
     }
   },
   server: {
@@ -26,6 +35,6 @@ export default defineConfig({
     port: 3000
   },
   optimizeDeps: {
-    include: ['three'],  // Ensure Three.js is optimized
+    include: ['three', 'vue'],
   }
 });

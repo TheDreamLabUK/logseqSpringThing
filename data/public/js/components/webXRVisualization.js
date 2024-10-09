@@ -302,6 +302,28 @@ export class WebXRVisualization {
         });
     }
 
+    handleSpacemouseInput(x, y, z) {
+        // Adjust these multipliers to control the sensitivity of the Spacemouse
+        const moveSpeed = 5;
+        const rotateSpeed = 0.05;
+
+        // Move the camera
+        this.camera.position.x += x * moveSpeed;
+        this.camera.position.y -= y * moveSpeed;
+        this.camera.position.z -= z * moveSpeed;
+
+        // Rotate the camera
+        this.camera.rotation.y -= x * rotateSpeed;
+        this.camera.rotation.x -= y * rotateSpeed;
+        this.camera.rotation.z -= z * rotateSpeed;
+
+        // Update the OrbitControls target
+        this.controls.target.copy(this.camera.position).add(new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion));
+
+        // Update the controls
+        this.controls.update();
+    }
+
     animate() {
         this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
         this.controls.update();

@@ -14,7 +14,7 @@ use crate::utils::gpu_compute::GPUCompute;
 pub struct AppState {
     pub graph_data: Arc<RwLock<GraphData>>,
     pub file_cache: Arc<RwLock<HashMap<String, String>>>,
-    pub settings: Settings,
+    pub settings: Arc<RwLock<Settings>>,
     pub github_service: Arc<dyn GitHubService + Send + Sync>,
     pub perplexity_service: PerplexityServiceImpl,
     pub ragflow_service: Arc<RAGFlowService>,
@@ -28,7 +28,7 @@ impl AppState {
     pub fn new(
         graph_data: Arc<RwLock<GraphData>>,
         file_cache: Arc<RwLock<HashMap<String, String>>>,
-        settings: Settings,
+        settings: Arc<RwLock<Settings>>,
         github_service: Arc<dyn GitHubService + Send + Sync>,
         perplexity_service: PerplexityServiceImpl,
         ragflow_service: Arc<RAGFlowService>,

@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use chrono::Utc;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GithubFile {
@@ -38,7 +40,8 @@ pub struct RealGitHubService {
 }
 
 impl RealGitHubService {
-    pub fn new(settings: &Settings) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn new(settings: Arc<RwLock<Settings>>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let settings = settings.read().await;
         let github_settings = &settings.github;
         if github_settings.github_access_token.is_empty() {
             return Err("GitHub access token is empty".into());
@@ -127,7 +130,7 @@ pub struct FileService;
 impl FileService {
     pub async fn fetch_and_process_files(
         github_service: &dyn GitHubService,
-        settings: &Settings,
+        settings: Arc<RwLock<Settings>>,
     ) -> Result<Vec<ProcessedFile>, Box<dyn std::error::Error + Send + Sync>> {
         let github_files = github_service.fetch_files().await?;
         debug!("Fetched {} files from GitHub", github_files.len());
@@ -156,7 +159,7 @@ impl FileService {
 
     async fn process_files(
         github_files: Vec<GithubFile>,
-        _settings: &Settings,
+        _settings: Arc<RwLock<Settings>>,
         metadata_map: &mut HashMap<String, Metadata>,
     ) -> Result<Vec<ProcessedFile>, Box<dyn std::error::Error + Send + Sync>> {
         let mut processed_files = Vec::new();

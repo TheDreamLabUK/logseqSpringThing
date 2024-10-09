@@ -6,6 +6,8 @@ use futures::stream::{Stream, StreamExt};
 use std::pin::Pin;
 use serde_json::json;
 use crate::utils::audio_processor::AudioProcessor;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[derive(Debug)]
 pub enum RAGFlowError {
@@ -47,8 +49,9 @@ pub struct RAGFlowService {
 }
 
 impl RAGFlowService {
-    pub fn new(settings: &Settings) -> Result<Self, RAGFlowError> {
+    pub async fn new(settings: Arc<RwLock<Settings>>) -> Result<Self, RAGFlowError> {
         let client = Client::new();
+        let settings = settings.read().await;
 
         Ok(RAGFlowService {
             client,

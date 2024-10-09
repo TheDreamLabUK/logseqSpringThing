@@ -115,6 +115,24 @@
             color: white;
         }
 
+        /* Spacemouse button styling */
+        #enable-spacemouse {
+            position: absolute;
+            top: 60px;
+            right: 20px;
+            padding: 10px 15px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #enable-spacemouse:hover {
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+
         /* Responsive adjustments */
         @media (max-width: 600px) {
             #chat-container {
@@ -123,10 +141,14 @@
                 bottom: 10px;
             }
 
-            #fullscreen-button {
+            #fullscreen-button, #enable-spacemouse {
                 top: 10px;
                 right: 10px;
                 padding: 8px 12px;
+            }
+
+            #enable-spacemouse {
+                top: 50px;
             }
 
             #connection-status {
@@ -145,6 +167,9 @@
 
     <!-- Fullscreen toggle button -->
     <button id="fullscreen-button">Toggle Fullscreen</button>
+
+    <!-- Enable Spacemouse button -->
+    <button id="enable-spacemouse">Enable Spacemouse</button>
 
     <!-- Chat container -->
     <div id="chat-container">
