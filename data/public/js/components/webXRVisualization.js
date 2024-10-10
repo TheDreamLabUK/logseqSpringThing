@@ -243,8 +243,166 @@ export class WebXRVisualization {
         const existingNodeIds = new Set(nodes.map(node => node.id));
 
         this.nodeMeshes.forEach((mesh, nodeId) => {
-    // ... [rest of the WebXRVisualization class methods remain unchanged]
+            if (!existingNodeIds.has(nodeId)) {
+                this.scene.remove(mesh);
+                this.nodeMeshes.delete(nodeId);
+                const label = this.nodeLabels.get(nodeId);
+                if (label) {
+                    this.scene.remove(label);
+                    this.nodeLabels.delete(nodeId);
+                }
+            }
+        });
 
-    // Remove the handleSpacemouseInput method as it's no longer needed
-    // ... [rest of the WebXRVisualization class methods remain unchanged]
+        nodes.forEach(node => {
+            if (!node.id || typeof node.x !== 'number' || typeof node.y !== 'number' || typeof node.z !== 'number') {
+                console.warn('Invalid node data:', node);
+                return;
+            }
+            let mesh = this.nodeMeshes.get(node.id);
+            const fileSize = node.metadata && node.metadata.file_size ? parseInt(node.metadata.file_size) : 1;
+            const size = Math.max(this.minNodeSize, Math.min(this.maxNodeSize, Math.sqrt(fileSize) / this.nodeSizeScalingFactor));
+
+            if (!mesh) {
+                const geometry = new THREE.SphereGeometry(size, 32, 32);
+                const material = new THREE.MeshStandardMaterial({ color: this.nodeColor });
+                mesh = new THREE.Mesh(geometry, material);
+                mesh.layers.enable(1); // Enable bloom for nodes
+                this.scene.add(mesh);
+                this.nodeMeshes.set(node.id, mesh);
+
+                const label = this.createNodeLabel(node.label || node.id);
+                this.scene.add(label);
+                this.nodeLabels.set(node.id, label);
+            } else {
+                mesh.scale.setScalar(size);
+            }
+
+            mesh.position.set(node.x, node.y, node.z);
+            const label = this.nodeLabels.get(node.id);
+            label.position.set(node.x, node.y + size + 2, node.z);
+        });
+    }
+
+    updateEdges(edges) {
+        const existingEdgeKeys = new Set(edges.map(edge => `${edge.source}-${edge.target_node}`));
+
+        this.edgeMeshes.forEach((line, edgeKey) => {
+            if (!existingEdgeKeys.has(edgeKey)) {
+                this.scene.remove(line);
+                this.edgeMeshes.delete(edgeKey);
+            }
+        });
+
+        edges.forEach(edge => {
+            if (!edge.source || !edge.target_node) {
+                console.warn('Invalid edge data:', edge);
+                return;
+            }
+            const edgeKey = `${edge.source}-${edge.target_node}`;
+            let line = this.edgeMeshes.get(edgeKey);
+            if (!line) {
+                const sourceMesh = this.nodeMeshes.get(edge.source);
+                const targetMesh = this.nodeMeshes.get(edge.target_node);
+                if (sourceMesh && targetMesh) {
+                    const geometry = new THREE.BufferGeometry().setFromPoints([
+                        sourceMesh.position,
+                        targetMesh.position
+                    ]);
+                    const material = new THREE.LineBasicMaterial({
+                        color: this.edgeColor,
+                        transparent: true,
+                        opacity: this.edgeOpacity
+                    });
+                    line = new THREE.Line(geometry, material);
+                    line.layers.enable(1); // Enable bloom for edges
+                    this.scene.add(line);
+                    this.edgeMeshes.set(edgeKey, line);
+                } else {
+                    console.warn(`Unable to create edge: ${edgeKey}. Source or target node not found.`);
+                }
+            } else {
+                const sourceMesh = this.nodeMeshes.get(edge.source);
+                const targetMesh = this.nodeMeshes.get(edge.target_node);
+                if (sourceMesh && targetMesh) {
+                    const positions = line.geometry.attributes.position.array;
+                    positions[0] = sourceMesh.position.x;
+                    positions[1] = sourceMesh.position.y;
+                    positions[2] = sourceMesh.position.z;
+                    positions[3] = targetMesh.position.x;
+                    positions[4] = targetMesh.position.y;
+                    positions[5] = targetMesh.position.z;
+                    line.geometry.attributes.position.needsUpdate = true;
+                } else {
+                    console.warn(`Unable to update edge: ${edgeKey}. Source or target node not found.`);
+                }
+            }
+        });
+    }
+
+    createNodeLabel(text) {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        context.font = `${this.labelFontSize}px Arial`;
+        const metrics = context.measureText(text);
+        const textWidth = metrics.width;
+
+        canvas.width = textWidth + 10;
+        canvas.height = this.labelFontSize + 10;
+
+        context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.font = `${this.labelFontSize}px Arial`;
+        context.fillStyle = 'white';
+        context.fillText(text, 5, this.labelFontSize);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+        const sprite = new THREE.Sprite(spriteMaterial);
+        sprite.scale.set(canvas.width / 10, canvas.height / 10, 1);
+        sprite.layers.set(1); // Enable bloom for labels
+
+        return sprite;
+    }
+
+    animate() {
+        this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
+        this.controls.update();
+
+        this.hologramGroup.children.forEach(child => {
+            child.rotation.x += child.userData.rotationSpeed;
+            child.rotation.y += child.userData.rotationSpeed;
+        });
+
+        this.composer.render();
+    }
+
+    onWindowResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        if (this.composer) {
+            this.composer.setSize(window.innerWidth, window.innerHeight);
+        }
+    }
+
+    dispose() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+        }
+        this.scene.traverse(object => {
+            if (object.geometry) {
+                object.geometry.dispose();
+            }
+            if (object.material) {
+                if (Array.isArray(object.material)) {
+                    object.material.forEach(material => material.dispose());
+                } else {
+                    object.material.dispose();
+                }
+            }
+        });
+        this.renderer.dispose();
+        this.composer.dispose();
+    }
 }
