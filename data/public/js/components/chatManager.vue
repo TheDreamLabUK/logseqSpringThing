@@ -36,7 +36,12 @@
            }
        },
        mounted() {
-           this.websocketService.on('message', this.receiveMessage);
+           // Ensure that websocketService is available
+           if (this.websocketService) {
+               this.websocketService.on('message', this.handleMessage);
+           } else {
+               console.error('WebSocketService is undefined');
+           }
        },
        beforeUnmount() {
            // Remove the event listener when the component is unmounted

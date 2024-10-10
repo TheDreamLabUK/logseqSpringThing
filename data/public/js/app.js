@@ -5,6 +5,7 @@ import WebsocketService from './services/websocketService.js';
 import { GraphDataManager } from './services/graphDataManager.js';
 import { WebXRVisualization } from './components/webXRVisualization.js';
 import ChatManager from './components/chatManager.vue';
+import ControlPanel from './components/ControlPanel.vue'; // Import ControlPanel
 import { Interface } from './components/interface.js';
 import { isGPUAvailable, initGPU } from './gpuUtils.js';
 import { enableSpacemouse } from './services/spacemouse.js';
@@ -32,7 +33,7 @@ class App {
             console.warn('GPU acceleration not available, using CPU fallback');
         }
 
-        // Initialize Vue App
+        // Initialize Vue App with ChatManager and ControlPanel
         this.initVueApp();
 
         // Setup Event Listeners
@@ -40,9 +41,29 @@ class App {
     }
 
     initVueApp() {
-        const app = createApp(ChatManager);
+        const app = createApp({
+            components: {
+                ChatManager,
+                ControlPanel // Register ControlPanel
+            },
+            template: `
+                <div>
+                    <chat-manager></chat-manager>
+                    <control-panel @control-change="handleControlChange"></control-panel>
+                </div>
+            `,
+            methods: {
+                handleControlChange(data) {
+                    // Handle control changes from ControlPanel
+                    console.log('Control Change:', data);
+                    // Implement logic to update visualization based on control changes
+                    this.visualization.applyControlChange(data);
+                }
+            }
+        });
+
         app.config.globalProperties.$websocketService = this.websocketService;
-        app.mount('#chat-container');
+        app.mount('#app'); // Mount to #app which contains both chat and control panel
     }
 
     setupEventListeners() {
@@ -101,14 +122,17 @@ class App {
         });
 
         // Initialize audio on first user interaction
-        const initAudioOnUserInteraction = () => {
-            this.websocketService.initAudio();
-            console.log('Audio initialized on user interaction');
-            document.removeEventListener('click', initAudioOnUserInteraction);
-            document.removeEventListener('touchstart', initAudioOnUserInteraction);
+        let audioContext;
+
+        document.addEventListener('click', initAudio, { once: true });
+
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            // Your audio setup code here
         };
-        document.addEventListener('click', initAudioOnUserInteraction);
-        document.addEventListener('touchstart', initAudioOnUserInteraction);
+
+        document.addEventListener('click', initAudio);
+        document.addEventListener('touchstart', initAudio);
     }
 
     handleWebSocketMessage(data) {

@@ -40,18 +40,14 @@ class WebsocketService {
 
         // WebSocket message event
         this.socket.onmessage = (event) => {
-            console.log('Received WebSocket message:', event.data);
             try {
                 const data = JSON.parse(event.data);
-                if (data.type === 'ragflowResponse') {
-                    this.handleRagflowResponse(data.data);
-                } else {
-                    this.emit('message', data);
-                }
-            } catch (err) {
-                console.error('Error parsing WebSocket message:', err);
+                this.emit('message', data);
+            } catch (error) {
+                console.error('Error parsing WebSocket message:', error);
                 console.error('Raw message:', event.data);
-                this.emit('error', { type: 'parse_error', message: err.message, rawData: event.data });
+                // Emit an error event that can be handled elsewhere
+                this.emit('error', { type: 'parse_error', message: error.message, rawData: event.data });
             }
         };
 

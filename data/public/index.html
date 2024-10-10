@@ -4,9 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebXR Graph Visualization</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- 
+        Removed the Three.js CDN to prevent multiple instances.
+        Three.js should now be imported via JavaScript modules within your app.js.
+    -->
+    
+    <!-- Vue.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/vue@3.2.31/dist/vue.global.prod.js"></script>
+    
     <style>
+        /* Existing styles preserved */
         /* ... (keep existing styles) ... */
 
         /* Add styles for the control panel */
@@ -18,6 +26,7 @@
             padding: 15px;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1000; /* Ensure it appears above other elements */
         }
 
         /* Chat messages area */
@@ -66,6 +75,7 @@
             border-radius: 4px;
             cursor: pointer;
             transition: background-color 0.3s;
+            z-index: 1000;
         }
 
         #fullscreen-button:hover {
@@ -80,6 +90,7 @@
             padding: 5px 10px;
             border-radius: 4px;
             font-weight: bold;
+            z-index: 1000;
         }
 
         #connection-status.connected {
@@ -104,6 +115,7 @@
             border-radius: 4px;
             cursor: pointer;
             transition: background-color 0.3s;
+            z-index: 1000;
         }
 
         #enable-spacemouse:hover {
@@ -112,12 +124,8 @@
 
         /* Responsive adjustments */
         @media (max-width: 600px) {
-            #chat-container {
-                width: 90%;
-                left: 5%;
-                bottom: 10px;
-            }
-
+            /* Removed #chat-container modifications as Vue handles chat rendering */
+            
             #fullscreen-button, #enable-spacemouse {
                 top: 10px;
                 right: 10px;
@@ -140,7 +148,7 @@
     <div id="scene-container"></div>
 
     <!-- Connection status indicator -->
-    <div id="connection-status">Disconnected</div>
+    <div id="connection-status" class="disconnected">Disconnected</div>
 
     <!-- Fullscreen toggle button -->
     <button id="fullscreen-button">Toggle Fullscreen</button>
@@ -150,11 +158,10 @@
 
     <!-- Vue app container -->
     <div id="app">
-        <!-- Chat container -->
-        <div id="chat-container"></div>
-
-        <!-- Control panel container -->
-        <div id="control-panel"></div>
+        <!-- 
+            The Vue application will mount here and render the ChatManager and ControlPanel components.
+            Removed the empty #chat-container and #control-panel divs to let Vue manage them directly.
+        -->
     </div>
 
     <!-- Include the main application script -->

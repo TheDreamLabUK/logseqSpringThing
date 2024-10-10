@@ -261,6 +261,10 @@ export class WebXRVisualization {
             }
             let mesh = this.nodeMeshes.get(node.id);
             const fileSize = node.metadata && node.metadata.file_size ? parseInt(node.metadata.file_size) : 1;
+            if (isNaN(fileSize) || fileSize <= 0) {
+                console.warn(`Invalid file_size for node ${node.id}:`, node.metadata.file_size);
+                return;
+            }
             const size = Math.max(this.minNodeSize, Math.min(this.maxNodeSize, Math.sqrt(fileSize) / this.nodeSizeScalingFactor));
 
             if (!mesh) {
@@ -362,6 +366,10 @@ export class WebXRVisualization {
         sprite.scale.set(canvas.width / 10, canvas.height / 10, 1);
         sprite.layers.set(1); // Enable bloom for labels
 
+        // Optional: Add depth or background enhancements
+        spriteMaterial.depthWrite = false;
+        spriteMaterial.transparent = true;
+
         return sprite;
     }
 
@@ -404,5 +412,21 @@ export class WebXRVisualization {
         });
         this.renderer.dispose();
         this.composer.dispose();
+    }
+
+    applyControlChange({ name, value }) {
+        switch (name) {
+            case 'node_color':
+                this.nodeColor = parseInt(value.replace('#', '0x'), 16);
+                this.updateNodes(this.graphDataManager.getGraphData().nodes);
+                break;
+            case 'edge_color':
+                this.edgeColor = parseInt(value.replace('#', '0x'), 16);
+                this.updateEdges(this.graphDataManager.getGraphData().edges);
+                break;
+            // Handle other controls similarly
+            default:
+                console.warn(`Unhandled control change: ${name}`);
+        }
     }
 }
