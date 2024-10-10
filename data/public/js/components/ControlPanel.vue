@@ -1,4 +1,4 @@
-<template>
+s<template>
   <div id="control-panel" :class="{ hidden: isHidden }">
     <button @click="hidePanel" class="hide-button">Hide Panel</button>
     <div class="controls-container">
@@ -59,7 +59,14 @@ export default {
       this.isHidden = true;
     },
     emitChange(name, value) {
+      // Convert color hex to 0xRRGGBB format for Three.js
+      if (this.isColorControl(name)) {
+        value = parseInt(value.replace('#', '0x'), 16);
+      }
       this.$emit('control-change', { name, value });
+    },
+    isColorControl(name) {
+      return ['node_color', 'edge_color', 'hologram_color'].includes(name);
     },
     resetControls() {
       this.controls.forEach(control => {

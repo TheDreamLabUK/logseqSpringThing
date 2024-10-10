@@ -107,37 +107,7 @@ export class WebXRVisualization {
         this.animationFrameId = null;
 
         this.selectedNode = null;
-
-        this.initialize();
-    }
-
-    async initialize() {
-        try {
-            const settings = await loadSettings();
-            this.applySettings(settings);
-        } catch (error) {
-            console.error('Error loading settings:', error);
-            this.applyDefaultSettings();
-        }
-        this.initThreeJS();
-        this.createHologramStructure();
-        window.addEventListener('resize', this.onWindowResize.bind(this), false);
-        this.animate();
-        this.updateVisualization();
-    }
-
-    applySettings(settings) {
-        this.nodeColor = parseInt(settings.visualization.node_color, 16) || 0x1A0B31;
-        this.edgeColor = parseInt(settings.visualization.edge_color, 16) || 0xff0000;
-        this.hologramColor = parseInt(settings.visualization.hologram_color, 16) || 0xFFD700;
-        this.nodeSizeScalingFactor = settings.visualization.node_size_scaling_factor || 1000;
-        this.hologramScale = settings.visualization.hologram_scale || 1;
-        this.hologramOpacity = (settings.visualization.hologram_opacity || 0.1) * 1;
-        this.edgeOpacity = settings.visualization.edge_opacity || 0.3;
-        this.labelFontSize = settings.visualization.label_font_size || 48;
-        this.fogDensity = settings.visualization.fog_density || 0.002;
-        this.minNodeSize = settings.visualization.min_node_size || 1;
-        this.maxNodeSize = settings.visualization.max_node_size || 10;
+        this.applyDefaultSettings();
     }
 
     applyDefaultSettings() {
@@ -152,6 +122,15 @@ export class WebXRVisualization {
         this.fogDensity = 0.002;
         this.minNodeSize = 1;
         this.maxNodeSize = 10;
+        this.nodeBloomStrength = 0.1;
+        this.nodeBloomRadius = 0.1;
+        this.nodeBloomThreshold = 0;
+        this.edgeBloomStrength = 0.2;
+        this.edgeBloomRadius = 0.3;
+        this.edgeBloomThreshold = 0;
+        this.environmentBloomStrength = 1;
+        this.environmentBloomRadius = 1;
+        this.environmentBloomThreshold = 0;
     }
 
     initThreeJS() {
@@ -165,16 +144,13 @@ export class WebXRVisualization {
         const renderPass = new RenderPass(this.scene, this.camera);
         this.composer.addPass(renderPass);
 
-        const bloomPass = new UnrealBloomPass(
+        this.bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
-            2.0,  // Strength (increased for heavier bloom)
-            0.5,  // Radius
-            0.1   // Threshold (lowered to make bloom more visible)
+            this.environmentBloomStrength,
+            this.environmentBloomRadius,
+            this.environmentBloomThreshold
         );
-        bloomPass.threshold = 0;
-        bloomPass.strength = 3.0;  // Increased bloom strength
-        bloomPass.radius = 1;
-        this.composer.addPass(bloomPass);
+        this.composer.addPass(this.bloomPass);
     }
 
     addLights() {
@@ -187,6 +163,9 @@ export class WebXRVisualization {
     }
 
     createHologramStructure() {
+        // Clear existing hologram group
+        this.hologramGroup.clear();
+
         // Create a Buckminster Fullerene
         const buckyGeometry = new THREE.IcosahedronGeometry(40 * this.hologramScale, 1);
         const buckyMaterial = new THREE.MeshBasicMaterial({
@@ -280,6 +259,7 @@ export class WebXRVisualization {
                 this.nodeLabels.set(node.id, label);
             } else {
                 mesh.scale.setScalar(size);
+                mesh.material.color.setHex(this.nodeColor);
             }
 
             mesh.position.set(node.x, node.y, node.z);
@@ -337,6 +317,8 @@ export class WebXRVisualization {
                     positions[4] = targetMesh.position.y;
                     positions[5] = targetMesh.position.z;
                     line.geometry.attributes.position.needsUpdate = true;
+                    line.material.color.setHex(this.edgeColor);
+                    line.material.opacity = this.edgeOpacity;
                 } else {
                     console.warn(`Unable to update edge: ${edgeKey}. Source or target node not found.`);
                 }
@@ -411,22 +393,143 @@ export class WebXRVisualization {
             }
         });
         this.renderer.dispose();
-        this.composer.dispose();
+        if (this.controls) {
+            this.controls.dispose();
+        }
     }
 
-    applyControlChange({ name, value }) {
-        switch (name) {
-            case 'node_color':
-                this.nodeColor = parseInt(value.replace('#', '0x'), 16);
-                this.updateNodes(this.graphDataManager.getGraphData().nodes);
-                break;
-            case 'edge_color':
-                this.edgeColor = parseInt(value.replace('#', '0x'), 16);
-                this.updateEdges(this.graphDataManager.getGraphData().edges);
-                break;
-            // Handle other controls similarly
-            default:
-                console.warn(`Unhandled control change: ${name}`);
+    updateVisualFeatures(changes) {
+        console.log('Updating visual features:', changes);
+        let needsUpdate = false;
+
+        for (const [name, value] of Object.entries(changes)) {
+            switch (name) {
+                case 'node_color':
+                    this.nodeColor = value;
+                    this.nodeMeshes.forEach(mesh => {
+                        mesh.material.color.setHex(value);
+                    });
+                    needsUpdate = true;
+                    break;
+                case 'edge_color':
+                    this.edgeColor = value;
+                    this.edgeMeshes.forEach(line => {
+                        line.material.color.setHex(value);
+                    });
+                    needsUpdate = true;
+                    break;
+                case 'hologram_color':
+                    this.hologramColor = value;
+                    this.hologramGroup.children.forEach(child => {
+                        child.material.color.setHex(value);
+                    });
+                    needsUpdate = true;
+                    break;
+                case 'node_size_scaling_factor':
+                    this.nodeSizeScalingFactor = value;
+                    this.updateVisualization();
+                    needsUpdate = true;
+                    break;
+                case 'hologram_scale':
+                    this.hologramScale = value;
+                    this.createHologramStructure();
+                    needsUpdate = true;
+                    break;
+                case 'hologram_opacity':
+                    this.hologramOpacity = value;
+                    this.hologramGroup.children.forEach(child => {
+                        child.material.opacity = value;
+                    });
+                    needsUpdate = true;
+                    break;
+                case 'edge_opacity':
+                    this.edgeOpacity = value;
+                    this.edgeMeshes.forEach(line => {
+                        line.material.opacity = value;
+                    });
+                    needsUpdate = true;
+                    break;
+                case 'label_font_size':
+                    this.labelFontSize = value;
+                    this.updateNodeLabels();
+                    needsUpdate = true;
+                    break;
+                case 'fog_density':
+                    this.fogDensity = value;
+                    this.scene.fog.density = value;
+                    needsUpdate = true;
+                    break;
+                case 'node_bloom_strength':
+                    this.nodeBloomStrength = value;
+                    this.updateBloomPass();
+                    needsUpdate = true;
+                    break;
+                case 'node_bloom_radius':
+                    this.nodeBloomRadius = value;
+                    this.updateBloomPass();
+                    needsUpdate = true;
+                    break;
+                case 'node_bloom_threshold':
+                    this.nodeBloomThreshold = value;
+                    this.updateBloomPass();
+                    needsUpdate = true;
+                    break;
+                case 'edge_bloom_strength':
+                    this.edgeBloomStrength = value;
+                    this.updateBloomPass();
+                    needsUpdate = true;
+                    break;
+                case 'edge_bloom_radius':
+                    this.edgeBloomRadius = value;
+                    this.updateBloomPass();
+                    needsUpdate = true;
+                    break;
+                case 'edge_bloom_threshold':
+                    this.edgeBloomThreshold = value;
+                    this.updateBloomPass();
+                    needsUpdate = true;
+                    break;
+                case 'environment_bloom_strength':
+                    this.environmentBloomStrength = value;
+                    this.updateBloomPass();
+                    needsUpdate = true;
+                    break;
+                case 'environment_bloom_radius':
+                    this.environmentBloomRadius = value;
+                    this.updateBloomPass();
+                    needsUpdate = true;
+                    break;
+                case 'environment_bloom_threshold':
+                    this.environmentBloomThreshold = value;
+                    this.updateBloomPass();
+                    needsUpdate = true;
+                    break;
+            }
+        }
+
+        if (needsUpdate) {
+            this.composer.render();
+        }
+    }
+
+    updateNodeLabels() {
+        this.nodeLabels.forEach((label, nodeId) => {
+            const node = this.nodeMeshes.get(nodeId);
+            if (node) {
+                this.scene.remove(label);
+                const newLabel = this.createNodeLabel(label.userData.text);
+                newLabel.position.copy(label.position);
+                this.scene.add(newLabel);
+                this.nodeLabels.set(nodeId, newLabel);
+            }
+        });
+    }
+
+    updateBloomPass() {
+        if (this.bloomPass) {
+            this.bloomPass.strength = this.environmentBloomStrength;
+            this.bloomPass.radius = this.environmentBloomRadius;
+            this.bloomPass.threshold = this.environmentBloomThreshold;
         }
     }
 }

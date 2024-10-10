@@ -4,13 +4,13 @@ import { createHtmlPlugin } from 'vite-plugin-html';
 import path from 'path';
 
 export default defineConfig({
-  root: 'data/public',
+  root: path.resolve(__dirname, 'data/public'),
   plugins: [
     vue(),
     createHtmlPlugin(),
   ],
   build: {
-    outDir: '../dist', // Output to data/dist
+    outDir: path.resolve(__dirname, 'data/dist'),
     emptyOutDir: true,
     rollupOptions: {
       input: {
@@ -23,12 +23,13 @@ export default defineConfig({
       }
     }
   },
-  publicDir: 'assets',
+  publicDir: path.resolve(__dirname, 'data/public/assets'),
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'data/public'),
+      '@': path.resolve(__dirname, 'data/public/js'),
       'vue': 'vue/dist/vue.esm-bundler.js'
-    }
+    },
+    extensions: ['.js', '.json', '.vue'] // Add explicit extensions to resolve
   },
   server: {
     open: true,
