@@ -4,43 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebXR Graph Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.2.31/dist/vue.global.prod.js"></script>
     <style>
-        /* Reset default margins and paddings */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        /* ... (keep existing styles) ... */
 
-        body { 
-            font-family: Arial, sans-serif; 
-            overflow: hidden; 
-            position: relative;
-            height: 100vh;
-            width: 100vw;
-        }
-
-        /* Container for the 3D scene */
-        #scene-container { 
-            width: 100vw; 
-            height: 100vh; 
-            display: block;
-        }
-
-        /* Chat container styling */
-        #chat-container {
+        /* Add styles for the control panel */
+        #control-panel {
             position: absolute;
-            bottom: 20px;
-            left: 20px;
-            width: 300px;
-            max-height: 60vh;
+            top: 20px;
+            right: 20px;
             background-color: rgba(255, 255, 255, 0.85);
             padding: 15px;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
         }
 
         /* Chat messages area */
@@ -171,13 +148,13 @@
     <!-- Enable Spacemouse button -->
     <button id="enable-spacemouse">Enable Spacemouse</button>
 
-    <!-- Chat container -->
-    <div id="chat-container">
-        <div id="chat-messages"></div>
-        <div id="chat-input-area">
-            <input type="text" id="chat-input" placeholder="Ask a question...">
-            <button id="send-button">Send</button>
-        </div>
+    <!-- Vue app container -->
+    <div id="app">
+        <!-- Chat container -->
+        <div id="chat-container"></div>
+
+        <!-- Control panel container -->
+        <div id="control-panel"></div>
     </div>
 
     <!-- Include the main application script -->

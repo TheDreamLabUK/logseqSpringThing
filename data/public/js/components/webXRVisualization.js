@@ -8,7 +8,7 @@ import net from 'net'; // Node.js module for network communication
 
 // Constants for Spacemouse sensitivity
 const TRANSLATION_SPEED = 0.01;
-const ROTATION_SPEED = 0.001;
+import WebSocketService from '../services/websocketService.js'; // Updated import to use default import
 
 // Function to load and parse settings.toml
 async function loadSettings() {

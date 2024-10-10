@@ -1,13 +1,13 @@
 // data/public/js/app.js
 
 import { createApp } from 'vue';
-import { WebsocketService } from './services/websocketService.js';
+import WebsocketService from './services/websocketService.js';
 import { GraphDataManager } from './services/graphDataManager.js';
 import { WebXRVisualization } from './components/webXRVisualization.js';
 import ChatManager from './components/chatManager.vue';
 import { Interface } from './components/interface.js';
 import { isGPUAvailable, initGPU } from './gpuUtils.js';
-import { enableSpacemouse } from './spacemouse.js';
+import { enableSpacemouse } from './services/spacemouse.js';
 
 class App {
     constructor() {

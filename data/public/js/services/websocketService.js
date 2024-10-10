@@ -3,7 +3,7 @@
 /**
  * WebsocketService handles the WebSocket connection and communication with the server.
  */
-export class WebsocketService {
+class WebsocketService {
     constructor() {
         this.socket = null;
         this.listeners = {};
@@ -290,3 +290,5 @@ export class WebsocketService {
         // ... handle other message types ...
     }
 }
+
+export default WebsocketService

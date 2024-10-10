@@ -19,17 +19,17 @@ importers:
         version: 3.0.0
       vite:
         specifier: ^4.3.9
-        version: 4.5.5(terser@5.34.0)
+        version: 4.5.5(terser@5.34.1)
       vite-plugin-html:
         specifier: ^3.2.2
-        version: 3.2.2(vite@4.5.5(terser@5.34.0))
+        version: 3.2.2(vite@4.5.5(terser@5.34.1))
       vue:
         specifier: ^3.5.11
         version: 3.5.11
     devDependencies:
       '@vitejs/plugin-vue':
         specifier: ^5.1.4
-        version: 5.1.4(vite@4.5.5(terser@5.34.0))(vue@3.5.11)
+        version: 5.1.4(vite@4.5.5(terser@5.34.1))(vue@3.5.11)
 
 packages:
 
@@ -41,13 +41,13 @@ packages:
     resolution: {integrity: sha512-AM6TzwYqGChO45oiuPqwL2t20/HdMC1rTPAesnBCgPCSF1x3oN9MVUwQV2iyz4xqWrctwK5RNC8LV22kaQCNYg==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/parser@7.25.7':
-    resolution: {integrity: sha512-aZn7ETtQsjjGG5HruveUK06cU3Hljuhd9Iojm4M8WWv3wLE6OkE5PWbDUkItmMgegmccaITudyuW5RPYrYlgWw==}
+  '@babel/parser@7.25.8':
+    resolution: {integrity: sha512-HcttkxzdPucv3nNFmfOOMfFf64KgdJVqm1KaCm25dPGMLElo9nsLvXeJECQg8UzPuBGLyTSA0ZzqCtDSzKTEoQ==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  '@babel/types@7.25.7':
-    resolution: {integrity: sha512-vwIVdXG+j+FOpkwqHRcBgHLYNL7XMkufrlaFvL9o6Ai9sJn9+PdyIL5qa0XzTZw084c+u9LOls53eoZWP/W5WQ==}
+  '@babel/types@7.25.8':
+    resolution: {integrity: sha512-JWtuCu8VQsMladxVz/P4HzHUGCAwpuqacmowgXFs5XjxIgKuNjnLokQzuVjlTvIzODaDmpjT3oxcC48vyk9EWg==}
     engines: {node: '>=6.9.0'}
 
   '@esbuild/android-arm64@0.18.20':
@@ -578,8 +578,8 @@ packages:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
     engines: {node: '>=8'}
 
-  terser@5.34.0:
-    resolution: {integrity: sha512-y5NUX+U9HhVsK/zihZwoq4r9dICLyV2jXGOriDAVOeKhq3LKVjgJbGO90FisozXLlJfvjHqgckGmJFBb9KYoWQ==}
+  terser@5.34.1:
+    resolution: {integrity: sha512-FsJZ7iZLd/BXkz+4xrRTGJ26o/6VTjQytUk8b8OxkwcD2I+79VPJlz7qss1+zE7h8GNIScFqXcDyJ/KqBYZFVA==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -667,11 +667,11 @@ snapshots:
 
   '@babel/helper-validator-identifier@7.25.7': {}
 
-  '@babel/parser@7.25.7':
+  '@babel/parser@7.25.8':
     dependencies:
-      '@babel/types': 7.25.7
+      '@babel/types': 7.25.8
 
-  '@babel/types@7.25.7':
+  '@babel/types@7.25.8':
     dependencies:
       '@babel/helper-string-parser': 7.25.7
       '@babel/helper-validator-identifier': 7.25.7
@@ -782,14 +782,14 @@ snapshots:
       estree-walker: 2.0.2
       picomatch: 2.3.1
 
-  '@vitejs/plugin-vue@5.1.4(vite@4.5.5(terser@5.34.0))(vue@3.5.11)':
+  '@vitejs/plugin-vue@5.1.4(vite@4.5.5(terser@5.34.1))(vue@3.5.11)':
     dependencies:
-      vite: 4.5.5(terser@5.34.0)
+      vite: 4.5.5(terser@5.34.1)
       vue: 3.5.11
 
   '@vue/compiler-core@3.5.11':
     dependencies:
-      '@babel/parser': 7.25.7
+      '@babel/parser': 7.25.8
       '@vue/shared': 3.5.11
       entities: 4.5.0
       estree-walker: 2.0.2
@@ -802,7 +802,7 @@ snapshots:
 
   '@vue/compiler-sfc@3.5.11':
     dependencies:
-      '@babel/parser': 7.25.7
+      '@babel/parser': 7.25.8
       '@vue/compiler-core': 3.5.11
       '@vue/compiler-dom': 3.5.11
       '@vue/compiler-ssr': 3.5.11
@@ -1035,7 +1035,7 @@ snapshots:
       he: 1.2.0
       param-case: 3.0.4
       relateurl: 0.2.7
-      terser: 5.34.0
+      terser: 5.34.1
 
   is-extglob@2.1.1: {}
 
@@ -1171,7 +1171,7 @@ snapshots:
     dependencies:
       has-flag: 4.0.0
 
-  terser@5.34.0:
+  terser@5.34.1:
     dependencies:
       '@jridgewell/source-map': 0.3.6
       acorn: 8.12.1
@@ -1192,7 +1192,7 @@ snapshots:
 
   universalify@2.0.1: {}
 
-  vite-plugin-html@3.2.2(vite@4.5.5(terser@5.34.0)):
+  vite-plugin-html@3.2.2(vite@4.5.5(terser@5.34.1)):
     dependencies:
       '@rollup/pluginutils': 4.2.1
       colorette: 2.0.20
@@ -1206,16 +1206,16 @@ snapshots:
       html-minifier-terser: 6.1.0
       node-html-parser: 5.4.2
       pathe: 0.2.0
-      vite: 4.5.5(terser@5.34.0)
+      vite: 4.5.5(terser@5.34.1)
 
-  vite@4.5.5(terser@5.34.0):
+  vite@4.5.5(terser@5.34.1):
     dependencies:
       esbuild: 0.18.20
       postcss: 8.4.47
       rollup: 3.29.5
     optionalDependencies:
       fsevents: 2.3.3
-      terser: 5.34.0
+      terser: 5.34.1
 
   vue@3.5.11:
     dependencies:
