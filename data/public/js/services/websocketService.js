@@ -276,14 +276,34 @@ class WebsocketService {
     }
 
     handleServerMessage(data) {
-        if (data.type === 'audio') {
+        console.log('Received server message:', data);
+        switch (data.type) {
+            case 'audio':
             this.handleAudioData(data.audio);
-        } else if (data.type === 'answer') {
+                break;
+            case 'answer':
             this.emit('ragflowAnswer', data.answer);
-        } else if (data.type === 'error') {
+                break;
+            case 'error':
             this.emit('error', { type: 'server_error', message: data.message });
+                break;
+            case 'graphUpdate':
+                this.emit('graphUpdate', data.graphData);
+                break;
+            case 'ttsMethodSet':
+                console.log('TTS method set to:', data.method);
+                this.emit('ttsMethodSet', data.method);
+                break;
+            case 'ragflowResponse':
+                this.handleRagflowResponse(data);
+                break;
+            case 'openaiResponse':
+                this.emit('openaiResponse', data.response);
+                break;
+            default:
+                console.warn('Unhandled message type:', data.type);
+                break;
         }
-        // ... handle other message types ...
     }
 }
 
