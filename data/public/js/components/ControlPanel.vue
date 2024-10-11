@@ -23,56 +23,102 @@
         </div>
       </div>
 
-      <!-- Fisheye Distortion Toggle -->
-      <div class="control-item">
-        <label for="fisheye_enabled">Fisheye Distortion</label>
-        <div>
-          <label>
-            <input type="radio" value="true" v-model="fisheyeEnabled" @change="emitChange('fisheyeEnabled', true)">
-            Enable
-          </label>
-          <label>
-            <input type="radio" value="false" v-model="fisheyeEnabled" @change="emitChange('fisheyeEnabled', false)">
-            Disable
-          </label>
+      <!-- Fisheye Distortion Controls -->
+      <div class="control-group">
+        <h3>Fisheye Distortion</h3>
+        <div class="control-item">
+          <label for="fisheye_enabled">Enable Fisheye</label>
+          <div>
+            <label>
+              <input type="radio" value="true" v-model="fisheyeEnabled" @change="emitChange('fisheyeEnabled', true)">
+              Enable
+            </label>
+            <label>
+              <input type="radio" value="false" v-model="fisheyeEnabled" @change="emitChange('fisheyeEnabled', false)">
+              Disable
+            </label>
+          </div>
+        </div>
+        <div class="control-item">
+          <label for="fisheye_strength">Fisheye Strength</label>
+          <input
+            id="fisheye_strength"
+            type="range"
+            v-model.number="fisheyeStrength"
+            :min="0"
+            :max="1"
+            :step="0.01"
+            @input="emitChange('fisheyeStrength', fisheyeStrength)"
+          >
+          <span class="range-value">{{ fisheyeStrength }}</span>
         </div>
       </div>
 
-      <!-- Fisheye Strength Slider -->
-      <div class="control-item">
-        <label for="fisheye_strength">Fisheye Strength</label>
-        <input
-          id="fisheye_strength"
-          type="range"
-          v-model.number="fisheyeStrength"
-          :min="0"
-          :max="1"
-          :step="0.01"
-          @input="emitChange('fisheyeStrength', fisheyeStrength)"
-        >
-        <span class="range-value">{{ fisheyeStrength }}</span>
+      <!-- Color Controls -->
+      <div class="control-group">
+        <h3>Colors</h3>
+        <div v-for="control in colorControls" :key="control.name" class="control-item">
+          <label :for="control.name">{{ control.label }}</label>
+          <input
+            :id="control.name"
+            type="color"
+            v-model="control.value"
+            @change="emitChange(control.name, control.value)"
+          >
+        </div>
       </div>
 
-      <!-- Other Controls -->
-      <div class="controls-container">
-        <div v-for="control in controls" :key="control.name" class="control-item">
+      <!-- Size and Opacity Controls -->
+      <div class="control-group">
+        <h3>Size and Opacity</h3>
+        <div v-for="control in sizeOpacityControls" :key="control.name" class="control-item">
           <label :for="control.name">{{ control.label }}</label>
-          <input v-if="control.type === 'color'"
-                 :id="control.name"
-                 type="color"
-                 v-model="control.value"
-                 @change="emitChange(control.name, control.value)"
+          <input
+            :id="control.name"
+            type="range"
+            v-model.number="control.value"
+            :min="control.min"
+            :max="control.max"
+            :step="control.step"
+            @input="emitChange(control.name, control.value)"
           >
-          <input v-else-if="control.type === 'range'"
-                 :id="control.name"
-                 type="range"
-                 v-model.number="control.value"
-                 :min="control.min"
-                 :max="control.max"
-                 :step="control.step"
-                 @input="emitChange(control.name, control.value)"
+          <span class="range-value">{{ control.value }}</span>
+        </div>
+      </div>
+
+      <!-- Bloom Effect Controls -->
+      <div class="control-group">
+        <h3>Bloom Effects</h3>
+        <div v-for="control in bloomControls" :key="control.name" class="control-item">
+          <label :for="control.name">{{ control.label }}</label>
+          <input
+            :id="control.name"
+            type="range"
+            v-model.number="control.value"
+            :min="control.min"
+            :max="control.max"
+            :step="control.step"
+            @input="emitChange(control.name, control.value)"
           >
-          <span v-if="control.type === 'range'" class="range-value">{{ control.value }}</span>
+          <span class="range-value">{{ control.value }}</span>
+        </div>
+      </div>
+
+      <!-- Additional Controls -->
+      <div class="control-group">
+        <h3>Additional Settings</h3>
+        <div v-for="control in additionalControls" :key="control.name" class="control-item">
+          <label :for="control.name">{{ control.label }}</label>
+          <input
+            :id="control.name"
+            type="range"
+            v-model.number="control.value"
+            :min="control.min"
+            :max="control.max"
+            :step="control.step"
+            @input="emitChange(control.name, control.value)"
+          >
+          <span class="range-value">{{ control.value }}</span>
         </div>
       </div>
 
@@ -103,16 +149,21 @@ export default {
       isHidden: false,
       fisheyeEnabled: false,
       fisheyeStrength: 0.5,
-      controls: [
+      chatInput: '',
+      chatMessages: [],
+      useOpenAI: false,
+      colorControls: [
         { name: 'nodeColor', label: 'Node Color', type: 'color', value: '#1A0B31' },
         { name: 'edgeColor', label: 'Edge Color', type: 'color', value: '#ff0000' },
         { name: 'hologramColor', label: 'Hologram Color', type: 'color', value: '#FFD700' },
+      ],
+      sizeOpacityControls: [
         { name: 'nodeSizeScalingFactor', label: 'Node Size Scaling', type: 'range', value: 1000, min: 100, max: 2000, step: 10 },
         { name: 'hologramScale', label: 'Hologram Scale', type: 'range', value: 5, min: 1, max: 10, step: 0.1 },
         { name: 'hologramOpacity', label: 'Hologram Opacity', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
         { name: 'edgeOpacity', label: 'Edge Opacity', type: 'range', value: 0.3, min: 0, max: 1, step: 0.01 },
-        { name: 'labelFontSize', label: 'Label Font Size', type: 'range', value: 36, min: 12, max: 72, step: 1 },
-        { name: 'fogDensity', label: 'Fog Density', type: 'range', value: 0.002, min: 0, max: 0.01, step: 0.0001 },
+      ],
+      bloomControls: [
         { name: 'nodeBloomStrength', label: 'Node Bloom Strength', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
         { name: 'nodeBloomRadius', label: 'Node Bloom Radius', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
         { name: 'nodeBloomThreshold', label: 'Node Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
@@ -123,9 +174,10 @@ export default {
         { name: 'environmentBloomRadius', label: 'Environment Bloom Radius', type: 'range', value: 1, min: 0, max: 2, step: 0.01 },
         { name: 'environmentBloomThreshold', label: 'Environment Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
       ],
-      chatInput: '',
-      chatMessages: [],
-      useOpenAI: false,
+      additionalControls: [
+        { name: 'labelFontSize', label: 'Label Font Size', type: 'range', value: 36, min: 12, max: 72, step: 1 },
+        { name: 'fogDensity', label: 'Fog Density', type: 'range', value: 0.002, min: 0, max: 0.01, step: 0.0001 },
+      ],
     };
   },
   methods: {
@@ -139,10 +191,22 @@ export default {
       this.$emit('control-change', { name, value });
     },
     isColorControl(name) {
-      return ['nodeColor', 'edgeColor', 'hologramColor'].includes(name);
+      return this.colorControls.some(control => control.name === name);
     },
     resetControls() {
-      this.controls.forEach(control => {
+      this.colorControls.forEach(control => {
+        control.value = this.getDefaultValue(control.name);
+        this.emitChange(control.name, control.value);
+      });
+      this.sizeOpacityControls.forEach(control => {
+        control.value = this.getDefaultValue(control.name);
+        this.emitChange(control.name, control.value);
+      });
+      this.bloomControls.forEach(control => {
+        control.value = this.getDefaultValue(control.name);
+        this.emitChange(control.name, control.value);
+      });
+      this.additionalControls.forEach(control => {
         control.value = this.getDefaultValue(control.name);
         this.emitChange(control.name, control.value);
       });
@@ -268,16 +332,21 @@ export default {
   padding: 20px;
 }
 
-.controls-container {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
+.control-group {
+  margin-bottom: 20px;
+}
+
+.control-group h3 {
+  margin-bottom: 10px;
+  border-bottom: 1px solid #444;
+  padding-bottom: 5px;
 }
 
 .control-item {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  margin-bottom: 10px;
 }
 
 label {

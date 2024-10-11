@@ -95,12 +95,9 @@ class App {
             methods: {
                 handleControlChange(data) {
                     console.log('Control changed:', data.name, data.value);
-                    this.updateVisualization(data);
-                },
-                updateVisualization(change) {
                     if (this.visualization) {
-                        console.log('Updating visualization:', change);
-                        this.visualization.updateVisualFeatures({ [change.name]: change.value });
+                        console.log('Updating visualization:', data);
+                        this.visualization.updateVisualFeatures({ [data.name]: data.value });
                     } else {
                         console.error('Cannot update visualization: not initialized');
                     }

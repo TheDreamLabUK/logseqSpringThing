@@ -37,21 +37,6 @@
             background-color: #dc3545;
             color: white;
         }
-        #refresh-button {
-            position: absolute;
-            top: 20px;
-            left: 100px;
-            padding: 10px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            z-index: 1000;
-        }
-        #refresh-button:hover {
-            background-color: #0056b3;
-        }
         @media (max-width: 600px) {
             #connection-status {
                 top: 10px;
@@ -67,9 +52,6 @@
     <!-- Connection status indicator -->
     <div id="connection-status" class="disconnected">Disconnected</div>
 
-    <!-- Refresh button -->
-    <button id="refresh-button" @click="refreshVisualization">Refresh Visualization</button>
-
     <!-- Vue app container -->
     <div id="app">
         <!-- The Vue application will mount here and render the ChatManager and ControlPanel components. -->
@@ -84,26 +66,6 @@
                     websocketService: null,
                     visualization: null
                 };
-            },
-            methods: {
-                refreshVisualization() {
-                    // Access the global visualization instance and call updateVisualFeatures
-                    if (this.visualization) {
-                        this.visualization.updateVisualFeatures({
-                            nodeColor: this.visualization.nodeColor,
-                            edgeColor: this.visualization.edgeColor,
-                            hologramColor: this.visualization.hologramColor,
-                            nodeSizeScalingFactor: this.visualization.nodeSizeScalingFactor,
-                            hologramScale: this.visualization.hologramScale,
-                            hologramOpacity: this.visualization.hologramOpacity,
-                            edgeOpacity: this.visualization.edgeOpacity,
-                            labelFontSize: this.visualization.labelFontSize,
-                            fogDensity: this.visualization.fogDensity,
-                        });
-                    } else {
-                        console.error('Visualization instance is not available');
-                    }
-                }
             },
             mounted() {
                 // Access the global properties set in app.js

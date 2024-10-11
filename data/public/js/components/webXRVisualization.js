@@ -44,7 +44,7 @@ export class WebXRVisualization {
         this.nodeColor = 0x1A0B31;
         this.edgeColor = 0xff0000;
         this.hologramColor = 0xFFD700;
-        this.nodeSizeScalingFactor = 1000;
+        this.nodeSizeScalingFactor = 500; // Decreased from 1000 for better visibility
         this.hologramScale = 1;
         this.hologramOpacity = 0.1;
         this.edgeOpacity = 0.3;
@@ -95,13 +95,39 @@ export class WebXRVisualization {
         const renderPass = new RenderPass(this.scene, this.camera);
         this.composer.addPass(renderPass);
 
-        this.bloomPass = new UnrealBloomPass(
+        // Environmental Bloom Pass (Layer 0)
+        this.environmentBloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
             this.environmentBloomStrength,
             this.environmentBloomRadius,
             this.environmentBloomThreshold
         );
-        this.composer.addPass(this.bloomPass);
+        this.environmentBloomPass.renderToScreen = false;
+        this.environmentBloomPass.clear = false;
+        this.composer.addPass(this.environmentBloomPass);
+
+        // Nodes Bloom Pass (Layer 1)
+        this.nodeBloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            this.nodeBloomStrength,
+            this.nodeBloomRadius,
+            this.nodeBloomThreshold
+        );
+        this.nodeBloomPass.renderToScreen = false;
+        this.nodeBloomPass.clear = false;
+        this.composer.addPass(this.nodeBloomPass);
+
+        // Edges Bloom Pass (Layer 2)
+        this.edgeBloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            this.edgeBloomStrength,
+            this.edgeBloomRadius,
+            this.edgeBloomThreshold
+        );
+        this.edgeBloomPass.renderToScreen = true; // Final pass
+        this.edgeBloomPass.clear = true;
+        this.composer.addPass(this.edgeBloomPass);
+
         console.log('Post-processing initialized');
     }
 
@@ -129,10 +155,10 @@ export class WebXRVisualization {
         });
         const buckySphere = new THREE.Mesh(buckyGeometry, buckyMaterial);
         buckySphere.userData.rotationSpeed = 0.0001;
-        buckySphere.layers.enable(1);
+        buckySphere.layers.set(0); // Environment layer
         this.hologramGroup.add(buckySphere);
 
-        const geodesicGeometry = new THREE.IcosahedronGeometry(30 * this.hologramScale, 1);
+        const geodesicGeometry = new THREE.IcosahedronGeometry(10 * this.hologramScale, 1);
         const geodesicMaterial = new THREE.MeshBasicMaterial({
             color: this.hologramColor,
             wireframe: true,
@@ -141,10 +167,10 @@ export class WebXRVisualization {
         });
         const geodesicDome = new THREE.Mesh(geodesicGeometry, geodesicMaterial);
         geodesicDome.userData.rotationSpeed = 0.0002;
-        geodesicDome.layers.enable(1);
+        geodesicDome.layers.set(0); // Environment layer
         this.hologramGroup.add(geodesicDome);
 
-        const triangleGeometry = new THREE.SphereGeometry(20 * this.hologramScale, 32, 32);
+        const triangleGeometry = new THREE.SphereGeometry(100 * this.hologramScale, 32, 32);
         const triangleMaterial = new THREE.MeshBasicMaterial({
             color: this.hologramColor,
             wireframe: true,
@@ -153,7 +179,7 @@ export class WebXRVisualization {
         });
         const triangleSphere = new THREE.Mesh(triangleGeometry, triangleMaterial);
         triangleSphere.userData.rotationSpeed = 0.0003;
-        triangleSphere.layers.enable(1);
+        triangleSphere.layers.set(0); // Environment layer
         this.hologramGroup.add(triangleSphere);
 
         this.scene.add(this.hologramGroup);
@@ -176,12 +202,18 @@ export class WebXRVisualization {
     updateVisualFeatures(changes) {
         console.log('Updating visual features:', changes);
         let needsUpdate = false;
+        let bloomChanged = false;
 
         for (const [name, value] of Object.entries(changes)) {
             if (this.hasOwnProperty(name)) {
                 console.log(`Setting property ${name} to`, value);
                 this[name] = value;
                 needsUpdate = true;
+
+                // Check if the changed property is bloom-related
+                if (name.includes('Bloom')) {
+                    bloomChanged = true;
+                }
             } else {
                 console.warn(`Property ${name} does not exist on WebXRVisualization`);
             }
@@ -189,9 +221,19 @@ export class WebXRVisualization {
 
         if (needsUpdate) {
             this.updateVisualization();
-            this.updateBloomPass();
-            this.composer.render();
+            
+            // Specifically handle hologram scale updates
+            if (changes.hologramScale !== undefined) {
+                this.hologramGroup.scale.set(this.hologramScale, this.hologramScale, this.hologramScale);
+            }
         }
+
+        // Always update bloom pass if any bloom-related property has changed
+        if (bloomChanged) {
+            this.updateBloomPass();
+        }
+
+        this.composer.render();
         console.log('Visual features update completed');
     }
 
@@ -222,13 +264,15 @@ export class WebXRVisualization {
                 console.warn(`Invalid file_size for node ${node.id}:`, node.metadata.file_size);
                 return;
             }
-            const size = Math.max(this.minNodeSize, Math.min(this.maxNodeSize, Math.sqrt(fileSize) / this.nodeSizeScalingFactor));
+            // Adjusted scaling factor for better size representation
+            const size = Math.max(this.minNodeSize, Math.min(this.maxNodeSize, Math.sqrt(fileSize) / this.nodeSizeScalingFactor * 10));
+            console.log(`Node ID: ${node.id}, File Size: ${fileSize}, Calculated Size: ${size}`);
 
             if (!mesh) {
                 const geometry = new THREE.SphereGeometry(size, 32, 32);
                 const material = new THREE.MeshStandardMaterial({ color: this.nodeColor });
                 mesh = new THREE.Mesh(geometry, material);
-                mesh.layers.enable(1);
+                mesh.layers.set(1); // Node layer
                 this.scene.add(mesh);
                 this.nodeMeshes.set(node.id, mesh);
 
@@ -280,7 +324,7 @@ export class WebXRVisualization {
                         opacity: this.edgeOpacity
                     });
                     line = new THREE.Line(geometry, material);
-                    line.layers.enable(1);
+                    line.layers.set(2); // Edge layer
                     this.scene.add(line);
                     this.edgeMeshes.set(edgeKey, line);
                 } else {
@@ -325,7 +369,7 @@ export class WebXRVisualization {
         const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
         const sprite = new THREE.Sprite(spriteMaterial);
         sprite.scale.set(canvas.width / 10, canvas.height / 10, 1);
-        sprite.layers.set(1);
+        sprite.layers.set(1); // Node layer
 
         spriteMaterial.depthWrite = false;
         spriteMaterial.transparent = true;
@@ -395,13 +439,23 @@ export class WebXRVisualization {
     }
 
     updateBloomPass() {
-        console.log('Updating bloom pass');
-        if (this.bloomPass) {
-            this.bloomPass.strength = this.environmentBloomStrength;
-            this.bloomPass.radius = this.environmentBloomRadius;
-            this.bloomPass.threshold = this.environmentBloomThreshold;
+        console.log('Updating bloom passes');
+        if (this.environmentBloomPass) {
+            this.environmentBloomPass.strength = this.environmentBloomStrength;
+            this.environmentBloomPass.radius = this.environmentBloomRadius;
+            this.environmentBloomPass.threshold = this.environmentBloomThreshold;
         }
-        console.log('Bloom pass update completed');
+        if (this.nodeBloomPass) {
+            this.nodeBloomPass.strength = this.nodeBloomStrength;
+            this.nodeBloomPass.radius = this.nodeBloomRadius;
+            this.nodeBloomPass.threshold = this.nodeBloomThreshold;
+        }
+        if (this.edgeBloomPass) {
+            this.edgeBloomPass.strength = this.edgeBloomStrength;
+            this.edgeBloomPass.radius = this.edgeBloomRadius;
+            this.edgeBloomPass.threshold = this.edgeBloomThreshold;
+        }
+        console.log('Bloom passes update completed');
     }
 
     handleSpacemouseInput(x, y, z, rx, ry, rz) {
