@@ -173,8 +173,30 @@ export class WebXRVisualization {
         console.log('Visualization update completed');
     }
 
+    updateVisualFeatures(changes) {
+        console.log('Updating visual features:', changes);
+        let needsUpdate = false;
+
+        for (const [name, value] of Object.entries(changes)) {
+            if (this.hasOwnProperty(name)) {
+                console.log(`Setting property ${name} to`, value);
+                this[name] = value;
+                needsUpdate = true;
+            } else {
+                console.warn(`Property ${name} does not exist on WebXRVisualization`);
+            }
+        }
+
+        if (needsUpdate) {
+            this.updateVisualization();
+            this.updateBloomPass();
+            this.composer.render();
+        }
+        console.log('Visual features update completed');
+    }
+
     updateNodes(nodes) {
-        console.log('Updating nodes:', nodes.length);
+        console.log(`Updating nodes: ${nodes.length}`);
         const existingNodeIds = new Set(nodes.map(node => node.id));
 
         this.nodeMeshes.forEach((mesh, nodeId) => {
@@ -222,11 +244,11 @@ export class WebXRVisualization {
             const label = this.nodeLabels.get(node.id);
             label.position.set(node.x, node.y + size + 2, node.z);
         });
-        console.log('Nodes update completed');
+        console.log(`Node color set to: ${this.nodeColor.toString(16)}`);
     }
 
     updateEdges(edges) {
-        console.log('Updating edges:', edges.length);
+        console.log(`Updating edges: ${edges.length}`);
         const existingEdgeKeys = new Set(edges.map(edge => `${edge.source}-${edge.target_node}`));
 
         this.edgeMeshes.forEach((line, edgeKey) => {
@@ -275,11 +297,12 @@ export class WebXRVisualization {
                 line.geometry.attributes.position.needsUpdate = true;
                 line.material.color.setHex(this.edgeColor);
                 line.material.opacity = this.edgeOpacity;
+                line.material.needsUpdate = true; // Ensure the material updates
             } else {
                 console.warn(`Unable to update edge: ${edgeKey}. Source or target node not found.`);
             }
         });
-        console.log('Edges update completed');
+        console.log(`Edge color set to: ${this.edgeColor.toString(16)}, opacity: ${this.edgeOpacity}`);
     }
 
     createNodeLabel(text) {
@@ -354,25 +377,6 @@ export class WebXRVisualization {
             this.controls.dispose();
         }
         console.log('WebXRVisualization disposed');
-    }
-
-    updateVisualFeatures(changes) {
-        console.log('Updating visual features:', changes);
-        let needsUpdate = false;
-
-        for (const [name, value] of Object.entries(changes)) {
-            if (this.hasOwnProperty(name)) {
-                this[name] = value;
-                needsUpdate = true;
-            }
-        }
-
-        if (needsUpdate) {
-            this.updateVisualization();
-            this.updateBloomPass();
-            this.composer.render();
-        }
-        console.log('Visual features update completed');
     }
 
     updateNodeLabels() {

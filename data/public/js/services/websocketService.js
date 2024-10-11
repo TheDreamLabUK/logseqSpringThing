@@ -186,6 +186,12 @@ class WebsocketService {
         if (!this.audioContext) {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             console.log('AudioContext initialized');
+        } else if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume().then(() => {
+                console.log('AudioContext resumed');
+            }).catch((error) => {
+                console.error('Error resuming AudioContext:', error);
+            });
         } else {
             console.log('AudioContext already initialized');
         }
@@ -279,13 +285,13 @@ class WebsocketService {
         console.log('Received server message:', data);
         switch (data.type) {
             case 'audio':
-            this.handleAudioData(data.audio);
+                this.handleAudioData(data.audio);
                 break;
             case 'answer':
-            this.emit('ragflowAnswer', data.answer);
+                this.emit('ragflowAnswer', data.answer);
                 break;
             case 'error':
-            this.emit('error', { type: 'server_error', message: data.message });
+                this.emit('error', { type: 'server_error', message: data.message });
                 break;
             case 'graphUpdate':
                 this.emit('graphUpdate', data.graphData);
@@ -307,4 +313,4 @@ class WebsocketService {
     }
 }
 
-export default WebsocketService
+export default WebsocketService;

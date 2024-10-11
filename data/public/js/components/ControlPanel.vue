@@ -28,11 +28,11 @@
         <label for="fisheye_enabled">Fisheye Distortion</label>
         <div>
           <label>
-            <input type="radio" value="true" v-model="fisheyeEnabled" @change="emitChange('fisheye_enabled', true)">
+            <input type="radio" value="true" v-model="fisheyeEnabled" @change="emitChange('fisheyeEnabled', true)">
             Enable
           </label>
           <label>
-            <input type="radio" value="false" v-model="fisheyeEnabled" @change="emitChange('fisheye_enabled', false)">
+            <input type="radio" value="false" v-model="fisheyeEnabled" @change="emitChange('fisheyeEnabled', false)">
             Disable
           </label>
         </div>
@@ -48,7 +48,7 @@
           :min="0"
           :max="1"
           :step="0.01"
-          @input="emitChange('fisheye_strength', fisheyeStrength)"
+          @input="emitChange('fisheyeStrength', fisheyeStrength)"
         >
         <span class="range-value">{{ fisheyeStrength }}</span>
       </div>
@@ -101,27 +101,27 @@ export default {
   data() {
     return {
       isHidden: false,
-      fisheyeEnabled: 'false',
+      fisheyeEnabled: false,
       fisheyeStrength: 0.5,
       controls: [
-        { name: 'node_color', label: 'Node Color', type: 'color', value: '#1A0B31' },
-        { name: 'edge_color', label: 'Edge Color', type: 'color', value: '#ff0000' },
-        { name: 'hologram_color', label: 'Hologram Color', type: 'color', value: '#FFD700' },
-        { name: 'node_size_scaling_factor', label: 'Node Size Scaling', type: 'range', value: 1000, min: 100, max: 2000, step: 10 },
-        { name: 'hologram_scale', label: 'Hologram Scale', type: 'range', value: 5, min: 1, max: 10, step: 0.1 },
-        { name: 'hologram_opacity', label: 'Hologram Opacity', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
-        { name: 'edge_opacity', label: 'Edge Opacity', type: 'range', value: 0.3, min: 0, max: 1, step: 0.01 },
-        { name: 'label_font_size', label: 'Label Font Size', type: 'range', value: 36, min: 12, max: 72, step: 1 },
-        { name: 'fog_density', label: 'Fog Density', type: 'range', value: 0.002, min: 0, max: 0.01, step: 0.0001 },
-        { name: 'node_bloom_strength', label: 'Node Bloom Strength', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
-        { name: 'node_bloom_radius', label: 'Node Bloom Radius', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
-        { name: 'node_bloom_threshold', label: 'Node Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
-        { name: 'edge_bloom_strength', label: 'Edge Bloom Strength', type: 'range', value: 0.2, min: 0, max: 1, step: 0.01 },
-        { name: 'edge_bloom_radius', label: 'Edge Bloom Radius', type: 'range', value: 0.3, min: 0, max: 1, step: 0.01 },
-        { name: 'edge_bloom_threshold', label: 'Edge Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
-        { name: 'environment_bloom_strength', label: 'Environment Bloom Strength', type: 'range', value: 1, min: 0, max: 2, step: 0.01 },
-        { name: 'environment_bloom_radius', label: 'Environment Bloom Radius', type: 'range', value: 1, min: 0, max: 2, step: 0.01 },
-        { name: 'environment_bloom_threshold', label: 'Environment Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
+        { name: 'nodeColor', label: 'Node Color', type: 'color', value: '#1A0B31' },
+        { name: 'edgeColor', label: 'Edge Color', type: 'color', value: '#ff0000' },
+        { name: 'hologramColor', label: 'Hologram Color', type: 'color', value: '#FFD700' },
+        { name: 'nodeSizeScalingFactor', label: 'Node Size Scaling', type: 'range', value: 1000, min: 100, max: 2000, step: 10 },
+        { name: 'hologramScale', label: 'Hologram Scale', type: 'range', value: 5, min: 1, max: 10, step: 0.1 },
+        { name: 'hologramOpacity', label: 'Hologram Opacity', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
+        { name: 'edgeOpacity', label: 'Edge Opacity', type: 'range', value: 0.3, min: 0, max: 1, step: 0.01 },
+        { name: 'labelFontSize', label: 'Label Font Size', type: 'range', value: 36, min: 12, max: 72, step: 1 },
+        { name: 'fogDensity', label: 'Fog Density', type: 'range', value: 0.002, min: 0, max: 0.01, step: 0.0001 },
+        { name: 'nodeBloomStrength', label: 'Node Bloom Strength', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
+        { name: 'nodeBloomRadius', label: 'Node Bloom Radius', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
+        { name: 'nodeBloomThreshold', label: 'Node Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
+        { name: 'edgeBloomStrength', label: 'Edge Bloom Strength', type: 'range', value: 0.2, min: 0, max: 1, step: 0.01 },
+        { name: 'edgeBloomRadius', label: 'Edge Bloom Radius', type: 'range', value: 0.3, min: 0, max: 1, step: 0.01 },
+        { name: 'edgeBloomThreshold', label: 'Edge Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
+        { name: 'environmentBloomStrength', label: 'Environment Bloom Strength', type: 'range', value: 1, min: 0, max: 2, step: 0.01 },
+        { name: 'environmentBloomRadius', label: 'Environment Bloom Radius', type: 'range', value: 1, min: 0, max: 2, step: 0.01 },
+        { name: 'environmentBloomThreshold', label: 'Environment Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
       ],
       chatInput: '',
       chatMessages: [],
@@ -139,38 +139,38 @@ export default {
       this.$emit('control-change', { name, value });
     },
     isColorControl(name) {
-      return ['node_color', 'edge_color', 'hologram_color'].includes(name);
+      return ['nodeColor', 'edgeColor', 'hologramColor'].includes(name);
     },
     resetControls() {
       this.controls.forEach(control => {
         control.value = this.getDefaultValue(control.name);
         this.emitChange(control.name, control.value);
       });
-      this.fisheyeEnabled = 'false';
-      this.emitChange('fisheye_enabled', false);
+      this.fisheyeEnabled = false;
+      this.emitChange('fisheyeEnabled', false);
       this.fisheyeStrength = 0.5;
-      this.emitChange('fisheye_strength', 0.5);
+      this.emitChange('fisheyeStrength', 0.5);
     },
     getDefaultValue(name) {
       const defaults = {
-        node_color: '#1A0B31',
-        edge_color: '#ff0000',
-        hologram_color: '#FFD700',
-        node_size_scaling_factor: 1000,
-        hologram_scale: 5,
-        hologram_opacity: 0.1,
-        edge_opacity: 0.3,
-        label_font_size: 36,
-        fog_density: 0.002,
-        node_bloom_strength: 0.1,
-        node_bloom_radius: 0.1,
-        node_bloom_threshold: 0,
-        edge_bloom_strength: 0.2,
-        edge_bloom_radius: 0.3,
-        edge_bloom_threshold: 0,
-        environment_bloom_strength: 1,
-        environment_bloom_radius: 1,
-        environment_bloom_threshold: 0,
+        nodeColor: '#1A0B31',
+        edgeColor: '#ff0000',
+        hologramColor: '#FFD700',
+        nodeSizeScalingFactor: 1000,
+        hologramScale: 5,
+        hologramOpacity: 0.1,
+        edgeOpacity: 0.3,
+        labelFontSize: 36,
+        fogDensity: 0.002,
+        nodeBloomStrength: 0.1,
+        nodeBloomRadius: 0.1,
+        nodeBloomThreshold: 0,
+        edgeBloomStrength: 0.2,
+        edgeBloomRadius: 0.3,
+        edgeBloomThreshold: 0,
+        environmentBloomStrength: 1,
+        environmentBloomRadius: 1,
+        environmentBloomThreshold: 0,
       };
       return defaults[name] || '';
     },

@@ -77,8 +77,8 @@ class App {
             },
             data() {
                 return {
-                    websocketService: this.websocketService,
-                    visualization: this.visualization
+                    websocketService: null,
+                    visualization: null
                 };
             },
             template: `
@@ -125,6 +125,12 @@ class App {
                         console.error('Cannot enable Spacemouse: Visualization not initialized');
                     }
                 }
+            },
+            mounted() {
+                // Assign the initialized services to the Vue app's data properties
+                this.websocketService = app.config.globalProperties.$websocketService;
+                this.visualization = app.config.globalProperties.$visualization;
+                console.log('Vue app mounted with WebSocketService and Visualization:', this.websocketService, this.visualization);
             }
         });
 
