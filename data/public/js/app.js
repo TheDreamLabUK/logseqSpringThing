@@ -1,16 +1,22 @@
 // data/public/js/app.js
 
 import { createApp } from 'vue';
-import { WebsocketService } from './services/websocketService.js';
-import { GraphDataManager } from './services/graphDataManager.js';
-import { WebXRVisualization } from './components/webXRVisualization.js';
+import ControlPanel from './components/ControlPanel.vue';
 import ChatManager from './components/chatManager.vue';
-import { Interface } from './components/interface.js';
+import { WebXRVisualization } from './components/webXRVisualization.js';
+import WebsocketService from './services/websocketService.js';
+import { GraphDataManager } from './services/graphDataManager.js';
 import { isGPUAvailable, initGPU } from './gpuUtils.js';
-import { enableSpacemouse } from './spacemouse.js';
+import { enableSpacemouse } from './services/spacemouse.js';
 
 class App {
     constructor() {
+        console.log('App constructor called');
+        this.websocketService = null;
+        this.graphDataManager = null;
+        this.visualization = null;
+        this.gpuAvailable = false;
+        this.gpuUtils = null;
         this.initializeApp();
     }
 
@@ -18,10 +24,26 @@ class App {
         console.log('Initializing Application');
 
         // Initialize Services
-        this.websocketService = new WebsocketService();
-        this.graphDataManager = new GraphDataManager(this.websocketService);
-        this.visualization = new WebXRVisualization(this.graphDataManager);
-        this.interface = new Interface(document);
+        try {
+            this.websocketService = new WebsocketService();
+            console.log('WebsocketService initialized');
+        } catch (error) {
+            console.error('Failed to initialize WebsocketService:', error);
+        }
+
+        if (this.websocketService) {
+            this.graphDataManager = new GraphDataManager(this.websocketService);
+            console.log('GraphDataManager initialized');
+        } else {
+            console.error('Cannot initialize GraphDataManager: WebsocketService is not available');
+        }
+        
+        try {
+            this.visualization = new WebXRVisualization(this.graphDataManager);
+            console.log('WebXRVisualization initialized successfully');
+        } catch (error) {
+            console.error('Failed to initialize WebXRVisualization:', error);
+        }
 
         // Initialize GPU if available
         this.gpuAvailable = isGPUAvailable();
@@ -32,95 +54,193 @@ class App {
             console.warn('GPU acceleration not available, using CPU fallback');
         }
 
-        // Initialize Vue App
+        // Initialize Vue App with ChatManager and ControlPanel
         this.initVueApp();
 
         // Setup Event Listeners
         this.setupEventListeners();
+
+        // Initialize the visualization
+        if (this.visualization) {
+            this.visualization.initThreeJS();
+        } else {
+            console.error('Visualization not initialized, cannot call initThreeJS');
+        }
     }
 
     initVueApp() {
-        const app = createApp(ChatManager);
-        app.config.globalProperties.$websocketService = this.websocketService;
-        app.mount('#chat-container');
+        console.log('Initializing Vue App');
+        const app = createApp({
+            components: {
+                ControlPanel,
+                ChatManager
+            },
+            data() {
+                return {
+                    websocketService: null,
+                    visualization: null
+                };
+            },
+            template: `
+                <div>
+                    <chat-manager :websocketService="websocketService"></chat-manager>
+                    <control-panel 
+                        :websocketService="websocketService"
+                        @control-change="handleControlChange"
+                        @toggle-fullscreen="toggleFullscreen"
+                        @enable-spacemouse="enableSpacemouse"
+                    ></control-panel>
+                </div>
+            `,
+            methods: {
+                handleControlChange(data) {
+                    console.log('Control changed:', data.name, data.value);
+                    this.updateVisualization(data);
+                },
+                updateVisualization(change) {
+                    if (this.visualization) {
+                        console.log('Updating visualization:', change);
+                        this.visualization.updateVisualFeatures({ [change.name]: change.value });
+                    } else {
+                        console.error('Cannot update visualization: not initialized');
+                    }
+                },
+                toggleFullscreen() {
+                    if (!document.fullscreenElement) {
+                        document.documentElement.requestFullscreen().catch((err) => {
+                            console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                        });
+                    } else {
+                        if (document.exitFullscreen) {
+                            document.exitFullscreen().catch((err) => {
+                                console.error(`Error attempting to exit fullscreen: ${err.message}`);
+                            });
+                        }
+                    }
+                },
+                enableSpacemouse() {
+                    if (this.visualization) {
+                        enableSpacemouse(this.visualization.handleSpacemouseInput.bind(this.visualization));
+                    } else {
+                        console.error('Cannot enable Spacemouse: Visualization not initialized');
+                    }
+                }
+            },
+            mounted() {
+                // Assign the initialized services to the Vue app's data properties
+                this.websocketService = app.config.globalProperties.$websocketService;
+                this.visualization = app.config.globalProperties.$visualization;
+                console.log('Vue app mounted with WebSocketService and Visualization:', this.websocketService, this.visualization);
+            }
+        });
+
+        app.config.errorHandler = (err, vm, info) => {
+            console.error('Vue Error:', err, info);
+        };
+
+        app.config.warnHandler = (msg, vm, trace) => {
+            console.warn('Vue Warning:', msg, trace);
+        };
+
+        if (this.websocketService) {
+            app.config.globalProperties.$websocketService = this.websocketService;
+        } else {
+            console.error('WebsocketService not available for Vue app');
+        }
+
+        if (this.visualization) {
+            app.config.globalProperties.$visualization = this.visualization;
+        } else {
+            console.error('Visualization not available for Vue app');
+        }
+
+        app.mount('#app');
+        console.log('Vue App mounted');
     }
 
     setupEventListeners() {
         console.log('Setting up event listeners');
 
-        // WebSocket Event Listeners
-        this.websocketService.on('open', () => {
-            console.log('WebSocket connection established');
-            this.updateConnectionStatus(true);
-            this.graphDataManager.requestInitialData();
-        });
+        if (this.websocketService) {
+            // WebSocket Event Listeners
+            this.websocketService.on('open', () => {
+                console.log('WebSocket connection established');
+                this.updateConnectionStatus(true);
+                if (this.graphDataManager) {
+                    this.graphDataManager.requestInitialData();
+                } else {
+                    console.error('GraphDataManager not initialized, cannot request initial data');
+                }
+            });
 
-        this.websocketService.on('message', (event) => {
-            const data = JSON.parse(event.data);
-            this.handleWebSocketMessage(data);
-        });
+            this.websocketService.on('message', (data) => {
+                console.log('WebSocket message received:', data);
+                this.handleWebSocketMessage(data);
+            });
 
-        this.websocketService.on('error', (error) => {
-            console.error('WebSocket error:', error);
-            this.interface.displayErrorMessage('WebSocket connection error.');
-            this.updateConnectionStatus(false);
-        });
+            this.websocketService.on('error', (error) => {
+                console.error('WebSocket error:', error);
+                this.updateConnectionStatus(false);
+            });
 
-        this.websocketService.on('close', () => {
-            console.log('WebSocket connection closed');
-            this.interface.displayErrorMessage('WebSocket connection closed.');
-            this.updateConnectionStatus(false);
-        });
+            this.websocketService.on('close', () => {
+                console.log('WebSocket connection closed');
+                this.updateConnectionStatus(false);
+            });
+        } else {
+            console.error('WebsocketService not initialized, cannot set up WebSocket listeners');
+        }
 
         // Custom Event Listener for Graph Data Updates
         window.addEventListener('graphDataUpdated', (event) => {
-            console.log('Graph data updated event received');
-            this.visualization.updateVisualization();
+            console.log('Graph data updated event received', event.detail);
+            if (this.visualization) {
+                this.visualization.updateVisualization();
+            } else {
+                console.error('Cannot update visualization: not initialized');
+            }
         });
-
-        // Fullscreen Button Event Listener
-        const fullscreenButton = document.getElementById('fullscreen-button');
-        if (fullscreenButton) {
-            fullscreenButton.addEventListener('click', this.toggleFullscreen.bind(this));
-        } else {
-            console.warn('Fullscreen button not found');
-        }
-
-        // Spacemouse Button Event Listener
-        const spacemouseButton = document.getElementById('enable-spacemouse');
-        if (spacemouseButton) {
-            spacemouseButton.addEventListener('click', enableSpacemouse);
-        } else {
-            console.warn('Spacemouse button not found');
-        }
 
         // Spacemouse Move Event Listener
         window.addEventListener('spacemouse-move', (event) => {
             const { x, y, z } = event.detail;
-            this.visualization.handleSpacemouseInput(x, y, z);
+            if (this.visualization) {
+                this.visualization.handleSpacemouseInput(x, y, z);
+            } else {
+                console.error('Cannot handle Spacemouse input: Visualization not initialized');
+            }
         });
 
         // Initialize audio on first user interaction
-        const initAudioOnUserInteraction = () => {
-            this.websocketService.initAudio();
-            console.log('Audio initialized on user interaction');
-            document.removeEventListener('click', initAudioOnUserInteraction);
-            document.removeEventListener('touchstart', initAudioOnUserInteraction);
+        const initAudio = () => {
+            if (this.websocketService) {
+                this.websocketService.initAudio();
+            }
         };
-        document.addEventListener('click', initAudioOnUserInteraction);
-        document.addEventListener('touchstart', initAudioOnUserInteraction);
+
+        document.addEventListener('click', initAudio, { once: true });
+        document.addEventListener('touchstart', initAudio, { once: true });
     }
 
     handleWebSocketMessage(data) {
+        console.log('Handling WebSocket message:', data);
         switch (data.type) {
             case 'graphUpdate':
-                this.graphDataManager.updateGraphData(data.graphData);
-                this.visualization.updateVisualization();
+                console.log('Received graph update:', data.graphData);
+                if (this.graphDataManager) {
+                    this.graphDataManager.updateGraphData(data.graphData);
+                } else {
+                    console.error('GraphDataManager not initialized, cannot update graph data');
+                }
+                if (this.visualization) {
+                    this.visualization.updateVisualization();
+                } else {
+                    console.error('Cannot update visualization: not initialized');
+                }
                 break;
             case 'ttsMethodSet':
-                this.interface.updateTTSToggleState(data.method);
+                console.log('TTS method set:', data.method);
                 break;
-            // Handle additional message types here
             default:
                 console.warn(`Unhandled message type: ${data.type}`);
                 break;
@@ -137,25 +257,13 @@ class App {
         }
     }
 
-    toggleFullscreen() {
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch((err) => {
-                console.error(`Error attempting to enable fullscreen: ${err.message}`);
-                this.interface.displayErrorMessage('Unable to enter fullscreen mode.');
-            });
-        } else {
-            if (document.exitFullscreen) {
-                document.exitFullscreen().catch((err) => {
-                    console.error(`Error attempting to exit fullscreen: ${err.message}`);
-                });
-            }
-        }
-    }
-
     start() {
         console.log('Starting the application');
-        this.visualization.initialize();
-        // ChatManager is initialized through Vue
+        if (this.visualization) {
+            this.visualization.animate();
+        } else {
+            console.error('Cannot start animation: Visualization not initialized');
+        }
         if (this.gpuAvailable) {
             console.log('GPU acceleration is available');
             // Implement GPU-accelerated features here if needed

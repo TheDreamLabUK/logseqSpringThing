@@ -1,5 +1,5 @@
    <script>
-   import { defineComponent, onBeforeUnmount } from 'vue';
+   import { defineComponent, ref, onUpdated, onBeforeUnmount } from 'vue';
 
    export default defineComponent({
        name: 'ChatManager',
@@ -36,11 +36,33 @@
            }
        },
        mounted() {
-           this.websocketService.on('message', this.receiveMessage);
+           // Ensure that websocketService is available
+           if (this.websocketService) {
+               this.websocketService.on('message', this.handleMessage);
+           } else {
+               console.error('WebSocketService is undefined');
+           }
        },
        beforeUnmount() {
            // Remove the event listener when the component is unmounted
            this.websocketService.off('message', this.receiveMessage);
+       },
+       setup() {
+           const chatMessagesRef = ref(null);
+
+           const scrollToBottom = () => {
+               if (chatMessagesRef.value) {
+                   chatMessagesRef.value.scrollTop = chatMessagesRef.value.scrollHeight;
+               }
+           };
+
+           onUpdated(() => {
+               scrollToBottom();
+           });
+
+           return {
+               chatMessagesRef
+           };
        }
    });
    </script>

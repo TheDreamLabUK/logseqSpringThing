@@ -3,7 +3,7 @@
 /**
  * WebsocketService handles the WebSocket connection and communication with the server.
  */
-export class WebsocketService {
+class WebsocketService {
     constructor() {
         this.socket = null;
         this.listeners = {};
@@ -40,18 +40,14 @@ export class WebsocketService {
 
         // WebSocket message event
         this.socket.onmessage = (event) => {
-            console.log('Received WebSocket message:', event.data);
             try {
                 const data = JSON.parse(event.data);
-                if (data.type === 'ragflowResponse') {
-                    this.handleRagflowResponse(data.data);
-                } else {
-                    this.emit('message', data);
-                }
-            } catch (err) {
-                console.error('Error parsing WebSocket message:', err);
+                this.emit('message', data);
+            } catch (error) {
+                console.error('Error parsing WebSocket message:', error);
                 console.error('Raw message:', event.data);
-                this.emit('error', { type: 'parse_error', message: err.message, rawData: event.data });
+                // Emit an error event that can be handled elsewhere
+                this.emit('error', { type: 'parse_error', message: error.message, rawData: event.data });
             }
         };
 
@@ -190,6 +186,12 @@ export class WebsocketService {
         if (!this.audioContext) {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             console.log('AudioContext initialized');
+        } else if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume().then(() => {
+                console.log('AudioContext resumed');
+            }).catch((error) => {
+                console.error('Error resuming AudioContext:', error);
+            });
         } else {
             console.log('AudioContext already initialized');
         }
@@ -280,13 +282,35 @@ export class WebsocketService {
     }
 
     handleServerMessage(data) {
-        if (data.type === 'audio') {
-            this.handleAudioData(data.audio);
-        } else if (data.type === 'answer') {
-            this.emit('ragflowAnswer', data.answer);
-        } else if (data.type === 'error') {
-            this.emit('error', { type: 'server_error', message: data.message });
+        console.log('Received server message:', data);
+        switch (data.type) {
+            case 'audio':
+                this.handleAudioData(data.audio);
+                break;
+            case 'answer':
+                this.emit('ragflowAnswer', data.answer);
+                break;
+            case 'error':
+                this.emit('error', { type: 'server_error', message: data.message });
+                break;
+            case 'graphUpdate':
+                this.emit('graphUpdate', data.graphData);
+                break;
+            case 'ttsMethodSet':
+                console.log('TTS method set to:', data.method);
+                this.emit('ttsMethodSet', data.method);
+                break;
+            case 'ragflowResponse':
+                this.handleRagflowResponse(data);
+                break;
+            case 'openaiResponse':
+                this.emit('openaiResponse', data.response);
+                break;
+            default:
+                console.warn('Unhandled message type:', data.type);
+                break;
         }
-        // ... handle other message types ...
     }
 }
+
+export default WebsocketService;
