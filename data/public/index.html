@@ -5,84 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebXR Graph Visualization</title>
     
-    <!-- 
-        Removed the Three.js CDN to prevent multiple instances.
-        Three.js should now be imported via JavaScript modules within your app.js.
-    -->
-    
     <!-- Vue.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/vue@3.2.31/dist/vue.global.prod.js"></script>
     
     <style>
-        /* Existing styles preserved */
-        /* ... (keep existing styles) ... */
-
-        /* Add styles for the control panel */
-        #control-panel {
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+        #scene-container {
+            width: 100%;
+            height: 100%;
             position: absolute;
-            top: 20px;
-            right: 20px;
-            background-color: rgba(255, 255, 255, 0.85);
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            z-index: 1000; /* Ensure it appears above other elements */
         }
-
-        /* Chat messages area */
-        #chat-messages {
-            flex: 1;
-            margin-bottom: 10px;
-            overflow-y: auto;
-        }
-
-        /* Chat input area */
-        #chat-input-area {
-            display: flex;
-        }
-
-        #chat-input {
-            flex: 1;
-            padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-
-        #send-button {
-            padding: 8px 12px;
-            margin-left: 8px;
-            border: none;
-            background-color: #28a745;
-            color: white;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-
-        #send-button:hover {
-            background-color: #218838;
-        }
-
-        /* Fullscreen button styling */
-        #fullscreen-button {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            padding: 10px 15px;
-            background-color: rgba(0, 0, 0, 0.6);
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            z-index: 1000;
-        }
-
-        #fullscreen-button:hover {
-            background-color: rgba(0, 0, 0, 0.8);
-        }
-
-        /* Connection status styling */
         #connection-status {
             position: absolute;
             top: 20px;
@@ -92,50 +29,15 @@
             font-weight: bold;
             z-index: 1000;
         }
-
         #connection-status.connected {
             background-color: #28a745;
             color: white;
         }
-
         #connection-status.disconnected {
             background-color: #dc3545;
             color: white;
         }
-
-        /* Spacemouse button styling */
-        #enable-spacemouse {
-            position: absolute;
-            top: 60px;
-            right: 20px;
-            padding: 10px 15px;
-            background-color: rgba(0, 0, 0, 0.6);
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            z-index: 1000;
-        }
-
-        #enable-spacemouse:hover {
-            background-color: rgba(0, 0, 0, 0.8);
-        }
-
-        /* Responsive adjustments */
         @media (max-width: 600px) {
-            /* Removed #chat-container modifications as Vue handles chat rendering */
-            
-            #fullscreen-button, #enable-spacemouse {
-                top: 10px;
-                right: 10px;
-                padding: 8px 12px;
-            }
-
-            #enable-spacemouse {
-                top: 50px;
-            }
-
             #connection-status {
                 top: 10px;
                 left: 10px;
@@ -150,18 +52,9 @@
     <!-- Connection status indicator -->
     <div id="connection-status" class="disconnected">Disconnected</div>
 
-    <!-- Fullscreen toggle button -->
-    <button id="fullscreen-button">Toggle Fullscreen</button>
-
-    <!-- Enable Spacemouse button -->
-    <button id="enable-spacemouse">Enable Spacemouse</button>
-
     <!-- Vue app container -->
     <div id="app">
-        <!-- 
-            The Vue application will mount here and render the ChatManager and ControlPanel components.
-            Removed the empty #chat-container and #control-panel divs to let Vue manage them directly.
-        -->
+        <!-- The Vue application will mount here and render the ChatManager and ControlPanel components. -->
     </div>
 
     <!-- Include the main application script -->

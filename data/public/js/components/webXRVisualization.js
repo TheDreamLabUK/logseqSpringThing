@@ -3,73 +3,10 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import toml from 'toml';
-import net from 'net'; // Node.js module for network communication
 
 // Constants for Spacemouse sensitivity
 const TRANSLATION_SPEED = 0.01;
-import WebSocketService from '../services/websocketService.js'; // Updated import to use default import
-
-// Function to load and parse settings.toml
-async function loadSettings() {
-    const response = await fetch('/settings.toml');
-    const text = await response.text();
-    return toml.parse(text);
-}
-
-/**
- * Connects to the Spacemouse via spacenavd and listens for movement events
- * @param {THREE.Camera} camera - The Three.js camera to control
- * @param {THREE.OrbitControls} controls - The OrbitControls instance to update
- */
-function connectSpacemouse(camera, controls) {
-    const socketPath = '/var/run/spnav.sock'; // Path to spacenavd socket
-
-    // Create a connection to spacenavd
-    const client = net.createConnection(socketPath, () => {
-        console.log('Connected to Spacenavd');
-    });
-
-    client.on('data', (data) => {
-        // Spacenavd sends movement data in 12-byte packets
-        if (data.length !== 12) {
-            console.warn('Unexpected data length from Spacenavd');
-            return;
-        }
-
-        // Read movement data: translation (6 bytes) + rotation (6 bytes)
-        const tx = data.readInt16LE(0) * TRANSLATION_SPEED;
-        const ty = data.readInt16LE(2) * TRANSLATION_SPEED;
-        const tz = data.readInt16LE(4) * TRANSLATION_SPEED;
-        const rx = data.readInt16LE(6) * ROTATION_SPEED;
-        const ry = data.readInt16LE(8) * ROTATION_SPEED;
-        const rz = data.readInt16LE(10) * ROTATION_SPEED;
-
-        // Update camera position based on translation data
-        camera.position.x += tx;
-        camera.position.y -= ty; // Inverted to match expected behavior
-        camera.position.z -= tz;
-
-        // Update camera rotation based on rotation data
-        camera.rotation.x += rx;
-        camera.rotation.y += ry;
-        camera.rotation.z += rz;
-
-        // Update controls target for proper interaction
-        controls.target.copy(camera.position).add(new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion));
-
-        // Update controls
-        controls.update();
-    });
-
-    client.on('error', (err) => {
-        console.error('Error connecting to Spacenavd:', err);
-    });
-
-    client.on('close', () => {
-        console.log('Disconnected from Spacenavd');
-    });
-}
+const ROTATION_SPEED = 0.01;
 
 export class WebXRVisualization {
     constructor(graphDataManager) {
@@ -86,17 +23,7 @@ export class WebXRVisualization {
         this.renderer.toneMapping = THREE.ReinhardToneMapping;
         this.renderer.toneMappingExposure = 1;
         
-        const container = document.getElementById('scene-container');
-        if (container) {
-            container.appendChild(this.renderer.domElement);
-        } else {
-            console.error("Could not find 'scene-container' element");
-        }
-
-        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-        this.controls.enableDamping = true;
-        this.controls.dampingFactor = 0.05;
-
+        this.controls = null;
         this.composer = null;
 
         this.nodeMeshes = new Map();
@@ -107,10 +34,13 @@ export class WebXRVisualization {
         this.animationFrameId = null;
 
         this.selectedNode = null;
-        this.applyDefaultSettings();
+
+        this.initializeSettings();
+        console.log('WebXRVisualization constructor completed');
     }
 
-    applyDefaultSettings() {
+    initializeSettings() {
+        console.log('Initializing settings');
         this.nodeColor = 0x1A0B31;
         this.edgeColor = 0xff0000;
         this.hologramColor = 0xFFD700;
@@ -131,15 +61,36 @@ export class WebXRVisualization {
         this.environmentBloomStrength = 1;
         this.environmentBloomRadius = 1;
         this.environmentBloomThreshold = 0;
+        console.log('Settings initialized');
     }
 
     initThreeJS() {
+        console.log('Initializing Three.js');
+        const container = document.getElementById('scene-container');
+        if (container) {
+            container.appendChild(this.renderer.domElement);
+        } else {
+            console.error("Could not find 'scene-container' element");
+            return;
+        }
+
+        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+        this.controls.enableDamping = true;
+        this.controls.dampingFactor = 0.05;
+
         this.scene.fog = new THREE.FogExp2(0x000000, this.fogDensity);
         this.addLights();
         this.initPostProcessing();
+        this.createHologramStructure();
+
+        window.addEventListener('resize', this.onWindowResize.bind(this), false);
+
+        this.animate();
+        console.log('Three.js initialization completed');
     }
 
     initPostProcessing() {
+        console.log('Initializing post-processing');
         this.composer = new EffectComposer(this.renderer);
         const renderPass = new RenderPass(this.scene, this.camera);
         this.composer.addPass(renderPass);
@@ -151,22 +102,24 @@ export class WebXRVisualization {
             this.environmentBloomThreshold
         );
         this.composer.addPass(this.bloomPass);
+        console.log('Post-processing initialized');
     }
 
     addLights() {
+        console.log('Adding lights to the scene');
         const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
         this.scene.add(ambientLight);
 
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
         directionalLight.position.set(50, 50, 50);
         this.scene.add(directionalLight);
+        console.log('Lights added to the scene');
     }
 
     createHologramStructure() {
-        // Clear existing hologram group
+        console.log('Creating hologram structure');
         this.hologramGroup.clear();
 
-        // Create a Buckminster Fullerene
         const buckyGeometry = new THREE.IcosahedronGeometry(40 * this.hologramScale, 1);
         const buckyMaterial = new THREE.MeshBasicMaterial({
             color: this.hologramColor,
@@ -176,10 +129,9 @@ export class WebXRVisualization {
         });
         const buckySphere = new THREE.Mesh(buckyGeometry, buckyMaterial);
         buckySphere.userData.rotationSpeed = 0.0001;
-        buckySphere.layers.enable(1);  // Enable bloom for this sphere
+        buckySphere.layers.enable(1);
         this.hologramGroup.add(buckySphere);
 
-        // Create a Geodesic Dome
         const geodesicGeometry = new THREE.IcosahedronGeometry(30 * this.hologramScale, 1);
         const geodesicMaterial = new THREE.MeshBasicMaterial({
             color: this.hologramColor,
@@ -189,10 +141,9 @@ export class WebXRVisualization {
         });
         const geodesicDome = new THREE.Mesh(geodesicGeometry, geodesicMaterial);
         geodesicDome.userData.rotationSpeed = 0.0002;
-        geodesicDome.layers.enable(1);  // Enable bloom for this sphere
+        geodesicDome.layers.enable(1);
         this.hologramGroup.add(geodesicDome);
 
-        // Create a Normal Triangle Sphere
         const triangleGeometry = new THREE.SphereGeometry(20 * this.hologramScale, 32, 32);
         const triangleMaterial = new THREE.MeshBasicMaterial({
             color: this.hologramColor,
@@ -202,23 +153,28 @@ export class WebXRVisualization {
         });
         const triangleSphere = new THREE.Mesh(triangleGeometry, triangleMaterial);
         triangleSphere.userData.rotationSpeed = 0.0003;
-        triangleSphere.layers.enable(1);  // Enable bloom for this sphere
+        triangleSphere.layers.enable(1);
         this.hologramGroup.add(triangleSphere);
 
         this.scene.add(this.hologramGroup);
+        console.log('Hologram structure created');
     }
 
     updateVisualization() {
+        console.log('Updating visualization');
         const graphData = this.graphDataManager.getGraphData();
         if (!graphData) {
             console.warn('No graph data available for visualization update');
             return;
         }
+        console.log('Graph data received:', graphData);
         this.updateNodes(graphData.nodes);
         this.updateEdges(graphData.edges);
+        console.log('Visualization update completed');
     }
 
     updateNodes(nodes) {
+        console.log('Updating nodes:', nodes.length);
         const existingNodeIds = new Set(nodes.map(node => node.id));
 
         this.nodeMeshes.forEach((mesh, nodeId) => {
@@ -250,7 +206,7 @@ export class WebXRVisualization {
                 const geometry = new THREE.SphereGeometry(size, 32, 32);
                 const material = new THREE.MeshStandardMaterial({ color: this.nodeColor });
                 mesh = new THREE.Mesh(geometry, material);
-                mesh.layers.enable(1); // Enable bloom for nodes
+                mesh.layers.enable(1);
                 this.scene.add(mesh);
                 this.nodeMeshes.set(node.id, mesh);
 
@@ -266,9 +222,11 @@ export class WebXRVisualization {
             const label = this.nodeLabels.get(node.id);
             label.position.set(node.x, node.y + size + 2, node.z);
         });
+        console.log('Nodes update completed');
     }
 
     updateEdges(edges) {
+        console.log('Updating edges:', edges.length);
         const existingEdgeKeys = new Set(edges.map(edge => `${edge.source}-${edge.target_node}`));
 
         this.edgeMeshes.forEach((line, edgeKey) => {
@@ -285,9 +243,10 @@ export class WebXRVisualization {
             }
             const edgeKey = `${edge.source}-${edge.target_node}`;
             let line = this.edgeMeshes.get(edgeKey);
+            const sourceMesh = this.nodeMeshes.get(edge.source);
+            const targetMesh = this.nodeMeshes.get(edge.target_node);
+            
             if (!line) {
-                const sourceMesh = this.nodeMeshes.get(edge.source);
-                const targetMesh = this.nodeMeshes.get(edge.target_node);
                 if (sourceMesh && targetMesh) {
                     const geometry = new THREE.BufferGeometry().setFromPoints([
                         sourceMesh.position,
@@ -299,31 +258,28 @@ export class WebXRVisualization {
                         opacity: this.edgeOpacity
                     });
                     line = new THREE.Line(geometry, material);
-                    line.layers.enable(1); // Enable bloom for edges
+                    line.layers.enable(1);
                     this.scene.add(line);
                     this.edgeMeshes.set(edgeKey, line);
                 } else {
                     console.warn(`Unable to create edge: ${edgeKey}. Source or target node not found.`);
                 }
+            } else if (sourceMesh && targetMesh) {
+                const positions = line.geometry.attributes.position.array;
+                positions[0] = sourceMesh.position.x;
+                positions[1] = sourceMesh.position.y;
+                positions[2] = sourceMesh.position.z;
+                positions[3] = targetMesh.position.x;
+                positions[4] = targetMesh.position.y;
+                positions[5] = targetMesh.position.z;
+                line.geometry.attributes.position.needsUpdate = true;
+                line.material.color.setHex(this.edgeColor);
+                line.material.opacity = this.edgeOpacity;
             } else {
-                const sourceMesh = this.nodeMeshes.get(edge.source);
-                const targetMesh = this.nodeMeshes.get(edge.target_node);
-                if (sourceMesh && targetMesh) {
-                    const positions = line.geometry.attributes.position.array;
-                    positions[0] = sourceMesh.position.x;
-                    positions[1] = sourceMesh.position.y;
-                    positions[2] = sourceMesh.position.z;
-                    positions[3] = targetMesh.position.x;
-                    positions[4] = targetMesh.position.y;
-                    positions[5] = targetMesh.position.z;
-                    line.geometry.attributes.position.needsUpdate = true;
-                    line.material.color.setHex(this.edgeColor);
-                    line.material.opacity = this.edgeOpacity;
-                } else {
-                    console.warn(`Unable to update edge: ${edgeKey}. Source or target node not found.`);
-                }
+                console.warn(`Unable to update edge: ${edgeKey}. Source or target node not found.`);
             }
         });
+        console.log('Edges update completed');
     }
 
     createNodeLabel(text) {
@@ -346,9 +302,8 @@ export class WebXRVisualization {
         const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
         const sprite = new THREE.Sprite(spriteMaterial);
         sprite.scale.set(canvas.width / 10, canvas.height / 10, 1);
-        sprite.layers.set(1); // Enable bloom for labels
+        sprite.layers.set(1);
 
-        // Optional: Add depth or background enhancements
         spriteMaterial.depthWrite = false;
         spriteMaterial.transparent = true;
 
@@ -368,6 +323,7 @@ export class WebXRVisualization {
     }
 
     onWindowResize() {
+        console.log('Window resized');
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -377,6 +333,7 @@ export class WebXRVisualization {
     }
 
     dispose() {
+        console.log('Disposing WebXRVisualization');
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
         }
@@ -396,6 +353,7 @@ export class WebXRVisualization {
         if (this.controls) {
             this.controls.dispose();
         }
+        console.log('WebXRVisualization disposed');
     }
 
     updateVisualFeatures(changes) {
@@ -403,116 +361,22 @@ export class WebXRVisualization {
         let needsUpdate = false;
 
         for (const [name, value] of Object.entries(changes)) {
-            switch (name) {
-                case 'node_color':
-                    this.nodeColor = value;
-                    this.nodeMeshes.forEach(mesh => {
-                        mesh.material.color.setHex(value);
-                    });
-                    needsUpdate = true;
-                    break;
-                case 'edge_color':
-                    this.edgeColor = value;
-                    this.edgeMeshes.forEach(line => {
-                        line.material.color.setHex(value);
-                    });
-                    needsUpdate = true;
-                    break;
-                case 'hologram_color':
-                    this.hologramColor = value;
-                    this.hologramGroup.children.forEach(child => {
-                        child.material.color.setHex(value);
-                    });
-                    needsUpdate = true;
-                    break;
-                case 'node_size_scaling_factor':
-                    this.nodeSizeScalingFactor = value;
-                    this.updateVisualization();
-                    needsUpdate = true;
-                    break;
-                case 'hologram_scale':
-                    this.hologramScale = value;
-                    this.createHologramStructure();
-                    needsUpdate = true;
-                    break;
-                case 'hologram_opacity':
-                    this.hologramOpacity = value;
-                    this.hologramGroup.children.forEach(child => {
-                        child.material.opacity = value;
-                    });
-                    needsUpdate = true;
-                    break;
-                case 'edge_opacity':
-                    this.edgeOpacity = value;
-                    this.edgeMeshes.forEach(line => {
-                        line.material.opacity = value;
-                    });
-                    needsUpdate = true;
-                    break;
-                case 'label_font_size':
-                    this.labelFontSize = value;
-                    this.updateNodeLabels();
-                    needsUpdate = true;
-                    break;
-                case 'fog_density':
-                    this.fogDensity = value;
-                    this.scene.fog.density = value;
-                    needsUpdate = true;
-                    break;
-                case 'node_bloom_strength':
-                    this.nodeBloomStrength = value;
-                    this.updateBloomPass();
-                    needsUpdate = true;
-                    break;
-                case 'node_bloom_radius':
-                    this.nodeBloomRadius = value;
-                    this.updateBloomPass();
-                    needsUpdate = true;
-                    break;
-                case 'node_bloom_threshold':
-                    this.nodeBloomThreshold = value;
-                    this.updateBloomPass();
-                    needsUpdate = true;
-                    break;
-                case 'edge_bloom_strength':
-                    this.edgeBloomStrength = value;
-                    this.updateBloomPass();
-                    needsUpdate = true;
-                    break;
-                case 'edge_bloom_radius':
-                    this.edgeBloomRadius = value;
-                    this.updateBloomPass();
-                    needsUpdate = true;
-                    break;
-                case 'edge_bloom_threshold':
-                    this.edgeBloomThreshold = value;
-                    this.updateBloomPass();
-                    needsUpdate = true;
-                    break;
-                case 'environment_bloom_strength':
-                    this.environmentBloomStrength = value;
-                    this.updateBloomPass();
-                    needsUpdate = true;
-                    break;
-                case 'environment_bloom_radius':
-                    this.environmentBloomRadius = value;
-                    this.updateBloomPass();
-                    needsUpdate = true;
-                    break;
-                case 'environment_bloom_threshold':
-                    this.environmentBloomThreshold = value;
-                    this.updateBloomPass();
-                    needsUpdate = true;
-                    break;
+            if (this.hasOwnProperty(name)) {
+                this[name] = value;
+                needsUpdate = true;
             }
         }
 
         if (needsUpdate) {
+            this.updateVisualization();
+            this.updateBloomPass();
             this.composer.render();
         }
+        console.log('Visual features update completed');
     }
 
     updateNodeLabels() {
+        console.log('Updating node labels');
         this.nodeLabels.forEach((label, nodeId) => {
             const node = this.nodeMeshes.get(nodeId);
             if (node) {
@@ -523,13 +387,33 @@ export class WebXRVisualization {
                 this.nodeLabels.set(nodeId, newLabel);
             }
         });
+        console.log('Node labels update completed');
     }
 
     updateBloomPass() {
+        console.log('Updating bloom pass');
         if (this.bloomPass) {
             this.bloomPass.strength = this.environmentBloomStrength;
             this.bloomPass.radius = this.environmentBloomRadius;
             this.bloomPass.threshold = this.environmentBloomThreshold;
         }
+        console.log('Bloom pass update completed');
+    }
+
+    handleSpacemouseInput(x, y, z, rx, ry, rz) {
+        if (!this.camera || !this.controls) {
+            console.warn('Camera or controls not initialized for Spacemouse input');
+            return;
+        }
+
+        this.camera.position.x += x * TRANSLATION_SPEED;
+        this.camera.position.y += y * TRANSLATION_SPEED;
+        this.camera.position.z += z * TRANSLATION_SPEED;
+        
+        this.camera.rotation.x += rx * ROTATION_SPEED;
+        this.camera.rotation.y += ry * ROTATION_SPEED;
+        this.camera.rotation.z += rz * ROTATION_SPEED;
+
+        this.controls.update();
     }
 }

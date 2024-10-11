@@ -1,37 +1,108 @@
-s<template>
+<template>
   <div id="control-panel" :class="{ hidden: isHidden }">
-    <button @click="hidePanel" class="hide-button">Hide Panel</button>
-    <div class="controls-container">
-      <div v-for="control in controls" :key="control.name" class="control-item">
-        <label :for="control.name">{{ control.label }}</label>
-        <input v-if="control.type === 'color'"
-               :id="control.name"
-               type="color"
-               v-model="control.value"
-               @change="emitChange(control.name, control.value)"
-        >
-        <input v-else-if="control.type === 'range'"
-               :id="control.name"
-               type="range"
-               v-model.number="control.value"
-               :min="control.min"
-               :max="control.max"
-               :step="control.step"
-               @input="emitChange(control.name, control.value)"
-        >
-        <span v-if="control.type === 'range'" class="range-value">{{ control.value }}</span>
+    <button @click="togglePanel" class="toggle-button">
+      {{ isHidden ? '>' : '<' }}
+    </button>
+    <div class="panel-content" v-show="!isHidden">
+      <!-- Chat Interface -->
+      <div class="chat-interface">
+        <div class="chat-messages" ref="chatMessagesRef">
+          <div v-for="(message, index) in chatMessages" :key="index" :class="['chat-message', message.sender === 'You' ? 'user' : 'ai']">
+            <strong>{{ message.sender }}:</strong> {{ message.message }}
+          </div>
+        </div>
+        <div class="chat-input-container">
+          <input type="text" v-model="chatInput" @keyup.enter="sendMessage" placeholder="Type a message..." />
+          <button @click="sendMessage">Send</button>
+        </div>
+        <div class="tts-toggle">
+          <label>
+            <input type="checkbox" v-model="useOpenAI" @change="toggleTTS" />
+            Use OpenAI TTS
+          </label>
+        </div>
       </div>
+
+      <!-- Fisheye Distortion Toggle -->
+      <div class="control-item">
+        <label for="fisheye_enabled">Fisheye Distortion</label>
+        <div>
+          <label>
+            <input type="radio" value="true" v-model="fisheyeEnabled" @change="emitChange('fisheye_enabled', true)">
+            Enable
+          </label>
+          <label>
+            <input type="radio" value="false" v-model="fisheyeEnabled" @change="emitChange('fisheye_enabled', false)">
+            Disable
+          </label>
+        </div>
+      </div>
+
+      <!-- Fisheye Strength Slider -->
+      <div class="control-item">
+        <label for="fisheye_strength">Fisheye Strength</label>
+        <input
+          id="fisheye_strength"
+          type="range"
+          v-model.number="fisheyeStrength"
+          :min="0"
+          :max="1"
+          :step="0.01"
+          @input="emitChange('fisheye_strength', fisheyeStrength)"
+        >
+        <span class="range-value">{{ fisheyeStrength }}</span>
+      </div>
+
+      <!-- Other Controls -->
+      <div class="controls-container">
+        <div v-for="control in controls" :key="control.name" class="control-item">
+          <label :for="control.name">{{ control.label }}</label>
+          <input v-if="control.type === 'color'"
+                 :id="control.name"
+                 type="color"
+                 v-model="control.value"
+                 @change="emitChange(control.name, control.value)"
+          >
+          <input v-else-if="control.type === 'range'"
+                 :id="control.name"
+                 type="range"
+                 v-model.number="control.value"
+                 :min="control.min"
+                 :max="control.max"
+                 :step="control.step"
+                 @input="emitChange(control.name, control.value)"
+          >
+          <span v-if="control.type === 'range'" class="range-value">{{ control.value }}</span>
+        </div>
+      </div>
+
+      <!-- Additional Buttons -->
+      <div class="button-group">
+        <button @click="toggleFullscreen" class="control-button">Toggle Fullscreen</button>
+        <button @click="enableSpacemouse" class="control-button">Enable Spacemouse</button>
+      </div>
+
+      <button @click="resetControls" class="reset-button">Reset to Defaults</button>
     </div>
-    <button @click="resetControls" class="reset-button">Reset to Defaults</button>
   </div>
 </template>
 
 <script>
+import { ref, onMounted, onBeforeUnmount, onUpdated } from 'vue';
+
 export default {
   name: 'ControlPanel',
+  props: {
+    websocketService: {
+      type: Object,
+      required: true
+    }
+  },
   data() {
     return {
       isHidden: false,
+      fisheyeEnabled: 'false',
+      fisheyeStrength: 0.5,
       controls: [
         { name: 'node_color', label: 'Node Color', type: 'color', value: '#1A0B31' },
         { name: 'edge_color', label: 'Edge Color', type: 'color', value: '#ff0000' },
@@ -52,14 +123,16 @@ export default {
         { name: 'environment_bloom_radius', label: 'Environment Bloom Radius', type: 'range', value: 1, min: 0, max: 2, step: 0.01 },
         { name: 'environment_bloom_threshold', label: 'Environment Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
       ],
+      chatInput: '',
+      chatMessages: [],
+      useOpenAI: false,
     };
   },
   methods: {
-    hidePanel() {
-      this.isHidden = true;
+    togglePanel() {
+      this.isHidden = !this.isHidden;
     },
     emitChange(name, value) {
-      // Convert color hex to 0xRRGGBB format for Three.js
       if (this.isColorControl(name)) {
         value = parseInt(value.replace('#', '0x'), 16);
       }
@@ -73,9 +146,12 @@ export default {
         control.value = this.getDefaultValue(control.name);
         this.emitChange(control.name, control.value);
       });
+      this.fisheyeEnabled = 'false';
+      this.emitChange('fisheye_enabled', false);
+      this.fisheyeStrength = 0.5;
+      this.emitChange('fisheye_strength', 0.5);
     },
     getDefaultValue(name) {
-      // Default values from settings.toml
       const defaults = {
         node_color: '#1A0B31',
         edge_color: '#ff0000',
@@ -98,7 +174,61 @@ export default {
       };
       return defaults[name] || '';
     },
+    sendMessage() {
+      if (this.chatInput.trim() && this.websocketService) {
+        this.websocketService.sendChatMessage({
+          message: this.chatInput,
+          useOpenAI: this.useOpenAI
+        });
+        this.chatMessages.push({ sender: 'You', message: this.chatInput });
+        this.chatInput = '';
+      }
+    },
+    toggleTTS() {
+      if (this.websocketService) {
+        this.websocketService.toggleTTS(this.useOpenAI);
+        console.log(`TTS method set to: ${this.useOpenAI ? 'OpenAI' : 'Sonata'}`);
+      }
+    },
+    receiveMessage(message) {
+      this.chatMessages.push({ sender: 'AI', message });
+    },
+    toggleFullscreen() {
+      this.$emit('toggle-fullscreen');
+    },
+    enableSpacemouse() {
+      this.$emit('enable-spacemouse');
+    }
   },
+  mounted() {
+    if (this.websocketService) {
+      this.websocketService.on('message', this.receiveMessage);
+    } else {
+      console.error('WebSocketService is undefined');
+    }
+  },
+  beforeUnmount() {
+    if (this.websocketService) {
+      this.websocketService.off('message', this.receiveMessage);
+    }
+  },
+  setup() {
+    const chatMessagesRef = ref(null);
+
+    const scrollToBottom = () => {
+      if (chatMessagesRef.value) {
+        chatMessagesRef.value.scrollTop = chatMessagesRef.value.scrollHeight;
+      }
+    };
+
+    onUpdated(() => {
+      scrollToBottom();
+    });
+
+    return {
+      chatMessagesRef
+    };
+  }
 };
 </script>
 
@@ -106,20 +236,36 @@ export default {
 #control-panel {
   position: fixed;
   top: 20px;
-  right: 20px;
+  right: 0;
   width: 300px;
   max-height: 80vh;
   background-color: rgba(0, 0, 0, 0.8);
   color: white;
-  padding: 20px;
-  border-radius: 10px;
+  border-radius: 10px 0 0 10px;
   overflow-y: auto;
   z-index: 1000;
   transition: transform 0.3s ease-in-out;
 }
 
 #control-panel.hidden {
-  transform: translateX(320px);
+  transform: translateX(calc(100% - 40px));
+}
+
+.toggle-button {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  border: none;
+  padding: 10px;
+  cursor: pointer;
+  border-radius: 5px 0 0 5px;
+}
+
+.panel-content {
+  padding: 20px;
 }
 
 .controls-container {
@@ -154,7 +300,7 @@ input[type="range"] {
   text-align: right;
 }
 
-.hide-button, .reset-button {
+.reset-button, .control-button {
   width: 100%;
   padding: 10px;
   margin-top: 15px;
@@ -166,8 +312,57 @@ input[type="range"] {
   transition: background-color 0.3s;
 }
 
-.hide-button:hover, .reset-button:hover {
+.reset-button:hover, .control-button:hover {
   background-color: #555;
+}
+
+/* Chat Interface Styles */
+.chat-interface {
+  background-color: #222;
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+}
+
+.chat-messages {
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: #333;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.chat-message {
+  margin-bottom: 10px;
+}
+
+.chat-message.user {
+  text-align: right;
+}
+
+.chat-input-container {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.chat-input-container input[type="text"] {
+  flex-grow: 1;
+  padding: 5px;
+}
+
+.chat-input-container button {
+  padding: 5px 10px;
+}
+
+.tts-toggle {
+  margin-top: 10px;
+}
+
+.button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 /* Scrollbar styling */

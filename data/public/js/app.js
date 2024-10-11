@@ -11,6 +11,7 @@ import { enableSpacemouse } from './services/spacemouse.js';
 
 class App {
     constructor() {
+        console.log('App constructor called');
         this.initializeApp();
     }
 
@@ -26,17 +27,9 @@ class App {
         this.gpuAvailable = isGPUAvailable();
         if (this.gpuAvailable) {
             this.gpuUtils = initGPU();
-            console.log('GPU acceleration initialized');
         } else {
             console.warn('GPU acceleration not available, using CPU fallback');
-        }
-
-        // Initialize Vue App with ChatManager and ControlPanel
-        this.initVueApp();
-
-        // Setup Event Listeners
-        this.setupEventListeners();
-
+        // ... (keep existing GPU initialization code)
         // Initialize the visualization
         this.visualization.initThreeJS();
     }
@@ -47,76 +40,12 @@ class App {
                 ControlPanel,
                 ChatManager
             },
-            template: `
-                <div>
-                    <chat-manager></chat-manager>
-                    <control-panel @control-change="handleControlChange"></control-panel>
-                </div>
-            `,
-            methods: {
-                handleControlChange(data) {
-                    console.log('Control changed:', data.name, data.value);
-                    this.updateVisualization(data);
-                },
-                updateVisualization(change) {
-                    if (this.visualization) {
-                        console.log('Updating visualization:', change);
-                        this.visualization.updateVisualFeatures({ [change.name]: change.value });
-                    } else {
-                        console.error('Visualization not initialized');
-                    }
-                }
-            },
-            mounted() {
-                // Store reference to the visualization
-                this.visualization = this.$parent.visualization;
-                console.log('Vue app mounted, visualization reference:', this.visualization);
-            }
-        });
-
-        app.config.globalProperties.$websocketService = this.websocketService;
-        app.config.globalProperties.$visualization = this.visualization;
-        app.mount('#app');
+        } else {
+            console.error('Visualization not initialized, cannot call initThreeJS');
+        }
     }
 
-    setupEventListeners() {
-        console.log('Setting up event listeners');
-
-        // WebSocket Event Listeners
-        this.websocketService.on('open', () => {
-            console.log('WebSocket connection established');
-            this.updateConnectionStatus(true);
-            this.graphDataManager.requestInitialData();
-        });
-
-        this.websocketService.on('message', (event) => {
-            const data = JSON.parse(event.data);
-            this.handleWebSocketMessage(data);
-        });
-
-        this.websocketService.on('error', (error) => {
-            console.error('WebSocket error:', error);
-            this.updateConnectionStatus(false);
-        });
-
-        this.websocketService.on('close', () => {
-            console.log('WebSocket connection closed');
-            this.updateConnectionStatus(false);
-        });
-
-        // Custom Event Listener for Graph Data Updates
-        window.addEventListener('graphDataUpdated', (event) => {
-            console.log('Graph data updated event received', event.detail);
-            this.visualization.updateVisualization();
-        });
-
-        // Fullscreen Button Event Listener
-        const fullscreenButton = document.getElementById('fullscreen-button');
-        if (fullscreenButton) {
-            fullscreenButton.addEventListener('click', this.toggleFullscreen.bind(this));
-        } else {
-            console.warn('Fullscreen button not found');
-        }
+    // ... (keep existing initVueApp method)
 
         // Spacemouse Button Event Listener
         const spacemouseButton = document.getElementById('enable-spacemouse');
@@ -129,6 +58,7 @@ class App {
         // Spacemouse Move Event Listener
         window.addEventListener('spacemouse-move', (event) => {
             const { x, y, z } = event.detail;
+            console.log('WebSocket message received:', event);
             this.visualization.handleSpacemouseInput(x, y, z);
         });
 
@@ -138,15 +68,7 @@ class App {
         document.addEventListener('click', initAudio, { once: true });
 
         function initAudio() {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            // Your audio setup code here
-        };
-
-        document.addEventListener('click', initAudio);
-        document.addEventListener('touchstart', initAudio);
-    }
-
-    handleWebSocketMessage(data) {
+        // ... (keep other existing WebSocket listeners)
         switch (data.type) {
             case 'graphUpdate':
                 console.log('Received graph update:', data.graphData);
@@ -158,27 +80,11 @@ class App {
                 break;
             // Handle additional message types here
             default:
-                console.warn(`Unhandled message type: ${data.type}`);
-                break;
-        }
-    }
-
-    updateConnectionStatus(isConnected) {
-        const statusElement = document.getElementById('connection-status');
-        if (statusElement) {
-            statusElement.textContent = isConnected ? 'Connected' : 'Disconnected';
-            statusElement.className = isConnected ? 'connected' : 'disconnected';
-        } else {
-            console.warn('Connection status element not found');
-        }
-    }
-
-    toggleFullscreen() {
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch((err) => {
+        // ... (keep other existing event listeners)
                 console.error(`Error attempting to enable fullscreen: ${err.message}`);
             });
         } else {
+        console.log('Handling WebSocket message:', data);
             if (document.exitFullscreen) {
                 document.exitFullscreen().catch((err) => {
                     console.error(`Error attempting to exit fullscreen: ${err.message}`);
@@ -189,19 +95,11 @@ class App {
 
     start() {
         console.log('Starting the application');
-        this.visualization.animate();
-        if (this.gpuAvailable) {
-            console.log('GPU acceleration is available');
+            // ... (keep other cases)
             // Implement GPU-accelerated features here if needed
         } else {
             console.log('GPU acceleration is not available, using CPU fallback');
         }
     }
 }
-
-// Initialize the App once the DOM content is fully loaded
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM fully loaded, creating App instance');
-    const app = new App();
-    app.start();
-});
+    // ... (keep other existing methods)
