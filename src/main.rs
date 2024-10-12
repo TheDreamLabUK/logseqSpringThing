@@ -10,6 +10,7 @@ use crate::app_state::AppState;
 use crate::config::Settings;
 use crate::handlers::{file_handler, graph_handler, ragflow_handler};
 use crate::models::graph::GraphData;
+use crate::models::metadata::Metadata;
 use crate::services::file_service::{GitHubService, RealGitHubService, FileService};
 use crate::services::perplexity_service::PerplexityServiceImpl;
 use crate::services::ragflow_service::RAGFlowService;
@@ -29,7 +30,8 @@ mod utils;
 async fn initialize_graph_data(app_state: &web::Data<AppState>) -> std::io::Result<()> {
     log::info!("Initializing graph data...");
     
-    match FileService::fetch_and_process_files(&*app_state.github_service, app_state.settings.clone()).await {
+    let mut metadata_map = HashMap::new();
+    match FileService::fetch_and_process_files(&*app_state.github_service, app_state.settings.clone(), &mut metadata_map).await {
         Ok(processed_files) => {
             log::info!("Successfully processed {} files", processed_files.len());
 

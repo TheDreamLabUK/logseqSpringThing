@@ -35,6 +35,11 @@ export class WebXRVisualization {
 
         this.selectedNode = null;
 
+        // Initialize separate bloom passes
+        this.nodeBloomPass = null;
+        this.edgeBloomPass = null;
+        this.environmentBloomPass = null;
+
         this.initializeSettings();
         console.log('WebXRVisualization constructor completed');
     }
@@ -44,14 +49,14 @@ export class WebXRVisualization {
         this.nodeColor = 0x1A0B31;
         this.edgeColor = 0xff0000;
         this.hologramColor = 0xFFD700;
-        this.nodeSizeScalingFactor = 500; // Decreased from 1000 for better visibility
+        this.nodeSizeScalingFactor = 10; // Adjusted for logarithmic scaling
         this.hologramScale = 1;
         this.hologramOpacity = 0.1;
         this.edgeOpacity = 0.3;
         this.labelFontSize = 48;
         this.fogDensity = 0.002;
         this.minNodeSize = 1;
-        this.maxNodeSize = 10;
+        this.maxNodeSize = 20; // Increased for better differentiation
         this.nodeBloomStrength = 0.1;
         this.nodeBloomRadius = 0.1;
         this.nodeBloomThreshold = 0;
@@ -264,31 +269,127 @@ export class WebXRVisualization {
                 console.warn(`Invalid file_size for node ${node.id}:`, node.metadata.file_size);
                 return;
             }
-            // Adjusted scaling factor for better size representation
-            const size = Math.max(this.minNodeSize, Math.min(this.maxNodeSize, Math.sqrt(fileSize) / this.nodeSizeScalingFactor * 10));
-            console.log(`Node ID: ${node.id}, File Size: ${fileSize}, Calculated Size: ${size}`);
+            const size = this.calculateNodeSize(fileSize);
+            const color = this.calculateNodeColor(fileSize);
+
+            console.log(`Node ${node.id}: fileSize = ${fileSize}, calculated size = ${size}`);
 
             if (!mesh) {
-                const geometry = new THREE.SphereGeometry(size, 32, 32);
-                const material = new THREE.MeshStandardMaterial({ color: this.nodeColor });
+                const geometry = this.createNodeGeometry(size, fileSize);
+                const material = new THREE.MeshStandardMaterial({ color: color });
                 mesh = new THREE.Mesh(geometry, material);
-                mesh.layers.set(1); // Node layer
+                mesh.layers.enable(1);
                 this.scene.add(mesh);
                 this.nodeMeshes.set(node.id, mesh);
 
-                const label = this.createNodeLabel(node.label || node.id);
+                const label = this.createNodeLabel(node.label || node.id, fileSize);
                 this.scene.add(label);
                 this.nodeLabels.set(node.id, label);
             } else {
-                mesh.scale.setScalar(size);
-                mesh.material.color.setHex(this.nodeColor);
+                this.updateNodeGeometry(mesh, size, fileSize);
+                mesh.material.color.setHex(color);
             }
 
             mesh.position.set(node.x, node.y, node.z);
             const label = this.nodeLabels.get(node.id);
-            label.position.set(node.x, node.y + size + 2, node.z);
+            if (label) {
+                label.position.set(node.x, node.y + size + 2, node.z);
+                this.updateNodeLabel(label, node.label || node.id, fileSize);
+            }
         });
-        console.log(`Node color set to: ${this.nodeColor.toString(16)}`);
+    }
+
+    calculateNodeSize(fileSize) {
+        // Logarithmic scaling for better size distribution
+        const logSize = Math.log(fileSize + 1) / Math.log(10); // log10(fileSize + 1)
+        return Math.max(this.minNodeSize, Math.min(this.maxNodeSize, logSize * this.nodeSizeScalingFactor));
+    }
+
+    calculateNodeColor(fileSize) {
+        // Implement a color gradient based on file size
+        const t = Math.min(Math.log(fileSize + 1) / Math.log(1000000), 1); // Normalize to [0, 1]
+        const r = Math.floor(255 * t);
+        const g = Math.floor(255 * (1 - t));
+        const b = Math.floor(100 + 155 * (1 - t));
+        return (r << 16) | (g << 8) | b;
+    }
+
+    createNodeGeometry(size, fileSize) {
+        // Create different geometries based on file size ranges
+        if (fileSize < 1000) { // < 1KB
+            return new THREE.SphereGeometry(size, 16, 16);
+        } else if (fileSize < 1000000) { // < 1MB
+            return new THREE.BoxGeometry(size, size, size);
+        } else {
+            return new THREE.OctahedronGeometry(size);
+        }
+    }
+
+    updateNodeGeometry(mesh, size, fileSize) {
+        const newGeometry = this.createNodeGeometry(size, fileSize);
+        mesh.geometry.dispose();
+        mesh.geometry = newGeometry;
+    }
+
+    createNodeLabel(text, fileSize) {
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        context.font = `${this.labelFontSize}px Arial`;
+        const metrics = context.measureText(text);
+        const textWidth = metrics.width;
+
+        canvas.width = textWidth + 20; // Increased padding
+        canvas.height = this.labelFontSize + 30; // Increased height for file size info
+
+        context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.font = `${this.labelFontSize}px Arial`;
+        context.fillStyle = 'white';
+        context.fillText(text, 10, this.labelFontSize);
+        
+        // Add file size information
+        context.font = `${this.labelFontSize / 2}px Arial`;
+        context.fillStyle = 'lightgray';
+        context.fillText(this.formatFileSize(fileSize), 10, this.labelFontSize + 20);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+        const sprite = new THREE.Sprite(spriteMaterial);
+        sprite.scale.set(canvas.width / 10, canvas.height / 10, 1);
+        sprite.layers.set(1);
+
+        spriteMaterial.depthWrite = false;
+        spriteMaterial.transparent = true;
+
+        return sprite;
+    }
+
+    updateNodeLabel(label, text, fileSize) {
+        const canvas = label.material.map.image;
+        const context = canvas.getContext('2d');
+        context.clearRect(0, 0, canvas.width, canvas.height);
+
+        context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.font = `${this.labelFontSize}px Arial`;
+        context.fillStyle = 'white';
+        context.fillText(text, 10, this.labelFontSize);
+        
+        context.font = `${this.labelFontSize / 2}px Arial`;
+        context.fillStyle = 'lightgray';
+        context.fillText(this.formatFileSize(fileSize), 10, this.labelFontSize + 20);
+
+        label.material.map.needsUpdate = true;
+    }
+
+    formatFileSize(size) {
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let i = 0;
+        while (size >= 1024 && i < units.length - 1) {
+            size /= 1024;
+            i++;
+        }
+        return `${size.toFixed(2)} ${units[i]}`;
     }
 
     updateEdges(edges) {
@@ -324,7 +425,7 @@ export class WebXRVisualization {
                         opacity: this.edgeOpacity
                     });
                     line = new THREE.Line(geometry, material);
-                    line.layers.set(2); // Edge layer
+                    line.layers.enable(2);
                     this.scene.add(line);
                     this.edgeMeshes.set(edgeKey, line);
                 } else {
@@ -341,40 +442,11 @@ export class WebXRVisualization {
                 line.geometry.attributes.position.needsUpdate = true;
                 line.material.color.setHex(this.edgeColor);
                 line.material.opacity = this.edgeOpacity;
-                line.material.needsUpdate = true; // Ensure the material updates
+                line.material.needsUpdate = true;
             } else {
                 console.warn(`Unable to update edge: ${edgeKey}. Source or target node not found.`);
             }
         });
-        console.log(`Edge color set to: ${this.edgeColor.toString(16)}, opacity: ${this.edgeOpacity}`);
-    }
-
-    createNodeLabel(text) {
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        context.font = `${this.labelFontSize}px Arial`;
-        const metrics = context.measureText(text);
-        const textWidth = metrics.width;
-
-        canvas.width = textWidth + 10;
-        canvas.height = this.labelFontSize + 10;
-
-        context.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        context.font = `${this.labelFontSize}px Arial`;
-        context.fillStyle = 'white';
-        context.fillText(text, 5, this.labelFontSize);
-
-        const texture = new THREE.CanvasTexture(canvas);
-        const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
-        const sprite = new THREE.Sprite(spriteMaterial);
-        sprite.scale.set(canvas.width / 10, canvas.height / 10, 1);
-        sprite.layers.set(1); // Node layer
-
-        spriteMaterial.depthWrite = false;
-        spriteMaterial.transparent = true;
-
-        return sprite;
     }
 
     animate() {
@@ -384,6 +456,11 @@ export class WebXRVisualization {
         this.hologramGroup.children.forEach(child => {
             child.rotation.x += child.userData.rotationSpeed;
             child.rotation.y += child.userData.rotationSpeed;
+        });
+
+        // Update label orientations
+        this.nodeLabels.forEach(label => {
+            label.lookAt(this.camera.position);
         });
 
         this.composer.render();
@@ -440,20 +517,35 @@ export class WebXRVisualization {
 
     updateBloomPass() {
         console.log('Updating bloom passes');
-        if (this.environmentBloomPass) {
-            this.environmentBloomPass.strength = this.environmentBloomStrength;
-            this.environmentBloomPass.radius = this.environmentBloomRadius;
-            this.environmentBloomPass.threshold = this.environmentBloomThreshold;
-        }
         if (this.nodeBloomPass) {
             this.nodeBloomPass.strength = this.nodeBloomStrength;
             this.nodeBloomPass.radius = this.nodeBloomRadius;
             this.nodeBloomPass.threshold = this.nodeBloomThreshold;
+            console.log('Node bloom updated:', {
+                strength: this.nodeBloomStrength,
+                radius: this.nodeBloomRadius,
+                threshold: this.nodeBloomThreshold
+            });
         }
         if (this.edgeBloomPass) {
             this.edgeBloomPass.strength = this.edgeBloomStrength;
             this.edgeBloomPass.radius = this.edgeBloomRadius;
             this.edgeBloomPass.threshold = this.edgeBloomThreshold;
+            console.log('Edge bloom updated:', {
+                strength: this.edgeBloomStrength,
+                radius: this.edgeBloomRadius,
+                threshold: this.edgeBloomThreshold
+            });
+        }
+        if (this.environmentBloomPass) {
+            this.environmentBloomPass.strength = this.environmentBloomStrength;
+            this.environmentBloomPass.radius = this.environmentBloomRadius;
+            this.environmentBloomPass.threshold = this.environmentBloomThreshold;
+            console.log('Environment bloom updated:', {
+                strength: this.environmentBloomStrength,
+                radius: this.environmentBloomRadius,
+                threshold: this.environmentBloomThreshold
+            });
         }
         console.log('Bloom passes update completed');
     }
@@ -473,5 +565,41 @@ export class WebXRVisualization {
         this.camera.rotation.z += rz * ROTATION_SPEED;
 
         this.controls.update();
+    }
+
+    debugLabels() {
+        console.log('Debugging labels');
+        console.log('Total labels:', this.nodeLabels.size);
+
+        // Update camera matrices
+        this.camera.updateMatrixWorld();
+        this.camera.updateProjectionMatrix();
+
+        // Create frustum
+        const frustum = new THREE.Frustum();
+        const cameraViewProjectionMatrix = new THREE.Matrix4();
+        cameraViewProjectionMatrix.multiplyMatrices(
+            this.camera.projectionMatrix,
+            this.camera.matrixWorldInverse
+        );
+        frustum.setFromProjectionMatrix(cameraViewProjectionMatrix);
+
+        this.nodeLabels.forEach((label, nodeId) => {
+            console.log(`Label for node ${nodeId}:`, {
+                position: label.position.toArray(),
+                visible: label.visible,
+                inFrustum: frustum.containsPoint(label.position),
+                material: {
+                    color: label.material.color.getHex(),
+                    opacity: label.material.opacity,
+                    transparent: label.material.transparent,
+                    visible: label.material.visible
+                },
+                geometry: {
+                    type: label.geometry.type,
+                    parameters: label.geometry.parameters
+                }
+            });
+        });
     }
 }

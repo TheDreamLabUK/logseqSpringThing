@@ -193,7 +193,7 @@ impl FileService {
             log::info!("Removing file not present on GitHub: {}", removed_file);
             metadata_map.remove(&removed_file);
             // Optionally, remove the local file from the filesystem
-            // fs::remove_file(format!("/app/data/markdown/{}", removed_file)).await?;
+            // fs::remove_file(format!("/app/data/markdown/{}", removed_file))?;
         }
 
         for file_meta in github_files_metadata {
@@ -210,8 +210,6 @@ impl FileService {
             }
 
             // Fetch file content since it's new or updated
-            if let Ok(github_service) = github_service.downcast_ref::<RealGitHubService>() {
-                // Assume RealGitHubService has a method to get download_url for a given file name
                 if let Some(download_url) = github_service.get_download_url(&file_meta.name).await? {
                     let content = github_service.fetch_file_content(&download_url).await?;
                     
@@ -223,7 +221,7 @@ impl FileService {
                     }
 
                     // Update local file and metadata
-                    fs::write(format!("/app/data/markdown/{}", file_meta.name), &content).await?;
+                fs::write(format!("/app/data/markdown/{}", file_meta.name), &content)?;
                     let new_metadata = Metadata {
                         file_name: file_meta.name.clone(),
                         file_size: content.len(),
@@ -243,7 +241,6 @@ impl FileService {
                     debug!("Processed and updated file: {}", file_meta.name);
                 } else {
                     log::error!("Download URL not found for file: {}", file_meta.name);
-                }
             }
         }
 

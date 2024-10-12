@@ -5,13 +5,18 @@ use log::{info, error, debug};
 use crate::AppState;
 use crate::services::file_service::FileService;
 use crate::services::graph_service::GraphService;
+use std::collections::HashMap;
+use crate::models::metadata::Metadata;
 
 /// Fetches and processes files from GitHub, updates the file cache, and broadcasts updates.
 pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse {
     info!("Initiating file fetch and processing");
     
+    // Create a mutable HashMap to store metadata
+    let mut metadata_map = HashMap::new();
+    
     // Fetch and process files asynchronously
-    match FileService::fetch_and_process_files(&*state.github_service, state.settings.clone()).await {
+    match FileService::fetch_and_process_files(&*state.github_service, state.settings.clone(), &mut metadata_map).await {
         Ok(processed_files) => {
             let file_names: Vec<String> = processed_files.iter()
                 .map(|pf| pf.file_name.clone())
@@ -39,7 +44,7 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
                     let broadcast_result = state.websocket_manager.broadcast_message(&json!({
                         "type": "graphUpdate",
                         "data": graph_data,
-                    }).to_string()).await; // Correctly placed await
+                    }).to_string()).await;
 
                     match broadcast_result {
                         Ok(_) => debug!("Graph update broadcasted successfully"),
