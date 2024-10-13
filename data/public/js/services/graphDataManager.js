@@ -11,6 +11,11 @@ export class GraphDataManager {
     constructor(websocketService) {
         this.websocketService = websocketService;
         this.graphData = null;
+        this.forceDirectedParams = {
+            iterations: 100,
+            repulsion: 1.0,
+            attraction: 0.01
+        };
         console.log('GraphDataManager initialized');
         
         // Set up WebSocket message listener
@@ -83,5 +88,43 @@ export class GraphDataManager {
      */
     isGraphDataValid() {
         return this.graphData && Array.isArray(this.graphData.nodes) && Array.isArray(this.graphData.edges);
+    }
+
+    /**
+     * Updates the force-directed graph parameters.
+     * @param {string} name - The name of the parameter to update.
+     * @param {number} value - The new value for the parameter.
+     */
+    updateForceDirectedParams(name, value) {
+        console.log(`Updating force-directed parameter: ${name} = ${value}`);
+        if (name in this.forceDirectedParams) {
+            this.forceDirectedParams[name] = value;
+            console.log('Force-directed parameters updated:', this.forceDirectedParams);
+        } else {
+            console.warn(`Unknown force-directed parameter: ${name}`);
+        }
+    }
+
+    /**
+     * Recalculates the graph layout using the current force-directed parameters.
+     */
+    recalculateLayout() {
+        console.log('Recalculating graph layout with parameters:', this.forceDirectedParams);
+        if (this.isGraphDataValid()) {
+            // Here, you would typically send a message to the server to recalculate the layout
+            // For now, we'll just log the action and dispatch an event
+            this.websocketService.send({
+                type: 'recalculateLayout',
+                params: this.forceDirectedParams
+            });
+            console.log('Layout recalculation requested');
+            
+            // Dispatch an event to notify that a layout recalculation has been requested
+            window.dispatchEvent(new CustomEvent('layoutRecalculationRequested', {
+                detail: this.forceDirectedParams
+            }));
+        } else {
+            console.error('Cannot recalculate layout: Invalid graph data');
+        }
     }
 }

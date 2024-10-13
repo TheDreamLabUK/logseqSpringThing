@@ -15,6 +15,8 @@ pub struct Settings {
     pub sonata: SonataSettings,
 }
 
+
+
 #[derive(Deserialize, Clone)]
 pub struct PerplexitySettings {
     pub perplexity_api_key: String,
@@ -58,6 +60,10 @@ pub struct VisualizationSettings {
     pub edge_opacity: f32,
     pub label_font_size: u32,
     pub fog_density: f32,
+    // New force-directed graph settings
+    pub force_directed_iterations: usize,
+    pub force_directed_repulsion: f32,
+    pub force_directed_attraction: f32,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -124,6 +130,10 @@ impl Settings {
         }
         if self.ragflow.ragflow_api_base_url.is_empty() {
             return Err(ConfigError::Message("RAGFlow base URL is missing".to_string()));
+        }
+        // Validate new force-directed graph settings
+        if self.visualization.force_directed_iterations == 0 {
+            return Err(ConfigError::Message("force_directed_iterations must be greater than 0".to_string()));
         }
         // Add more validations as needed
         Ok(())

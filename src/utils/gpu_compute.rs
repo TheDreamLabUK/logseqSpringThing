@@ -5,11 +5,38 @@ use log::{error, info, debug};
 use crate::models::graph::GraphData;
 use crate::models::node::{Node, GPUNode};
 use crate::models::edge::GPUEdge;
-use crate::models::simulation_params::SimulationParams;
+use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
-const INITIAL_BUFFER_SIZE: u64 = 1024;
+// Constants for optimal performance on NVIDIA GPUs
+const WORKGROUP_SIZE: u32 = 256; // Optimal workgroup size for NVIDIA GPUs
+const INITIAL_BUFFER_SIZE: u64 = 1024 * 1024; // 1MB initial buffer size
 
+// Define the simulation parameters structure
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+struct SimulationParams {
+    iterations: u32,
+    repulsion: f32,
+    attraction: f32,
+    damping: f32,
+    delta_time: f32,
+}
+
+// Implement default values for SimulationParams
+impl Default for SimulationParams {
+    fn default() -> Self {
+        Self {
+            iterations: 100,
+            repulsion: 1.0,
+            attraction: 0.01,
+            damping: 0.9,
+            delta_time: 0.1,
+        }
+    }
+}
+
+/// Struct representing the GPU compute capabilities
 pub struct GPUCompute {
     device: Device,
     queue: Queue,
@@ -20,37 +47,45 @@ pub struct GPUCompute {
     compute_pipeline: ComputePipeline,
     num_nodes: u32,
     num_edges: u32,
+    simulation_params: SimulationParams,
 }
 
 impl GPUCompute {
+    /// Creates a new GPUCompute instance
     pub async fn new() -> Result<Self, Error> {
+        // Initialize the GPU instance with default descriptor
         let instance = wgpu::Instance::new(InstanceDescriptor::default());
+
+        // Request a high-performance GPU adapter
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
+                power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: None,
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "Request adapter error"))?;
+            .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "Failed to find an appropriate adapter"))?;
 
+        // Create the logical device and command queue
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
+                    label: Some("Primary Device"),
                     features: wgpu::Features::empty(),
                     limits: wgpu::Limits::default(),
-                    label: None,
                 },
                 None,
             )
             .await
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
+        // Load and create the compute shader module
         let cs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Force Calculation Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("force_calculation.wgsl").into()),
         });
 
+        // Create the bind group layout for the compute shader
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Compute Bind Group Layout"),
             entries: &[
@@ -87,16 +122,19 @@ impl GPUCompute {
             ],
         });
 
+        // Create the simulation parameters buffer
+        let simulation_params = SimulationParams::default();
         let simulation_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Simulation Params Buffer"),
-            contents: bytemuck::cast_slice(&[SimulationParams::default()]),
+            contents: bytemuck::cast_slice(&[simulation_params]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        // Create the compute pipeline
         let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("Compute Pipeline"),
+            label: Some("Force Directed Graph Compute Pipeline"),
             layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Pipeline Layout"),
+                label: Some("Compute Pipeline Layout"),
                 bind_group_layouts: &[&bind_group_layout],
                 push_constant_ranges: &[],
             })),
@@ -104,6 +142,7 @@ impl GPUCompute {
             entry_point: "main",
         });
 
+        // Create initial buffers for nodes and edges
         let nodes_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Nodes Buffer"),
             size: INITIAL_BUFFER_SIZE,
@@ -118,6 +157,7 @@ impl GPUCompute {
             mapped_at_creation: false,
         });
 
+        // Create the bind group
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Compute Bind Group"),
             layout: &bind_group_layout,
@@ -147,13 +187,16 @@ impl GPUCompute {
             compute_pipeline,
             num_nodes: 0,
             num_edges: 0,
+            simulation_params,
         })
     }
 
+    /// Sets the graph data for GPU computation
     pub fn set_graph_data(&mut self, graph: &GraphData) -> Result<(), Error> {
         self.num_nodes = graph.nodes.len() as u32;
         self.num_edges = graph.edges.len() as u32;
 
+        // Convert nodes to GPU representation with initial random positions
         let mut rng = rand::thread_rng();
         let gpu_nodes: Vec<GPUNode> = graph.nodes.iter().enumerate().map(|(i, node)| {
             let mut gpu_node = node.to_gpu_node();
@@ -168,8 +211,10 @@ impl GPUCompute {
             gpu_node
         }).collect();
 
+        // Convert edges to GPU representation
         let gpu_edges: Vec<GPUEdge> = graph.edges.iter().map(|edge| edge.to_gpu_edge(&graph.nodes)).collect();
 
+        // Update or recreate the nodes buffer
         let nodes_data = bytemuck::cast_slice(&gpu_nodes);
         if (nodes_data.len() as u64) > self.nodes_buffer.size() {
             self.nodes_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -181,6 +226,7 @@ impl GPUCompute {
             self.queue.write_buffer(&self.nodes_buffer, 0, nodes_data);
         }
 
+        // Update or recreate the edges buffer
         let edges_data = bytemuck::cast_slice(&gpu_edges);
         if (edges_data.len() as u64) > self.edges_buffer.size() {
             self.edges_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -192,6 +238,7 @@ impl GPUCompute {
             self.queue.write_buffer(&self.edges_buffer, 0, edges_data);
         }
 
+        // Recreate the bind group with updated buffers
         self.bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Compute Bind Group"),
             layout: &self.compute_pipeline.get_bind_group_layout(0),
@@ -215,35 +262,52 @@ impl GPUCompute {
         Ok(())
     }
 
+    /// Updates the force-directed graph parameters
+    pub fn set_force_directed_params(&mut self, iterations: u32, repulsion: f32, attraction: f32) -> Result<(), Error> {
+        self.simulation_params.iterations = iterations;
+        self.simulation_params.repulsion = repulsion;
+        self.simulation_params.attraction = attraction;
+
+        self.queue.write_buffer(
+            &self.simulation_params_buffer,
+            0,
+            bytemuck::cast_slice(&[self.simulation_params]),
+        );
+
+        Ok(())
+    }
+
+    /// Computes forces for the graph layout
     pub fn compute_forces(&self) -> Result<(), Error> {
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Compute Encoder"),
+            label: Some("Force Computation Encoder"),
         });
 
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("Compute Pass"),
+                label: Some("Force Computation Pass"),
             });
             cpass.set_pipeline(&self.compute_pipeline);
             cpass.set_bind_group(0, &self.bind_group, &[]);
-            cpass.dispatch_workgroups((self.num_nodes + 63) / 64, 1, 1);
+            cpass.dispatch_workgroups((self.num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
         }
 
         self.queue.submit(Some(encoder.finish()));
         Ok(())
     }
 
+    /// Retrieves updated node positions after force computation
     pub async fn get_updated_positions(&self) -> Result<Vec<Node>, Error> {
         let buffer_size = std::mem::size_of::<GPUNode>() * self.num_nodes as usize;
         let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Staging Buffer"),
+            label: Some("Position Retrieval Staging Buffer"),
             size: buffer_size as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Retrieval Encoder"),
+            label: Some("Position Retrieval Encoder"),
         });
 
         encoder.copy_buffer_to_buffer(&self.nodes_buffer, 0, &staging_buffer, 0, buffer_size as u64);

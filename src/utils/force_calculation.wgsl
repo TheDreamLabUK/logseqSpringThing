@@ -23,8 +23,9 @@ struct EdgesBuffer {
 
 // Parameters for the simulation.
 struct SimulationParams {
-    repulsion_strength: f32,
-    attraction_strength: f32,
+    iterations: u32,
+    repulsion: f32,
+    attraction: f32,
     damping: f32,
     delta_time: f32,
 }
@@ -73,7 +74,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 
                 // Check for zero distance to avoid division by zero
                 if (distance_sq > 0.0001) {
-                    let repulsive_force = simulation_params.repulsion_strength / distance_sq;
+                    let repulsive_force = simulation_params.repulsion / distance_sq;
                     force = force + normalize(direction) * repulsive_force;
                 }
             }
@@ -89,7 +90,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 let direction = other_node.position - node.position;
                 let distance = length(direction);
                 if (distance > 0.0001) {
-                    let attractive_force = simulation_params.attraction_strength * edge.weight * distance;
+                    let attractive_force = simulation_params.attraction * edge.weight * distance;
                     force = force + normalize(direction) * attractive_force;
                 }
             }

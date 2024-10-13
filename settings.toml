@@ -60,10 +60,15 @@ edge_color = "0xff0000"
 hologram_color = "0xFFD700"
 node_size_scaling_factor = 5
 hologram_scale = 5
-hologram_opacity = 0.1  # Added missing hologram_opacity setting
+hologram_opacity = 0.1
 edge_opacity = 0.3
 label_font_size = 36
 fog_density = 0.002
+
+# Force-directed graph settings
+force_directed_iterations = 100
+force_directed_repulsion = 1.0
+force_directed_attraction = 0.01
 
 # Separate bloom configurations
 [bloom]

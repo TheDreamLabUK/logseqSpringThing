@@ -104,6 +104,24 @@
         </div>
       </div>
 
+      <!-- Force-Directed Graph Controls -->
+      <div class="control-group">
+        <h3>Force-Directed Graph</h3>
+        <div v-for="control in forceDirectedControls" :key="control.name" class="control-item">
+          <label :for="control.name">{{ control.label }}</label>
+          <input
+            :id="control.name"
+            type="range"
+            v-model.number="control.value"
+            :min="control.min"
+            :max="control.max"
+            :step="control.step"
+            @input="emitChange(control.name, control.value)"
+          >
+          <span class="range-value">{{ control.value }}</span>
+        </div>
+      </div>
+
       <!-- Additional Controls -->
       <div class="control-group">
         <h3>Additional Settings</h3>
@@ -152,17 +170,20 @@ export default {
       chatInput: '',
       chatMessages: [],
       useOpenAI: false,
+      // Color controls mapped to settings.toml
       colorControls: [
         { name: 'nodeColor', label: 'Node Color', type: 'color', value: '#1A0B31' },
         { name: 'edgeColor', label: 'Edge Color', type: 'color', value: '#ff0000' },
         { name: 'hologramColor', label: 'Hologram Color', type: 'color', value: '#FFD700' },
       ],
+      // Size and opacity controls mapped to settings.toml
       sizeOpacityControls: [
-        { name: 'nodeSizeScalingFactor', label: 'Node Size Scaling', type: 'range', value: 1000, min: 100, max: 2000, step: 10 },
+        { name: 'nodeSizeScalingFactor', label: 'Node Size Scaling', type: 'range', value: 5, min: 1, max: 10, step: 0.1 },
         { name: 'hologramScale', label: 'Hologram Scale', type: 'range', value: 5, min: 1, max: 10, step: 0.1 },
         { name: 'hologramOpacity', label: 'Hologram Opacity', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
         { name: 'edgeOpacity', label: 'Edge Opacity', type: 'range', value: 0.3, min: 0, max: 1, step: 0.01 },
       ],
+      // Bloom effect controls mapped to settings.toml
       bloomControls: [
         { name: 'nodeBloomStrength', label: 'Node Bloom Strength', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
         { name: 'nodeBloomRadius', label: 'Node Bloom Radius', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
@@ -170,10 +191,17 @@ export default {
         { name: 'edgeBloomStrength', label: 'Edge Bloom Strength', type: 'range', value: 0.2, min: 0, max: 1, step: 0.01 },
         { name: 'edgeBloomRadius', label: 'Edge Bloom Radius', type: 'range', value: 0.3, min: 0, max: 1, step: 0.01 },
         { name: 'edgeBloomThreshold', label: 'Edge Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
-        { name: 'environmentBloomStrength', label: 'Environment Bloom Strength', type: 'range', value: 1, min: 0, max: 2, step: 0.01 },
-        { name: 'environmentBloomRadius', label: 'Environment Bloom Radius', type: 'range', value: 1, min: 0, max: 2, step: 0.01 },
+        { name: 'environmentBloomStrength', label: 'Environment Bloom Strength', type: 'range', value: 0.5, min: 0, max: 2, step: 0.01 },
+        { name: 'environmentBloomRadius', label: 'Environment Bloom Radius', type: 'range', value: 0.1, min: 0, max: 2, step: 0.01 },
         { name: 'environmentBloomThreshold', label: 'Environment Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
       ],
+      // Force-directed graph controls mapped to settings.toml
+      forceDirectedControls: [
+        { name: 'forceDirectedIterations', label: 'Iterations', type: 'range', value: 100, min: 10, max: 500, step: 10 },
+        { name: 'forceDirectedRepulsion', label: 'Repulsion', type: 'range', value: 1.0, min: 0.1, max: 10.0, step: 0.1 },
+        { name: 'forceDirectedAttraction', label: 'Attraction', type: 'range', value: 0.01, min: 0.001, max: 0.1, step: 0.001 },
+      ],
+      // Additional controls mapped to settings.toml
       additionalControls: [
         { name: 'labelFontSize', label: 'Label Font Size', type: 'range', value: 36, min: 12, max: 72, step: 1 },
         { name: 'fogDensity', label: 'Fog Density', type: 'range', value: 0.002, min: 0, max: 0.01, step: 0.0001 },
@@ -181,18 +209,22 @@ export default {
     };
   },
   methods: {
+    // Toggle the visibility of the control panel
     togglePanel() {
       this.isHidden = !this.isHidden;
     },
+    // Emit changes to parent component
     emitChange(name, value) {
       if (this.isColorControl(name)) {
         value = parseInt(value.replace('#', '0x'), 16);
       }
       this.$emit('control-change', { name, value });
     },
+    // Check if a control is a color control
     isColorControl(name) {
       return this.colorControls.some(control => control.name === name);
     },
+    // Reset all controls to their default values
     resetControls() {
       this.colorControls.forEach(control => {
         control.value = this.getDefaultValue(control.name);
@@ -206,6 +238,10 @@ export default {
         control.value = this.getDefaultValue(control.name);
         this.emitChange(control.name, control.value);
       });
+      this.forceDirectedControls.forEach(control => {
+        control.value = this.getDefaultValue(control.name);
+        this.emitChange(control.name, control.value);
+      });
       this.additionalControls.forEach(control => {
         control.value = this.getDefaultValue(control.name);
         this.emitChange(control.name, control.value);
@@ -215,12 +251,14 @@ export default {
       this.fisheyeStrength = 0.5;
       this.emitChange('fisheyeStrength', 0.5);
     },
+    // Get default value for a control
     getDefaultValue(name) {
       const defaults = {
+        // Default values mapped to settings.toml
         nodeColor: '#1A0B31',
         edgeColor: '#ff0000',
         hologramColor: '#FFD700',
-        nodeSizeScalingFactor: 1000,
+        nodeSizeScalingFactor: 5,
         hologramScale: 5,
         hologramOpacity: 0.1,
         edgeOpacity: 0.3,
@@ -232,12 +270,16 @@ export default {
         edgeBloomStrength: 0.2,
         edgeBloomRadius: 0.3,
         edgeBloomThreshold: 0,
-        environmentBloomStrength: 1,
-        environmentBloomRadius: 1,
+        environmentBloomStrength: 0.5,
+        environmentBloomRadius: 0.1,
         environmentBloomThreshold: 0,
+        forceDirectedIterations: 100,
+        forceDirectedRepulsion: 1.0,
+        forceDirectedAttraction: 0.01,
       };
       return defaults[name] || '';
     },
+    // Send a chat message
     sendMessage() {
       if (this.chatInput.trim() && this.websocketService) {
         this.websocketService.sendChatMessage({
@@ -248,18 +290,22 @@ export default {
         this.chatInput = '';
       }
     },
+    // Toggle between OpenAI and Sonata TTS
     toggleTTS() {
       if (this.websocketService) {
         this.websocketService.toggleTTS(this.useOpenAI);
         console.log(`TTS method set to: ${this.useOpenAI ? 'OpenAI' : 'Sonata'}`);
       }
     },
+    // Receive a message from the AI
     receiveMessage(message) {
       this.chatMessages.push({ sender: 'AI', message });
     },
+    // Toggle fullscreen mode
     toggleFullscreen() {
       this.$emit('toggle-fullscreen');
     },
+    // Enable Spacemouse
     enableSpacemouse() {
       this.$emit('enable-spacemouse');
     }
@@ -279,6 +325,7 @@ export default {
   setup() {
     const chatMessagesRef = ref(null);
 
+    // Scroll chat messages to bottom
     const scrollToBottom = () => {
       if (chatMessagesRef.value) {
         chatMessagesRef.value.scrollTop = chatMessagesRef.value.scrollHeight;
@@ -297,6 +344,7 @@ export default {
 </script>
 
 <style scoped>
+/* Styles remain unchanged */
 #control-panel {
   position: fixed;
   top: 20px;

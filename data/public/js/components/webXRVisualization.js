@@ -51,6 +51,11 @@ export class WebXRVisualization {
         this.edgeBloomPass = null;
         this.environmentBloomPass = null;
 
+        // Add force-directed layout parameters
+        this.forceDirectedIterations = 100;
+        this.forceDirectedRepulsion = 1.0;
+        this.forceDirectedAttraction = 0.01;
+
         // Call method to initialize settings
         this.initializeSettings();
         console.log('WebXRVisualization constructor completed'); // Log when constructor is done
@@ -239,9 +244,65 @@ export class WebXRVisualization {
             return;
         }
         console.log('Graph data received:', graphData); // Log received graph data
+        
+        // Apply force-directed layout
+        this.applyForceDirectedLayout(graphData);
+        
         this.updateNodes(graphData.nodes); // Update nodes in the visualization
         this.updateEdges(graphData.edges); // Update edges in the visualization
         console.log('Visualization update completed'); // Log completion of update
+    }
+
+    /**
+     * Apply force-directed layout to the graph data.
+     * @param {Object} graphData - The graph data to apply the layout to.
+     */
+    applyForceDirectedLayout(graphData) {
+        console.log('Applying force-directed layout');
+        const nodes = graphData.nodes;
+        const edges = graphData.edges;
+
+        for (let iteration = 0; iteration < this.forceDirectedIterations; iteration++) {
+            // Calculate repulsive forces
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const dx = nodes[j].x - nodes[i].x;
+                    const dy = nodes[j].y - nodes[i].y;
+                    const dz = nodes[j].z - nodes[i].z;
+                    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.1;
+                    const force = this.forceDirectedRepulsion / (distance * distance);
+
+                    nodes[i].x -= dx * force / distance;
+                    nodes[i].y -= dy * force / distance;
+                    nodes[i].z -= dz * force / distance;
+                    nodes[j].x += dx * force / distance;
+                    nodes[j].y += dy * force / distance;
+                    nodes[j].z += dz * force / distance;
+                }
+            }
+
+            // Calculate attractive forces
+            for (const edge of edges) {
+                const source = nodes.find(node => node.id === edge.source);
+                const target = nodes.find(node => node.id === edge.target_node);
+                if (source && target) {
+                    const dx = target.x - source.x;
+                    const dy = target.y - source.y;
+                    const dz = target.z - source.z;
+                    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.1;
+                    const force = this.forceDirectedAttraction * distance;
+
+                    source.x += dx * force / distance;
+                    source.y += dy * force / distance;
+                    source.z += dz * force / distance;
+                    target.x -= dx * force / distance;
+                    target.y -= dy * force / distance;
+                    target.z -= dz * force / distance;
+                }
+            }
+        }
+
+        console.log('Force-directed layout applied');
     }
 
     /**
@@ -252,6 +313,7 @@ export class WebXRVisualization {
         console.log('Updating visual features:', changes);
         let needsUpdate = false; // Flag to track if an update is needed
         let bloomChanged = false; // Flag to track if any bloom-related property has changed
+        let layoutChanged = false; // Flag to track if any force-directed layout property has changed
 
         // Iterate over the changes and update properties
         for (const [name, value] of Object.entries(changes)) {
@@ -264,13 +326,23 @@ export class WebXRVisualization {
                 if (name.includes('Bloom')) {
                     bloomChanged = true; // Mark that bloom properties have changed
                 }
+
+                // Check if the changed property is force-directed layout related
+                if (name.includes('forceDirected')) {
+                    layoutChanged = true; // Mark that layout properties have changed
+                }
             } else {
                 console.warn(`Property ${name} does not exist on WebXRVisualization`); // Warn for unknown properties
             }
         }
 
         if (needsUpdate) {
-            this.updateVisualization(); // Update the visualization if needed
+            if (layoutChanged) {
+                this.updateVisualization(); // Recalculate layout and update visualization
+            } else {
+                this.updateNodes(this.graphDataManager.getGraphData().nodes);
+                this.updateEdges(this.graphDataManager.getGraphData().edges);
+            }
             
             // Specifically handle hologram scale updates
             if (changes.hologramScale !== undefined) {
