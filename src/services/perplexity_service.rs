@@ -394,6 +394,11 @@ impl PerplexityServiceImpl {
 impl PerplexityService for PerplexityServiceImpl {
     async fn process_file(&self, file_content: String, settings: &Settings, api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError> {
         let processed_content = process_markdown(&file_content, settings, api_client).await?;
-        Ok(ProcessedFile { file_name: "processed.md".to_string(), content: processed_content })
+        Ok(ProcessedFile {
+            file_name: "processed.md".to_string(),
+            content: processed_content,
+            is_public: true, // or true, depending on your requirements
+            metadata: Default::default(), // or provide appropriate metadata
+        })
     }
 }

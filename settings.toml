@@ -58,7 +58,7 @@ api_client_timeout = 30
 node_color = "0x1A0B31"
 edge_color = "0xff0000"
 hologram_color = "0xFFD700"
-node_size_scaling_factor = 50
+node_size_scaling_factor = 5
 hologram_scale = 5
 hologram_opacity = 0.1  # Added missing hologram_opacity setting
 edge_opacity = 0.3
@@ -78,8 +78,8 @@ edge_bloom_radius = 0.3
 edge_bloom_threshold = 0.0
 
 # Bloom settings for environmental elements
-environment_bloom_strength = 1.0
-environment_bloom_radius = 1.0
+environment_bloom_strength = 0.5
+environment_bloom_radius = 0.1
 environment_bloom_threshold = 0.0
 
 [sonata]
