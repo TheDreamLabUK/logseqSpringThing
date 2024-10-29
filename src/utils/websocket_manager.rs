@@ -71,12 +71,11 @@ impl WebSocketManager {
 
 pub struct WebSocketSession {
     state: web::Data<AppState>,
-    tts_method: String,
 }
 
 impl WebSocketSession {
     fn new(state: web::Data<AppState>) -> Self {
-        WebSocketSession { state, tts_method: "sonata".to_string() }
+        WebSocketSession { state }
     }
 
     fn send_json_response(&self, ctx: &mut ws::WebsocketContext<Self>, data: Value) {
@@ -195,20 +194,9 @@ impl WebSocketSession {
 
     fn handle_client_message(&mut self, msg: &str, ctx: &mut ws::WebsocketContext<Self>) {
         match serde_json::from_str::<ClientMessage>(msg) {
-            Ok(ClientMessage::SetTTSMethod { method }) => {
-                self.tts_method = method.clone();
-                info!("TTS method set to: {}", method);
-                // Optionally send acknowledgment
-                self.send_json_response(ctx, json!({
-                    "type": "ttsMethodSet",
-                    "method": method
-                }));
-            },
             Ok(ClientMessage::ChatMessage { message, use_openai }) => {
                 if use_openai {
                     self.handle_openai_query(ctx, json!({"message": message}));
-                } else {
-                    self.handle_sonata_tts(ctx, message);
                 }
             },
             Err(e) => {
@@ -219,32 +207,6 @@ impl WebSocketSession {
                 }));
             },
         }
-    }
-
-    fn handle_sonata_tts(&mut self, ctx: &mut ws::WebsocketContext<Self>, message: String) {
-        let state = self.state.clone();
-        let fut = async move {
-            match state.speech_service.synthesize_with_sonata(&message).await {
-                Ok(audio_bytes) => {
-                    let audio_base64 = general_purpose::STANDARD.encode(&audio_bytes);
-                    json!({
-                        "type": "audio",
-                        "audio": audio_base64
-                    })
-                },
-                Err(e) => {
-                    error!("Sonata TTS synthesis failed: {}", e);
-                    json!({
-                        "type": "error",
-                        "message": "TTS synthesis failed"
-                    })
-                },
-            }
-        }.into_actor(self).map(|response, act, ctx| {
-            act.send_json_response(ctx, response);
-        });
-
-        ctx.spawn(fut);
     }
 }
 
@@ -340,7 +302,7 @@ impl Handler<BroadcastAudio> for WebSocketSession {
 
     fn handle(&mut self, msg: BroadcastAudio, ctx: &mut Self::Context) {
         ctx.binary(msg.0);
-        debug!("Broadcasted audio to client using {}", self.tts_method);
+        debug!("Broadcasted audio to client");
     }
 }
 
@@ -374,8 +336,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 enum ClientMessage {
-    #[serde(rename = "setTTSMethod")]
-    SetTTSMethod { method: String },
     #[serde(rename = "chatMessage")]
     ChatMessage { message: String, use_openai: bool },
 }

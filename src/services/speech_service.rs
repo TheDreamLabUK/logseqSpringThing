@@ -10,13 +10,11 @@ use log::{info, error, debug};
 use futures::{SinkExt, StreamExt};
 use std::error::Error;
 use crate::utils::websocket_manager::WebSocketManager;
-use crate::services::sonata_service::SonataService;
 use tokio::net::TcpStream;
 use url::Url;
 
 pub struct SpeechService {
     sender: Arc<Mutex<mpsc::Sender<SpeechCommand>>>,
-    sonata_service: Arc<SonataService>,
     websocket_manager: Arc<WebSocketManager>,
     settings: Arc<RwLock<Settings>>,
 }
@@ -29,13 +27,12 @@ enum SpeechCommand {
 }
 
 impl SpeechService {
-    pub fn new(sonata_service: Arc<SonataService>, websocket_manager: Arc<WebSocketManager>, settings: Arc<RwLock<Settings>>) -> Self {
+    pub fn new(websocket_manager: Arc<WebSocketManager>, settings: Arc<RwLock<Settings>>) -> Self {
         let (tx, rx) = mpsc::channel(100);
         let sender = Arc::new(Mutex::new(tx));
 
         let service = SpeechService {
             sender,
-            sonata_service,
             websocket_manager,
             settings,
         };
@@ -46,7 +43,6 @@ impl SpeechService {
     }
 
     fn start(&self, mut receiver: mpsc::Receiver<SpeechCommand>) {
-        let sonata_service = self.sonata_service.clone();
         let websocket_manager = self.websocket_manager.clone();
         let settings = self.settings.clone();
 
@@ -138,19 +134,7 @@ impl SpeechService {
                                             match json_msg["type"].as_str() {
                                                 Some("response.text.delta") => {
                                                     if let Some(content) = json_msg["delta"]["text"].as_str() {
-                                                        // Process text delta
                                                         debug!("Received text delta: {}", content);
-
-                                                        // Synthesize audio using SonataService
-                                                        if let Ok(audio_bytes) = sonata_service.synthesize(content).await {
-                                                            info!("Audio synthesis successful, {} bytes generated.", audio_bytes.len());
-                                                            // Broadcast audio to all WebSocket sessions
-                                                            if let Err(e) = websocket_manager.broadcast_audio(audio_bytes).await {
-                                                                error!("Failed to broadcast audio: {}", e);
-                                                            }
-                                                        } else {
-                                                            error!("Failed to synthesize audio");
-                                                        }
                                                     }
                                                 },
                                                 Some("response.text.done") => {
@@ -183,7 +167,7 @@ impl SpeechService {
                     },
                     SpeechCommand::Close => {
                         if let Some(stream) = &mut ws_stream {
-                            if let Err(e) = stream.close(None).await {
+                            if let Err(e) = stream.close().await {
                                 error!("Failed to close WebSocket connection: {}", e);
                             }
                         }
@@ -210,9 +194,5 @@ impl SpeechService {
         let command = SpeechCommand::Close;
         self.sender.lock().await.send(command).await?;
         Ok(())
-    }
-
-    pub async fn synthesize_with_sonata(&self, message: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-        self.sonata_service.synthesize(message).await.map_err(|e| Box::new(e) as Box<dyn Error>)
     }
 }

@@ -15,7 +15,6 @@ use crate::services::file_service::{GitHubService, RealGitHubService, FileServic
 use crate::services::perplexity_service::PerplexityServiceImpl;
 use crate::services::ragflow_service::RAGFlowService;
 use crate::services::speech_service::SpeechService;
-use crate::services::sonata_service::SonataService;
 use crate::services::graph_service::GraphService;
 use crate::utils::websocket_manager::WebSocketManager;
 use crate::utils::gpu_compute::GPUCompute;
@@ -150,14 +149,7 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    let sonata_service = match SonataService::new(settings.clone()).await {
-        Ok(service) => Arc::new(service),
-        Err(e) => {
-            log::error!("Failed to initialize SonataService: {:?}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize SonataService: {:?}", e)));
-        }
-    };
-    let speech_service = Arc::new(SpeechService::new(sonata_service.clone(), websocket_manager.clone(), settings.clone()));
+    let speech_service = Arc::new(SpeechService::new(websocket_manager.clone(), settings.clone()));
     if let Err(e) = speech_service.initialize().await {
         log::error!("Failed to initialize SpeechService: {:?}", e);
         return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize SpeechService: {:?}", e)));

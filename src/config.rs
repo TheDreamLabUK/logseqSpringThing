@@ -12,10 +12,7 @@ pub struct Settings {
     pub openai: OpenAISettings,
     pub visualization: VisualizationSettings,
     pub default: DefaultSettings,
-    pub sonata: SonataSettings,
 }
-
-
 
 #[derive(Deserialize, Clone)]
 pub struct PerplexitySettings {
@@ -72,11 +69,6 @@ pub struct DefaultSettings {
     pub max_retries: u32,
     pub retry_delay: u64,
     pub api_client_timeout: u64,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-pub struct SonataSettings {
-    pub voice_config_path: String,
 }
 
 impl Settings {
@@ -149,7 +141,6 @@ impl fmt::Debug for Settings {
             .field("openai", &self.openai)
             .field("visualization", &self.visualization)
             .field("default", &self.default)
-            .field("sonata", &self.sonata)
             .finish()
     }
 }

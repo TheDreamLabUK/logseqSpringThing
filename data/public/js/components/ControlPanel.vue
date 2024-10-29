@@ -1,3 +1,4 @@
+<!-- Template section remains unchanged until the script part -->
 <template>
   <div id="control-panel" :class="{ hidden: isHidden }">
     <button @click="togglePanel" class="toggle-button">
@@ -14,12 +15,6 @@
         <div class="chat-input-container">
           <input type="text" v-model="chatInput" @keyup.enter="sendMessage" placeholder="Type a message..." />
           <button @click="sendMessage">Send</button>
-        </div>
-        <div class="tts-toggle">
-          <label>
-            <input type="checkbox" v-model="useOpenAI" @change="toggleTTS" />
-            Use OpenAI TTS
-          </label>
         </div>
       </div>
 
@@ -169,7 +164,6 @@ export default {
       fisheyeStrength: 0.5,
       chatInput: '',
       chatMessages: [],
-      useOpenAI: false,
       // Color controls mapped to settings.toml
       colorControls: [
         { name: 'nodeColor', label: 'Node Color', type: 'color', value: '#1A0B31' },
@@ -284,17 +278,10 @@ export default {
       if (this.chatInput.trim() && this.websocketService) {
         this.websocketService.sendChatMessage({
           message: this.chatInput,
-          useOpenAI: this.useOpenAI
+          useOpenAI: true
         });
         this.chatMessages.push({ sender: 'You', message: this.chatInput });
         this.chatInput = '';
-      }
-    },
-    // Toggle between OpenAI and Sonata TTS
-    toggleTTS() {
-      if (this.websocketService) {
-        this.websocketService.toggleTTS(this.useOpenAI);
-        console.log(`TTS method set to: ${this.useOpenAI ? 'OpenAI' : 'Sonata'}`);
       }
     },
     // Receive a message from the AI
@@ -470,10 +457,6 @@ input[type="range"] {
 
 .chat-input-container button {
   padding: 5px 10px;
-}
-
-.tts-toggle {
-  margin-top: 10px;
 }
 
 .button-group {

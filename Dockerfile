@@ -48,9 +48,6 @@ COPY Cargo.toml Cargo.lock ./
 # Copy the source code
 COPY src ./src
 
-# Copy the entire Sonata directory
-COPY src/deps/sonata ./src/deps/sonata
-
 # Copy settings.toml
 COPY settings.toml ./
 

@@ -13,7 +13,6 @@ class WebsocketService {
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         this.audioQueue = [];
         this.isPlaying = false;
-        this.ttsMethod = 'sonata'; // Default TTS method
         this.connect();
     }
 
@@ -31,11 +30,6 @@ class WebsocketService {
             console.log('WebSocket connection established');
             this.reconnectAttempts = 0;
             this.emit('open');
-            // Optionally inform server of the default TTS method
-            this.send({
-                type: 'setTTSMethod',
-                method: this.ttsMethod
-            });
         };
 
         // WebSocket message event
@@ -273,12 +267,12 @@ class WebsocketService {
         });
     }
 
-    toggleTTS(useOpenAI) {
-        this.ttsMethod = useOpenAI ? 'openai' : 'sonata';
-        this.send({
-            type: 'setTTSMethod',
-            method: this.ttsMethod
-        });
+    sendChatMessage({ message, useOpenAI }) {
+        if (useOpenAI) {
+            this.sendOpenAIQuery(message);
+        } else {
+            this.sendRagflowQuery(message);
+        }
     }
 
     handleServerMessage(data) {
@@ -295,10 +289,6 @@ class WebsocketService {
                 break;
             case 'graphUpdate':
                 this.emit('graphUpdate', data.graphData);
-                break;
-            case 'ttsMethodSet':
-                console.log('TTS method set to:', data.method);
-                this.emit('ttsMethodSet', data.method);
                 break;
             case 'ragflowResponse':
                 this.handleRagflowResponse(data);
