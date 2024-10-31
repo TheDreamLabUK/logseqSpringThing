@@ -1,205 +1,203 @@
-use serde::Deserialize;
 use config::{Config, ConfigError, Environment, File};
-use std::env;
+use log::{debug, error};
+use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::path::PathBuf;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
-    pub perplexity: PerplexitySettings,
-    pub github: GitHubSettings,
-    pub ragflow: RAGFlowSettings,
+    pub server: ServerSettings,
+    pub github: GithubSettings,
+    pub ragflow: RagFlowSettings,
     pub openai: OpenAISettings,
+    pub perplexity: PerplexitySettings,
     pub visualization: VisualizationSettings,
-    pub default: DefaultSettings,
-    pub sonata: SonataSettings,
 }
 
-#[derive(Deserialize, Clone)]
-pub struct PerplexitySettings {
-    pub perplexity_api_key: String,
-    pub perplexity_model: String,
-    pub perplexity_api_base_url: String,
-    pub perplexity_max_tokens: u32,
-    pub perplexity_temperature: f32,
-    pub perplexity_top_p: f32,
-    pub perplexity_presence_penalty: f32,
-    pub perplexity_frequency_penalty: f32,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ServerSettings {
+    pub host: String,
+    pub port: u16,
+    pub ssl_cert_path: Option<PathBuf>,
+    pub ssl_key_path: Option<PathBuf>,
 }
 
-#[derive(Deserialize, Clone)]
-pub struct GitHubSettings {
-    pub github_access_token: String,
-    pub github_owner: String,
-    pub github_repo: String,
-    pub github_directory: String,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GithubSettings {
+    pub token: String,
+    pub owner: String,
+    pub repo: String,
+    pub directory: Option<String>,
 }
 
-#[derive(Deserialize, Clone)]
-pub struct RAGFlowSettings {
-    pub ragflow_api_key: String,
-    pub ragflow_api_base_url: String,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RagFlowSettings {
+    pub api_key: String,
+    pub api_url: String,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpenAISettings {
     pub openai_api_key: String,
     pub openai_base_url: String,
+    pub model: String,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PerplexitySettings {
+    pub api_key: String,
+    pub base_url: String,
+    pub model: String,
+    pub max_tokens: Option<u32>,
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub presence_penalty: Option<f32>,
+    pub frequency_penalty: Option<f32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VisualizationSettings {
-    pub node_color: String,
-    pub edge_color: String,
-    pub hologram_color: String,
-    pub node_size_scaling_factor: f32,
-    pub hologram_scale: f32,
-    pub hologram_opacity: f32,
-    pub edge_opacity: f32,
-    pub label_font_size: u32,
-    pub fog_density: f32,
-    pub force_directed_iterations: usize,
+    pub force_directed_iterations: u32,
     pub force_directed_repulsion: f32,
     pub force_directed_attraction: f32,
+    pub force_directed_damping: f32,
 }
 
-#[derive(Deserialize, Clone)]
-pub struct DefaultSettings {
-    pub max_concurrent_requests: u32,
-    pub max_retries: u32,
-    pub retry_delay: u64,
-    pub api_client_timeout: u64,
-}
-
-#[derive(Deserialize, Clone)]
-pub struct SonataSettings {
-    pub voice_config_path: String,
-    pub model_path: String,
-    pub sample_rate: u32,
+impl Default for VisualizationSettings {
+    fn default() -> Self {
+        Self {
+            force_directed_iterations: 100,
+            force_directed_repulsion: 1.0,
+            force_directed_attraction: 0.5,
+            force_directed_damping: 0.9,
+        }
+    }
 }
 
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
-        let mut config = Config::builder()
-            .add_source(File::with_name("settings.toml").required(true))
-            .add_source(Environment::with_prefix("APP").separator("__"));
+        let run_mode = std::env::var("RUN_MODE").unwrap_or_else(|_| "development".into());
+        debug!("Loading configuration for mode: {}", run_mode);
 
-        // Explicitly load GitHub settings from environment variables
-        if let Ok(token) = env::var("GITHUB_ACCESS_TOKEN") {
-            config = config.set_override("github.github_access_token", token)?;
-        }
-        if let Ok(owner) = env::var("GITHUB_OWNER") {
-            config = config.set_override("github.github_owner", owner)?;
-        }
-        if let Ok(repo) = env::var("GITHUB_REPO") {
-            config = config.set_override("github.github_repo", repo)?;
-        }
-        if let Ok(directory) = env::var("GITHUB_DIRECTORY") {
-            config = config.set_override("github.github_directory", directory)?;
-        }
+        let config_dir = std::env::var("CONFIG_DIR").unwrap_or_else(|_| "./config".into());
+        let settings = Config::builder()
+            .add_source(File::with_name(&format!("{}/default", config_dir)))
+            .add_source(File::with_name(&format!("{}/{}", config_dir, run_mode)).required(false))
+            .add_source(Environment::with_prefix("app").separator("__"))
+            .build()?;
 
-        // Explicitly load RAGFlow settings from environment variables
-        if let Ok(api_key) = env::var("RAGFLOW_API_KEY") {
-            config = config.set_override("ragflow.ragflow_api_key", api_key)?;
-        }
-        if let Ok(base_url) = env::var("RAGFLOW_BASE_URL") {
-            config = config.set_override("ragflow.ragflow_api_base_url", base_url)?;
-        }
-
-        // Explicitly load OpenAI settings from environment variables
-        if let Ok(api_key) = env::var("OPENAI_API_KEY") {
-            config = config.set_override("openai.openai_api_key", api_key)?;
-        }
-
-        let settings: Settings = config.build()?.try_deserialize()?;
-
-        // Debugging: Print loaded settings (exclude sensitive fields)
-        debug!("Loaded settings: {:?}", settings);
-
-        settings.validate()?;
-        Ok(settings)
+        settings.try_deserialize()
     }
+}
 
-    fn validate(&self) -> Result<(), ConfigError> {
-        if self.github.github_access_token.is_empty() {
-            return Err(ConfigError::Message("GitHub access token is missing".to_string()));
-        }
-        if self.github.github_owner.is_empty() {
-            return Err(ConfigError::Message("GitHub owner is missing".to_string()));
-        }
-        if self.github.github_repo.is_empty() {
-            return Err(ConfigError::Message("GitHub repo is missing".to_string()));
-        }
-        if self.ragflow.ragflow_api_key.is_empty() {
-            return Err(ConfigError::Message("RAGFlow API key is missing".to_string()));
-        }
-        if self.ragflow.ragflow_api_base_url.is_empty() {
-            return Err(ConfigError::Message("RAGFlow base URL is missing".to_string()));
-        }
-        if self.visualization.force_directed_iterations == 0 {
-            return Err(ConfigError::Message("force_directed_iterations must be greater than 0".to_string()));
-        }
-        if self.sonata.voice_config_path.is_empty() {
-            return Err(ConfigError::Message("Sonata voice config path is missing".to_string()));
-        }
-        if self.sonata.model_path.is_empty() {
-            return Err(ConfigError::Message("Sonata model path is missing".to_string()));
-        }
+impl fmt::Display for ServerSettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ServerSettings {{ host: {}, port: {} }}", self.host, self.port)
+    }
+}
+
+impl fmt::Display for GithubSettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "GithubSettings {{ token: [REDACTED], owner: {}, repo: {} }}", 
+               self.owner, self.repo)
+    }
+}
+
+impl fmt::Display for RagFlowSettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RagFlowSettings {{ api_url: {}, api_key: [REDACTED] }}", 
+               self.api_url)
+    }
+}
+
+impl fmt::Display for OpenAISettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "OpenAISettings {{ base_url: {}, api_key: [REDACTED], model: {} }}", 
+               self.openai_base_url, self.model)
+    }
+}
+
+impl fmt::Display for PerplexitySettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PerplexitySettings {{ base_url: {}, api_key: [REDACTED], model: {} }}", 
+               self.base_url, self.model)
+    }
+}
+
+impl fmt::Display for VisualizationSettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "VisualizationSettings {{ iterations: {}, repulsion: {}, attraction: {}, damping: {} }}", 
+               self.force_directed_iterations,
+               self.force_directed_repulsion,
+               self.force_directed_attraction,
+               self.force_directed_damping)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+    use std::io::Write;
+
+    #[test]
+    fn test_settings_from_files() -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = TempDir::new()?;
+        let config_path = temp_dir.path();
+
+        let default_config = r#"
+            [server]
+            host = "127.0.0.1"
+            port = 8080
+
+            [github]
+            token = "default_token"
+            owner = "default_owner"
+            repo = "default_repo"
+
+            [ragflow]
+            api_url = "http://default.example.com"
+            api_key = "default_key"
+
+            [openai]
+            openai_api_key = "default_openai_key"
+            openai_base_url = "https://api.openai.com"
+            model = "gpt-4"
+
+            [perplexity]
+            api_key = "default_perplexity_key"
+            base_url = "https://api.perplexity.ai"
+            model = "mixtral-8x7b"
+            max_tokens = 2048
+            temperature = 0.7
+            top_p = 0.9
+            presence_penalty = 0.0
+            frequency_penalty = 0.0
+
+            [visualization]
+            force_directed_iterations = 100
+            force_directed_repulsion = 1.0
+            force_directed_attraction = 0.5
+            force_directed_damping = 0.9
+        "#;
+
+        let default_path = config_path.join("default.toml");
+        let mut file = fs::File::create(&default_path)?;
+        file.write_all(default_config.as_bytes())?;
+
+        std::env::set_var("CONFIG_DIR", config_path.to_str().unwrap());
+
+        let settings = Settings::new()?;
+
+        assert_eq!(settings.server.host, "127.0.0.1");
+        assert_eq!(settings.server.port, 8080);
+        assert_eq!(settings.github.owner, "default_owner");
+        assert_eq!(settings.ragflow.api_url, "http://default.example.com");
+        assert_eq!(settings.openai.model, "gpt-4");
+        assert_eq!(settings.perplexity.model, "mixtral-8x7b");
+        assert_eq!(settings.visualization.force_directed_iterations, 100);
+
         Ok(())
-    }
-}
-
-impl std::fmt::Debug for Settings {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Settings")
-            .field("perplexity", &self.perplexity)
-            .field("github", &self.github)
-            .field("ragflow", &self.ragflow)
-            .field("openai", &self.openai)
-            .field("visualization", &self.visualization)
-            .field("default", &self.default)
-            .finish()
-    }
-}
-
-impl fmt::Debug for PerplexitySettings {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PerplexitySettings")
-            .field("perplexity_api_key", &"[REDACTED]")
-            .field("perplexity_model", &self.perplexity_model)
-            .field("perplexity_api_base_url", &self.perplexity_api_base_url)
-            .field("perplexity_max_tokens", &self.perplexity_max_tokens)
-            .field("perplexity_temperature", &self.perplexity_temperature)
-            .field("perplexity_top_p", &self.perplexity_top_p)
-            .field("perplexity_presence_penalty", &self.perplexity_presence_penalty)
-            .field("perplexity_frequency_penalty", &self.perplexity_frequency_penalty)
-            .finish()
-    }
-}
-
-impl fmt::Debug for GithubSettings {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("GithubSettings")
-            .field("github_access_token", &"[REDACTED]")
-            .field("github_owner", &self.github_owner)
-            .field("github_repo", &self.github_repo)
-            .field("github_directory", &self.github_directory)
-            .finish()
-    }
-}
-
-impl fmt::Debug for RagFlowSettings {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RagFlowSettings")
-            .field("ragflow_api_key", &"[REDACTED]")
-            .field("ragflow_api_base_url", &self.ragflow_api_base_url)
-            .finish()
-    }
-}
-
-impl fmt::Debug for OpenAISettings {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("OpenAISettings")
-            .field("openai_api_key", &"[REDACTED]")
-            .field("openai_base_url", &self.openai_base_url)
-            .finish()
     }
 }
