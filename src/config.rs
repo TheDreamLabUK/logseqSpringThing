@@ -1,17 +1,16 @@
 use serde::Deserialize;
-use config::{Config, ConfigError, File, Environment};
-use log::debug;
-use std::fmt;
+use config::{Config, ConfigError, Environment, File};
 use std::env;
 
-#[derive(Deserialize, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Settings {
     pub perplexity: PerplexitySettings,
-    pub github: GithubSettings,
-    pub ragflow: RagFlowSettings,
+    pub github: GitHubSettings,
+    pub ragflow: RAGFlowSettings,
     pub openai: OpenAISettings,
     pub visualization: VisualizationSettings,
     pub default: DefaultSettings,
+    pub sonata: SonataSettings,
 }
 
 #[derive(Deserialize, Clone)]
@@ -27,7 +26,7 @@ pub struct PerplexitySettings {
 }
 
 #[derive(Deserialize, Clone)]
-pub struct GithubSettings {
+pub struct GitHubSettings {
     pub github_access_token: String,
     pub github_owner: String,
     pub github_repo: String,
@@ -35,7 +34,7 @@ pub struct GithubSettings {
 }
 
 #[derive(Deserialize, Clone)]
-pub struct RagFlowSettings {
+pub struct RAGFlowSettings {
     pub ragflow_api_key: String,
     pub ragflow_api_base_url: String,
 }
@@ -46,29 +45,35 @@ pub struct OpenAISettings {
     pub openai_base_url: String,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone)]
 pub struct VisualizationSettings {
     pub node_color: String,
     pub edge_color: String,
     pub hologram_color: String,
-    pub node_size_scaling_factor: u32,
-    pub hologram_scale: u32,
+    pub node_size_scaling_factor: f32,
+    pub hologram_scale: f32,
     pub hologram_opacity: f32,
     pub edge_opacity: f32,
     pub label_font_size: u32,
     pub fog_density: f32,
-    // New force-directed graph settings
     pub force_directed_iterations: usize,
     pub force_directed_repulsion: f32,
     pub force_directed_attraction: f32,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone)]
 pub struct DefaultSettings {
-    pub max_concurrent_requests: usize,
+    pub max_concurrent_requests: u32,
     pub max_retries: u32,
     pub retry_delay: u64,
     pub api_client_timeout: u64,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct SonataSettings {
+    pub voice_config_path: String,
+    pub model_path: String,
+    pub sample_rate: u32,
 }
 
 impl Settings {
@@ -98,24 +103,30 @@ impl Settings {
         if let Ok(base_url) = env::var("RAGFLOW_BASE_URL") {
             config = config.set_override("ragflow.ragflow_api_base_url", base_url)?;
         }
+
+        // Explicitly load OpenAI settings from environment variables
+        if let Ok(api_key) = env::var("OPENAI_API_KEY") {
+            config = config.set_override("openai.openai_api_key", api_key)?;
+        }
+
         let settings: Settings = config.build()?.try_deserialize()?;
 
         // Debugging: Print loaded settings (exclude sensitive fields)
         debug!("Loaded settings: {:?}", settings);
 
-        // Validate settings
         settings.validate()?;
-
         Ok(settings)
     }
 
     fn validate(&self) -> Result<(), ConfigError> {
-        // Add any additional validation logic here
-        if self.default.api_client_timeout == 0 {
-            return Err(ConfigError::Message("api_client_timeout must be greater than 0".to_string()));
-        }
         if self.github.github_access_token.is_empty() {
             return Err(ConfigError::Message("GitHub access token is missing".to_string()));
+        }
+        if self.github.github_owner.is_empty() {
+            return Err(ConfigError::Message("GitHub owner is missing".to_string()));
+        }
+        if self.github.github_repo.is_empty() {
+            return Err(ConfigError::Message("GitHub repo is missing".to_string()));
         }
         if self.ragflow.ragflow_api_key.is_empty() {
             return Err(ConfigError::Message("RAGFlow API key is missing".to_string()));
@@ -123,17 +134,21 @@ impl Settings {
         if self.ragflow.ragflow_api_base_url.is_empty() {
             return Err(ConfigError::Message("RAGFlow base URL is missing".to_string()));
         }
-        // Validate new force-directed graph settings
         if self.visualization.force_directed_iterations == 0 {
             return Err(ConfigError::Message("force_directed_iterations must be greater than 0".to_string()));
         }
-        // Add more validations as needed
+        if self.sonata.voice_config_path.is_empty() {
+            return Err(ConfigError::Message("Sonata voice config path is missing".to_string()));
+        }
+        if self.sonata.model_path.is_empty() {
+            return Err(ConfigError::Message("Sonata model path is missing".to_string()));
+        }
         Ok(())
     }
 }
 
-impl fmt::Debug for Settings {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Debug for Settings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Settings")
             .field("perplexity", &self.perplexity)
             .field("github", &self.github)
