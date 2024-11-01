@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fs;
 use std::path::Path;
+use std::env;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
@@ -11,13 +12,9 @@ pub struct Settings {
     pub prompt: String,
     #[serde(skip_deserializing)]
     pub topics: Vec<String>,
-    #[serde(default)]
     pub github: GithubSettings,
-    #[serde(default)]
     pub ragflow: RagFlowSettings,
-    #[serde(default)]
     pub perplexity: PerplexitySettings,
-    #[serde(default)]
     pub openai: OpenAISettings,
     #[serde(default = "default_settings")]
     pub default: DefaultSettings,
@@ -130,125 +127,130 @@ fn load_topics_from_markdown() -> Vec<String> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GithubSettings {
-    #[serde(alias = "GITHUB_ACCESS_TOKEN", alias = "github_access_token")]
+    #[serde(alias = "GITHUB_ACCESS_TOKEN")]
     pub github_access_token: String,
-    #[serde(alias = "GITHUB_OWNER", alias = "github_owner")]
+    #[serde(alias = "GITHUB_OWNER")]
     pub github_owner: String,
-    #[serde(alias = "GITHUB_REPO", alias = "github_repo")]
+    #[serde(alias = "GITHUB_REPO")]
     pub github_repo: String,
-    #[serde(alias = "GITHUB_DIRECTORY", alias = "github_directory")]
+    #[serde(alias = "GITHUB_DIRECTORY")]
     pub github_directory: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RagFlowSettings {
-    #[serde(alias = "RAGFLOW_API_KEY", alias = "ragflow_api_key")]
+    #[serde(alias = "RAGFLOW_API_KEY")]
     pub ragflow_api_key: String,
-    #[serde(alias = "RAGFLOW_BASE_URL", alias = "ragflow_api_base_url")]
+    #[serde(alias = "RAGFLOW_BASE_URL")]
     pub ragflow_api_base_url: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpenAISettings {
-    #[serde(alias = "OPENAI_API_KEY", alias = "openai_api_key")]
+    #[serde(alias = "OPENAI_API_KEY")]
     pub openai_api_key: String,
-    #[serde(alias = "OPENAI_BASE_URL", alias = "openai_base_url")]
+    #[serde(alias = "OPENAI_BASE_URL", default = "default_openai_base_url")]
     pub openai_base_url: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PerplexitySettings {
-    #[serde(alias = "PERPLEXITY_API_KEY", alias = "perplexity_api_key")]
+    #[serde(alias = "PERPLEXITY_API_KEY")]
     pub perplexity_api_key: String,
-    #[serde(alias = "PERPLEXITY_MODEL", alias = "perplexity_model")]
+    #[serde(alias = "PERPLEXITY_MODEL")]
     pub perplexity_model: String,
-    #[serde(alias = "PERPLEXITY_API_URL", alias = "perplexity_api_base_url")]
+    #[serde(alias = "PERPLEXITY_API_URL", default = "default_perplexity_api_url")]
     pub perplexity_api_base_url: String,
-    #[serde(alias = "PERPLEXITY_MAX_TOKENS", alias = "perplexity_max_tokens")]
+    #[serde(alias = "PERPLEXITY_MAX_TOKENS")]
     pub perplexity_max_tokens: u32,
-    #[serde(alias = "PERPLEXITY_TEMPERATURE", alias = "perplexity_temperature")]
+    #[serde(alias = "PERPLEXITY_TEMPERATURE")]
     pub perplexity_temperature: f32,
-    #[serde(alias = "PERPLEXITY_TOP_P", alias = "perplexity_top_p")]
+    #[serde(alias = "PERPLEXITY_TOP_P")]
     pub perplexity_top_p: f32,
-    #[serde(alias = "PERPLEXITY_PRESENCE_PENALTY", alias = "perplexity_presence_penalty")]
+    #[serde(alias = "PERPLEXITY_PRESENCE_PENALTY")]
     pub perplexity_presence_penalty: f32,
-    #[serde(alias = "PERPLEXITY_FREQUENCY_PENALTY", alias = "perplexity_frequency_penalty")]
+    #[serde(alias = "PERPLEXITY_FREQUENCY_PENALTY")]
     pub perplexity_frequency_penalty: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct DefaultSettings {
-    #[serde(alias = "MAX_CONCURRENT_REQUESTS", alias = "max_concurrent_requests")]
+    #[serde(alias = "MAX_CONCURRENT_REQUESTS")]
     pub max_concurrent_requests: u32,
-    #[serde(alias = "MAX_RETRIES", alias = "max_retries")]
+    #[serde(alias = "MAX_RETRIES")]
     pub max_retries: u32,
-    #[serde(alias = "RETRY_DELAY", alias = "retry_delay")]
+    #[serde(alias = "RETRY_DELAY")]
     pub retry_delay: u32,
-    #[serde(alias = "API_CLIENT_TIMEOUT", alias = "api_client_timeout")]
+    #[serde(alias = "API_CLIENT_TIMEOUT")]
     pub api_client_timeout: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct VisualizationSettings {
-    #[serde(alias = "NODE_COLOR", alias = "node_color")]
+    #[serde(alias = "NODE_COLOR")]
     pub node_color: String,
-    #[serde(alias = "EDGE_COLOR", alias = "edge_color")]
+    #[serde(alias = "EDGE_COLOR")]
     pub edge_color: String,
-    #[serde(alias = "HOLOGRAM_COLOR", alias = "hologram_color")]
+    #[serde(alias = "HOLOGRAM_COLOR")]
     pub hologram_color: String,
-    #[serde(alias = "NODE_SIZE_SCALING_FACTOR", alias = "node_size_scaling_factor")]
+    #[serde(alias = "NODE_SIZE_SCALING_FACTOR")]
     pub node_size_scaling_factor: u32,
-    #[serde(alias = "HOLOGRAM_SCALE", alias = "hologram_scale")]
+    #[serde(alias = "HOLOGRAM_SCALE")]
     pub hologram_scale: u32,
-    #[serde(alias = "HOLOGRAM_OPACITY", alias = "hologram_opacity")]
+    #[serde(alias = "HOLOGRAM_OPACITY")]
     pub hologram_opacity: f32,
-    #[serde(alias = "EDGE_OPACITY", alias = "edge_opacity")]
+    #[serde(alias = "EDGE_OPACITY")]
     pub edge_opacity: f32,
-    #[serde(alias = "LABEL_FONT_SIZE", alias = "label_font_size")]
+    #[serde(alias = "LABEL_FONT_SIZE")]
     pub label_font_size: u32,
-    #[serde(alias = "FOG_DENSITY", alias = "fog_density")]
+    #[serde(alias = "FOG_DENSITY")]
     pub fog_density: f32,
-    #[serde(alias = "FORCE_DIRECTED_ITERATIONS", alias = "force_directed_iterations")]
+    #[serde(alias = "FORCE_DIRECTED_ITERATIONS")]
     pub force_directed_iterations: u32,
-    #[serde(alias = "FORCE_DIRECTED_REPULSION", alias = "force_directed_repulsion")]
+    #[serde(alias = "FORCE_DIRECTED_REPULSION")]
     pub force_directed_repulsion: f32,
-    #[serde(alias = "FORCE_DIRECTED_ATTRACTION", alias = "force_directed_attraction")]
+    #[serde(alias = "FORCE_DIRECTED_ATTRACTION")]
     pub force_directed_attraction: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct BloomSettings {
-    #[serde(alias = "NODE_BLOOM_STRENGTH", alias = "node_bloom_strength")]
+    #[serde(alias = "NODE_BLOOM_STRENGTH")]
     pub node_bloom_strength: f32,
-    #[serde(alias = "NODE_BLOOM_RADIUS", alias = "node_bloom_radius")]
+    #[serde(alias = "NODE_BLOOM_RADIUS")]
     pub node_bloom_radius: f32,
-    #[serde(alias = "NODE_BLOOM_THRESHOLD", alias = "node_bloom_threshold")]
+    #[serde(alias = "NODE_BLOOM_THRESHOLD")]
     pub node_bloom_threshold: f32,
-    #[serde(alias = "EDGE_BLOOM_STRENGTH", alias = "edge_bloom_strength")]
+    #[serde(alias = "EDGE_BLOOM_STRENGTH")]
     pub edge_bloom_strength: f32,
-    #[serde(alias = "EDGE_BLOOM_RADIUS", alias = "edge_bloom_radius")]
+    #[serde(alias = "EDGE_BLOOM_RADIUS")]
     pub edge_bloom_radius: f32,
-    #[serde(alias = "EDGE_BLOOM_THRESHOLD", alias = "edge_bloom_threshold")]
+    #[serde(alias = "EDGE_BLOOM_THRESHOLD")]
     pub edge_bloom_threshold: f32,
-    #[serde(alias = "ENVIRONMENT_BLOOM_STRENGTH", alias = "environment_bloom_strength")]
+    #[serde(alias = "ENVIRONMENT_BLOOM_STRENGTH")]
     pub environment_bloom_strength: f32,
-    #[serde(alias = "ENVIRONMENT_BLOOM_RADIUS", alias = "environment_bloom_radius")]
+    #[serde(alias = "ENVIRONMENT_BLOOM_RADIUS")]
     pub environment_bloom_radius: f32,
-    #[serde(alias = "ENVIRONMENT_BLOOM_THRESHOLD", alias = "environment_bloom_threshold")]
+    #[serde(alias = "ENVIRONMENT_BLOOM_THRESHOLD")]
     pub environment_bloom_threshold: f32,
 }
 
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
-        // Load .env file first
-        dotenv().ok();
+        // In Docker, we don't need to load .env since environment variables are passed via --env-file
+        if !std::env::var("DOCKER").is_ok() {
+            match dotenv() {
+                Ok(_) => log::debug!("Successfully loaded .env file"),
+                Err(e) => log::warn!("Failed to load .env file: {}", e),
+            }
+        }
 
         let run_mode = std::env::var("RUN_MODE").unwrap_or_else(|_| "development".into());
         log::debug!("Loading configuration for mode: {}", run_mode);
 
-        // Log environment variables for debugging
+        // Log all relevant environment variables before config loading
         log::debug!("Environment variables:");
         for (key, value) in std::env::vars() {
             if key.starts_with("GITHUB_") || key.starts_with("RAGFLOW_") || 
@@ -257,21 +259,70 @@ impl Settings {
             }
         }
 
-        // Create a builder and add sources in order of precedence (later sources override earlier ones)
+        // Create a builder and add sources in order of precedence
         let mut builder = Config::builder();
 
         // 1. Add settings.toml for default values
         let settings_file = File::with_name("settings.toml").required(false);
         builder = builder.add_source(settings_file);
-        log::debug!("Attempted to add settings.toml to configuration sources");
+        log::debug!("Added settings.toml to configuration sources");
 
-        // 2. Add environment variables with higher precedence
-        builder = builder.add_source(
-            Environment::default()
-                .separator("_")
-                .try_parsing(true)
-                .ignore_empty(true)  // Ignore empty environment variables
-        );
+        // 2. Explicitly set environment variable overrides
+        // GitHub settings
+        if let Ok(token) = env::var("GITHUB_ACCESS_TOKEN") {
+            builder = builder.set_override("github.github_access_token", token)?;
+        }
+        if let Ok(owner) = env::var("GITHUB_OWNER") {
+            builder = builder.set_override("github.github_owner", owner)?;
+        }
+        if let Ok(repo) = env::var("GITHUB_REPO") {
+            builder = builder.set_override("github.github_repo", repo)?;
+        }
+        if let Ok(directory) = env::var("GITHUB_DIRECTORY") {
+            builder = builder.set_override("github.github_directory", directory)?;
+        }
+
+        // RAGFlow settings
+        if let Ok(api_key) = env::var("RAGFLOW_API_KEY") {
+            builder = builder.set_override("ragflow.ragflow_api_key", api_key)?;
+        }
+        if let Ok(base_url) = env::var("RAGFLOW_BASE_URL") {
+            builder = builder.set_override("ragflow.ragflow_api_base_url", base_url)?;
+        }
+
+        // Perplexity settings
+        if let Ok(api_key) = env::var("PERPLEXITY_API_KEY") {
+            builder = builder.set_override("perplexity.perplexity_api_key", api_key)?;
+        }
+        if let Ok(model) = env::var("PERPLEXITY_MODEL") {
+            builder = builder.set_override("perplexity.perplexity_model", model)?;
+        }
+        if let Ok(api_url) = env::var("PERPLEXITY_API_URL") {
+            builder = builder.set_override("perplexity.perplexity_api_base_url", api_url)?;
+        }
+        if let Ok(max_tokens) = env::var("PERPLEXITY_MAX_TOKENS") {
+            builder = builder.set_override("perplexity.perplexity_max_tokens", max_tokens)?;
+        }
+        if let Ok(temperature) = env::var("PERPLEXITY_TEMPERATURE") {
+            builder = builder.set_override("perplexity.perplexity_temperature", temperature)?;
+        }
+        if let Ok(top_p) = env::var("PERPLEXITY_TOP_P") {
+            builder = builder.set_override("perplexity.perplexity_top_p", top_p)?;
+        }
+        if let Ok(presence_penalty) = env::var("PERPLEXITY_PRESENCE_PENALTY") {
+            builder = builder.set_override("perplexity.perplexity_presence_penalty", presence_penalty)?;
+        }
+        if let Ok(frequency_penalty) = env::var("PERPLEXITY_FREQUENCY_PENALTY") {
+            builder = builder.set_override("perplexity.perplexity_frequency_penalty", frequency_penalty)?;
+        }
+
+        // OpenAI settings
+        if let Ok(api_key) = env::var("OPENAI_API_KEY") {
+            builder = builder.set_override("openai.openai_api_key", api_key)?;
+        }
+        if let Ok(base_url) = env::var("OPENAI_BASE_URL") {
+            builder = builder.set_override("openai.openai_base_url", base_url)?;
+        }
 
         // Build the config
         let config = builder.build()?;
@@ -284,7 +335,8 @@ impl Settings {
                 // Load topics from markdown files
                 s.topics = load_topics_from_markdown();
                 
-                // Log non-sensitive settings
+                // Log final configuration state
+                log::debug!("Final configuration:");
                 log::debug!("GitHub settings: owner={}, repo={}, directory={}", 
                     s.github.github_owner,
                     s.github.github_repo,
