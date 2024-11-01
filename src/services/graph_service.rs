@@ -1,10 +1,12 @@
+// src/services/graph_service.rs
+
 use crate::AppState;
 use crate::models::graph::GraphData;
 use crate::models::node::Node;
 use crate::models::edge::Edge;
 use crate::models::metadata::Metadata;
-use crate::models::simulation_params::{SimulationParams, SimulationMode};
 use crate::utils::gpu_compute::GPUCompute;
+use crate::models::simulation_params::SimulationParams;
 use log::{info, warn, debug};
 use std::collections::{HashMap, HashSet};
 use tokio::fs;
@@ -81,11 +83,14 @@ impl GraphService {
 
         // Calculate layout using GPU if available, otherwise fall back to CPU
         let settings = app_state.settings.read().await;
-        let fd_iterations = settings.visualization.force_directed_iterations as u32;
-        let fd_repulsion = settings.visualization.force_directed_repulsion;
-        let fd_attraction = settings.visualization.force_directed_attraction;
+        let params = SimulationParams::new(
+            settings.visualization.force_directed_iterations as u32,
+            settings.visualization.force_directed_repulsion,
+            settings.visualization.force_directed_attraction,
+            0.9, // Default damping value
+        );
 
-        Self::calculate_layout(&app_state.gpu_compute, &mut graph, fd_iterations, fd_repulsion, fd_attraction).await?;
+        Self::calculate_layout(&app_state.gpu_compute, &mut graph, &params).await?;
         
         debug!("Final sample node data after layout calculation: {:?}", graph.nodes.first());
         
@@ -96,44 +101,31 @@ impl GraphService {
     pub async fn calculate_layout(
         gpu_compute: &Option<Arc<RwLock<GPUCompute>>>,
         graph: &mut GraphData,
-        iterations: u32,
-        repulsion: f32,
-        attraction: f32
+        params: &SimulationParams,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match gpu_compute {
             Some(gpu) => {
                 info!("Using GPU for layout calculation");
                 let mut gpu_compute = gpu.write().await; // Acquire write lock
                 gpu_compute.set_graph_data(graph)?;
-                
-                // Create SimulationParams struct using the new() method
-                let params = SimulationParams::new(
-                    iterations,
-                    repulsion,
-                    attraction,
-                    0.9 // Default damping value
-                );
-                
-                gpu_compute.set_force_directed_params(&params)?;
+                gpu_compute.set_force_directed_params(params)?;
                 gpu_compute.compute_forces()?;
                 let updated_nodes = gpu_compute.get_updated_positions().await?;
 
                 // Update graph nodes with new positions
                 for (i, node) in graph.nodes.iter_mut().enumerate() {
-                    if i < updated_nodes.len() {
-                        node.x = updated_nodes[i].x;
-                        node.y = updated_nodes[i].y;
-                        node.z = updated_nodes[i].z;
-                        node.vx = updated_nodes[i].vx;
-                        node.vy = updated_nodes[i].vy;
-                        node.vz = updated_nodes[i].vz;
-                    }
+                    node.x = updated_nodes[i].x;
+                    node.y = updated_nodes[i].y;
+                    node.z = updated_nodes[i].z;
+                    node.vx = updated_nodes[i].vx;
+                    node.vy = updated_nodes[i].vy;
+                    node.vz = updated_nodes[i].vz;
                 }
                 debug!("GPU layout calculation complete. Sample updated node: {:?}", graph.nodes.first());
             },
             None => {
                 warn!("GPU not available. Falling back to CPU-based layout calculation.");
-                Self::calculate_layout_cpu(graph, iterations, repulsion, attraction);
+                Self::calculate_layout_cpu(graph, params.iterations, params.repulsion_strength, params.attraction_strength);
                 debug!("CPU layout calculation complete. Sample updated node: {:?}", graph.nodes.first());
             }
         }

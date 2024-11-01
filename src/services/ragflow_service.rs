@@ -44,8 +44,8 @@ impl From<std::io::Error> for RAGFlowError {
 
 pub struct RAGFlowService {
     client: Client,
-    api_key: String,
-    base_url: String,
+    ragflow_api_key: String,
+    ragflow_api_base_url: String,
 }
 
 impl RAGFlowService {
@@ -55,18 +55,18 @@ impl RAGFlowService {
 
         Ok(RAGFlowService {
             client,
-            api_key: settings.ragflow.ragflow_api_key.clone(),
-            base_url: settings.ragflow.ragflow_api_base_url.clone(),
+            ragflow_api_key: settings.ragflow.ragflow_api_key.clone(),
+            ragflow_api_base_url: settings.ragflow.ragflow_api_base_url.clone(),
         })
     }
 
     pub async fn create_conversation(&self, user_id: String) -> Result<String, RAGFlowError> {
         info!("Creating conversation for user: {}", user_id);
-        let url = format!("{}api/new_conversation", self.base_url);
+        let url = format!("{}api/new_conversation", self.ragflow_api_base_url);
         info!("Full URL for create_conversation: {}", url);
         
         let response = self.client.get(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Authorization", format!("Bearer {}", self.ragflow_api_key))
             .query(&[("user_id", user_id)])
             .send()
             .await?;
@@ -94,7 +94,7 @@ impl RAGFlowService {
         stream: bool,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<(String, Vec<u8>), RAGFlowError>> + Send + 'static>>, RAGFlowError> {
         info!("Sending message to conversation: {}", conversation_id);
-        let url = format!("{}api/completion", self.base_url);
+        let url = format!("{}api/completion", self.ragflow_api_base_url);
         info!("Full URL for send_message: {}", url);
         
         let mut request_body = json!({
@@ -111,7 +111,7 @@ impl RAGFlowService {
         info!("Request body: {:?}", request_body);
 
         let response = self.client.post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Authorization", format!("Bearer {}", self.ragflow_api_key))
             .header("Content-Type", "application/json")
             .json(&request_body)
             .send()
@@ -142,9 +142,9 @@ impl RAGFlowService {
     }
 
     pub async fn get_conversation_history(&self, conversation_id: String) -> Result<serde_json::Value, RAGFlowError> {
-        let url = format!("{}api/conversation/{}", self.base_url, conversation_id);
+        let url = format!("{}api/conversation/{}", self.ragflow_api_base_url, conversation_id);
         let response = self.client.get(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Authorization", format!("Bearer {}", self.ragflow_api_key))
             .send()
             .await?;
 
@@ -164,8 +164,8 @@ impl Clone for RAGFlowService {
     fn clone(&self) -> Self {
         RAGFlowService {
             client: self.client.clone(),
-            api_key: self.api_key.clone(),
-            base_url: self.base_url.clone(),
+            ragflow_api_key: self.ragflow_api_key.clone(),
+            ragflow_api_base_url: self.ragflow_api_base_url.clone(),
         }
     }
 }

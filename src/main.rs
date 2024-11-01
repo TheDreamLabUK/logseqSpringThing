@@ -94,12 +94,12 @@ async fn main() -> std::io::Result<()> {
 
     let settings = match Settings::new() {
         Ok(s) => {
-            log::debug!("Successfully loaded settings: {:?}", s);
+            log::debug!("Successfully loaded settings");
             Arc::new(RwLock::new(s))
         },
         Err(e) => {
             log::error!("Failed to load settings: {:?}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to load settings: {:?}", e)));
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize settings: {:?}", e)));
         }
     };
 
@@ -107,8 +107,13 @@ async fn main() -> std::io::Result<()> {
     let graph_data = Arc::new(RwLock::new(GraphData::default()));
     
     let github_service: Arc<dyn GitHubService + Send + Sync> = {
-        let settings_guard = settings.read().await;
-        Arc::new(RealGitHubService::new(&settings_guard.github))
+        match RealGitHubService::new(settings.clone()).await {
+            Ok(service) => Arc::new(service),
+            Err(e) => {
+                log::error!("Failed to initialize GitHubService: {:?}", e);
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHubService: {:?}", e)));
+            }
+        }
     };
     
     let perplexity_service = PerplexityServiceImpl::new();

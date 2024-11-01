@@ -2,7 +2,7 @@ use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor
 use wgpu::util::DeviceExt;
 use std::io::Error;
 use std::collections::HashMap;
-use log::{error, debug, info};
+use log::{debug, info};
 use crate::models::graph::GraphData;
 use crate::models::node::{Node, GPUNode};
 use crate::models::edge::GPUEdge;
@@ -13,7 +13,6 @@ use futures::channel::oneshot;
 // Constants for optimal performance
 const WORKGROUP_SIZE: u32 = 256; // Optimal workgroup size
 const INITIAL_BUFFER_SIZE: u64 = 1024 * 1024; // 1MB initial buffer size
-const MAX_ITERATIONS: u32 = 1000; // Maximum iterations for force-directed layout
 
 /// Struct representing the GPU compute capabilities
 pub struct GPUCompute {

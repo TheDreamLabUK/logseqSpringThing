@@ -361,26 +361,20 @@ impl WebSocketSession {
                         GraphService::calculate_layout(
                             &Some(gpu_compute.clone()),
                             &mut *graph_data,
-                            params.iterations,
-                            params.repulsion_strength,
-                            params.attraction_strength,
+                            &params
                         ).await
                     } else {
                         GraphService::calculate_layout(
                             &None,
                             &mut *graph_data,
-                            params.iterations,
-                            params.repulsion_strength,
-                            params.attraction_strength,
+                            &params
                         ).await
                     }
                 },
                 _ => GraphService::calculate_layout(
                     &None,
                     &mut *graph_data,
-                    params.iterations,
-                    params.repulsion_strength,
-                    params.attraction_strength,
+                    &params
                 ).await,
             };
 
