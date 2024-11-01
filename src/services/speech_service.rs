@@ -16,9 +16,8 @@ use actix_web::{web, Error as ActixError, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use std::time::{Duration, Instant};
 use actix::{StreamHandler, AsyncContext, Actor};
-use std::process::Command;
+use tokio::process::Command;
 use tokio::io::AsyncWriteExt;
-use base64::{Engine as _, engine::general_purpose};
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -139,40 +138,50 @@ impl SpeechService {
                             TTSProvider::Sonata => {
                                 let mut child = Command::new("python3")
                                     .arg("src/generate_audio.py")
-                                    .stdin(std::process::Stdio::piped())
                                     .stdout(std::process::Stdio::piped())
+                                    .stdin(std::process::Stdio::piped())
                                     .spawn()
                                     .expect("Failed to spawn Python process");
 
                                 if let Some(mut stdin) = child.stdin.take() {
-                                    tokio::io::AsyncWriteExt::write_all(&mut stdin, msg.as_bytes()).await
-                                        .expect("Failed to write to stdin");
+                                    if let Err(e) = stdin.write_all(msg.as_bytes()).await {
+                                        error!("Failed to write to stdin: {}", e);
+                                        continue;
+                                    }
+                                    if let Err(e) = stdin.flush().await {
+                                        error!("Failed to flush stdin: {}", e);
+                                        continue;
+                                    }
                                 }
 
-                                let output = child.wait_with_output()
-                                    .expect("Failed to wait on child process");
-
-                                if output.status.success() {
-                                    if let Err(e) = websocket_manager.broadcast_audio(output.stdout).await {
-                                        error!("Failed to broadcast Sonata audio: {}", e);
+                                match child.wait_with_output().await {
+                                    Ok(output) => {
+                                        if output.status.success() {
+                                            if let Err(e) = websocket_manager.broadcast_audio(output.stdout).await {
+                                                error!("Failed to broadcast Sonata audio: {}", e);
+                                            }
+                                        } else {
+                                            error!("Sonata TTS failed: {}", String::from_utf8_lossy(&output.stderr));
+                                        }
+                                    },
+                                    Err(e) => {
+                                        error!("Failed to get process output: {}", e);
                                     }
-                                } else {
-                                    error!("Sonata TTS failed: {}", String::from_utf8_lossy(&output.stderr));
                                 }
                             }
                         }
                     },
                     SpeechCommand::Close => {
                         if let Some(stream) = &mut ws_stream {
-                            if let Err(e) = stream.close(None).await {
+                            if let Err(e) = stream.send(Message::Close(None)).await {
                                 error!("Failed to close WebSocket connection: {}", e);
                             }
                         }
                         break;
                     },
-                    SpeechCommand::SetTTSProvider(provider) => {
-                        *tts_provider.write().await = provider;
-                        info!("TTS provider set to: {:?}", provider);
+                    SpeechCommand::SetTTSProvider(new_provider) => {
+                        *tts_provider.write().await = new_provider.clone();
+                        info!("TTS provider set to: {:?}", new_provider);
                     }
                 }
             }
@@ -285,10 +294,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechWs {
                 debug!("Received binary message of {} bytes", bin.len());
                 ctx.binary(bin);
             }
-            Ok(ws::Message::Close(reason)) => {
-                info!("Closing websocket connection: {:?}", reason);
-                ctx.close(reason);
-                return;
+            Ok(ws::Message::Close(_)) => {
+                info!("Closing websocket connection");
+                ctx.close(None);
             }
             _ => (),
         }

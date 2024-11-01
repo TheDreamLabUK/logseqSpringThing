@@ -48,8 +48,8 @@ COPY Cargo.toml Cargo.lock ./
 # Copy the source code
 COPY src ./src
 
-# Copy settings.toml
-COPY settings.toml ./
+# Create a temporary settings.toml for build
+RUN echo '{}' > settings.toml
 
 # Build the Rust application in release mode for optimized performance
 RUN cargo build --release
@@ -92,10 +92,6 @@ COPY --from=backend-builder /usr/src/app/target/release/webxr-graph /app/webxr-g
 
 # Copy the built frontend files from the frontend-builder stage
 COPY --from=frontend-builder /app/data/dist /app/data/public/dist
-
-# Copy settings.toml from the backend-builder stage
-COPY --from=backend-builder /usr/src/app/settings.toml /app/settings.toml
-COPY --from=backend-builder /usr/src/app/settings.toml /app/data/public/dist/settings.toml
 
 # Copy the generate_audio.py script
 COPY src/generate_audio.py /app/src/generate_audio.py

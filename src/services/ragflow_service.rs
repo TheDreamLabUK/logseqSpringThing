@@ -55,8 +55,8 @@ impl RAGFlowService {
 
         Ok(RAGFlowService {
             client,
-            api_key: settings.ragflow.api_key.clone(),
-            base_url: settings.ragflow.api_url.clone(),
+            api_key: settings.ragflow.ragflow_api_key.clone(),
+            base_url: settings.ragflow.ragflow_api_base_url.clone(),
         })
     }
 

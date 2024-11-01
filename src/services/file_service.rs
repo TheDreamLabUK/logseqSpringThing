@@ -1,20 +1,31 @@
+use crate::config::GithubSettings;
 use crate::models::metadata::Metadata;
 use crate::config::Settings;
-use serde::{Deserialize, Serialize};
+use log::{debug, info, error};
 use reqwest::Client;
-use async_trait::async_trait;
-use log::{info, debug, error};
-use regex::Regex;
-use sha1::{Sha1, Digest};
-use std::collections::{HashMap, HashSet};
+use std::error::Error;
 use std::fs;
 use std::path::Path;
+use std::collections::HashMap;
+use base64;
+use serde::{Deserialize, Serialize};
+use async_trait::async_trait;
+use regex::Regex;
+use sha1::{Sha1, Digest};
+use std::collections::HashSet;
 use chrono::Utc;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::error::Error as StdError;
 
 const METADATA_PATH: &str = "/app/data/markdown/metadata.json";
+
+#[derive(Debug, Clone)]
+pub struct FileMetadata {
+    pub name: String,
+    pub path: String,
+    pub size: u64,
+    pub is_file: bool,
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GithubFile {
@@ -37,11 +48,34 @@ pub struct ProcessedFile {
     pub metadata: Metadata,
 }
 
+#[derive(Debug)]
+pub enum GitHubError {
+    MissingCredentials(String),
+    ApiError(String),
+    NetworkError(String),
+    Other(Box<dyn Error + Send + Sync>),
+}
+
+impl std::fmt::Display for GitHubError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GitHubError::MissingCredentials(msg) => write!(f, "GitHub credentials error: {}", msg),
+            GitHubError::ApiError(msg) => write!(f, "GitHub API error: {}", msg),
+            GitHubError::NetworkError(msg) => write!(f, "Network error: {}", msg),
+            GitHubError::Other(e) => write!(f, "Other error: {}", e),
+        }
+    }
+}
+
+impl Error for GitHubError {}
+
 #[async_trait]
 pub trait GitHubService: Send + Sync {
-    async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>>;
-    async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>>;
-    async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>>;
+    async fn get_file_content(&self, path: &str) -> Result<String, Box<dyn Error + Send + Sync>>;
+    async fn save_file(&self, path: &str, content: &str) -> Result<(), Box<dyn Error + Send + Sync>>;
+    async fn list_files(&self, path: &str) -> Result<Vec<FileMetadata>, Box<dyn Error + Send + Sync>>;
+    async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn Error + Send + Sync>>;
+    async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn Error + Send + Sync>>;
 }
 
 pub struct RealGitHubService {
@@ -53,117 +87,154 @@ pub struct RealGitHubService {
 }
 
 impl RealGitHubService {
-    pub async fn new(settings: Arc<RwLock<Settings>>) -> Result<Self, Box<dyn StdError + Send + Sync>> {
-        let settings = settings.read().await;
-        let github_settings = &settings.github;
+    pub fn new(github_settings: &GithubSettings) -> Self {
+        // Log detailed information about GitHub settings (excluding sensitive data)
+        info!("Initializing GitHub service with owner: {}, repo: {}, directory: {}", 
+            github_settings.github_owner,
+            github_settings.github_repo,
+            github_settings.github_directory
+        );
+
         if github_settings.github_access_token.is_empty() {
-            return Err("GitHub access token is empty".into());
+            error!("GitHub access token is not configured");
+        } else {
+            debug!("GitHub access token starts with: {}", github_settings.github_access_token.chars().take(10).collect::<String>());
         }
-        Ok(Self {
+        if github_settings.github_owner.is_empty() {
+            error!("GitHub owner is not configured");
+        }
+        if github_settings.github_repo.is_empty() {
+            error!("GitHub repository is not configured");
+        }
+
+        RealGitHubService {
             client: Client::new(),
             token: github_settings.github_access_token.clone(),
             owner: github_settings.github_owner.clone(),
             repo: github_settings.github_repo.clone(),
             base_path: github_settings.github_directory.clone(),
-        })
-    }
-
-    async fn fetch_directory_contents(&self, path: &str) -> Result<Vec<serde_json::Value>, Box<dyn StdError + Send + Sync>> {
-        let url = format!("https://api.github.com/repos/{}/{}/contents/{}", self.owner, self.repo, path);
-        debug!("Fetching contents from GitHub: {}", url);
-
-        let response = self.client.get(&url)
-            .header("Authorization", format!("token {}", self.token))
-            .header("User-Agent", "rust-github-api")
-            .send()
-            .await?;
-
-        debug!("GitHub API response status: {}", response.status());
-
-        let response_body = response.text().await?;
-        debug!("GitHub API response body: {}", response_body);
-
-        let contents: Vec<serde_json::Value> = serde_json::from_str(&response_body)
-            .map_err(|e| {
-                error!("Failed to parse GitHub API response: {}", e);
-                format!("Failed to parse GitHub API response: {}. Response body: {}", e, response_body)
-            })?;
-
-        // Filter out any subdirectories
-        let files_only = contents.into_iter()
-            .filter(|item| item["type"].as_str() == Some("file"))
-            .collect();
-
-        Ok(files_only)
-    }
-
-    async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
-        let content = self.client.get(download_url)
-            .header("Authorization", format!("token {}", self.token))
-            .header("User-Agent", "rust-github-api")
-            .send()
-            .await?
-            .text()
-            .await?;
-        Ok(content)
-    }
-
-    pub async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        let mut github_files_metadata = Vec::new();
-        
-        let contents = self.fetch_directory_contents(&self.base_path).await?;
-    
-        for item in contents {
-            let name = item["name"].as_str().unwrap_or("");
-            let item_type = item["type"].as_str().unwrap_or("");
-    
-            if item_type == "file" && name.ends_with(".md") {
-                let sha = item["sha"].as_str().unwrap_or("").to_string();
-                github_files_metadata.push(GithubFileMetadata {
-                    name: name.to_string(),
-                    sha,
-                });
-            }
         }
-    
-        debug!("Fetched metadata for {} Markdown files from GitHub", github_files_metadata.len());
-        Ok(github_files_metadata)
     }
 
-    async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>> {
-        let url = format!("https://api.github.com/repos/{}/{}/contents/{}/{}", 
-            self.owner, self.repo, self.base_path, file_name);
-        debug!("Fetching download URL for file: {}", url);
-
-        let response = self.client.get(&url)
-            .header("Authorization", format!("token {}", self.token))
-            .header("User-Agent", "rust-github-api")
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            let response_body = response.text().await?;
-            let json: serde_json::Value = serde_json::from_str(&response_body)?;
-            Ok(json["download_url"].as_str().map(|s| s.to_string()))
-        } else {
-            error!("Failed to fetch download URL: {}", response.status());
-            Ok(None)
+    fn validate_credentials(&self) -> Result<(), GitHubError> {
+        if self.token.is_empty() {
+            return Err(GitHubError::MissingCredentials("GitHub access token is not configured".into()));
         }
+        if self.owner.is_empty() {
+            return Err(GitHubError::MissingCredentials("GitHub owner is not configured".into()));
+        }
+        if self.repo.is_empty() {
+            return Err(GitHubError::MissingCredentials("GitHub repository is not configured".into()));
+        }
+        Ok(())
+    }
+
+    async fn get_api_response(&self, path: &str) -> Result<reqwest::Response, Box<dyn Error + Send + Sync>> {
+        self.validate_credentials()?;
+
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/contents/{}",
+            self.owner, self.repo, path
+        );
+
+        debug!("Making GitHub API request to: {}", url);
+        debug!("Using GitHub token starting with: {}", self.token.chars().take(10).collect::<String>());
+
+        let response = self.client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("User-Agent", "rust-github-api")
+            .header("Accept", "application/vnd.github.v3+json")
+            .send()
+            .await
+            .map_err(|e| GitHubError::NetworkError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_message = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            error!("GitHub API error: Status {}, Message: {}", status, error_message);
+            return Err(Box::new(GitHubError::ApiError(format!("GitHub API returned error {}: {}", status, error_message))));
+        }
+
+        Ok(response)
     }
 }
 
 #[async_trait]
 impl GitHubService for RealGitHubService {
-    async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        self.fetch_file_metadata().await
+    async fn get_file_content(&self, path: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+        let full_path = format!("{}/{}", self.base_path, path);
+        let response = self.get_api_response(&full_path).await?;
+        let content = response.text().await?;
+        Ok(content)
     }
 
-    async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>> {
-        self.get_download_url(file_name).await
+    async fn save_file(&self, path: &str, content: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+        self.validate_credentials()?;
+
+        let full_path = format!("{}/{}", self.base_path, path);
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/contents/{}",
+            self.owner, self.repo, full_path
+        );
+
+        let response = self.client
+            .put(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("User-Agent", "rust-github-api")
+            .header("Accept", "application/vnd.github.v3+json")
+            .json(&serde_json::json!({
+                "message": "Update file",
+                "content": base64::encode(content),
+            }))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_message = response.text().await?;
+            return Err(Box::new(GitHubError::ApiError(format!("Failed to save file: {}", error_message))));
+        }
+
+        Ok(())
     }
 
-    async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
-        self.fetch_file_content(download_url).await
+    async fn list_files(&self, path: &str) -> Result<Vec<FileMetadata>, Box<dyn Error + Send + Sync>> {
+        let full_path = format!("{}/{}", self.base_path, path);
+        let response = self.get_api_response(&full_path).await?;
+        let items: Vec<serde_json::Value> = response.json().await?;
+        
+        let files = items.into_iter()
+            .map(|item| FileMetadata {
+                name: item["name"].as_str().unwrap_or("").to_string(),
+                path: item["path"].as_str().unwrap_or("").to_string(),
+                size: item["size"].as_u64().unwrap_or(0),
+                is_file: item["type"].as_str().unwrap_or("") == "file",
+            })
+            .collect();
+        
+        Ok(files)
+    }
+
+    async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn Error + Send + Sync>> {
+        let response = self.get_api_response(&self.base_path).await?;
+        let items: Vec<serde_json::Value> = response.json().await?;
+        
+        let metadata = items.into_iter()
+            .filter(|item| item["type"].as_str().unwrap_or("") == "file")
+            .map(|item| GithubFileMetadata {
+                name: item["name"].as_str().unwrap_or("").to_string(),
+                sha: item["sha"].as_str().unwrap_or("").to_string(),
+            })
+            .collect();
+        
+        Ok(metadata)
+    }
+
+    async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn Error + Send + Sync>> {
+        let full_path = format!("{}/{}", self.base_path, file_name);
+        let response = self.get_api_response(&full_path).await?;
+        let item: serde_json::Value = response.json().await?;
+        Ok(item["download_url"].as_str().map(|s| s.to_string()))
     }
 }
 
@@ -172,9 +243,9 @@ pub struct FileService;
 impl FileService {
     pub async fn fetch_and_process_files(
         github_service: &dyn GitHubService,
-        _settings: Arc<RwLock<Settings>>,
+        settings: Arc<RwLock<Settings>>,
         metadata_map: &mut HashMap<String, Metadata>,
-    ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
+    ) -> Result<Vec<ProcessedFile>, Box<dyn Error + Send + Sync>> {
         let github_files_metadata = github_service.fetch_file_metadata().await?;
         debug!("Fetched {} file metadata from GitHub", github_files_metadata.len());
 
@@ -188,7 +259,7 @@ impl FileService {
             .collect();
         
         for removed_file in removed_files {
-            log::info!("Removing file not present on GitHub: {}", removed_file);
+            info!("Removing file not present on GitHub: {}", removed_file);
             metadata_map.remove(&removed_file);
         }
 
@@ -199,14 +270,14 @@ impl FileService {
                     debug!("File '{}' is up-to-date. Skipping.", file_meta.name);
                     continue;
                 } else {
-                    log::info!("File '{}' has been updated. Fetching new content.", file_meta.name);
+                    info!("File '{}' has been updated. Fetching new content.", file_meta.name);
                 }
             } else {
-                log::info!("New file detected: '{}'. Fetching content.", file_meta.name);
+                info!("New file detected: '{}'. Fetching content.", file_meta.name);
             }
 
             if let Some(download_url) = github_service.get_download_url(&file_meta.name).await? {
-                let content = github_service.fetch_file_content(&download_url).await?;
+                let content = github_service.get_file_content(&download_url).await?;
                 
                 let first_line = content.lines().next().unwrap_or("").trim();
                 let is_public = first_line == "public:: true";
@@ -232,7 +303,7 @@ impl FileService {
                 });
                 debug!("Processed and updated file: {}", file_meta.name);
             } else {
-                log::error!("Download URL not found for file: {}", file_meta.name);
+                info!("Download URL not found for file: {}", file_meta.name);
             }
         }
 
@@ -240,7 +311,7 @@ impl FileService {
         Ok(processed_files)
     }
 
-    pub fn load_or_create_metadata() -> Result<HashMap<String, Metadata>, Box<dyn StdError + Send + Sync>> {
+    pub fn load_or_create_metadata() -> Result<HashMap<String, Metadata>, Box<dyn Error + Send + Sync>> {
         if Path::new(METADATA_PATH).exists() {
             let metadata_content = fs::read_to_string(METADATA_PATH)?;
             let metadata: HashMap<String, Metadata> = serde_json::from_str(&metadata_content)?;
@@ -267,7 +338,7 @@ impl FileService {
         Ok(())
     }
 
-    pub fn update_metadata(metadata_map: &HashMap<String, Metadata>) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    pub fn update_metadata(metadata_map: &HashMap<String, Metadata>) -> Result<(), Box<dyn Error + Send + Sync>> {
         let existing_metadata = Self::load_or_create_metadata()?;
         let mut updated_metadata = existing_metadata;
 
@@ -279,17 +350,6 @@ impl FileService {
         info!("Updated metadata.json file at {}", METADATA_PATH);
 
         Ok(())
-    }
-
-    fn should_process_file(file: &GithubFile) -> bool {
-        let first_line = file.content.lines().next().unwrap_or("").trim();
-        first_line == "public:: true"
-    }
-
-    fn calculate_sha1(content: &str) -> String {
-        let mut hasher = Sha1::new();
-        hasher.update(content.as_bytes());
-        format!("{:x}", hasher.finalize())
     }
 
     fn count_hyperlinks(content: &str) -> usize {
@@ -331,7 +391,6 @@ impl FileService {
         metadata_map.insert(metadata.file_name.clone(), metadata.clone());
 
         let updated_content = serde_json::to_string_pretty(&metadata_map)?;
-
         fs::write(METADATA_PATH, updated_content)?;
         debug!("Updated metadata file at: {}", METADATA_PATH);
 

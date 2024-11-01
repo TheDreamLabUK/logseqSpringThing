@@ -1,10 +1,9 @@
-// src/services/graph_service.rs
-
 use crate::AppState;
 use crate::models::graph::GraphData;
 use crate::models::node::Node;
 use crate::models::edge::Edge;
 use crate::models::metadata::Metadata;
+use crate::models::simulation_params::{SimulationParams, SimulationMode};
 use crate::utils::gpu_compute::GPUCompute;
 use log::{info, warn, debug};
 use std::collections::{HashMap, HashSet};
@@ -94,7 +93,7 @@ impl GraphService {
     }
 
     /// Calculates the force-directed layout using GPUCompute if available, otherwise falls back to CPU.
-    async fn calculate_layout(
+    pub async fn calculate_layout(
         gpu_compute: &Option<Arc<RwLock<GPUCompute>>>,
         graph: &mut GraphData,
         iterations: u32,
@@ -106,18 +105,29 @@ impl GraphService {
                 info!("Using GPU for layout calculation");
                 let mut gpu_compute = gpu.write().await; // Acquire write lock
                 gpu_compute.set_graph_data(graph)?;
-                gpu_compute.set_force_directed_params(iterations, repulsion, attraction)?;
+                
+                // Create SimulationParams struct using the new() method
+                let params = SimulationParams::new(
+                    iterations,
+                    repulsion,
+                    attraction,
+                    0.9 // Default damping value
+                );
+                
+                gpu_compute.set_force_directed_params(&params)?;
                 gpu_compute.compute_forces()?;
                 let updated_nodes = gpu_compute.get_updated_positions().await?;
 
                 // Update graph nodes with new positions
                 for (i, node) in graph.nodes.iter_mut().enumerate() {
-                    node.x = updated_nodes[i].x;
-                    node.y = updated_nodes[i].y;
-                    node.z = updated_nodes[i].z;
-                    node.vx = updated_nodes[i].vx;
-                    node.vy = updated_nodes[i].vy;
-                    node.vz = updated_nodes[i].vz;
+                    if i < updated_nodes.len() {
+                        node.x = updated_nodes[i].x;
+                        node.y = updated_nodes[i].y;
+                        node.z = updated_nodes[i].z;
+                        node.vx = updated_nodes[i].vx;
+                        node.vy = updated_nodes[i].vy;
+                        node.vz = updated_nodes[i].vz;
+                    }
                 }
                 debug!("GPU layout calculation complete. Sample updated node: {:?}", graph.nodes.first());
             },

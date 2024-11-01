@@ -1,12 +1,14 @@
 use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor};
 use wgpu::util::DeviceExt;
 use std::io::Error;
+use std::collections::HashMap;
 use log::{error, debug, info};
 use crate::models::graph::GraphData;
 use crate::models::node::{Node, GPUNode};
 use crate::models::edge::GPUEdge;
 use crate::models::simulation_params::SimulationParams;
 use rand::Rng;
+use futures::channel::oneshot;
 
 // Constants for optimal performance
 const WORKGROUP_SIZE: u32 = 256; // Optimal workgroup size
@@ -292,5 +294,70 @@ impl GPUCompute {
         });
 
         Ok(())
+    }
+
+    /// Gets the updated node positions from the GPU buffer
+    pub async fn get_updated_positions(&self) -> Result<Vec<Node>, Error> {
+        // Create a staging buffer to read back the node data
+        let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Node Position Staging Buffer"),
+            size: (self.num_nodes as u64) * std::mem::size_of::<GPUNode>() as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Create and submit a command encoder to copy data from nodes buffer to staging buffer
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Position Readback Encoder"),
+        });
+
+        encoder.copy_buffer_to_buffer(
+            &self.nodes_buffer,
+            0,
+            &staging_buffer,
+            0,
+            staging_buffer.size(),
+        );
+
+        self.queue.submit(Some(encoder.finish()));
+
+        // Map the staging buffer to read the data
+        let slice = staging_buffer.slice(..);
+        let (tx, rx) = oneshot::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
+        self.device.poll(wgpu::Maintain::Wait);
+
+        match rx.await {
+            Ok(Ok(())) => {
+                // Read the mapped data
+                let data = slice.get_mapped_range();
+                let gpu_nodes: &[GPUNode] = bytemuck::cast_slice(&data);
+
+                // Convert GPU nodes back to regular nodes
+                let nodes: Vec<Node> = gpu_nodes.iter().enumerate().map(|(i, gpu_node)| {
+                    Node {
+                        id: i.to_string(),
+                        label: format!("Node {}", i),
+                        metadata: HashMap::new(),
+                        x: gpu_node.x,
+                        y: gpu_node.y,
+                        z: gpu_node.z,
+                        vx: gpu_node.vx,
+                        vy: gpu_node.vy,
+                        vz: gpu_node.vz,
+                    }
+                }).collect();
+
+                // Clean up
+                drop(data);
+                staging_buffer.unmap();
+
+                Ok(nodes)
+            },
+            Ok(Err(e)) => Err(Error::new(std::io::ErrorKind::Other, format!("Buffer mapping failed: {:?}", e))),
+            Err(e) => Err(Error::new(std::io::ErrorKind::Other, format!("Channel receive failed: {}", e))),
+        }
     }
 }

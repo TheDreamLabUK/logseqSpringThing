@@ -6,6 +6,7 @@ use log::{info, error, debug};
 use std::sync::{Mutex, Arc};
 use serde_json::json;
 use futures::stream::StreamExt;
+use futures::future::join_all;
 use std::error::Error as StdError;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use bytestring::ByteString;
@@ -16,6 +17,8 @@ use crate::models::simulation_params::SimulationParams;
 use crate::utils::websocket_messages::{ClientMessage, SendCompressedMessage, MessageHandler};
 use crate::utils::websocket_openai::OpenAIWebSocket;
 use crate::utils::websocket_messages::OpenAIMessage;
+use crate::services::graph_service::GraphService;
+use crate::models::graph::GraphData;
 
 /// Manages WebSocket sessions and communication.
 pub struct WebSocketManager {
@@ -42,18 +45,33 @@ impl WebSocketManager {
     }
 
     /// Handles incoming WebSocket connection requests.
-    pub async fn handle_websocket(&self, req: HttpRequest, stream: web::Payload, state: web::Data<AppState>) -> Result<HttpResponse, Error> {
+    pub async fn handle_websocket(req: HttpRequest, stream: web::Payload, state: web::Data<AppState>) -> Result<HttpResponse, Error> {
         info!("New WebSocket connection request");
-        let session = WebSocketSession::new(state.clone(), Some(self.conversation_id.clone()));
+        let session = WebSocketSession {
+            state: state.clone(),
+            tts_method: "piper".to_string(),
+            openai_ws: None,
+            simulation_mode: SimulationMode::Remote,
+            conversation_id: Some(state.websocket_manager.conversation_id.clone()),
+        };
         ws::start(session, &req, stream)
     }
 
-    /// Broadcasts a compressed message to all connected WebSocket sessions.
-    pub async fn broadcast_message_compressed(&self, message: &str) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        let compressed = compress_message(message)?;
+    /// Broadcasts a message to all connected WebSocket sessions.
+    pub async fn broadcast_message(&self, message: &str) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let sessions = self.sessions.lock().unwrap().clone();
-        for session in sessions.iter() {
-            session.do_send(SendCompressedMessage(compressed.clone()));
+        let futures: Vec<_> = sessions.iter()
+            .map(|session| {
+                let compressed = compress_message(message).unwrap_or_default();
+                session.send(SendCompressedMessage(compressed))
+            })
+            .collect();
+        
+        let results = join_all(futures).await;
+        for result in results {
+            if let Err(e) = result {
+                error!("Failed to broadcast message: {}", e);
+            }
         }
         Ok(())
     }
@@ -65,7 +83,17 @@ impl WebSocketManager {
             "audio_data": BASE64.encode(audio_bytes.as_slice())
         });
         let message = json_data.to_string();
-        self.broadcast_message_compressed(&message).await
+        self.broadcast_message(&message).await
+    }
+
+    /// Broadcasts graph update to all connected WebSocket sessions.
+    pub async fn broadcast_graph_update(&self, graph_data: &GraphData) -> Result<(), Box<dyn StdError + Send + Sync>> {
+        let json_data = json!({
+            "type": "graph_update",
+            "data": graph_data
+        });
+        let message = json_data.to_string();
+        self.broadcast_message(&message).await
     }
 }
 
@@ -114,16 +142,6 @@ impl Handler<SendCompressedMessage> for WebSocketSession {
 }
 
 impl WebSocketSession {
-    pub fn new(state: web::Data<AppState>, conversation_id: Option<Arc<Mutex<Option<String>>>>) -> Self {
-        WebSocketSession {
-            state,
-            tts_method: "piper".to_string(),
-            openai_ws: None,
-            simulation_mode: SimulationMode::Remote,
-            conversation_id,
-        }
-    }
-
     fn handle_chat_message(&mut self, ctx: &mut ws::WebsocketContext<Self>, message: String, use_openai: bool) {
         let state = self.state.clone();
         let conversation_id = self.conversation_id.clone();
@@ -160,10 +178,10 @@ impl WebSocketSession {
                     
                     if let Some(result) = stream.next().await {
                         match result {
-                            Ok(expanded_text) => {
+                            Ok((text, _)) => {
                                 let response = json!({
                                     "type": "ragflow_response",
-                                    "answer": expanded_text.clone()
+                                    "answer": text.clone()
                                 });
                                 if let Ok(response_str) = serde_json::to_string(&response) {
                                     if let Ok(compressed) = compress_message(&response_str) {
@@ -173,21 +191,10 @@ impl WebSocketSession {
 
                                 if use_openai {
                                     if let Some(ref openai_ws) = openai_ws {
-                                        openai_ws.do_send(OpenAIMessage(expanded_text));
-                                    } else {
-                                        error!("OpenAI WebSocket not initialized");
-                                        let error_message = json!({
-                                            "type": "error",
-                                            "message": "OpenAI WebSocket not initialized"
-                                        });
-                                        if let Ok(error_str) = serde_json::to_string(&error_message) {
-                                            if let Ok(compressed) = compress_message(&error_str) {
-                                                ctx_addr.do_send(SendCompressedMessage(compressed));
-                                            }
-                                        }
+                                        openai_ws.do_send(OpenAIMessage(text));
                                     }
                                 } else {
-                                    if let Err(e) = state.speech_service.send_message(expanded_text).await {
+                                    if let Err(e) = state.speech_service.send_message(text).await {
                                         error!("Failed to generate speech: {}", e);
                                         let error_message = json!({
                                             "type": "error",
@@ -232,6 +239,87 @@ impl WebSocketSession {
         }.into_actor(self));
     }
 
+    fn handle_ragflow_query(&mut self, ctx: &mut ws::WebsocketContext<Self>, message: String, quote: Option<bool>, doc_ids: Option<Vec<String>>) {
+        let state = self.state.clone();
+        let conversation_id = self.conversation_id.clone();
+        let ctx_addr = ctx.address();
+        
+        ctx.spawn(async move {
+            let conv_id = if let Some(conv_arc) = conversation_id {
+                if let Some(id) = conv_arc.lock().unwrap().clone() {
+                    id
+                } else {
+                    match state.ragflow_service.create_conversation("default_user".to_string()).await {
+                        Ok(new_id) => new_id,
+                        Err(e) => {
+                            error!("Failed to create conversation: {}", e);
+                            return;
+                        }
+                    }
+                }
+            } else {
+                error!("No conversation ID available");
+                return;
+            };
+
+            match state.ragflow_service.send_message(
+                conv_id,
+                message,
+                quote.unwrap_or(false),
+                doc_ids,
+                false,
+            ).await {
+                Ok(mut stream) => {
+                    if let Some(result) = stream.next().await {
+                        match result {
+                            Ok((text, _)) => {
+                                let response_json = json!({
+                                    "type": "ragflow_response",
+                                    "answer": text
+                                });
+                                if let Ok(response_str) = serde_json::to_string(&response_json) {
+                                    if let Ok(compressed) = compress_message(&response_str) {
+                                        ctx_addr.do_send(SendCompressedMessage(compressed));
+                                    }
+                                }
+                            },
+                            Err(e) => {
+                                error!("Error processing RAGFlow response: {}", e);
+                                let error_message = json!({
+                                    "type": "error",
+                                    "message": format!("Error processing RAGFlow response: {}", e)
+                                });
+                                if let Ok(error_str) = serde_json::to_string(&error_message) {
+                                    if let Ok(compressed) = compress_message(&error_str) {
+                                        ctx_addr.do_send(SendCompressedMessage(compressed));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to send message to RAGFlow: {}", e);
+                    let error_message = json!({
+                        "type": "error",
+                        "message": format!("Failed to send message to RAGFlow: {}", e)
+                    });
+                    if let Ok(error_str) = serde_json::to_string(&error_message) {
+                        if let Ok(compressed) = compress_message(&error_str) {
+                            ctx_addr.do_send(SendCompressedMessage(compressed));
+                        }
+                    }
+                }
+            }
+        }.into_actor(self));
+    }
+
+    fn handle_openai_query(&mut self, message: String) {
+        if let Some(ref openai_ws) = self.openai_ws {
+            openai_ws.do_send(OpenAIMessage(message));
+        }
+    }
+
     fn handle_simulation(&mut self, ctx: &mut ws::WebsocketContext<Self>, mode: &str) {
         self.simulation_mode = match mode {
             "remote" => {
@@ -265,34 +353,63 @@ impl WebSocketSession {
         let simulation_mode = self.simulation_mode.clone();
         
         ctx.spawn(async move {
-            let graph_service = state.graph_service.read().await;
-            if let Some(service) = graph_service.as_ref() {
-                let result = match simulation_mode {
-                    SimulationMode::Remote => service.recalculate_layout_gpu(&params).await,
-                    _ => service.recalculate_layout(&params).await,
-                };
-
-                match result {
-                    Ok(_) => {
-                        if let Ok(graph_data) = service.get_graph_data().await {
-                            let response = json!({
-                                "type": "layout_update",
-                                "layout_data": graph_data
-                            });
-                            state.websocket_manager.broadcast_message_compressed(&response.to_string()).await.unwrap();
-                        }
-                    },
-                    Err(e) => {
-                        error!("Failed to recalculate layout: {}", e);
-                        let error_message = json!({
-                            "type": "error",
-                            "message": format!("Layout calculation failed: {}", e)
-                        });
-                        state.websocket_manager.broadcast_message_compressed(&error_message.to_string()).await.unwrap();
+            let mut graph_data = state.graph_data.write().await;
+            
+            let result = match simulation_mode {
+                SimulationMode::Remote => {
+                    if let Some(gpu_compute) = &state.gpu_compute {
+                        GraphService::calculate_layout(
+                            &Some(gpu_compute.clone()),
+                            &mut *graph_data,
+                            params.iterations,
+                            params.repulsion_strength,
+                            params.attraction_strength,
+                        ).await
+                    } else {
+                        GraphService::calculate_layout(
+                            &None,
+                            &mut *graph_data,
+                            params.iterations,
+                            params.repulsion_strength,
+                            params.attraction_strength,
+                        ).await
                     }
+                },
+                _ => GraphService::calculate_layout(
+                    &None,
+                    &mut *graph_data,
+                    params.iterations,
+                    params.repulsion_strength,
+                    params.attraction_strength,
+                ).await,
+            };
+
+            match result {
+                Ok(_) => {
+                    let response = json!({
+                        "type": "layout_update",
+                        "layout_data": &*graph_data
+                    });
+                    state.websocket_manager.broadcast_message(&response.to_string()).await.unwrap();
+                },
+                Err(e) => {
+                    error!("Failed to recalculate layout: {}", e);
+                    let error_message = json!({
+                        "type": "error",
+                        "message": format!("Layout calculation failed: {}", e)
+                    });
+                    state.websocket_manager.broadcast_message(&error_message.to_string()).await.unwrap();
                 }
             }
         }.into_actor(self));
+    }
+
+    fn send_json_response(&self, response: serde_json::Value, ctx: &mut ws::WebsocketContext<Self>) {
+        if let Ok(response_str) = serde_json::to_string(&response) {
+            if let Ok(compressed) = compress_message(&response_str) {
+                ctx.binary(compressed);
+            }
+        }
     }
 }
 
@@ -324,6 +441,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                         ClientMessage::GetInitialData => {
                             // Handle initial data request
                         },
+                        ClientMessage::RagflowQuery { message, quote, doc_ids } => {
+                            self.handle_ragflow_query(ctx, message, quote, doc_ids);
+                        },
+                        ClientMessage::OpenAIQuery { message } => {
+                            self.handle_openai_query(message);
+                        }
                     },
                     Err(e) => {
                         error!("Failed to parse client message: {}", e);
