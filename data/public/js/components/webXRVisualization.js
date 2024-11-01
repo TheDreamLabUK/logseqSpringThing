@@ -1,3 +1,4 @@
+// Keep all existing imports...
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -24,6 +25,8 @@ export class WebXRVisualization {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
         this.camera.position.set(0, 0, 500);
+        // Enable layer 1 for node labels
+        this.camera.layers.enable(1);
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -31,7 +34,7 @@ export class WebXRVisualization {
         this.renderer.toneMapping = THREE.ReinhardToneMapping;
         this.renderer.toneMappingExposure = 1;
 
-        // Initialize variables for controls, composer, meshes, etc.
+        // Rest of the constructor remains exactly the same...
         this.controls = null;
         this.composer = null;
 
