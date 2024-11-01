@@ -1,4 +1,4 @@
-   <script>
+<script>
    import { defineComponent, ref, onUpdated, onBeforeUnmount } from 'vue';
 
    export default defineComponent({
@@ -31,21 +31,35 @@
                this.websocketService.toggleTTS(this.useOpenAI);
                console.log(`TTS method set to: ${this.useOpenAI ? 'OpenAI' : 'Sonata'}`);
            },
-           receiveMessage(message) {
-               this.chatMessages.push({ sender: 'AI', message });
+           handleMessage(data) {
+               if (data.type === 'ragflowAnswer' || data.type === 'openaiResponse') {
+                   this.chatMessages.push({ 
+                       sender: 'AI', 
+                       message: data.answer || data.response 
+                   });
+               }
            }
        },
        mounted() {
            // Ensure that websocketService is available
            if (this.websocketService) {
-               this.websocketService.on('message', this.handleMessage);
+               // Listen for both types of responses
+               this.websocketService.on('ragflowAnswer', (data) => {
+                   this.chatMessages.push({ sender: 'AI', message: data });
+               });
+               this.websocketService.on('openaiResponse', (data) => {
+                   this.chatMessages.push({ sender: 'AI', message: data });
+               });
            } else {
                console.error('WebSocketService is undefined');
            }
        },
        beforeUnmount() {
-           // Remove the event listener when the component is unmounted
-           this.websocketService.off('message', this.receiveMessage);
+           // Remove the event listeners when the component is unmounted
+           if (this.websocketService) {
+               this.websocketService.off('ragflowAnswer', this.handleMessage);
+               this.websocketService.off('openaiResponse', this.handleMessage);
+           }
        },
        setup() {
            const chatMessagesRef = ref(null);
@@ -66,3 +80,86 @@
        }
    });
    </script>
+
+   <template>
+       <div class="chat-container">
+           <div class="chat-messages" ref="chatMessagesRef">
+               <div v-for="(msg, index) in chatMessages" :key="index" class="message">
+                   <strong>{{ msg.sender }}:</strong> {{ msg.message }}
+               </div>
+           </div>
+           <div class="chat-input">
+               <label class="tts-toggle">
+                   <input type="checkbox" v-model="useOpenAI" @change="toggleTTS">
+                   Use OpenAI TTS
+               </label>
+               <input 
+                   v-model="chatInput" 
+                   @keyup.enter="sendMessage" 
+                   placeholder="Type your message..."
+               >
+               <button @click="sendMessage">Send</button>
+           </div>
+       </div>
+   </template>
+
+   <style scoped>
+   .chat-container {
+       display: flex;
+       flex-direction: column;
+       height: 400px;
+       border: 1px solid #ccc;
+       border-radius: 4px;
+       margin: 10px;
+   }
+
+   .chat-messages {
+       flex-grow: 1;
+       overflow-y: auto;
+       padding: 10px;
+       background: #f9f9f9;
+   }
+
+   .message {
+       margin: 5px 0;
+       padding: 5px;
+       border-radius: 4px;
+       background: white;
+   }
+
+   .chat-input {
+       display: flex;
+       padding: 10px;
+       background: white;
+       border-top: 1px solid #ccc;
+       align-items: center;
+   }
+
+   .chat-input input {
+       flex-grow: 1;
+       margin: 0 10px;
+       padding: 5px;
+       border: 1px solid #ccc;
+       border-radius: 4px;
+   }
+
+   .chat-input button {
+       padding: 5px 15px;
+       background: #007bff;
+       color: white;
+       border: none;
+       border-radius: 4px;
+       cursor: pointer;
+   }
+
+   .chat-input button:hover {
+       background: #0056b3;
+   }
+
+   .tts-toggle {
+       display: flex;
+       align-items: center;
+       gap: 5px;
+       font-size: 0.9em;
+   }
+   </style>
