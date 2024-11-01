@@ -351,6 +351,7 @@ impl WebSocketSession {
     fn handle_layout(&mut self, ctx: &mut ws::WebsocketContext<Self>, params: SimulationParams) {
         let state = self.state.clone();
         let simulation_mode = self.simulation_mode.clone();
+        let ctx_addr = ctx.address();
         
         ctx.spawn(async move {
             let mut graph_data = state.graph_data.write().await;
@@ -384,7 +385,11 @@ impl WebSocketSession {
                         "type": "layout_update",
                         "layout_data": &*graph_data
                     });
-                    state.websocket_manager.broadcast_message(&response.to_string()).await.unwrap();
+                    if let Ok(response_str) = serde_json::to_string(&response) {
+                        if let Ok(compressed) = compress_message(&response_str) {
+                            ctx_addr.do_send(SendCompressedMessage(compressed));
+                        }
+                    }
                 },
                 Err(e) => {
                     error!("Failed to recalculate layout: {}", e);
@@ -392,7 +397,31 @@ impl WebSocketSession {
                         "type": "error",
                         "message": format!("Layout calculation failed: {}", e)
                     });
-                    state.websocket_manager.broadcast_message(&error_message.to_string()).await.unwrap();
+                    if let Ok(error_str) = serde_json::to_string(&error_message) {
+                        if let Ok(compressed) = compress_message(&error_str) {
+                            ctx_addr.do_send(SendCompressedMessage(compressed));
+                        }
+                    }
+                }
+            }
+        }.into_actor(self));
+    }
+
+    fn handle_initial_data(&mut self, ctx: &mut ws::WebsocketContext<Self>) {
+        let state = self.state.clone();
+        let ctx_addr = ctx.address();
+        
+        ctx.spawn(async move {
+            let graph_data = state.graph_data.read().await;
+            
+            let response = json!({
+                "type": "initial_data",
+                "graph_data": &*graph_data
+            });
+
+            if let Ok(response_str) = serde_json::to_string(&response) {
+                if let Ok(compressed) = compress_message(&response_str) {
+                    ctx_addr.do_send(SendCompressedMessage(compressed));
                 }
             }
         }.into_actor(self));
@@ -433,7 +462,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                             self.handle_layout(ctx, params);
                         },
                         ClientMessage::GetInitialData => {
-                            // Handle initial data request
+                            self.handle_initial_data(ctx);
                         },
                         ClientMessage::RagflowQuery { message, quote, doc_ids } => {
                             self.handle_ragflow_query(ctx, message, quote, doc_ids);
@@ -446,7 +475,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                         error!("Failed to parse client message: {}", e);
                         let error_message = json!({
                             "type": "error",
-                            "message": "Invalid message format"
+                            "message": format!("Invalid message format: {}", e)
                         });
                         self.send_json_response(error_message, ctx);
                     }
@@ -471,3 +500,5 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
         }
     }
 }
+
+// Rest of the file remains unchanged...

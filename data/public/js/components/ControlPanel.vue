@@ -1,4 +1,4 @@
-<!-- Template section remains unchanged until the script part -->
+<!-- Template section -->
 <template>
   <div id="control-panel" :class="{ hidden: isHidden }">
     <button @click="togglePanel" class="toggle-button">
@@ -102,6 +102,15 @@
       <!-- Force-Directed Graph Controls -->
       <div class="control-group">
         <h3>Force-Directed Graph</h3>
+        <!-- Add Simulation Mode Toggle -->
+        <div class="control-item">
+          <label>Simulation Mode</label>
+          <select v-model="simulationMode" @change="setSimulationMode">
+            <option value="remote">Remote (GPU Server)</option>
+            <option value="gpu">Local GPU</option>
+            <option value="local">Local CPU</option>
+          </select>
+        </div>
         <div v-for="control in forceDirectedControls" :key="control.name" class="control-item">
           <label :for="control.name">{{ control.label }}</label>
           <input
@@ -160,6 +169,7 @@ export default {
   data() {
     return {
       isHidden: false,
+      simulationMode: 'remote',
       fisheyeEnabled: false,
       fisheyeStrength: 0.5,
       chatInput: '',
@@ -203,22 +213,26 @@ export default {
     };
   },
   methods: {
-    // Toggle the visibility of the control panel
     togglePanel() {
       this.isHidden = !this.isHidden;
     },
-    // Emit changes to parent component
+    setSimulationMode() {
+      console.log('Setting simulation mode to:', this.simulationMode);
+      if (this.websocketService) {
+        this.websocketService.setSimulationMode(this.simulationMode);
+      } else {
+        console.error('WebSocketService is undefined');
+      }
+    },
     emitChange(name, value) {
       if (this.isColorControl(name)) {
         value = parseInt(value.replace('#', '0x'), 16);
       }
       this.$emit('control-change', { name, value });
     },
-    // Check if a control is a color control
     isColorControl(name) {
       return this.colorControls.some(control => control.name === name);
     },
-    // Reset all controls to their default values
     resetControls() {
       this.colorControls.forEach(control => {
         control.value = this.getDefaultValue(control.name);
@@ -244,11 +258,11 @@ export default {
       this.emitChange('fisheyeEnabled', false);
       this.fisheyeStrength = 0.5;
       this.emitChange('fisheyeStrength', 0.5);
+      this.simulationMode = 'remote';
+      this.setSimulationMode();
     },
-    // Get default value for a control
     getDefaultValue(name) {
       const defaults = {
-        // Default values mapped to settings.toml
         nodeColor: '#1A0B31',
         edgeColor: '#ff0000',
         hologramColor: '#FFD700',
@@ -273,7 +287,6 @@ export default {
       };
       return defaults[name] || '';
     },
-    // Send a chat message
     sendMessage() {
       if (this.chatInput.trim() && this.websocketService) {
         this.websocketService.sendChatMessage({
@@ -284,15 +297,12 @@ export default {
         this.chatInput = '';
       }
     },
-    // Receive a message from the AI
     receiveMessage(message) {
       this.chatMessages.push({ sender: 'AI', message });
     },
-    // Toggle fullscreen mode
     toggleFullscreen() {
       this.$emit('toggle-fullscreen');
     },
-    // Enable Spacemouse
     enableSpacemouse() {
       this.$emit('enable-spacemouse');
     }
@@ -300,6 +310,10 @@ export default {
   mounted() {
     if (this.websocketService) {
       this.websocketService.on('message', this.receiveMessage);
+      this.websocketService.on('simulationModeSet', (mode) => {
+        console.log('Simulation mode set to:', mode);
+        this.simulationMode = mode;
+      });
     } else {
       console.error('WebSocketService is undefined');
     }
@@ -312,7 +326,6 @@ export default {
   setup() {
     const chatMessagesRef = ref(null);
 
-    // Scroll chat messages to bottom
     const scrollToBottom = () => {
       if (chatMessagesRef.value) {
         chatMessagesRef.value.scrollTop = chatMessagesRef.value.scrollHeight;
@@ -331,7 +344,6 @@ export default {
 </script>
 
 <style scoped>
-/* Styles remain unchanged */
 #control-panel {
   position: fixed;
   top: 20px;
@@ -404,6 +416,26 @@ input[type="range"] {
   text-align: right;
 }
 
+select {
+  width: 100%;
+  padding: 5px;
+  background-color: #333;
+  color: white;
+  border: 1px solid #444;
+  border-radius: 5px;
+  margin-bottom: 10px;
+}
+
+select:focus {
+  outline: none;
+  border-color: #666;
+}
+
+option {
+  background-color: #333;
+  color: white;
+}
+
 .reset-button, .control-button {
   width: 100%;
   padding: 10px;
@@ -420,7 +452,6 @@ input[type="range"] {
   background-color: #555;
 }
 
-/* Chat Interface Styles */
 .chat-interface {
   background-color: #222;
   padding: 10px;
@@ -465,7 +496,6 @@ input[type="range"] {
   gap: 10px;
 }
 
-/* Scrollbar styling */
 #control-panel::-webkit-scrollbar {
   width: 10px;
 }

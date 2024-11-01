@@ -1,5 +1,7 @@
 // public/js/services/websocketService.js
 
+import pako from 'pako';  // Static import instead of dynamic
+
 /**
  * WebsocketService handles the WebSocket connection and communication with the server.
  */
@@ -20,38 +22,50 @@ class WebsocketService {
      * Establishes a WebSocket connection to the server.
      */
     connect() {
-        // Use the specific WebSocket URL
         const url = 'wss://192.168.0.51:8443/ws';
         console.log('Attempting to connect to WebSocket at:', url);
         this.socket = new WebSocket(url);
+        this.socket.binaryType = 'arraybuffer';  // Set to handle binary data
 
-        // WebSocket open event
         this.socket.onopen = () => {
             console.log('WebSocket connection established');
             this.reconnectAttempts = 0;
             this.emit('open');
+            
+            // Request initial graph data when connection is established
+            this.send({ type: 'getInitialData' });
         };
 
-        // WebSocket message event
-        this.socket.onmessage = (event) => {
+        this.socket.onmessage = async (event) => {
             try {
-                const data = JSON.parse(event.data);
-                this.emit('message', data);
+                let data;
+                if (event.data instanceof ArrayBuffer) {
+                    // Handle compressed binary data
+                    const decompressed = this.decompressMessage(event.data);
+                    data = JSON.parse(decompressed);
+                    console.log('Received and decompressed binary message:', data);
+                } else {
+                    // Handle regular JSON messages
+                    data = JSON.parse(event.data);
+                    console.log('Received JSON message:', data);
+                }
+                this.handleServerMessage(data);
             } catch (error) {
-                console.error('Error parsing WebSocket message:', error);
+                console.error('Error processing WebSocket message:', error);
                 console.error('Raw message:', event.data);
-                // Emit an error event that can be handled elsewhere
-                this.emit('error', { type: 'parse_error', message: error.message, rawData: event.data });
+                this.emit('error', { 
+                    type: 'parse_error', 
+                    message: error.message, 
+                    rawData: event.data 
+                });
             }
         };
 
-        // WebSocket error event
         this.socket.onerror = (error) => {
             console.error('WebSocket error:', error);
             this.emit('error', error);
         };
 
-        // WebSocket close event with reconnection logic
         this.socket.onclose = () => {
             console.log('WebSocket connection closed.');
             this.emit('close');
@@ -60,16 +74,31 @@ class WebsocketService {
     }
 
     /**
-     * Handles the RAGFlow response containing both text and audio data.
-     * @param {Object} data - The response data containing answer and audio.
+     * Decompresses a binary message using Pako.
+     * @param {ArrayBuffer} compressed - The compressed binary data.
+     * @returns {string} The decompressed string.
      */
+    decompressMessage(compressed) {
+        try {
+            const decompressed = pako.inflate(new Uint8Array(compressed), { to: 'string' });
+            return decompressed;
+        } catch (error) {
+            console.error('Error decompressing message:', error);
+            throw error;
+        }
+    }
+
+    // Rest of the file remains exactly the same...
+    setSimulationMode(mode) {
+        this.send({
+            type: 'set_simulation_mode',
+            mode: mode
+        });
+    }
+
     handleRagflowResponse(data) {
         console.log('Handling RAGFlow response:', data);
-        
-        // Emit the text answer
         this.emit('ragflowAnswer', data.answer);
-
-        // Handle the audio data
         if (data.audio) {
             const audioBlob = this.base64ToBlob(data.audio, 'audio/wav');
             this.handleAudioData(audioBlob);
@@ -78,12 +107,6 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Converts a base64 string to a Blob.
-     * @param {string} base64 - The base64 encoded string.
-     * @param {string} mimeType - The MIME type of the data.
-     * @returns {Blob} The resulting Blob.
-     */
     base64ToBlob(base64, mimeType) {
         const byteCharacters = atob(base64);
         const byteNumbers = new Array(byteCharacters.length);
@@ -94,10 +117,6 @@ class WebsocketService {
         return new Blob([byteArray], { type: mimeType });
     }
 
-    /**
-     * Handles incoming audio data.
-     * @param {Blob} audioBlob - The audio data as a Blob.
-     */
     async handleAudioData(audioBlob) {
         if (!this.audioContext) {
             console.warn('AudioContext not initialized. Call initAudio() first.');
@@ -120,20 +139,14 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Decodes WAV data into an AudioBuffer.
-     * @param {ArrayBuffer} wavData - The WAV data as an ArrayBuffer.
-     * @returns {Promise<AudioBuffer>} The decoded AudioBuffer.
-     */
     async decodeWavData(wavData) {
         return new Promise((resolve, reject) => {
-            // Log the size and first few bytes of the wavData
             console.log('WAV data size:', wavData.byteLength);
             const dataView = new DataView(wavData);
-            const firstBytes = Array.from(new Uint8Array(wavData.slice(0, 16))).map(b => b.toString(16).padStart(2, '0')).join(' ');
+            const firstBytes = Array.from(new Uint8Array(wavData.slice(0, 16)))
+                .map(b => b.toString(16).padStart(2, '0')).join(' ');
             console.log('First 16 bytes:', firstBytes);
 
-            // Check if the data starts with the WAV header "RIFF"
             const header = new TextDecoder().decode(wavData.slice(0, 4));
             console.log('Header:', header);
             if (header !== 'RIFF') {
@@ -155,9 +168,6 @@ class WebsocketService {
         });
     }
 
-    /**
-     * Plays the next audio buffer in the queue.
-     */
     playNextAudio() {
         if (this.audioQueue.length === 0) {
             this.isPlaying = false;
@@ -173,9 +183,6 @@ class WebsocketService {
         source.start();
     }
 
-    /**
-     * Initializes the AudioContext. This should be called after a user interaction.
-     */
     initAudio() {
         if (!this.audioContext) {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -191,9 +198,6 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Attempts to reconnect to the WebSocket server.
-     */
     reconnect() {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
@@ -205,11 +209,6 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Registers an event listener for a specific event type.
-     * @param {string} event - The event type.
-     * @param {function} callback - The callback function to execute when the event occurs.
-     */
     on(event, callback) {
         if (!this.listeners[event]) {
             this.listeners[event] = [];
@@ -217,23 +216,15 @@ class WebsocketService {
         this.listeners[event].push(callback);
     }
 
-    /**
-     * Emits an event to all registered listeners.
-     * @param {string} event - The event type.
-     * @param {any} data - The data associated with the event.
-     */
     emit(event, data) {
         if (this.listeners[event]) {
             this.listeners[event].forEach(callback => callback(data));
         }
     }
 
-    /**
-     * Sends data to the server via WebSocket.
-     * @param {object} data - The data to send.
-     */
     send(data) {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            console.log('Sending WebSocket message:', data);
             this.socket.send(JSON.stringify(data));
         } else {
             console.warn('WebSocket is not open. Unable to send message:', data);
@@ -241,12 +232,6 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Sends a RAGFlow query to the server.
-     * @param {string} message - The message to send.
-     * @param {boolean} quote - Whether to include quotes.
-     * @param {string[]} docIds - Document IDs to reference.
-     */
     sendRagflowQuery(message, quote = false, docIds = null) {
         this.send({
             type: 'ragflowQuery',
@@ -256,10 +241,6 @@ class WebsocketService {
         });
     }
 
-    /**
-     * Sends an OpenAI query to the server.
-     * @param {string} message - The message to send.
-     */
     sendOpenAIQuery(message) {
         this.send({
             type: 'openaiQuery',
@@ -276,26 +257,48 @@ class WebsocketService {
     }
 
     handleServerMessage(data) {
-        console.log('Received server message:', data);
+        console.log('Handling server message:', data);
+        
+        // First emit the raw message for any listeners that need it
+        this.emit('message', data);
+        
+        // Then handle specific message types
         switch (data.type) {
+            case 'initial_data':
+                console.log('Received initial graph data');
+                this.emit('graphUpdate', data.graph_data);
+                break;
+                
+            case 'graph_update':
+                console.log('Received graph update');
+                this.emit('graphUpdate', data.graph_data);
+                break;
+                
             case 'audio':
                 this.handleAudioData(data.audio);
                 break;
+                
             case 'answer':
                 this.emit('ragflowAnswer', data.answer);
                 break;
+                
             case 'error':
                 this.emit('error', { type: 'server_error', message: data.message });
                 break;
-            case 'graphUpdate':
-                this.emit('graphUpdate', data.graphData);
-                break;
+                
             case 'ragflowResponse':
                 this.handleRagflowResponse(data);
                 break;
+                
             case 'openaiResponse':
                 this.emit('openaiResponse', data.response);
                 break;
+                
+            case 'simulation_mode_set':
+                console.log('Simulation mode set:', data.mode);
+                this.emit('simulationModeSet', data.mode);
+                break;
+                
             default:
                 console.warn('Unhandled message type:', data.type);
                 break;

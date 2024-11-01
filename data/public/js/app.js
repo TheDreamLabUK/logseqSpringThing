@@ -75,10 +75,12 @@ class App {
                 ControlPanel,
                 ChatManager
             },
-            data() {
+            setup: () => {
+                // Provide the services directly in setup
                 return {
-                    websocketService: null,
-                    visualization: null
+                    websocketService: this.websocketService,
+                    visualization: this.visualization,
+                    graphDataManager: this.graphDataManager
                 };
             },
             template: `
@@ -105,7 +107,7 @@ class App {
                             this.updateForceDirectedParams(data.name, data.value);
                         } else {
                             // Handle other visual features
-                        this.visualization.updateVisualFeatures({ [data.name]: data.value });
+                            this.visualization.updateVisualFeatures({ [data.name]: data.value });
                         }
                     } else {
                         console.error('Cannot update visualization: not initialized');
@@ -126,17 +128,15 @@ class App {
                     }
                 },
                 toggleFullscreen() {
-                    // ... (previous code remains unchanged)
+                    if (document.fullscreenElement) {
+                        document.exitFullscreen();
+                    } else {
+                        document.documentElement.requestFullscreen();
+                    }
                 },
                 enableSpacemouse() {
-                    // ... (previous code remains unchanged)
+                    enableSpacemouse();
                 }
-            },
-            mounted() {
-                // Assign the initialized services to the Vue app's data properties
-                this.websocketService = app.config.globalProperties.$websocketService;
-                this.visualization = app.config.globalProperties.$visualization;
-                console.log('Vue app mounted with WebSocketService and Visualization:', this.websocketService, this.visualization);
             }
         });
 
@@ -148,20 +148,17 @@ class App {
             console.warn('Vue Warning:', msg, trace);
         };
 
-        if (this.websocketService) {
-            app.config.globalProperties.$websocketService = this.websocketService;
-        } else {
-            console.error('WebsocketService not available for Vue app');
-        }
-
-        if (this.visualization) {
-            app.config.globalProperties.$visualization = this.visualization;
-        } else {
-            console.error('Visualization not available for Vue app');
-        }
+        // Make services available globally to the app
+        app.config.globalProperties.$websocketService = this.websocketService;
+        app.config.globalProperties.$visualization = this.visualization;
+        app.config.globalProperties.$graphDataManager = this.graphDataManager;
 
         app.mount('#app');
-        console.log('Vue App mounted');
+        console.log('Vue App mounted with services:', {
+            websocketService: this.websocketService,
+            visualization: this.visualization,
+            graphDataManager: this.graphDataManager
+        });
     }
 
     setupEventListeners() {

@@ -18,8 +18,8 @@ export class GraphDataManager {
         };
         console.log('GraphDataManager initialized');
         
-        // Set up WebSocket message listener
-        this.websocketService.on('message', this.handleWebSocketMessage.bind(this));
+        // Set up WebSocket graph update listener
+        this.websocketService.on('graphUpdate', this.handleGraphUpdate.bind(this));
     }
 
     /**
@@ -31,17 +31,12 @@ export class GraphDataManager {
     }
 
     /**
-     * Handles incoming WebSocket messages.
-     * @param {object} message - The received WebSocket message.
+     * Handles incoming graph update messages.
+     * @param {object} graphData - The received graph data.
      */
-    handleWebSocketMessage(message) {
-        console.log('Received WebSocket message:', message);
-        if (message.type === 'graphUpdate') {
-            console.log('Processing graph update message:', message.graphData);
-            this.updateGraphData(message.graphData);
-        } else {
-            console.warn('Unhandled WebSocket message type:', message.type);
-        }
+    handleGraphUpdate(graphData) {
+        console.log('Processing graph update:', graphData);
+        this.updateGraphData(graphData);
     }
 
     /**
@@ -111,8 +106,7 @@ export class GraphDataManager {
     recalculateLayout() {
         console.log('Recalculating graph layout with parameters:', this.forceDirectedParams);
         if (this.isGraphDataValid()) {
-            // Here, you would typically send a message to the server to recalculate the layout
-            // For now, we'll just log the action and dispatch an event
+            // Send a message to the server to recalculate the layout
             this.websocketService.send({
                 type: 'recalculateLayout',
                 params: this.forceDirectedParams

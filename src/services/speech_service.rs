@@ -76,9 +76,11 @@ impl SpeechService {
                         if let TTSProvider::OpenAI = *current_provider {
                             let settings = settings.read().await;
                             
-                            // Use the base URL from settings
-                            let url = Url::parse(&settings.openai.openai_base_url)
-                                .expect("Failed to parse OpenAI base URL");
+                            // Construct the full URL with model parameter
+                            let url = format!(
+                                "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+                            );
+                            let url = Url::parse(&url).expect("Failed to parse OpenAI base URL");
                             
                             let request = Request::builder()
                                 .uri(url.as_str())
@@ -161,7 +163,15 @@ impl SpeechService {
                                                                         if let Some(audio_data) = item["audio"].as_str() {
                                                                             // Decode base64 audio data using the new API
                                                                             if let Ok(audio_bytes) = BASE64.decode(audio_data) {
-                                                                                if let Err(e) = websocket_manager.broadcast_audio(audio_bytes).await {
+                                                                                // Create a JSON wrapper for the binary data
+                                                                                let audio_message = json!({
+                                                                                    "type": "audio",
+                                                                                    "data": audio_bytes
+                                                                                });
+                                                                                
+                                                                                if let Err(e) = websocket_manager.broadcast_message(
+                                                                                    &serde_json::to_string(&audio_message).unwrap()
+                                                                                ).await {
                                                                                     error!("Failed to broadcast audio: {}", e);
                                                                                 }
                                                                             }
@@ -212,8 +222,16 @@ impl SpeechService {
                                 match child.wait_with_output() {
                                     Ok(output) => {
                                         if output.status.success() {
-                                            if let Err(e) = websocket_manager.broadcast_audio(output.stdout).await {
-                                                error!("Failed to broadcast Sonata audio: {}", e);
+                                            // Create a JSON wrapper for the binary data
+                                            let audio_message = json!({
+                                                "type": "audio",
+                                                "data": output.stdout
+                                            });
+                                            
+                                            if let Err(e) = websocket_manager.broadcast_message(
+                                                &serde_json::to_string(&audio_message).unwrap()
+                                            ).await {
+                                                error!("Failed to broadcast audio: {}", e);
                                             }
                                         } else {
                                             error!("Sonata TTS failed: {}", String::from_utf8_lossy(&output.stderr));

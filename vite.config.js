@@ -17,11 +17,29 @@ export default defineConfig({
         main: path.resolve(__dirname, 'data/public/index.html'),
       },
       output: {
+        manualChunks: (id) => {
+          // Three.js and related modules
+          if (id.includes('three') || id.includes('OrbitControls') || 
+              id.includes('EffectComposer') || id.includes('RenderPass') || 
+              id.includes('UnrealBloomPass')) {
+            return 'vendor-three';
+          }
+          // Vue and related modules
+          if (id.includes('vue') || id.includes('runtime-dom') || 
+              id.includes('runtime-core')) {
+            return 'vendor-vue';
+          }
+          // Other dependencies
+          if (id.includes('pako')) {
+            return 'vendor-utils';
+          }
+        },
         globals: {
           'three': 'THREE'
         }
       }
-    }
+    },
+    chunkSizeWarningLimit: 1000,
   },
   publicDir: path.resolve(__dirname, 'data/public/assets'),
   resolve: {
@@ -29,13 +47,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'data/public/js'),
       'vue': 'vue/dist/vue.esm-bundler.js'
     },
-    extensions: ['.js', '.json', '.vue'] // Add explicit extensions to resolve
+    extensions: ['.js', '.json', '.vue']
   },
   server: {
     open: true,
     port: 3000
   },
   optimizeDeps: {
-    include: ['three', 'vue'],
+    include: ['three', 'vue', 'pako'],
+    exclude: []
   }
 });
