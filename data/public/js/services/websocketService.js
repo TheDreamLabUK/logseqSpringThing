@@ -1,6 +1,6 @@
 // public/js/services/websocketService.js
 
-import pako from 'pako';  // Static import instead of dynamic
+import pako from 'pako';
 
 /**
  * WebsocketService handles the WebSocket connection and communication with the server.
@@ -19,10 +19,19 @@ class WebsocketService {
     }
 
     /**
+     * Get the WebSocket URL based on the current window location
+     */
+    getWebSocketUrl() {
+        // Always use wss:// since nginx is handling SSL on 8443
+        const host = window.location.hostname;
+        return `wss://${host}:8443/ws`;
+    }
+
+    /**
      * Establishes a WebSocket connection to the server.
      */
     connect() {
-        const url = 'wss://192.168.0.51:8443/ws';
+        const url = this.getWebSocketUrl();
         console.log('Attempting to connect to WebSocket at:', url);
         this.socket = new WebSocket(url);
         this.socket.binaryType = 'arraybuffer';  // Set to handle binary data
@@ -88,7 +97,10 @@ class WebsocketService {
         }
     }
 
-    // Rest of the file remains exactly the same...
+    /**
+     * Sets the simulation mode for force-directed graph calculations.
+     * @param {string} mode - The simulation mode ('remote', 'gpu', or 'local').
+     */
     setSimulationMode(mode) {
         this.send({
             type: 'set_simulation_mode',
@@ -96,6 +108,7 @@ class WebsocketService {
         });
     }
 
+    // Rest of the methods remain the same...
     handleRagflowResponse(data) {
         console.log('Handling RAGFlow response:', data);
         this.emit('ragflowAnswer', data.answer);
