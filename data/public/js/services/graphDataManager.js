@@ -27,18 +27,20 @@ export class GraphDataManager {
      */
     requestInitialData() {
         console.log('Requesting initial graph data');
-        this.websocketService.send({ type: 'get_initial_data' }); // Fixed to match server's expected format
+        this.websocketService.send({ type: 'get_initial_data' });
     }
 
     /**
      * Handles incoming graph update messages.
-     * @param {object} graphData - The received graph data.
+     * @param {object} data - The received graph data.
      */
-    handleGraphUpdate(graphData) {
-        console.log('Processing graph update:', graphData);
-        // Check if the data is nested under a 'data' property
-        const data = graphData.data || graphData;
-        this.updateGraphData(data);
+    handleGraphUpdate(data) {
+        console.log('Processing graph update:', data);
+        if (!data || !data.graphData) {
+            console.error('Invalid graph update data received:', data);
+            return;
+        }
+        this.updateGraphData(data.graphData);
     }
 
     /**
@@ -46,38 +48,56 @@ export class GraphDataManager {
      * @param {object} newData - The new graph data.
      */
     updateGraphData(newData) {
-        console.log('Updating graph data with:', JSON.stringify(newData, null, 2));
-        if (newData && Array.isArray(newData.edges)) {
-            // Convert edges array to nodes and edges format if needed
-            const graphData = {
-                nodes: Array.from(new Set([
-                    ...newData.edges.map(e => e.source),
-                    ...newData.edges.map(e => e.target_node)
-                ])).map(id => ({ id, label: id })),
+        console.log('Updating graph data with:', newData);
+        
+        if (!newData) {
+            console.error('Received null or undefined graph data');
+            return;
+        }
+
+        // Handle the case where newData already has nodes and edges arrays
+        if (Array.isArray(newData.nodes) && Array.isArray(newData.edges)) {
+            this.graphData = {
+                nodes: newData.nodes,
+                edges: newData.edges,
+                metadata: newData.metadata || {}
+            };
+        }
+        // Handle the case where we need to construct nodes from edges
+        else if (Array.isArray(newData.edges)) {
+            const nodes = new Set();
+            newData.edges.forEach(edge => {
+                nodes.add(edge.source);
+                nodes.add(edge.target_node);
+            });
+
+            this.graphData = {
+                nodes: Array.from(nodes).map(id => ({ id, label: id })),
                 edges: newData.edges.map(e => ({
                     source: e.source,
                     target: e.target_node,
                     weight: e.weight,
                     hyperlinks: e.hyperlinks
-                }))
+                })),
+                metadata: newData.metadata || {}
             };
-            
-            this.graphData = graphData;
-            console.log(`Graph data updated: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges`);
-            
-            // Log some sample data
-            if (graphData.nodes.length > 0) {
-                console.log('Sample node:', JSON.stringify(graphData.nodes[0], null, 2));
-            }
-            if (graphData.edges.length > 0) {
-                console.log('Sample edge:', JSON.stringify(graphData.edges[0], null, 2));
-            }
-            
-            // Dispatch an event to notify that the graph data has been updated
-            window.dispatchEvent(new CustomEvent('graphDataUpdated', { detail: this.graphData }));
         } else {
             console.error('Received invalid graph data:', newData);
+            return;
         }
+
+        console.log(`Graph data updated: ${this.graphData.nodes.length} nodes, ${this.graphData.edges.length} edges`);
+        
+        // Log some sample data
+        if (this.graphData.nodes.length > 0) {
+            console.log('Sample node:', this.graphData.nodes[0]);
+        }
+        if (this.graphData.edges.length > 0) {
+            console.log('Sample edge:', this.graphData.edges[0]);
+        }
+        
+        // Dispatch an event to notify that the graph data has been updated
+        window.dispatchEvent(new CustomEvent('graphDataUpdated', { detail: this.graphData }));
     }
 
     /**
@@ -98,7 +118,10 @@ export class GraphDataManager {
      * @returns {boolean} True if the graph data is valid, false otherwise.
      */
     isGraphDataValid() {
-        return this.graphData && Array.isArray(this.graphData.nodes) && Array.isArray(this.graphData.edges);
+        return this.graphData && 
+               Array.isArray(this.graphData.nodes) && 
+               Array.isArray(this.graphData.edges) &&
+               this.graphData.nodes.length > 0;
     }
 
     /**
@@ -124,7 +147,7 @@ export class GraphDataManager {
         if (this.isGraphDataValid()) {
             // Send a message to the server to recalculate the layout
             this.websocketService.send({
-                type: 'recalculate_layout', // Fixed to match server's expected format
+                type: 'recalculate_layout',
                 params: this.forceDirectedParams
             });
             console.log('Layout recalculation requested');

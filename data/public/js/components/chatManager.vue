@@ -31,25 +31,23 @@
                this.websocketService.toggleTTS(this.useOpenAI);
                console.log(`TTS method set to: ${this.useOpenAI ? 'OpenAI' : 'Sonata'}`);
            },
-           handleMessage(data) {
-               if (data.type === 'ragflowAnswer' || data.type === 'openaiResponse') {
-                   this.chatMessages.push({ 
-                       sender: 'AI', 
-                       message: data.answer || data.response 
-                   });
+           handleRagflowAnswer(answer) {
+               if (typeof answer === 'string') {
+                   this.chatMessages.push({ sender: 'AI', message: answer });
+               }
+           },
+           handleOpenAIResponse(response) {
+               if (typeof response === 'string') {
+                   this.chatMessages.push({ sender: 'AI', message: response });
                }
            }
        },
        mounted() {
            // Ensure that websocketService is available
            if (this.websocketService) {
-               // Listen for both types of responses
-               this.websocketService.on('ragflowAnswer', (data) => {
-                   this.chatMessages.push({ sender: 'AI', message: data });
-               });
-               this.websocketService.on('openaiResponse', (data) => {
-                   this.chatMessages.push({ sender: 'AI', message: data });
-               });
+               // Listen for chat-specific responses only
+               this.websocketService.on('ragflowAnswer', this.handleRagflowAnswer);
+               this.websocketService.on('openaiResponse', this.handleOpenAIResponse);
            } else {
                console.error('WebSocketService is undefined');
            }
@@ -57,8 +55,8 @@
        beforeUnmount() {
            // Remove the event listeners when the component is unmounted
            if (this.websocketService) {
-               this.websocketService.off('ragflowAnswer', this.handleMessage);
-               this.websocketService.off('openaiResponse', this.handleMessage);
+               this.websocketService.off('ragflowAnswer', this.handleRagflowAnswer);
+               this.websocketService.off('openaiResponse', this.handleOpenAIResponse);
            }
        },
        setup() {

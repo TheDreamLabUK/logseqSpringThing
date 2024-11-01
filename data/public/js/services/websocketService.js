@@ -42,7 +42,7 @@ class WebsocketService {
             this.emit('open');
             
             // Request initial graph data when connection is established
-            this.send({ type: 'get_initial_data' }); // Fixed to match server's expected format
+            this.send({ type: 'get_initial_data' });
         };
 
         this.socket.onmessage = async (event) => {
@@ -243,13 +243,17 @@ class WebsocketService {
         // Then handle specific message types
         switch (data.type) {
             case 'initial_data':
-                console.log('Received initial graph data');
-                this.emit('graphUpdate', { graphData: data.data });
+                console.log('Received initial graph data:', data.data);
+                if (data.data) {
+                    this.emit('graphUpdate', { graphData: data.data });
+                }
                 break;
                 
             case 'graph_update':
-                console.log('Received graph update');
-                this.emit('graphUpdate', { graphData: data.data });
+                console.log('Received graph update:', data.data);
+                if (data.data) {
+                    this.emit('graphUpdate', { graphData: data.data });
+                }
                 break;
                 
             case 'audio':
