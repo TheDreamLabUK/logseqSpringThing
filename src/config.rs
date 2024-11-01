@@ -1,4 +1,4 @@
-use config::{Config, ConfigError, Environment, File};
+use config::{Config, ConfigError, File};
 use dotenv::dotenv;
 use serde::{Deserialize, Serialize};
 use std::fmt;

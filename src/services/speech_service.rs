@@ -18,6 +18,8 @@ use std::time::{Duration, Instant};
 use actix::{StreamHandler, AsyncContext, Actor};
 use std::process::{Command, Stdio};
 use std::io::Write;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -73,15 +75,17 @@ impl SpeechService {
                         let current_provider = tts_provider.read().await;
                         if let TTSProvider::OpenAI = *current_provider {
                             let settings = settings.read().await;
-                            let url = Url::parse("wss://api.openai.com/v1/audio/speech")
-                                .expect("Failed to parse URL");
+                            
+                            // Use the base URL from settings
+                            let url = Url::parse(&settings.openai.openai_base_url)
+                                .expect("Failed to parse OpenAI base URL");
                             
                             let request = Request::builder()
                                 .uri(url.as_str())
                                 .header("Authorization", format!("Bearer {}", settings.openai.openai_api_key))
+                                .header("OpenAI-Beta", "realtime=v1")
                                 .header("Content-Type", "application/json")
                                 .header("User-Agent", "WebXR Graph")
-                                .header("Origin", "https://api.openai.com")
                                 .header("Sec-WebSocket-Version", "13")
                                 .header("Sec-WebSocket-Key", tungstenite::handshake::client::generate_key())
                                 .header("Connection", "Upgrade")
@@ -90,11 +94,25 @@ impl SpeechService {
                                 .expect("Failed to build request");
 
                             match connect_async(request).await {
-                                Ok((stream, _)) => {
-                                    info!("Connected to OpenAI Audio API");
+                                Ok((mut stream, _)) => {
+                                    info!("Connected to OpenAI Realtime API");
+                                    
+                                    // Send initial response.create event
+                                    let init_event = json!({
+                                        "type": "response.create",
+                                        "response": {
+                                            "modalities": ["text", "audio"],
+                                            "instructions": "You are a helpful AI assistant. Respond naturally and conversationally."
+                                        }
+                                    });
+                                    
+                                    if let Err(e) = stream.send(Message::Text(init_event.to_string())).await {
+                                        error!("Failed to send initial response.create event: {}", e);
+                                    }
+                                    
                                     ws_stream = Some(stream);
                                 },
-                                Err(e) => error!("Failed to connect to OpenAI Audio API: {}", e),
+                                Err(e) => error!("Failed to connect to OpenAI Realtime API: {}", e),
                             }
                         }
                     },
@@ -103,28 +121,68 @@ impl SpeechService {
                         match *current_provider {
                             TTSProvider::OpenAI => {
                                 if let Some(stream) = &mut ws_stream {
-                                    let settings = settings.read().await;
-                                    let request = json!({
-                                        "model": "tts-1",
-                                        "input": msg,
-                                        "voice": "alloy",
-                                        "response_format": "mp3"
+                                    // Send the message event
+                                    let msg_event = json!({
+                                        "type": "conversation.item.create",
+                                        "item": {
+                                            "type": "message",
+                                            "role": "user",
+                                            "content": [{
+                                                "type": "input_text",
+                                                "text": msg
+                                            }]
+                                        }
                                     });
 
-                                    if let Err(e) = stream.send(Message::Text(request.to_string())).await {
+                                    if let Err(e) = stream.send(Message::Text(msg_event.to_string())).await {
                                         error!("Failed to send message to OpenAI: {}", e);
                                     } else {
+                                        // Request a response
+                                        let response_event = json!({
+                                            "type": "response.create"
+                                        });
+                                        
+                                        if let Err(e) = stream.send(Message::Text(response_event.to_string())).await {
+                                            error!("Failed to request response from OpenAI: {}", e);
+                                        }
+                                        
+                                        // Handle incoming messages
                                         while let Some(message) = stream.next().await {
                                             match message {
-                                                Ok(Message::Binary(audio_data)) => {
-                                                    if let Err(e) = websocket_manager.broadcast_audio(audio_data).await {
-                                                        error!("Failed to broadcast audio: {}", e);
+                                                Ok(Message::Text(text)) => {
+                                                    let event = serde_json::from_str::<serde_json::Value>(&text)
+                                                        .expect("Failed to parse server event");
+                                                    
+                                                    match event["type"].as_str() {
+                                                        Some("conversation.item.created") => {
+                                                            if let Some(content) = event["item"]["content"].as_array() {
+                                                                for item in content {
+                                                                    if item["type"] == "audio" {
+                                                                        if let Some(audio_data) = item["audio"].as_str() {
+                                                                            // Decode base64 audio data using the new API
+                                                                            if let Ok(audio_bytes) = BASE64.decode(audio_data) {
+                                                                                if let Err(e) = websocket_manager.broadcast_audio(audio_bytes).await {
+                                                                                    error!("Failed to broadcast audio: {}", e);
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        Some("error") => {
+                                                            error!("OpenAI Realtime API error: {:?}", event);
+                                                            break;
+                                                        },
+                                                        Some("response.completed") => {
+                                                            break;
+                                                        },
+                                                        _ => {}
                                                     }
-                                                    break;
                                                 },
                                                 Ok(Message::Close(_)) => break,
                                                 Err(e) => {
-                                                    error!("Error receiving audio from OpenAI: {}", e);
+                                                    error!("Error receiving from OpenAI: {}", e);
                                                     break;
                                                 },
                                                 _ => {}
