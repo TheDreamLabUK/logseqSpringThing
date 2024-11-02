@@ -25,11 +25,11 @@ export class NodeManager {
         this.edgeMeshes = new Map();
         
         // Node settings
-        this.minNodeSize = 1;
-        this.maxNodeSize = 5;
-        this.nodeSizeScalingFactor = 1;
+        this.minNodeSize = 5;  // Increased from 1
+        this.maxNodeSize = 15; // Increased from 5
+        this.nodeSizeScalingFactor = 2;  // Increased from 1
         this.labelFontSize = 48;
-        this.nodeColor = 0x1A0B31;
+        this.nodeColor = 0x4444ff;  // Changed from 0x1A0B31 to a brighter blue
 
         // Edge settings
         this.edgeColor = 0x4444ff;
@@ -163,10 +163,10 @@ export class NodeManager {
                 const geometry = this.createNodeGeometry(size, hyperlinkCount);
                 const material = new THREE.MeshStandardMaterial({
                     color: color,
-                    metalness: 0.5,
-                    roughness: 0.5,
+                    metalness: 0.3,  // Reduced from 0.5
+                    roughness: 0.3,  // Reduced from 0.5
                     emissive: color,
-                    emissiveIntensity: 0.2
+                    emissiveIntensity: 0.5  // Increased from 0.2
                 });
 
                 mesh = new THREE.Mesh(geometry, material);

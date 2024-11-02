@@ -18,6 +18,10 @@ use crate::config::Settings;
 use crate::utils::websocket_messages::{OpenAIMessage, OpenAIConnected, OpenAIConnectionFailed, SendCompressedMessage};
 use crate::utils::websocket_manager::WebSocketSession;
 
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+const RECONNECT_BASE_DELAY: u64 = 1;
+const MAX_RECONNECT_DELAY: u64 = 60;
+
 #[derive(Clone)]
 pub struct OpenAIWebSocket {
     client_addr: Addr<WebSocketSession>,
@@ -50,7 +54,6 @@ impl OpenAIWebSocket {
             let mut url = settings.openai.openai_base_url.clone();
             let api_key = settings.openai.openai_api_key.clone();
             
-                             
             if !url.starts_with("wss://") && !url.starts_with("ws://") {
                 url = format!("wss://{}", url.trim_start_matches("https://").trim_start_matches("http://"));
             }
@@ -91,6 +94,23 @@ impl OpenAIWebSocket {
                             }
                         });
                         ws.send(Message::Text(serde_json::to_string(&config)?)).await?;
+                        
+                        // Start keepalive ping
+                        let ws_stream_clone = self.ws_stream.clone();
+                        tokio::spawn(async move {
+                            loop {
+                                tokio::time::sleep(KEEPALIVE_INTERVAL).await;
+                                let mut ws_guard = ws_stream_clone.lock().await;
+                                if let Some(ws) = ws_guard.as_mut() {
+                                    if let Err(e) = ws.send(Message::Ping(vec![])).await {
+                                        error!("Failed to send keepalive ping: {}", e);
+                                        break;
+                                    }
+                                } else {
+                                    break;
+                                }
+                            }
+                        });
                     }
                     
                     return Ok(());
@@ -101,11 +121,30 @@ impl OpenAIWebSocket {
                     if self.reconnect_attempts >= self.max_reconnect_attempts {
                         return Err(Box::new(e));
                     }
-                    let delay = (2 as u64).pow(self.reconnect_attempts) * 1000;
-                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                    let delay = std::cmp::min(
+                        MAX_RECONNECT_DELAY,
+                        RECONNECT_BASE_DELAY * 2u64.pow(self.reconnect_attempts)
+                    );
+                    tokio::time::sleep(Duration::from_secs(delay)).await;
                 }
             }
         }
+    }
+
+    async fn try_reconnect(&mut self) -> Result<(), Box<dyn StdError + Send + Sync>> {
+        if self.reconnect_attempts >= self.max_reconnect_attempts {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Max reconnection attempts reached"
+            )));
+        }
+
+        let delay = std::cmp::min(
+            MAX_RECONNECT_DELAY,
+            RECONNECT_BASE_DELAY * 2u64.pow(self.reconnect_attempts)
+        );
+        tokio::time::sleep(Duration::from_secs(delay)).await;
+        self.connect_to_openai().await
     }
 }
 
@@ -155,7 +194,10 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
                                             "type": "audio_data",
                                             "audio_data": BASE64.encode(&audio_bytes)
                                         });
-                                        client_addr.do_send(SendCompressedMessage(audio_message.to_string().into_bytes()));
+                                        if let Err(e) = client_addr.try_send(SendCompressedMessage(audio_message.to_string().into_bytes())) {
+                                            error!("Failed to send audio data to client: {}", e);
+                                            continue; // Continue processing instead of breaking
+                                        }
                                     },
                                     Err(e) => {
                                         error!("Failed to decode audio data: {}", e);
@@ -163,7 +205,10 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
                                             "type": "error",
                                             "message": format!("Failed to decode audio data: {}", e)
                                         });
-                                        client_addr.do_send(SendCompressedMessage(error_message.to_string().into_bytes()));
+                                        if let Err(e) = client_addr.try_send(SendCompressedMessage(error_message.to_string().into_bytes())) {
+                                            error!("Failed to send error message to client: {}", e);
+                                        }
+                                        continue; // Continue processing instead of breaking
                                     }
                                 }
                             } else if json_msg["type"].as_str() == Some("response.text.done") {
@@ -176,13 +221,26 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
                                 "type": "error",
                                 "message": format!("Error parsing JSON response from OpenAI: {}", e)
                             });
-                            client_addr.do_send(SendCompressedMessage(error_message.to_string().into_bytes()));
+                            if let Err(e) = client_addr.try_send(SendCompressedMessage(error_message.to_string().into_bytes())) {
+                                error!("Failed to send error message to client: {}", e);
+                            }
+                            continue; // Continue processing instead of breaking
                         }
                     }
                 },
-                Ok(Message::Close(_)) => {
-                    info!("OpenAI WebSocket connection closed by server");
+                Ok(Message::Close(reason)) => {
+                    info!("OpenAI WebSocket connection closed by server: {:?}", reason);
                     break;
+                },
+                Ok(Message::Ping(_)) => {
+                    // Respond to ping with pong
+                    if let Err(e) = ws_stream.send(Message::Pong(vec![])).await {
+                        error!("Failed to send pong response: {}", e);
+                    }
+                },
+                Ok(Message::Pong(_)) => {
+                    // Received pong response, connection is alive
+                    debug!("Received pong from OpenAI WebSocket");
                 },
                 Err(e) => {
                     error!("Error receiving message from OpenAI: {}", e);
@@ -190,10 +248,17 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
                         "type": "error",
                         "message": format!("Error receiving message from OpenAI: {}", e)
                     });
-                    client_addr.do_send(SendCompressedMessage(error_message.to_string().into_bytes()));
-                    break;
+                    if let Err(e) = client_addr.try_send(SendCompressedMessage(error_message.to_string().into_bytes())) {
+                        error!("Failed to send error message to client: {}", e);
+                    }
+                    // Only break on fatal errors
+                    if e.to_string().contains("Connection reset by peer") || 
+                       e.to_string().contains("Broken pipe") {
+                        break;
+                    }
+                    continue;
                 },
-                _ => {}
+                _ => continue,
             }
         }
         Ok(())
@@ -215,11 +280,9 @@ impl Actor for OpenAIWebSocket {
                         Ok(_) => return Ok(()),
                         Err(e) => {
                             error!("Failed to connect to OpenAI WebSocket: {}", e);
-                            let delay = (2 as u64).pow(this.reconnect_attempts) * 1000;
-                            tokio::time::sleep(Duration::from_millis(delay)).await;
-                            this.reconnect_attempts += 1;
-                            if this.reconnect_attempts >= this.max_reconnect_attempts {
-                                return Err(e);
+                            match this.try_reconnect().await {
+                                Ok(_) => continue,
+                                Err(e) => return Err(e),
                             }
                         }
                     }

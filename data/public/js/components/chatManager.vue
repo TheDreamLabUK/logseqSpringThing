@@ -37,7 +37,7 @@ export default defineComponent({
             }
         },
         handleOpenAIResponse(response) {
-            // Don't display text responses when using OpenAI TTS
+            // Only show text responses when not using OpenAI TTS
             if (!this.useOpenAI && typeof response === 'string') {
                 this.chatMessages.push({ sender: 'AI', message: response });
             }
@@ -79,7 +79,7 @@ export default defineComponent({
 
 <template>
     <div class="chat-container">
-        <div class="chat-messages" ref="chatMessagesRef">
+        <div class="chat-messages" ref="chatMessagesRef" :class="{ 'hide-messages': useOpenAI }">
             <div v-for="(msg, index) in chatMessages" :key="index" class="message">
                 <strong>{{ msg.sender }}:</strong> {{ msg.message }}
             </div>
@@ -114,6 +114,13 @@ export default defineComponent({
     overflow-y: auto;
     padding: 10px;
     background: #f9f9f9;
+    transition: height 0.3s ease;
+}
+
+.chat-messages.hide-messages {
+    height: 0;
+    padding: 0;
+    overflow: hidden;
 }
 
 .message {

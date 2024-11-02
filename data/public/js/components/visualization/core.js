@@ -62,12 +62,12 @@ export class WebXRVisualization {
 
     initializeSettings() {
         console.log('Initializing settings');
-        this.fogDensity = 0.002;
+        this.fogDensity = 0.001; // Reduced fog density
         this.scene.fog = new THREE.FogExp2(0x000000, this.fogDensity);
         
         // Lighting settings
-        this.ambientLightIntensity = 15;
-        this.directionalLightIntensity = 1.0;
+        this.ambientLightIntensity = 50;
+        this.directionalLightIntensity = 5.0;
         this.directionalLightColor = 0xffffff;
         this.ambientLightColor = 0x404040;
         
@@ -82,10 +82,32 @@ export class WebXRVisualization {
         this.ambientLight = new THREE.AmbientLight(this.ambientLightColor, this.ambientLightIntensity);
         this.scene.add(this.ambientLight);
 
-        // Create and configure directional light
+        // Create and configure main directional light
         this.directionalLight = new THREE.DirectionalLight(this.directionalLightColor, this.directionalLightIntensity);
         this.directionalLight.position.set(50, 50, 50);
         this.scene.add(this.directionalLight);
+
+        // Add additional directional lights for better coverage
+        const frontLight = new THREE.DirectionalLight(0xffffff, 3.0);
+        frontLight.position.set(0, 0, 100);
+        this.scene.add(frontLight);
+
+        const backLight = new THREE.DirectionalLight(0xffffff, 3.0);
+        backLight.position.set(0, 0, -100);
+        this.scene.add(backLight);
+
+        const topLight = new THREE.DirectionalLight(0xffffff, 3.0);
+        topLight.position.set(0, 100, 0);
+        this.scene.add(topLight);
+
+        // Add point lights for additional illumination
+        const pointLight1 = new THREE.PointLight(0xffffff, 2.0, 1000);
+        pointLight1.position.set(100, 100, 100);
+        this.scene.add(pointLight1);
+
+        const pointLight2 = new THREE.PointLight(0xffffff, 2.0, 1000);
+        pointLight2.position.set(-100, -100, -100);
+        this.scene.add(pointLight2);
 
         console.log('Lights added to the scene');
     }
