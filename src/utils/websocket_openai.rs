@@ -50,10 +50,7 @@ impl OpenAIWebSocket {
             let mut url = settings.openai.openai_base_url.clone();
             let api_key = settings.openai.openai_api_key.clone();
             
-            error!("OpenAI API Key for verification: {}", api_key);
-            println!("OpenAI API Key direct print: {}", api_key);
-            eprintln!("OpenAI API Key stderr print: {}", api_key);
-                          
+                             
             if !url.starts_with("wss://") && !url.starts_with("ws://") {
                 url = format!("wss://{}", url.trim_start_matches("https://").trim_start_matches("http://"));
             }

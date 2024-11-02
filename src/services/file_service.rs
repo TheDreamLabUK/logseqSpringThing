@@ -17,8 +17,8 @@ use futures::stream::{self, StreamExt};
 use std::time::Duration;
 use tokio::time::sleep;
 
-const METADATA_PATH: &str = "/app/data/markdown/metadata.json";
-const MARKDOWN_DIR: &str = "/app/data/markdown";
+const METADATA_PATH: &str = "data/markdown/metadata.json";
+const MARKDOWN_DIR: &str = "data/markdown";
 const CACHE_DURATION: Duration = Duration::from_secs(300); // 5 minutes
 const MAX_CONCURRENT_DOWNLOADS: usize = 5;
 const GITHUB_API_DELAY: Duration = Duration::from_millis(100); // Rate limiting delay
@@ -71,7 +71,6 @@ pub trait GitHubService: Send + Sync {
     async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>>;
     async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>>;
     async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>>;
-    async fn check_file_public_status(&self, download_url: &str) -> Result<bool, Box<dyn StdError + Send + Sync>>;
 }
 
 pub struct RealGitHubService {
@@ -109,24 +108,6 @@ impl RealGitHubService {
         })
     }
 
-    /// Fetches repository tree using the Git Trees API for better performance
-    async fn fetch_tree(&self) -> Result<TreeResponse, Box<dyn StdError + Send + Sync>> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/git/trees/HEAD",
-            self.owner, self.repo
-        );
-
-        let response = self.client.get(&url)
-            .header("Authorization", format!("token {}", self.token))
-            .query(&[("recursive", "1")])
-            .send()
-            .await?;
-
-        let tree: TreeResponse = response.json().await?;
-        Ok(tree)
-    }
-
-    /// Fetches only markdown files from the root directory using the Trees API
     async fn fetch_directory_contents(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
         // First, check the cache
         {
@@ -147,25 +128,29 @@ impl RealGitHubService {
         }
 
         // Cache is stale or empty, fetch from GitHub
-        let tree = self.fetch_tree().await?;
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/contents/{}",
+            self.owner, self.repo, self.base_path
+        );
+
+        let response = self.client.get(&url)
+            .header("Authorization", format!("token {}", self.token))
+            .send()
+            .await?;
+
+        let contents: Vec<serde_json::Value> = response.json().await?;
         
-        let markdown_files: Vec<GithubFileMetadata> = tree.tree.into_iter()
+        let markdown_files: Vec<GithubFileMetadata> = contents.into_iter()
             .filter(|item| {
-                let is_file = item.item_type == "blob";
-                let path = Path::new(&item.path);
-                let is_in_root = path.parent().map_or(true, |p| p == Path::new(""));
-                let is_markdown = item.path.ends_with(".md");
-                is_file && is_in_root && is_markdown
+                let is_file = item["type"].as_str().unwrap_or("") == "file";
+                let name = item["name"].as_str().unwrap_or("");
+                is_file && name.ends_with(".md")
             })
             .map(|item| {
-                let download_url = format!(
-                    "https://raw.githubusercontent.com/{}/{}/HEAD/{}",
-                    self.owner, self.repo, item.path
-                );
                 GithubFileMetadata {
-                    name: item.path,
-                    sha: item.sha,
-                    download_url,
+                    name: item["name"].as_str().unwrap_or("").to_string(),
+                    sha: item["sha"].as_str().unwrap_or("").to_string(),
+                    download_url: item["download_url"].as_str().unwrap_or("").to_string(),
                     etag: None,
                     last_checked: Some(Utc::now()),
                 }
@@ -181,34 +166,8 @@ impl RealGitHubService {
             }
         }
 
-        debug!("Found {} markdown files in root directory", markdown_files.len());
+        debug!("Found {} markdown files in target directory", markdown_files.len());
         Ok(markdown_files)
-    }
-
-    /// Efficiently checks if a file is public by only downloading the first chunk
-    async fn check_file_public_status(&self, download_url: &str) -> Result<bool, Box<dyn StdError + Send + Sync>> {
-        // Don't use Range header as it might interfere with line endings
-        let response = self.client.get(download_url)
-            .header("Authorization", format!("token {}", self.token))
-            .send()
-            .await?;
-
-        let content = response.text().await?;
-        let bytes = content.as_bytes();
-        
-        // Get raw bytes up to first newline
-        let first_line = bytes
-            .iter()
-            .take_while(|&&b| b != b'\n' && b != b'\r')
-            .copied()
-            .collect::<Vec<u8>>();
-
-        // Convert to string and check
-        let first_line = String::from_utf8_lossy(&first_line);
-        let is_public = first_line.trim() == "public:: true";
-        
-        debug!("Raw first line: {:?}, is_public: {}", first_line, is_public);
-        Ok(is_public)
     }
 
     async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
@@ -295,15 +254,147 @@ impl GitHubService for RealGitHubService {
     async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
         self.fetch_file_content(download_url).await
     }
-
-    async fn check_file_public_status(&self, download_url: &str) -> Result<bool, Box<dyn StdError + Send + Sync>> {
-        self.check_file_public_status(download_url).await
-    }
 }
 
 pub struct FileService;
 
 impl FileService {
+    /// Check if we have a valid local setup
+    fn has_valid_local_setup() -> bool {
+        // Check if metadata.json exists and is not empty
+        if let Ok(metadata_content) = fs::read_to_string(METADATA_PATH) {
+            if metadata_content.trim().is_empty() {
+                return false;
+            }
+            
+            // Try to parse metadata to ensure it's valid
+            if let Ok(metadata_map) = serde_json::from_str::<HashMap<String, Metadata>>(&metadata_content) {
+                if metadata_map.is_empty() {
+                    return false;
+                }
+                
+                // Check if the markdown files referenced in metadata actually exist
+                for (filename, _) in metadata_map {
+                    let file_path = format!("{}/{}", MARKDOWN_DIR, filename);
+                    if !Path::new(&file_path).exists() {
+                        return false;
+                    }
+                }
+                
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Initialize the local markdown directory and metadata structure.
+    pub async fn initialize_local_storage(
+        github_service: &dyn GitHubService,
+        settings: Arc<RwLock<Settings>>,
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
+        info!("Checking local storage status");
+        
+        // Ensure directories exist
+        Self::ensure_directories()?;
+
+        // Check if we have a valid local setup
+        if Self::has_valid_local_setup() {
+            info!("Valid local setup found. Skipping initialization.");
+            return Ok(());
+        }
+
+        info!("Initializing local storage with files from GitHub");
+
+        // Get topics from settings
+        let settings = settings.read().await;
+        let topics = settings.topics.clone();
+
+        // Step 1: Get all markdown files from GitHub
+        let github_files = github_service.fetch_file_metadata().await?;
+        info!("Found {} markdown files in GitHub", github_files.len());
+
+        let mut metadata_map = HashMap::new();
+        let mut processed_count = 0;
+        let mut total_files = 0;
+
+        // Step 2: Download and process each file
+        for file_meta in github_files {
+            total_files += 1;
+            
+            // Download file content
+            match github_service.fetch_file_content(&file_meta.download_url).await {
+                Ok(content) => {
+                    // Check if file starts with "public:: true"
+                    let first_line = content.lines().next().unwrap_or("").trim();
+                    if first_line != "public:: true" {
+                        debug!("Skipping non-public file: {}", file_meta.name);
+                        continue;
+                    }
+
+                    let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
+                    
+                    // Calculate SHA1 of content
+                    let local_sha1 = Self::calculate_sha1(&content);
+                    
+                    // Save file content
+                    fs::write(&file_path, &content)?;
+                    processed_count += 1;
+
+                    // Extract topics from content
+                    let topic_counts = Self::extract_topics(&content, &topics);
+
+                    // Create metadata entry
+                    let metadata = Metadata {
+                        file_name: file_meta.name.clone(),
+                        file_size: content.len(),
+                        hyperlink_count: Self::count_hyperlinks(&content),
+                        sha1: local_sha1,
+                        last_modified: Utc::now(),
+                        perplexity_link: String::new(),
+                        last_perplexity_process: None,
+                        topic_counts,
+                    };
+
+                    metadata_map.insert(file_meta.name.clone(), metadata);
+                    info!("Processed public file: {}", file_meta.name);
+                }
+                Err(e) => {
+                    error!("Failed to fetch content for {}: {}", file_meta.name, e);
+                }
+            }
+
+            // Add delay for rate limiting
+            sleep(GITHUB_API_DELAY).await;
+        }
+
+        // Step 3: Save metadata
+        info!("Saving metadata for {} public files", metadata_map.len());
+        Self::save_metadata(&metadata_map)?;
+
+        info!("Initialization complete. Found {} total files, processed {} public files", 
+            total_files, processed_count);
+
+        Ok(())
+    }
+
+    /// Extract topics from content
+    fn extract_topics(content: &str, topics: &[String]) -> HashMap<String, usize> {
+        let mut topic_counts = HashMap::new();
+        
+        // Convert content to lowercase for case-insensitive matching
+        let content_lower = content.to_lowercase();
+        
+        for topic in topics {
+            let topic_lower = topic.to_lowercase();
+            let count = content_lower.matches(&topic_lower).count();
+            if count > 0 {
+                topic_counts.insert(topic.clone(), count);
+            }
+        }
+        
+        topic_counts
+    }
+
     /// Ensures all required directories exist
     fn ensure_directories() -> Result<(), std::io::Error> {
         debug!("Ensuring required directories exist");
@@ -314,20 +405,20 @@ impl FileService {
         Ok(())
     }
 
-    /// Optimized file processing:
-    /// 1. Uses Trees API for efficient file listing
-    /// 2. Implements caching with ETags
-    /// 3. Parallel downloads with rate limiting
-    /// 4. Conditional requests to minimize bandwidth
+    /// Handles incremental updates after initial setup
     pub async fn fetch_and_process_files(
         github_service: &dyn GitHubService,
-        _settings: Arc<RwLock<Settings>>,
+        settings: Arc<RwLock<Settings>>,
         metadata_map: &mut HashMap<String, Metadata>,
     ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
         // Ensure directories exist before any operations
         Self::ensure_directories()?;
 
-        // Get metadata for markdown files in root directory
+        // Get topics from settings
+        let settings = settings.read().await;
+        let topics = settings.topics.clone();
+
+        // Get metadata for markdown files in target directory
         let github_files_metadata = github_service.fetch_file_metadata().await?;
         debug!("Fetched metadata for {} markdown files", github_files_metadata.len());
 
@@ -367,50 +458,47 @@ impl FileService {
         let results = stream::iter(files_to_process)
             .map(|file_meta| {
                 let github_service = github_service;
+                let topics = topics.clone();
                 async move {
                     // Add delay for rate limiting
                     sleep(GITHUB_API_DELAY).await;
 
-                    // Check if file is public
-                    match github_service.check_file_public_status(&file_meta.download_url).await {
-                        Ok(is_public) => {
-                            if !is_public {
-                                warn!("Skipping non-public file: {} (first line did not match 'public:: true')", file_meta.name);
+                    // Download content
+                    match github_service.fetch_file_content(&file_meta.download_url).await {
+                        Ok(content) => {
+                            // Check if file starts with "public:: true"
+                            let first_line = content.lines().next().unwrap_or("").trim();
+                            if first_line != "public:: true" {
+                                debug!("Skipping non-public file: {}", file_meta.name);
                                 return Ok(None);
                             }
                             
-                            // Download content for public files
-                            match github_service.fetch_file_content(&file_meta.download_url).await {
-                                Ok(content) => {
-                                    let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
-                                    fs::write(&file_path, &content)?;
-                                    
-                                    let new_metadata = Metadata {
-                                        file_name: file_meta.name.clone(),
-                                        file_size: content.len(),
-                                        hyperlink_count: Self::count_hyperlinks(&content),
-                                        sha1: file_meta.sha.clone(),
-                                        last_modified: Utc::now(),
-                                        perplexity_link: String::new(),
-                                        last_perplexity_process: None,
-                                        topic_counts: HashMap::new(),
-                                    };
-                                    
-                                    Ok(Some(ProcessedFile {
-                                        file_name: file_meta.name,
-                                        content,
-                                        is_public: true,
-                                        metadata: new_metadata,
-                                    }))
-                                }
-                                Err(e) => {
-                                    error!("Failed to fetch content: {}", e);
-                                    Err(e)
-                                }
-                            }
+                            let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
+                            fs::write(&file_path, &content)?;
+                            
+                            // Extract topics from content
+                            let topic_counts = Self::extract_topics(&content, &topics);
+
+                            let new_metadata = Metadata {
+                                file_name: file_meta.name.clone(),
+                                file_size: content.len(),
+                                hyperlink_count: Self::count_hyperlinks(&content),
+                                sha1: file_meta.sha.clone(),
+                                last_modified: Utc::now(),
+                                perplexity_link: String::new(),
+                                last_perplexity_process: None,
+                                topic_counts,
+                            };
+                            
+                            Ok(Some(ProcessedFile {
+                                file_name: file_meta.name,
+                                content,
+                                is_public: true,
+                                metadata: new_metadata,
+                            }))
                         }
                         Err(e) => {
-                            error!("Failed to check public status: {}", e);
+                            error!("Failed to fetch content: {}", e);
                             Err(e)
                         }
                     }
@@ -424,7 +512,7 @@ impl FileService {
         for result in results {
             match result {
                 Ok(Some(processed_file)) => {
-                    let file_name = processed_file.file_name.clone(); // Clone before moving
+                    let file_name = processed_file.file_name.clone();
                     metadata_map.insert(file_name.clone(), processed_file.metadata.clone());
                     processed_files.push(processed_file);
                     debug!("Successfully processed public file: {}", file_name);
@@ -434,6 +522,8 @@ impl FileService {
             }
         }
 
+        // Save updated metadata
+        Self::save_metadata(metadata_map)?;
         debug!("Processed {} files after optimization", processed_files.len());
         Ok(processed_files)
     }
@@ -444,8 +534,12 @@ impl FileService {
 
         if Path::new(METADATA_PATH).exists() {
             let metadata_content = fs::read_to_string(METADATA_PATH)?;
-            let metadata: HashMap<String, Metadata> = serde_json::from_str(&metadata_content)?;
-            Ok(metadata)
+            if metadata_content.trim().is_empty() {
+                Ok(HashMap::new())
+            } else {
+                let metadata: HashMap<String, Metadata> = serde_json::from_str(&metadata_content)?;
+                Ok(metadata)
+            }
         } else {
             debug!("metadata.json not found. Creating a new one.");
             let empty_metadata = HashMap::new();
@@ -481,11 +575,6 @@ impl FileService {
         Ok(())
     }
 
-    fn should_process_file(file: &GithubFile) -> bool {
-        let first_line = file.content.lines().next().unwrap_or("").trim();
-        first_line == "public:: true"
-    }
-
     fn calculate_sha1(content: &str) -> String {
         let mut hasher = Sha1::new();
         hasher.update(content.as_bytes());
@@ -495,37 +584,5 @@ impl FileService {
     fn count_hyperlinks(content: &str) -> usize {
         let re = Regex::new(r"\[.*?\]\(.*?\)").unwrap();
         re.find_iter(content).count()
-    }
-
-    pub fn save_file_metadata(metadata: Metadata) -> Result<(), std::io::Error> {
-        // Ensure directories exist before saving
-        Self::ensure_directories()?;
-
-        info!("Saving metadata for file: {}", metadata.file_name);
-        let markdown_path = format!("{}/{}", MARKDOWN_DIR, metadata.file_name);
-        fs::write(&markdown_path, &metadata.perplexity_link)?;
-        debug!("Written processed content to: {}", markdown_path);
-
-        Self::update_metadata_file(&metadata)?;
-        Ok(())
-    }
-
-    fn update_metadata_file(metadata: &Metadata) -> Result<(), std::io::Error> {
-        // Ensure directories exist before updating
-        Self::ensure_directories()?;
-
-        let mut metadata_map = if Path::new(METADATA_PATH).exists() {
-            let content = fs::read_to_string(METADATA_PATH)?;
-            serde_json::from_str::<HashMap<String, Metadata>>(&content)?
-        } else {
-            HashMap::new()
-        };
-
-        metadata_map.insert(metadata.file_name.clone(), metadata.clone());
-        let updated_content = serde_json::to_string_pretty(&metadata_map)?;
-        fs::write(METADATA_PATH, updated_content)?;
-        debug!("Updated metadata file at: {}", METADATA_PATH);
-
-        Ok(())
     }
 }

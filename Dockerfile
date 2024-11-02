@@ -45,11 +45,9 @@ WORKDIR /usr/src/app
 # Copy the Cargo.toml and Cargo.lock files
 COPY Cargo.toml Cargo.lock ./
 
-# Copy the source code
+# Copy the source code and settings
 COPY src ./src
-
-# Create a temporary settings.toml for build
-RUN echo '{}' > settings.toml
+COPY settings.toml ./settings.toml
 
 # Build the Rust application in release mode for optimized performance
 RUN cargo build --release
@@ -79,7 +77,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Create necessary directories
-RUN mkdir -p /app/data/public/dist /app/data/markdown /app/src
+RUN mkdir -p /app/data/public/dist /app/data/markdown /app/src /app/data/piper
 
 # Create an empty metadata.json file
 RUN mkdir -p /app/data/markdown && touch /app/data/markdown/metadata.json && echo "{}" > /app/data/markdown/metadata.json
@@ -87,8 +85,14 @@ RUN mkdir -p /app/data/markdown && touch /app/data/markdown/metadata.json && ech
 # Copy topics.csv file into the container
 COPY data/topics.csv /app/data/topics.csv
 
+# Copy the local piper voice model
+COPY data/piper/en_GB-northern_english_male-medium.onnx /app/data/piper/en_GB-northern_english_male-medium.onnx
+
 # Copy the built Rust binary from the backend-builder stage
 COPY --from=backend-builder /usr/src/app/target/release/webxr-graph /app/webxr-graph
+
+# Copy settings.toml from the builder stage
+COPY --from=backend-builder /usr/src/app/settings.toml /app/settings.toml
 
 # Copy the built frontend files from the frontend-builder stage
 COPY --from=frontend-builder /app/data/dist /app/data/public/dist
@@ -114,9 +118,6 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Ensure proper permissions for nginx and application directories
 RUN chown -R www-data:www-data /var/lib/nginx /app
 
-# Set appropriate permissions for metadata.json
-RUN chmod 664 /app/data/markdown/metadata.json
-
 # Create Python virtual environment and install Piper TTS
 RUN python3.10 -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
@@ -126,24 +127,15 @@ RUN pip install --no-cache-dir --upgrade pip wheel && \
     pip install --no-cache-dir piper-phonemize==1.1.0 && \
     pip install --no-cache-dir piper-tts==1.2.0 onnxruntime-gpu
 
-# Download Piper voice model and config
-RUN mkdir -p /app/piper && \
-    curl -L https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alan/medium/en_GB-alan-medium.onnx -o /app/piper/en_GB-alan-medium.onnx && \
-    curl -L https://huggingface.co/rhasspy/piper-voices/raw/v1.0.0/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json -o /app/piper/en_GB-alan-medium.onnx.json
-
 # Expose HTTPS port
 EXPOSE 8443
 
-# Update the startup script to ensure metadata.json exists at runtime
+# Create startup script
 RUN echo '#!/bin/bash\n\
 set -e\n\
 # Ensure metadata.json exists\n\
 if [ ! -f /app/data/markdown/metadata.json ]; then\n\
-    touch /app/data/markdown/metadata.json\n\
-    chown www-data:www-data /app/data/markdown/metadata.json\n\
-    chmod 664 /app/data/markdown/metadata.json\n\
     echo "{}" > /app/data/markdown/metadata.json\n\
-    echo "Created empty metadata.json file."\n\
 fi\n\
 # Start nginx\n\
 nginx\n\
