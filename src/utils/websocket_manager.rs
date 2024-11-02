@@ -413,10 +413,38 @@ impl WebSocketSession {
         
         ctx.spawn(async move {
             let graph_data = state.graph_data.read().await;
+            let settings = state.settings.read().await;
             
             let response = json!({
                 "type": "initial_data",
-                "graph_data": &*graph_data
+                "graph_data": &*graph_data,
+                "settings": {
+                    "visualization": {
+                        "nodeColor": settings.visualization.node_color,
+                        "edgeColor": settings.visualization.edge_color,
+                        "hologramColor": settings.visualization.hologram_color,
+                        "nodeSizeScalingFactor": settings.visualization.node_size_scaling_factor,
+                        "hologramScale": settings.visualization.hologram_scale,
+                        "hologramOpacity": settings.visualization.hologram_opacity,
+                        "edgeOpacity": settings.visualization.edge_opacity,
+                        "labelFontSize": settings.visualization.label_font_size,
+                        "fogDensity": settings.visualization.fog_density,
+                        "forceDirectedIterations": settings.visualization.force_directed_iterations,
+                        "forceDirectedRepulsion": settings.visualization.force_directed_repulsion,
+                        "forceDirectedAttraction": settings.visualization.force_directed_attraction,
+                    },
+                    "bloom": {
+                        "nodeBloomStrength": settings.bloom.node_bloom_strength,
+                        "nodeBloomRadius": settings.bloom.node_bloom_radius,
+                        "nodeBloomThreshold": settings.bloom.node_bloom_threshold,
+                        "edgeBloomStrength": settings.bloom.edge_bloom_strength,
+                        "edgeBloomRadius": settings.bloom.edge_bloom_radius,
+                        "edgeBloomThreshold": settings.bloom.edge_bloom_threshold,
+                        "environmentBloomStrength": settings.bloom.environment_bloom_strength,
+                        "environmentBloomRadius": settings.bloom.environment_bloom_radius,
+                        "environmentBloomThreshold": settings.bloom.environment_bloom_threshold,
+                    }
+                }
             });
 
             if let Ok(response_str) = serde_json::to_string(&response) {

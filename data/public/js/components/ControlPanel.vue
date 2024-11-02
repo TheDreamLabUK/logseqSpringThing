@@ -181,42 +181,12 @@ export default {
       chatInput: '',
       chatMessages: [],
       useOpenAITTS: false,
-      // Color controls mapped to settings.toml
-      colorControls: [
-        { name: 'nodeColor', label: 'Node Color', type: 'color', value: '#1A0B31' },
-        { name: 'edgeColor', label: 'Edge Color', type: 'color', value: '#ff0000' },
-        { name: 'hologramColor', label: 'Hologram Color', type: 'color', value: '#FFD700' },
-      ],
-      // Size and opacity controls mapped to settings.toml
-      sizeOpacityControls: [
-        { name: 'nodeSizeScalingFactor', label: 'Node Size Scaling', type: 'range', value: 5, min: 1, max: 10, step: 0.1 },
-        { name: 'hologramScale', label: 'Hologram Scale', type: 'range', value: 5, min: 1, max: 10, step: 0.1 },
-        { name: 'hologramOpacity', label: 'Hologram Opacity', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
-        { name: 'edgeOpacity', label: 'Edge Opacity', type: 'range', value: 0.3, min: 0, max: 1, step: 0.01 },
-      ],
-      // Bloom effect controls mapped to settings.toml
-      bloomControls: [
-        { name: 'nodeBloomStrength', label: 'Node Bloom Strength', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
-        { name: 'nodeBloomRadius', label: 'Node Bloom Radius', type: 'range', value: 0.1, min: 0, max: 1, step: 0.01 },
-        { name: 'nodeBloomThreshold', label: 'Node Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
-        { name: 'edgeBloomStrength', label: 'Edge Bloom Strength', type: 'range', value: 0.2, min: 0, max: 1, step: 0.01 },
-        { name: 'edgeBloomRadius', label: 'Edge Bloom Radius', type: 'range', value: 0.3, min: 0, max: 1, step: 0.01 },
-        { name: 'edgeBloomThreshold', label: 'Edge Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
-        { name: 'environmentBloomStrength', label: 'Environment Bloom Strength', type: 'range', value: 0.5, min: 0, max: 2, step: 0.01 },
-        { name: 'environmentBloomRadius', label: 'Environment Bloom Radius', type: 'range', value: 0.1, min: 0, max: 2, step: 0.01 },
-        { name: 'environmentBloomThreshold', label: 'Environment Bloom Threshold', type: 'range', value: 0, min: 0, max: 1, step: 0.01 },
-      ],
-      // Force-directed graph controls mapped to settings.toml
-      forceDirectedControls: [
-        { name: 'forceDirectedIterations', label: 'Iterations', type: 'range', value: 100, min: 10, max: 500, step: 10 },
-        { name: 'forceDirectedRepulsion', label: 'Repulsion', type: 'range', value: 1.0, min: 0.1, max: 10.0, step: 0.1 },
-        { name: 'forceDirectedAttraction', label: 'Attraction', type: 'range', value: 0.01, min: 0.001, max: 0.1, step: 0.001 },
-      ],
-      // Additional controls mapped to settings.toml
-      additionalControls: [
-        { name: 'labelFontSize', label: 'Label Font Size', type: 'range', value: 36, min: 12, max: 72, step: 1 },
-        { name: 'fogDensity', label: 'Fog Density', type: 'range', value: 0.002, min: 0, max: 0.01, step: 0.0001 },
-      ],
+      // Initialize controls with empty arrays, will be populated from settings
+      colorControls: [],
+      sizeOpacityControls: [],
+      bloomControls: [],
+      forceDirectedControls: [],
+      additionalControls: []
     };
   },
   methods: {
@@ -241,79 +211,78 @@ export default {
       return this.colorControls.some(control => control.name === name);
     },
     resetControls() {
-      this.colorControls.forEach(control => {
-        control.value = this.getDefaultValue(control.name);
-        this.emitChange(control.name, control.value);
-      });
-      this.sizeOpacityControls.forEach(control => {
-        control.value = this.getDefaultValue(control.name);
-        this.emitChange(control.name, control.value);
-      });
-      this.bloomControls.forEach(control => {
-        control.value = this.getDefaultValue(control.name);
-        this.emitChange(control.name, control.value);
-      });
-      this.forceDirectedControls.forEach(control => {
-        control.value = this.getDefaultValue(control.name);
-        this.emitChange(control.name, control.value);
-      });
-      this.additionalControls.forEach(control => {
-        control.value = this.getDefaultValue(control.name);
-        this.emitChange(control.name, control.value);
-      });
-      this.fisheyeEnabled = false;
-      this.emitChange('fisheyeEnabled', false);
-      this.fisheyeStrength = 0.5;
-      this.emitChange('fisheyeStrength', 0.5);
-      this.simulationMode = 'remote';
-      this.setSimulationMode();
-      this.useOpenAITTS = false;
-    },
-    getDefaultValue(name) {
-      const defaults = {
-        nodeColor: '#1A0B31',
-        edgeColor: '#ff0000',
-        hologramColor: '#FFD700',
-        nodeSizeScalingFactor: 5,
-        hologramScale: 5,
-        hologramOpacity: 0.1,
-        edgeOpacity: 0.3,
-        labelFontSize: 36,
-        fogDensity: 0.002,
-        nodeBloomStrength: 0.1,
-        nodeBloomRadius: 0.1,
-        nodeBloomThreshold: 0,
-        edgeBloomStrength: 0.2,
-        edgeBloomRadius: 0.3,
-        edgeBloomThreshold: 0,
-        environmentBloomStrength: 0.5,
-        environmentBloomRadius: 0.1,
-        environmentBloomThreshold: 0,
-        forceDirectedIterations: 100,
-        forceDirectedRepulsion: 1.0,
-        forceDirectedAttraction: 0.01,
-      };
-      return defaults[name] || '';
+      // Reset all controls to their default values from settings
+      window.dispatchEvent(new CustomEvent('resetVisualizationSettings'));
     },
     sendMessage() {
       if (this.chatInput.trim() && this.websocketService) {
+        // Store user's message
+        this.chatMessages.push({ sender: 'You', message: this.chatInput });
+        
+        // Send message with TTS flag
         this.websocketService.sendChatMessage({
           message: this.chatInput,
           useOpenAI: true,
           useTTS: this.useOpenAITTS
         });
-        this.chatMessages.push({ sender: 'You', message: this.chatInput });
+        
+        // Clear input
         this.chatInput = '';
       }
     },
     receiveMessage(message) {
-      this.chatMessages.push({ sender: 'AI', message });
+      // Only display message if not using OpenAI TTS
+      if (!this.useOpenAITTS) {
+        this.chatMessages.push({ sender: 'AI', message });
+      }
     },
     toggleFullscreen() {
       this.$emit('toggle-fullscreen');
     },
     enableSpacemouse() {
       this.$emit('enable-spacemouse');
+    },
+    initializeControls(settings) {
+      // Color controls
+      this.colorControls = [
+        { name: 'nodeColor', label: 'Node Color', type: 'color', value: settings.visualization.nodeColor },
+        { name: 'edgeColor', label: 'Edge Color', type: 'color', value: settings.visualization.edgeColor },
+        { name: 'hologramColor', label: 'Hologram Color', type: 'color', value: settings.visualization.hologramColor }
+      ];
+
+      // Size and opacity controls
+      this.sizeOpacityControls = [
+        { name: 'nodeSizeScalingFactor', label: 'Node Size Scaling', type: 'range', value: settings.visualization.nodeSizeScalingFactor, min: 1, max: 10, step: 0.1 },
+        { name: 'hologramScale', label: 'Hologram Scale', type: 'range', value: settings.visualization.hologramScale, min: 1, max: 10, step: 0.1 },
+        { name: 'hologramOpacity', label: 'Hologram Opacity', type: 'range', value: settings.visualization.hologramOpacity, min: 0, max: 1, step: 0.01 },
+        { name: 'edgeOpacity', label: 'Edge Opacity', type: 'range', value: settings.visualization.edgeOpacity, min: 0, max: 1, step: 0.01 }
+      ];
+
+      // Bloom controls
+      this.bloomControls = [
+        { name: 'nodeBloomStrength', label: 'Node Bloom Strength', type: 'range', value: settings.bloom.nodeBloomStrength, min: 0, max: 1, step: 0.01 },
+        { name: 'nodeBloomRadius', label: 'Node Bloom Radius', type: 'range', value: settings.bloom.nodeBloomRadius, min: 0, max: 1, step: 0.01 },
+        { name: 'nodeBloomThreshold', label: 'Node Bloom Threshold', type: 'range', value: settings.bloom.nodeBloomThreshold, min: 0, max: 1, step: 0.01 },
+        { name: 'edgeBloomStrength', label: 'Edge Bloom Strength', type: 'range', value: settings.bloom.edgeBloomStrength, min: 0, max: 1, step: 0.01 },
+        { name: 'edgeBloomRadius', label: 'Edge Bloom Radius', type: 'range', value: settings.bloom.edgeBloomRadius, min: 0, max: 1, step: 0.01 },
+        { name: 'edgeBloomThreshold', label: 'Edge Bloom Threshold', type: 'range', value: settings.bloom.edgeBloomThreshold, min: 0, max: 1, step: 0.01 },
+        { name: 'environmentBloomStrength', label: 'Environment Bloom Strength', type: 'range', value: settings.bloom.environmentBloomStrength, min: 0, max: 2, step: 0.01 },
+        { name: 'environmentBloomRadius', label: 'Environment Bloom Radius', type: 'range', value: settings.bloom.environmentBloomRadius, min: 0, max: 2, step: 0.01 },
+        { name: 'environmentBloomThreshold', label: 'Environment Bloom Threshold', type: 'range', value: settings.bloom.environmentBloomThreshold, min: 0, max: 1, step: 0.01 }
+      ];
+
+      // Force-directed controls
+      this.forceDirectedControls = [
+        { name: 'forceDirectedIterations', label: 'Iterations', type: 'range', value: settings.visualization.forceDirectedIterations, min: 10, max: 500, step: 10 },
+        { name: 'forceDirectedRepulsion', label: 'Repulsion', type: 'range', value: settings.visualization.forceDirectedRepulsion, min: 0.1, max: 10.0, step: 0.1 },
+        { name: 'forceDirectedAttraction', label: 'Attraction', type: 'range', value: settings.visualization.forceDirectedAttraction, min: 0.001, max: 0.1, step: 0.001 }
+      ];
+
+      // Additional controls
+      this.additionalControls = [
+        { name: 'labelFontSize', label: 'Label Font Size', type: 'range', value: settings.visualization.labelFontSize, min: 12, max: 72, step: 1 },
+        { name: 'fogDensity', label: 'Fog Density', type: 'range', value: settings.visualization.fogDensity, min: 0, max: 0.01, step: 0.0001 }
+      ];
     }
   },
   mounted() {
@@ -323,6 +292,11 @@ export default {
         console.log('Simulation mode set to:', mode);
         this.simulationMode = mode;
       });
+
+      // Listen for visualization settings updates
+      window.addEventListener('serverSettings', (event) => {
+        this.initializeControls(event.detail);
+      });
     } else {
       console.error('WebSocketService is undefined');
     }
@@ -331,6 +305,7 @@ export default {
     if (this.websocketService) {
       this.websocketService.off('message', this.receiveMessage);
     }
+    window.removeEventListener('serverSettings', this.initializeControls);
   },
   setup() {
     const chatMessagesRef = ref(null);

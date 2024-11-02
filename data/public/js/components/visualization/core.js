@@ -66,7 +66,7 @@ export class WebXRVisualization {
         this.scene.fog = new THREE.FogExp2(0x000000, this.fogDensity);
         
         // Lighting settings
-        this.ambientLightIntensity = 1.5;
+        this.ambientLightIntensity = 15;
         this.directionalLightIntensity = 1.0;
         this.directionalLightColor = 0xffffff;
         this.ambientLightColor = 0x404040;

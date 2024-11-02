@@ -9,7 +9,6 @@ import { GraphDataManager } from './services/graphDataManager.js';
 import { isGPUAvailable, initGPU } from './gpuUtils.js';
 import { enableSpacemouse } from './services/spacemouse.js';
 
-// Rest of app.js remains unchanged
 class App {
     constructor() {
         console.log('App constructor called');
@@ -229,17 +228,27 @@ class App {
     handleWebSocketMessage(data) {
         console.log('Handling WebSocket message:', data);
         switch (data.type) {
+            case 'initial_data':
+                console.log('Received initial data:', data);
+                if (data.graph_data && this.graphDataManager) {
+                    this.graphDataManager.updateGraphData(data.graph_data);
+                    if (this.visualization) {
+                        this.visualization.updateVisualization();
+                    }
+                }
+                if (data.settings) {
+                    window.dispatchEvent(new CustomEvent('serverSettings', {
+                        detail: data.settings
+                    }));
+                }
+                break;
             case 'graphUpdate':
                 console.log('Received graph update:', data.graphData);
                 if (this.graphDataManager) {
                     this.graphDataManager.updateGraphData(data.graphData);
-                } else {
-                    console.error('GraphDataManager not initialized, cannot update graph data');
-                }
-                if (this.visualization) {
-                    this.visualization.updateVisualization();
-                } else {
-                    console.error('Cannot update visualization: not initialized');
+                    if (this.visualization) {
+                        this.visualization.updateVisualization();
+                    }
                 }
                 break;
             case 'ttsMethodSet':

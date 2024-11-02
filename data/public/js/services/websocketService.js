@@ -16,11 +16,9 @@ export default class WebsocketService {
     }
 
     getWebSocketUrl() {
-        // Use ws:// for development, wss:// for production
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        // Always use wss:// since nginx is handling SSL on 8443
         const host = window.location.hostname;
-        const port = process.env.NODE_ENV === 'development' ? ':3000' : '';
-        return `${protocol}//${host}${port}/ws`;
+        return `wss://${host}:8443/ws`;
     }
 
     connect() {
@@ -34,9 +32,8 @@ export default class WebsocketService {
             this.reconnectAttempts = 0;
             this.emit('open');
             
-            // Request initial graph data and settings when connection is established
+            // Request initial graph data and settings
             this.send({ type: 'get_initial_data' });
-            this.fetchVisualizationSettings();
         };
 
         this.socket.onmessage = async (event) => {
@@ -74,23 +71,6 @@ export default class WebsocketService {
             this.emit('close');
             this.reconnect();
         };
-    }
-
-    async fetchVisualizationSettings() {
-        try {
-            const response = await fetch('/api/visualization/settings');
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const settings = await response.json();
-            
-            // Dispatch settings to the application
-            window.dispatchEvent(new CustomEvent('serverSettings', {
-                detail: settings
-            }));
-        } catch (error) {
-            console.error('Failed to fetch visualization settings:', error);
-        }
     }
 
     reconnect() {
@@ -227,9 +207,14 @@ export default class WebsocketService {
         // Then handle specific message types
         switch (data.type) {
             case 'initial_data':
-                console.log('Received initial graph data:', data.graph_data);
+                console.log('Received initial data:', data);
                 if (data.graph_data) {
                     this.emit('graphUpdate', { graphData: data.graph_data });
+                }
+                if (data.settings) {
+                    window.dispatchEvent(new CustomEvent('serverSettings', {
+                        detail: data.settings
+                    }));
                 }
                 break;
                 
@@ -263,13 +248,6 @@ export default class WebsocketService {
             case 'simulation_mode_set':
                 console.log('Simulation mode set:', data.mode);
                 this.emit('simulationModeSet', data.mode);
-                break;
-
-            case 'visualization_settings':
-                console.log('Received visualization settings:', data.settings);
-                window.dispatchEvent(new CustomEvent('serverSettings', {
-                    detail: data.settings
-                }));
                 break;
                 
             default:

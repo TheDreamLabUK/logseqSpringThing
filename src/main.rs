@@ -8,7 +8,7 @@ use tokio::time::{interval, Duration};
 
 use crate::app_state::AppState;
 use crate::config::Settings;
-use crate::handlers::{file_handler, graph_handler, ragflow_handler};
+use crate::handlers::{file_handler, graph_handler, ragflow_handler, visualization_handler};
 use crate::models::graph::GraphData;
 use crate::services::file_service::{GitHubService, RealGitHubService, FileService};
 use crate::services::perplexity_service::PerplexityServiceImpl;
@@ -207,6 +207,10 @@ async fn main() -> std::io::Result<()> {
                     .route("/init", web::post().to(ragflow_handler::init_chat))
                     .route("/message", web::post().to(ragflow_handler::send_message))
                     .route("/history", web::get().to(ragflow_handler::get_chat_history))
+            )
+            .service(
+                web::scope("/api/visualization")
+                    .route("/settings", web::get().to(visualization_handler::get_visualization_settings))
             )
             .route("/ws", web::get().to(WebSocketManager::handle_websocket))
             .route("/test_speech", web::get().to(test_speech_service))
