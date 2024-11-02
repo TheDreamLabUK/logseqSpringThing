@@ -90,7 +90,7 @@ impl WebSocketManager {
     pub async fn broadcast_graph_update(&self, graph_data: &GraphData) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let json_data = json!({
             "type": "graph_update",
-            "data": graph_data
+            "graph_data": graph_data  // Changed from "data" to "graph_data" to match initial_data format
         });
         let message = json_data.to_string();
         self.broadcast_message(&message).await
@@ -383,7 +383,7 @@ impl WebSocketSession {
                 Ok(_) => {
                     let response = json!({
                         "type": "layout_update",
-                        "layout_data": &*graph_data
+                        "graph_data": &*graph_data  // Changed from layout_data to graph_data
                     });
                     if let Ok(response_str) = serde_json::to_string(&response) {
                         if let Ok(compressed) = compress_message(&response_str) {
@@ -500,5 +500,3 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
         }
     }
 }
-
-// Rest of the file remains unchanged...

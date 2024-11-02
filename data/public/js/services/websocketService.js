@@ -243,16 +243,16 @@ class WebsocketService {
         // Then handle specific message types
         switch (data.type) {
             case 'initial_data':
-                console.log('Received initial graph data:', data.data);
-                if (data.data) {
-                    this.emit('graphUpdate', { graphData: data.data });
+                console.log('Received initial graph data:', data.graph_data);
+                if (data.graph_data) {
+                    this.emit('graphUpdate', { graphData: data.graph_data });
                 }
                 break;
                 
             case 'graph_update':
-                console.log('Received graph update:', data.data);
-                if (data.data) {
-                    this.emit('graphUpdate', { graphData: data.data });
+                console.log('Received graph update:', data.graph_data);
+                if (data.graph_data) {
+                    this.emit('graphUpdate', { graphData: data.graph_data });
                 }
                 break;
                 

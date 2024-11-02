@@ -123,9 +123,9 @@ RUN python3.10 -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
 # Upgrade pip, install wheel, and then install Piper TTS and its dependencies
-RUN pip install --no-cache-dir --upgrade pip wheel && \
-    pip install --no-cache-dir piper-phonemize==1.1.0 && \
-    pip install --no-cache-dir piper-tts==1.2.0 onnxruntime-gpu
+RUN pip install --upgrade pip wheel && \
+    pip install --upgrade piper-phonemize==1.1.0 && \
+    pip install --upgrade piper-tts==1.2.0 onnxruntime-gpu
 
 # Expose HTTPS port
 EXPOSE 8443
