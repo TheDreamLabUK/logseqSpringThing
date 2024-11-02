@@ -3,12 +3,13 @@
 import { createApp } from 'vue';
 import ControlPanel from './components/ControlPanel.vue';
 import ChatManager from './components/chatManager.vue';
-import { WebXRVisualization } from './components/webXRVisualization.js';
+import { WebXRVisualization } from './components/visualization/core.js';  // Updated import path
 import WebsocketService from './services/websocketService.js';
 import { GraphDataManager } from './services/graphDataManager.js';
 import { isGPUAvailable, initGPU } from './gpuUtils.js';
 import { enableSpacemouse } from './services/spacemouse.js';
 
+// Rest of app.js remains unchanged
 class App {
     constructor() {
         console.log('App constructor called');

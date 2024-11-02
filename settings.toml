@@ -9,19 +9,6 @@ You should aim to select one or more of these topics in this form appropriate to
 embedding the topic in Logseq double square brackets once in the returned text.
 """
 
-# List of topics to embed in the summary
-topics = [
-    "Artificial Intelligence",
-    "Machine Learning",
-    "Rust Programming",
-    "Web Development",
-    "WebXR",
-    "Three.js",
-    "GPU Computing",
-    "Graph Visualization",
-    "Markdown Processing"
-]
-
 [github]
 github_access_token = "default_github_token"
 github_owner = "default_owner"
@@ -59,15 +46,15 @@ node_color = "0x1A0B31"
 edge_color = "0xff0000"
 hologram_color = "0xFFD700"
 node_size_scaling_factor = 5
-hologram_scale = 5
+hologram_scale = 10
 hologram_opacity = 0.1
-edge_opacity = 0.3
-label_font_size = 36
+edge_opacity = 0.7
+label_font_size = 10
 fog_density = 0.002
 
 # Force-directed graph settings
 force_directed_iterations = 100
-force_directed_repulsion = 1.0
+force_directed_repulsion = 10.0
 force_directed_attraction = 0.01
 
 # Separate bloom configurations
