@@ -1,10 +1,7 @@
 // WebSocket service for handling real-time communication
 import pako from 'pako';
 
-/**
- * WebsocketService handles the WebSocket connection and communication with the server.
- */
-class WebsocketService {
+export default class WebsocketService {
     constructor() {
         this.socket = null;
         this.listeners = {};
@@ -18,18 +15,14 @@ class WebsocketService {
         this.connect();
     }
 
-    /**
-     * Get the WebSocket URL based on the current window location
-     */
     getWebSocketUrl() {
-        // Always use wss:// since nginx is handling SSL on 8443
+        // Use ws:// for development, wss:// for production
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.hostname;
-        return `wss://${host}:8443/ws`;
+        const port = process.env.NODE_ENV === 'development' ? ':3000' : '';
+        return `${protocol}//${host}${port}/ws`;
     }
 
-    /**
-     * Establishes a WebSocket connection to the server.
-     */
     connect() {
         const url = this.getWebSocketUrl();
         console.log('Attempting to connect to WebSocket at:', url);
@@ -41,8 +34,9 @@ class WebsocketService {
             this.reconnectAttempts = 0;
             this.emit('open');
             
-            // Request initial graph data when connection is established
+            // Request initial graph data and settings when connection is established
             this.send({ type: 'get_initial_data' });
+            this.fetchVisualizationSettings();
         };
 
         this.socket.onmessage = async (event) => {
@@ -82,9 +76,23 @@ class WebsocketService {
         };
     }
 
-    /**
-     * Attempt to reconnect to the WebSocket server
-     */
+    async fetchVisualizationSettings() {
+        try {
+            const response = await fetch('/api/visualization/settings');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const settings = await response.json();
+            
+            // Dispatch settings to the application
+            window.dispatchEvent(new CustomEvent('serverSettings', {
+                detail: settings
+            }));
+        } catch (error) {
+            console.error('Failed to fetch visualization settings:', error);
+        }
+    }
+
     reconnect() {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
@@ -96,9 +104,6 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Send data to the WebSocket server
-     */
     send(data) {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             console.log('Sending WebSocket message:', data);
@@ -109,9 +114,6 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Register an event listener
-     */
     on(event, callback) {
         if (typeof callback !== 'function') {
             console.error('Invalid callback provided for event:', event);
@@ -123,18 +125,12 @@ class WebsocketService {
         this.listeners[event].push(callback);
     }
 
-    /**
-     * Remove an event listener
-     */
     off(event, callback) {
         if (this.listeners[event]) {
             this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
         }
     }
 
-    /**
-     * Emit an event to all registered listeners
-     */
     emit(event, data) {
         if (this.listeners[event]) {
             this.listeners[event].forEach(callback => {
@@ -151,9 +147,6 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Check if data has compression header
-     */
     hasCompressionHeader(data) {
         if (data.length < this.COMPRESSION_MAGIC.length) return false;
         for (let i = 0; i < this.COMPRESSION_MAGIC.length; i++) {
@@ -162,9 +155,6 @@ class WebsocketService {
         return true;
     }
 
-    /**
-     * Log binary data for debugging
-     */
     logBytes(data, label) {
         const hex = Array.from(data)
             .map(b => b.toString(16).padStart(2, '0'))
@@ -177,9 +167,6 @@ class WebsocketService {
         console.log('ASCII:', ascii);
     }
 
-    /**
-     * Decompress a binary message
-     */
     decompressMessage(compressed) {
         try {
             const data = new Uint8Array(compressed);
@@ -231,9 +218,6 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Handle messages from the server
-     */
     handleServerMessage(data) {
         console.log('Handling server message:', data);
         
@@ -280,6 +264,13 @@ class WebsocketService {
                 console.log('Simulation mode set:', data.mode);
                 this.emit('simulationModeSet', data.mode);
                 break;
+
+            case 'visualization_settings':
+                console.log('Received visualization settings:', data.settings);
+                window.dispatchEvent(new CustomEvent('serverSettings', {
+                    detail: data.settings
+                }));
+                break;
                 
             default:
                 console.warn('Unhandled message type:', data.type);
@@ -287,9 +278,6 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Handle RAGFlow responses
-     */
     handleRagflowResponse(data) {
         console.log('Handling RAGFlow response:', data);
         this.emit('ragflowAnswer', data.answer);
@@ -301,9 +289,6 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Convert base64 to Blob
-     */
     base64ToBlob(base64, mimeType) {
         const byteCharacters = atob(base64);
         const byteNumbers = new Array(byteCharacters.length);
@@ -314,9 +299,6 @@ class WebsocketService {
         return new Blob([byteArray], { type: mimeType });
     }
 
-    /**
-     * Handle audio data
-     */
     async handleAudioData(audioBlob) {
         if (!this.audioContext) {
             console.warn('AudioContext not initialized. Call initAudio() first.');
@@ -339,9 +321,6 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Decode WAV data
-     */
     async decodeWavData(wavData) {
         return new Promise((resolve, reject) => {
             console.log('WAV data size:', wavData.byteLength);
@@ -371,9 +350,6 @@ class WebsocketService {
         });
     }
 
-    /**
-     * Play next audio in queue
-     */
     playNextAudio() {
         if (this.audioQueue.length === 0) {
             this.isPlaying = false;
@@ -389,9 +365,6 @@ class WebsocketService {
         source.start();
     }
 
-    /**
-     * Initialize audio context
-     */
     initAudio() {
         if (!this.audioContext) {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -407,9 +380,6 @@ class WebsocketService {
         }
     }
 
-    /**
-     * Set simulation mode
-     */
     setSimulationMode(mode) {
         this.send({
             type: 'set_simulation_mode',
@@ -417,9 +387,6 @@ class WebsocketService {
         });
     }
 
-    /**
-     * Send RAGFlow query
-     */
     sendRagflowQuery(message, quote = false, docIds = null) {
         this.send({
             type: 'ragflowQuery',
@@ -429,9 +396,6 @@ class WebsocketService {
         });
     }
 
-    /**
-     * Send OpenAI query
-     */
     sendOpenAIQuery(message) {
         this.send({
             type: 'openaiQuery',
@@ -439,9 +403,6 @@ class WebsocketService {
         });
     }
 
-    /**
-     * Send chat message
-     */
     sendChatMessage({ message, useOpenAI }) {
         if (useOpenAI) {
             this.sendOpenAIQuery(message);
@@ -450,5 +411,3 @@ class WebsocketService {
         }
     }
 }
-
-export default WebsocketService;
