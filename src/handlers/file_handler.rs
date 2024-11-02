@@ -4,28 +4,37 @@ use log::{info, error, debug};
 use crate::AppState;
 use crate::services::file_service::FileService;
 use crate::services::graph_service::GraphService;
-use std::collections::HashMap;
 
 pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse {
-    info!("Initiating file fetch and processing");
+    info!("Initiating optimized file fetch and processing");
 
-    let mut metadata_map = FileService::load_or_create_metadata().unwrap_or_else(|_| HashMap::new());
+    // Load or create metadata, which now ensures directories exist
+    let mut metadata_map = match FileService::load_or_create_metadata() {
+        Ok(map) => map,
+        Err(e) => {
+            error!("Failed to load or create metadata: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Failed to initialize metadata: {}", e)
+            }));
+        }
+    };
     
+    // Process files with optimized approach
     match FileService::fetch_and_process_files(&*state.github_service, state.settings.clone(), &mut metadata_map).await {
         Ok(processed_files) => {
             let file_names: Vec<String> = processed_files.iter()
                 .map(|pf| pf.file_name.clone())
                 .collect();
 
-            info!("Successfully processed {} files", processed_files.len());
+            info!("Successfully processed {} public markdown files", processed_files.len());
 
+            // Update file cache with processed files
             {
                 let mut file_cache = state.file_cache.write().await;
                 for processed_file in &processed_files {
-                    if processed_file.is_public {
-                        metadata_map.insert(processed_file.file_name.clone(), processed_file.metadata.clone());
-                    }
-                    
+                    // Only public files reach this point due to optimization
+                    metadata_map.insert(processed_file.file_name.clone(), processed_file.metadata.clone());
                     file_cache.insert(processed_file.file_name.clone(), processed_file.content.clone());
                     debug!("Updated file cache with: {}", processed_file.file_name);
                 }
@@ -34,22 +43,29 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
             // Save the updated metadata
             if let Err(e) = FileService::save_metadata(&metadata_map) {
                 error!("Failed to save metadata: {}", e);
+                return HttpResponse::InternalServerError().json(json!({
+                    "status": "error",
+                    "message": format!("Failed to save metadata: {}", e)
+                }));
             }
 
+            // Update graph with processed files
             match GraphService::build_graph(&state).await {
                 Ok(graph_data) => {
                     let mut graph = state.graph_data.write().await;
                     *graph = graph_data.clone();
                     info!("Graph data structure updated successfully");
 
+                    // Broadcast graph update to connected clients
                     let broadcast_result = state.websocket_manager.broadcast_message(&json!({
                         "type": "graphUpdate",
                         "data": graph_data,
                     }).to_string()).await;
 
-                    match broadcast_result {
-                        Ok(_) => debug!("Graph update broadcasted successfully"),
-                        Err(e) => error!("Failed to broadcast graph update: {}", e),
+                    if let Err(e) = broadcast_result {
+                        error!("Failed to broadcast graph update: {}", e);
+                    } else {
+                        debug!("Graph update broadcasted successfully");
                     }
 
                     HttpResponse::Ok().json(json!({
@@ -105,9 +121,10 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
                 "data": graph_data,
             }).to_string()).await;
 
-            match broadcast_result {
-                Ok(_) => debug!("Graph update broadcasted successfully"),
-                Err(e) => error!("Failed to broadcast graph update: {}", e),
+            if let Err(e) = broadcast_result {
+                error!("Failed to broadcast graph update: {}", e);
+            } else {
+                debug!("Graph update broadcasted successfully");
             }
 
             HttpResponse::Ok().json(json!({

@@ -297,10 +297,18 @@ impl GPUCompute {
 
     /// Gets the updated node positions from the GPU buffer
     pub async fn get_updated_positions(&self) -> Result<Vec<Node>, Error> {
+        // Return empty vector if there are no nodes
+        if self.num_nodes == 0 {
+            return Ok(Vec::new());
+        }
+
+        // Calculate the buffer size needed for the nodes
+        let buffer_size = (self.num_nodes as u64) * std::mem::size_of::<GPUNode>() as u64;
+        
         // Create a staging buffer to read back the node data
         let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Node Position Staging Buffer"),
-            size: (self.num_nodes as u64) * std::mem::size_of::<GPUNode>() as u64,
+            size: buffer_size,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -315,7 +323,7 @@ impl GPUCompute {
             0,
             &staging_buffer,
             0,
-            staging_buffer.size(),
+            buffer_size,
         );
 
         self.queue.submit(Some(encoder.finish()));
