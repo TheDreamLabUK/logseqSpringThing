@@ -60,6 +60,24 @@ export class WebXRVisualization {
         console.log('WebXRVisualization constructor completed');
     }
 
+    updateSettings(settings) {
+        console.log('Updating settings:', settings);
+        if (!settings) return;
+
+        // Update visualization settings
+        Object.entries(settings).forEach(([key, value]) => {
+            if (typeof value === 'object') {
+                // Handle nested settings objects
+                Object.entries(value).forEach(([subKey, subValue]) => {
+                    const fullKey = `${key}_${subKey}`;
+                    this.updateVisualFeatures(fullKey, subValue);
+                });
+            } else {
+                this.updateVisualFeatures(key, value);
+            }
+        });
+    }
+
     initializeSettings() {
         console.log('Initializing settings');
         this.fogDensity = 0.001; // Reduced fog density
@@ -167,6 +185,10 @@ export class WebXRVisualization {
 
     updateVisualFeatures(control, value) {
         console.log(`Updating visual feature: ${control} = ${value}`);
+        if (!control || typeof control !== 'string') {
+            console.warn('Invalid control parameter:', control);
+            return;
+        }
         
         // Delegate updates to appropriate managers
         if (control.startsWith('node') || control.startsWith('edge')) {

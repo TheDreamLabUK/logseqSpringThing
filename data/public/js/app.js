@@ -106,8 +106,8 @@ class App {
                             data.name === 'forceDirectedAttraction') {
                             this.updateForceDirectedParams(data.name, data.value);
                         } else {
-                            // Handle other visual features
-                            this.visualization.updateVisualFeatures({ [data.name]: data.value });
+                            // Pass name and value separately to updateVisualFeatures
+                            this.visualization.updateVisualFeatures(data.name, data.value);
                         }
                     } else {
                         console.error('Cannot update visualization: not initialized');
@@ -237,6 +237,9 @@ class App {
                     }
                 }
                 if (data.settings) {
+                    if (this.visualization) {
+                        this.visualization.updateSettings(data.settings);
+                    }
                     window.dispatchEvent(new CustomEvent('serverSettings', {
                         detail: data.settings
                     }));
