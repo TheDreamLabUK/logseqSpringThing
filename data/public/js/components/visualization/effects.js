@@ -14,10 +14,10 @@ export class EffectsManager {
         this.bloomComposer = null;
         this.finalComposer = null;
         
-        // Bloom settings
-        this.bloomStrength = 1.5;
-        this.bloomRadius = 0.4;
-        this.bloomThreshold = 0.2;
+        // Enhanced bloom settings from older version
+        this.bloomStrength = 2.0;
+        this.bloomRadius = 0.5;
+        this.bloomThreshold = 0.1;
 
         // Hologram settings
         this.hologramGroup = new THREE.Group();
@@ -40,7 +40,7 @@ export class EffectsManager {
             }
         );
 
-        // Setup bloom composer
+        // Setup bloom composer with enhanced settings from older version
         this.bloomComposer = new EffectComposer(this.renderer, renderTarget);
         this.bloomComposer.renderToScreen = false;
         
@@ -51,6 +51,11 @@ export class EffectsManager {
             this.bloomRadius,
             this.bloomThreshold
         );
+
+        // Apply enhanced bloom settings
+        bloomPass.threshold = 0;
+        bloomPass.strength = 3.0;
+        bloomPass.radius = 1;
 
         this.bloomComposer.addPass(renderScene);
         this.bloomComposer.addPass(bloomPass);
@@ -100,9 +105,9 @@ export class EffectsManager {
             this.hologramGroup.remove(child);
         }
 
-        // Create new hologram structure
-        const hologramGeometry = new THREE.TorusGeometry(100, 3, 16, 100);
-        const hologramMaterial = new THREE.MeshStandardMaterial({
+        // Create rotating rings from current version
+        const ringGeometry = new THREE.TorusGeometry(100, 3, 16, 100);
+        const ringMaterial = new THREE.MeshStandardMaterial({
             color: this.hologramColor,
             emissive: this.hologramColor,
             emissiveIntensity: 0.5,
@@ -114,15 +119,55 @@ export class EffectsManager {
 
         // Create multiple rings with different orientations
         for (let i = 0; i < 3; i++) {
-            const ring = new THREE.Mesh(hologramGeometry, hologramMaterial);
+            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
             ring.rotation.x = Math.PI / 2 * i;
             ring.rotation.y = Math.PI / 4 * i;
             ring.userData.rotationSpeed = 0.002 * (i + 1);
             this.hologramGroup.add(ring);
         }
+
+        // Add Buckminster Fullerene from older version
+        const buckyGeometry = new THREE.IcosahedronGeometry(40 * this.hologramScale, 1);
+        const buckyMaterial = new THREE.MeshBasicMaterial({
+            color: this.hologramColor,
+            wireframe: true,
+            transparent: true,
+            opacity: this.hologramOpacity
+        });
+        const buckySphere = new THREE.Mesh(buckyGeometry, buckyMaterial);
+        buckySphere.userData.rotationSpeed = 0.0001;
+        buckySphere.layers.enable(1);
+        this.hologramGroup.add(buckySphere);
+
+        // Add Geodesic Dome from older version
+        const geodesicGeometry = new THREE.IcosahedronGeometry(30 * this.hologramScale, 1);
+        const geodesicMaterial = new THREE.MeshBasicMaterial({
+            color: this.hologramColor,
+            wireframe: true,
+            transparent: true,
+            opacity: this.hologramOpacity
+        });
+        const geodesicDome = new THREE.Mesh(geodesicGeometry, geodesicMaterial);
+        geodesicDome.userData.rotationSpeed = 0.0002;
+        geodesicDome.layers.enable(1);
+        this.hologramGroup.add(geodesicDome);
+
+        // Add Normal Triangle Sphere from older version
+        const triangleGeometry = new THREE.SphereGeometry(20 * this.hologramScale, 32, 32);
+        const triangleMaterial = new THREE.MeshBasicMaterial({
+            color: this.hologramColor,
+            wireframe: true,
+            transparent: true,
+            opacity: this.hologramOpacity
+        });
+        const triangleSphere = new THREE.Mesh(triangleGeometry, triangleMaterial);
+        triangleSphere.userData.rotationSpeed = 0.0003;
+        triangleSphere.layers.enable(1);
+        this.hologramGroup.add(triangleSphere);
     }
 
     animate() {
+        // Animate all hologram elements
         this.hologramGroup.children.forEach(child => {
             child.rotation.x += child.userData.rotationSpeed;
             child.rotation.y += child.userData.rotationSpeed;
