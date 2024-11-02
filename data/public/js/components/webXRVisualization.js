@@ -13,19 +13,16 @@ const ROTATION_SPEED = 0.01;
  * Class representing a WebXR visualization environment.
  */
 export class WebXRVisualization {
-    /**
-     * Create a WebXR visualization.
-     * @param {Object} graphDataManager - The manager for handling graph data.
-     */
     constructor(graphDataManager) {
         console.log('WebXRVisualization constructor called');
         this.graphDataManager = graphDataManager;
 
         // Initialize the scene, camera, and renderer
         this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x000000); // Ensure black background
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
         this.camera.position.set(0, 0, 500);
-        // Enable layer 1 for node labels
+        // Enable layer 1 for node labels (excluded from bloom)
         this.camera.layers.enable(1);
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -33,6 +30,7 @@ export class WebXRVisualization {
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.renderer.toneMapping = THREE.ReinhardToneMapping;
         this.renderer.toneMappingExposure = 1;
+        this.renderer.setClearColor(0x000000); // Ensure black background
 
         // Rest of the constructor remains exactly the same...
         this.controls = null;
@@ -47,11 +45,6 @@ export class WebXRVisualization {
         this.animationFrameId = null;
 
         this.selectedNode = null;
-
-        // Initialize separate bloom passes for visual effects
-        this.nodeBloomPass = null;
-        this.edgeBloomPass = null;
-        this.environmentBloomPass = null;
 
         // Add force-directed layout parameters
         this.forceDirectedIterations = 100;
@@ -70,7 +63,6 @@ export class WebXRVisualization {
         console.log('WebXRVisualization constructor completed');
     }
 
-    // Rest of the file remains exactly the same as before...
     initializeSettings() {
         console.log('Initializing settings');
         this.nodeColor = 0x1A0B31;
@@ -84,15 +76,9 @@ export class WebXRVisualization {
         this.fogDensity = 0.002;
         this.minNodeSize = 1;
         this.maxNodeSize = 5;
-        this.nodeBloomStrength = 0.1;
-        this.nodeBloomRadius = 0.1;
-        this.nodeBloomThreshold = 0;
-        this.edgeBloomStrength = 0.2;
-        this.edgeBloomRadius = 0.3;
-        this.edgeBloomThreshold = 0;
-        this.environmentBloomStrength = 1;
-        this.environmentBloomRadius = 1;
-        this.environmentBloomThreshold = 0;
+        this.bloomStrength = 1.5;
+        this.bloomRadius = 0.4;
+        this.bloomThreshold = 0.2;
         console.log('Settings initialized');
     }
 
@@ -124,38 +110,19 @@ export class WebXRVisualization {
     initPostProcessing() {
         console.log('Initializing post-processing');
         this.composer = new EffectComposer(this.renderer);
+        
+        // Main render pass for everything
         const renderPass = new RenderPass(this.scene, this.camera);
         this.composer.addPass(renderPass);
 
-        this.environmentBloomPass = new UnrealBloomPass(
+        // Add bloom pass
+        const bloomPass = new UnrealBloomPass(
             new THREE.Vector2(window.innerWidth, window.innerHeight),
-            this.environmentBloomStrength,
-            this.environmentBloomRadius,
-            this.environmentBloomThreshold
+            this.bloomStrength,
+            this.bloomRadius,
+            this.bloomThreshold
         );
-        this.environmentBloomPass.renderToScreen = false;
-        this.environmentBloomPass.clear = false;
-        this.composer.addPass(this.environmentBloomPass);
-
-        this.nodeBloomPass = new UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight),
-            this.nodeBloomStrength,
-            this.nodeBloomRadius,
-            this.nodeBloomThreshold
-        );
-        this.nodeBloomPass.renderToScreen = false;
-        this.nodeBloomPass.clear = false;
-        this.composer.addPass(this.nodeBloomPass);
-
-        this.edgeBloomPass = new UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight),
-            this.edgeBloomStrength,
-            this.edgeBloomRadius,
-            this.edgeBloomThreshold
-        );
-        this.edgeBloomPass.renderToScreen = true;
-        this.edgeBloomPass.clear = true;
-        this.composer.addPass(this.edgeBloomPass);
+        this.composer.addPass(bloomPass);
 
         console.log('Post-processing initialized');
     }
@@ -280,7 +247,6 @@ export class WebXRVisualization {
     updateVisualFeatures(changes) {
         console.log('Updating visual features:', changes);
         let needsUpdate = false;
-        let bloomChanged = false;
         let layoutChanged = false;
 
         for (const [name, value] of Object.entries(changes)) {
@@ -288,10 +254,6 @@ export class WebXRVisualization {
                 console.log(`Setting property ${name} to`, value);
                 this[name] = value;
                 needsUpdate = true;
-
-                if (name.includes('Bloom')) {
-                    bloomChanged = true;
-                }
 
                 if (name.includes('forceDirected')) {
                     layoutChanged = true;
@@ -312,10 +274,6 @@ export class WebXRVisualization {
             if (changes.hologramScale !== undefined) {
                 this.hologramGroup.scale.set(this.hologramScale, this.hologramScale, this.hologramScale);
             }
-        }
-
-        if (bloomChanged) {
-            this.updateBloomPass();
         }
 
         this.composer.render();
@@ -358,7 +316,7 @@ export class WebXRVisualization {
                 const geometry = this.createNodeGeometry(size, fileSize);
                 const material = new THREE.MeshStandardMaterial({ color: color });
                 mesh = new THREE.Mesh(geometry, material);
-                mesh.layers.enable(1);
+                mesh.layers.set(0); // Set nodes to layer 0 for bloom
                 this.scene.add(mesh);
                 this.nodeMeshes.set(node.id, mesh);
 
@@ -504,7 +462,7 @@ export class WebXRVisualization {
                         opacity: this.edgeOpacity
                     });
                     line = new THREE.Line(geometry, material);
-                    line.layers.enable(2);
+                    line.layers.set(0); // Set edges to layer 0 for bloom
                     this.scene.add(line);
                     this.edgeMeshes.set(edgeKey, line);
                 } else {
@@ -591,41 +549,6 @@ export class WebXRVisualization {
             }
         });
         console.log('Node labels update completed');
-    }
-
-    updateBloomPass() {
-        console.log('Updating bloom passes');
-        if (this.nodeBloomPass) {
-            this.nodeBloomPass.strength = this.nodeBloomStrength;
-            this.nodeBloomPass.radius = this.nodeBloomRadius;
-            this.nodeBloomPass.threshold = this.nodeBloomThreshold;
-            console.log('Node bloom updated:', {
-                strength: this.nodeBloomStrength,
-                radius: this.nodeBloomRadius,
-                threshold: this.nodeBloomThreshold
-            });
-        }
-        if (this.edgeBloomPass) {
-            this.edgeBloomPass.strength = this.edgeBloomStrength;
-            this.edgeBloomPass.radius = this.edgeBloomRadius;
-            this.edgeBloomPass.threshold = this.edgeBloomThreshold;
-            console.log('Edge bloom updated:', {
-                strength: this.edgeBloomStrength,
-                radius: this.edgeBloomRadius,
-                threshold: this.edgeBloomThreshold
-            });
-        }
-        if (this.environmentBloomPass) {
-            this.environmentBloomPass.strength = this.environmentBloomStrength;
-            this.environmentBloomPass.radius = this.environmentBloomRadius;
-            this.environmentBloomPass.threshold = this.environmentBloomThreshold;
-            console.log('Environment bloom updated:', {
-                strength: this.environmentBloomStrength,
-                radius: this.environmentBloomRadius,
-                threshold: this.environmentBloomThreshold
-            });
-        }
-        console.log('Bloom passes update completed');
     }
 
     handleSpacemouseInput(x, y, z, rx, ry, rz) {

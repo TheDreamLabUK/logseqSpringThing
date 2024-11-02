@@ -14,7 +14,13 @@
         </div>
         <div class="chat-input-container">
           <input type="text" v-model="chatInput" @keyup.enter="sendMessage" placeholder="Type a message..." />
-          <button @click="sendMessage">Send</button>
+          <div class="chat-controls">
+            <label class="tts-toggle">
+              <input type="checkbox" v-model="useOpenAITTS">
+              Use OpenAI TTS
+            </label>
+            <button @click="sendMessage">Send</button>
+          </div>
         </div>
       </div>
 
@@ -174,6 +180,7 @@ export default {
       fisheyeStrength: 0.5,
       chatInput: '',
       chatMessages: [],
+      useOpenAITTS: false,
       // Color controls mapped to settings.toml
       colorControls: [
         { name: 'nodeColor', label: 'Node Color', type: 'color', value: '#1A0B31' },
@@ -260,6 +267,7 @@ export default {
       this.emitChange('fisheyeStrength', 0.5);
       this.simulationMode = 'remote';
       this.setSimulationMode();
+      this.useOpenAITTS = false;
     },
     getDefaultValue(name) {
       const defaults = {
@@ -291,7 +299,8 @@ export default {
       if (this.chatInput.trim() && this.websocketService) {
         this.websocketService.sendChatMessage({
           message: this.chatInput,
-          useOpenAI: true
+          useOpenAI: true,
+          useTTS: this.useOpenAITTS
         });
         this.chatMessages.push({ sender: 'You', message: this.chatInput });
         this.chatInput = '';
@@ -477,6 +486,7 @@ option {
 
 .chat-input-container {
   display: flex;
+  flex-direction: column;
   gap: 10px;
   margin-top: 10px;
 }
@@ -484,10 +494,41 @@ option {
 .chat-input-container input[type="text"] {
   flex-grow: 1;
   padding: 5px;
+  border-radius: 3px;
+  border: 1px solid #444;
+  background-color: #333;
+  color: white;
 }
 
-.chat-input-container button {
-  padding: 5px 10px;
+.chat-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tts-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.tts-toggle input[type="checkbox"] {
+  margin: 0;
+}
+
+.chat-controls button {
+  padding: 5px 15px;
+  background-color: #444;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.chat-controls button:hover {
+  background-color: #555;
 }
 
 .button-group {
