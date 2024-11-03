@@ -20,6 +20,7 @@ use crate::utils::websocket_manager::WebSocketSession;
 use crate::utils::compression;
 
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+const CONNECTION_WAIT: Duration = Duration::from_millis(500);
 
 #[derive(Debug)]
 enum WebSocketError {
@@ -55,6 +56,7 @@ pub struct OpenAIWebSocket {
     client: Arc<tokio::sync::Mutex<Option<RealtimeClient>>>,
     stream: Arc<tokio::sync::Mutex<Option<(WsSink, WsSource)>>>,
     connection_time: Arc<tokio::sync::Mutex<Option<Instant>>>,
+    ready: Arc<tokio::sync::Mutex<bool>>,
 }
 
 #[async_trait::async_trait]
@@ -72,6 +74,7 @@ impl OpenAIWebSocket {
             client: Arc::new(tokio::sync::Mutex::new(None)),
             stream: Arc::new(tokio::sync::Mutex::new(None)),
             connection_time: Arc::new(tokio::sync::Mutex::new(None)),
+            ready: Arc::new(tokio::sync::Mutex::new(false)),
         }
     }
 
@@ -137,11 +140,18 @@ impl OpenAIWebSocket {
                             *stream_guard = Some((write, read));
                             drop(stream_guard);
 
+                            // Wait a bit before marking as ready
+                            tokio::time::sleep(CONNECTION_WAIT).await;
+                            let mut ready_guard = self.ready.lock().await;
+                            *ready_guard = true;
+                            debug!("OpenAI WebSocket ready for messages");
+
                             // Start keepalive ping
                             let stream_clone = self.stream.clone();
+                            let ready_clone = self.ready.clone();
                             tokio::spawn(async move {
                                 let mut ping_count = 0u64;
-                                loop {
+                                while *ready_clone.lock().await {
                                     tokio::time::sleep(KEEPALIVE_INTERVAL).await;
                                     let mut stream_guard = stream_clone.lock().await;
                                     if let Some((ref mut write, _)) = *stream_guard {
@@ -250,7 +260,15 @@ impl OpenAIWebSocket {
 impl OpenAIRealtimeHandler for OpenAIWebSocket {
     async fn send_text_message(&self, text: &str) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let start_time = Instant::now();
-        debug!("Preparing to send text message: {}", text);
+        debug!("Preparing to send text message to OpenAI: {}", text);
+
+        // Wait for ready state
+        let ready = self.ready.lock().await;
+        if !*ready {
+            error!("OpenAI WebSocket not ready to send messages");
+            return Err(Box::new(WebSocketError::ConnectionFailed("WebSocket not ready".to_string())));
+        }
+        drop(ready);
 
         let mut stream_guard = self.stream.lock().await;
         let (write, _) = stream_guard.as_mut().ok_or_else(|| {
@@ -271,11 +289,12 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
             }
         });
         
+        debug!("Sending request to OpenAI: {}", request.to_string());
         let message = Message::Text(request.to_string());
         match write.send(message).await {
             Ok(_) => {
                 let duration = start_time.elapsed();
-                debug!("Text message sent successfully (took {}ms)", duration.as_millis());
+                debug!("Text message sent successfully to OpenAI (took {}ms)", duration.as_millis());
                 Ok(())
             },
             Err(e) => {
@@ -301,7 +320,7 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
             message_count += 1;
             match response {
                 Ok(Message::Text(text)) => {
-                    debug!("Received text message #{}", message_count);
+                    debug!("Received text message #{} from OpenAI: {}", message_count, text);
                     match serde_json::from_str::<serde_json::Value>(&text) {
                         Ok(json_msg) => {
                             if let Some(audio_data) = json_msg["delta"]["audio"].as_str() {
@@ -401,6 +420,11 @@ impl Actor for OpenAIWebSocket {
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
+        // Set ready state to false when stopping
+        if let Ok(mut ready_guard) = self.ready.try_lock() {
+            *ready_guard = false;
+        }
+
         if let Ok(time_guard) = self.connection_time.try_lock() {
             if let Some(connection_time) = *time_guard {
                 let uptime = connection_time.elapsed();
@@ -424,7 +448,7 @@ impl Handler<OpenAIMessage> for OpenAIWebSocket {
         let this = self.clone();
 
         Box::pin(async move {
-            debug!("Handling new message: {}", text_message);
+            debug!("Handling new message for OpenAI TTS: {}", text_message);
             if let Err(e) = this.send_text_message(&text_message).await {
                 error!("Error sending message to OpenAI: {}", e);
             }

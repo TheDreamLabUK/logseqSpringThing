@@ -273,7 +273,7 @@ export default defineComponent({
                             :id="control.name"
                             type="color"
                             v-model="control.value"
-                            @change="emitChange(control.name, control.value)"
+                            @input="emitChange(control.name, control.value)"
                         >
                     </div>
                 </div>

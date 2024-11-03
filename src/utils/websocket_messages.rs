@@ -55,13 +55,13 @@ pub enum ServerMessage {
     
     #[serde(rename = "ragflow_response")]
     RagflowResponse {
-        answer: String,
-        audio: Option<String> // base64 encoded audio
+        answer: String
     },
     
     #[serde(rename = "openai_response")]
     OpenAIResponse {
-        response: String
+        response: String,
+        audio: Option<String> // base64 encoded audio
     },
     
     #[serde(rename = "error")]
@@ -159,8 +159,7 @@ mod tests {
     #[test]
     fn test_server_message_serialization() {
         let message = ServerMessage::RagflowResponse {
-            answer: "Test answer".to_string(),
-            audio: Some("base64audio".to_string())
+            answer: "Test answer".to_string()
         };
         let serialized = serde_json::to_string(&message).unwrap();
         assert!(serialized.contains("ragflow_response"));

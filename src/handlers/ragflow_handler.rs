@@ -6,8 +6,6 @@ use actix_web::web::Bytes;
 use std::sync::Arc;
 use futures::StreamExt;
 use crate::services::ragflow_service::RAGFlowError;
-use base64::engine::general_purpose;
-use base64::Engine as _;
 
 #[derive(Serialize, Deserialize)]
 pub struct MessageRequest {
@@ -64,12 +62,11 @@ pub async fn send_message(state: web::Data<AppState>, msg: web::Json<MessageRequ
     match ragflow_service.send_message(conversation_id, message_content, quote, doc_ids, stream).await {
         Ok(response_stream) => {
             let mapped_stream = response_stream.map(|result| {
-                result.map(|(answer, audio_data)| {
+                result.map(|answer| {
                     let response = serde_json::json!({
                         "type": "ragflowResponse",
                         "data": {
-                            "answer": answer,
-                            "audio": general_purpose::STANDARD.encode(&audio_data)
+                            "answer": answer
                         }
                     });
                     Bytes::from(serde_json::to_string(&response).unwrap())

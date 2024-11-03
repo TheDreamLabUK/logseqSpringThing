@@ -9,6 +9,7 @@ use futures::future::join_all;
 use std::error::Error as StdError;
 use bytestring::ByteString;
 use serde::Deserialize;
+use tokio::time::Duration;
 
 use crate::AppState;
 use crate::models::simulation_params::{SimulationMode, SimulationParams};
@@ -16,6 +17,8 @@ use crate::utils::compression::{compress_message, decompress_message};
 use crate::utils::websocket_messages::{SendCompressedMessage, MessageHandler, OpenAIMessage};
 use crate::utils::websocket_openai::OpenAIWebSocket;
 use crate::services::graph_service::GraphService;
+
+const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -198,23 +201,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
 }
 
 impl WebSocketSession {
-    fn ensure_openai_ws(&mut self, ctx: &mut ws::WebsocketContext<Self>) {
-        if self.openai_ws.is_none() {
-            debug!("Initializing OpenAI WebSocket for TTS");
-            self.openai_ws = Some(OpenAIWebSocket::new(ctx.address(), self.state.settings.clone()).start());
-        }
-    }
-
     fn handle_chat_message(&mut self, ctx: &mut ws::WebsocketContext<Self>, message: String, use_openai: bool) {
-        // Initialize OpenAI WebSocket only if needed
-        if use_openai {
-            self.ensure_openai_ws(ctx);
-        }
-
         let state = self.state.clone();
         let conversation_id = self.conversation_id.clone();
         let ctx_addr = ctx.address();
-        let openai_ws = self.openai_ws.clone();
+        let settings = self.state.settings.clone();
         
         ctx.spawn(async move {
             let conv_id = if let Some(conv_arc) = conversation_id {
@@ -234,7 +225,7 @@ impl WebSocketSession {
                 return;
             };
 
-            // Step 1: Send message to RAGFlow via HTTP and get text response
+            // Send message to RAGFlow via HTTP and get text response
             match state.ragflow_service.send_message(
                 conv_id.clone(),
                 message.clone(),
@@ -247,26 +238,24 @@ impl WebSocketSession {
                     
                     if let Some(result) = stream.next().await {
                         match result {
-                            Ok((text, _)) => {
-                                // Step 2: Send RAGFlow text response to client
-                                let response = json!({
-                                    "type": "ragflow_response",
-                                    "answer": text.clone()
-                                });
-                                if let Ok(response_str) = serde_json::to_string(&response) {
-                                    if let Ok(compressed) = compress_message(&response_str) {
-                                        ctx_addr.do_send(SendCompressedMessage(compressed));
-                                    }
-                                }
-
-                                // Step 3: Send text to appropriate TTS service
+                            Ok(text) => {
+                                debug!("Received text response from RAGFlow: {}", text);
+                                
                                 if use_openai {
-                                    // Send to OpenAI WebSocket for TTS
-                                    if let Some(ref openai_ws) = openai_ws {
-                                        openai_ws.do_send(OpenAIMessage(text));
-                                    }
+                                    debug!("Creating OpenAI WebSocket for TTS");
+                                    // Create new OpenAI WebSocket instance
+                                    let openai_ws = OpenAIWebSocket::new(ctx_addr.clone(), settings);
+                                    let addr = openai_ws.start();
+                                    
+                                    // Wait for the websocket to be ready
+                                    debug!("Waiting for OpenAI WebSocket to be ready");
+                                    tokio::time::sleep(OPENAI_CONNECT_TIMEOUT).await;
+                                    
+                                    debug!("Sending text to OpenAI TTS: {}", text);
+                                    addr.do_send(OpenAIMessage(text));
                                 } else {
                                     // Use local TTS service
+                                    debug!("Using local TTS service");
                                     if let Err(e) = state.speech_service.send_message(text).await {
                                         error!("Failed to generate speech: {}", e);
                                         let error_message = json!({

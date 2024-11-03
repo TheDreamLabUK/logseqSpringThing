@@ -5,7 +5,6 @@ use std::fmt;
 use futures::stream::{Stream, StreamExt};
 use std::pin::Pin;
 use serde_json::json;
-use crate::utils::audio_processor::AudioProcessor;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -13,7 +12,7 @@ use tokio::sync::RwLock;
 pub enum RAGFlowError {
     ReqwestError(reqwest::Error),
     StatusError(StatusCode, String),
-    AudioGenerationError(String),
+    ParseError(String),
     IoError(std::io::Error),
 }
 
@@ -22,7 +21,7 @@ impl fmt::Display for RAGFlowError {
         match self {
             RAGFlowError::ReqwestError(e) => write!(f, "Reqwest error: {}", e),
             RAGFlowError::StatusError(status, msg) => write!(f, "Status error ({}): {}", status, msg),
-            RAGFlowError::AudioGenerationError(msg) => write!(f, "Audio generation error: {}", msg),
+            RAGFlowError::ParseError(msg) => write!(f, "Parse error: {}", msg),
             RAGFlowError::IoError(e) => write!(f, "IO error: {}", e),
         }
     }
@@ -92,7 +91,7 @@ impl RAGFlowService {
         quote: bool,
         doc_ids: Option<Vec<String>>,
         stream: bool,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<(String, Vec<u8>), RAGFlowError>> + Send + 'static>>, RAGFlowError> {
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<String, RAGFlowError>> + Send + 'static>>, RAGFlowError> {
         info!("Sending message to conversation: {}", conversation_id);
         let url = format!("{}api/completion", self.ragflow_api_base_url);
         info!("Full URL for send_message: {}", url);
@@ -123,9 +122,16 @@ impl RAGFlowService {
             let stream = response.bytes_stream().map(move |chunk_result| {
                 match chunk_result {
                     Ok(chunk) => {
-                        match AudioProcessor::process_json_response(&chunk) {
-                            Ok((answer, audio_data)) => Ok((answer, audio_data)),
-                            Err(e) => Err(RAGFlowError::AudioGenerationError(e)),
+                        match serde_json::from_slice::<serde_json::Value>(&chunk) {
+                            Ok(json_response) => {
+                                // Extract text answer from the response
+                                match json_response["data"]["answer"].as_str()
+                                    .or_else(|| json_response["answer"].as_str()) {
+                                    Some(answer) => Ok(answer.to_string()),
+                                    None => Err(RAGFlowError::ParseError("No answer found in response".to_string()))
+                                }
+                            },
+                            Err(e) => Err(RAGFlowError::ParseError(format!("Failed to parse JSON response: {}", e))),
                         }
                     },
                     Err(e) => Err(RAGFlowError::ReqwestError(e)),
