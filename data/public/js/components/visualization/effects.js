@@ -22,7 +22,7 @@ export class EffectsManager {
         // Hologram settings
         this.hologramGroup = new THREE.Group();
         this.scene.add(this.hologramGroup);
-        this.hologramColor = 0xFFD700;
+        this.hologramColor = new THREE.Color(0xFFD700);  // Initialize as THREE.Color
         this.hologramScale = 1;
         this.hologramOpacity = 0.1;
     }
@@ -189,6 +189,7 @@ export class EffectsManager {
     }
 
     updateFeature(control, value) {
+        console.log(`Updating effect feature: ${control} = ${value}`);
         switch (control) {
             // Bloom features
             case 'bloomStrength':
@@ -224,11 +225,17 @@ export class EffectsManager {
 
             // Hologram features
             case 'hologramColor':
-                this.hologramColor = value;
-                this.hologramGroup.children.forEach(child => {
-                    child.material.color.setHex(value);
-                    child.material.emissive.setHex(value);
-                });
+                if (typeof value === 'number' || typeof value === 'string') {
+                    this.hologramColor = new THREE.Color(value);
+                    this.hologramGroup.children.forEach(child => {
+                        if (child.material) {
+                            child.material.color.copy(this.hologramColor);
+                            if (child.material.emissive) {
+                                child.material.emissive.copy(this.hologramColor);
+                            }
+                        }
+                    });
+                }
                 break;
             case 'hologramScale':
                 this.hologramScale = value;
@@ -237,7 +244,9 @@ export class EffectsManager {
             case 'hologramOpacity':
                 this.hologramOpacity = value;
                 this.hologramGroup.children.forEach(child => {
-                    child.material.opacity = value;
+                    if (child.material) {
+                        child.material.opacity = value;
+                    }
                 });
                 break;
         }

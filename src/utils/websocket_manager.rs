@@ -397,7 +397,7 @@ impl WebSocketSession {
             let settings = state.settings.read().await;
             
             let response = json!({
-                "type": "initial_data",
+                "type": "getInitialData", // Changed from 'initial_data' to match client expectation
                 "graph_data": &*graph_data,
                 "settings": {
                     "visualization": {
@@ -427,6 +427,8 @@ impl WebSocketSession {
                     }
                 }
             });
+
+            debug!("Sending initial data response: {:?}", response);
 
             if let Ok(response_str) = serde_json::to_string(&response) {
                 if let Ok(compressed) = compress_message(&response_str) {

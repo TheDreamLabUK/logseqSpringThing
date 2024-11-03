@@ -51,6 +51,7 @@ export default defineComponent({
         },
         emitChange(name, value) {
             if (this.isColorControl(name)) {
+                // Convert from #RRGGBB to 0xRRGGBB format
                 value = parseInt(value.replace('#', '0x'), 16);
             }
             this.$emit('control-change', { name, value });
@@ -103,12 +104,31 @@ export default defineComponent({
             this.$emit('enable-spacemouse');
         },
         initializeControls(settings) {
+            console.log('Initializing controls with settings:', settings);
+            
+            // Initialize color controls with received values
             this.colorControls = [
-                { name: 'nodeColor', label: 'Node Color', type: 'color', value: settings.visualization.nodeColor },
-                { name: 'edgeColor', label: 'Edge Color', type: 'color', value: settings.visualization.edgeColor },
-                { name: 'hologramColor', label: 'Hologram Color', type: 'color', value: settings.visualization.hologramColor }
+                { 
+                    name: 'nodeColor', 
+                    label: 'Node Color', 
+                    type: 'color', 
+                    value: '#' + settings.visualization.nodeColor.toString(16).replace('0x', '').padStart(6, '0')
+                },
+                { 
+                    name: 'edgeColor', 
+                    label: 'Edge Color', 
+                    type: 'color', 
+                    value: '#' + settings.visualization.edgeColor.toString(16).replace('0x', '').padStart(6, '0')
+                },
+                { 
+                    name: 'hologramColor', 
+                    label: 'Hologram Color', 
+                    type: 'color', 
+                    value: '#' + settings.visualization.hologramColor.toString(16).replace('0x', '').padStart(6, '0')
+                }
             ];
 
+            // Initialize size and opacity controls with received values
             this.sizeOpacityControls = [
                 { name: 'nodeSizeScalingFactor', label: 'Node Size Scaling', type: 'range', value: settings.visualization.nodeSizeScalingFactor, min: 1, max: 10, step: 0.1 },
                 { name: 'hologramScale', label: 'Hologram Scale', type: 'range', value: settings.visualization.hologramScale, min: 1, max: 10, step: 0.1 },
@@ -116,6 +136,7 @@ export default defineComponent({
                 { name: 'edgeOpacity', label: 'Edge Opacity', type: 'range', value: settings.visualization.edgeOpacity, min: 0, max: 1, step: 0.01 }
             ];
 
+            // Initialize bloom controls with received values
             this.bloomControls = [
                 { name: 'nodeBloomStrength', label: 'Node Bloom Strength', type: 'range', value: settings.bloom.nodeBloomStrength, min: 0, max: 1, step: 0.01 },
                 { name: 'nodeBloomRadius', label: 'Node Bloom Radius', type: 'range', value: settings.bloom.nodeBloomRadius, min: 0, max: 1, step: 0.01 },
@@ -128,16 +149,26 @@ export default defineComponent({
                 { name: 'environmentBloomThreshold', label: 'Environment Bloom Threshold', type: 'range', value: settings.bloom.environmentBloomThreshold, min: 0, max: 1, step: 0.01 }
             ];
 
+            // Initialize force-directed controls with received values
             this.forceDirectedControls = [
                 { name: 'forceDirectedIterations', label: 'Iterations', type: 'range', value: settings.visualization.forceDirectedIterations, min: 10, max: 500, step: 10 },
                 { name: 'forceDirectedRepulsion', label: 'Repulsion', type: 'range', value: settings.visualization.forceDirectedRepulsion, min: 0.1, max: 10.0, step: 0.1 },
                 { name: 'forceDirectedAttraction', label: 'Attraction', type: 'range', value: settings.visualization.forceDirectedAttraction, min: 0.001, max: 0.1, step: 0.001 }
             ];
 
+            // Initialize additional controls with received values
             this.additionalControls = [
                 { name: 'labelFontSize', label: 'Label Font Size', type: 'range', value: settings.visualization.labelFontSize, min: 12, max: 72, step: 1 },
                 { name: 'fogDensity', label: 'Fog Density', type: 'range', value: settings.visualization.fogDensity, min: 0, max: 0.01, step: 0.0001 }
             ];
+
+            console.log('Controls initialized:', {
+                colorControls: this.colorControls,
+                sizeOpacityControls: this.sizeOpacityControls,
+                bloomControls: this.bloomControls,
+                forceDirectedControls: this.forceDirectedControls,
+                additionalControls: this.additionalControls
+            });
         }
     },
     mounted() {
@@ -147,15 +178,25 @@ export default defineComponent({
                 this.simulationMode = mode;
             });
 
-            window.addEventListener('serverSettings', (event) => {
+            // Add console log to verify event listener is added
+            console.log('Adding serverSettings event listener');
+            const handleServerSettings = (event) => {
+                console.log('Received server settings:', event.detail);
                 this.initializeControls(event.detail);
-            });
+            };
+            window.addEventListener('serverSettings', handleServerSettings);
+            
+            // Store the handler for cleanup
+            this._handleServerSettings = handleServerSettings;
         } else {
             console.error('WebSocketService is undefined');
         }
     },
     beforeUnmount() {
-        window.removeEventListener('serverSettings', this.initializeControls);
+        // Clean up event listener using stored handler
+        if (this._handleServerSettings) {
+            window.removeEventListener('serverSettings', this._handleServerSettings);
+        }
     },
     setup() {
         const chatMessagesRef = ref(null);

@@ -27,7 +27,7 @@ export class GraphDataManager {
      */
     requestInitialData() {
         console.log('Requesting initial graph data');
-        this.websocketService.send({ type: 'get_initial_data' });
+        this.websocketService.send({ type: 'getInitialData' }); // Changed from get_initial_data to match server expectation
     }
 
     /**
@@ -147,7 +147,7 @@ export class GraphDataManager {
         if (this.isGraphDataValid()) {
             // Send a message to the server to recalculate the layout
             this.websocketService.send({
-                type: 'recalculate_layout',
+                type: 'recalculateLayout', // Changed from recalculate_layout to match server expectation
                 params: this.forceDirectedParams
             });
             console.log('Layout recalculation requested');

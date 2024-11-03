@@ -228,7 +228,7 @@ class App {
     handleWebSocketMessage(data) {
         console.log('Handling WebSocket message:', data);
         switch (data.type) {
-            case 'initial_data':
+            case 'getInitialData': // Changed from 'initial_data' to match server response
                 console.log('Received initial data:', data);
                 if (data.graph_data && this.graphDataManager) {
                     this.graphDataManager.updateGraphData(data.graph_data);
@@ -237,12 +237,15 @@ class App {
                     }
                 }
                 if (data.settings) {
+                    console.log('Received settings:', data.settings);
                     if (this.visualization) {
                         this.visualization.updateSettings(data.settings);
                     }
                     window.dispatchEvent(new CustomEvent('serverSettings', {
                         detail: data.settings
                     }));
+                } else {
+                    console.warn('No settings received in initial data');
                 }
                 break;
             case 'graphUpdate':

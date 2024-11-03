@@ -30,10 +30,10 @@ export class NodeManager {
         this.maxNodeSize = 15; // Increased from 5
         this.nodeSizeScalingFactor = 2;  // Increased from 1
         this.labelFontSize = 48;
-        this.nodeColor = 0x4444ff;  // Changed from 0x1A0B31 to a brighter blue
+        this.nodeColor = new THREE.Color(0x4444ff);  // Initialize as THREE.Color
 
         // Edge settings
-        this.edgeColor = 0x4444ff;
+        this.edgeColor = new THREE.Color(0x4444ff);  // Initialize as THREE.Color
         this.edgeOpacity = 0.6;
     }
 
@@ -182,8 +182,8 @@ export class NodeManager {
             } else {
                 mesh.geometry.dispose();
                 mesh.geometry = this.createNodeGeometry(size, hyperlinkCount);
-                mesh.material.color = color;
-                mesh.material.emissive = color;
+                mesh.material.color.copy(color);
+                mesh.material.emissive.copy(color);
                 mesh.material.emissiveIntensity = 1.0; // Ensure updated nodes also have strong glow
             }
 
@@ -257,14 +257,19 @@ export class NodeManager {
     }
 
     updateFeature(control, value) {
+        console.log(`Updating feature: ${control} = ${value}`);
         switch (control) {
             // Node features
             case 'nodeColor':
-                this.nodeColor = value;
-                this.nodeMeshes.forEach(mesh => {
-                    mesh.material.color.setHex(value);
-                    mesh.material.emissive.setHex(value);
-                });
+                if (typeof value === 'number' || typeof value === 'string') {
+                    this.nodeColor = new THREE.Color(value);
+                    this.nodeMeshes.forEach(mesh => {
+                        if (mesh.material) {
+                            mesh.material.color.copy(this.nodeColor);
+                            mesh.material.emissive.copy(this.nodeColor);
+                        }
+                    });
+                }
                 break;
             case 'nodeSizeScalingFactor':
                 this.nodeSizeScalingFactor = value;
@@ -275,15 +280,21 @@ export class NodeManager {
 
             // Edge features
             case 'edgeColor':
-                this.edgeColor = value;
-                this.edgeMeshes.forEach(line => {
-                    line.material.color.setHex(value);
-                });
+                if (typeof value === 'number' || typeof value === 'string') {
+                    this.edgeColor = new THREE.Color(value);
+                    this.edgeMeshes.forEach(line => {
+                        if (line.material) {
+                            line.material.color.copy(this.edgeColor);
+                        }
+                    });
+                }
                 break;
             case 'edgeOpacity':
                 this.edgeOpacity = value;
                 this.edgeMeshes.forEach(line => {
-                    line.material.opacity = value;
+                    if (line.material) {
+                        line.material.opacity = value;
+                    }
                 });
                 break;
         }

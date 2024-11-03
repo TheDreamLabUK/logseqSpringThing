@@ -33,7 +33,8 @@ export default class WebsocketService {
             this.emit('open');
             
             // Request initial graph data and settings
-            this.send({ type: 'get_initial_data' });
+            console.log('Requesting initial data');
+            this.send({ type: 'getInitialData' });
         };
 
         this.socket.onmessage = async (event) => {
@@ -206,15 +207,24 @@ export default class WebsocketService {
         
         // Then handle specific message types
         switch (data.type) {
-            case 'initial_data':
+            case 'getInitialData':
                 console.log('Received initial data:', data);
                 if (data.graph_data) {
+                    console.log('Emitting graph update with:', data.graph_data);
                     this.emit('graphUpdate', { graphData: data.graph_data });
                 }
                 if (data.settings) {
+                    console.log('Dispatching server settings:', data.settings);
+                    // Ensure settings are properly structured before dispatching
+                    const settings = {
+                        visualization: data.settings.visualization || {},
+                        bloom: data.settings.bloom || {}
+                    };
                     window.dispatchEvent(new CustomEvent('serverSettings', {
-                        detail: data.settings
+                        detail: settings
                     }));
+                } else {
+                    console.warn('No settings received in initial data');
                 }
                 break;
                 
@@ -234,6 +244,7 @@ export default class WebsocketService {
                 break;
                 
             case 'error':
+                console.error('Server error:', data.message);
                 this.emit('error', { type: 'server_error', message: data.message });
                 break;
                 
@@ -360,7 +371,7 @@ export default class WebsocketService {
 
     setSimulationMode(mode) {
         this.send({
-            type: 'set_simulation_mode',
+            type: 'setSimulationMode',
             mode: mode
         });
     }
