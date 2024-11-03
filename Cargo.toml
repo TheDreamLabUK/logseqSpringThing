@@ -83,6 +83,9 @@ url = "2.3"
 # Base64 Encoding/Decoding
 base64 = "0.21"
 
+# OpenAI API Client
+openai-api-rs = "5.0.13"
+
 # Development Dependencies
 [dev-dependencies]
 mockall = "0.11"

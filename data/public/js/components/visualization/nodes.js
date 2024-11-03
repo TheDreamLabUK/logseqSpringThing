@@ -5,9 +5,10 @@ export const BLOOM_LAYER = 1;
 export const NORMAL_LAYER = 0;
 
 export const NODE_COLORS = {
-    NEW: new THREE.Color(0x0088ff),      // Blue for new files
-    MEDIUM: new THREE.Color(0x00ff88),    // Green for medium-age files
-    OLD: new THREE.Color(0xff8800)        // Orange for old files
+    NEW: new THREE.Color(0x00ff88),      // Bright green for very recent files (< 3 days)
+    RECENT: new THREE.Color(0x4444ff),    // Blue for recent files (< 7 days)
+    MEDIUM: new THREE.Color(0xffaa00),    // Orange for medium-age files (< 30 days)
+    OLD: new THREE.Color(0xff4444)        // Red for old files (>= 30 days)
 };
 
 export const NODE_SHAPES = {
@@ -50,9 +51,10 @@ export class NodeManager {
         const age = now - new Date(lastModified).getTime();
         const dayInMs = 24 * 60 * 60 * 1000;
         
-        if (age < 7 * dayInMs) return NODE_COLORS.NEW;
-        if (age < 30 * dayInMs) return NODE_COLORS.MEDIUM;
-        return NODE_COLORS.OLD;
+        if (age < 3 * dayInMs) return NODE_COLORS.NEW;        // Less than 3 days old
+        if (age < 7 * dayInMs) return NODE_COLORS.RECENT;     // Less than 7 days old
+        if (age < 30 * dayInMs) return NODE_COLORS.MEDIUM;    // Less than 30 days old
+        return NODE_COLORS.OLD;                               // 30 days or older
     }
 
     createNodeGeometry(size, hyperlinkCount) {
@@ -163,10 +165,10 @@ export class NodeManager {
                 const geometry = this.createNodeGeometry(size, hyperlinkCount);
                 const material = new THREE.MeshStandardMaterial({
                     color: color,
-                    metalness: 0.3,  // Reduced from 0.5
-                    roughness: 0.3,  // Reduced from 0.5
+                    metalness: 0.2,  // Reduced for more glow
+                    roughness: 0.2,  // Reduced for more glow
                     emissive: color,
-                    emissiveIntensity: 0.5  // Increased from 0.2
+                    emissiveIntensity: 1.0  // Increased from 0.5 to 1.0 for stronger glow
                 });
 
                 mesh = new THREE.Mesh(geometry, material);
@@ -182,6 +184,7 @@ export class NodeManager {
                 mesh.geometry = this.createNodeGeometry(size, hyperlinkCount);
                 mesh.material.color = color;
                 mesh.material.emissive = color;
+                mesh.material.emissiveIntensity = 1.0; // Ensure updated nodes also have strong glow
             }
 
             mesh.position.set(node.x, node.y, node.z);

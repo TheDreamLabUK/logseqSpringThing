@@ -16,15 +16,13 @@ export default defineComponent({
             fisheyeEnabled: false,
             fisheyeStrength: 0.5,
             chatInput: '',
-            chatMessages: [],
-            useOpenAITTS: false,
-            // Initialize controls with empty arrays, will be populated from settings
+            chatMessages: [], // Will only store user messages
+            audioInitialized: false,
             colorControls: [],
             sizeOpacityControls: [],
             bloomControls: [],
             forceDirectedControls: [],
             additionalControls: [],
-            // Track collapsed state of control groups
             collapsedGroups: {
                 chat: false,
                 fisheye: false,
@@ -63,20 +61,39 @@ export default defineComponent({
         resetControls() {
             window.dispatchEvent(new CustomEvent('resetVisualizationSettings'));
         },
-        sendMessage() {
-            if (this.chatInput.trim() && this.websocketService) {
-                this.chatMessages.push({ sender: 'You', message: this.chatInput });
-                this.websocketService.sendChatMessage({
-                    message: this.chatInput,
-                    useOpenAI: true,
-                    useTTS: this.useOpenAITTS
-                });
-                this.chatInput = '';
+        async initializeAudio() {
+            if (this.websocketService) {
+                try {
+                    await this.websocketService.initAudio();
+                    this.audioInitialized = true;
+                    console.log('Audio system initialized successfully');
+                } catch (error) {
+                    console.error('Failed to initialize audio:', error);
+                    this.audioInitialized = false;
+                }
             }
         },
-        receiveMessage(message) {
-            if (!this.useOpenAITTS) {
-                this.chatMessages.push({ sender: 'AI', message });
+        sendMessage() {
+            if (!this.audioInitialized) {
+                console.warn('Audio not initialized. Please enable audio first.');
+                return;
+            }
+
+            if (this.chatInput.trim() && this.websocketService) {
+                // Store only user messages with timestamp
+                this.chatMessages.push({
+                    sender: 'You',
+                    message: this.chatInput,
+                    timestamp: new Date().toLocaleTimeString()
+                });
+                
+                // Always use OpenAI with TTS
+                this.websocketService.sendChatMessage({
+                    message: this.chatInput,
+                    useOpenAI: true // Always true now
+                });
+                
+                this.chatInput = '';
             }
         },
         toggleFullscreen() {
@@ -125,7 +142,6 @@ export default defineComponent({
     },
     mounted() {
         if (this.websocketService) {
-            this.websocketService.on('message', this.receiveMessage);
             this.websocketService.on('simulationModeSet', (mode) => {
                 console.log('Simulation mode set to:', mode);
                 this.simulationMode = mode;
@@ -139,9 +155,6 @@ export default defineComponent({
         }
     },
     beforeUnmount() {
-        if (this.websocketService) {
-            this.websocketService.off('message', this.receiveMessage);
-        }
         window.removeEventListener('serverSettings', this.initializeControls);
     },
     setup() {
@@ -177,22 +190,36 @@ export default defineComponent({
                     <span class="collapse-icon">{{ collapsedGroups.chat ? '▼' : '▲' }}</span>
                 </div>
                 <div class="group-content" v-show="!collapsedGroups.chat">
+                    <div v-if="!audioInitialized" class="audio-init-warning">
+                        <p>Audio playback requires initialization</p>
+                        <button @click="initializeAudio" class="audio-init-button">
+                            Enable Audio
+                        </button>
+                    </div>
                     <div class="chat-messages" ref="chatMessagesRef">
-                        <div v-for="(message, index) in chatMessages" :key="index" class="message">
-                            <strong>{{ message.sender }}:</strong> {{ message.message }}
+                        <div v-for="(message, index) in chatMessages" :key="index" class="message user-message">
+                            <div class="message-header">
+                                <span class="message-time">{{ message.timestamp }}</span>
+                            </div>
+                            <div class="message-content">
+                                {{ message.message }}
+                            </div>
                         </div>
                     </div>
                     <div class="chat-input">
-                        <label class="tts-toggle">
-                            <input type="checkbox" v-model="useOpenAITTS">
-                            Use OpenAI TTS
-                        </label>
                         <input 
                             v-model="chatInput" 
                             @keyup.enter="sendMessage" 
                             placeholder="Type your message..."
+                            :disabled="!audioInitialized"
                         >
-                        <button @click="sendMessage">Send</button>
+                        <button 
+                            @click="sendMessage"
+                            :disabled="!audioInitialized"
+                            :class="{ 'disabled': !audioInitialized }"
+                        >
+                            Send
+                        </button>
                     </div>
                 </div>
             </div>
@@ -518,6 +545,26 @@ select {
     background-color: rgba(255, 255, 255, 0.1);
 }
 
+.user-message {
+    margin-left: 20%;
+    background-color: rgba(0, 123, 255, 0.2);
+}
+
+.message-header {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 4px;
+}
+
+.message-time {
+    font-size: 0.8em;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.message-content {
+    word-break: break-word;
+}
+
 .chat-input {
     display: flex;
     flex-direction: column;
@@ -533,11 +580,39 @@ select {
     color: white;
 }
 
-.tts-toggle {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.9em;
+.audio-init-warning {
+    background-color: rgba(255, 193, 7, 0.2);
+    border: 1px solid rgba(255, 193, 7, 0.5);
+    border-radius: 5px;
+    padding: 10px;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.audio-init-warning p {
+    margin: 0 0 10px 0;
+    color: rgba(255, 193, 7, 0.9);
+}
+
+.audio-init-button {
+    background-color: rgba(255, 193, 7, 0.8);
+    color: black;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+.audio-init-button:hover {
+    background-color: rgba(255, 193, 7, 1);
+}
+
+.chat-input input:disabled,
+.chat-input button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Scrollbar styling */
