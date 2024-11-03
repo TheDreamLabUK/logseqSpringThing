@@ -1,24 +1,42 @@
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use actix::prelude::*;
-use crate::AppState;
 use log::{info, error, debug};
 use std::sync::{Mutex, Arc};
 use serde_json::json;
 use futures::stream::StreamExt;
 use futures::future::join_all;
 use std::error::Error as StdError;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use bytestring::ByteString;
+use serde::Deserialize;
 
-use crate::models::simulation_params::SimulationMode;
+use crate::AppState;
+use crate::models::simulation_params::{SimulationMode, SimulationParams};
 use crate::utils::compression::{compress_message, decompress_message};
-use crate::models::simulation_params::SimulationParams;
-use crate::utils::websocket_messages::{ClientMessage, SendCompressedMessage, MessageHandler};
+use crate::utils::websocket_messages::{SendCompressedMessage, MessageHandler, OpenAIMessage};
 use crate::utils::websocket_openai::OpenAIWebSocket;
-use crate::utils::websocket_messages::OpenAIMessage;
 use crate::services::graph_service::GraphService;
-use crate::models::graph::GraphData;
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "type")]
+pub enum ClientMessage {
+    #[serde(rename = "chatMessage")]
+    ChatMessage {
+        message: String,
+        #[serde(rename = "tts_provider")]
+        tts_provider: String,
+    },
+    #[serde(rename = "setSimulationMode")]
+    SetSimulationMode {
+        mode: String,
+    },
+    #[serde(rename = "recalculateLayout")]
+    RecalculateLayout {
+        params: SimulationParams,
+    },
+    #[serde(rename = "getInitialData")]
+    GetInitialData,
+}
 
 /// Manages WebSocket sessions and communication.
 pub struct WebSocketManager {
@@ -76,21 +94,11 @@ impl WebSocketManager {
         Ok(())
     }
 
-    /// Broadcasts audio data to all connected WebSocket sessions.
-    pub async fn broadcast_audio(&self, audio_bytes: Vec<u8>) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        let json_data = json!({
-            "type": "audio_data",
-            "audio_data": BASE64.encode(audio_bytes.as_slice())
-        });
-        let message = json_data.to_string();
-        self.broadcast_message(&message).await
-    }
-
     /// Broadcasts graph update to all connected WebSocket sessions.
-    pub async fn broadcast_graph_update(&self, graph_data: &GraphData) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    pub async fn broadcast_graph_update(&self, graph_data: &crate::models::graph::GraphData) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let json_data = json!({
             "type": "graph_update",
-            "graph_data": graph_data  // Changed from "data" to "graph_data" to match initial_data format
+            "graph_data": graph_data
         });
         let message = json_data.to_string();
         self.broadcast_message(&message).await
@@ -116,9 +124,6 @@ impl Actor for WebSocketSession {
             "WebSocket session started. Total sessions: {}",
             self.state.websocket_manager.sessions.lock().unwrap().len()
         );
-
-        // Initialize OpenAI WebSocket
-        self.openai_ws = Some(OpenAIWebSocket::new(ctx.address(), self.state.settings.clone()).start());
     }
 
     fn stopped(&mut self, ctx: &mut Self::Context) {
@@ -141,8 +146,71 @@ impl Handler<SendCompressedMessage> for WebSocketSession {
     }
 }
 
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        match msg {
+            Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
+            Ok(ws::Message::Pong(_)) => (),
+            Ok(ws::Message::Text(text)) => {
+                match serde_json::from_str::<ClientMessage>(&text) {
+                    Ok(client_msg) => match client_msg {
+                        ClientMessage::ChatMessage { message, tts_provider } => {
+                            self.handle_chat_message(ctx, message, tts_provider == "openai");
+                        },
+                        ClientMessage::SetSimulationMode { mode } => {
+                            self.handle_simulation(ctx, &mode);
+                        },
+                        ClientMessage::RecalculateLayout { params } => {
+                            self.handle_layout(ctx, params);
+                        },
+                        ClientMessage::GetInitialData => {
+                            self.handle_initial_data(ctx);
+                        },
+                    },
+                    Err(e) => {
+                        error!("Failed to parse client message: {}", e);
+                        let error_message = json!({
+                            "type": "error",
+                            "message": format!("Invalid message format: {}", e)
+                        });
+                        self.send_json_response(error_message, ctx);
+                    }
+                }
+            },
+            Ok(ws::Message::Binary(bin)) => {
+                if let Ok(text) = decompress_message(&bin) {
+                    StreamHandler::handle(self, Ok(ws::Message::Text(ByteString::from(text))), ctx);
+                } else {
+                    error!("Failed to decompress binary message");
+                }
+            },
+            Ok(ws::Message::Close(reason)) => {
+                ctx.close(reason);
+                ctx.stop();
+            },
+            Err(e) => {
+                error!("WebSocket error: {}", e);
+                ctx.stop();
+            },
+            _ => (),
+        }
+    }
+}
+
 impl WebSocketSession {
+    fn ensure_openai_ws(&mut self, ctx: &mut ws::WebsocketContext<Self>) {
+        if self.openai_ws.is_none() {
+            debug!("Initializing OpenAI WebSocket for TTS");
+            self.openai_ws = Some(OpenAIWebSocket::new(ctx.address(), self.state.settings.clone()).start());
+        }
+    }
+
     fn handle_chat_message(&mut self, ctx: &mut ws::WebsocketContext<Self>, message: String, use_openai: bool) {
+        // Initialize OpenAI WebSocket only if needed
+        if use_openai {
+            self.ensure_openai_ws(ctx);
+        }
+
         let state = self.state.clone();
         let conversation_id = self.conversation_id.clone();
         let ctx_addr = ctx.address();
@@ -166,6 +234,7 @@ impl WebSocketSession {
                 return;
             };
 
+            // Step 1: Send message to RAGFlow via HTTP and get text response
             match state.ragflow_service.send_message(
                 conv_id.clone(),
                 message.clone(),
@@ -179,6 +248,7 @@ impl WebSocketSession {
                     if let Some(result) = stream.next().await {
                         match result {
                             Ok((text, _)) => {
+                                // Step 2: Send RAGFlow text response to client
                                 let response = json!({
                                     "type": "ragflow_response",
                                     "answer": text.clone()
@@ -189,11 +259,14 @@ impl WebSocketSession {
                                     }
                                 }
 
+                                // Step 3: Send text to appropriate TTS service
                                 if use_openai {
+                                    // Send to OpenAI WebSocket for TTS
                                     if let Some(ref openai_ws) = openai_ws {
                                         openai_ws.do_send(OpenAIMessage(text));
                                     }
                                 } else {
+                                    // Use local TTS service
                                     if let Err(e) = state.speech_service.send_message(text).await {
                                         error!("Failed to generate speech: {}", e);
                                         let error_message = json!({
@@ -237,87 +310,6 @@ impl WebSocketSession {
                 }
             }
         }.into_actor(self));
-    }
-
-    fn handle_ragflow_query(&mut self, ctx: &mut ws::WebsocketContext<Self>, message: String, quote: Option<bool>, doc_ids: Option<Vec<String>>) {
-        let state = self.state.clone();
-        let conversation_id = self.conversation_id.clone();
-        let ctx_addr = ctx.address();
-        
-        ctx.spawn(async move {
-            let conv_id = if let Some(conv_arc) = conversation_id {
-                if let Some(id) = conv_arc.lock().unwrap().clone() {
-                    id
-                } else {
-                    match state.ragflow_service.create_conversation("default_user".to_string()).await {
-                        Ok(new_id) => new_id,
-                        Err(e) => {
-                            error!("Failed to create conversation: {}", e);
-                            return;
-                        }
-                    }
-                }
-            } else {
-                error!("No conversation ID available");
-                return;
-            };
-
-            match state.ragflow_service.send_message(
-                conv_id,
-                message,
-                quote.unwrap_or(false),
-                doc_ids,
-                false,
-            ).await {
-                Ok(mut stream) => {
-                    if let Some(result) = stream.next().await {
-                        match result {
-                            Ok((text, _)) => {
-                                let response_json = json!({
-                                    "type": "ragflow_response",
-                                    "answer": text
-                                });
-                                if let Ok(response_str) = serde_json::to_string(&response_json) {
-                                    if let Ok(compressed) = compress_message(&response_str) {
-                                        ctx_addr.do_send(SendCompressedMessage(compressed));
-                                    }
-                                }
-                            },
-                            Err(e) => {
-                                error!("Error processing RAGFlow response: {}", e);
-                                let error_message = json!({
-                                    "type": "error",
-                                    "message": format!("Error processing RAGFlow response: {}", e)
-                                });
-                                if let Ok(error_str) = serde_json::to_string(&error_message) {
-                                    if let Ok(compressed) = compress_message(&error_str) {
-                                        ctx_addr.do_send(SendCompressedMessage(compressed));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                Err(e) => {
-                    error!("Failed to send message to RAGFlow: {}", e);
-                    let error_message = json!({
-                        "type": "error",
-                        "message": format!("Failed to send message to RAGFlow: {}", e)
-                    });
-                    if let Ok(error_str) = serde_json::to_string(&error_message) {
-                        if let Ok(compressed) = compress_message(&error_str) {
-                            ctx_addr.do_send(SendCompressedMessage(compressed));
-                        }
-                    }
-                }
-            }
-        }.into_actor(self));
-    }
-
-    fn handle_openai_query(&mut self, message: String) {
-        if let Some(ref openai_ws) = self.openai_ws {
-            openai_ws.do_send(OpenAIMessage(message));
-        }
     }
 
     fn handle_simulation(&mut self, ctx: &mut ws::WebsocketContext<Self>, mode: &str) {
@@ -383,7 +375,7 @@ impl WebSocketSession {
                 Ok(_) => {
                     let response = json!({
                         "type": "layout_update",
-                        "graph_data": &*graph_data  // Changed from layout_data to graph_data
+                        "graph_data": &*graph_data
                     });
                     if let Ok(response_str) = serde_json::to_string(&response) {
                         if let Ok(compressed) = compress_message(&response_str) {
@@ -460,71 +452,6 @@ impl WebSocketSession {
             if let Ok(compressed) = compress_message(&response_str) {
                 ctx.binary(compressed);
             }
-        }
-    }
-}
-
-impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
-    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
-        match msg {
-            Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
-            Ok(ws::Message::Pong(_)) => (),
-            Ok(ws::Message::Text(text)) => {
-                match serde_json::from_str::<ClientMessage>(&text) {
-                    Ok(client_msg) => match client_msg {
-                        ClientMessage::ChatMessage { message, use_openai } => {
-                            self.handle_chat_message(ctx, message, use_openai);
-                        },
-                        ClientMessage::SetTTSMethod { method } => {
-                            self.tts_method = method.clone();
-                            let response = json!({
-                                "type": "tts_method_set",
-                                "method": method
-                            });
-                            self.send_json_response(response, ctx);
-                        },
-                        ClientMessage::SetSimulationMode { mode } => {
-                            self.handle_simulation(ctx, &mode);
-                        },
-                        ClientMessage::RecalculateLayout { params } => {
-                            self.handle_layout(ctx, params);
-                        },
-                        ClientMessage::GetInitialData => {
-                            self.handle_initial_data(ctx);
-                        },
-                        ClientMessage::RagflowQuery { message, quote, doc_ids } => {
-                            self.handle_ragflow_query(ctx, message, quote, doc_ids);
-                        },
-                        ClientMessage::OpenAIQuery { message } => {
-                            self.handle_openai_query(message);
-                        }
-                    },
-                    Err(e) => {
-                        error!("Failed to parse client message: {}", e);
-                        let error_message = json!({
-                            "type": "error",
-                            "message": format!("Invalid message format: {}", e)
-                        });
-                        self.send_json_response(error_message, ctx);
-                    }
-                }
-            },
-            Ok(ws::Message::Binary(bin)) => {
-                if let Ok(text) = decompress_message(&bin) {
-                    StreamHandler::handle(self, Ok(ws::Message::Text(ByteString::from(text))), ctx);
-                } else {
-                    error!("Failed to decompress binary message");
-                }
-            },
-            Ok(ws::Message::Close(reason)) => {
-                ctx.close(reason);
-                ctx.stop();
-            },
-            Err(e) => {
-                error!("WebSocket error: {}", e);
-                ctx.stop();
-            },
-            _ => (),
         }
     }
 }

@@ -365,27 +365,11 @@ export default class WebsocketService {
         });
     }
 
-    sendRagflowQuery(message, quote = false, docIds = null) {
-        this.send({
-            type: 'ragflowQuery',
-            message,
-            quote,
-            docIds
-        });
-    }
-
-    sendOpenAIQuery(message) {
-        this.send({
-            type: 'openaiQuery',
-            message
-        });
-    }
-
     sendChatMessage({ message, useOpenAI }) {
-        if (useOpenAI) {
-            this.sendOpenAIQuery(message);
-        } else {
-            this.sendRagflowQuery(message);
-        }
+        this.send({
+            type: 'chatMessage',
+            message,
+            tts_provider: useOpenAI ? 'openai' : 'sonata'
+        });
     }
 }
