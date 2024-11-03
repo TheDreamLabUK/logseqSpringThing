@@ -54,8 +54,9 @@ impl GPUCompute {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: Some("Primary Device"),
-                    features: wgpu::Features::empty(),
-                    limits: wgpu::Limits::default(),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::default(),
+                    memory_hints: Default::default(),
                 },
                 None,
             )
@@ -122,7 +123,9 @@ impl GPUCompute {
                 push_constant_ranges: &[],
             })),
             module: &cs_module,
-            entry_point: "main",
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
         });
 
         // Create initial buffers
@@ -232,6 +235,7 @@ impl GPUCompute {
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Force Computation Pass"),
+                timestamp_writes: None,
             });
             cpass.set_pipeline(&self.compute_pipeline);
             cpass.set_bind_group(0, &self.bind_group, &[]);

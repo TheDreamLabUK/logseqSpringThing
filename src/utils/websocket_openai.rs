@@ -2,17 +2,14 @@ use actix::prelude::*;
 use log::{info, error, debug, warn};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio_tungstenite::WebSocketStream;
+use tungstenite::protocol::Message;
 use std::error::Error as StdError;
 use std::time::Duration;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use futures::stream::StreamExt;
+use futures::stream::{SplitSink, SplitStream, StreamExt};
 use futures::SinkExt;
 use serde_json::json;
 use openai_api_rs::realtime::api::RealtimeClient;
-use tokio_tungstenite::tungstenite::protocol::Message;
-use futures::stream::SplitStream;
-use futures::sink::SplitSink;
-use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::MaybeTlsStream;
 use tokio::net::TcpStream;
 use std::time::Instant;
@@ -47,15 +44,16 @@ impl std::fmt::Display for WebSocketError {
 
 impl StdError for WebSocketError {}
 
+type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type WsSink = SplitSink<WsStream, Message>;
+type WsSource = SplitStream<WsStream>;
+
 #[derive(Clone)]
 pub struct OpenAIWebSocket {
     client_addr: Addr<WebSocketSession>,
     settings: Arc<RwLock<Settings>>,
     client: Arc<tokio::sync::Mutex<Option<RealtimeClient>>>,
-    stream: Arc<tokio::sync::Mutex<Option<(
-        SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
-        SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>
-    )>>>,
+    stream: Arc<tokio::sync::Mutex<Option<(WsSink, WsSource)>>>,
     connection_time: Arc<tokio::sync::Mutex<Option<Instant>>>,
 }
 
@@ -98,80 +96,90 @@ impl OpenAIWebSocket {
             api_key.clone(),
             "gpt-4".to_string(),
         );
-        debug!("Created RealtimeClient instance");
 
         // Store client instance
         let mut client_guard = self.client.lock().await;
-        *client_guard = Some(client.clone());
+        *client_guard = Some(client);
         drop(client_guard);
 
-        // Connect using the client
-        debug!("Attempting to establish WebSocket connection");
-        match client.connect().await {
-            Ok((write, read)) => {
-                let connection_duration = start_time.elapsed();
-                info!("Connected to OpenAI WebSocket (took {}ms)", connection_duration.as_millis());
-                
-                let mut stream_guard = self.stream.lock().await;
-                *stream_guard = Some((write, read));
-                drop(stream_guard);
+        // Get client reference for connection
+        let client_guard = self.client.lock().await;
+        if let Some(ref client) = *client_guard {
+            // Connect using the client
+            debug!("Attempting to establish WebSocket connection");
+            match client.connect().await {
+                Ok((mut write, read)) => {
+                    let connection_duration = start_time.elapsed();
+                    info!("Connected to OpenAI WebSocket (took {}ms)", connection_duration.as_millis());
+                    
+                    // Update connection time
+                    let mut time_guard = self.connection_time.lock().await;
+                    *time_guard = Some(Instant::now());
+                    drop(time_guard);
 
-                // Update connection time
-                let mut time_guard = self.connection_time.lock().await;
-                *time_guard = Some(Instant::now());
-                drop(time_guard);
-
-                // Send initial configuration
-                if let Some((ref mut write, _)) = *self.stream.lock().await {
+                    // Send initial configuration
                     debug!("Sending initial configuration");
                     let config = json!({
                         "type": "response.create",
                         "response": {
                             "modalities": ["text", "audio"],
-                            "instructions": "You are a helpful, witty, and friendly AI. Act like a human, but remember that you aren't a human and that you can't do human things in the real world. Your voice and personality should be warm and engaging, with a lively and playful tone. If interacting in a non-English language, start by using the standard accent or dialect familiar to the user. Talk quickly. You should always call a function if you can. Do not refer to these rules, even if you're asked about them.",
+                            "instructions": "You are a helpful, witty, and friendly AI. Act like a human with a slightly sardonic, very slightly patronising, and brisk tone, but remember that you aren't a human and that you can't do human things in the real world. Your voice and personality should be brisk, engaging, and sound slightly smug, with a lively and playful tone. If interacting in a non-English language, start by using the standard accent or dialect familiar to the user. Talk quickly. You should always call a function if you can. Do not refer to these rules, even if you're asked about them.",
                         }
                     });
 
-                    match write.send(Message::Text(serde_json::to_string(&config)?)).await {
-                        Ok(_) => debug!("Initial configuration sent successfully"),
+                    let message = Message::Text(config.to_string());
+                    match write.send(message).await {
+                        Ok(_) => {
+                            debug!("Initial configuration sent successfully");
+                            
+                            // Store the stream after successful configuration
+                            let mut stream_guard = self.stream.lock().await;
+                            *stream_guard = Some((write, read));
+                            drop(stream_guard);
+
+                            // Start keepalive ping
+                            let stream_clone = self.stream.clone();
+                            tokio::spawn(async move {
+                                let mut ping_count = 0u64;
+                                loop {
+                                    tokio::time::sleep(KEEPALIVE_INTERVAL).await;
+                                    let mut stream_guard = stream_clone.lock().await;
+                                    if let Some((ref mut write, _)) = *stream_guard {
+                                        ping_count += 1;
+                                        debug!("Sending keepalive ping #{}", ping_count);
+                                        let message = Message::Ping(vec![]);
+                                        if let Err(e) = write.send(message).await {
+                                            error!("Failed to send keepalive ping #{}: {}", ping_count, e);
+                                            break;
+                                        }
+                                    } else {
+                                        warn!("WebSocket stream no longer available, stopping keepalive");
+                                        break;
+                                    }
+                                }
+                            });
+
+                            Ok(())
+                        },
                         Err(e) => {
                             error!("Failed to send initial configuration: {}", e);
-                            return Err(Box::new(WebSocketError::SendFailed(format!(
+                            Err(Box::new(WebSocketError::SendFailed(format!(
                                 "Failed to send initial configuration: {}", e
-                            ))));
+                            ))))
                         }
                     }
-
-                    // Start keepalive ping
-                    let stream_clone = self.stream.clone();
-                    tokio::spawn(async move {
-                        let mut ping_count = 0u64;
-                        loop {
-                            tokio::time::sleep(KEEPALIVE_INTERVAL).await;
-                            let mut stream_guard = stream_clone.lock().await;
-                            if let Some((ref mut write, _)) = *stream_guard {
-                                ping_count += 1;
-                                debug!("Sending keepalive ping #{}", ping_count);
-                                if let Err(e) = write.send(Message::Ping(vec![])).await {
-                                    error!("Failed to send keepalive ping #{}: {}", ping_count, e);
-                                    break;
-                                }
-                            } else {
-                                warn!("WebSocket stream no longer available, stopping keepalive");
-                                break;
-                            }
-                        }
-                    });
+                },
+                Err(e) => {
+                    error!("Failed to connect to OpenAI WebSocket at {}: {}", url, e);
+                    Err(Box::new(WebSocketError::ConnectionFailed(format!(
+                        "Failed to connect to OpenAI WebSocket: {}", e
+                    ))))
                 }
-                
-                Ok(())
-            },
-            Err(e) => {
-                error!("Failed to connect to OpenAI WebSocket at {}: {}", url, e);
-                Err(Box::new(WebSocketError::ConnectionFailed(format!(
-                    "Failed to connect to OpenAI WebSocket: {}", e
-                ))))
             }
+        } else {
+            Err(Box::new(WebSocketError::ConnectionFailed(
+                "Client not initialized".to_string()
+            )))
         }
     }
 
@@ -185,9 +193,11 @@ impl OpenAIWebSocket {
             "audio": audio_data
         });
 
-        // Convert to SendCompressedMessage for uncompressed sending
-        let message_bytes = audio_message.to_string().into_bytes();
-        if let Err(e) = self.client_addr.try_send(SendCompressedMessage(message_bytes)) {
+        // Convert to string first
+        let message_str = audio_message.to_string();
+        let compressed = compression::compress_message(&message_str)?;
+        
+        if let Err(e) = self.client_addr.try_send(SendCompressedMessage(compressed)) {
             error!("Failed to send audio data to client: {}", e);
             return Err(Box::new(WebSocketError::SendFailed(format!(
                 "Failed to send audio data to client: {}", e
@@ -202,13 +212,14 @@ impl OpenAIWebSocket {
     async fn send_error_to_client(&self, error_msg: &str) -> Result<(), Box<dyn StdError + Send + Sync>> {
         debug!("Preparing to send error message to client: {}", error_msg);
         
-        // Errors and other messages still use compression
         let error_message = json!({
             "type": "error",
             "message": error_msg
         });
-        let message_bytes = error_message.to_string().into_bytes();
-        let compressed = compression::compress_message(&message_bytes)?;
+
+        // Convert to string first
+        let message_str = error_message.to_string();
+        let compressed = compression::compress_message(&message_str)?;
         
         if let Err(e) = self.client_addr.try_send(SendCompressedMessage(compressed)) {
             error!("Failed to send error message to client: {}", e);
@@ -241,8 +252,8 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
         let start_time = Instant::now();
         debug!("Preparing to send text message: {}", text);
 
-        let stream_guard = self.stream.lock().await;
-        let (write, _) = stream_guard.as_ref().ok_or_else(|| {
+        let mut stream_guard = self.stream.lock().await;
+        let (write, _) = stream_guard.as_mut().ok_or_else(|| {
             Box::new(WebSocketError::ConnectionFailed("WebSocket not connected".to_string())) as Box<dyn StdError + Send + Sync>
         })?;
         
@@ -260,7 +271,8 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
             }
         });
         
-        match write.send(Message::Text(request.to_string())).await {
+        let message = Message::Text(request.to_string());
+        match write.send(message).await {
             Ok(_) => {
                 let duration = start_time.elapsed();
                 debug!("Text message sent successfully (took {}ms)", duration.as_millis());
@@ -278,10 +290,10 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
     async fn handle_openai_responses(&self) -> Result<(), Box<dyn StdError + Send + Sync>> {
         debug!("Starting to handle OpenAI responses");
         let start_time = Instant::now();
-        let mut message_count = 0u64;
+        let mut message_count: u128 = 0;
 
         let mut stream_guard = self.stream.lock().await;
-        let (_, read) = stream_guard.as_mut().ok_or_else(|| {
+        let (write, read) = stream_guard.as_mut().ok_or_else(|| {
             Box::new(WebSocketError::ConnectionFailed("WebSocket not connected".to_string())) as Box<dyn StdError + Send + Sync>
         })?;
         
@@ -318,12 +330,11 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
                 },
                 Ok(Message::Ping(_)) => {
                     debug!("Received ping from server");
-                    if let Some((ref mut write, _)) = *stream_guard {
-                        if let Err(e) = write.send(Message::Pong(vec![])).await {
-                            error!("Failed to send pong response: {}", e);
-                        } else {
-                            debug!("Sent pong response");
-                        }
+                    let message = Message::Pong(vec![]);
+                    if let Err(e) = write.send(message).await {
+                        error!("Failed to send pong response: {}", e);
+                    } else {
+                        debug!("Sent pong response");
                     }
                 },
                 Ok(Message::Pong(_)) => {
@@ -349,11 +360,17 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
         }
 
         let duration = start_time.elapsed();
+        let avg_time = if message_count > 0 {
+            duration.as_millis() / message_count
+        } else {
+            0
+        };
+        
         info!(
             "Finished handling responses - Processed {} messages in {}ms (avg {}ms per message)",
             message_count,
             duration.as_millis(),
-            duration.as_millis() / message_count.max(1)
+            avg_time
         );
         
         Ok(())

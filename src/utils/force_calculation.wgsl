@@ -44,11 +44,20 @@ fn is_nan(x: f32) -> bool {
 }
 
 fn is_inf(x: f32) -> bool {
-    return abs(x) == 1.0 / 0.0;
+    let max_float = 3.402823466e+38;  // Maximum finite value for f32
+    return abs(x) >= max_float;
 }
 
 fn is_valid_float3(v: vec3<f32>) -> bool {
     return !(is_nan(v.x) || is_nan(v.y) || is_nan(v.z) || is_inf(v.x) || is_inf(v.y) || is_inf(v.z));
+}
+
+fn clamp_magnitude(v: vec3<f32>, max_magnitude: f32) -> vec3<f32> {
+    let magnitude_sq = dot(v, v);
+    if (magnitude_sq > max_magnitude * max_magnitude) {
+        return normalize(v) * max_magnitude;
+    }
+    return v;
 }
 
 // Main compute shader function.
@@ -65,22 +74,30 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             node.position = vec3<f32>(0.0, 0.0, 0.0);
         }
 
-        // Repulsive force between nodes.
+        // Add a weak centering force
+        let center_direction = -node.position;
+        let center_distance = length(center_direction);
+        if (center_distance > 10.0) {
+            force = force + normalize(center_direction) * (center_distance - 10.0) * 0.01;
+        }
+
+        // Repulsive force between nodes with smoother falloff
         for (var i = 0u; i < n_nodes; i = i + 1u) {
             if (i != node_id) {
                 let other_node = nodes_buffer.nodes[i];
                 let direction = node.position - other_node.position;
-                let distance_sq = dot(direction, direction);
+                let distance = length(direction);
                 
                 // Check for zero distance to avoid division by zero
-                if (distance_sq > 0.0001) {
-                    let repulsive_force = simulation_params.repulsion_strength / distance_sq;
+                if (distance > 0.0001) {
+                    // Use smoother repulsion falloff
+                    let repulsive_force = simulation_params.repulsion_strength * exp(-distance / 10.0);
                     force = force + normalize(direction) * repulsive_force;
                 }
             }
         }
 
-        // Attractive force along edges.
+        // Attractive force along edges with distance limiting
         let n_edges = arrayLength(&edges_buffer.edges);
         for (var j = 0u; j < n_edges; j = j + 1u) {
             let edge = edges_buffer.edges[j];
@@ -90,16 +107,23 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 let direction = other_node.position - node.position;
                 let distance = length(direction);
                 if (distance > 0.0001) {
-                    let attractive_force = simulation_params.attraction_strength * edge.weight * distance;
+                    // Use logarithmic attraction to prevent excessive force at large distances
+                    let attractive_force = simulation_params.attraction_strength * edge.weight * log(distance + 1.0);
                     force = force + normalize(direction) * attractive_force;
                 }
             }
         }
 
-        // Apply damping to velocity.
-        node.velocity = (node.velocity + force) * simulation_params.damping;
+        // Clamp maximum force magnitude
+        force = clamp_magnitude(force, 1.0);
 
-        // Update node's position.
+        // Apply damping to velocity
+        node.velocity = (node.velocity + force) * simulation_params.damping;
+        
+        // Clamp maximum velocity
+        node.velocity = clamp_magnitude(node.velocity, 2.0);
+
+        // Update node's position
         node.position = node.position + node.velocity;
 
         // Ensure final position and velocity are valid
@@ -110,7 +134,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             node.velocity = vec3<f32>(0.0, 0.0, 0.0);
         }
 
-        // Write back to the buffer.
+        // Write back to the buffer
         nodes_buffer.nodes[node_id] = node;
     }
 }

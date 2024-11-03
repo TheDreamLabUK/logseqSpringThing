@@ -3,7 +3,7 @@ use crate::config::Settings;
 use serde::{Deserialize, Serialize};
 use reqwest::{Client, header::{HeaderMap, HeaderValue, IF_NONE_MATCH, ETAG}};
 use async_trait::async_trait;
-use log::{info, debug, error, warn};
+use log::{info, debug, error};
 use regex::Regex;
 use sha1::{Sha1, Digest};
 use std::collections::{HashMap, HashSet};
@@ -17,6 +17,7 @@ use futures::stream::{self, StreamExt};
 use std::time::Duration;
 use tokio::time::sleep;
 
+// Rest of the file remains unchanged
 const METADATA_PATH: &str = "data/markdown/metadata.json";
 const MARKDOWN_DIR: &str = "data/markdown";
 const CACHE_DURATION: Duration = Duration::from_secs(300); // 5 minutes

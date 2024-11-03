@@ -1,6 +1,5 @@
 use crate::config::Settings;
 use actix_web::{web, HttpResponse};
-use serde_json::Value;
 use std::sync::Arc;
 
 pub async fn get_visualization_settings(

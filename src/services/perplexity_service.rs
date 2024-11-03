@@ -8,12 +8,155 @@ use log::error;
 use thiserror::Error;
 use lazy_static::lazy_static;
 use std::env;
-use pulldown_cmark::{Parser, Event, Tag};
+use pulldown_cmark::{Parser, Event, Tag, TagEnd};
 use async_trait::async_trait;
 use config::ConfigError;
 
 use crate::config::Settings;
 use crate::services::file_service::ProcessedFile;
+
+// ... (previous code remains unchanged until split_markdown_blocks function)
+
+fn split_markdown_blocks(content: &str) -> Vec<String> {
+    let parser = Parser::new(content);
+    let mut blocks = Vec::new();
+    let mut current_block = String::new();
+
+    for event in parser {
+        match event {
+            Event::Start(tag) => match tag {
+                Tag::Heading { .. } | Tag::Item => {
+                    if !current_block.is_empty() {
+                        blocks.push(current_block.clone());
+                        current_block.clear();
+                    }
+                },
+                _ => {},
+            },
+            Event::Text(text) => {
+                current_block.push_str(&text);
+            },
+            Event::End(tag) => match tag {
+                TagEnd::Paragraph | TagEnd::Item => {
+                    if !current_block.is_empty() {
+                        blocks.push(current_block.clone());
+                        current_block.clear();
+                    }
+                },
+                TagEnd::Heading(_) => {
+                    if !current_block.is_empty() {
+                        blocks.push(current_block.clone());
+                        current_block.clear();
+                    }
+                },
+                _ => {},
+            },
+            _ => {},
+        }
+    }
+
+    if !current_block.is_empty() {
+        blocks.push(current_block);
+    }
+
+    blocks
+}
+
+// ... (rest of the code remains unchanged)
+
+/// Selects relevant context blocks for processing.
+///
+/// Currently, this function returns the active block, but can be enhanced to include surrounding context.
+///
+/// # Arguments
+///
+/// * `_content` - The full Markdown content.
+/// * `active_block` - The block currently being processed.
+///
+/// # Returns
+///
+/// A vector of context blocks as strings.
+pub fn select_context_blocks(_content: &str, active_block: &str) -> Vec<String> {
+    vec![active_block.to_string()]
+}
+
+/// Cleans LogSeq-style links by removing double brackets.
+///
+/// # Arguments
+///
+/// * `input` - The input string containing LogSeq links.
+///
+/// # Returns
+///
+/// A new string with double brackets removed.
+pub fn clean_logseq_links(input: &str) -> String {
+    let re = Regex::new(r"\[\[(.*?)\]\]").unwrap();
+    re.replace_all(input, "$1").to_string()
+}
+
+/// Processes a single Markdown block by appending AI-generated content.
+///
+/// # Arguments
+///
+/// * `input` - The original Markdown block.
+/// * `prompt` - The system prompt for the AI.
+/// * `topics` - List of relevant topics.
+/// * `api_response` - The AI-generated response.
+///
+/// # Returns
+///
+/// A new string containing the processed Markdown block.
+pub fn process_markdown_block(input: &str, prompt: &str, topics: &[String], api_response: &str) -> String {
+    let cleaned_input = clean_logseq_links(input);
+
+    format!(
+        "- ```\n{}```\nPrompt: {}\nTopics: {}\nResponse: {}",
+        cleaned_input.trim_start_matches("- ").trim_end(),
+        prompt,
+        topics.join(", "),
+        api_response
+    )
+}
+
+#[async_trait]
+pub trait PerplexityService: Send + Sync {
+    /// Processes a file's content using the Perplexity API.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_content` - The original Markdown content.
+    /// * `settings` - Application settings.
+    /// * `api_client` - An instance implementing the `ApiClient` trait.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the processed file or an error.
+    async fn process_file(&self, file_content: String, settings: &Settings, api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError>;
+}
+
+/// Implementation of the PerplexityService.
+pub struct PerplexityServiceImpl;
+
+impl PerplexityServiceImpl {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+#[async_trait]
+impl PerplexityService for PerplexityServiceImpl {
+    async fn process_file(&self, file_content: String, settings: &Settings, api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError> {
+        let processed_content = process_markdown(&file_content, settings, api_client).await?;
+        Ok(ProcessedFile {
+            file_name: "processed.md".to_string(),
+            content: processed_content,
+            is_public: true,
+            metadata: Default::default(),
+        })
+    }
+}
+
+// ... (previous code remains unchanged)
 
 #[derive(Error, Debug)]
 pub enum PerplexityError {
@@ -145,16 +288,6 @@ impl ApiClient for ApiClientImpl {
 }
 
 /// Processes Markdown content by enhancing it using the Perplexity API.
-///
-/// # Arguments
-///
-/// * `file_content` - The original Markdown content.
-/// * `settings` - Application settings containing prompts and topics.
-/// * `api_client` - An instance implementing the `ApiClient` trait.
-///
-/// # Returns
-///
-/// A `Result` containing the processed Markdown content or an error.
 pub async fn process_markdown(file_content: &str, _settings: &Settings, _api_client: &dyn ApiClient) -> Result<String, PerplexityError> {
     // TEMPORARY DISABLE: Perplexity processing is currently disabled.
     // The function now returns the original content without any processing.
@@ -163,18 +296,6 @@ pub async fn process_markdown(file_content: &str, _settings: &Settings, _api_cli
 }
 
 /// Sends a request to the Perplexity API and retrieves the response.
-///
-/// # Arguments
-///
-/// * `prompt` - The system prompt for the AI.
-/// * `context` - Relevant context extracted from the Markdown content.
-/// * `topics` - List of relevant topics.
-/// * `api_client` - An instance implementing the `ApiClient` trait.
-/// * `perplexity_settings` - Configuration settings for the Perplexity API.
-///
-/// # Returns
-///
-/// A `Result` containing the AI's response or an error.
 pub async fn call_perplexity_api(
     prompt: &str,
     context: &[String],
@@ -238,14 +359,6 @@ pub async fn call_perplexity_api(
 }
 
 /// Parses the response from the Perplexity API.
-///
-/// # Arguments
-///
-/// * `response_text` - The raw response text from the API.
-///
-/// # Returns
-///
-/// A `Result` containing the AI's response content or an error.
 fn parse_perplexity_response(response_text: &str) -> Result<String, PerplexityError> {
     match serde_json::from_str::<PerplexityResponse>(response_text) {
         Ok(parsed_response) => {
@@ -260,145 +373,5 @@ fn parse_perplexity_response(response_text: &str) -> Result<String, PerplexityEr
             error!("Raw response: {}", response_text);
             Err(PerplexityError::Serialization(e))
         }
-    }
-}
-
-/// Splits the Markdown content into meaningful blocks based on headings and list items.
-///
-/// # Arguments
-///
-/// * `content` - The full Markdown content.
-///
-/// # Returns
-///
-/// A vector of Markdown blocks as strings.
-fn split_markdown_blocks(content: &str) -> Vec<String> {
-    let parser = Parser::new(content);
-    let mut blocks = Vec::new();
-    let mut current_block = String::new();
-
-    for event in parser {
-        match event {
-            Event::Start(tag) => match tag {
-                Tag::Heading(_, _, _) | Tag::Item => {
-                    if !current_block.is_empty() {
-                        blocks.push(current_block.clone());
-                        current_block.clear();
-                    }
-                },
-                _ => {},
-            },
-            Event::Text(text) => {
-                current_block.push_str(&text);
-            },
-            Event::End(tag) => match tag {
-                Tag::Paragraph | Tag::Heading(_, _, _) | Tag::Item => {
-                    if !current_block.is_empty() {
-                        blocks.push(current_block.clone());
-                        current_block.clear();
-                    }
-                },
-                _ => {},
-            },
-            _ => {},
-        }
-    }
-
-    if !current_block.is_empty() {
-        blocks.push(current_block);
-    }
-
-    blocks
-}
-
-/// Selects relevant context blocks for processing.
-///
-/// Currently, this function returns the active block, but can be enhanced to include surrounding context.
-///
-/// # Arguments
-///
-/// * `_content` - The full Markdown content.
-/// * `active_block` - The block currently being processed.
-///
-/// # Returns
-///
-/// A vector of context blocks as strings.
-pub fn select_context_blocks(_content: &str, active_block: &str) -> Vec<String> {
-    vec![active_block.to_string()]
-}
-
-/// Cleans LogSeq-style links by removing double brackets.
-///
-/// # Arguments
-///
-/// * `input` - The input string containing LogSeq links.
-///
-/// # Returns
-///
-/// A new string with double brackets removed.
-pub fn clean_logseq_links(input: &str) -> String {
-    let re = Regex::new(r"\[\[(.*?)\]\]").unwrap();
-    re.replace_all(input, "$1").to_string()
-}
-
-/// Processes a single Markdown block by appending AI-generated content.
-///
-/// # Arguments
-///
-/// * `input` - The original Markdown block.
-/// * `prompt` - The system prompt for the AI.
-/// * `topics` - List of relevant topics.
-/// * `api_response` - The AI-generated response.
-///
-/// # Returns
-///
-/// A new string containing the processed Markdown block.
-pub fn process_markdown_block(input: &str, prompt: &str, topics: &[String], api_response: &str) -> String {
-    let cleaned_input = clean_logseq_links(input);
-
-    format!(
-        "- ```\n{}```\nPrompt: {}\nTopics: {}\nResponse: {}",
-        cleaned_input.trim_start_matches("- ").trim_end(),
-        prompt,
-        topics.join(", "),
-        api_response
-    )
-}
-
-#[async_trait]
-pub trait PerplexityService: Send + Sync {
-    /// Processes a file's content using the Perplexity API.
-    ///
-    /// # Arguments
-    ///
-    /// * `file_content` - The original Markdown content.
-    /// * `settings` - Application settings.
-    /// * `api_client` - An instance implementing the `ApiClient` trait.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the processed file or an error.
-    async fn process_file(&self, file_content: String, settings: &Settings, api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError>;
-}
-
-/// Implementation of the PerplexityService.
-pub struct PerplexityServiceImpl;
-
-impl PerplexityServiceImpl {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-#[async_trait]
-impl PerplexityService for PerplexityServiceImpl {
-    async fn process_file(&self, file_content: String, settings: &Settings, api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError> {
-        let processed_content = process_markdown(&file_content, settings, api_client).await?;
-        Ok(ProcessedFile {
-            file_name: "processed.md".to_string(),
-            content: processed_content,
-            is_public: true, // or true, depending on your requirements
-            metadata: Default::default(), // or provide appropriate metadata
-        })
     }
 }
