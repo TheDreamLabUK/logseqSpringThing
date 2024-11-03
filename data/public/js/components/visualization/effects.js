@@ -15,9 +15,9 @@ export class EffectsManager {
         this.finalComposer = null;
         
         // Enhanced bloom settings from older version
-        this.bloomStrength = 2.0;
-        this.bloomRadius = 0.5;
-        this.bloomThreshold = 0.1;
+        // this.bloomStrength = 2.0;
+        // this.bloomRadius = 0.5;
+        // this.bloomThreshold = 0.1;
 
         // Hologram settings
         this.hologramGroup = new THREE.Group();
@@ -53,9 +53,9 @@ export class EffectsManager {
         );
 
         // Apply enhanced bloom settings
-        bloomPass.threshold = 0;
-        bloomPass.strength = 3.0;
-        bloomPass.radius = 1;
+        // bloomPass.threshold = 0;
+        // bloomPass.strength = 3.0;
+        // bloomPass.radius = 1;
 
         this.bloomComposer.addPass(renderScene);
         this.bloomComposer.addPass(bloomPass);

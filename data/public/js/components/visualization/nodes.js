@@ -26,10 +26,10 @@ export class NodeManager {
         this.edgeMeshes = new Map();
         
         // Node settings
-        this.minNodeSize = 5;  // Increased from 1
-        this.maxNodeSize = 15; // Increased from 5
-        this.nodeSizeScalingFactor = 2;  // Increased from 1
-        this.labelFontSize = 48;
+        this.minNodeSize = 0.1;  // Increased from 1
+        this.maxNodeSize = 5; // Increased from 5
+        this.nodeSizeScalingFactor = 1;  // Increased from 1
+        this.labelFontSize = 18;
         this.nodeColor = new THREE.Color(0x4444ff);  // Initialize as THREE.Color
 
         // Edge settings
