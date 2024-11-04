@@ -52,11 +52,6 @@ export class EffectsManager {
             this.bloomThreshold
         );
 
-        // Apply enhanced bloom settings
-        // bloomPass.threshold = 0;
-        // bloomPass.strength = 3.0;
-        // bloomPass.radius = 1;
-
         this.bloomComposer.addPass(renderScene);
         this.bloomComposer.addPass(bloomPass);
 
@@ -105,20 +100,20 @@ export class EffectsManager {
             this.hologramGroup.remove(child);
         }
 
-        // Create rotating rings from current version
-        const ringGeometry = new THREE.TorusGeometry(100, 3, 16, 100);
-        const ringMaterial = new THREE.MeshStandardMaterial({
-            color: this.hologramColor,
-            emissive: this.hologramColor,
-            emissiveIntensity: 0.5,
-            transparent: true,
-            opacity: this.hologramOpacity,
-            metalness: 0.8,
-            roughness: 0.2
-        });
-
-        // Create multiple rings with different orientations
+        // Create multiple rings with different sizes to match each sphere's radius
+        const ringSizes = [40, 30, 20];
         for (let i = 0; i < 3; i++) {
+            const ringGeometry = new THREE.TorusGeometry(ringSizes[i], 3, 16, 100);
+            const ringMaterial = new THREE.MeshStandardMaterial({
+                color: this.hologramColor,
+                emissive: this.hologramColor,
+                emissiveIntensity: 0.5,
+                transparent: true,
+                opacity: this.hologramOpacity,
+                metalness: 0.8,
+                roughness: 0.2
+            });
+
             const ring = new THREE.Mesh(ringGeometry, ringMaterial);
             ring.rotation.x = Math.PI / 2 * i;
             ring.rotation.y = Math.PI / 4 * i;
@@ -126,7 +121,7 @@ export class EffectsManager {
             this.hologramGroup.add(ring);
         }
 
-        // Add Buckminster Fullerene from older version
+        // Add Buckminster Fullerene 
         const buckyGeometry = new THREE.IcosahedronGeometry(40 * this.hologramScale, 1);
         const buckyMaterial = new THREE.MeshBasicMaterial({
             color: this.hologramColor,
@@ -139,7 +134,7 @@ export class EffectsManager {
         buckySphere.layers.enable(1);
         this.hologramGroup.add(buckySphere);
 
-        // Add Geodesic Dome from older version
+        // Add Geodesic Dome
         const geodesicGeometry = new THREE.IcosahedronGeometry(30 * this.hologramScale, 1);
         const geodesicMaterial = new THREE.MeshBasicMaterial({
             color: this.hologramColor,
@@ -152,7 +147,7 @@ export class EffectsManager {
         geodesicDome.layers.enable(1);
         this.hologramGroup.add(geodesicDome);
 
-        // Add Normal Triangle Sphere from older version
+        // Add Normal Triangle Sphere
         const triangleGeometry = new THREE.SphereGeometry(20 * this.hologramScale, 32, 32);
         const triangleMaterial = new THREE.MeshBasicMaterial({
             color: this.hologramColor,
@@ -165,6 +160,7 @@ export class EffectsManager {
         triangleSphere.layers.enable(1);
         this.hologramGroup.add(triangleSphere);
     }
+
 
     animate() {
         // Animate all hologram elements

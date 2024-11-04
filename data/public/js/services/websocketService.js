@@ -3,15 +3,38 @@ import pako from 'pako';
 
 export default class WebsocketService {
     constructor() {
+        // Initialize with environment variables from .env_template
+        this.maxRetries = parseInt(process.env.MAX_RETRIES) || 3;
+        this.retryDelay = parseInt(process.env.RETRY_DELAY) || 5000;
+        this.timeout = parseInt(process.env.API_CLIENT_TIMEOUT) || 30000;
+        this.maxConcurrentRequests = parseInt(process.env.MAX_CONCURRENT_REQUESTS) || 5;
+        
+        // API Configuration
+        this.perplexityApiKey = process.env.PERPLEXITY_API_KEY;
+        this.perplexityModel = process.env.PERPLEXITY_MODEL;
+        this.perplexityMaxTokens = parseInt(process.env.PERPLEXITY_MAX_TOKENS) || 4096;
+        this.perplexityTemperature = parseFloat(process.env.PERPLEXITY_TEMPERATURE) || 0.5;
+        this.perplexityTopP = parseFloat(process.env.PERPLEXITY_TOP_P) || 0.9;
+        this.perplexityPresencePenalty = parseFloat(process.env.PERPLEXITY_PRESENCE_PENALTY) || 0.0;
+        this.perplexityFrequencyPenalty = parseFloat(process.env.PERPLEXITY_FREQUENCY_PENALTY) || 1.0;
+        this.perplexityApiUrl = process.env.PERPLEXITY_API_URL;
+        
+        this.openaiApiKey = process.env.OPENAI_API_KEY;
+        this.openaiBaseUrl = process.env.OPENAI_BASE_URL;
+        
+        this.ragflowApiKey = process.env.RAGFLOW_API_KEY;
+        this.ragflowBaseUrl = process.env.RAGFLOW_BASE_URL;
+
+        // WebSocket setup
         this.socket = null;
         this.listeners = {};
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
-        this.reconnectInterval = 5000;
+        this.reconnectInterval = this.retryDelay;
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         this.audioQueue = [];
         this.isPlaying = false;
         this.COMPRESSION_MAGIC = new Uint8Array([67, 79, 77, 80]); // "COMP" in ASCII
+        
         this.connect();
     }
 

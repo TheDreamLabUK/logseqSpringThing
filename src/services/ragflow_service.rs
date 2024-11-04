@@ -44,7 +44,7 @@ impl From<std::io::Error> for RAGFlowError {
 pub struct RAGFlowService {
     client: Client,
     ragflow_api_key: String,
-    ragflow_api_base_url: String,
+    ragflow_base_url: String,
 }
 
 impl RAGFlowService {
@@ -55,13 +55,13 @@ impl RAGFlowService {
         Ok(RAGFlowService {
             client,
             ragflow_api_key: settings.ragflow.ragflow_api_key.clone(),
-            ragflow_api_base_url: settings.ragflow.ragflow_api_base_url.clone(),
+            ragflow_base_url: settings.ragflow.ragflow_base_url.clone(),
         })
     }
 
     pub async fn create_conversation(&self, user_id: String) -> Result<String, RAGFlowError> {
         info!("Creating conversation for user: {}", user_id);
-        let url = format!("{}api/new_conversation", self.ragflow_api_base_url);
+        let url = format!("{}api/new_conversation", self.ragflow_base_url);
         info!("Full URL for create_conversation: {}", url);
         
         let response = self.client.get(&url)
@@ -93,7 +93,7 @@ impl RAGFlowService {
         stream: bool,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, RAGFlowError>> + Send + 'static>>, RAGFlowError> {
         info!("Sending message to conversation: {}", conversation_id);
-        let url = format!("{}api/completion", self.ragflow_api_base_url);
+        let url = format!("{}api/completion", self.ragflow_base_url);
         info!("Full URL for send_message: {}", url);
         
         let mut request_body = json!({
@@ -148,7 +148,7 @@ impl RAGFlowService {
     }
 
     pub async fn get_conversation_history(&self, conversation_id: String) -> Result<serde_json::Value, RAGFlowError> {
-        let url = format!("{}api/conversation/{}", self.ragflow_api_base_url, conversation_id);
+        let url = format!("{}api/conversation/{}", self.ragflow_base_url, conversation_id);
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.ragflow_api_key))
             .send()
@@ -171,7 +171,7 @@ impl Clone for RAGFlowService {
         RAGFlowService {
             client: self.client.clone(),
             ragflow_api_key: self.ragflow_api_key.clone(),
-            ragflow_api_base_url: self.ragflow_api_base_url.clone(),
+            ragflow_base_url: self.ragflow_base_url.clone(),
         }
     }
 }
