@@ -17,7 +17,11 @@ pub struct GPUEdge {
     pub source: u32,      // 4 bytes
     pub target_idx: u32,  // 4 bytes
     pub weight: f32,      // 4 bytes
-    pub padding: [u32; 5], // 20 bytes padding to make total 32 bytes
+    pub padding1: u32,    // 4 bytes
+    pub padding2: u32,    // 4 bytes
+    pub padding3: u32,    // 4 bytes
+    pub padding4: u32,    // 4 bytes
+    pub padding5: u32,    // 4 bytes
 }
 
 impl Edge {
@@ -44,7 +48,11 @@ impl Edge {
             source: source_idx,
             target_idx,
             weight: self.weight,
-            padding: [0; 5],
+            padding1: 0,
+            padding2: 0,
+            padding3: 0,
+            padding4: 0,
+            padding5: 0,
         }
     }
 }

@@ -11,7 +11,11 @@ struct Edge {
     source: u32,      // 4 bytes
     target_idx: u32,  // 4 bytes
     weight: f32,      // 4 bytes
-    padding: array<u32, 5>, // 20 bytes padding to make total 32 bytes
+    padding1: u32,    // 4 bytes
+    padding2: u32,    // 4 bytes
+    padding3: u32,    // 4 bytes
+    padding4: u32,    // 4 bytes
+    padding5: u32,    // 4 bytes
 }
 
 // Structure representing adjacency information
