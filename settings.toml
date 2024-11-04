@@ -21,43 +21,51 @@ ragflow_api_base_url = "http://192.168.0.51/v1/"
 
 [perplexity]
 perplexity_api_key = "default_perplexity_key"
-perplexity_model = "default_model"
-perplexity_api_base_url = "default_perplexity_url"
+perplexity_model = "llama-3.1-sonar-small-128k-online"
+perplexity_api_url = "https://api.perplexity.ai/chat/completions"
 perplexity_max_tokens = 4096
-perplexity_temperature = 0.7
-perplexity_top_p = 1.0
+perplexity_temperature = 0.5
+perplexity_top_p = 0.9
 perplexity_presence_penalty = 0.0
-perplexity_frequency_penalty = 0.0
+perplexity_frequency_penalty = 1.0
 
 [openai]
 openai_api_key = "default_openai_key"
-openai_base_url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
+openai_base_url = "wss://api.openai.com/v1/realtime"
 
-# Default configurations (can be overridden by environment variables)
 [default]
 max_concurrent_requests = 5
 max_retries = 3
 retry_delay = 5
 api_client_timeout = 30
 
-
 [visualization]
 node_color = "0x1A0B31"
 edge_color = "0xff0000"
 hologram_color = "0xFFD700"
-node_size_scaling_factor = 0.01
-hologram_scale = 10
+node_size_scaling_factor = 5
+hologram_scale = 5
 hologram_opacity = 0.1
-edge_opacity = 0.7
-label_font_size = 10
+edge_opacity = 0.3
+label_font_size = 36
 fog_density = 0.002
 
-# Force-directed graph settings
+# Physics simulation parameters
+# Number of physics steps per update
 force_directed_iterations = 100
-force_directed_repulsion = 10.0
+
+# Controls edge stiffness (0.01-1.0)
+force_directed_spring = 0.1
+
+# Controls node spacing (100-5000)
+force_directed_repulsion = 1000.0
+
+# Controls attraction between nodes (0.01-1.0)
 force_directed_attraction = 0.01
 
-# Separate bloom configurations
+# Velocity damping (0.8 recommended)
+force_directed_damping = 0.8
+
 [bloom]
 # Bloom settings for nodes
 node_bloom_strength = 0.1
@@ -73,3 +81,9 @@ edge_bloom_threshold = 0.0
 environment_bloom_strength = 0.5
 environment_bloom_radius = 0.1
 environment_bloom_threshold = 0.0
+
+[fisheye]
+enabled = false
+strength = 0.5
+focus_point = [0.0, 0.0, 0.0]
+radius = 100.0

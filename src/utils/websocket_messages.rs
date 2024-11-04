@@ -41,7 +41,15 @@ pub enum ClientMessage {
     },
     
     #[serde(rename = "openaiQuery")]
-    OpenAIQuery { message: String }
+    OpenAIQuery { message: String },
+
+    #[serde(rename = "updateFisheyeSettings")]
+    UpdateFisheyeSettings {
+        enabled: bool,
+        strength: f32,
+        focus_point: [f32; 3],
+        radius: f32,
+    }
 }
 
 /// Represents messages sent from the server to the client.
@@ -79,6 +87,14 @@ pub enum ServerMessage {
     SimulationModeSet {
         mode: String,
         gpu_enabled: bool
+    },
+
+    #[serde(rename = "fisheye_settings_updated")]
+    FisheyeSettingsUpdated {
+        enabled: bool,
+        strength: f32,
+        focus_point: [f32; 3],
+        radius: f32,
     }
 }
 
@@ -139,6 +155,35 @@ pub trait MessageHandler: Actor<Context = ws::WebsocketContext<Self>> {
             }
         }
     }
+
+    fn handle_fisheye_update(&self, settings: ClientMessage, gpu_compute: &mut crate::utils::gpu_compute::GPUCompute, ctx: &mut ws::WebsocketContext<Self>) {
+        if let ClientMessage::UpdateFisheyeSettings { enabled, strength, focus_point, radius } = settings {
+            match gpu_compute.set_fisheye_params(enabled, strength, focus_point, radius) {
+                Ok(_) => {
+                    // Send confirmation back to client
+                    self.send_server_message(
+                        ServerMessage::FisheyeSettingsUpdated {
+                            enabled,
+                            strength,
+                            focus_point,
+                            radius,
+                        },
+                        ctx
+                    );
+                },
+                Err(e) => {
+                    error!("Failed to update fisheye settings: {}", e);
+                    self.send_server_message(
+                        ServerMessage::Error {
+                            message: format!("Failed to update fisheye settings: {}", e),
+                            code: Some("FISHEYE_UPDATE_ERROR".to_string()),
+                        },
+                        ctx
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -154,6 +199,16 @@ mod tests {
         let serialized = serde_json::to_string(&message).unwrap();
         assert!(serialized.contains("chat_message"));
         assert!(serialized.contains("Hello"));
+
+        let fisheye_message = ClientMessage::UpdateFisheyeSettings {
+            enabled: true,
+            strength: 0.5,
+            focus_point: [0.0, 0.0, 0.0],
+            radius: 100.0,
+        };
+        let serialized = serde_json::to_string(&fisheye_message).unwrap();
+        assert!(serialized.contains("updateFisheyeSettings"));
+        assert!(serialized.contains("strength"));
     }
 
     #[test]
@@ -164,5 +219,15 @@ mod tests {
         let serialized = serde_json::to_string(&message).unwrap();
         assert!(serialized.contains("ragflow_response"));
         assert!(serialized.contains("Test answer"));
+
+        let fisheye_message = ServerMessage::FisheyeSettingsUpdated {
+            enabled: true,
+            strength: 0.5,
+            focus_point: [0.0, 0.0, 0.0],
+            radius: 100.0,
+        };
+        let serialized = serde_json::to_string(&fisheye_message).unwrap();
+        assert!(serialized.contains("fisheye_settings_updated"));
+        assert!(serialized.contains("strength"));
     }
 }

@@ -13,16 +13,22 @@ export default defineComponent({
         return {
             isHidden: false,
             simulationMode: 'remote',
+            // Fisheye controls
             fisheyeEnabled: false,
             fisheyeStrength: 0.5,
+            fisheyeFocusPoint: [0, 0, 0], // [x, y, z] coordinates
+            fisheyeRadius: 100.0,
+            // Chat controls
             chatInput: '',
             chatMessages: [], // Will only store user messages
             audioInitialized: false,
+            // Visualization controls
             colorControls: [],
             sizeOpacityControls: [],
             bloomControls: [],
             forceDirectedControls: [],
             additionalControls: [],
+            // UI state
             collapsedGroups: {
                 chat: false,
                 fisheye: false,
@@ -50,16 +56,69 @@ export default defineComponent({
             }
         },
         emitChange(name, value) {
+            console.log(`Control change: ${name} = ${value}`);
+            
             if (this.isColorControl(name)) {
                 // Convert from #RRGGBB to 0xRRGGBB format
                 value = parseInt(value.replace('#', '0x'), 16);
             }
+            
+            // Handle fisheye controls
+            if (name.startsWith('fisheye')) {
+                const settings = {
+                    enabled: this.fisheyeEnabled,
+                    strength: this.fisheyeStrength,
+                    focusPoint: this.fisheyeFocusPoint,
+                    radius: this.fisheyeRadius
+                };
+
+                // Update the specific setting that changed
+                switch (name) {
+                    case 'fisheyeEnabled':
+                        settings.enabled = value;
+                        this.fisheyeEnabled = value;
+                        break;
+                    case 'fisheyeStrength':
+                        settings.strength = value;
+                        this.fisheyeStrength = value;
+                        break;
+                    case 'fisheyeRadius':
+                        settings.radius = value;
+                        this.fisheyeRadius = value;
+                        break;
+                }
+
+                // Send updated fisheye settings to server
+                if (this.websocketService) {
+                    console.log('Sending fisheye settings to server:', settings);
+                    this.websocketService.updateFisheyeSettings(settings);
+                }
+                return;
+            }
+
+            // Handle other controls
             this.$emit('control-change', { name, value });
         },
         isColorControl(name) {
             return this.colorControls.some(control => control.name === name);
         },
         resetControls() {
+            // Reset fisheye settings
+            this.fisheyeEnabled = false;
+            this.fisheyeStrength = 0.5;
+            this.fisheyeRadius = 100.0;
+            this.fisheyeFocusPoint = [0, 0, 0];
+            
+            if (this.websocketService) {
+                this.websocketService.updateFisheyeSettings({
+                    enabled: false,
+                    strength: 0.5,
+                    focusPoint: [0, 0, 0],
+                    radius: 100.0
+                });
+            }
+
+            // Reset other visualization settings
             window.dispatchEvent(new CustomEvent('resetVisualizationSettings'));
         },
         async initializeAudio() {
@@ -106,6 +165,14 @@ export default defineComponent({
         initializeControls(settings) {
             console.log('Initializing controls with settings:', settings);
             
+            // Initialize fisheye controls with received values
+            if (settings.fisheye) {
+                this.fisheyeEnabled = settings.fisheye.enabled || false;
+                this.fisheyeStrength = settings.fisheye.strength || 0.5;
+                this.fisheyeFocusPoint = settings.fisheye.focusPoint || [0, 0, 0];
+                this.fisheyeRadius = settings.fisheye.radius || 100.0;
+            }
+            
             // Initialize color controls with received values
             this.colorControls = [
                 { 
@@ -151,9 +218,9 @@ export default defineComponent({
 
             // Initialize force-directed controls with received values
             this.forceDirectedControls = [
-                { name: 'forceDirectedIterations', label: 'Iterations', type: 'range', value: settings.visualization.forceDirectedIterations, min: 10, max: 500, step: 10 },
-                { name: 'forceDirectedRepulsion', label: 'Repulsion', type: 'range', value: settings.visualization.forceDirectedRepulsion, min: 0.1, max: 10.0, step: 0.1 },
-                { name: 'forceDirectedAttraction', label: 'Attraction', type: 'range', value: settings.visualization.forceDirectedAttraction, min: 0.001, max: 0.1, step: 0.001 }
+                { name: 'iterations', label: 'Iterations', type: 'range', value: settings.visualization.forceDirectedIterations, min: 10, max: 500, step: 10 },
+                { name: 'repulsion_strength', label: 'Repulsion', type: 'range', value: settings.visualization.forceDirectedRepulsion, min: 0.1, max: 10.0, step: 0.1 },
+                { name: 'attraction_strength', label: 'Attraction', type: 'range', value: settings.visualization.forceDirectedAttraction, min: 0.001, max: 0.1, step: 0.001 }
             ];
 
             // Initialize additional controls with received values
@@ -186,16 +253,31 @@ export default defineComponent({
             };
             window.addEventListener('serverSettings', handleServerSettings);
             
-            // Store the handler for cleanup
+            // Add listener for fisheye settings updates
+            const handleFisheyeSettings = (event) => {
+                console.log('Received fisheye settings update:', event.detail);
+                const settings = event.detail;
+                this.fisheyeEnabled = settings.enabled;
+                this.fisheyeStrength = settings.strength;
+                this.fisheyeFocusPoint = settings.focusPoint;
+                this.fisheyeRadius = settings.radius;
+            };
+            window.addEventListener('fisheyeSettingsUpdated', handleFisheyeSettings);
+            
+            // Store handlers for cleanup
             this._handleServerSettings = handleServerSettings;
+            this._handleFisheyeSettings = handleFisheyeSettings;
         } else {
             console.error('WebSocketService is undefined');
         }
     },
     beforeUnmount() {
-        // Clean up event listener using stored handler
+        // Clean up event listeners
         if (this._handleServerSettings) {
             window.removeEventListener('serverSettings', this._handleServerSettings);
+        }
+        if (this._handleFisheyeSettings) {
+            window.removeEventListener('fisheyeSettingsUpdated', this._handleFisheyeSettings);
         }
     },
     setup() {

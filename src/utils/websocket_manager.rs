@@ -39,6 +39,13 @@ pub enum ClientMessage {
     },
     #[serde(rename = "getInitialData")]
     GetInitialData,
+    #[serde(rename = "updateFisheyeSettings")]
+    UpdateFisheyeSettings {
+        enabled: bool,
+        strength: f32,
+        focus_point: [f32; 3],
+        radius: f32,
+    },
 }
 
 /// Manages WebSocket sessions and communication.
@@ -169,6 +176,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                         ClientMessage::GetInitialData => {
                             self.handle_initial_data(ctx);
                         },
+                        ClientMessage::UpdateFisheyeSettings { .. } => {
+                            self.handle_fisheye_update(ctx, client_msg);
+                        },
                     },
                     Err(e) => {
                         error!("Failed to parse client message: {}", e);
@@ -225,7 +235,6 @@ impl WebSocketSession {
                 return;
             };
 
-            // Send message to RAGFlow via HTTP and get text response
             match state.ragflow_service.send_message(
                 conv_id.clone(),
                 message.clone(),
@@ -243,18 +252,15 @@ impl WebSocketSession {
                                 
                                 if use_openai {
                                     debug!("Creating OpenAI WebSocket for TTS");
-                                    // Create new OpenAI WebSocket instance
                                     let openai_ws = OpenAIWebSocket::new(ctx_addr.clone(), settings);
                                     let addr = openai_ws.start();
                                     
-                                    // Wait for the websocket to be ready
                                     debug!("Waiting for OpenAI WebSocket to be ready");
                                     tokio::time::sleep(OPENAI_CONNECT_TIMEOUT).await;
                                     
                                     debug!("Sending text to OpenAI TTS: {}", text);
                                     addr.do_send(OpenAIMessage(text));
                                 } else {
-                                    // Use local TTS service
                                     debug!("Using local TTS service");
                                     if let Err(e) = state.speech_service.send_message(text).await {
                                         error!("Failed to generate speech: {}", e);
@@ -388,6 +394,44 @@ impl WebSocketSession {
         }.into_actor(self));
     }
 
+    fn handle_fisheye_update(&mut self, ctx: &mut ws::WebsocketContext<Self>, settings: ClientMessage) {
+        if let ClientMessage::UpdateFisheyeSettings { enabled, strength, focus_point, radius } = settings {
+            let state = self.state.clone();
+            let ctx_addr = ctx.address();
+            
+            ctx.spawn(async move {
+                if let Some(gpu_compute) = &state.gpu_compute {
+                    let mut gpu = gpu_compute.write().await;
+                    gpu.set_fisheye_params(enabled, strength, focus_point, radius);
+                    
+                    let response = json!({
+                        "type": "fisheye_settings_updated",
+                        "enabled": enabled,
+                        "strength": strength,
+                        "focusPoint": focus_point,
+                        "radius": radius
+                    });
+                    if let Ok(response_str) = serde_json::to_string(&response) {
+                        if let Ok(compressed) = compress_message(&response_str) {
+                            ctx_addr.do_send(SendCompressedMessage(compressed));
+                        }
+                    }
+                } else {
+                    error!("GPU compute service not available");
+                    let error_message = json!({
+                        "type": "error",
+                        "message": "GPU compute service not available"
+                    });
+                    if let Ok(error_str) = serde_json::to_string(&error_message) {
+                        if let Ok(compressed) = compress_message(&error_str) {
+                            ctx_addr.do_send(SendCompressedMessage(compressed));
+                        }
+                    }
+                }
+            }.into_actor(self));
+        }
+    }
+
     fn handle_initial_data(&mut self, ctx: &mut ws::WebsocketContext<Self>) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
@@ -397,7 +441,7 @@ impl WebSocketSession {
             let settings = state.settings.read().await;
             
             let response = json!({
-                "type": "getInitialData", // Changed from 'initial_data' to match client expectation
+                "type": "getInitialData",
                 "graph_data": &*graph_data,
                 "settings": {
                     "visualization": {
@@ -424,6 +468,12 @@ impl WebSocketSession {
                         "environmentBloomStrength": settings.bloom.environment_bloom_strength,
                         "environmentBloomRadius": settings.bloom.environment_bloom_radius,
                         "environmentBloomThreshold": settings.bloom.environment_bloom_threshold,
+                    },
+                    "fisheye": {
+                        "enabled": settings.fisheye.enabled,
+                        "strength": settings.fisheye.strength,
+                        "focusPoint": settings.fisheye.focus_point,
+                        "radius": settings.fisheye.radius,
                     }
                 }
             });

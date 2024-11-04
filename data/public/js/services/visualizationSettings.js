@@ -38,7 +38,13 @@ export class VisualizationSettings {
             edgeBloomThreshold: parseFloat(process.env.EDGE_BLOOM_THRESHOLD) || 0.0,
             environmentBloomStrength: parseFloat(process.env.ENVIRONMENT_BLOOM_STRENGTH) || 0.5,
             environmentBloomRadius: parseFloat(process.env.ENVIRONMENT_BLOOM_RADIUS) || 0.1,
-            environmentBloomThreshold: parseFloat(process.env.ENVIRONMENT_BLOOM_THRESHOLD) || 0.0
+            environmentBloomThreshold: parseFloat(process.env.ENVIRONMENT_BLOOM_THRESHOLD) || 0.0,
+
+            // Fisheye settings
+            fisheyeEnabled: false,
+            fisheyeStrength: 0.5,
+            fisheyeFocusPoint: [0, 0, 0],
+            fisheyeRadius: 100.0
         };
 
         // Bind the WebSocket message handler
@@ -52,7 +58,8 @@ export class VisualizationSettings {
         this.settings = {
             ...this.settings,
             ...serverSettings.visualization,
-            ...serverSettings.bloom
+            ...serverSettings.bloom,
+            ...serverSettings.fisheye
         };
 
         // Dispatch event to notify components of updated settings
@@ -110,6 +117,15 @@ export class VisualizationSettings {
             bloomStrength: this.settings.environmentBloomStrength,
             bloomRadius: this.settings.environmentBloomRadius,
             bloomThreshold: this.settings.environmentBloomThreshold
+        };
+    }
+
+    getFisheyeSettings() {
+        return {
+            enabled: this.settings.fisheyeEnabled,
+            strength: this.settings.fisheyeStrength,
+            focusPoint: this.settings.fisheyeFocusPoint,
+            radius: this.settings.fisheyeRadius
         };
     }
 }

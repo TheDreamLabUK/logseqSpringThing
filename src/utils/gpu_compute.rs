@@ -13,6 +13,28 @@ use futures::channel::oneshot;
 // Constants for optimal performance
 const WORKGROUP_SIZE: u32 = 256; // Optimal workgroup size
 const INITIAL_BUFFER_SIZE: u64 = 1024 * 1024; // 1MB initial buffer size
+const BUFFER_ALIGNMENT: u64 = 32; // Buffer alignment requirement
+
+// Fisheye parameters structure
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct FisheyeParams {
+    pub enabled: u32,
+    pub strength: f32,
+    pub focus_point: [f32; 3],
+    pub radius: f32,
+}
+
+impl Default for FisheyeParams {
+    fn default() -> Self {
+        Self {
+            enabled: 0,
+            strength: 0.5,
+            focus_point: [0.0, 0.0, 0.0],
+            radius: 100.0,
+        }
+    }
+}
 
 /// Struct representing the GPU compute capabilities
 pub struct GPUCompute {
@@ -21,11 +43,15 @@ pub struct GPUCompute {
     nodes_buffer: Buffer,
     edges_buffer: Buffer,
     simulation_params_buffer: Buffer,
-    bind_group: BindGroup,
-    compute_pipeline: ComputePipeline,
+    fisheye_params_buffer: Buffer,
+    force_bind_group: BindGroup,
+    fisheye_bind_group: BindGroup,
+    force_pipeline: ComputePipeline,
+    fisheye_pipeline: ComputePipeline,
     num_nodes: u32,
     num_edges: u32,
     simulation_params: SimulationParams,
+    fisheye_params: FisheyeParams,
 }
 
 impl GPUCompute {
@@ -63,15 +89,20 @@ impl GPUCompute {
             .await
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
-        // Load and create the compute shader module
-        let cs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        // Load and create shader modules
+        let force_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Force Calculation Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("force_calculation.wgsl").into()),
         });
 
-        // Create the bind group layout
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Compute Bind Group Layout"),
+        let fisheye_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Fisheye Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("fisheye.wgsl").into()),
+        });
+
+        // Create bind group layouts
+        let force_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Force Compute Bind Group Layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -106,7 +137,33 @@ impl GPUCompute {
             ],
         });
 
-        // Create initial simulation parameters
+        let fisheye_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Fisheye Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        // Create initial parameters
         let simulation_params = SimulationParams::default();
         let simulation_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Simulation Params Buffer"),
@@ -114,39 +171,60 @@ impl GPUCompute {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // Create the compute pipeline
-        let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        let fisheye_params = FisheyeParams::default();
+        let fisheye_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Fisheye Params Buffer"),
+            contents: bytemuck::cast_slice(&[fisheye_params]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // Create compute pipelines
+        let force_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("Force Directed Graph Compute Pipeline"),
             layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Compute Pipeline Layout"),
-                bind_group_layouts: &[&bind_group_layout],
+                label: Some("Force Pipeline Layout"),
+                bind_group_layouts: &[&force_bind_group_layout],
                 push_constant_ranges: &[],
             })),
-            module: &cs_module,
+            module: &force_module,
             entry_point: Some("main"),
             compilation_options: Default::default(),
             cache: None,
         });
 
-        // Create initial buffers
+        let fisheye_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Fisheye Compute Pipeline"),
+            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Fisheye Pipeline Layout"),
+                bind_group_layouts: &[&fisheye_bind_group_layout],
+                push_constant_ranges: &[],
+            })),
+            module: &fisheye_module,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        // Create initial buffers with proper alignment
+        let aligned_initial_size = (INITIAL_BUFFER_SIZE + BUFFER_ALIGNMENT - 1) & !(BUFFER_ALIGNMENT - 1);
         let nodes_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Nodes Buffer"),
-            size: INITIAL_BUFFER_SIZE,
+            size: aligned_initial_size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
         let edges_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Edges Buffer"),
-            size: INITIAL_BUFFER_SIZE,
+            size: aligned_initial_size,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
-        // Create the bind group
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Compute Bind Group"),
-            layout: &bind_group_layout,
+        // Create bind groups
+        let force_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Force Compute Bind Group"),
+            layout: &force_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -163,17 +241,36 @@ impl GPUCompute {
             ],
         });
 
+        let fisheye_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Fisheye Bind Group"),
+            layout: &fisheye_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: nodes_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: fisheye_params_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         Ok(Self {
             device,
             queue,
             nodes_buffer,
             edges_buffer,
             simulation_params_buffer,
-            bind_group,
-            compute_pipeline,
+            fisheye_params_buffer,
+            force_bind_group,
+            fisheye_bind_group,
+            force_pipeline,
+            fisheye_pipeline,
             num_nodes: 0,
             num_edges: 0,
             simulation_params,
+            fisheye_params,
         })
     }
 
@@ -187,10 +284,16 @@ impl GPUCompute {
         // Convert nodes to GPU representation with initial random positions
         let mut rng = rand::thread_rng();
         let gpu_nodes: Vec<GPUNode> = graph.nodes.iter().enumerate().map(|(i, node)| {
-            let mut gpu_node = node.to_gpu_node();
-            gpu_node.x = rng.gen_range(-75.0..75.0);
-            gpu_node.y = rng.gen_range(-75.0..75.0);
-            gpu_node.z = rng.gen_range(-75.0..75.0);
+            let mut gpu_node = GPUNode {
+                x: rng.gen_range(-75.0..75.0),
+                y: rng.gen_range(-75.0..75.0),
+                z: rng.gen_range(-75.0..75.0),
+                vx: 0.0,
+                vy: 0.0,
+                vz: 0.0,
+                mass: 1.0,
+                padding1: 0,
+            };
             
             if i < 5 {
                 debug!("Initial position for node {}: ({}, {}, {})", 
@@ -205,7 +308,7 @@ impl GPUCompute {
             .map(|edge| edge.to_gpu_edge(&graph.nodes))
             .collect();
 
-        // Update buffers
+        // Update buffers with correct sizes
         self.update_buffers(&gpu_nodes, &gpu_edges)?;
 
         debug!("Graph data set successfully");
@@ -226,19 +329,51 @@ impl GPUCompute {
         Ok(())
     }
 
+    /// Updates the fisheye parameters
+    pub fn set_fisheye_params(&mut self, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32) -> Result<(), Error> {
+        self.fisheye_params = FisheyeParams {
+            enabled: if enabled { 1 } else { 0 },
+            strength,
+            focus_point,
+            radius,
+        };
+
+        self.queue.write_buffer(
+            &self.fisheye_params_buffer,
+            0,
+            bytemuck::cast_slice(&[self.fisheye_params]),
+        );
+
+        Ok(())
+    }
+
     /// Computes forces for the graph layout
     pub fn compute_forces(&self) -> Result<(), Error> {
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Force Computation Encoder"),
+            label: Some("Layout Computation Encoder"),
         });
 
+        // Force calculation pass
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Force Computation Pass"),
                 timestamp_writes: None,
             });
-            cpass.set_pipeline(&self.compute_pipeline);
-            cpass.set_bind_group(0, &self.bind_group, &[]);
+            cpass.set_pipeline(&self.force_pipeline);
+            cpass.set_bind_group(0, &self.force_bind_group, &[]);
+            
+            let workgroup_count = (self.num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+            cpass.dispatch_workgroups(workgroup_count, 1, 1);
+        }
+
+        // Fisheye distortion pass
+        {
+            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Fisheye Pass"),
+                timestamp_writes: None,
+            });
+            cpass.set_pipeline(&self.fisheye_pipeline);
+            cpass.set_bind_group(0, &self.fisheye_bind_group, &[]);
             
             let workgroup_count = (self.num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
             cpass.dispatch_workgroups(workgroup_count, 1, 1);
@@ -250,10 +385,22 @@ impl GPUCompute {
 
     /// Updates the GPU buffers with new node and edge data
     fn update_buffers(&mut self, gpu_nodes: &[GPUNode], gpu_edges: &[GPUEdge]) -> Result<(), Error> {
+        // Calculate required buffer sizes with proper alignment
+        let node_size = std::mem::size_of::<GPUNode>();
+        let edge_size = std::mem::size_of::<GPUEdge>();
+        
+        // Align buffer sizes to 32-byte boundary
+        let nodes_size = ((gpu_nodes.len() * node_size) as u64 + BUFFER_ALIGNMENT - 1) & !(BUFFER_ALIGNMENT - 1);
+        let edges_size = ((gpu_edges.len() * edge_size) as u64 + BUFFER_ALIGNMENT - 1) & !(BUFFER_ALIGNMENT - 1);
+
+        debug!("Node size: {} bytes, Edge size: {} bytes", node_size, edge_size);
+        debug!("Total nodes buffer size: {} bytes (aligned)", nodes_size);
+        debug!("Total edges buffer size: {} bytes (aligned)", edges_size);
+
         // Update or recreate the nodes buffer
         let nodes_data = bytemuck::cast_slice(gpu_nodes);
-        if (nodes_data.len() as u64) > self.nodes_buffer.size() {
-            debug!("Recreating nodes buffer with size: {} bytes", nodes_data.len());
+        if nodes_size > self.nodes_buffer.size() {
+            debug!("Recreating nodes buffer with size: {} bytes", nodes_size);
             self.nodes_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Nodes Buffer"),
                 contents: nodes_data,
@@ -263,23 +410,35 @@ impl GPUCompute {
             self.queue.write_buffer(&self.nodes_buffer, 0, nodes_data);
         }
 
-        // Update or recreate the edges buffer
+        // Update or recreate the edges buffer with padding to ensure 32-byte alignment
         let edges_data = bytemuck::cast_slice(gpu_edges);
-        if (edges_data.len() as u64) > self.edges_buffer.size() {
-            debug!("Recreating edges buffer with size: {} bytes", edges_data.len());
-            self.edges_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        if edges_size > self.edges_buffer.size() {
+            debug!("Recreating edges buffer with size: {} bytes", edges_size);
+            // Create a new buffer with the aligned size
+            self.edges_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Edges Buffer"),
-                contents: edges_data,
+                size: edges_size,
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: true,
             });
+            
+            // Write the data and any necessary padding
+            let mut buffer_view = self.edges_buffer.slice(..).get_mapped_range_mut();
+            buffer_view[..edges_data.len()].copy_from_slice(edges_data);
+            // Zero out any padding bytes
+            for i in edges_data.len()..buffer_view.len() {
+                buffer_view[i] = 0;
+            }
+            drop(buffer_view);
+            self.edges_buffer.unmap();
         } else {
             self.queue.write_buffer(&self.edges_buffer, 0, edges_data);
         }
 
-        // Recreate the bind group with updated buffers
-        self.bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Compute Bind Group"),
-            layout: &self.compute_pipeline.get_bind_group_layout(0),
+        // Recreate the bind groups with the updated buffers
+        self.force_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Force Compute Bind Group"),
+            layout: &self.force_pipeline.get_bind_group_layout(0),
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -292,6 +451,21 @@ impl GPUCompute {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: self.simulation_params_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        self.fisheye_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Fisheye Bind Group"),
+            layout: &self.fisheye_pipeline.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.nodes_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: self.fisheye_params_buffer.as_entire_binding(),
                 },
             ],
         });

@@ -98,9 +98,9 @@ export default class WebsocketService {
     }
 
     reconnect() {
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+        if (this.reconnectAttempts < this.maxRetries) {
             this.reconnectAttempts++;
-            console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${this.reconnectInterval / 1000} seconds...`);
+            console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxRetries}) in ${this.reconnectInterval / 1000} seconds...`);
             setTimeout(() => this.connect(), this.reconnectInterval);
         } else {
             console.error('Max reconnection attempts reached. Please refresh the page or check your connection.');
@@ -241,7 +241,8 @@ export default class WebsocketService {
                     // Ensure settings are properly structured before dispatching
                     const settings = {
                         visualization: data.settings.visualization || {},
-                        bloom: data.settings.bloom || {}
+                        bloom: data.settings.bloom || {},
+                        fisheye: data.settings.fisheye || {}
                     };
                     window.dispatchEvent(new CustomEvent('serverSettings', {
                         detail: settings
@@ -282,6 +283,13 @@ export default class WebsocketService {
             case 'simulation_mode_set':
                 console.log('Simulation mode set:', data.mode);
                 this.emit('simulationModeSet', data.mode);
+                break;
+
+            case 'fisheye_settings_updated':
+                console.log('Fisheye settings updated:', data.settings);
+                window.dispatchEvent(new CustomEvent('fisheyeSettingsUpdated', {
+                    detail: data.settings
+                }));
                 break;
                 
             default:
@@ -404,6 +412,19 @@ export default class WebsocketService {
             type: 'chatMessage',
             message,
             tts_provider: useOpenAI ? 'openai' : 'sonata'
+        });
+    }
+
+    updateFisheyeSettings(settings) {
+        console.log('Updating fisheye settings:', settings);
+        this.send({
+            type: 'updateFisheyeSettings',
+            settings: {
+                enabled: settings.enabled,
+                strength: settings.strength,
+                focusPoint: settings.focusPoint || [0, 0, 0],
+                radius: settings.radius || 100.0
+            }
         });
     }
 }

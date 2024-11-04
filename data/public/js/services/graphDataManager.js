@@ -13,8 +13,9 @@ export class GraphDataManager {
         this.graphData = null;
         this.forceDirectedParams = {
             iterations: 100,
-            repulsion: 1.0,
-            attraction: 0.01
+            repulsion_strength: 1.0,
+            attraction_strength: 0.01,
+            damping: 0.9
         };
         console.log('GraphDataManager initialized');
         
@@ -131,8 +132,16 @@ export class GraphDataManager {
      */
     updateForceDirectedParams(name, value) {
         console.log(`Updating force-directed parameter: ${name} = ${value}`);
-        if (name in this.forceDirectedParams) {
-            this.forceDirectedParams[name] = value;
+        // Map the parameter names from the control panel to the server's expected names
+        const paramMap = {
+            'iterations': 'iterations',
+            'repulsion_strength': 'repulsion_strength',
+            'attraction_strength': 'attraction_strength'
+        };
+
+        const serverParamName = paramMap[name];
+        if (serverParamName) {
+            this.forceDirectedParams[serverParamName] = value;
             console.log('Force-directed parameters updated:', this.forceDirectedParams);
         } else {
             console.warn(`Unknown force-directed parameter: ${name}`);
@@ -147,8 +156,13 @@ export class GraphDataManager {
         if (this.isGraphDataValid()) {
             // Send a message to the server to recalculate the layout
             this.websocketService.send({
-                type: 'recalculateLayout', // Changed from recalculate_layout to match server expectation
-                params: this.forceDirectedParams
+                type: 'recalculateLayout',
+                params: {
+                    iterations: this.forceDirectedParams.iterations,
+                    repulsion_strength: this.forceDirectedParams.repulsion_strength,
+                    attraction_strength: this.forceDirectedParams.attraction_strength,
+                    damping: this.forceDirectedParams.damping
+                }
             });
             console.log('Layout recalculation requested');
             

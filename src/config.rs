@@ -22,9 +22,10 @@ pub struct Settings {
     pub visualization: VisualizationSettings,
     #[serde(default = "default_bloom")]
     pub bloom: BloomSettings,
+    #[serde(default = "default_fisheye")]
+    pub fisheye: FisheyeSettings,
 }
 
-// Default functions remain unchanged
 fn default_prompt() -> String {
     "Your default prompt here".to_string()
 }
@@ -68,6 +69,15 @@ fn default_bloom() -> BloomSettings {
         environment_bloom_strength: 0.5,
         environment_bloom_radius: 0.1,
         environment_bloom_threshold: 0.0,
+    }
+}
+
+fn default_fisheye() -> FisheyeSettings {
+    FisheyeSettings {
+        enabled: false,
+        strength: 0.5,
+        focus_point: [0.0, 0.0, 0.0],
+        radius: 100.0,
     }
 }
 
@@ -140,6 +150,14 @@ pub struct BloomSettings {
     pub environment_bloom_strength: f32,
     pub environment_bloom_radius: f32,
     pub environment_bloom_threshold: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct FisheyeSettings {
+    pub enabled: bool,
+    pub strength: f32,
+    pub focus_point: [f32; 3],
+    pub radius: f32,
 }
 
 impl Settings {
@@ -299,6 +317,26 @@ impl Settings {
             builder = builder.set_override("bloom.environment_bloom_threshold", value)?;
         }
 
+        // Fisheye settings
+        if let Ok(value) = env::var("FISHEYE_ENABLED") {
+            builder = builder.set_override("fisheye.enabled", value)?;
+        }
+        if let Ok(value) = env::var("FISHEYE_STRENGTH") {
+            builder = builder.set_override("fisheye.strength", value)?;
+        }
+        if let Ok(value) = env::var("FISHEYE_RADIUS") {
+            builder = builder.set_override("fisheye.radius", value)?;
+        }
+        if let Ok(value) = env::var("FISHEYE_FOCUS_X") {
+            builder = builder.set_override("fisheye.focus_point[0]", value)?;
+        }
+        if let Ok(value) = env::var("FISHEYE_FOCUS_Y") {
+            builder = builder.set_override("fisheye.focus_point[1]", value)?;
+        }
+        if let Ok(value) = env::var("FISHEYE_FOCUS_Z") {
+            builder = builder.set_override("fisheye.focus_point[2]", value)?;
+        }
+
         let config = builder.build()?;
 
         match config.try_deserialize::<Settings>() {
@@ -314,7 +352,6 @@ impl Settings {
     }
 }
 
-// Helper function implementations
 fn load_topics_from_markdown() -> Vec<String> {
     let markdown_dir = Path::new("/app/data/markdown");
     if !markdown_dir.exists() {
@@ -353,7 +390,6 @@ fn load_topics_from_markdown() -> Vec<String> {
     }
 }
 
-// Display implementations for settings structs
 impl fmt::Display for GithubSettings {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "GithubSettings {{ access_token: [REDACTED], owner: {}, repo: {}, directory: {} }}", 
@@ -401,5 +437,12 @@ impl fmt::Display for BloomSettings {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "BloomSettings {{ node_strength: {}, edge_strength: {}, environment_strength: {} }}", 
                self.node_bloom_strength, self.edge_bloom_strength, self.environment_bloom_strength)
+    }
+}
+
+impl fmt::Display for FisheyeSettings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "FisheyeSettings {{ enabled: {}, strength: {}, radius: {} }}", 
+               self.enabled, self.strength, self.radius)
     }
 }

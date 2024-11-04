@@ -41,9 +41,11 @@ pub struct GPUNode {
     pub x: f32,
     pub y: f32,
     pub z: f32,
+    pub padding1: u32,
     pub vx: f32,
     pub vy: f32,
     pub vz: f32,
+    pub mass: f32,
 }
 
 impl From<&Node> for GPUNode {
@@ -52,9 +54,11 @@ impl From<&Node> for GPUNode {
             x: node.x,
             y: node.y,
             z: node.z,
+            padding1: 0,
             vx: node.vx,
             vy: node.vy,
             vz: node.vz,
+            mass: 1.0,
         }
     }
 }
