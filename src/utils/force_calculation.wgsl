@@ -8,10 +8,16 @@ struct Node {
 
 // Structure representing an edge between two nodes
 struct Edge {
-    source: u32,
-    target_idx: u32,
-    weight: f32,
-    padding1: u32,
+    source: u32,      // 4 bytes
+    target_idx: u32,  // 4 bytes
+    weight: f32,      // 4 bytes
+    padding: array<u32, 5>, // 20 bytes padding to make total 32 bytes
+}
+
+// Structure representing adjacency information
+struct Adjacency {
+    offset: u32,
+    count: u32,
 }
 
 // Buffer containing all nodes
@@ -22,6 +28,16 @@ struct NodesBuffer {
 // Buffer containing all edges
 struct EdgesBuffer {
     edges: array<Edge>,
+}
+
+// Buffer containing adjacency information
+struct AdjacencyBuffer {
+    adjacency: array<Adjacency>,
+}
+
+// Buffer containing adjacency list indices
+struct AdjacencyListBuffer {
+    indices: array<u32>,
 }
 
 // Parameters for the simulation
@@ -39,54 +55,63 @@ struct SimulationParams {
 // Bind groups for data access
 @group(0) @binding(0) var<storage, read_write> nodes_buffer: NodesBuffer;
 @group(0) @binding(1) var<storage, read> edges_buffer: EdgesBuffer;
-@group(0) @binding(2) var<uniform> params: SimulationParams;
+@group(0) @binding(2) var<storage, read> adjacency_buffer: AdjacencyBuffer;
+@group(0) @binding(3) var<storage, read> adjacency_list_buffer: AdjacencyListBuffer;
+@group(0) @binding(4) var<uniform> params: SimulationParams;
 
-// Constants for force calculations
-const MIN_DISTANCE: f32 = 0.1;
-const MAX_FORCE: f32 = 100.0;
+// Constants for simulation
 const WORKGROUP_SIZE: u32 = 256;
-const CENTER_FORCE_STRENGTH: f32 = 0.05;  // Strength of centering force
-const CENTER_RADIUS: f32 = 50.0;         // Radius within which centering force is reduced
+const MAX_FORCE: f32 = 100.0;
+const MIN_DISTANCE: f32 = 0.1;
+const GRID_DIM: u32 = 16;
+const TOTAL_GRID_SIZE: u32 = 4096; // 16^3
+const CENTER_FORCE_STRENGTH: f32 = 0.05;
+const CENTER_RADIUS: f32 = 50.0;
+
+// Grid cell structure for spatial partitioning
+struct GridCell {
+    start_idx: u32,
+    count: u32,
+}
+
+// Shared workgroup memory for grid
+var<workgroup> grid: array<GridCell, 4096>; // Using TOTAL_GRID_SIZE constant
+var<workgroup> node_counts: array<atomic<u32>, 4096>; // Using TOTAL_GRID_SIZE constant
 
 // Utility functions
-fn is_nan(x: f32) -> bool {
-    return x != x;
+fn get_grid_index(position: vec3<f32>) -> u32 {
+    let grid_pos = vec3<u32>(
+        u32(clamp((position.x + 100.0) * f32(GRID_DIM) / 200.0, 0.0, f32(GRID_DIM - 1))),
+        u32(clamp((position.y + 100.0) * f32(GRID_DIM) / 200.0, 0.0, f32(GRID_DIM - 1))),
+        u32(clamp((position.z + 100.0) * f32(GRID_DIM) / 200.0, 0.0, f32(GRID_DIM - 1)))
+    );
+    return grid_pos.x + grid_pos.y * GRID_DIM + grid_pos.z * GRID_DIM * GRID_DIM;
 }
 
-fn is_inf(x: f32) -> bool {
-    let max_float = 3.402823466e+38;
-    return abs(x) >= max_float;
-}
-
-fn is_valid_float3(v: vec3<f32>) -> bool {
-    return !(is_nan(v.x) || is_nan(v.y) || is_nan(v.z) || 
-             is_inf(v.x) || is_inf(v.y) || is_inf(v.z));
-}
-
-fn clamp_magnitude(v: vec3<f32>, max_magnitude: f32) -> vec3<f32> {
-    let magnitude_sq = dot(v, v);
-    if (magnitude_sq > max_magnitude * max_magnitude) {
-        return normalize(v) * max_magnitude;
+fn calculate_repulsion(pos1: vec3<f32>, pos2: vec3<f32>, mass1: f32, mass2: f32) -> vec3<f32> {
+    let direction = pos1 - pos2;
+    let distance_sq = dot(direction, direction);
+    
+    if (distance_sq < MIN_DISTANCE * MIN_DISTANCE) {
+        return vec3<f32>(0.0);
     }
-    return v;
+    
+    let distance = sqrt(distance_sq);
+    let force_magnitude = params.repulsion_strength * mass1 * mass2 / (distance_sq + MIN_DISTANCE);
+    return normalize(direction) * min(force_magnitude, MAX_FORCE);
 }
 
-// Calculate center of mass for all nodes
-fn calculate_center_of_mass() -> vec3<f32> {
-    var com = vec3<f32>(0.0);
-    var total_mass = 0.0;
-    let n_nodes = arrayLength(&nodes_buffer.nodes);
-
-    for (var i = 0u; i < n_nodes; i = i + 1u) {
-        let node = nodes_buffer.nodes[i];
-        com += node.position * node.mass;
-        total_mass += node.mass;
+fn calculate_attraction(pos1: vec3<f32>, pos2: vec3<f32>, weight: f32) -> vec3<f32> {
+    let direction = pos2 - pos1;
+    let distance_sq = dot(direction, direction);
+    
+    if (distance_sq < MIN_DISTANCE * MIN_DISTANCE) {
+        return vec3<f32>(0.0);
     }
-
-    if (total_mass > 0.0) {
-        return com / total_mass;
-    }
-    return vec3<f32>(0.0);
+    
+    let distance = sqrt(distance_sq);
+    let force_magnitude = params.attraction_strength * weight * (distance - CENTER_RADIUS);
+    return normalize(direction) * min(force_magnitude, MAX_FORCE);
 }
 
 // Main compute shader
@@ -102,79 +127,65 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var node = nodes_buffer.nodes[node_id];
     var force = vec3<f32>(0.0);
 
-    // Validate position
-    if (!is_valid_float3(node.position)) {
-        node.position = vec3<f32>(0.0);
-    }
-
-    // Calculate center of mass and apply centering force
-    let com = calculate_center_of_mass();
-    let to_origin = -com;
-    let com_distance = length(to_origin);
+    // Calculate grid cell for current node
+    let grid_idx = get_grid_index(node.position);
     
-    // Apply stronger centering force when center of mass is far from origin
-    if (com_distance > 0.0001) {
-        let center_force = normalize(to_origin) * CENTER_FORCE_STRENGTH * com_distance;
-        force += center_force;
-    }
-
-    // Add individual node centering force (weaker, to maintain graph structure)
-    let node_to_origin = -node.position;
-    let node_distance = length(node_to_origin);
-    if (node_distance > CENTER_RADIUS) {
-        force += normalize(node_to_origin) * (node_distance - CENTER_RADIUS) * 0.01;
-    }
-
-    // Calculate repulsive forces
-    for (var i = 0u; i < n_nodes; i = i + 1u) {
-        if (i == node_id) {
-            continue;
-        }
-
-        let other = nodes_buffer.nodes[i];
-        let direction = node.position - other.position;
-        let distance = length(direction);
-        
-        if (distance > 0.0001) {
-            let repulsion = params.repulsion_strength * node.mass * other.mass * exp(-distance / 10.0);
-            force += normalize(direction) * repulsion;
-        }
-    }
-
-    // Calculate attractive forces
-    let n_edges = arrayLength(&edges_buffer.edges);
-    for (var i = 0u; i < n_edges; i = i + 1u) {
-        let edge = edges_buffer.edges[i];
-        if (edge.source == node_id || edge.target_idx == node_id) {
-            let other_id = select(edge.source, edge.target_idx, edge.source == node_id);
-            let other = nodes_buffer.nodes[other_id];
-            let direction = other.position - node.position;
-            let distance = length(direction);
-            
-            if (distance > 0.0001) {
-                let attraction = params.attraction_strength * edge.weight * log(distance + 1.0);
-                force += normalize(direction) * attraction;
+    // Calculate repulsive forces from nearby grid cells
+    for (var dx = -1; dx <= 1; dx = dx + 1) {
+        for (var dy = -1; dy <= 1; dy = dy + 1) {
+            for (var dz = -1; dz <= 1; dz = dz + 1) {
+                let neighbor_x = i32(grid_idx % GRID_DIM) + dx;
+                let neighbor_y = i32((grid_idx / GRID_DIM) % GRID_DIM) + dy;
+                let neighbor_z = i32(grid_idx / (GRID_DIM * GRID_DIM)) + dz;
+                
+                if (neighbor_x < 0 || neighbor_x >= i32(GRID_DIM) ||
+                    neighbor_y < 0 || neighbor_y >= i32(GRID_DIM) ||
+                    neighbor_z < 0 || neighbor_z >= i32(GRID_DIM)) {
+                    continue;
+                }
+                
+                let neighbor_idx = u32(neighbor_x) + 
+                                 u32(neighbor_y) * GRID_DIM + 
+                                 u32(neighbor_z) * GRID_DIM * GRID_DIM;
+                
+                // Calculate repulsion with nodes in neighboring cells
+                for (var i = 0u; i < n_nodes; i = i + 1u) {
+                    if (i == node_id || get_grid_index(nodes_buffer.nodes[i].position) != neighbor_idx) {
+                        continue;
+                    }
+                    let other = nodes_buffer.nodes[i];
+                    force += calculate_repulsion(node.position, other.position, node.mass, other.mass);
+                }
             }
         }
     }
 
-    // Limit force magnitude
-    force = clamp_magnitude(force, MAX_FORCE);
+    // Calculate attractive forces using adjacency list
+    let adj = adjacency_buffer.adjacency[node_id];
+    for (var i = 0u; i < adj.count; i = i + 1u) {
+        let target_idx = adjacency_list_buffer.indices[adj.offset + i];
+        let other = nodes_buffer.nodes[target_idx];
+        force += calculate_attraction(node.position, other.position, 1.0); // Using default weight of 1.0
+    }
+
+    // Apply centering force
+    let to_center = -node.position;
+    let center_distance = length(to_center);
+    if (center_distance > CENTER_RADIUS) {
+        force += normalize(to_center) * CENTER_FORCE_STRENGTH * (center_distance - CENTER_RADIUS);
+    }
 
     // Update velocity with damping
     node.velocity = (node.velocity + force / node.mass) * params.damping;
-    node.velocity = clamp_magnitude(node.velocity, 2.0);
+    
+    // Limit velocity magnitude
+    let velocity_magnitude_sq = dot(node.velocity, node.velocity);
+    if (velocity_magnitude_sq > MAX_FORCE * MAX_FORCE) {
+        node.velocity = normalize(node.velocity) * MAX_FORCE;
+    }
 
     // Update position
     node.position = node.position + node.velocity;
-
-    // Validate final state
-    if (!is_valid_float3(node.position)) {
-        node.position = vec3<f32>(0.0);
-    }
-    if (!is_valid_float3(node.velocity)) {
-        node.velocity = vec3<f32>(0.0);
-    }
 
     // Store updated node
     nodes_buffer.nodes[node_id] = node;

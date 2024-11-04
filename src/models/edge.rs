@@ -1,43 +1,50 @@
+use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
-use bytemuck::{Pod, Zeroable};
 use crate::models::node::Node;
 
-/// Represents an edge connecting two nodes in the graph.
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Edge {
-    /// ID of the source node.
     pub source: String,
-    /// ID of the target node.
     pub target_node: String,
-    /// Weight of the edge (representing interconnectedness).
     pub weight: f32,
-    /// Number of direct hyperlinks between the nodes.
     pub hyperlinks: f32,
 }
 
-/// GPU-compatible representation of an edge.
+// GPU representation of an edge, must match the shader's Edge struct
 #[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GPUEdge {
-    pub source: u32,
-    pub target_idx: u32,
-    pub weight: f32,
-    pub padding1: u32,
+    pub source: u32,      // 4 bytes
+    pub target_idx: u32,  // 4 bytes
+    pub weight: f32,      // 4 bytes
+    pub padding: [u32; 5], // 20 bytes padding to make total 32 bytes
 }
 
 impl Edge {
     pub fn new(source: String, target_node: String, weight: f32, hyperlinks: f32) -> Self {
-        Edge { source, target_node, weight, hyperlinks }
+        Self {
+            source,
+            target_node,
+            weight,
+            hyperlinks,
+        }
     }
 
     pub fn to_gpu_edge(&self, nodes: &[Node]) -> GPUEdge {
-        let source_index = nodes.iter().position(|n| n.id == self.source).unwrap() as u32;
-        let target_index = nodes.iter().position(|n| n.id == self.target_node).unwrap() as u32;
+        // Create a temporary HashMap for efficient lookups
+        let node_map: HashMap<_, _> = nodes.iter()
+            .enumerate()
+            .map(|(i, node)| (node.id.clone(), i as u32))
+            .collect();
+
+        let source_idx = node_map.get(&self.source).copied().unwrap_or(0);
+        let target_idx = node_map.get(&self.target_node).copied().unwrap_or(0);
+
         GPUEdge {
-            source: source_index,
-            target_idx: target_index,
+            source: source_idx,
+            target_idx,
             weight: self.weight,
-            padding1: 0,
+            padding: [0; 5],
         }
     }
 }

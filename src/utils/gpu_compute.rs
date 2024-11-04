@@ -1,3 +1,4 @@
+// Previous imports remain the same...
 use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor};
 use wgpu::util::DeviceExt;
 use std::io::Error;
@@ -10,12 +11,18 @@ use crate::models::simulation_params::SimulationParams;
 use rand::Rng;
 use futures::channel::oneshot;
 
-// Constants for optimal performance
-const WORKGROUP_SIZE: u32 = 256; // Optimal workgroup size
-const INITIAL_BUFFER_SIZE: u64 = 1024 * 1024; // 1MB initial buffer size
-const BUFFER_ALIGNMENT: u64 = 32; // Buffer alignment requirement
+// Constants and struct definitions remain the same...
+const WORKGROUP_SIZE: u32 = 256;
+const INITIAL_BUFFER_SIZE: u64 = 1024 * 1024;
+const BUFFER_ALIGNMENT: u64 = 256;
 
-// Fisheye parameters structure
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Adjacency {
+    offset: u32,
+    count: u32,
+}
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct FisheyeParams {
@@ -36,12 +43,14 @@ impl Default for FisheyeParams {
     }
 }
 
-/// Struct representing the GPU compute capabilities
+// Main struct definition remains the same...
 pub struct GPUCompute {
     device: Device,
     queue: Queue,
     nodes_buffer: Buffer,
     edges_buffer: Buffer,
+    adjacency_buffer: Buffer,
+    adjacency_list_buffer: Buffer,
     simulation_params_buffer: Buffer,
     fisheye_params_buffer: Buffer,
     force_bind_group: BindGroup,
@@ -55,14 +64,10 @@ pub struct GPUCompute {
 }
 
 impl GPUCompute {
-    /// Creates a new GPUCompute instance
     pub async fn new() -> Result<Self, Error> {
         debug!("Initializing GPU compute capabilities");
         
-        // Initialize the GPU instance with default descriptor
         let instance = wgpu::Instance::new(InstanceDescriptor::default());
-
-        // Request a high-performance GPU adapter
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
@@ -72,10 +77,11 @@ impl GPUCompute {
             .await
             .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "Failed to find an appropriate adapter"))?;
 
-        // Log adapter info
         info!("Selected GPU adapter: {:?}", adapter.get_info().name);
 
-        // Create the logical device and command queue
+        let limits = adapter.limits();
+        debug!("Device limits: {:?}", limits);
+
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -89,7 +95,6 @@ impl GPUCompute {
             .await
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
-        // Load and create shader modules
         let force_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Force Calculation Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("force_calculation.wgsl").into()),
@@ -100,7 +105,7 @@ impl GPUCompute {
             source: wgpu::ShaderSource::Wgsl(include_str!("fisheye.wgsl").into()),
         });
 
-        // Create bind group layouts
+        // Create optimized bind group layouts with adjacency buffers
         let force_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Force Compute Bind Group Layout"),
             entries: &[
@@ -126,6 +131,26 @@ impl GPUCompute {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
@@ -163,7 +188,7 @@ impl GPUCompute {
             ],
         });
 
-        // Create initial parameters
+        // Create initial parameters with proper alignment
         let simulation_params = SimulationParams::default();
         let simulation_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Simulation Params Buffer"),
@@ -178,7 +203,7 @@ impl GPUCompute {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // Create compute pipelines
+        // Create compute pipelines with Some("main") for entry points
         let force_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("Force Directed Graph Compute Pipeline"),
             layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -205,8 +230,9 @@ impl GPUCompute {
             cache: None,
         });
 
-        // Create initial buffers with proper alignment
+        // Create aligned buffers
         let aligned_initial_size = (INITIAL_BUFFER_SIZE + BUFFER_ALIGNMENT - 1) & !(BUFFER_ALIGNMENT - 1);
+        
         let nodes_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Nodes Buffer"),
             size: aligned_initial_size,
@@ -221,7 +247,21 @@ impl GPUCompute {
             mapped_at_creation: false,
         });
 
-        // Create bind groups
+        let adjacency_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Adjacency Buffer"),
+            size: aligned_initial_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let adjacency_list_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Adjacency List Buffer"),
+            size: aligned_initial_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Create optimized bind groups
         let force_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Force Compute Bind Group"),
             layout: &force_bind_group_layout,
@@ -236,6 +276,14 @@ impl GPUCompute {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
+                    resource: adjacency_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: adjacency_list_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
                     resource: simulation_params_buffer.as_entire_binding(),
                 },
             ],
@@ -261,6 +309,8 @@ impl GPUCompute {
             queue,
             nodes_buffer,
             edges_buffer,
+            adjacency_buffer,
+            adjacency_list_buffer,
             simulation_params_buffer,
             fisheye_params_buffer,
             force_bind_group,
@@ -274,7 +324,7 @@ impl GPUCompute {
         })
     }
 
-    /// Sets the graph data for GPU computation
+    /// Sets the graph data with optimized adjacency list structure
     pub fn set_graph_data(&mut self, graph: &GraphData) -> Result<(), Error> {
         debug!("Setting graph data: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
         
@@ -283,8 +333,8 @@ impl GPUCompute {
 
         // Convert nodes to GPU representation with initial random positions
         let mut rng = rand::thread_rng();
-        let gpu_nodes: Vec<GPUNode> = graph.nodes.iter().enumerate().map(|(i, node)| {
-            let mut gpu_node = GPUNode {
+        let gpu_nodes: Vec<GPUNode> = graph.nodes.iter().enumerate().map(|(_i, _)| {
+            GPUNode {
                 x: rng.gen_range(-75.0..75.0),
                 y: rng.gen_range(-75.0..75.0),
                 z: rng.gen_range(-75.0..75.0),
@@ -293,14 +343,7 @@ impl GPUCompute {
                 vz: 0.0,
                 mass: 1.0,
                 padding1: 0,
-            };
-            
-            if i < 5 {
-                debug!("Initial position for node {}: ({}, {}, {})", 
-                      i, gpu_node.x, gpu_node.y, gpu_node.z);
             }
-            
-            gpu_node
         }).collect();
 
         // Convert edges to GPU representation
@@ -308,10 +351,39 @@ impl GPUCompute {
             .map(|edge| edge.to_gpu_edge(&graph.nodes))
             .collect();
 
-        // Update buffers with correct sizes
-        self.update_buffers(&gpu_nodes, &gpu_edges)?;
+        // Build optimized adjacency list
+        let mut adjacency = vec![Adjacency { offset: 0, count: 0 }; self.num_nodes as usize];
+        let mut adjacency_indices = Vec::with_capacity(self.num_edges as usize);
 
-        debug!("Graph data set successfully");
+        // Count edges per node
+        for edge in gpu_edges.iter() {
+            adjacency[edge.source as usize].count += 1;
+        }
+
+        // Calculate offsets
+        let mut current_offset = 0;
+        for adj in adjacency.iter_mut() {
+            adj.offset = current_offset;
+            current_offset += adj.count;
+            adj.count = 0; // Reset count for the second pass
+        }
+
+        // Build adjacency list
+        for edge in gpu_edges.iter() {
+            let adj = &mut adjacency[edge.source as usize];
+            let index = (adj.offset + adj.count) as usize;
+            if index < adjacency_indices.len() {
+                adjacency_indices[index] = edge.target_idx;
+            } else {
+                adjacency_indices.push(edge.target_idx);
+            }
+            adj.count += 1;
+        }
+
+        // Update buffers with optimized data
+        self.update_buffers(&gpu_nodes, &gpu_edges, &adjacency, &adjacency_indices)?;
+
+        debug!("Graph data set successfully with optimized adjacency structure");
         Ok(())
     }
 
@@ -319,13 +391,7 @@ impl GPUCompute {
     pub fn set_force_directed_params(&mut self, params: &SimulationParams) -> Result<(), Error> {
         debug!("Updating force-directed parameters: {:?}", params);
         self.simulation_params = *params;
-
-        self.queue.write_buffer(
-            &self.simulation_params_buffer,
-            0,
-            bytemuck::cast_slice(&[self.simulation_params]),
-        );
-
+        self.queue.write_buffer(&self.simulation_params_buffer, 0, bytemuck::cast_slice(&[self.simulation_params]));
         Ok(())
     }
 
@@ -337,23 +403,17 @@ impl GPUCompute {
             focus_point,
             radius,
         };
-
-        self.queue.write_buffer(
-            &self.fisheye_params_buffer,
-            0,
-            bytemuck::cast_slice(&[self.fisheye_params]),
-        );
-
+        self.queue.write_buffer(&self.fisheye_params_buffer, 0, bytemuck::cast_slice(&[self.fisheye_params]));
         Ok(())
     }
 
-    /// Computes forces for the graph layout
+    /// Computes forces with optimized dispatch
     pub fn compute_forces(&self) -> Result<(), Error> {
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Layout Computation Encoder"),
         });
 
-        // Force calculation pass
+        // Optimized force calculation pass
         {
             let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Force Computation Pass"),
@@ -383,59 +443,86 @@ impl GPUCompute {
         Ok(())
     }
 
-    /// Updates the GPU buffers with new node and edge data
-    fn update_buffers(&mut self, gpu_nodes: &[GPUNode], gpu_edges: &[GPUEdge]) -> Result<(), Error> {
-        // Calculate required buffer sizes with proper alignment
-        let node_size = std::mem::size_of::<GPUNode>();
-        let edge_size = std::mem::size_of::<GPUEdge>();
-        
-        // Align buffer sizes to 32-byte boundary
-        let nodes_size = ((gpu_nodes.len() * node_size) as u64 + BUFFER_ALIGNMENT - 1) & !(BUFFER_ALIGNMENT - 1);
-        let edges_size = ((gpu_edges.len() * edge_size) as u64 + BUFFER_ALIGNMENT - 1) & !(BUFFER_ALIGNMENT - 1);
-
-        debug!("Node size: {} bytes, Edge size: {} bytes", node_size, edge_size);
-        debug!("Total nodes buffer size: {} bytes (aligned)", nodes_size);
-        debug!("Total edges buffer size: {} bytes (aligned)", edges_size);
-
-        // Update or recreate the nodes buffer
-        let nodes_data = bytemuck::cast_slice(gpu_nodes);
-        if nodes_size > self.nodes_buffer.size() {
-            debug!("Recreating nodes buffer with size: {} bytes", nodes_size);
-            self.nodes_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Nodes Buffer"),
-                contents: nodes_data,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
-            });
-        } else {
-            self.queue.write_buffer(&self.nodes_buffer, 0, nodes_data);
-        }
-
-        // Update or recreate the edges buffer with padding to ensure 32-byte alignment
-        let edges_data = bytemuck::cast_slice(gpu_edges);
-        if edges_size > self.edges_buffer.size() {
-            debug!("Recreating edges buffer with size: {} bytes", edges_size);
+    /// Updates the GPU buffers with optimized memory alignment
+    fn update_buffers(
+        &mut self,
+        gpu_nodes: &[GPUNode],
+        gpu_edges: &[GPUEdge],
+        adjacency: &[Adjacency],
+        adjacency_indices: &[u32],
+    ) -> Result<(), Error> {
+        // Helper function to create a buffer with proper alignment and padding
+        let create_aligned_buffer = |device: &Device, data: &[u8], element_size: u64, label: &str, usage: wgpu::BufferUsages| -> Buffer {
+            // Calculate total size needed with proper alignment
+            let data_size = data.len() as u64;
+            let num_elements = (data_size + element_size - 1) / element_size;
+            let aligned_size = ((num_elements * element_size + 255) & !255) as usize; // Align to 256 bytes
+            
             // Create a new buffer with the aligned size
-            self.edges_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Edges Buffer"),
-                size: edges_size,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: aligned_size as u64,
+                usage,
                 mapped_at_creation: true,
             });
-            
-            // Write the data and any necessary padding
-            let mut buffer_view = self.edges_buffer.slice(..).get_mapped_range_mut();
-            buffer_view[..edges_data.len()].copy_from_slice(edges_data);
-            // Zero out any padding bytes
-            for i in edges_data.len()..buffer_view.len() {
-                buffer_view[i] = 0;
-            }
-            drop(buffer_view);
-            self.edges_buffer.unmap();
-        } else {
-            self.queue.write_buffer(&self.edges_buffer, 0, edges_data);
-        }
 
-        // Recreate the bind groups with the updated buffers
+            // Write data to the buffer with padding
+            {
+                let mut view = buffer.slice(..).get_mapped_range_mut();
+                // Zero out the entire buffer first
+                for byte in view.iter_mut() {
+                    *byte = 0;
+                }
+                // Copy actual data
+                view[..data.len()].copy_from_slice(data);
+            }
+            buffer.unmap();
+            buffer
+        };
+
+        // Calculate element sizes for proper alignment
+        let node_size = std::mem::size_of::<GPUNode>() as u64;
+        let edge_size = std::mem::size_of::<GPUEdge>() as u64;
+        let adjacency_size = std::mem::size_of::<Adjacency>() as u64;
+        let index_size = std::mem::size_of::<u32>() as u64;
+
+        debug!("Buffer sizes - Node: {}, Edge: {}, Adjacency: {}, Index: {}", 
+               node_size, edge_size, adjacency_size, index_size);
+
+        // Update all buffers with proper alignment
+        self.nodes_buffer = create_aligned_buffer(
+            &self.device,
+            bytemuck::cast_slice(gpu_nodes),
+            node_size,
+            "Nodes Buffer",
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+        );
+
+        self.edges_buffer = create_aligned_buffer(
+            &self.device,
+            bytemuck::cast_slice(gpu_edges),
+            edge_size,
+            "Edges Buffer",
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        );
+
+        self.adjacency_buffer = create_aligned_buffer(
+            &self.device,
+            bytemuck::cast_slice(adjacency),
+            adjacency_size,
+            "Adjacency Buffer",
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        );
+
+        self.adjacency_list_buffer = create_aligned_buffer(
+            &self.device,
+            bytemuck::cast_slice(adjacency_indices),
+            index_size,
+            "Adjacency List Buffer",
+            wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        );
+
+        // Recreate bind groups with the new buffers
         self.force_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Force Compute Bind Group"),
             layout: &self.force_pipeline.get_bind_group_layout(0),
@@ -450,6 +537,14 @@ impl GPUCompute {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
+                    resource: self.adjacency_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: self.adjacency_list_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
                     resource: self.simulation_params_buffer.as_entire_binding(),
                 },
             ],
@@ -473,54 +568,42 @@ impl GPUCompute {
         Ok(())
     }
 
-    /// Gets the updated node positions from the GPU buffer
+    /// Gets the updated node positions with optimized memory mapping
     pub async fn get_updated_positions(&self) -> Result<Vec<Node>, Error> {
-        // Return empty vector if there are no nodes
         if self.num_nodes == 0 {
             return Ok(Vec::new());
         }
 
-        // Calculate the buffer size needed for the nodes
         let buffer_size = (self.num_nodes as u64) * std::mem::size_of::<GPUNode>() as u64;
+        let aligned_size = (buffer_size + BUFFER_ALIGNMENT - 1) & !(BUFFER_ALIGNMENT - 1);
         
-        // Create a staging buffer to read back the node data
         let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Node Position Staging Buffer"),
-            size: buffer_size,
+            size: aligned_size,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
-        // Create and submit a command encoder to copy data from nodes buffer to staging buffer
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Position Readback Encoder"),
         });
 
-        encoder.copy_buffer_to_buffer(
-            &self.nodes_buffer,
-            0,
-            &staging_buffer,
-            0,
-            buffer_size,
-        );
-
+        encoder.copy_buffer_to_buffer(&self.nodes_buffer, 0, &staging_buffer, 0, buffer_size);
         self.queue.submit(Some(encoder.finish()));
 
-        // Map the staging buffer to read the data
         let slice = staging_buffer.slice(..);
         let (tx, rx) = oneshot::channel();
         slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = tx.send(result);
         });
+
         self.device.poll(wgpu::Maintain::Wait);
 
         match rx.await {
             Ok(Ok(())) => {
-                // Read the mapped data
                 let data = slice.get_mapped_range();
                 let gpu_nodes: &[GPUNode] = bytemuck::cast_slice(&data);
 
-                // Convert GPU nodes back to regular nodes
                 let nodes: Vec<Node> = gpu_nodes.iter().enumerate().map(|(i, gpu_node)| {
                     Node {
                         id: i.to_string(),
@@ -535,7 +618,6 @@ impl GPUCompute {
                     }
                 }).collect();
 
-                // Clean up
                 drop(data);
                 staging_buffer.unmap();
 
