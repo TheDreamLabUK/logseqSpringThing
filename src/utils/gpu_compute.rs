@@ -15,7 +15,7 @@ const WORKGROUP_SIZE: u32 = 256;
 const INITIAL_BUFFER_SIZE: u64 = 1024 * 1024;  // 1MB initial size
 const BUFFER_ALIGNMENT: u64 = 256;  // Required GPU memory alignment
 const EDGE_SIZE: u64 = 32;  // Size of Edge struct (must match WGSL)
-const NODE_SIZE: u64 = 48;  // Size of Node struct in WGSL (vec3 alignment + padding)
+const NODE_SIZE: u64 = 32;  // Size of Node struct in WGSL (vec3 alignment)
 const MAX_NODES: u32 = 1_000_000;  // Safety limit for number of nodes
 const MAX_EDGES: u32 = 5_000_000;  // Safety limit for number of edges
 
@@ -386,17 +386,13 @@ impl GPUCompute {
                 x: rng.gen_range(-75.0..75.0),
                 y: rng.gen_range(-75.0..75.0),
                 z: rng.gen_range(-75.0..75.0),
-                _padding0: 0.0,
                 vx: 0.0,
                 vy: 0.0,
                 vz: 0.0,
-                _padding1: 0.0,
                 mass: 1.0,
-                _padding2: 0.0,
-                _padding3: 0.0,
-                _padding4: 0.0,
-            }
-        }).collect();
+                padding1: 0,
+                    }
+                }).collect();
 
         // Convert edges to GPU representation with validation
         let gpu_edges: Vec<GPUEdge> = graph.edges.iter()

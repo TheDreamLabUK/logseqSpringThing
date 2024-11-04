@@ -39,35 +39,25 @@ impl Default for Node {
 /// ```wgsl
 /// struct Node {
 ///     position: vec3<f32>,  // 12 bytes
-///     padding0: f32,        // 4 bytes
 ///     velocity: vec3<f32>,  // 12 bytes
-///     padding1: f32,        // 4 bytes
 ///     mass: f32,           // 4 bytes
-///     padding2: f32,       // 4 bytes
-///     padding3: f32,       // 4 bytes
-///     padding4: f32,       // 4 bytes
-/// }                        // Total: 48 bytes, aligned to 16
+///     padding1: u32,        // 4 bytes
+/// }                        // Total: 32 bytes
 /// ```
-#[repr(C, align(16))]
+#[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct GPUNode {
     // position (vec3<f32>)
     pub x: f32,
     pub y: f32,
     pub z: f32,
-    pub _padding0: f32,  // Padding for vec3 alignment
-    
     // velocity (vec3<f32>)
     pub vx: f32,
     pub vy: f32,
     pub vz: f32,
-    pub _padding1: f32,  // Padding for vec3 alignment
-    
-    // Additional fields with padding to ensure 16-byte alignment
+    // Additional fields
     pub mass: f32,
-    pub _padding2: f32,
-    pub _padding3: f32,
-    pub _padding4: f32,
+    pub padding1: u32,  // Final padding to match WGSL struct
 }
 
 impl From<&Node> for GPUNode {
@@ -76,15 +66,11 @@ impl From<&Node> for GPUNode {
             x: node.x,
             y: node.y,
             z: node.z,
-            _padding0: 0.0,
             vx: node.vx,
             vy: node.vy,
             vz: node.vz,
-            _padding1: 0.0,
             mass: 1.0,
-            _padding2: 0.0,
-            _padding3: 0.0,
-            _padding4: 0.0,
+            padding1: 0,
         }
     }
 }
