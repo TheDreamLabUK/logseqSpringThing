@@ -1,4 +1,4 @@
-// Structure representing a node with position, velocity, and mass
+// Structure definitions
 struct Node {
     position: vec3<f32>,  // 12 bytes
     velocity: vec3<f32>,  // 12 bytes
@@ -6,7 +6,6 @@ struct Node {
     padding1: u32,        // 4 bytes
 }
 
-// Structure representing an edge between two nodes
 struct Edge {
     source: u32,      // 4 bytes
     target_idx: u32,  // 4 bytes
@@ -18,33 +17,27 @@ struct Edge {
     padding5: u32,    // 4 bytes
 }
 
-// Structure representing adjacency information
 struct Adjacency {
     offset: u32,
     count: u32,
 }
 
-// Buffer containing all nodes
 struct NodesBuffer {
     nodes: array<Node>,
 }
 
-// Buffer containing all edges
 struct EdgesBuffer {
     edges: array<Edge>,
 }
 
-// Buffer containing adjacency information
 struct AdjacencyBuffer {
     adjacency: array<Adjacency>,
 }
 
-// Buffer containing adjacency list indices
 struct AdjacencyListBuffer {
     indices: array<u32>,
 }
 
-// Parameters for the simulation
 struct SimulationParams {
     iterations: u32,           // 4 bytes
     repulsion_strength: f32,   // 4 bytes
@@ -56,33 +49,50 @@ struct SimulationParams {
     padding4: u32,            // 4 bytes - Total: 32 bytes, aligned to 16
 }
 
-// Bind groups for data access
+struct GridCell {
+    start_idx: u32,
+    count: u32,
+}
+
+// Constants
+const WORKGROUP_SIZE: u32 = 256;
+const MAX_FORCE: f32 = 50.0;
+const MIN_DISTANCE: f32 = 1.0;
+const GRID_DIM: u32 = 16;
+const TOTAL_GRID_SIZE: u32 = 4096;
+const CENTER_FORCE_STRENGTH: f32 = 0.1;
+const CENTER_RADIUS: f32 = 100.0;
+const MAX_VELOCITY: f32 = 10.0;
+
+// Bind groups
 @group(0) @binding(0) var<storage, read_write> nodes_buffer: NodesBuffer;
 @group(0) @binding(1) var<storage, read> edges_buffer: EdgesBuffer;
 @group(0) @binding(2) var<storage, read> adjacency_buffer: AdjacencyBuffer;
 @group(0) @binding(3) var<storage, read> adjacency_list_buffer: AdjacencyListBuffer;
 @group(0) @binding(4) var<uniform> params: SimulationParams;
 
-// Constants for simulation
-const WORKGROUP_SIZE: u32 = 256;
-const MAX_FORCE: f32 = 100.0;
-const MIN_DISTANCE: f32 = 0.1;
-const GRID_DIM: u32 = 16;
-const TOTAL_GRID_SIZE: u32 = 4096; // 16^3
-const CENTER_FORCE_STRENGTH: f32 = 0.05;
-const CENTER_RADIUS: f32 = 50.0;
-
-// Grid cell structure for spatial partitioning
-struct GridCell {
-    start_idx: u32,
-    count: u32,
-}
-
-// Shared workgroup memory for grid
-var<workgroup> grid: array<GridCell, 4096>; // Using TOTAL_GRID_SIZE constant
-var<workgroup> node_counts: array<atomic<u32>, 4096>; // Using TOTAL_GRID_SIZE constant
+// Workgroup variables
+var<workgroup> grid: array<GridCell, 4096>;
+var<workgroup> node_counts: array<atomic<u32>, 4096>;
 
 // Utility functions
+fn is_valid_float(x: f32) -> bool {
+    return x == x && abs(x) < 1e10;
+//    return !(isnan(x) || isinf(x));  is not valid in WGSL
+}
+
+fn is_valid_vec3(v: vec3<f32>) -> bool {
+    return is_valid_float(v.x) && is_valid_float(v.y) && is_valid_float(v.z);
+}
+
+fn clamp_vector(v: vec3<f32>, max_magnitude: f32) -> vec3<f32> {
+    let magnitude_sq = dot(v, v);
+    if (magnitude_sq > max_magnitude * max_magnitude) {
+        return normalize(v) * max_magnitude;
+    }
+    return v;
+}
+
 fn get_grid_index(position: vec3<f32>) -> u32 {
     let grid_pos = vec3<u32>(
         u32(clamp((position.x + 100.0) * f32(GRID_DIM) / 200.0, 0.0, f32(GRID_DIM - 1))),
@@ -93,19 +103,27 @@ fn get_grid_index(position: vec3<f32>) -> u32 {
 }
 
 fn calculate_repulsion(pos1: vec3<f32>, pos2: vec3<f32>, mass1: f32, mass2: f32) -> vec3<f32> {
+    if (!is_valid_vec3(pos1) || !is_valid_vec3(pos2)) {
+        return vec3<f32>(0.0);
+    }
+    
     let direction = pos1 - pos2;
     let distance_sq = dot(direction, direction);
     
     if (distance_sq < MIN_DISTANCE * MIN_DISTANCE) {
-        return vec3<f32>(0.0);
+        return normalize(direction) * MAX_FORCE;
     }
     
     let distance = sqrt(distance_sq);
     let force_magnitude = params.repulsion_strength * mass1 * mass2 / (distance_sq + MIN_DISTANCE);
-    return normalize(direction) * min(force_magnitude, MAX_FORCE);
+    return clamp_vector(normalize(direction) * force_magnitude, MAX_FORCE);
 }
 
 fn calculate_attraction(pos1: vec3<f32>, pos2: vec3<f32>, weight: f32) -> vec3<f32> {
+    if (!is_valid_vec3(pos1) || !is_valid_vec3(pos2)) {
+        return vec3<f32>(0.0);
+    }
+    
     let direction = pos2 - pos1;
     let distance_sq = dot(direction, direction);
     
@@ -115,10 +133,9 @@ fn calculate_attraction(pos1: vec3<f32>, pos2: vec3<f32>, weight: f32) -> vec3<f
     
     let distance = sqrt(distance_sq);
     let force_magnitude = params.attraction_strength * weight * (distance - CENTER_RADIUS);
-    return normalize(direction) * min(force_magnitude, MAX_FORCE);
+    return clamp_vector(normalize(direction) * force_magnitude, MAX_FORCE);
 }
 
-// Main compute shader
 @compute @workgroup_size(WORKGROUP_SIZE)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let node_id = global_id.x;
@@ -129,12 +146,17 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     var node = nodes_buffer.nodes[node_id];
-    var force = vec3<f32>(0.0);
+    
+    if (!is_valid_vec3(node.position) || !is_valid_vec3(node.velocity)) {
+        node.position = vec3<f32>(0.0);
+        node.velocity = vec3<f32>(0.0);
+        nodes_buffer.nodes[node_id] = node;
+        return;
+    }
 
-    // Calculate grid cell for current node
+    var force = vec3<f32>(0.0);
     let grid_idx = get_grid_index(node.position);
     
-    // Calculate repulsive forces from nearby grid cells
     for (var dx = -1; dx <= 1; dx = dx + 1) {
         for (var dy = -1; dy <= 1; dy = dy + 1) {
             for (var dz = -1; dz <= 1; dz = dz + 1) {
@@ -152,45 +174,41 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                                  u32(neighbor_y) * GRID_DIM + 
                                  u32(neighbor_z) * GRID_DIM * GRID_DIM;
                 
-                // Calculate repulsion with nodes in neighboring cells
                 for (var i = 0u; i < n_nodes; i = i + 1u) {
                     if (i == node_id || get_grid_index(nodes_buffer.nodes[i].position) != neighbor_idx) {
                         continue;
                     }
                     let other = nodes_buffer.nodes[i];
-                    force += calculate_repulsion(node.position, other.position, node.mass, other.mass);
+                    if (is_valid_vec3(other.position)) {
+                        force += calculate_repulsion(node.position, other.position, node.mass, other.mass);
+                    }
                 }
             }
         }
     }
 
-    // Calculate attractive forces using adjacency list
     let adj = adjacency_buffer.adjacency[node_id];
     for (var i = 0u; i < adj.count; i = i + 1u) {
         let target_idx = adjacency_list_buffer.indices[adj.offset + i];
         let other = nodes_buffer.nodes[target_idx];
-        force += calculate_attraction(node.position, other.position, 1.0); // Using default weight of 1.0
+        if (is_valid_vec3(other.position)) {
+            force += calculate_attraction(node.position, other.position, 1.0);
+        }
     }
 
-    // Apply centering force
     let to_center = -node.position;
     let center_distance = length(to_center);
     if (center_distance > CENTER_RADIUS) {
         force += normalize(to_center) * CENTER_FORCE_STRENGTH * (center_distance - CENTER_RADIUS);
     }
 
-    // Update velocity with damping
-    node.velocity = (node.velocity + force / node.mass) * params.damping;
-    
-    // Limit velocity magnitude
-    let velocity_magnitude_sq = dot(node.velocity, node.velocity);
-    if (velocity_magnitude_sq > MAX_FORCE * MAX_FORCE) {
-        node.velocity = normalize(node.velocity) * MAX_FORCE;
-    }
-
-    // Update position
+    node.velocity = clamp_vector((node.velocity + force / node.mass) * params.damping, MAX_VELOCITY);
     node.position = node.position + node.velocity;
 
-    // Store updated node
+    if (!is_valid_vec3(node.position) || !is_valid_vec3(node.velocity)) {
+        node.position = vec3<f32>(0.0);
+        node.velocity = vec3<f32>(0.0);
+    }
+
     nodes_buffer.nodes[node_id] = node;
 }

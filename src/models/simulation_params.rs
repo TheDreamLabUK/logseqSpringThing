@@ -26,9 +26,9 @@ impl Default for SimulationParams {
     fn default() -> Self {
         Self {
             iterations: 100,
-            repulsion_strength: 1000.0,
-            attraction_strength: 0.01,
-            damping: 0.9,
+            repulsion_strength: 100.0,  // Reduced from 1000.0
+            attraction_strength: 0.1,   // Increased from 0.01
+            damping: 0.8,              // Reduced from 0.9 for more stability
             padding1: 0,
             padding2: 0,
             padding3: 0,
@@ -107,31 +107,31 @@ mod tests {
     fn test_simulation_params_default() {
         let params = SimulationParams::default();
         assert_eq!(params.iterations, 100);
-        assert_eq!(params.repulsion_strength, 1000.0);
-        assert_eq!(params.attraction_strength, 0.01);
-        assert_eq!(params.damping, 0.9);
+        assert_eq!(params.repulsion_strength, 100.0);  // Updated to match new default
+        assert_eq!(params.attraction_strength, 0.1);
+        assert_eq!(params.damping, 0.8);
     }
 
     #[test]
     fn test_simulation_params_builder() {
         let params = SimulationParams::default()
             .with_iterations(200)
-            .with_repulsion(2000.0)
-            .with_attraction(0.02)
+            .with_repulsion(200.0)    // Updated to use more reasonable test value
+            .with_attraction(0.2)     // Updated to use more reasonable test value
             .with_damping(0.8);
 
         assert_eq!(params.iterations, 200);
-        assert_eq!(params.repulsion_strength, 2000.0);
-        assert_eq!(params.attraction_strength, 0.02);
+        assert_eq!(params.repulsion_strength, 200.0);
+        assert_eq!(params.attraction_strength, 0.2);
         assert_eq!(params.damping, 0.8);
     }
 
     #[test]
     fn test_simulation_params_new() {
-        let params = SimulationParams::new(150, 1500.0, 0.015, 0.85);
+        let params = SimulationParams::new(150, 150.0, 0.15, 0.85);  // Updated test values
         assert_eq!(params.iterations, 150);
-        assert_eq!(params.repulsion_strength, 1500.0);
-        assert_eq!(params.attraction_strength, 0.015);
+        assert_eq!(params.repulsion_strength, 150.0);
+        assert_eq!(params.attraction_strength, 0.15);
         assert_eq!(params.damping, 0.85);
     }
 
