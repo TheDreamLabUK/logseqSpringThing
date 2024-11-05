@@ -16,11 +16,11 @@ export default defineComponent({
             // Fisheye controls
             fisheyeEnabled: false,
             fisheyeStrength: 0.5,
-            fisheyeFocusPoint: [0, 0, 0], // [x, y, z] coordinates
+            fisheyeFocusPoint: [0, 0, 0],
             fisheyeRadius: 100.0,
             // Chat controls
             chatInput: '',
-            chatMessages: [], // Will only store user messages
+            chatMessages: [],
             audioInitialized: false,
             // Visualization controls
             colorControls: [],
@@ -28,15 +28,17 @@ export default defineComponent({
             bloomControls: [],
             forceDirectedControls: [],
             additionalControls: [],
-            // UI state
+            springConstant: 0.5,
+            damping: 0.5,
+            // UI state - all groups start collapsed
             collapsedGroups: {
-                chat: false,
-                fisheye: false,
-                colors: false,
-                sizeOpacity: false,
-                bloom: false,
-                forceDirected: false,
-                additional: false
+                chat: true,
+                fisheye: true,
+                colors: true,
+                sizeOpacity: true,
+                bloom: true,
+                forceDirected: true,
+                additional: true
             }
         };
     },
@@ -85,6 +87,10 @@ export default defineComponent({
                     case 'fisheyeRadius':
                         settings.radius = value;
                         this.fisheyeRadius = value;
+                        break;
+                    case 'fisheyeFocusPoint':
+                        settings.focusPoint = value;
+                        this.fisheyeFocusPoint = value;
                         break;
                 }
 
@@ -245,7 +251,6 @@ export default defineComponent({
                 this.simulationMode = mode;
             });
 
-            // Add console log to verify event listener is added
             console.log('Adding serverSettings event listener');
             const handleServerSettings = (event) => {
                 console.log('Received server settings:', event.detail);
@@ -253,7 +258,6 @@ export default defineComponent({
             };
             window.addEventListener('serverSettings', handleServerSettings);
             
-            // Add listener for fisheye settings updates
             const handleFisheyeSettings = (event) => {
                 console.log('Received fisheye settings update:', event.detail);
                 const settings = event.detail;
@@ -272,7 +276,6 @@ export default defineComponent({
         }
     },
     beforeUnmount() {
-        // Clean up event listeners
         if (this._handleServerSettings) {
             window.removeEventListener('serverSettings', this._handleServerSettings);
         }
@@ -380,6 +383,55 @@ export default defineComponent({
                         >
                         <span class="range-value">{{ fisheyeStrength }}</span>
                     </div>
+                    <div class="control-item">
+                        <label for="fisheye_radius">Fisheye Radius</label>
+                        <input
+                            id="fisheye_radius"
+                            type="range"
+                            v-model.number="fisheyeRadius"
+                            :min="10"
+                            :max="200"
+                            :step="1"
+                            @input="emitChange('fisheyeRadius', fisheyeRadius)"
+                        >
+                        <span class="range-value">{{ fisheyeRadius }}</span>
+                    </div>
+                    <div class="control-item">
+                        <label>Focus Point X</label>
+                        <input
+                            type="range"
+                            v-model.number="fisheyeFocusPoint[0]"
+                            :min="-100"
+                            :max="100"
+                            :step="1"
+                            @input="emitChange('fisheyeFocusPoint', fisheyeFocusPoint)"
+                        >
+                        <span class="range-value">{{ fisheyeFocusPoint[0] }}</span>
+                    </div>
+                    <div class="control-item">
+                        <label>Focus Point Y</label>
+                        <input
+                            type="range"
+                            v-model.number="fisheyeFocusPoint[1]"
+                            :min="-100"
+                            :max="100"
+                            :step="1"
+                            @input="emitChange('fisheyeFocusPoint', fisheyeFocusPoint)"
+                        >
+                        <span class="range-value">{{ fisheyeFocusPoint[1] }}</span>
+                    </div>
+                    <div class="control-item">
+                        <label>Focus Point Z</label>
+                        <input
+                            type="range"
+                            v-model.number="fisheyeFocusPoint[2]"
+                            :min="-100"
+                            :max="100"
+                            :step="1"
+                            @input="emitChange('fisheyeFocusPoint', fisheyeFocusPoint)"
+                        >
+                        <span class="range-value">{{ fisheyeFocusPoint[2] }}</span>
+                    </div>
                 </div>
             </div>
 
@@ -475,6 +527,30 @@ export default defineComponent({
                             @input="emitChange(control.name, control.value)"
                         >
                         <span class="range-value">{{ control.value }}</span>
+                    </div>
+                    <div class="control-item">
+                        <label>Spring Constant</label>
+                        <input
+                            type="range"
+                            v-model.number="springConstant"
+                            :min="0.01"
+                            :max="1.0"
+                            :step="0.01"
+                            @input="emitChange('force_directed_spring', springConstant)"
+                        >
+                        <span class="range-value">{{ springConstant }}</span>
+                    </div>
+                    <div class="control-item">
+                        <label>Damping</label>
+                        <input
+                            type="range"
+                            v-model.number="damping"
+                            :min="0.1"
+                            :max="0.9"
+                            :step="0.1"
+                            @input="emitChange('force_directed_damping', damping)"
+                        >
+                        <span class="range-value">{{ damping }}</span>
                     </div>
                 </div>
             </div>
