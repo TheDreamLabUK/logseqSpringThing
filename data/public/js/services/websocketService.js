@@ -417,14 +417,14 @@ export default class WebsocketService {
 
     updateFisheyeSettings(settings) {
         console.log('Updating fisheye settings:', settings);
+        // Convert focusPoint to focus_point to match Rust struct field name
+        const focus_point = settings.focusPoint || [0, 0, 0];
         this.send({
             type: 'updateFisheyeSettings',
-            settings: {
-                enabled: settings.enabled,
-                strength: settings.strength,
-                focusPoint: settings.focusPoint || [0, 0, 0],
-                radius: settings.radius || 100.0
-            }
+            enabled: settings.enabled,
+            strength: settings.strength,
+            focus_point: focus_point, // Use snake_case to match Rust struct
+            radius: settings.radius || 100.0
         });
     }
 }

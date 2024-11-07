@@ -176,8 +176,40 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                         ClientMessage::GetInitialData => {
                             self.handle_initial_data(ctx);
                         },
-                        ClientMessage::UpdateFisheyeSettings { .. } => {
-                            self.handle_fisheye_update(ctx, client_msg);
+                        ClientMessage::UpdateFisheyeSettings { enabled, strength, focus_point, radius } => {
+                            let state = self.state.clone();
+                            let ctx_addr = ctx.address();
+                            
+                            ctx.spawn(async move {
+                                if let Some(gpu_compute) = &state.gpu_compute {
+                                    let mut gpu = gpu_compute.write().await;
+                                    gpu.set_fisheye_params(enabled, strength, focus_point, radius);
+                                    
+                                    let response = json!({
+                                        "type": "fisheye_settings_updated",
+                                        "enabled": enabled,
+                                        "strength": strength,
+                                        "focus_point": focus_point,
+                                        "radius": radius
+                                    });
+                                    if let Ok(response_str) = serde_json::to_string(&response) {
+                                        if let Ok(compressed) = compress_message(&response_str) {
+                                            ctx_addr.do_send(SendCompressedMessage(compressed));
+                                        }
+                                    }
+                                } else {
+                                    error!("GPU compute service not available");
+                                    let error_message = json!({
+                                        "type": "error",
+                                        "message": "GPU compute service not available"
+                                    });
+                                    if let Ok(error_str) = serde_json::to_string(&error_message) {
+                                        if let Ok(compressed) = compress_message(&error_str) {
+                                            ctx_addr.do_send(SendCompressedMessage(compressed));
+                                        }
+                                    }
+                                }
+                            }.into_actor(self));
                         },
                     },
                     Err(e) => {
@@ -392,44 +424,6 @@ impl WebSocketSession {
                 }
             }
         }.into_actor(self));
-    }
-
-    fn handle_fisheye_update(&mut self, ctx: &mut ws::WebsocketContext<Self>, settings: ClientMessage) {
-        if let ClientMessage::UpdateFisheyeSettings { enabled, strength, focus_point, radius } = settings {
-            let state = self.state.clone();
-            let ctx_addr = ctx.address();
-            
-            ctx.spawn(async move {
-                if let Some(gpu_compute) = &state.gpu_compute {
-                    let mut gpu = gpu_compute.write().await;
-                    gpu.set_fisheye_params(enabled, strength, focus_point, radius);
-                    
-                    let response = json!({
-                        "type": "fisheye_settings_updated",
-                        "enabled": enabled,
-                        "strength": strength,
-                        "focusPoint": focus_point,
-                        "radius": radius
-                    });
-                    if let Ok(response_str) = serde_json::to_string(&response) {
-                        if let Ok(compressed) = compress_message(&response_str) {
-                            ctx_addr.do_send(SendCompressedMessage(compressed));
-                        }
-                    }
-                } else {
-                    error!("GPU compute service not available");
-                    let error_message = json!({
-                        "type": "error",
-                        "message": "GPU compute service not available"
-                    });
-                    if let Ok(error_str) = serde_json::to_string(&error_message) {
-                        if let Ok(compressed) = compress_message(&error_str) {
-                            ctx_addr.do_send(SendCompressedMessage(compressed));
-                        }
-                    }
-                }
-            }.into_actor(self));
-        }
     }
 
     fn handle_initial_data(&mut self, ctx: &mut ws::WebsocketContext<Self>) {
