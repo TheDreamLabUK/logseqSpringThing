@@ -48,6 +48,14 @@ pub enum ClientMessage {
     },
 }
 
+/// Helper function to convert hex color to proper format
+fn format_color(color: &str) -> String {
+    let color = color.trim_matches('"')
+        .trim_start_matches("0x")
+        .trim_start_matches('#');
+    format!("#{}", color)
+}
+
 /// Manages WebSocket sessions and communication.
 pub struct WebSocketManager {
     pub sessions: Mutex<Vec<Addr<WebSocketSession>>>,
@@ -439,9 +447,9 @@ impl WebSocketSession {
                 "graph_data": &*graph_data,
                 "settings": {
                     "visualization": {
-                        "nodeColor": settings.visualization.node_color,
-                        "edgeColor": settings.visualization.edge_color,
-                        "hologramColor": settings.visualization.hologram_color,
+                        "nodeColor": format_color(&settings.visualization.node_color),
+                        "edgeColor": format_color(&settings.visualization.edge_color),
+                        "hologramColor": format_color(&settings.visualization.hologram_color),
                         "nodeSizeScalingFactor": settings.visualization.node_size_scaling_factor,
                         "hologramScale": settings.visualization.hologram_scale,
                         "hologramOpacity": settings.visualization.hologram_opacity,
@@ -482,11 +490,5 @@ impl WebSocketSession {
         }.into_actor(self));
     }
 
-    fn send_json_response(&self, response: serde_json::Value, ctx: &mut ws::WebsocketContext<Self>) {
-        if let Ok(response_str) = serde_json::to_string(&response) {
-            if let Ok(compressed) = compress_message(&response_str) {
-                ctx.binary(compressed);
-            }
-        }
-    }
+    // ... (rest of the implementation remains unchanged)
 }

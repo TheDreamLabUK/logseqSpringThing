@@ -238,14 +238,27 @@ export default class WebsocketService {
                 }
                 if (data.settings) {
                     console.log('Dispatching server settings:', data.settings);
-                    // Ensure settings are properly structured before dispatching
-                    const settings = {
-                        visualization: data.settings.visualization || {},
-                        bloom: data.settings.bloom || {},
-                        fisheye: data.settings.fisheye || {}
-                    };
+                    // Clean up color values before dispatching
+                    if (data.settings.visualization) {
+                        const viz = data.settings.visualization;
+                        // Convert color values to proper hex format
+                        ['nodeColor', 'edgeColor', 'hologramColor'].forEach(key => {
+                            if (viz[key]) {
+                                // Remove quotes and 0x prefix, ensure proper hex format
+                                let color = viz[key].replace(/['"]/g, '');  // Remove quotes
+                                if (color.startsWith('0x')) {
+                                    color = color.slice(2);  // Remove 0x prefix
+                                } else if (color.startsWith('#')) {
+                                    color = color.slice(1);  // Remove # prefix
+                                }
+                                // Ensure 6 characters for hex color
+                                color = color.padStart(6, '0');
+                                viz[key] = '#' + color;
+                            }
+                        });
+                    }
                     window.dispatchEvent(new CustomEvent('serverSettings', {
-                        detail: settings
+                        detail: data.settings
                     }));
                 } else {
                     console.warn('No settings received in initial data');
@@ -286,9 +299,16 @@ export default class WebsocketService {
                 break;
 
             case 'fisheye_settings_updated':
-                console.log('Fisheye settings updated:', data.settings);
+                console.log('Fisheye settings updated:', data);
+                // Convert focus_point to focusPoint for client-side consistency
+                const settings = {
+                    enabled: data.enabled,
+                    strength: data.strength,
+                    focusPoint: data.focus_point,
+                    radius: data.radius
+                };
                 window.dispatchEvent(new CustomEvent('fisheyeSettingsUpdated', {
-                    detail: data.settings
+                    detail: settings
                 }));
                 break;
                 

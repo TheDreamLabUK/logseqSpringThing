@@ -6,6 +6,14 @@ use actix_web_actors::ws;
 use log::{error, debug};
 use crate::utils::compression::compress_message;
 
+/// Helper function to convert hex color to proper format
+fn format_color(color: &str) -> String {
+    let color = color.trim_matches('"')
+        .trim_start_matches("0x")
+        .trim_start_matches('#');
+    format!("#{}", color)
+}
+
 /// Represents messages sent to the client as compressed binary data.
 #[derive(Message)]
 #[rtype(result = "()")]
@@ -155,6 +163,35 @@ pub trait MessageHandler: Actor<Context = ws::WebsocketContext<Self>> {
             }
         }
     }
+
+    fn handle_fisheye_update(&self, settings: ClientMessage, gpu_compute: &mut crate::utils::gpu_compute::GPUCompute, ctx: &mut ws::WebsocketContext<Self>) {
+        if let ClientMessage::UpdateFisheyeSettings { enabled, strength, focus_point, radius } = settings {
+            match gpu_compute.set_fisheye_params(enabled, strength, focus_point, radius) {
+                Ok(_) => {
+                    // Send confirmation back to client
+                    self.send_server_message(
+                        ServerMessage::FisheyeSettingsUpdated {
+                            enabled,
+                            strength,
+                            focus_point,
+                            radius,
+                        },
+                        ctx
+                    );
+                },
+                Err(e) => {
+                    error!("Failed to update fisheye settings: {}", e);
+                    self.send_server_message(
+                        ServerMessage::Error {
+                            message: format!("Failed to update fisheye settings: {}", e),
+                            code: Some("FISHEYE_UPDATE_ERROR".to_string()),
+                        },
+                        ctx
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -200,5 +237,13 @@ mod tests {
         let serialized = serde_json::to_string(&fisheye_message).unwrap();
         assert!(serialized.contains("fisheye_settings_updated"));
         assert!(serialized.contains("strength"));
+    }
+
+    #[test]
+    fn test_color_formatting() {
+        assert_eq!(format_color("0xFF0000"), "#FF0000");
+        assert_eq!(format_color("\"0xFF0000\""), "#FF0000");
+        assert_eq!(format_color("#FF0000"), "#FF0000");
+        assert_eq!(format_color("\"#FF0000\""), "#FF0000");
     }
 }
