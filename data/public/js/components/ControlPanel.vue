@@ -1,5 +1,5 @@
 <script>
-import { defineComponent, ref, onMounted, onBeforeUnmount, onUpdated } from 'vue';
+import { defineComponent, ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue';
 
 export default defineComponent({
     name: 'ControlPanel',
@@ -9,114 +9,122 @@ export default defineComponent({
             required: true
         }
     },
-    data() {
-        return {
-            isHidden: false,
-            simulationMode: 'remote',
-            // Fisheye controls
-            fisheyeEnabled: false,
-            fisheyeStrength: 0.5,
-            fisheyeFocusPoint: [0, 0, 0],
-            fisheyeRadius: 100.0,
-            // Chat controls
-            chatInput: '',
-            chatMessages: [],
-            audioInitialized: false,
-            // Visualization controls
-            colorControls: [],
-            sizeOpacityControls: [],
-            bloomControls: [],
-            forceDirectedControls: [],
-            additionalControls: [],
-            springConstant: 0.5,
-            damping: 0.5,
-            // UI state - all groups start collapsed
-            collapsedGroups: {
-                chat: true,
-                fisheye: true,
-                colors: true,
-                sizeOpacity: true,
-                bloom: true,
-                forceDirected: true,
-                additional: true
-            }
+    setup(props, { emit }) {
+        // Reactive state variables
+        const isHidden = ref(false);
+        const simulationMode = ref('remote');
+        const chatMessagesRef = ref(null);
+
+        // Fisheye controls
+        const fisheyeEnabled = ref(false);
+        const fisheyeStrength = ref(0.5);
+        const fisheyeFocusPoint = ref([0, 0, 0]);
+        const fisheyeRadius = ref(100.0);
+
+        // Chat controls
+        const chatInput = ref('');
+        const chatMessages = ref([]);
+        const audioInitialized = ref(false);
+
+        // Visualization controls
+        const colorControls = ref([]);
+        const sizeOpacityControls = ref([]);
+        const bloomControls = ref([]);
+        const forceDirectedControls = ref([]);
+        const additionalControls = ref([]);
+        const springConstant = ref(0.5);
+        const damping = ref(0.5);
+
+        // UI state - all groups start collapsed
+        const collapsedGroups = reactive({
+            chat: true,
+            fisheye: true,
+            colors: true,
+            sizeOpacity: true,
+            bloom: true,
+            forceDirected: true,
+            additional: true
+        });
+
+        // Event handlers declared in outer scope
+        let handleServerSettings;
+        let handleFisheyeSettings;
+
+        // Methods
+        const togglePanel = () => {
+            isHidden.value = !isHidden.value;
         };
-    },
-    methods: {
-        togglePanel() {
-            this.isHidden = !this.isHidden;
-        },
-        toggleGroup(group) {
-            this.collapsedGroups[group] = !this.collapsedGroups[group];
-        },
-        setSimulationMode() {
-            console.log('Setting simulation mode to:', this.simulationMode);
-            if (this.websocketService) {
-                this.websocketService.setSimulationMode(this.simulationMode);
+
+        const toggleGroup = (group) => {
+            collapsedGroups[group] = !collapsedGroups[group];
+        };
+
+        const setSimulationMode = () => {
+            console.log('Setting simulation mode to:', simulationMode.value);
+            if (props.websocketService) {
+                props.websocketService.setSimulationMode(simulationMode.value);
             } else {
                 console.error('WebSocketService is undefined');
             }
-        },
-        emitChange(name, value) {
+        };
+
+        const isColorControl = (name) => {
+            return colorControls.value.some(control => control.name === name);
+        };
+
+        const emitChange = (name, value) => {
             console.log(`Control change: ${name} = ${value}`);
-            
-            if (this.isColorControl(name)) {
-                // Convert from #RRGGBB to 0xRRGGBB format
-                value = parseInt(value.replace('#', '0x'), 16);
+
+            if (isColorControl(name)) {
+                // Convert from #RRGGBB to decimal format
+                value = parseInt(value.replace(/^#/, ''), 16);
             }
-            
-            // Handle fisheye controls
+
             if (name.startsWith('fisheye')) {
                 const settings = {
-                    enabled: this.fisheyeEnabled,
-                    strength: this.fisheyeStrength,
-                    focusPoint: this.fisheyeFocusPoint,
-                    radius: this.fisheyeRadius
+                    enabled: fisheyeEnabled.value,
+                    strength: fisheyeStrength.value,
+                    focusPoint: fisheyeFocusPoint.value,
+                    radius: fisheyeRadius.value
                 };
 
-                // Update the specific setting that changed
                 switch (name) {
                     case 'fisheyeEnabled':
-                        settings.enabled = value;
-                        this.fisheyeEnabled = value;
+                        fisheyeEnabled.value = Boolean(value);
+                        settings.enabled = fisheyeEnabled.value;
                         break;
                     case 'fisheyeStrength':
+                        fisheyeStrength.value = value;
                         settings.strength = value;
-                        this.fisheyeStrength = value;
                         break;
                     case 'fisheyeRadius':
+                        fisheyeRadius.value = value;
                         settings.radius = value;
-                        this.fisheyeRadius = value;
                         break;
                     case 'fisheyeFocusPoint':
+                        fisheyeFocusPoint.value = value;
                         settings.focusPoint = value;
-                        this.fisheyeFocusPoint = value;
                         break;
                 }
 
-                // Send updated fisheye settings to server
-                if (this.websocketService) {
+                if (props.websocketService) {
                     console.log('Sending fisheye settings to server:', settings);
-                    this.websocketService.updateFisheyeSettings(settings);
+                    props.websocketService.updateFisheyeSettings(settings);
                 }
                 return;
             }
 
-            // Handle other controls
-            this.$emit('control-change', { name, value });
-        },
-        isColorControl(name) {
-            return this.colorControls.some(control => control.name === name);
-        },
-        resetControls() {
-            // Reset fisheye settings
-            this.fisheyeEnabled = false;
-            this.fisheyeStrength = 0.5;
-            this.fisheyeRadius = 100.0;
-            this.fisheyeFocusPoint = [0, 0, 0];
-            
-            if (this.websocketService) {
-                this.websocketService.updateFisheyeSettings({
+            emit('control-change', { name, value });
+        };
+
+        const resetControls = () => {
+            fisheyeEnabled.value = false;
+            fisheyeStrength.value = 0.5;
+            fisheyeRadius.value = 100.0;
+            fisheyeFocusPoint.value = [0, 0, 0];
+
+            if (props.websocketService) {
+                props.websocketService.updateFisheyeSettings({
                     enabled: false,
                     strength: 0.5,
                     focusPoint: [0, 0, 0],
@@ -124,93 +132,107 @@ export default defineComponent({
                 });
             }
 
-            // Reset other visualization settings
             window.dispatchEvent(new CustomEvent('resetVisualizationSettings'));
-        },
-        async initializeAudio() {
-            if (this.websocketService) {
+        };
+
+        const initializeAudio = async () => {
+            if (props.websocketService) {
                 try {
-                    await this.websocketService.initAudio();
-                    this.audioInitialized = true;
+                    await props.websocketService.initAudio();
+                    audioInitialized.value = true;
                     console.log('Audio system initialized successfully');
                 } catch (error) {
                     console.error('Failed to initialize audio:', error);
-                    this.audioInitialized = false;
+                    audioInitialized.value = false;
                 }
             }
-        },
-        sendMessage() {
-            if (!this.audioInitialized) {
+        };
+
+        const sendMessage = () => {
+            if (!audioInitialized.value) {
                 console.warn('Audio not initialized. Please enable audio first.');
                 return;
             }
 
-            if (this.chatInput.trim() && this.websocketService) {
-                // Store only user messages with timestamp
-                this.chatMessages.push({
+            if (chatInput.value.trim() && props.websocketService) {
+                chatMessages.value.push({
                     sender: 'You',
-                    message: this.chatInput,
+                    message: chatInput.value,
                     timestamp: new Date().toLocaleTimeString()
                 });
-                
-                // Always use OpenAI with TTS
-                this.websocketService.sendChatMessage({
-                    message: this.chatInput,
-                    useOpenAI: true // Always true now
+
+                props.websocketService.sendChatMessage({
+                    message: chatInput.value,
+                    useOpenAI: true
                 });
-                
-                this.chatInput = '';
+
+                chatInput.value = '';
             }
-        },
-        toggleFullscreen() {
-            this.$emit('toggle-fullscreen');
-        },
-        enableSpacemouse() {
-            this.$emit('enable-spacemouse');
-        },
-        initializeControls(settings) {
+        };
+
+        const toggleFullscreen = () => {
+            emit('toggle-fullscreen');
+        };
+
+        const enableSpacemouse = () => {
+            emit('enable-spacemouse');
+        };
+
+        const initializeControls = (settings) => {
             console.log('Initializing controls with settings:', settings);
-            
+
             // Initialize fisheye controls with received values
             if (settings.fisheye) {
-                this.fisheyeEnabled = settings.fisheye.enabled || false;
-                this.fisheyeStrength = settings.fisheye.strength || 0.5;
-                this.fisheyeFocusPoint = settings.fisheye.focusPoint || [0, 0, 0];
-                this.fisheyeRadius = settings.fisheye.radius || 100.0;
+                fisheyeEnabled.value = Boolean(settings.fisheye.enabled);
+                fisheyeStrength.value = settings.fisheye.strength || 0.5;
+                fisheyeFocusPoint.value = settings.fisheye.focusPoint || [0, 0, 0];
+                fisheyeRadius.value = settings.fisheye.radius || 100.0;
             }
-            
-            // Initialize color controls with received values
-            this.colorControls = [
+
+            // Helper function to convert color values to hex format
+            const toHexColor = (value) => {
+                if (typeof value === 'string') {
+                    if (value.startsWith('#')) {
+                        return value;
+                    }
+                    if (value.startsWith('0x')) {
+                        return '#' + value.slice(2).padStart(6, '0');
+                    }
+                    return '#' + value.padStart(6, '0');
+                }
+                return '#' + Math.floor(value || 0).toString(16).padStart(6, '0');
+            };
+
+            // Initialize controls with received values
+            colorControls.value = [
                 { 
                     name: 'nodeColor', 
                     label: 'Node Color', 
                     type: 'color', 
-                    value: '#' + settings.visualization.nodeColor.toString(16).replace('0x', '').padStart(6, '0')
+                    value: toHexColor(settings.visualization.nodeColor)
                 },
                 { 
                     name: 'edgeColor', 
                     label: 'Edge Color', 
                     type: 'color', 
-                    value: '#' + settings.visualization.edgeColor.toString(16).replace('0x', '').padStart(6, '0')
+                    value: toHexColor(settings.visualization.edgeColor)
                 },
                 { 
                     name: 'hologramColor', 
                     label: 'Hologram Color', 
                     type: 'color', 
-                    value: '#' + settings.visualization.hologramColor.toString(16).replace('0x', '').padStart(6, '0')
+                    value: toHexColor(settings.visualization.hologramColor)
                 }
             ];
 
-            // Initialize size and opacity controls with received values
-            this.sizeOpacityControls = [
+            sizeOpacityControls.value = [
                 { name: 'nodeSizeScalingFactor', label: 'Node Size Scaling', type: 'range', value: settings.visualization.nodeSizeScalingFactor, min: 1, max: 10, step: 0.1 },
                 { name: 'hologramScale', label: 'Hologram Scale', type: 'range', value: settings.visualization.hologramScale, min: 1, max: 10, step: 0.1 },
                 { name: 'hologramOpacity', label: 'Hologram Opacity', type: 'range', value: settings.visualization.hologramOpacity, min: 0, max: 1, step: 0.01 },
                 { name: 'edgeOpacity', label: 'Edge Opacity', type: 'range', value: settings.visualization.edgeOpacity, min: 0, max: 1, step: 0.01 }
             ];
 
-            // Initialize bloom controls with received values
-            this.bloomControls = [
+            bloomControls.value = [
                 { name: 'nodeBloomStrength', label: 'Node Bloom Strength', type: 'range', value: settings.bloom.nodeBloomStrength, min: 0, max: 1, step: 0.01 },
                 { name: 'nodeBloomRadius', label: 'Node Bloom Radius', type: 'range', value: settings.bloom.nodeBloomRadius, min: 0, max: 1, step: 0.01 },
                 { name: 'nodeBloomThreshold', label: 'Node Bloom Threshold', type: 'range', value: settings.bloom.nodeBloomThreshold, min: 0, max: 1, step: 0.01 },
@@ -222,69 +244,58 @@ export default defineComponent({
                 { name: 'environmentBloomThreshold', label: 'Environment Bloom Threshold', type: 'range', value: settings.bloom.environmentBloomThreshold, min: 0, max: 1, step: 0.01 }
             ];
 
-            // Initialize force-directed controls with received values
-            this.forceDirectedControls = [
+            forceDirectedControls.value = [
                 { name: 'iterations', label: 'Iterations', type: 'range', value: settings.visualization.forceDirectedIterations, min: 10, max: 500, step: 10 },
                 { name: 'repulsion_strength', label: 'Repulsion', type: 'range', value: settings.visualization.forceDirectedRepulsion, min: 0.1, max: 10.0, step: 0.1 },
                 { name: 'attraction_strength', label: 'Attraction', type: 'range', value: settings.visualization.forceDirectedAttraction, min: 0.001, max: 0.1, step: 0.001 }
             ];
 
-            // Initialize additional controls with received values
-            this.additionalControls = [
+            additionalControls.value = [
                 { name: 'labelFontSize', label: 'Label Font Size', type: 'range', value: settings.visualization.labelFontSize, min: 12, max: 72, step: 1 },
                 { name: 'fogDensity', label: 'Fog Density', type: 'range', value: settings.visualization.fogDensity, min: 0, max: 0.01, step: 0.0001 }
             ];
+        };
 
-            console.log('Controls initialized:', {
-                colorControls: this.colorControls,
-                sizeOpacityControls: this.sizeOpacityControls,
-                bloomControls: this.bloomControls,
-                forceDirectedControls: this.forceDirectedControls,
-                additionalControls: this.additionalControls
-            });
-        }
-    },
-    mounted() {
-        if (this.websocketService) {
-            this.websocketService.on('simulationModeSet', (mode) => {
-                console.log('Simulation mode set to:', mode);
-                this.simulationMode = mode;
-            });
+        // Lifecycle hooks
+        onMounted(() => {
+            if (props.websocketService) {
+                props.websocketService.on('simulationModeSet', (mode) => {
+                    console.log('Simulation mode set to:', mode);
+                    simulationMode.value = mode;
+                });
 
-            console.log('Adding serverSettings event listener');
-            const handleServerSettings = (event) => {
-                console.log('Received server settings:', event.detail);
-                this.initializeControls(event.detail);
-            };
-            window.addEventListener('serverSettings', handleServerSettings);
-            
-            const handleFisheyeSettings = (event) => {
-                console.log('Received fisheye settings update:', event.detail);
-                const settings = event.detail;
-                this.fisheyeEnabled = settings.enabled;
-                this.fisheyeStrength = settings.strength;
-                this.fisheyeFocusPoint = settings.focusPoint;
-                this.fisheyeRadius = settings.radius;
-            };
-            window.addEventListener('fisheyeSettingsUpdated', handleFisheyeSettings);
-            
-            // Store handlers for cleanup
-            this._handleServerSettings = handleServerSettings;
-            this._handleFisheyeSettings = handleFisheyeSettings;
-        } else {
-            console.error('WebSocketService is undefined');
-        }
-    },
-    beforeUnmount() {
-        if (this._handleServerSettings) {
-            window.removeEventListener('serverSettings', this._handleServerSettings);
-        }
-        if (this._handleFisheyeSettings) {
-            window.removeEventListener('fisheyeSettingsUpdated', this._handleFisheyeSettings);
-        }
-    },
-    setup() {
-        const chatMessagesRef = ref(null);
+                // Define event handlers
+                handleServerSettings = (event) => {
+                    console.log('Received server settings:', event.detail);
+                    initializeControls(event.detail);
+                };
+
+                handleFisheyeSettings = (event) => {
+                    console.log('Received fisheye settings update:', event.detail);
+                    const settings = event.detail;
+                    fisheyeEnabled.value = settings.enabled;
+                    fisheyeStrength.value = settings.strength;
+                    fisheyeFocusPoint.value = settings.focusPoint;
+                    fisheyeRadius.value = settings.radius;
+                };
+
+                // Add event listeners
+                window.addEventListener('serverSettings', handleServerSettings);
+                window.addEventListener('fisheyeSettingsUpdated', handleFisheyeSettings);
+            } else {
+                console.error('WebSocketService is undefined');
+            }
+        });
+
+        // Clean up event listeners
+        onBeforeUnmount(() => {
+            if (handleServerSettings) {
+                window.removeEventListener('serverSettings', handleServerSettings);
+            }
+            if (handleFisheyeSettings) {
+                window.removeEventListener('fisheyeSettingsUpdated', handleFisheyeSettings);
+            }
+        });
 
         const scrollToBottom = () => {
             if (chatMessagesRef.value) {
@@ -292,11 +303,37 @@ export default defineComponent({
             }
         };
 
-        onUpdated(() => {
+        watch(chatMessages, () => {
             scrollToBottom();
         });
 
         return {
+            isHidden,
+            simulationMode,
+            fisheyeEnabled,
+            fisheyeStrength,
+            fisheyeFocusPoint,
+            fisheyeRadius,
+            chatInput,
+            chatMessages,
+            audioInitialized,
+            colorControls,
+            sizeOpacityControls,
+            bloomControls,
+            forceDirectedControls,
+            additionalControls,
+            springConstant,
+            damping,
+            collapsedGroups,
+            togglePanel,
+            toggleGroup,
+            setSimulationMode,
+            emitChange,
+            resetControls,
+            initializeAudio,
+            sendMessage,
+            toggleFullscreen,
+            enableSpacemouse,
             chatMessagesRef
         };
     }
@@ -349,7 +386,7 @@ export default defineComponent({
                     </div>
                 </div>
             </div>
-
+        
             <!-- Fisheye Distortion Controls -->
             <div class="control-group">
                 <div class="group-header" @click="toggleGroup('fisheye')">
@@ -361,11 +398,21 @@ export default defineComponent({
                         <label for="fisheye_enabled">Enable Fisheye</label>
                         <div>
                             <label>
-                                <input type="radio" value="true" v-model="fisheyeEnabled" @change="emitChange('fisheyeEnabled', true)">
+                                <input 
+                                    type="radio" 
+                                    :value="true"
+                                    v-model="fisheyeEnabled"
+                                    @change="emitChange('fisheyeEnabled', true)"
+                                >
                                 Enable
                             </label>
                             <label>
-                                <input type="radio" value="false" v-model="fisheyeEnabled" @change="emitChange('fisheyeEnabled', false)">
+                                <input 
+                                    type="radio" 
+                                    :value="false"
+                                    v-model="fisheyeEnabled"
+                                    @change="emitChange('fisheyeEnabled', false)"
+                                >
                                 Disable
                             </label>
                         </div>
@@ -396,41 +443,18 @@ export default defineComponent({
                         >
                         <span class="range-value">{{ fisheyeRadius }}</span>
                     </div>
-                    <div class="control-item">
-                        <label>Focus Point X</label>
+                    <!-- Focus Point Controls -->
+                    <div v-for="(axis, index) in ['X', 'Y', 'Z']" :key="axis" class="control-item">
+                        <label>Focus Point {{ axis }}</label>
                         <input
                             type="range"
-                            v-model.number="fisheyeFocusPoint[0]"
+                            v-model.number="fisheyeFocusPoint[index]"
                             :min="-100"
                             :max="100"
                             :step="1"
                             @input="emitChange('fisheyeFocusPoint', fisheyeFocusPoint)"
                         >
-                        <span class="range-value">{{ fisheyeFocusPoint[0] }}</span>
-                    </div>
-                    <div class="control-item">
-                        <label>Focus Point Y</label>
-                        <input
-                            type="range"
-                            v-model.number="fisheyeFocusPoint[1]"
-                            :min="-100"
-                            :max="100"
-                            :step="1"
-                            @input="emitChange('fisheyeFocusPoint', fisheyeFocusPoint)"
-                        >
-                        <span class="range-value">{{ fisheyeFocusPoint[1] }}</span>
-                    </div>
-                    <div class="control-item">
-                        <label>Focus Point Z</label>
-                        <input
-                            type="range"
-                            v-model.number="fisheyeFocusPoint[2]"
-                            :min="-100"
-                            :max="100"
-                            :step="1"
-                            @input="emitChange('fisheyeFocusPoint', fisheyeFocusPoint)"
-                        >
-                        <span class="range-value">{{ fisheyeFocusPoint[2] }}</span>
+                        <span class="range-value">{{ fisheyeFocusPoint[index] }}</span>
                     </div>
                 </div>
             </div>

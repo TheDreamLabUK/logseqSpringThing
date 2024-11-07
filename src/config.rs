@@ -6,6 +6,17 @@ use std::fs;
 use std::path::Path;
 use std::env;
 
+/// Converts a color value to proper CSS hex format
+fn normalize_color(value: String) -> String {
+    if value.starts_with('#') {
+        value
+    } else if value.starts_with("0x") {
+        format!("#{}", &value[2..])
+    } else {
+        format!("#{}", value)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
     #[serde(default = "default_prompt")]
@@ -41,9 +52,9 @@ fn default_settings() -> DefaultSettings {
 
 fn default_visualization() -> VisualizationSettings {
     VisualizationSettings {
-        node_color: "0x1A0B31".to_string(),
-        edge_color: "0xff0000".to_string(),
-        hologram_color: "0xFFD700".to_string(),
+        node_color: "#1A0B31".to_string(),
+        edge_color: "#FF0000".to_string(),
+        hologram_color: "#FFD700".to_string(),
         node_size_scaling_factor: 5,
         hologram_scale: 5,
         hologram_opacity: 0.1,
@@ -246,13 +257,13 @@ impl Settings {
 
         // Visualization settings
         if let Ok(value) = env::var("NODE_COLOR") {
-            builder = builder.set_override("visualization.node_color", value)?;
+            builder = builder.set_override("visualization.node_color", normalize_color(value))?;
         }
         if let Ok(value) = env::var("EDGE_COLOR") {
-            builder = builder.set_override("visualization.edge_color", value)?;
+            builder = builder.set_override("visualization.edge_color", normalize_color(value))?;
         }
         if let Ok(value) = env::var("HOLOGRAM_COLOR") {
-            builder = builder.set_override("visualization.hologram_color", value)?;
+            builder = builder.set_override("visualization.hologram_color", normalize_color(value))?;
         }
         if let Ok(value) = env::var("NODE_SIZE_SCALING_FACTOR") {
             builder = builder.set_override("visualization.node_size_scaling_factor", value)?;
