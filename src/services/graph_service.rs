@@ -71,7 +71,7 @@ impl GraphService {
     
         // Convert edge_map to edges
         graph.edges = edge_map.into_iter().map(|((source, target), weight)| {
-            Edge::new(source, target, weight, 0.0) // Set hyperlinks to 0 since we're not using it for forces
+            Edge::new(source, target, weight)
         }).collect();
         
         info!("Graph data built with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());

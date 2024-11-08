@@ -57,7 +57,6 @@ pub struct ProcessedFile {
 #[derive(Default)]
 struct ReferenceInfo {
     direct_mentions: usize,
-    hyperlinks: usize,
 }
 
 #[async_trait]
@@ -141,6 +140,21 @@ impl GitHubService for RealGitHubService {
         Ok(markdown_files)
     }
 
+    // Add the calculate_node_size function to FileService impl
+fn calculate_node_size(file_size: usize) -> f64 {
+    if file_size == 0 {
+        return MIN_NODE_SIZE;
+    }
+
+    let size_f64: f64 = file_size as f64;
+    let log_size = f64::log10(size_f64 + 1.0);
+    let min_log = f64::log10(1.0);
+    let max_log = f64::log10(269425.0 + 1.0); // Maximum known file size + 1
+    
+    MIN_NODE_SIZE + (log_size - min_log) * (MAX_NODE_SIZE - MIN_NODE_SIZE) / (max_log - min_log)
+}
+
+
     async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>> {
         let url = format!("https://api.github.com/repos/{}/{}/contents/{}/{}", 
             self.owner, self.repo, self.base_path, file_name);
@@ -201,55 +215,30 @@ pub struct FileService;
 
 impl FileService {
     /// Extract both direct mentions and hyperlink references to other files
-    fn extract_references(content: &str, valid_nodes: &[String]) -> HashMap<String, ReferenceInfo> {
-        let mut references = HashMap::new();
+fn extract_references(content: &str, valid_nodes: &[String]) -> HashMap<String, ReferenceInfo> {
+    let mut references = HashMap::new();
+    
+    for node_name in valid_nodes {
+        let mut ref_info = ReferenceInfo::default();
         
-        for node_name in valid_nodes {
-            let mut ref_info = ReferenceInfo::default();
-            
-            // Count direct mentions (case insensitive)
-            let direct_pattern = format!(r"(?i)\[\[{}]]|\b{}\b", regex::escape(node_name), regex::escape(node_name));
-            if let Ok(re) = Regex::new(&direct_pattern) {
-                ref_info.direct_mentions = re.find_iter(content).count();
-            }
-            
-            // Count markdown links
-            let link_pattern = format!(r"\[([^]]*)](\(.*?{}\)|\[{}])", node_name, node_name);
-            if let Ok(re) = Regex::new(&link_pattern) {
-                ref_info.hyperlinks = re.find_iter(content).count();
-            }
-            
-            if ref_info.direct_mentions > 0 || ref_info.hyperlinks > 0 {
-                references.insert(node_name.clone(), ref_info);
-            }
+        // Count direct mentions (case insensitive)
+        let direct_pattern = format!(r"(?i)\[\[{}]]|\b{}\b", regex::escape(node_name), regex::escape(node_name));
+        if let Ok(re) = Regex::new(&direct_pattern) {
+            ref_info.direct_mentions = re.find_iter(content).count();
         }
         
-        references
-    }
-
-    /// Calculate node size using logarithmic scaling
-    fn calculate_node_size(file_size: usize) -> f64 {
-        if file_size == 0 {
-            return MIN_NODE_SIZE;
+        if ref_info.direct_mentions > 0 {
+            references.insert(node_name.clone(), ref_info);
         }
-
-        let size_f64: f64 = file_size as f64;
-        let log_size = f64::log10(size_f64 + 1.0);
-        let min_log = f64::log10(1.0);
-        let max_log = f64::log10(269425.0 + 1.0); // Maximum known file size + 1
-        
-        MIN_NODE_SIZE + (log_size - min_log) * (MAX_NODE_SIZE - MIN_NODE_SIZE) / (max_log - min_log)
     }
+    
+    references
+}
 
-    /// Convert ReferenceInfo to topic_counts format
-    fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>) -> HashMap<String, usize> {
-        references.into_iter()
-            .map(|(name, info)| {
-                // Weight hyperlinks more heavily than direct mentions
-                let total_weight = info.direct_mentions + (info.hyperlinks * 2);
-                (name, total_weight)
-            })
-            .collect()
+fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>) -> HashMap<String, usize> {
+    references.into_iter()
+        .map(|(name, info)| (name, info.direct_mentions))
+        .collect()
     }
 
     /// Initialize the local markdown directory and metadata structure.

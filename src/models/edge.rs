@@ -7,7 +7,6 @@ pub struct Edge {
     pub source: String,
     pub target_node: String,
     pub weight: f32,
-    pub hyperlinks: f32,
 }
 
 // GPU representation of an edge, must match the shader's Edge struct
@@ -25,12 +24,11 @@ pub struct GPUEdge {
 }
 
 impl Edge {
-    pub fn new(source: String, target_node: String, weight: f32, hyperlinks: f32) -> Self {
+    pub fn new(source: String, target_node: String, weight: f32) -> Self {
         Self {
             source,
             target_node,
             weight,
-            hyperlinks,
         }
     }
 

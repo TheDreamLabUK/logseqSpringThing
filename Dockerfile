@@ -3,9 +3,9 @@ FROM node:latest AS frontend-builder
 
 WORKDIR /app
 
-# Copy package files, vite config, and the entire data directory
+# Copy package files, vite config, and the public directory
 COPY package.json pnpm-lock.yaml vite.config.js ./
-COPY data ./data
+COPY data/public ./data/public
 
 # Install pnpm globally
 RUN npm install -g pnpm
@@ -81,9 +81,6 @@ RUN mkdir -p /app/data/public/dist /app/data/markdown /app/src /app/data/piper
 
 # Create an empty metadata.json file
 RUN mkdir -p /app/data/markdown && touch /app/data/markdown/metadata.json && echo "{}" > /app/data/markdown/metadata.json
-
-# Copy topics.csv file into the container
-COPY data/topics.csv /app/data/topics.csv
 
 # Copy the local piper voice model
 COPY data/piper/en_GB-northern_english_male-medium.onnx /app/data/piper/en_GB-northern_english_male-medium.onnx
