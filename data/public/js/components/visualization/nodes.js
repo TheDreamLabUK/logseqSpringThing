@@ -26,9 +26,9 @@ export class NodeManager {
         this.edgeMeshes = new Map();
         
         // Node settings
-        this.minNodeSize = 0.1;  // Increased from 1
-        this.maxNodeSize = 5; // Increased from 5
-        this.nodeSizeScalingFactor = 1;  // Increased from 1
+        this.minNodeSize = 0.1;  // Minimum node size in visualization
+        this.maxNodeSize = 5;    // Maximum node size in visualization
+        this.nodeSizeScalingFactor = 1;  // Global scaling factor
         this.labelFontSize = 18;
         this.nodeColor = new THREE.Color(0x4444ff);  // Initialize as THREE.Color
 
@@ -37,13 +37,24 @@ export class NodeManager {
         this.edgeOpacity = 0.6;
     }
 
-    calculateNodeSize(fileSize) {
+    getNodeSize(metadata) {
+        // Use the node_size from metadata if available
+        if (metadata.node_size) {
+            // Convert from server's range (5.0-50.0) to visualization range
+            const serverMin = 5.0;
+            const serverMax = 50.0;
+            const normalizedSize = (parseFloat(metadata.node_size) - serverMin) / (serverMax - serverMin);
+            return this.minNodeSize + (this.maxNodeSize - this.minNodeSize) * normalizedSize * this.nodeSizeScalingFactor;
+        }
+        
+        // Fallback to file size calculation if node_size is not available
+        const fileSize = parseInt(metadata.file_size) || 1;
         const logMin = Math.log(1);
         const logMax = Math.log(1e9); // 1GB as max reference
         const logSize = Math.log(fileSize + 1);
         
         const normalizedSize = (logSize - logMin) / (logMax - logMin);
-        return this.minNodeSize + (this.maxNodeSize - this.minNodeSize) * normalizedSize;
+        return this.minNodeSize + (this.maxNodeSize - this.minNodeSize) * normalizedSize * this.nodeSizeScalingFactor;
     }
 
     calculateNodeColor(lastModified) {
@@ -156,7 +167,7 @@ export class NodeManager {
             const lastModified = metadata.last_modified || new Date().toISOString();
             const hyperlinkCount = parseInt(metadata.hyperlink_count) || 0;
 
-            const size = this.calculateNodeSize(fileSize) * this.nodeSizeScalingFactor;
+            const size = this.getNodeSize(metadata);
             const color = this.calculateNodeColor(lastModified);
 
             let mesh = this.nodeMeshes.get(node.id);
