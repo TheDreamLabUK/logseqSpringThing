@@ -7,6 +7,7 @@ use std::collections::HashMap;
 pub struct Metadata {
     pub file_name: String,
     pub file_size: usize,
+    pub node_size: f64,  // Added field for scaled node size
     pub hyperlink_count: usize,
     pub sha1: String,
     pub perplexity_link: String,

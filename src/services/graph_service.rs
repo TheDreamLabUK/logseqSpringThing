@@ -1,5 +1,3 @@
-// src/services/graph_service.rs
-
 use crate::AppState;
 use crate::models::graph::GraphData;
 use crate::models::node::Node;
@@ -26,13 +24,18 @@ impl GraphService {
         let metadata: HashMap<String, Metadata> = serde_json::from_str(&metadata_content)?;
     
         let mut graph = GraphData::default();
-        let mut edge_map: HashMap<(String, String), (f32, u32)> = HashMap::new();
+        let mut edge_map: HashMap<(String, String), (f32, f32)> = HashMap::new();
     
         // Create nodes
         for (file_name, file_metadata) in &metadata {
             let node_id = file_name.trim_end_matches(".md").to_string();
             let mut node_metadata = HashMap::new();
+            
+            // Add file metadata to node
             node_metadata.insert("file_size".to_string(), file_metadata.file_size.to_string());
+            node_metadata.insert("node_size".to_string(), file_metadata.node_size.to_string());
+            node_metadata.insert("last_modified".to_string(), file_metadata.last_modified.to_string());
+            
             graph.nodes.push(Node {
                 id: node_id.clone(),
                 label: node_id.clone(),
@@ -43,38 +46,42 @@ impl GraphService {
             graph.metadata.insert(node_id.clone(), file_metadata.clone());
         }
     
-        // Build edges
+        // Build edges by combining references in both directions
         for (file_name, file_metadata) in &metadata {
-            let node_id = file_name.trim_end_matches(".md").to_string();
-            for (other_file, _) in &metadata {
-                if file_name != other_file {
-                    let other_node_id = other_file.trim_end_matches(".md");
-                    let count = file_metadata.topic_counts.get(other_node_id).cloned().unwrap_or(0) as f32;
-                    if count > 0.0 {
-                        let edge_key = if node_id < other_node_id.to_string() {
-                            (node_id.clone(), other_node_id.to_string())
-                        } else {
-                            (other_node_id.to_string(), node_id.clone())
-                        };
-                        edge_map.entry(edge_key)
-                            .and_modify(|(weight, hyperlinks)| {
-                                *weight += count;
-                                *hyperlinks += file_metadata.hyperlink_count as u32;
-                            })
-                            .or_insert((count, file_metadata.hyperlink_count as u32));
-                    }
+            let source_id = file_name.trim_end_matches(".md").to_string();
+            
+            // Look through all references in topic_counts
+            for (target_id, reference_count) in &file_metadata.topic_counts {
+                if source_id != *target_id {
+                    // Create a canonical edge key (alphabetically ordered)
+                    let edge_key = if source_id < *target_id {
+                        (source_id.clone(), target_id.clone())
+                    } else {
+                        (target_id.clone(), source_id.clone())
+                    };
+
+                    // Get the hyperlink count for this reference
+                    let hyperlink_count = if file_metadata.hyperlink_count > 0 {
+                        // If there are hyperlinks, assume they contribute to the reference count
+                        (*reference_count as f32) * 0.5 // Weight hyperlinks as half of the reference count
+                    } else {
+                        0.0
+                    };
+
+                    // Update edge weights
+                    edge_map.entry(edge_key)
+                        .and_modify(|(weight, hyperlinks)| {
+                            *weight += *reference_count as f32;
+                            *hyperlinks += hyperlink_count;
+                        })
+                        .or_insert((*reference_count as f32, hyperlink_count));
                 }
             }
         }
     
         // Convert edge_map to edges
         graph.edges = edge_map.into_iter().map(|((source, target), (weight, hyperlinks))| {
-            Edge {
-                source,
-                target_node: target,
-                weight,
-                hyperlinks: hyperlinks as f32,
-            }
+            Edge::new(source, target, weight, hyperlinks)
         }).collect();
         
         info!("Graph data built with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
@@ -106,7 +113,7 @@ impl GraphService {
         match gpu_compute {
             Some(gpu) => {
                 info!("Using GPU for layout calculation");
-                let mut gpu_compute = gpu.write().await; // Acquire write lock
+                let mut gpu_compute = gpu.write().await;
                 gpu_compute.set_graph_data(graph)?;
                 gpu_compute.set_force_directed_params(params)?;
                 gpu_compute.compute_forces()?;
@@ -166,10 +173,12 @@ impl GraphService {
                 let dy = graph.nodes[target].y - graph.nodes[source].y;
                 let dz = graph.nodes[target].z - graph.nodes[source].z;
                 let distance = (dx * dx + dy * dy + dz * dz).sqrt().max(0.1);
-                let force = attraction * distance * edge.weight;
-                let fx = force * dx / distance;
-                let fy = force * dy / distance;
-                let fz = force * dz / distance;
+                
+                // Use both weight and hyperlinks for attraction
+                let total_force = attraction * distance * (edge.weight + edge.hyperlinks);
+                let fx = total_force * dx / distance;
+                let fy = total_force * dy / distance;
+                let fz = total_force * dz / distance;
 
                 graph.nodes[source].vx += fx;
                 graph.nodes[source].vy += fy;
@@ -220,7 +229,9 @@ impl GraphService {
                 if edge.source == current || edge.target_node == current {
                     let neighbor = if edge.source == current { &edge.target_node } else { &edge.source };
                     if unvisited.contains(neighbor) {
-                        let alt = distances[&current] + edge.weight;
+                        // Use both weight and hyperlinks for path finding
+                        let edge_weight = edge.weight + edge.hyperlinks;
+                        let alt = distances[&current] + edge_weight;
                         if alt < distances[neighbor] {
                             distances.insert(neighbor.to_string(), alt);
                             previous.insert(neighbor.to_string(), Some(current.to_string()));

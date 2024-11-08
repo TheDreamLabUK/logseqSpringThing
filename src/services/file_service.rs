@@ -1,7 +1,8 @@
 use crate::models::metadata::Metadata;
 use crate::config::Settings;
 use serde::{Deserialize, Serialize};
-use reqwest::{Client, header::{HeaderMap, HeaderValue, IF_NONE_MATCH, ETAG}};
+use reqwest::Client;
+use reqwest::header::{HeaderMap, HeaderValue, IF_NONE_MATCH, ETAG};
 use async_trait::async_trait;
 use log::{info, debug, error};
 use regex::Regex;
@@ -13,16 +14,16 @@ use chrono::{Utc, DateTime};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::error::Error as StdError;
-use futures::stream::{self, StreamExt};
+use futures::stream::StreamExt;
 use std::time::Duration;
 use tokio::time::sleep;
 
-// Rest of the file remains unchanged
+// Constants
 const METADATA_PATH: &str = "data/markdown/metadata.json";
 const MARKDOWN_DIR: &str = "data/markdown";
-const CACHE_DURATION: Duration = Duration::from_secs(300); // 5 minutes
-const MAX_CONCURRENT_DOWNLOADS: usize = 5;
 const GITHUB_API_DELAY: Duration = Duration::from_millis(100); // Rate limiting delay
+const MIN_NODE_SIZE: f64 = 5.0;
+const MAX_NODE_SIZE: f64 = 50.0;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GithubFile {
@@ -40,6 +41,8 @@ pub struct GithubFileMetadata {
     pub etag: Option<String>,
     #[serde(with = "chrono::serde::ts_seconds_option")]
     pub last_checked: Option<DateTime<Utc>>,
+    #[serde(with = "chrono::serde::ts_seconds_option")]
+    pub last_modified: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -50,21 +53,11 @@ pub struct ProcessedFile {
     pub metadata: Metadata,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct TreeResponse {
-    sha: String,
-    tree: Vec<TreeItem>,
-    truncated: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct TreeItem {
-    path: String,
-    mode: String,
-    #[serde(rename = "type")]
-    item_type: String,
-    sha: String,
-    url: Option<String>,
+// Structure to hold reference information
+#[derive(Default)]
+struct ReferenceInfo {
+    direct_mentions: usize,
+    hyperlinks: usize,
 }
 
 #[async_trait]
@@ -72,6 +65,7 @@ pub trait GitHubService: Send + Sync {
     async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>>;
     async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>>;
     async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>>;
+    async fn get_file_last_modified(&self, file_path: &str) -> Result<DateTime<Utc>, Box<dyn StdError + Send + Sync>>;
 }
 
 pub struct RealGitHubService {
@@ -108,27 +102,11 @@ impl RealGitHubService {
             metadata_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
+}
 
-    async fn fetch_directory_contents(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        // First, check the cache
-        {
-            let cache = self.metadata_cache.read().await;
-            let now = Utc::now();
-            
-            // If cache is fresh and not empty, use it
-            if !cache.is_empty() {
-                if let Some(first_item) = cache.values().next() {
-                    if let Some(last_checked) = first_item.last_checked {
-                        if (now - last_checked) < chrono::Duration::from_std(CACHE_DURATION).unwrap() {
-                            debug!("Using cached metadata for files");
-                            return Ok(cache.values().cloned().collect());
-                        }
-                    }
-                }
-            }
-        }
-
-        // Cache is stale or empty, fetch from GitHub
+#[async_trait]
+impl GitHubService for RealGitHubService {
+    async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
             self.owner, self.repo, self.base_path
@@ -141,90 +119,29 @@ impl RealGitHubService {
 
         let contents: Vec<serde_json::Value> = response.json().await?;
         
-        let markdown_files: Vec<GithubFileMetadata> = contents.into_iter()
-            .filter(|item| {
-                let is_file = item["type"].as_str().unwrap_or("") == "file";
-                let name = item["name"].as_str().unwrap_or("");
-                is_file && name.ends_with(".md")
-            })
-            .map(|item| {
-                GithubFileMetadata {
-                    name: item["name"].as_str().unwrap_or("").to_string(),
+        let mut markdown_files = Vec::new();
+        
+        for item in contents {
+            if item["type"].as_str().unwrap_or("") == "file" && 
+               item["name"].as_str().unwrap_or("").ends_with(".md") {
+                let name = item["name"].as_str().unwrap_or("").to_string();
+                let last_modified = self.get_file_last_modified(&format!("{}/{}", self.base_path, name)).await?;
+                
+                markdown_files.push(GithubFileMetadata {
+                    name,
                     sha: item["sha"].as_str().unwrap_or("").to_string(),
                     download_url: item["download_url"].as_str().unwrap_or("").to_string(),
                     etag: None,
                     last_checked: Some(Utc::now()),
-                }
-            })
-            .collect();
-
-        // Update cache
-        {
-            let mut cache = self.metadata_cache.write().await;
-            cache.clear();
-            for metadata in &markdown_files {
-                cache.insert(metadata.name.clone(), metadata.clone());
+                    last_modified: Some(last_modified),
+                });
             }
         }
 
-        debug!("Found {} markdown files in target directory", markdown_files.len());
         Ok(markdown_files)
     }
 
-    async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
-        let mut headers = HeaderMap::new();
-        headers.insert("Authorization", HeaderValue::from_str(&format!("token {}", self.token))?);
-
-        // Get cached ETag if available
-        let etag = {
-            let cache = self.metadata_cache.read().await;
-            cache.values()
-                .find(|m| m.download_url == download_url)
-                .and_then(|m| m.etag.clone())
-        };
-
-        if let Some(etag) = etag {
-            headers.insert(IF_NONE_MATCH, HeaderValue::from_str(&etag)?);
-        }
-
-        let response = self.client.get(download_url)
-            .headers(headers)
-            .send()
-            .await?;
-
-        // Update ETag in cache if provided
-        if let Some(new_etag) = response.headers().get(ETAG) {
-            let mut cache = self.metadata_cache.write().await;
-            if let Some(metadata) = cache.values_mut().find(|m| m.download_url == download_url) {
-                metadata.etag = Some(new_etag.to_str()?.to_string());
-            }
-        }
-
-        if response.status() == reqwest::StatusCode::NOT_MODIFIED {
-            // Use cached content
-            let path = format!("{}/{}", MARKDOWN_DIR, download_url.split('/').last().unwrap_or(""));
-            if let Ok(content) = fs::read_to_string(&path) {
-                return Ok(content);
-            }
-        }
-
-        let content = response.text().await?;
-        Ok(content)
-    }
-
-    pub async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        self.fetch_directory_contents().await
-    }
-
     async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>> {
-        // Check cache first
-        {
-            let cache = self.metadata_cache.read().await;
-            if let Some(metadata) = cache.get(file_name) {
-                return Ok(Some(metadata.download_url.clone()));
-            }
-        }
-
         let url = format!("https://api.github.com/repos/{}/{}/contents/{}/{}", 
             self.owner, self.repo, self.base_path, file_name);
 
@@ -240,26 +157,203 @@ impl RealGitHubService {
             Ok(None)
         }
     }
-}
-
-#[async_trait]
-impl GitHubService for RealGitHubService {
-    async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        self.fetch_file_metadata().await
-    }
-
-    async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>> {
-        self.get_download_url(file_name).await
-    }
 
     async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
-        self.fetch_file_content(download_url).await
+        let mut headers = HeaderMap::new();
+        headers.insert("Authorization", HeaderValue::from_str(&format!("token {}", self.token))?);
+
+        let response = self.client.get(download_url)
+            .headers(headers)
+            .send()
+            .await?;
+
+        let content = response.text().await?;
+        Ok(content)
+    }
+
+    async fn get_file_last_modified(&self, file_path: &str) -> Result<DateTime<Utc>, Box<dyn StdError + Send + Sync>> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/commits",
+            self.owner, self.repo
+        );
+
+        let response = self.client.get(&url)
+            .header("Authorization", format!("token {}", self.token))
+            .query(&[("path", file_path), ("per_page", "1")])
+            .send()
+            .await?;
+
+        let commits: Vec<serde_json::Value> = response.json().await?;
+        
+        if let Some(last_commit) = commits.first() {
+            if let Some(commit) = last_commit["commit"]["committer"]["date"].as_str() {
+                if let Ok(date) = DateTime::parse_from_rfc3339(commit) {
+                    return Ok(date.with_timezone(&Utc));
+                }
+            }
+        }
+        
+        Ok(Utc::now())
     }
 }
 
 pub struct FileService;
 
 impl FileService {
+    /// Extract both direct mentions and hyperlink references to other files
+    fn extract_references(content: &str, valid_nodes: &[String]) -> HashMap<String, ReferenceInfo> {
+        let mut references = HashMap::new();
+        
+        for node_name in valid_nodes {
+            let mut ref_info = ReferenceInfo::default();
+            
+            // Count direct mentions (case insensitive)
+            let direct_pattern = format!(r"(?i)\[\[{}]]|\b{}\b", regex::escape(node_name), regex::escape(node_name));
+            if let Ok(re) = Regex::new(&direct_pattern) {
+                ref_info.direct_mentions = re.find_iter(content).count();
+            }
+            
+            // Count markdown links
+            let link_pattern = format!(r"\[([^]]*)](\(.*?{}\)|\[{}])", node_name, node_name);
+            if let Ok(re) = Regex::new(&link_pattern) {
+                ref_info.hyperlinks = re.find_iter(content).count();
+            }
+            
+            if ref_info.direct_mentions > 0 || ref_info.hyperlinks > 0 {
+                references.insert(node_name.clone(), ref_info);
+            }
+        }
+        
+        references
+    }
+
+    /// Calculate node size using logarithmic scaling
+    fn calculate_node_size(file_size: usize) -> f64 {
+        if file_size == 0 {
+            return MIN_NODE_SIZE;
+        }
+
+        let size_f64: f64 = file_size as f64;
+        let log_size = f64::log10(size_f64 + 1.0);
+        let min_log = f64::log10(1.0);
+        let max_log = f64::log10(269425.0 + 1.0); // Maximum known file size + 1
+        
+        MIN_NODE_SIZE + (log_size - min_log) * (MAX_NODE_SIZE - MIN_NODE_SIZE) / (max_log - min_log)
+    }
+
+    /// Convert ReferenceInfo to topic_counts format
+    fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>) -> HashMap<String, usize> {
+        references.into_iter()
+            .map(|(name, info)| {
+                // Weight hyperlinks more heavily than direct mentions
+                let total_weight = info.direct_mentions + (info.hyperlinks * 2);
+                (name, total_weight)
+            })
+            .collect()
+    }
+
+    /// Initialize the local markdown directory and metadata structure.
+    pub async fn initialize_local_storage(
+        github_service: &dyn GitHubService,
+        _settings: Arc<RwLock<Settings>>,
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
+        info!("Checking local storage status");
+        
+        // Ensure directories exist
+        Self::ensure_directories()?;
+
+        // Check if we have a valid local setup
+        if Self::has_valid_local_setup() {
+            info!("Valid local setup found. Skipping initialization.");
+            return Ok(());
+        }
+
+        info!("Initializing local storage with files from GitHub");
+
+        // Step 1: Get all markdown files from GitHub
+        let github_files = github_service.fetch_file_metadata().await?;
+        info!("Found {} markdown files in GitHub", github_files.len());
+
+        let mut file_sizes = HashMap::new();
+        let mut file_contents = HashMap::new();
+        let mut file_metadata = HashMap::new();
+        
+        // Step 2: First pass - collect all files and their contents
+        for file_meta in github_files {
+            match github_service.fetch_file_content(&file_meta.download_url).await {
+                Ok(content) => {
+                    // Check if file starts with "public:: true"
+                    let first_line = content.lines().next().unwrap_or("").trim();
+                    if first_line != "public:: true" {
+                        debug!("Skipping non-public file: {}", file_meta.name);
+                        continue;
+                    }
+
+                    let node_name = file_meta.name.trim_end_matches(".md").to_string();
+                    file_sizes.insert(node_name.clone(), content.len());
+                    file_contents.insert(node_name, content);
+                    file_metadata.insert(file_meta.name.clone(), file_meta);
+                }
+                Err(e) => {
+                    error!("Failed to fetch content for {}: {}", file_meta.name, e);
+                }
+            }
+            sleep(GITHUB_API_DELAY).await;
+        }
+
+        // Get list of valid node names (filenames without .md)
+        let valid_nodes: Vec<String> = file_contents.keys().cloned().collect();
+
+        // Step 3: Second pass - extract references and create metadata
+        let mut metadata_map = HashMap::new();
+        
+        for (node_name, content) in &file_contents {
+            let file_name = format!("{}.md", node_name);
+            let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
+            
+            // Calculate SHA1 of content
+            let local_sha1 = Self::calculate_sha1(content);
+            
+            // Save file content
+            fs::write(&file_path, content)?;
+
+            // Extract references
+            let references = Self::extract_references(content, &valid_nodes);
+            let topic_counts = Self::convert_references_to_topic_counts(references);
+
+            // Get GitHub metadata
+            let github_meta = file_metadata.get(&file_name).unwrap();
+            let last_modified = github_meta.last_modified.unwrap_or_else(|| Utc::now());
+
+            // Calculate node size
+            let file_size = *file_sizes.get(node_name).unwrap();
+            let node_size = Self::calculate_node_size(file_size);
+
+            // Create metadata entry
+            let metadata = Metadata {
+                file_name: file_name.clone(),
+                file_size,
+                node_size,
+                hyperlink_count: Self::count_hyperlinks(content),
+                sha1: local_sha1,
+                last_modified,
+                perplexity_link: String::new(),
+                last_perplexity_process: None,
+                topic_counts,
+            };
+
+            metadata_map.insert(file_name, metadata);
+        }
+
+        // Step 4: Save metadata
+        info!("Saving metadata for {} public files", metadata_map.len());
+        Self::save_metadata(&metadata_map)?;
+
+        info!("Initialization complete. Processed {} public files", metadata_map.len());
+
+        Ok(())
+    }
+
     /// Check if we have a valid local setup
     fn has_valid_local_setup() -> bool {
         // Check if metadata.json exists and is not empty
@@ -288,114 +382,6 @@ impl FileService {
         false
     }
 
-    /// Initialize the local markdown directory and metadata structure.
-    pub async fn initialize_local_storage(
-        github_service: &dyn GitHubService,
-        settings: Arc<RwLock<Settings>>,
-    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        info!("Checking local storage status");
-        
-        // Ensure directories exist
-        Self::ensure_directories()?;
-
-        // Check if we have a valid local setup
-        if Self::has_valid_local_setup() {
-            info!("Valid local setup found. Skipping initialization.");
-            return Ok(());
-        }
-
-        info!("Initializing local storage with files from GitHub");
-
-        // Get topics from settings
-        let settings = settings.read().await;
-        let topics = settings.topics.clone();
-
-        // Step 1: Get all markdown files from GitHub
-        let github_files = github_service.fetch_file_metadata().await?;
-        info!("Found {} markdown files in GitHub", github_files.len());
-
-        let mut metadata_map = HashMap::new();
-        let mut processed_count = 0;
-        let mut total_files = 0;
-
-        // Step 2: Download and process each file
-        for file_meta in github_files {
-            total_files += 1;
-            
-            // Download file content
-            match github_service.fetch_file_content(&file_meta.download_url).await {
-                Ok(content) => {
-                    // Check if file starts with "public:: true"
-                    let first_line = content.lines().next().unwrap_or("").trim();
-                    if first_line != "public:: true" {
-                        debug!("Skipping non-public file: {}", file_meta.name);
-                        continue;
-                    }
-
-                    let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
-                    
-                    // Calculate SHA1 of content
-                    let local_sha1 = Self::calculate_sha1(&content);
-                    
-                    // Save file content
-                    fs::write(&file_path, &content)?;
-                    processed_count += 1;
-
-                    // Extract topics from content
-                    let topic_counts = Self::extract_topics(&content, &topics);
-
-                    // Create metadata entry
-                    let metadata = Metadata {
-                        file_name: file_meta.name.clone(),
-                        file_size: content.len(),
-                        hyperlink_count: Self::count_hyperlinks(&content),
-                        sha1: local_sha1,
-                        last_modified: Utc::now(),
-                        perplexity_link: String::new(),
-                        last_perplexity_process: None,
-                        topic_counts,
-                    };
-
-                    metadata_map.insert(file_meta.name.clone(), metadata);
-                    info!("Processed public file: {}", file_meta.name);
-                }
-                Err(e) => {
-                    error!("Failed to fetch content for {}: {}", file_meta.name, e);
-                }
-            }
-
-            // Add delay for rate limiting
-            sleep(GITHUB_API_DELAY).await;
-        }
-
-        // Step 3: Save metadata
-        info!("Saving metadata for {} public files", metadata_map.len());
-        Self::save_metadata(&metadata_map)?;
-
-        info!("Initialization complete. Found {} total files, processed {} public files", 
-            total_files, processed_count);
-
-        Ok(())
-    }
-
-    /// Extract topics from content
-    fn extract_topics(content: &str, topics: &[String]) -> HashMap<String, usize> {
-        let mut topic_counts = HashMap::new();
-        
-        // Convert content to lowercase for case-insensitive matching
-        let content_lower = content.to_lowercase();
-        
-        for topic in topics {
-            let topic_lower = topic.to_lowercase();
-            let count = content_lower.matches(&topic_lower).count();
-            if count > 0 {
-                topic_counts.insert(topic.clone(), count);
-            }
-        }
-        
-        topic_counts
-    }
-
     /// Ensures all required directories exist
     fn ensure_directories() -> Result<(), std::io::Error> {
         debug!("Ensuring required directories exist");
@@ -409,15 +395,11 @@ impl FileService {
     /// Handles incremental updates after initial setup
     pub async fn fetch_and_process_files(
         github_service: &dyn GitHubService,
-        settings: Arc<RwLock<Settings>>,
+        _settings: Arc<RwLock<Settings>>,
         metadata_map: &mut HashMap<String, Metadata>,
     ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
         // Ensure directories exist before any operations
         Self::ensure_directories()?;
-
-        // Get topics from settings
-        let settings = settings.read().await;
-        let topics = settings.topics.clone();
 
         // Get metadata for markdown files in target directory
         let github_files_metadata = github_service.fetch_file_metadata().await?;
@@ -448,7 +430,12 @@ impl FileService {
             }
         }
 
-        // Process files in parallel with rate limiting
+        // Get list of valid node names (filenames without .md)
+        let valid_nodes: Vec<String> = github_files_metadata.iter()
+            .map(|f| f.name.trim_end_matches(".md").to_string())
+            .collect();
+
+        // Process files that need updating
         let files_to_process: Vec<_> = github_files_metadata.into_iter()
             .filter(|file_meta| {
                 let local_meta = metadata_map.get(&file_meta.name);
@@ -456,71 +443,52 @@ impl FileService {
             })
             .collect();
 
-        let results = stream::iter(files_to_process)
-            .map(|file_meta| {
-                let github_service = github_service;
-                let topics = topics.clone();
-                async move {
-                    // Add delay for rate limiting
-                    sleep(GITHUB_API_DELAY).await;
-
-                    // Download content
-                    match github_service.fetch_file_content(&file_meta.download_url).await {
-                        Ok(content) => {
-                            // Check if file starts with "public:: true"
-                            let first_line = content.lines().next().unwrap_or("").trim();
-                            if first_line != "public:: true" {
-                                debug!("Skipping non-public file: {}", file_meta.name);
-                                return Ok(None);
-                            }
-                            
-                            let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
-                            fs::write(&file_path, &content)?;
-                            
-                            // Extract topics from content
-                            let topic_counts = Self::extract_topics(&content, &topics);
-
-                            let new_metadata = Metadata {
-                                file_name: file_meta.name.clone(),
-                                file_size: content.len(),
-                                hyperlink_count: Self::count_hyperlinks(&content),
-                                sha1: file_meta.sha.clone(),
-                                last_modified: Utc::now(),
-                                perplexity_link: String::new(),
-                                last_perplexity_process: None,
-                                topic_counts,
-                            };
-                            
-                            Ok(Some(ProcessedFile {
-                                file_name: file_meta.name,
-                                content,
-                                is_public: true,
-                                metadata: new_metadata,
-                            }))
-                        }
-                        Err(e) => {
-                            error!("Failed to fetch content: {}", e);
-                            Err(e)
-                        }
+        // Process each file
+        for file_meta in files_to_process {
+            match github_service.fetch_file_content(&file_meta.download_url).await {
+                Ok(content) => {
+                    let first_line = content.lines().next().unwrap_or("").trim();
+                    if first_line != "public:: true" {
+                        debug!("Skipping non-public file: {}", file_meta.name);
+                        continue;
                     }
-                }
-            })
-            .buffer_unordered(MAX_CONCURRENT_DOWNLOADS)
-            .collect::<Vec<_>>()
-            .await;
 
-        // Process results
-        for result in results {
-            match result {
-                Ok(Some(processed_file)) => {
-                    let file_name = processed_file.file_name.clone();
-                    metadata_map.insert(file_name.clone(), processed_file.metadata.clone());
-                    processed_files.push(processed_file);
-                    debug!("Successfully processed public file: {}", file_name);
+                    let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
+                    fs::write(&file_path, &content)?;
+
+                    // Extract references
+                    let references = Self::extract_references(&content, &valid_nodes);
+                    let topic_counts = Self::convert_references_to_topic_counts(references);
+
+                    // Calculate node size
+                    let file_size = content.len();
+                    let node_size = Self::calculate_node_size(file_size);
+
+                    let new_metadata = Metadata {
+                        file_name: file_meta.name.clone(),
+                        file_size,
+                        node_size,
+                        hyperlink_count: Self::count_hyperlinks(&content),
+                        sha1: Self::calculate_sha1(&content),
+                        last_modified: file_meta.last_modified.unwrap_or_else(|| Utc::now()),
+                        perplexity_link: String::new(),
+                        last_perplexity_process: None,
+                        topic_counts,
+                    };
+
+                    metadata_map.insert(file_meta.name.clone(), new_metadata.clone());
+                    processed_files.push(ProcessedFile {
+                        file_name: file_meta.name,
+                        content,
+                        is_public: true,
+                        metadata: new_metadata,
+                    });
                 }
-                Ok(None) => {} // Skip non-public files
-                Err(e) => error!("Error processing file: {}", e),
+                Err(e) => {
+                    error!("Failed to fetch content: {}", e);
+                }
             }
+            sleep(GITHUB_API_DELAY).await;
         }
 
         // Save updated metadata
