@@ -12,6 +12,10 @@ export class LayoutManager {
         this.isInitialized = false;
         this.isSimulating = false;
         this.animationFrameId = null;
+        this.lastPositions = null;       // Store previous positions for change detection
+        this.updateThreshold = 0.001;    // Minimum position change to trigger update
+        this.lastUpdateTime = 0;         // Last time positions were sent to server
+        this.updateInterval = 50;        // Minimum ms between position updates
     }
 
     initializePositions(nodes) {
@@ -31,6 +35,13 @@ export class LayoutManager {
             if (!node.vy) node.vy = 0;
             if (!node.vz) node.vz = 0;
         });
+
+        // Initialize last positions
+        this.lastPositions = nodes.map(node => ({
+            x: node.x,
+            y: node.y,
+            z: node.z
+        }));
     }
 
     calculateSpringForce(pos1, pos2, mass1, mass2, isConnected) {
@@ -157,6 +168,54 @@ export class LayoutManager {
                 node.z = Math.max(Math.min(node.z, maxCoord), -maxCoord);
             });
         }
+
+        // Check if we should send position updates
+        const now = Date.now();
+        if (now - this.lastUpdateTime >= this.updateInterval) {
+            this.sendPositionUpdates(nodes);
+            this.lastUpdateTime = now;
+        }
+    }
+
+    sendPositionUpdates(nodes) {
+        if (!this.lastPositions) return;
+
+        const positions = {};
+        let hasChanges = false;
+
+        nodes.forEach((node, index) => {
+            const lastPos = this.lastPositions[index];
+            if (!lastPos) return;
+
+            // Check if position has changed significantly
+            if (Math.abs(node.x - lastPos.x) > this.updateThreshold ||
+                Math.abs(node.y - lastPos.y) > this.updateThreshold ||
+                Math.abs(node.z - lastPos.z) > this.updateThreshold) {
+                
+                positions[index] = {
+                    x: node.x,
+                    y: node.y,
+                    z: node.z
+                };
+                hasChanges = true;
+
+                // Update last position
+                lastPos.x = node.x;
+                lastPos.y = node.y;
+                lastPos.z = node.z;
+            }
+        });
+
+        // Only send update if there are changes
+        if (hasChanges) {
+            window.dispatchEvent(new CustomEvent('positionUpdate', {
+                detail: {
+                    type: 'PositionUpdate',
+                    positions,
+                    timestamp: Date.now()
+                }
+            }));
+        }
     }
 
     startContinuousSimulation(graphData) {
@@ -191,5 +250,18 @@ export class LayoutManager {
                 this.forceDirectedDamping = value;
                 break;
         }
+    }
+
+    // Handle incoming position updates from server
+    applyPositionUpdates(positions) {
+        if (!this.lastPositions) return;
+
+        Object.entries(positions).forEach(([index, position]) => {
+            const idx = parseInt(index);
+            if (this.lastPositions[idx]) {
+                this.lastPositions[idx] = position;
+                // Update the actual node position in the next layout iteration
+            }
+        });
     }
 }

@@ -4,7 +4,8 @@ use serde_json::{json, Value};
 use crate::models::simulation_params::SimulationParams;
 use actix_web_actors::ws;
 use log::{error, debug};
-use crate::utils::compression::compress_message;
+use actix_web::web::Bytes;
+use bytestring::ByteString;
 
 /// Helper function to convert hex color to proper format
 fn format_color(color: &str) -> String {
@@ -14,31 +15,58 @@ fn format_color(color: &str) -> String {
     format!("#{}", color)
 }
 
-/// Represents messages sent to the client as compressed binary data.
+/// GPU-computed node positions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GPUPositionUpdate {
+    pub positions: Vec<[f32; 3]>,
+    pub timestamp: u64,
+}
+
+/// Message for sending text data
 #[derive(Message)]
 #[rtype(result = "()")]
-pub struct SendCompressedMessage(pub Vec<u8>);
+pub struct SendText(pub String);
+
+/// Message for sending binary data
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct SendBinary(pub Vec<u8>);
+
+/// Message for OpenAI text-to-speech
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct OpenAIMessage(pub String);
+
+/// Message indicating OpenAI connection success
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct OpenAIConnected;
+
+/// Message indicating OpenAI connection failure
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct OpenAIConnectionFailed;
 
 /// Represents messages sent from the client.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum ClientMessage {
-    #[serde(rename = "set_tts_method")]
+    #[serde(rename = "setTtsMethod")]
     SetTTSMethod { method: String },
     
-    #[serde(rename = "chat_message")]
+    #[serde(rename = "chatMessage")]
     ChatMessage { 
         message: String, 
         use_openai: bool 
     },
     
-    #[serde(rename = "get_initial_data")]
+    #[serde(rename = "getInitialData")]
     GetInitialData,
     
-    #[serde(rename = "set_simulation_mode")]
+    #[serde(rename = "setSimulationMode")]
     SetSimulationMode { mode: String },
     
-    #[serde(rename = "recalculate_layout")]
+    #[serde(rename = "recalculateLayout")]
     RecalculateLayout { params: SimulationParams },
     
     #[serde(rename = "ragflowQuery")]
@@ -64,17 +92,17 @@ pub enum ClientMessage {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum ServerMessage {
-    #[serde(rename = "audio_data")]
+    #[serde(rename = "audioData")]
     AudioData {
         audio_data: String // base64 encoded audio
     },
     
-    #[serde(rename = "ragflow_response")]
+    #[serde(rename = "ragflowResponse")]
     RagflowResponse {
         answer: String
     },
     
-    #[serde(rename = "openai_response")]
+    #[serde(rename = "openaiResponse")]
     OpenAIResponse {
         response: String,
         audio: Option<String> // base64 encoded audio
@@ -86,54 +114,35 @@ pub enum ServerMessage {
         code: Option<String>
     },
     
-    #[serde(rename = "graph_update")]
+    #[serde(rename = "graphUpdate")]
     GraphUpdate {
         graph_data: Value
     },
     
-    #[serde(rename = "simulation_mode_set")]
+    #[serde(rename = "simulationModeSet")]
     SimulationModeSet {
         mode: String,
         gpu_enabled: bool
     },
 
-    #[serde(rename = "fisheye_settings_updated")]
+    #[serde(rename = "fisheyeSettingsUpdated")]
     FisheyeSettingsUpdated {
         enabled: bool,
         strength: f32,
         focus_point: [f32; 3],
         radius: f32,
-    }
+    },
+
+    #[serde(rename = "gpuPositions")]
+    GPUPositions(GPUPositionUpdate)
 }
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct OpenAIConnected;
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct OpenAIConnectionFailed;
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct OpenAIMessage(pub String);
 
 pub trait MessageHandler: Actor<Context = ws::WebsocketContext<Self>> {
     fn send_json_response(&self, response: Value, ctx: &mut ws::WebsocketContext<Self>) {
         match serde_json::to_string(&response) {
             Ok(json_string) => {
                 debug!("Sending JSON response: {}", json_string);
-                match compress_message(&json_string) {
-                    Ok(compressed) => {
-                        debug!("Compressed response size: {} bytes", compressed.len());
-                        ctx.binary(compressed)
-                    },
-                    Err(e) => {
-                        error!("Failed to compress JSON response: {}", e);
-                        // Fallback to uncompressed JSON if compression fails
-                        ctx.text(json_string);
-                    }
-                }
+                ctx.text(ByteString::from(json_string));
             },
             Err(e) => {
                 error!("Failed to serialize JSON response: {}", e);
@@ -143,7 +152,7 @@ pub trait MessageHandler: Actor<Context = ws::WebsocketContext<Self>> {
                     "code": "SERIALIZATION_ERROR"
                 });
                 if let Ok(error_string) = serde_json::to_string(&error_message) {
-                    ctx.text(error_string);
+                    ctx.text(ByteString::from(error_string));
                 }
             }
         }
@@ -205,7 +214,7 @@ mod tests {
             use_openai: true
         };
         let serialized = serde_json::to_string(&message).unwrap();
-        assert!(serialized.contains("chat_message"));
+        assert!(serialized.contains("chatMessage"));
         assert!(serialized.contains("Hello"));
 
         let fisheye_message = ClientMessage::UpdateFisheyeSettings {
@@ -225,7 +234,7 @@ mod tests {
             answer: "Test answer".to_string()
         };
         let serialized = serde_json::to_string(&message).unwrap();
-        assert!(serialized.contains("ragflow_response"));
+        assert!(serialized.contains("ragflowResponse"));
         assert!(serialized.contains("Test answer"));
 
         let fisheye_message = ServerMessage::FisheyeSettingsUpdated {
@@ -235,7 +244,7 @@ mod tests {
             radius: 100.0,
         };
         let serialized = serde_json::to_string(&fisheye_message).unwrap();
-        assert!(serialized.contains("fisheye_settings_updated"));
+        assert!(serialized.contains("fisheyeSettingsUpdated"));
         assert!(serialized.contains("strength"));
     }
 

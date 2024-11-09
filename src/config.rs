@@ -256,6 +256,7 @@ impl fmt::Display for VisualizationSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::simulation_params::{SimulationParams, SimulationPhase};
 
     #[test]
     fn test_simulation_params_from_config() {
@@ -276,39 +277,63 @@ mod tests {
             force_directed_damping: 0.8,
         };
 
-        let params = crate::models::simulation_params::SimulationParams::from_config(&config);
+        let params = SimulationParams::from_config(&config, SimulationPhase::Initial);
         assert_eq!(params.iterations, 100);
+        assert_eq!(params.spring_strength, 0.1);
         assert_eq!(params.repulsion_strength, 1000.0);
         assert_eq!(params.attraction_strength, 0.01);
         assert_eq!(params.damping, 0.8);
+        assert!(params.is_initial_layout);
     }
 
     #[test]
     fn test_simulation_params_clamping() {
-        let params = crate::models::simulation_params::SimulationParams::new(5, 50.0, 0.001, 0.05);
-        assert_eq!(params.iterations, 10); // Clamped to min
-        assert_eq!(params.repulsion_strength, 100.0); // Clamped to min
-        assert_eq!(params.attraction_strength, 0.01); // Clamped to min
-        assert_eq!(params.damping, 0.1); // Clamped to min
+        let params = SimulationParams::new(
+            5,
+            0.0001, // spring_strength
+            0.5,    // repulsion_strength
+            0.0001, // attraction_strength
+            0.3,    // damping
+            false   // is_initial
+        );
+        assert_eq!(params.iterations, 5);
+        assert_eq!(params.spring_strength, 0.001); // Clamped to min
+        assert_eq!(params.repulsion_strength, 1.0); // Clamped to min
+        assert_eq!(params.attraction_strength, 0.001); // Clamped to min
+        assert_eq!(params.damping, 0.5); // Clamped to min
+        assert!(!params.is_initial_layout);
 
-        let params = crate::models::simulation_params::SimulationParams::new(1000, 10000.0, 2.0, 1.0);
+        let params = SimulationParams::new(
+            1000,
+            2.0,     // spring_strength
+            20000.0, // repulsion_strength
+            2.0,     // attraction_strength
+            1.0,     // damping
+            true     // is_initial
+        );
         assert_eq!(params.iterations, 500); // Clamped to max
-        assert_eq!(params.repulsion_strength, 5000.0); // Clamped to max
+        assert_eq!(params.spring_strength, 1.0); // Clamped to max
+        assert_eq!(params.repulsion_strength, 10000.0); // Clamped to max
         assert_eq!(params.attraction_strength, 1.0); // Clamped to max
-        assert_eq!(params.damping, 0.9); // Clamped to max
+        assert_eq!(params.damping, 0.95); // Clamped to max
+        assert!(params.is_initial_layout);
     }
 
     #[test]
     fn test_simulation_params_builder() {
-        let params = crate::models::simulation_params::SimulationParams::default()
+        let params = SimulationParams::default()
             .with_iterations(200)
-            .with_repulsion(2000.0)
-            .with_attraction(0.05)
-            .with_damping(0.7);
+            .with_spring_strength(0.5)
+            .with_repulsion_strength(5000.0)
+            .with_attraction_strength(0.05)
+            .with_damping(0.7)
+            .with_time_step(0.8);
 
-        assert_eq!(params.iterations, 200);
-        assert_eq!(params.repulsion_strength, 2000.0);
+        assert_eq!(params.iterations, 10); // Clamped to interactive max since not initial
+        assert_eq!(params.spring_strength, 0.5);
+        assert_eq!(params.repulsion_strength, 5000.0);
         assert_eq!(params.attraction_strength, 0.05);
         assert_eq!(params.damping, 0.7);
+        assert_eq!(params.time_step, 0.8);
     }
 }

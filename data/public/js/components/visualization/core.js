@@ -45,16 +45,33 @@ export class WebXRVisualization {
         // Initialize settings
         this.initializeSettings();
 
-        // Add event listener for graph data updates
+        // Add event listeners for graph data and position updates
         window.addEventListener('graphDataUpdated', (event) => {
             console.log('Received graphDataUpdated event:', event.detail);
             this.updateVisualization();
         });
 
-        // Add event listener for settings updates
         window.addEventListener('visualizationSettingsUpdated', (event) => {
             console.log('Received visualizationSettingsUpdated event:', event.detail);
             this.updateSettings(event.detail);
+        });
+
+        // Handle position updates from layout manager
+        window.addEventListener('positionUpdate', (event) => {
+            console.log('Received position update:', event.detail);
+            if (this.graphDataManager.websocketService) {
+                this.graphDataManager.websocketService.sendGraphMessage(event.detail);
+            }
+        });
+
+        // Handle incoming position updates from other clients
+        window.addEventListener('graphPositionsUpdated', (event) => {
+            console.log('Received position update from server:', event.detail);
+            const { positions, timestamp } = event.detail;
+            if (this.layoutManager) {
+                this.layoutManager.applyPositionUpdates(positions);
+                this.nodeManager.updateNodePositions(positions);
+            }
         });
 
         console.log('WebXRVisualization constructor completed');

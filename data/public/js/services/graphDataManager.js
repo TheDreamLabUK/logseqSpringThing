@@ -13,14 +13,15 @@ export class GraphDataManager {
         this.graphData = null;
         this.forceDirectedParams = {
             iterations: 100,
-            repulsion_strength: 1.0,
-            attraction_strength: 0.01,
+            repulsionStrength: 1.0,
+            attractionStrength: 0.01,
             damping: 0.9
         };
         console.log('GraphDataManager initialized');
         
-        // Set up WebSocket graph update listener
+        // Set up WebSocket message listeners
         this.websocketService.on('graphUpdate', this.handleGraphUpdate.bind(this));
+        this.websocketService.on('gpuPositions', this.handleGPUPositions.bind(this));
     }
 
     /**
@@ -32,7 +33,39 @@ export class GraphDataManager {
     }
 
     /**
-     * Handles incoming graph update messages.
+     * Handles GPU-computed position updates from the server.
+     * @param {object} update - The position update data.
+     */
+    handleGPUPositions(update) {
+        if (!this.graphData || !this.graphData.nodes) {
+            console.error('Cannot apply GPU position update: No graph data exists');
+            return;
+        }
+
+        const { positions, timestamp } = update;
+        
+        // Update node positions from GPU computation
+        this.graphData.nodes.forEach((node, index) => {
+            if (positions[index]) {
+                const [x, y, z] = positions[index];
+                node.x = x;
+                node.y = y;
+                node.z = z;
+                // Clear velocities since GPU is handling movement
+                node.vx = 0;
+                node.vy = 0;
+                node.vz = 0;
+            }
+        });
+
+        // Notify visualization of position updates
+        window.dispatchEvent(new CustomEvent('graphDataUpdated', { 
+            detail: this.graphData 
+        }));
+    }
+
+    /**
+     * Handles graph update messages.
      * @param {object} data - The received graph data.
      */
     handleGraphUpdate(data) {
@@ -129,14 +162,6 @@ export class GraphDataManager {
 
         console.log(`Graph data updated: ${this.graphData.nodes.length} nodes, ${this.graphData.edges.length} edges`);
         
-        // Log some sample data
-        if (this.graphData.nodes.length > 0) {
-            console.log('Sample node:', this.graphData.nodes[0]);
-        }
-        if (this.graphData.edges.length > 0) {
-            console.log('Sample edge:', this.graphData.edges[0]);
-        }
-        
         // Dispatch an event to notify that the graph data has been updated
         window.dispatchEvent(new CustomEvent('graphDataUpdated', { detail: this.graphData }));
     }
@@ -174,16 +199,14 @@ export class GraphDataManager {
         console.log(`Updating force-directed parameter: ${name} = ${value}`);
         const paramMap = {
             'iterations': 'iterations',
-            'repulsion_strength': 'repulsion_strength',
-            'attraction_strength': 'attraction_strength'
+            'repulsionStrength': 'repulsionStrength',
+            'attractionStrength': 'attractionStrength'
         };
 
         const serverParamName = paramMap[name];
         if (serverParamName) {
             this.forceDirectedParams[serverParamName] = value;
             console.log('Force-directed parameters updated:', this.forceDirectedParams);
-            
-            // Request server recalculation with new parameters
             this.recalculateLayout();
         } else {
             console.warn(`Unknown force-directed parameter: ${name}`);
@@ -200,8 +223,7 @@ export class GraphDataManager {
                 type: 'recalculateLayout',
                 params: {
                     iterations: this.forceDirectedParams.iterations,
-                    repulsion_strength: this.forceDirectedParams.repulsion_strength,
-                    attraction_strength: this.forceDirectedParams.attraction_strength,
+                    springStrength: this.forceDirectedParams.attractionStrength,
                     damping: this.forceDirectedParams.damping
                 }
             });

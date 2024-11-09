@@ -347,6 +347,62 @@ export class NodeManager {
         }
     }
 
+    // New method for efficient position updates
+    updateNodePositions(positions) {
+        Object.entries(positions).forEach(([index, position]) => {
+            const nodeId = Array.from(this.nodeMeshes.keys())[index];
+            if (!nodeId) return;
+
+            const mesh = this.nodeMeshes.get(nodeId);
+            const label = this.nodeLabels.get(nodeId);
+            
+            if (mesh) {
+                mesh.position.set(position.x, position.y, position.z);
+                
+                if (label) {
+                    // Update label position relative to node
+                    const size = mesh.geometry.parameters.radius || 
+                               mesh.geometry.parameters.width || 
+                               1; // fallback size
+                    label.position.set(position.x, position.y + size + 2, position.z);
+                }
+
+                // Update connected edges
+                this.edgeMeshes.forEach((line, edgeKey) => {
+                    const [source, target] = edgeKey.split('-');
+                    if (source === nodeId || target === nodeId) {
+                        const positions = line.geometry.attributes.position.array;
+                        const sourceMesh = this.nodeMeshes.get(source);
+                        const targetMesh = this.nodeMeshes.get(target);
+
+                        if (sourceMesh && targetMesh) {
+                            positions[0] = sourceMesh.position.x;
+                            positions[1] = sourceMesh.position.y;
+                            positions[2] = sourceMesh.position.z;
+                            positions[3] = targetMesh.position.x;
+                            positions[4] = targetMesh.position.y;
+                            positions[5] = targetMesh.position.z;
+                            line.geometry.attributes.position.needsUpdate = true;
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    // New method to get current node positions
+    getNodePositions() {
+        const positions = {};
+        Array.from(this.nodeMeshes.entries()).forEach(([nodeId, mesh], index) => {
+            positions[index] = {
+                x: mesh.position.x,
+                y: mesh.position.y,
+                z: mesh.position.z
+            };
+        });
+        return positions;
+    }
+
     dispose() {
         // Dispose node resources
         this.nodeMeshes.forEach(mesh => {

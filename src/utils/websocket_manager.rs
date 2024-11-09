@@ -5,20 +5,21 @@ use log::{info, error, debug};
 use std::sync::{Mutex, Arc};
 use serde_json::json;
 use futures::stream::StreamExt;
-use futures::future::join_all;
-use std::error::Error as StdError;
-use bytestring::ByteString;
 use serde::Deserialize;
 use tokio::time::Duration;
+use actix_web::web::Bytes;
+use bytestring::ByteString;
 
 use crate::AppState;
 use crate::models::simulation_params::{SimulationMode, SimulationParams};
-use crate::utils::compression::{compress_message, decompress_message};
-use crate::utils::websocket_messages::{SendCompressedMessage, MessageHandler, OpenAIMessage};
+use crate::utils::websocket_messages::{
+    MessageHandler, OpenAIMessage, ServerMessage,
+    OpenAIConnected, OpenAIConnectionFailed, SendText, SendBinary
+};
 use crate::utils::websocket_openai::OpenAIWebSocket;
-use crate::services::graph_service::GraphService;
 
 const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(50); // 20 fps
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -72,7 +73,7 @@ impl WebSocketManager {
     }
 
     /// Initializes the WebSocketManager with a conversation ID.
-    pub async fn initialize(&self, ragflow_service: &crate::services::ragflow_service::RAGFlowService) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    pub async fn initialize(&self, ragflow_service: &crate::services::ragflow_service::RAGFlowService) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let conversation_id = ragflow_service.create_conversation("default_user".to_string()).await?;
         let mut conv_id_lock = self.conversation_id.lock().unwrap();
         *conv_id_lock = Some(conversation_id.clone());
@@ -94,26 +95,16 @@ impl WebSocketManager {
     }
 
     /// Broadcasts a message to all connected WebSocket sessions.
-    pub async fn broadcast_message(&self, message: &str) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    pub async fn broadcast_message(&self, message: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let sessions = self.sessions.lock().unwrap().clone();
-        let futures: Vec<_> = sessions.iter()
-            .map(|session| {
-                let compressed = compress_message(message).unwrap_or_default();
-                session.send(SendCompressedMessage(compressed))
-            })
-            .collect();
-        
-        let results = join_all(futures).await;
-        for result in results {
-            if let Err(e) = result {
-                error!("Failed to broadcast message: {}", e);
-            }
+        for session in sessions {
+            session.do_send(SendText(message.to_string()));
         }
         Ok(())
     }
 
     /// Broadcasts graph update to all connected WebSocket sessions.
-    pub async fn broadcast_graph_update(&self, graph_data: &crate::models::graph::GraphData) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    pub async fn broadcast_graph_update(&self, graph_data: &crate::models::graph::GraphData) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let json_data = json!({
             "type": "graph_update",
             "graph_data": graph_data
@@ -142,6 +133,13 @@ impl Actor for WebSocketSession {
             "WebSocket session started. Total sessions: {}",
             self.state.websocket_manager.sessions.lock().unwrap().len()
         );
+
+        // Start GPU updates if in remote mode
+        if matches!(self.simulation_mode, SimulationMode::Remote) {
+            if let Some(_) = &self.state.gpu_compute {
+                self.start_gpu_updates(ctx);
+            }
+        }
     }
 
     fn stopped(&mut self, ctx: &mut Self::Context) {
@@ -156,11 +154,19 @@ impl Actor for WebSocketSession {
 
 impl MessageHandler for WebSocketSession {}
 
-impl Handler<SendCompressedMessage> for WebSocketSession {
+impl Handler<SendText> for WebSocketSession {
     type Result = ();
 
-    fn handle(&mut self, msg: SendCompressedMessage, ctx: &mut Self::Context) {
-        ctx.binary(msg.0);
+    fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
+        ctx.text(ByteString::from(msg.0));
+    }
+}
+
+impl Handler<SendBinary> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
+        ctx.binary(Bytes::from(msg.0));
     }
 }
 
@@ -201,9 +207,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                                         "radius": radius
                                     });
                                     if let Ok(response_str) = serde_json::to_string(&response) {
-                                        if let Ok(compressed) = compress_message(&response_str) {
-                                            ctx_addr.do_send(SendCompressedMessage(compressed));
-                                        }
+                                        ctx_addr.do_send(SendText(response_str));
                                     }
                                 } else {
                                     error!("GPU compute service not available");
@@ -212,9 +216,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                                         "message": "GPU compute service not available"
                                     });
                                     if let Ok(error_str) = serde_json::to_string(&error_message) {
-                                        if let Ok(compressed) = compress_message(&error_str) {
-                                            ctx_addr.do_send(SendCompressedMessage(compressed));
-                                        }
+                                        ctx_addr.do_send(SendText(error_str));
                                     }
                                 }
                             }.into_actor(self));
@@ -231,11 +233,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 }
             },
             Ok(ws::Message::Binary(bin)) => {
-                if let Ok(text) = decompress_message(&bin) {
-                    StreamHandler::handle(self, Ok(ws::Message::Text(ByteString::from(text))), ctx);
-                } else {
-                    error!("Failed to decompress binary message");
-                }
+                error!("Unexpected binary message received");
+                let error_message = json!({
+                    "type": "error",
+                    "message": "Unexpected binary message"
+                });
+                self.send_json_response(error_message, ctx);
             },
             Ok(ws::Message::Close(reason)) => {
                 ctx.close(reason);
@@ -309,9 +312,7 @@ impl WebSocketSession {
                                             "message": format!("Failed to generate speech: {}", e)
                                         });
                                         if let Ok(error_str) = serde_json::to_string(&error_message) {
-                                            if let Ok(compressed) = compress_message(&error_str) {
-                                                ctx_addr.do_send(SendCompressedMessage(compressed));
-                                            }
+                                            ctx_addr.do_send(SendText(error_str));
                                         }
                                     }
                                 }
@@ -323,9 +324,7 @@ impl WebSocketSession {
                                     "message": format!("Error processing RAGFlow response: {}", e)
                                 });
                                 if let Ok(error_str) = serde_json::to_string(&error_message) {
-                                    if let Ok(compressed) = compress_message(&error_str) {
-                                        ctx_addr.do_send(SendCompressedMessage(compressed));
-                                    }
+                                    ctx_addr.do_send(SendText(error_str));
                                 }
                             }
                         }
@@ -338,9 +337,7 @@ impl WebSocketSession {
                         "message": format!("Failed to send message to RAGFlow: {}", e)
                     });
                     if let Ok(error_str) = serde_json::to_string(&error_message) {
-                        if let Ok(compressed) = compress_message(&error_str) {
-                            ctx_addr.do_send(SendCompressedMessage(compressed));
-                        }
+                        ctx_addr.do_send(SendText(error_str));
                     }
                 }
             }
@@ -351,6 +348,10 @@ impl WebSocketSession {
         self.simulation_mode = match mode {
             "remote" => {
                 info!("Simulation mode set to Remote (GPU-accelerated)");
+                // Start GPU position updates when switching to remote mode
+                if let Some(_) = &self.state.gpu_compute {
+                    self.start_gpu_updates(ctx);
+                }
                 SimulationMode::Remote
             },
             "gpu" => {
@@ -377,61 +378,128 @@ impl WebSocketSession {
 
     fn handle_layout(&mut self, ctx: &mut ws::WebsocketContext<Self>, params: SimulationParams) {
         let state = self.state.clone();
-        let simulation_mode = self.simulation_mode.clone();
         let ctx_addr = ctx.address();
         
         ctx.spawn(async move {
-            let mut graph_data = state.graph_data.write().await;
-            
-            let result = match simulation_mode {
-                SimulationMode::Remote => {
-                    if let Some(gpu_compute) = &state.gpu_compute {
-                        GraphService::calculate_layout(
-                            &Some(gpu_compute.clone()),
-                            &mut *graph_data,
-                            &params
-                        ).await
-                    } else {
-                        GraphService::calculate_layout(
-                            &None,
-                            &mut *graph_data,
-                            &params
-                        ).await
-                    }
-                },
-                _ => GraphService::calculate_layout(
-                    &None,
-                    &mut *graph_data,
-                    &params
-                ).await,
-            };
-
-            match result {
-                Ok(_) => {
-                    let response = json!({
-                        "type": "layout_update",
-                        "graph_data": &*graph_data
-                    });
-                    if let Ok(response_str) = serde_json::to_string(&response) {
-                        if let Ok(compressed) = compress_message(&response_str) {
-                            ctx_addr.do_send(SendCompressedMessage(compressed));
-                        }
-                    }
-                },
-                Err(e) => {
-                    error!("Failed to recalculate layout: {}", e);
+            if let Some(gpu_compute) = &state.gpu_compute {
+                let mut gpu = gpu_compute.write().await;
+                
+                // Update simulation parameters
+                if let Err(e) = gpu.update_simulation_params(&params) {
+                    error!("Failed to update simulation parameters: {}", e);
                     let error_message = json!({
                         "type": "error",
-                        "message": format!("Layout calculation failed: {}", e)
+                        "message": format!("Failed to update simulation parameters: {}", e)
                     });
                     if let Ok(error_str) = serde_json::to_string(&error_message) {
-                        if let Ok(compressed) = compress_message(&error_str) {
-                            ctx_addr.do_send(SendCompressedMessage(compressed));
+                        ctx_addr.do_send(SendText(error_str));
+                    }
+                    return;
+                }
+
+                // Run initial GPU computation steps
+                for _ in 0..params.iterations {
+                    if let Err(e) = gpu.step() {
+                        error!("GPU compute step failed: {}", e);
+                        let error_message = json!({
+                            "type": "error",
+                            "message": format!("GPU compute step failed: {}", e)
+                        });
+                        if let Ok(error_str) = serde_json::to_string(&error_message) {
+                            ctx_addr.do_send(SendText(error_str));
+                        }
+                        return;
+                    }
+                }
+
+                // Get final positions after layout
+                match gpu.get_node_positions().await {
+                    Ok(nodes) => {
+                        // Convert GPU nodes to position arrays
+                        let positions: Vec<[f32; 3]> = nodes.iter()
+                            .map(|node| [node.x, node.y, node.z])
+                            .collect();
+
+                        // Convert positions to binary Float32Array
+                        let mut binary_data = Vec::with_capacity(positions.len() * 12); // 3 floats * 4 bytes each
+                        for pos in positions {
+                            binary_data.extend_from_slice(&pos[0].to_le_bytes());
+                            binary_data.extend_from_slice(&pos[1].to_le_bytes());
+                            binary_data.extend_from_slice(&pos[2].to_le_bytes());
+                        }
+
+                        // Send binary data
+                        ctx_addr.do_send(SendBinary(binary_data));
+                    },
+                    Err(e) => {
+                        error!("Failed to get GPU node positions: {}", e);
+                        let error_message = json!({
+                            "type": "error",
+                            "message": format!("Failed to get GPU node positions: {}", e)
+                        });
+                        if let Ok(error_str) = serde_json::to_string(&error_message) {
+                            ctx_addr.do_send(SendText(error_str));
                         }
                     }
                 }
+            } else {
+                error!("GPU compute service not available");
+                let error_message = json!({
+                    "type": "error",
+                    "message": "GPU compute service not available"
+                });
+                if let Ok(error_str) = serde_json::to_string(&error_message) {
+                    ctx_addr.do_send(SendText(error_str));
+                }
             }
         }.into_actor(self));
+    }
+
+    fn start_gpu_updates(&self, ctx: &mut ws::WebsocketContext<Self>) {
+        let state = self.state.clone();
+        let ctx_addr = ctx.address();
+
+        // Start a timer to periodically fetch and broadcast GPU positions
+        ctx.run_interval(GPU_UPDATE_INTERVAL, move |_act, _ctx| {
+            let state_clone = state.clone();
+            let addr_clone = ctx_addr.clone();
+
+            actix::spawn(async move {
+                if let Some(gpu_compute) = &state_clone.gpu_compute {
+                    let mut gpu = gpu_compute.write().await;
+                    
+                    // Run one step of GPU computation
+                    if let Err(e) = gpu.step() {
+                        error!("GPU compute step failed: {}", e);
+                        return;
+                    }
+
+                    // Get updated positions
+                    match gpu.get_node_positions().await {
+                        Ok(nodes) => {
+                            // Convert GPU nodes to position arrays
+                            let positions: Vec<[f32; 3]> = nodes.iter()
+                                .map(|node| [node.x, node.y, node.z])
+                                .collect();
+
+                            // Convert positions to binary Float32Array
+                            let mut binary_data = Vec::with_capacity(positions.len() * 12); // 3 floats * 4 bytes each
+                            for pos in positions {
+                                binary_data.extend_from_slice(&pos[0].to_le_bytes());
+                                binary_data.extend_from_slice(&pos[1].to_le_bytes());
+                                binary_data.extend_from_slice(&pos[2].to_le_bytes());
+                            }
+
+                            // Send binary data
+                            addr_clone.do_send(SendBinary(binary_data));
+                        },
+                        Err(e) => {
+                            error!("Failed to get GPU node positions: {}", e);
+                        }
+                    }
+                }
+            });
+        });
     }
 
     fn handle_initial_data(&mut self, ctx: &mut ws::WebsocketContext<Self>) {
@@ -483,10 +551,36 @@ impl WebSocketSession {
             debug!("Sending initial data response: {:?}", response);
 
             if let Ok(response_str) = serde_json::to_string(&response) {
-                if let Ok(compressed) = compress_message(&response_str) {
-                    ctx_addr.do_send(SendCompressedMessage(compressed));
-                }
+                ctx_addr.do_send(SendText(response_str));
             }
         }.into_actor(self));
+    }
+}
+
+// Implement Handler traits for WebSocketSession
+impl Handler<OpenAIMessage> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: OpenAIMessage, _ctx: &mut Self::Context) {
+        if let Some(ref ws) = self.openai_ws {
+            ws.do_send(msg);
+        }
+    }
+}
+
+impl Handler<OpenAIConnected> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, _: OpenAIConnected, _ctx: &mut Self::Context) {
+        debug!("OpenAI WebSocket connected");
+    }
+}
+
+impl Handler<OpenAIConnectionFailed> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, _: OpenAIConnectionFailed, _ctx: &mut Self::Context) {
+        error!("OpenAI WebSocket connection failed");
+        self.openai_ws = None;
     }
 }

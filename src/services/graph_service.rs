@@ -55,17 +55,14 @@ impl GraphService {
         for (file_name, file_metadata) in &metadata {
             let source_id = file_name.trim_end_matches(".md").to_string();
             
-            // Look through all references in topic_counts
             for (target_id, reference_count) in &file_metadata.topic_counts {
                 if source_id != *target_id {
-                    // Create a canonical edge key (alphabetically ordered)
                     let edge_key = if source_id < *target_id {
                         (source_id.clone(), target_id.clone())
                     } else {
                         (target_id.clone(), source_id.clone())
                     };
 
-                    // Update edge weight
                     edge_map.entry(edge_key)
                         .and_modify(|weight| *weight += *reference_count as f32)
                         .or_insert(*reference_count as f32);
@@ -79,31 +76,26 @@ impl GraphService {
         }).collect();
         
         info!("Graph data built with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
-        debug!("Sample node data: {:?}", graph.nodes.first());
-        debug!("Sample edge data: {:?}", graph.edges.first());
 
-        // Calculate layout using GPU if available, otherwise fall back to CPU
+        // Calculate initial layout
         let settings = app_state.settings.read().await;
         let params = SimulationParams::new(
             settings.visualization.force_directed_iterations as u32,
             settings.visualization.force_directed_spring,
+            settings.visualization.force_directed_repulsion,
+            settings.visualization.force_directed_attraction,
             settings.visualization.force_directed_damping,
             true // Initial layout
         );
 
         Self::calculate_layout(&app_state.gpu_compute, &mut graph, &params).await?;
         
-        debug!("Final sample node data after layout calculation: {:?}", graph.nodes.first());
-        
         Ok(graph)
     }
 
-    /// Initializes random positions for nodes in a spherical distribution
     fn initialize_random_positions(graph: &mut GraphData) {
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        
-        // Use a smaller initial radius to prevent nodes from spreading too far
         let initial_radius = 30.0;
         
         for node in &mut graph.nodes {
@@ -114,63 +106,57 @@ impl GraphService {
             node.x = r * theta.cos() * phi.sin();
             node.y = r * theta.sin() * phi.sin();
             node.z = r * phi.cos();
-            
-            // Initialize velocities to 0
             node.vx = 0.0;
             node.vy = 0.0;
             node.vz = 0.0;
         }
     }
 
-    /// Calculates the force-directed layout using GPUCompute if available, otherwise falls back to CPU.
     pub async fn calculate_layout(
         gpu_compute: &Option<Arc<RwLock<GPUCompute>>>,
         graph: &mut GraphData,
         params: &SimulationParams,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Initialize random positions before layout calculation
-        Self::initialize_random_positions(graph);
-        
         match gpu_compute {
             Some(gpu) => {
                 info!("Using GPU for layout calculation");
                 let mut gpu_compute = gpu.write().await;
+                
+                // Only initialize positions for new graphs
+                if graph.nodes.iter().all(|n| n.x == 0.0 && n.y == 0.0 && n.z == 0.0) {
+                    Self::initialize_random_positions(graph);
+                }
+                
                 gpu_compute.update_graph_data(graph)?;
                 gpu_compute.update_simulation_params(params)?;
                 
-                // Run multiple iterations with position updates
-                for i in 0..params.iterations {
+                // Run iterations with more frequent updates
+                for _ in 0..params.iterations {
                     gpu_compute.step()?;
                     
-                    // Update positions every few iterations to maintain stability
-                    if i % 10 == 0 {
-                        let updated_nodes = gpu_compute.get_node_positions().await?;
-                        for (i, node) in graph.nodes.iter_mut().enumerate() {
-                            node.update_from_gpu_node(&updated_nodes[i]);
-                            
-                            // Add bounds checking
-                            let max_coord = 100.0;
-                            node.x = node.x.clamp(-max_coord, max_coord);
-                            node.y = node.y.clamp(-max_coord, max_coord);
-                            node.z = node.z.clamp(-max_coord, max_coord);
-                        }
+                    // Update positions every iteration for smoother motion
+                    let updated_nodes = gpu_compute.get_node_positions().await?;
+                    for (i, node) in graph.nodes.iter_mut().enumerate() {
+                        node.update_from_gpu_node(&updated_nodes[i]);
+                        
+                        // Apply bounds
+                        let max_coord = 100.0;
+                        node.x = node.x.clamp(-max_coord, max_coord);
+                        node.y = node.y.clamp(-max_coord, max_coord);
+                        node.z = node.z.clamp(-max_coord, max_coord);
                     }
                 }
-                
-                debug!("GPU layout calculation complete. Sample updated node: {:?}", graph.nodes.first());
             },
             None => {
                 warn!("GPU not available. Falling back to CPU-based layout calculation.");
                 Self::calculate_layout_cpu(graph, params.iterations, params.spring_strength, params.damping);
-                debug!("CPU layout calculation complete. Sample updated node: {:?}", graph.nodes.first());
             }
         }
         Ok(())
     }
 
-    /// Calculates the force-directed layout using CPU.
     fn calculate_layout_cpu(graph: &mut GraphData, iterations: u32, spring_strength: f32, damping: f32) {
-        let repulsion_strength = spring_strength * 10000.0; // Increase repulsion for better spacing
+        let repulsion_strength = spring_strength * 10000.0;
         
         for _ in 0..iterations {
             // Calculate repulsive forces
@@ -185,7 +171,6 @@ impl GraphService {
                     let fy = force * dy / distance;
                     let fz = force * dz / distance;
 
-                    // Apply force with a maximum limit
                     let max_force = 50.0;
                     let force_magnitude = (fx * fx + fy * fy + fz * fz).sqrt();
                     let scale = if force_magnitude > max_force {
@@ -212,13 +197,11 @@ impl GraphService {
                 let dz = graph.nodes[target].z - graph.nodes[source].z;
                 let distance = (dx * dx + dy * dy + dz * dz).sqrt().max(0.1);
                 
-                // Use spring strength and weight for attraction
                 let force = spring_strength * distance * edge.weight;
                 let fx = force * dx / distance;
                 let fy = force * dy / distance;
                 let fz = force * dz / distance;
 
-                // Apply force with a maximum limit
                 let max_force = 50.0;
                 let force_magnitude = (fx * fx + fy * fy + fz * fz).sqrt();
                 let scale = if force_magnitude > max_force {
@@ -235,9 +218,8 @@ impl GraphService {
                 graph.nodes[target].vz -= fz * scale;
             }
 
-            // Update positions with bounds checking
+            // Update positions
             for node in &mut graph.nodes {
-                // Apply velocity limits
                 let max_velocity = 10.0;
                 let velocity_magnitude = (node.vx * node.vx + node.vy * node.vy + node.vz * node.vz).sqrt();
                 if velocity_magnitude > max_velocity {
@@ -247,18 +229,15 @@ impl GraphService {
                     node.vz *= scale;
                 }
 
-                // Update position
                 node.x += node.vx;
                 node.y += node.vy;
                 node.z += node.vz;
 
-                // Apply position bounds
                 let max_coord = 100.0;
                 node.x = node.x.clamp(-max_coord, max_coord);
                 node.y = node.y.clamp(-max_coord, max_coord);
                 node.z = node.z.clamp(-max_coord, max_coord);
 
-                // Apply damping
                 node.vx *= damping;
                 node.vy *= damping;
                 node.vz *= damping;
@@ -266,7 +245,6 @@ impl GraphService {
         }
     }
 
-    /// Finds the shortest path between two nodes in the graph.
     pub fn find_shortest_path(graph: &GraphData, start: &str, end: &str) -> Result<Vec<String>, String> {
         let mut distances: HashMap<String, f32> = HashMap::new();
         let mut previous: HashMap<String, Option<String>> = HashMap::new();
@@ -305,7 +283,6 @@ impl GraphService {
             }
         }
     
-        // Reconstruct path
         let mut path = Vec::new();
         let mut current = end.to_string();
         while let Some(prev) = previous[&current].clone() {

@@ -1,6 +1,4 @@
 // WebSocket service for handling real-time communication
-import pako from 'pako';
-
 export default class WebsocketService {
     constructor() {
         // Initialize with environment variables from .env_template
@@ -33,7 +31,13 @@ export default class WebsocketService {
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         this.audioQueue = [];
         this.isPlaying = false;
-        this.COMPRESSION_MAGIC = new Uint8Array([67, 79, 77, 80]); // "COMP" in ASCII
+        
+        // Force-directed parameters
+        this.forceDirectedParams = {
+            iterations: 100,
+            attraction_strength: 0.01,
+            damping: 0.9
+        };
         
         this.connect();
     }
@@ -48,7 +52,6 @@ export default class WebsocketService {
         const url = this.getWebSocketUrl();
         console.log('Attempting to connect to WebSocket at:', url);
         this.socket = new WebSocket(url);
-        this.socket.binaryType = 'arraybuffer';  // Set to handle binary data
 
         this.socket.onopen = () => {
             console.log('WebSocket connection established');
@@ -62,17 +65,31 @@ export default class WebsocketService {
 
         this.socket.onmessage = async (event) => {
             try {
-                let data;
-                if (event.data instanceof ArrayBuffer) {
-                    // Handle binary data (might be compressed)
-                    const decompressed = this.decompressMessage(event.data);
-                    data = JSON.parse(decompressed);
-                    console.log('Received message:', data);
-                } else {
-                    // Handle regular JSON messages
-                    data = JSON.parse(event.data);
-                    console.log('Received JSON message:', data);
+                // Handle binary messages (GPU position updates)
+                if (event.data instanceof Blob) {
+                    const arrayBuffer = await event.data.arrayBuffer();
+                    const positions = new Float32Array(arrayBuffer);
+                    const positionArray = [];
+                    
+                    // Each position is 3 float values (x, y, z)
+                    for (let i = 0; i < positions.length; i += 3) {
+                        positionArray.push([
+                            positions[i],
+                            positions[i + 1],
+                            positions[i + 2]
+                        ]);
+                    }
+                    
+                    this.emit('gpuPositions', {
+                        positions: positionArray,
+                        timestamp: Date.now()
+                    });
+                    return;
                 }
+
+                // Handle JSON messages
+                const data = JSON.parse(event.data);
+                console.log('Received message:', data);
                 this.handleServerMessage(data);
             } catch (error) {
                 console.error('Error processing WebSocket message:', error);
@@ -151,77 +168,6 @@ export default class WebsocketService {
         }
     }
 
-    hasCompressionHeader(data) {
-        if (data.length < this.COMPRESSION_MAGIC.length) return false;
-        for (let i = 0; i < this.COMPRESSION_MAGIC.length; i++) {
-            if (data[i] !== this.COMPRESSION_MAGIC[i]) return false;
-        }
-        return true;
-    }
-
-    logBytes(data, label) {
-        const hex = Array.from(data)
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join(' ');
-        const ascii = Array.from(data)
-            .map(b => b >= 32 && b <= 126 ? String.fromCharCode(b) : '.')
-            .join('');
-        console.log(`${label} (${data.length} bytes):`);
-        console.log('Hex:', hex);
-        console.log('ASCII:', ascii);
-    }
-
-    decompressMessage(compressed) {
-        try {
-            const data = new Uint8Array(compressed);
-            this.logBytes(data.slice(0, Math.min(32, data.length)), 'First 32 bytes of message');
-            
-            // Try parsing as JSON first (uncompressed message)
-            try {
-                const text = new TextDecoder().decode(data);
-                const json = JSON.parse(text);
-                console.log('Successfully parsed as uncompressed JSON:', json);
-                return text;
-            } catch (e) {
-                console.log('Not valid JSON, trying decompression...');
-            }
-
-            // Check for compression magic header
-            const headerBytes = data.slice(0, this.COMPRESSION_MAGIC.length);
-            this.logBytes(headerBytes, 'Header bytes');
-            
-            if (!this.hasCompressionHeader(data)) {
-                console.log('No compression header found, trying raw decompression');
-                try {
-                    // Use raw inflate to match miniz_oxide format
-                    const decompressed = pako.inflate(data, { raw: true });
-                    const text = new TextDecoder().decode(decompressed);
-                    console.log('Successfully decompressed without header:', text);
-                    return text;
-                } catch (e) {
-                    console.error('Failed to decompress without header:', e);
-                    throw e;
-                }
-            }
-
-            // Skip the magic header and decompress the rest
-            const compressedData = data.slice(this.COMPRESSION_MAGIC.length);
-            this.logBytes(compressedData.slice(0, Math.min(32, compressedData.length)), 'First 32 bytes of compressed data');
-            
-            // Use raw inflate to match miniz_oxide format
-            const decompressed = pako.inflate(compressedData, { raw: true });
-            const text = new TextDecoder().decode(decompressed);
-            console.log('Successfully decompressed with header:', text);
-            return text;
-        } catch (error) {
-            console.error('Error in decompressMessage:', error);
-            // Log the entire buffer for debugging
-            const fullData = new Uint8Array(compressed);
-            this.logBytes(fullData, 'Full message content');
-            throw error;
-        }
-    }
-
     handleServerMessage(data) {
         console.log('Handling server message:', data);
         
@@ -265,15 +211,15 @@ export default class WebsocketService {
                 }
                 break;
                 
-            case 'graph_update':
+            case 'graphUpdate':
                 console.log('Received graph update:', data.graph_data);
                 if (data.graph_data) {
                     this.emit('graphUpdate', { graphData: data.graph_data });
                 }
                 break;
                 
-            case 'audio':
-                this.handleAudioData(data.audio);
+            case 'audioData':
+                this.handleAudioData(data.audio_data);
                 break;
                 
             case 'answer':
@@ -293,12 +239,12 @@ export default class WebsocketService {
                 this.emit('openaiResponse', data.response);
                 break;
                 
-            case 'simulation_mode_set':
+            case 'simulationModeSet':
                 console.log('Simulation mode set:', data.mode);
                 this.emit('simulationModeSet', data.mode);
                 break;
 
-            case 'fisheye_settings_updated':
+            case 'fisheyeSettingsUpdated':
                 console.log('Fisheye settings updated:', data);
                 // Convert focus_point to focusPoint for client-side consistency
                 const settings = {
@@ -431,7 +377,7 @@ export default class WebsocketService {
         this.send({
             type: 'chatMessage',
             message,
-            tts_provider: useOpenAI ? 'openai' : 'sonata'
+            use_openai: useOpenAI
         });
     }
 
@@ -443,7 +389,7 @@ export default class WebsocketService {
             type: 'updateFisheyeSettings',
             enabled: settings.enabled,
             strength: settings.strength,
-            focus_point: focus_point, // Use snake_case to match Rust struct
+            focus_point: focus_point,
             radius: settings.radius || 100.0
         });
     }

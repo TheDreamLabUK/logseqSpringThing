@@ -15,9 +15,8 @@ use tokio::net::TcpStream;
 use std::time::Instant;
 
 use crate::config::Settings;
-use crate::utils::websocket_messages::{OpenAIMessage, OpenAIConnected, OpenAIConnectionFailed, SendCompressedMessage};
+use crate::utils::websocket_messages::{OpenAIMessage, OpenAIConnected, OpenAIConnectionFailed, SendText};
 use crate::utils::websocket_manager::WebSocketSession;
-use crate::utils::compression;
 
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
 const CONNECTION_WAIT: Duration = Duration::from_millis(500);
@@ -197,17 +196,15 @@ impl OpenAIWebSocket {
         let start_time = Instant::now();
         debug!("Preparing to send audio data to client");
 
-        // Send audio data directly without compression
+        // Send audio data as JSON
         let audio_message = json!({
             "type": "audio",
             "audio": audio_data
         });
 
-        // Convert to string first
+        // Convert to string and send
         let message_str = audio_message.to_string();
-        let compressed = compression::compress_message(&message_str)?;
-        
-        if let Err(e) = self.client_addr.try_send(SendCompressedMessage(compressed)) {
+        if let Err(e) = self.client_addr.try_send(SendText(message_str)) {
             error!("Failed to send audio data to client: {}", e);
             return Err(Box::new(WebSocketError::SendFailed(format!(
                 "Failed to send audio data to client: {}", e
@@ -227,11 +224,9 @@ impl OpenAIWebSocket {
             "message": error_msg
         });
 
-        // Convert to string first
+        // Convert to string and send
         let message_str = error_message.to_string();
-        let compressed = compression::compress_message(&message_str)?;
-        
-        if let Err(e) = self.client_addr.try_send(SendCompressedMessage(compressed)) {
+        if let Err(e) = self.client_addr.try_send(SendText(message_str)) {
             error!("Failed to send error message to client: {}", e);
             return Err(Box::new(WebSocketError::SendFailed(format!(
                 "Failed to send error message to client: {}", e
