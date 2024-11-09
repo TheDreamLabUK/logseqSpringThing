@@ -1,4 +1,5 @@
-// Structure definitions
+// Structure definitions remain unchanged...
+
 struct Node {
     position: vec3<f32>,  // 12 bytes
     velocity: vec3<f32>,  // 12 bytes
@@ -40,13 +41,13 @@ struct AdjacencyListBuffer {
 
 struct SimulationParams {
     iterations: u32,           // 4 bytes
-    repulsion_strength: f32,   // 4 bytes
-    attraction_strength: f32,  // 4 bytes
+    spring_strength: f32,      // 4 bytes - Combined spring force parameter
     damping: f32,             // 4 bytes
     padding1: u32,            // 4 bytes
     padding2: u32,            // 4 bytes
     padding3: u32,            // 4 bytes
-    padding4: u32,            // 4 bytes - Total: 32 bytes, aligned to 16
+    padding4: u32,            // 4 bytes
+    padding5: u32,            // 4 bytes - Total: 32 bytes, aligned to 16
 }
 
 struct GridCell {
@@ -54,15 +55,16 @@ struct GridCell {
     count: u32,
 }
 
-// Constants
+// Constants with adjusted spacing values
 const WORKGROUP_SIZE: u32 = 256;
 const MAX_FORCE: f32 = 50.0;
 const MIN_DISTANCE: f32 = 1.0;
 const GRID_DIM: u32 = 16;
 const TOTAL_GRID_SIZE: u32 = 4096;
 const CENTER_FORCE_STRENGTH: f32 = 0.1;
-const CENTER_RADIUS: f32 = 100.0;
+const CENTER_RADIUS: f32 = 200.0;  // Increased from 100.0
 const MAX_VELOCITY: f32 = 10.0;
+const NATURAL_LENGTH: f32 = 100.0;  // Increased from 50.0
 
 // Bind groups
 @group(0) @binding(0) var<storage, read_write> nodes_buffer: NodesBuffer;
@@ -78,7 +80,6 @@ var<workgroup> node_counts: array<atomic<u32>, 4096>;
 // Utility functions
 fn is_valid_float(x: f32) -> bool {
     return x == x && abs(x) < 1e10;
-//    return !(isnan(x) || isinf(x));  is not valid in WGSL
 }
 
 fn is_valid_vec3(v: vec3<f32>) -> bool {
@@ -102,24 +103,7 @@ fn get_grid_index(position: vec3<f32>) -> u32 {
     return grid_pos.x + grid_pos.y * GRID_DIM + grid_pos.z * GRID_DIM * GRID_DIM;
 }
 
-fn calculate_repulsion(pos1: vec3<f32>, pos2: vec3<f32>, mass1: f32, mass2: f32) -> vec3<f32> {
-    if (!is_valid_vec3(pos1) || !is_valid_vec3(pos2)) {
-        return vec3<f32>(0.0);
-    }
-    
-    let direction = pos1 - pos2;
-    let distance_sq = dot(direction, direction);
-    
-    if (distance_sq < MIN_DISTANCE * MIN_DISTANCE) {
-        return normalize(direction) * MAX_FORCE;
-    }
-    
-    let distance = sqrt(distance_sq);
-    let force_magnitude = params.repulsion_strength * mass1 * mass2 / (distance_sq + MIN_DISTANCE);
-    return clamp_vector(normalize(direction) * force_magnitude, MAX_FORCE);
-}
-
-fn calculate_attraction(pos1: vec3<f32>, pos2: vec3<f32>, weight: f32) -> vec3<f32> {
+fn calculate_spring_force(pos1: vec3<f32>, pos2: vec3<f32>, mass1: f32, mass2: f32, is_connected: bool) -> vec3<f32> {
     if (!is_valid_vec3(pos1) || !is_valid_vec3(pos2)) {
         return vec3<f32>(0.0);
     }
@@ -128,11 +112,20 @@ fn calculate_attraction(pos1: vec3<f32>, pos2: vec3<f32>, weight: f32) -> vec3<f
     let distance_sq = dot(direction, direction);
     
     if (distance_sq < MIN_DISTANCE * MIN_DISTANCE) {
-        return vec3<f32>(0.0);
+        return normalize(direction) * MAX_FORCE;
     }
     
     let distance = sqrt(distance_sq);
-    let force_magnitude = params.attraction_strength * weight * (distance - CENTER_RADIUS);
+    var force_magnitude: f32;
+    
+    if (is_connected) {
+        // Connected nodes: Hooke's law with natural length
+        force_magnitude = params.spring_strength * (distance - NATURAL_LENGTH);
+    } else {
+        // Unconnected nodes: Inverse square repulsion
+        force_magnitude = -params.spring_strength * mass1 * mass2 / (distance_sq + MIN_DISTANCE);
+    }
+    
     return clamp_vector(normalize(direction) * force_magnitude, MAX_FORCE);
 }
 
@@ -157,6 +150,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var force = vec3<f32>(0.0);
     let grid_idx = get_grid_index(node.position);
     
+    // Calculate forces with all nearby nodes
     for (var dx = -1; dx <= 1; dx = dx + 1) {
         for (var dy = -1; dy <= 1; dy = dy + 1) {
             for (var dz = -1; dz <= 1; dz = dz + 1) {
@@ -180,28 +174,31 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     }
                     let other = nodes_buffer.nodes[i];
                     if (is_valid_vec3(other.position)) {
-                        force += calculate_repulsion(node.position, other.position, node.mass, other.mass);
+                        force += calculate_spring_force(node.position, other.position, node.mass, other.mass, false);
                     }
                 }
             }
         }
     }
 
+    // Calculate forces with connected nodes
     let adj = adjacency_buffer.adjacency[node_id];
     for (var i = 0u; i < adj.count; i = i + 1u) {
         let target_idx = adjacency_list_buffer.indices[adj.offset + i];
         let other = nodes_buffer.nodes[target_idx];
         if (is_valid_vec3(other.position)) {
-            force += calculate_attraction(node.position, other.position, 1.0);
+            force += calculate_spring_force(node.position, other.position, node.mass, other.mass, true);
         }
     }
 
+    // Apply centering force
     let to_center = -node.position;
     let center_distance = length(to_center);
     if (center_distance > CENTER_RADIUS) {
         force += normalize(to_center) * CENTER_FORCE_STRENGTH * (center_distance - CENTER_RADIUS);
     }
 
+    // Update velocity and position
     node.velocity = clamp_vector((node.velocity + force / node.mass) * params.damping, MAX_VELOCITY);
     node.position = node.position + node.velocity;
 

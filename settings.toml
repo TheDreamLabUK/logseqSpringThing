@@ -51,20 +51,11 @@ label_font_size = 36
 fog_density = 0.002
 
 # Physics simulation parameters
-# Number of physics steps per update
 force_directed_iterations = 100
-
-# Controls edge stiffness (0.01-1.0)
-force_directed_spring = 0.1
-
-# Controls node spacing (100-5000)
-force_directed_repulsion = 1000.0
-
-# Controls attraction between nodes (0.01-1.0)
-force_directed_attraction = 0.01
-
-# Velocity damping (0.8 recommended)
-force_directed_damping = 0.8
+# Default spring strength (range 0.01-10.0)
+force_directed_spring = 1.0  
+# Default damping (range 0.1-0.9)
+force_directed_damping = 0.8  
 
 [bloom]
 # Bloom settings for nodes

@@ -32,8 +32,7 @@ export default defineComponent({
         const bloomControls = ref([]);
         const forceDirectedControls = ref([]);
         const additionalControls = ref([]);
-        const springConstant = ref(0.5);
-        const damping = ref(0.5);
+        const damping = ref(0.8);
 
         // UI state - all groups start collapsed
         const collapsedGroups = reactive({
@@ -245,15 +244,23 @@ export default defineComponent({
             ];
 
             forceDirectedControls.value = [
-                { name: 'iterations', label: 'Iterations', type: 'range', value: settings.visualization.forceDirectedIterations, min: 10, max: 500, step: 10 },
-                { name: 'repulsion_strength', label: 'Repulsion', type: 'range', value: settings.visualization.forceDirectedRepulsion, min: 0.1, max: 10.0, step: 0.1 },
-                { name: 'attraction_strength', label: 'Attraction', type: 'range', value: settings.visualization.forceDirectedAttraction, min: 0.001, max: 0.1, step: 0.001 }
+                { 
+                    name: 'force_directed_spring', 
+                    label: 'Spring Strength', 
+                    type: 'range', 
+                    value: settings.visualization.forceDirectedSpring, 
+                    min: 0.01, 
+                    max: 10.0, 
+                    step: 0.01 
+                }
             ];
 
             additionalControls.value = [
                 { name: 'labelFontSize', label: 'Label Font Size', type: 'range', value: settings.visualization.labelFontSize, min: 12, max: 72, step: 1 },
                 { name: 'fogDensity', label: 'Fog Density', type: 'range', value: settings.visualization.fogDensity, min: 0, max: 0.01, step: 0.0001 }
             ];
+
+            damping.value = settings.visualization.forceDirectedDamping || 0.8;
         };
 
         // Lifecycle hooks
@@ -322,7 +329,6 @@ export default defineComponent({
             bloomControls,
             forceDirectedControls,
             additionalControls,
-            springConstant,
             damping,
             collapsedGroups,
             togglePanel,
@@ -551,18 +557,6 @@ export default defineComponent({
                             @input="emitChange(control.name, control.value)"
                         >
                         <span class="range-value">{{ control.value }}</span>
-                    </div>
-                    <div class="control-item">
-                        <label>Spring Constant</label>
-                        <input
-                            type="range"
-                            v-model.number="springConstant"
-                            :min="0.01"
-                            :max="1.0"
-                            :step="0.01"
-                            @input="emitChange('force_directed_spring', springConstant)"
-                        >
-                        <span class="range-value">{{ springConstant }}</span>
                     </div>
                     <div class="control-item">
                         <label>Damping</label>
