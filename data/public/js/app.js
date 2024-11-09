@@ -228,7 +228,7 @@ class App {
     handleWebSocketMessage(data) {
         console.log('Handling WebSocket message:', data);
         switch (data.type) {
-            case 'getInitialData': // Changed from 'initial_data' to match server response
+            case 'getInitialData':
                 console.log('Received initial data:', data);
                 if (data.graph_data && this.graphDataManager) {
                     this.graphDataManager.updateGraphData(data.graph_data);

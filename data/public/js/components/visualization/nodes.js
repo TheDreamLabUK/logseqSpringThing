@@ -35,26 +35,23 @@ export class NodeManager {
         // Edge settings
         this.edgeColor = new THREE.Color(0x4444ff);  // Initialize as THREE.Color
         this.edgeOpacity = 0.6;
+
+        // Server-side node size range (must match constants in file_service.rs)
+        this.serverMinNodeSize = 5.0;
+        this.serverMaxNodeSize = 50.0;
     }
 
     getNodeSize(metadata) {
         // Use the node_size from metadata if available
         if (metadata.node_size) {
-            // Convert from server's range (5.0-50.0) to visualization range
-            const serverMin = 5.0;
-            const serverMax = 50.0;
-            const normalizedSize = (parseFloat(metadata.node_size) - serverMin) / (serverMax - serverMin);
+            // Convert from server's range (5.0-50.0) to visualization range (0.1-5.0)
+            const serverSize = parseFloat(metadata.node_size);
+            const normalizedSize = (serverSize - this.serverMinNodeSize) / (this.serverMaxNodeSize - this.serverMinNodeSize);
             return this.minNodeSize + (this.maxNodeSize - this.minNodeSize) * normalizedSize * this.nodeSizeScalingFactor;
         }
         
-        // Fallback to file size calculation if node_size is not available
-        const fileSize = parseInt(metadata.file_size) || 1;
-        const logMin = Math.log(1);
-        const logMax = Math.log(1e9); // 1GB as max reference
-        const logSize = Math.log(fileSize + 1);
-        
-        const normalizedSize = (logSize - logMin) / (logMax - logMin);
-        return this.minNodeSize + (this.maxNodeSize - this.minNodeSize) * normalizedSize * this.nodeSizeScalingFactor;
+        // Fallback to a default size if node_size is not available
+        return this.minNodeSize;
     }
 
     calculateNodeColor(lastModified) {
@@ -138,8 +135,47 @@ export class NodeManager {
         return `${Math.floor(days / 365)}y ago`;
     }
 
+    centerNodes(nodes) {
+        // Calculate center of mass
+        let centerX = 0, centerY = 0, centerZ = 0;
+        nodes.forEach(node => {
+            centerX += node.x;
+            centerY += node.y;
+            centerZ += node.z;
+        });
+        centerX /= nodes.length;
+        centerY /= nodes.length;
+        centerZ /= nodes.length;
+
+        // Subtract center from all positions to center around origin
+        nodes.forEach(node => {
+            node.x -= centerX;
+            node.y -= centerY;
+            node.z -= centerZ;
+        });
+
+        // Scale positions to reasonable range
+        const maxDist = nodes.reduce((max, node) => {
+            const dist = Math.sqrt(node.x * node.x + node.y * node.y + node.z * node.z);
+            return Math.max(max, dist);
+        }, 0);
+
+        if (maxDist > 0) {
+            const scale = 100 / maxDist; // Scale to fit in 100 unit radius
+            nodes.forEach(node => {
+                node.x *= scale;
+                node.y *= scale;
+                node.z *= scale;
+            });
+        }
+    }
+
     updateNodes(nodes) {
         console.log(`Updating nodes: ${nodes.length}`);
+        
+        // Center and scale nodes
+        this.centerNodes(nodes);
+        
         const existingNodeIds = new Set(nodes.map(node => node.id));
 
         // Remove non-existent nodes
