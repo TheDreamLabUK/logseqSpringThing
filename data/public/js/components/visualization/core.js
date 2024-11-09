@@ -67,7 +67,7 @@ export class WebXRVisualization {
         // Handle incoming position updates from other clients
         window.addEventListener('graphPositionsUpdated', (event) => {
             console.log('Received position update from server:', event.detail);
-            const { positions, timestamp } = event.detail;
+            const { positions } = event.detail;
             if (this.layoutManager) {
                 this.layoutManager.applyPositionUpdates(positions);
                 this.nodeManager.updateNodePositions(positions);

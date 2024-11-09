@@ -81,8 +81,7 @@ export default class WebsocketService {
                     }
                     
                     this.emit('gpuPositions', {
-                        positions: positionArray,
-                        timestamp: Date.now()
+                        positions: positionArray
                     });
                     return;
                 }

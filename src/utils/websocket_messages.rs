@@ -18,8 +18,7 @@ fn format_color(color: &str) -> String {
 /// GPU-computed node positions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GPUPositionUpdate {
-    pub positions: Vec<[f32; 3]>,
-    pub timestamp: u64,
+    pub positions: Vec<[f32; 3]>
 }
 
 /// Message for sending text data

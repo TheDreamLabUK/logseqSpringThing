@@ -180,42 +180,33 @@ export class LayoutManager {
     sendPositionUpdates(nodes) {
         if (!this.lastPositions) return;
 
-        const positions = {};
-        let hasChanges = false;
-
-        nodes.forEach((node, index) => {
+        // Convert to array format for binary transmission
+        const positions = nodes.map((node, index) => {
             const lastPos = this.lastPositions[index];
-            if (!lastPos) return;
+            if (!lastPos) return [node.x, node.y, node.z];
 
             // Check if position has changed significantly
             if (Math.abs(node.x - lastPos.x) > this.updateThreshold ||
                 Math.abs(node.y - lastPos.y) > this.updateThreshold ||
                 Math.abs(node.z - lastPos.z) > this.updateThreshold) {
                 
-                positions[index] = {
-                    x: node.x,
-                    y: node.y,
-                    z: node.z
-                };
-                hasChanges = true;
-
                 // Update last position
                 lastPos.x = node.x;
                 lastPos.y = node.y;
                 lastPos.z = node.z;
+                
+                return [node.x, node.y, node.z];
             }
+            return [lastPos.x, lastPos.y, lastPos.z];
         });
 
-        // Only send update if there are changes
-        if (hasChanges) {
-            window.dispatchEvent(new CustomEvent('positionUpdate', {
-                detail: {
-                    type: 'PositionUpdate',
-                    positions,
-                    timestamp: Date.now()
-                }
-            }));
-        }
+        // Send position update event
+        window.dispatchEvent(new CustomEvent('positionUpdate', {
+            detail: {
+                type: 'PositionUpdate',
+                positions: positions
+            }
+        }));
     }
 
     startContinuousSimulation(graphData) {
@@ -256,12 +247,23 @@ export class LayoutManager {
     applyPositionUpdates(positions) {
         if (!this.lastPositions) return;
 
-        Object.entries(positions).forEach(([index, position]) => {
-            const idx = parseInt(index);
-            if (this.lastPositions[idx]) {
-                this.lastPositions[idx] = position;
-                // Update the actual node position in the next layout iteration
-            }
-        });
+        // Handle array-based format (new binary format)
+        if (Array.isArray(positions)) {
+            positions.forEach((position, index) => {
+                if (this.lastPositions[index]) {
+                    const [x, y, z] = position;
+                    this.lastPositions[index] = { x, y, z };
+                }
+            });
+        }
+        // Handle legacy object-based format
+        else if (typeof positions === 'object') {
+            Object.entries(positions).forEach(([index, position]) => {
+                const idx = parseInt(index);
+                if (this.lastPositions[idx]) {
+                    this.lastPositions[idx] = position;
+                }
+            });
+        }
     }
 }

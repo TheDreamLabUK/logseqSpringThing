@@ -57,6 +57,18 @@ fn format_color(color: &str) -> String {
     format!("#{}", color)
 }
 
+/// Helper function to convert positions to binary Float32Array data
+fn positions_to_binary(positions: &Vec<[f32; 3]>) -> Vec<u8> {
+    let mut binary_data = Vec::with_capacity(positions.len() * 12); // 3 floats * 4 bytes each
+    for pos in positions {
+        // Ensure little-endian byte order for JavaScript Float32Array compatibility
+        binary_data.extend_from_slice(&pos[0].to_le_bytes());
+        binary_data.extend_from_slice(&pos[1].to_le_bytes());
+        binary_data.extend_from_slice(&pos[2].to_le_bytes());
+    }
+    binary_data
+}
+
 /// Manages WebSocket sessions and communication.
 pub struct WebSocketManager {
     pub sessions: Mutex<Vec<Addr<WebSocketSession>>>,
@@ -420,13 +432,8 @@ impl WebSocketSession {
                             .map(|node| [node.x, node.y, node.z])
                             .collect();
 
-                        // Convert positions to binary Float32Array
-                        let mut binary_data = Vec::with_capacity(positions.len() * 12); // 3 floats * 4 bytes each
-                        for pos in positions {
-                            binary_data.extend_from_slice(&pos[0].to_le_bytes());
-                            binary_data.extend_from_slice(&pos[1].to_le_bytes());
-                            binary_data.extend_from_slice(&pos[2].to_le_bytes());
-                        }
+                        // Convert positions to binary Float32Array data
+                        let binary_data = positions_to_binary(&positions);
 
                         // Send binary data
                         ctx_addr.do_send(SendBinary(binary_data));
@@ -482,13 +489,8 @@ impl WebSocketSession {
                                 .map(|node| [node.x, node.y, node.z])
                                 .collect();
 
-                            // Convert positions to binary Float32Array
-                            let mut binary_data = Vec::with_capacity(positions.len() * 12); // 3 floats * 4 bytes each
-                            for pos in positions {
-                                binary_data.extend_from_slice(&pos[0].to_le_bytes());
-                                binary_data.extend_from_slice(&pos[1].to_le_bytes());
-                                binary_data.extend_from_slice(&pos[2].to_le_bytes());
-                            }
+                            // Convert positions to binary Float32Array data
+                            let binary_data = positions_to_binary(&positions);
 
                             // Send binary data
                             addr_clone.do_send(SendBinary(binary_data));

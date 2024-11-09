@@ -42,7 +42,7 @@ export class GraphDataManager {
             return;
         }
 
-        const { positions, timestamp } = update;
+        const { positions } = update;
         
         // Update node positions from GPU computation
         this.graphData.nodes.forEach((node, index) => {
