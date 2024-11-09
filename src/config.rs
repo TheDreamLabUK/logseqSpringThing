@@ -35,7 +35,7 @@ pub struct PerplexitySettings {
     pub perplexity_api_key: String,
     pub perplexity_model: String,
     pub perplexity_api_url: String,
-    pub perplexity_max_tokens: usize,
+    pub perplexity_max_tokens: u32,
     pub perplexity_temperature: f32,
     pub perplexity_top_p: f32,
     pub perplexity_presence_penalty: f32,

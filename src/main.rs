@@ -107,7 +107,13 @@ async fn main() -> std::io::Result<()> {
     let graph_data = Arc::new(RwLock::new(GraphData::default()));
     
     let github_service: Arc<dyn GitHubService + Send + Sync> = {
-        match RealGitHubService::new(settings.clone()).await {
+        let settings_read = settings.read().await;
+        match RealGitHubService::new(
+            settings_read.github.github_access_token.clone(),
+            settings_read.github.github_owner.clone(),
+            settings_read.github.github_repo.clone(),
+            settings_read.github.github_directory.clone(),
+        ) {
             Ok(service) => Arc::new(service),
             Err(e) => {
                 log::error!("Failed to initialize GitHubService: {:?}", e);

@@ -2,11 +2,10 @@ use crate::models::metadata::Metadata;
 use crate::config::Settings;
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
-use reqwest::header::{HeaderMap, HeaderValue, IF_NONE_MATCH, ETAG};
+use reqwest::header::{HeaderMap, HeaderValue};
 use async_trait::async_trait;
 use log::{info, debug, error};
 use regex::Regex;
-use sha1::{Sha1, Digest};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -14,7 +13,6 @@ use chrono::{Utc, DateTime};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::error::Error as StdError;
-use futures::stream::StreamExt;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -28,8 +26,11 @@ const MAX_NODE_SIZE: f64 = 50.0;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GithubFile {
     pub name: String,
-    pub content: String,
+    pub path: String,
     pub sha: String,
+    pub size: usize,
+    pub url: String,
+    pub download_url: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -37,7 +38,6 @@ pub struct GithubFileMetadata {
     pub name: String,
     pub sha: String,
     pub download_url: String,
-    #[serde(skip)]
     pub etag: Option<String>,
     #[serde(with = "chrono::serde::ts_seconds_option")]
     pub last_checked: Option<DateTime<Utc>>,
@@ -77,27 +77,23 @@ pub struct RealGitHubService {
 }
 
 impl RealGitHubService {
-    pub async fn new(settings: Arc<RwLock<Settings>>) -> Result<Self, Box<dyn StdError + Send + Sync>> {
-        let settings = settings.read().await;
-        let github_settings = &settings.github;
-        if github_settings.github_access_token.is_empty() {
-            return Err("GitHub access token is empty".into());
-        }
-
-        let mut headers = HeaderMap::new();
-        headers.insert("User-Agent", HeaderValue::from_static("rust-github-api"));
-        
+    pub fn new(
+        token: String,
+        owner: String,
+        repo: String,
+        base_path: String,
+    ) -> Result<Self, Box<dyn StdError + Send + Sync>> {
         let client = Client::builder()
-            .default_headers(headers)
+            .user_agent("rust-github-api")
             .timeout(Duration::from_secs(30))
             .build()?;
 
         Ok(Self {
             client,
-            token: github_settings.github_access_token.clone(),
-            owner: github_settings.github_owner.clone(),
-            repo: github_settings.github_repo.clone(),
-            base_path: github_settings.github_directory.clone(),
+            token,
+            owner,
+            repo,
+            base_path,
             metadata_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
@@ -140,21 +136,6 @@ impl GitHubService for RealGitHubService {
         Ok(markdown_files)
     }
 
-    // Add the calculate_node_size function to FileService impl
-fn calculate_node_size(file_size: usize) -> f64 {
-    if file_size == 0 {
-        return MIN_NODE_SIZE;
-    }
-
-    let size_f64: f64 = file_size as f64;
-    let log_size = f64::log10(size_f64 + 1.0);
-    let min_log = f64::log10(1.0);
-    let max_log = f64::log10(269425.0 + 1.0); // Maximum known file size + 1
-    
-    MIN_NODE_SIZE + (log_size - min_log) * (MAX_NODE_SIZE - MIN_NODE_SIZE) / (max_log - min_log)
-}
-
-
     async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>> {
         let url = format!("https://api.github.com/repos/{}/{}/contents/{}/{}", 
             self.owner, self.repo, self.base_path, file_name);
@@ -165,8 +146,8 @@ fn calculate_node_size(file_size: usize) -> f64 {
             .await?;
 
         if response.status().is_success() {
-            let json: serde_json::Value = response.json().await?;
-            Ok(json["download_url"].as_str().map(|s| s.to_string()))
+            let file: GithubFile = response.json().await?;
+            Ok(Some(file.download_url))
         } else {
             Ok(None)
         }
@@ -214,31 +195,57 @@ fn calculate_node_size(file_size: usize) -> f64 {
 pub struct FileService;
 
 impl FileService {
-    /// Extract both direct mentions and hyperlink references to other files
-fn extract_references(content: &str, valid_nodes: &[String]) -> HashMap<String, ReferenceInfo> {
-    let mut references = HashMap::new();
-    
-    for node_name in valid_nodes {
-        let mut ref_info = ReferenceInfo::default();
-        
-        // Count direct mentions (case insensitive)
-        let direct_pattern = format!(r"(?i)\[\[{}]]|\b{}\b", regex::escape(node_name), regex::escape(node_name));
-        if let Ok(re) = Regex::new(&direct_pattern) {
-            ref_info.direct_mentions = re.find_iter(content).count();
+    /// Load or create metadata from file
+    pub fn load_or_create_metadata() -> Result<HashMap<String, Metadata>, Box<dyn StdError + Send + Sync>> {
+        if let Ok(content) = fs::read_to_string(METADATA_PATH) {
+            if !content.trim().is_empty() {
+                if let Ok(metadata) = serde_json::from_str(&content) {
+                    return Ok(metadata);
+                }
+            }
         }
-        
-        if ref_info.direct_mentions > 0 {
-            references.insert(node_name.clone(), ref_info);
-        }
+        Ok(HashMap::new())
     }
-    
-    references
-}
 
-fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>) -> HashMap<String, usize> {
-    references.into_iter()
-        .map(|(name, info)| (name, info.direct_mentions))
-        .collect()
+    /// Calculate node size using logarithmic scaling
+    fn calculate_node_size(file_size: usize) -> f64 {
+        if file_size == 0 {
+            return MIN_NODE_SIZE;
+        }
+
+        let size_f64: f64 = file_size as f64;
+        let log_size = f64::log10(size_f64 + 1.0);
+        let min_log = f64::log10(1.0);
+        let max_log = f64::log10(269425.0 + 1.0); // Maximum known file size + 1
+        
+        MIN_NODE_SIZE + (log_size - min_log) * (MAX_NODE_SIZE - MIN_NODE_SIZE) / (max_log - min_log)
+    }
+
+    /// Extract both direct mentions and hyperlink references to other files
+    fn extract_references(content: &str, valid_nodes: &[String]) -> HashMap<String, ReferenceInfo> {
+        let mut references = HashMap::new();
+        
+        for node_name in valid_nodes {
+            let mut ref_info = ReferenceInfo::default();
+            
+            // Count direct mentions (case insensitive)
+            let direct_pattern = format!(r"(?i)\[\[{}]]|\b{}\b", regex::escape(node_name), regex::escape(node_name));
+            if let Ok(re) = Regex::new(&direct_pattern) {
+                ref_info.direct_mentions = re.find_iter(content).count();
+            }
+            
+            if ref_info.direct_mentions > 0 {
+                references.insert(node_name.clone(), ref_info);
+            }
+        }
+        
+        references
+    }
+
+    fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>) -> HashMap<String, usize> {
+        references.into_iter()
+            .map(|(name, info)| (name, info.direct_mentions))
+            .collect()
     }
 
     /// Initialize the local markdown directory and metadata structure.
@@ -248,12 +255,12 @@ fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         info!("Checking local storage status");
         
-        // Ensure directories exist
+        // Ensure required directories exist
         Self::ensure_directories()?;
 
-        // Check if we have a valid local setup
+        // Check if we already have a valid local setup
         if Self::has_valid_local_setup() {
-            info!("Valid local setup found. Skipping initialization.");
+            info!("Valid local setup found, skipping initialization");
             return Ok(());
         }
 
@@ -372,12 +379,8 @@ fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>
     }
 
     /// Ensures all required directories exist
-    fn ensure_directories() -> Result<(), std::io::Error> {
-        debug!("Ensuring required directories exist");
+    fn ensure_directories() -> Result<(), Box<dyn StdError + Send + Sync>> {
         fs::create_dir_all(MARKDOWN_DIR)?;
-        if let Some(parent_dir) = Path::new(METADATA_PATH).parent() {
-            fs::create_dir_all(parent_dir)?;
-        }
         Ok(())
     }
 
@@ -395,28 +398,24 @@ fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>
         debug!("Fetched metadata for {} markdown files", github_files_metadata.len());
 
         let mut processed_files = Vec::new();
-        let local_metadata = metadata_map.clone();
-        
-        // Clean up removed files
-        let github_file_names: HashSet<String> = github_files_metadata.iter()
-            .map(|f| f.name.clone())
+
+        // Save current metadata
+        Self::save_metadata(metadata_map)?;
+
+        // Clean up local files that no longer exist in GitHub
+        let github_files: HashSet<_> = github_files_metadata.iter()
+            .map(|meta| meta.name.clone())
             .collect();
-        
-        let removed_files: Vec<String> = local_metadata.keys()
-            .filter(|name| !github_file_names.contains(*name))
-            .cloned()
-            .collect();
-        
-        for removed_file in removed_files {
-            info!("Removing file not present on GitHub: {}", removed_file);
-            metadata_map.remove(&removed_file);
-            // Also remove the local file if it exists
-            let file_path = format!("{}/{}", MARKDOWN_DIR, removed_file);
-            if Path::new(&file_path).exists() {
-                if let Err(e) = fs::remove_file(&file_path) {
-                    error!("Failed to remove file {}: {}", file_path, e);
-                }
+
+        let local_files: HashSet<_> = metadata_map.keys().cloned().collect();
+        let removed_files: Vec<_> = local_files.difference(&github_files).collect();
+
+        for file_name in removed_files {
+            let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
+            if let Err(e) = fs::remove_file(&file_path) {
+                error!("Failed to remove file {}: {}", file_path, e);
             }
+            metadata_map.remove(file_name);
         }
 
         // Get list of valid node names (filenames without .md)
@@ -428,7 +427,7 @@ fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>
         let files_to_process: Vec<_> = github_files_metadata.into_iter()
             .filter(|file_meta| {
                 let local_meta = metadata_map.get(&file_meta.name);
-                local_meta.map_or(true, |local_meta| local_meta.sha1 != file_meta.sha)
+                local_meta.map_or(true, |meta| meta.sha1 != file_meta.sha)
             })
             .collect();
 
@@ -482,65 +481,28 @@ fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>
 
         // Save updated metadata
         Self::save_metadata(metadata_map)?;
-        debug!("Processed {} files after optimization", processed_files.len());
+
         Ok(processed_files)
     }
 
-    pub fn load_or_create_metadata() -> Result<HashMap<String, Metadata>, Box<dyn StdError + Send + Sync>> {
-        // Ensure directories exist before attempting to read/write metadata
-        Self::ensure_directories()?;
-
-        if Path::new(METADATA_PATH).exists() {
-            let metadata_content = fs::read_to_string(METADATA_PATH)?;
-            if metadata_content.trim().is_empty() {
-                Ok(HashMap::new())
-            } else {
-                let metadata: HashMap<String, Metadata> = serde_json::from_str(&metadata_content)?;
-                Ok(metadata)
-            }
-        } else {
-            debug!("metadata.json not found. Creating a new one.");
-            let empty_metadata = HashMap::new();
-            Self::save_metadata(&empty_metadata)?;
-            Ok(empty_metadata)
-        }
-    }
-
-    pub fn save_metadata(metadata_map: &HashMap<String, Metadata>) -> Result<(), std::io::Error> {
-        // Ensure directories exist before saving
-        Self::ensure_directories()?;
-        
-        let updated_content = serde_json::to_string_pretty(metadata_map)?;
-        fs::write(METADATA_PATH, updated_content)?;
-        debug!("Updated metadata file at: {}", METADATA_PATH);
+    /// Save metadata to file
+    pub fn save_metadata(metadata: &HashMap<String, Metadata>) -> Result<(), Box<dyn StdError + Send + Sync>> {
+        let json = serde_json::to_string_pretty(metadata)?;
+        fs::write(METADATA_PATH, json)?;
         Ok(())
     }
 
-    pub fn update_metadata(metadata_map: &HashMap<String, Metadata>) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        // Ensure directories exist before updating
-        Self::ensure_directories()?;
-
-        let existing_metadata = Self::load_or_create_metadata()?;
-        let mut updated_metadata = existing_metadata;
-
-        for (key, value) in metadata_map {
-            updated_metadata.insert(key.clone(), value.clone());
-        }
-
-        Self::save_metadata(&updated_metadata)?;
-        info!("Updated metadata.json file at {}", METADATA_PATH);
-
-        Ok(())
-    }
-
+    /// Calculate SHA1 hash of content
     fn calculate_sha1(content: &str) -> String {
+        use sha1::{Sha1, Digest};
         let mut hasher = Sha1::new();
         hasher.update(content.as_bytes());
         format!("{:x}", hasher.finalize())
     }
 
+    /// Count hyperlinks in content
     fn count_hyperlinks(content: &str) -> usize {
-        let re = Regex::new(r"\[.*?\]\(.*?\)").unwrap();
+        let re = Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").unwrap();
         re.find_iter(content).count()
     }
 }
