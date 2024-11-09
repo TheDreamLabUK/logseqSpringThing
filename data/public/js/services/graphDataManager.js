@@ -58,40 +58,27 @@ export class GraphDataManager {
 
         // Handle the case where newData already has nodes and edges arrays
         if (Array.isArray(newData.nodes) && Array.isArray(newData.edges)) {
-            // Preserve existing positions if they're valid
+            // Integrate new positions with existing velocities
             const nodes = newData.nodes.map(node => {
-                // Check if the node has valid position data
-                const hasValidPosition = 
-                    typeof node.x === 'number' && !isNaN(node.x) &&
-                    typeof node.y === 'number' && !isNaN(node.y) &&
-                    typeof node.z === 'number' && !isNaN(node.z);
+                const existingNode = this.graphData?.nodes?.find(n => n.id === node.id);
+                
+                // Keep existing velocities if available, otherwise initialize to 0
+                const vx = existingNode?.vx || 0;
+                const vy = existingNode?.vy || 0;
+                const vz = existingNode?.vz || 0;
 
-                // If this node exists in current data and new node doesn't have valid position,
-                // try to preserve existing position
-                if (!hasValidPosition && this.graphData && this.graphData.nodes) {
-                    const existingNode = this.graphData.nodes.find(n => n.id === node.id);
-                    if (existingNode && 
-                        typeof existingNode.x === 'number' && !isNaN(existingNode.x) &&
-                        typeof existingNode.y === 'number' && !isNaN(existingNode.y) &&
-                        typeof existingNode.z === 'number' && !isNaN(existingNode.z)) {
-                        return {
-                            ...node,
-                            x: existingNode.x,
-                            y: existingNode.y,
-                            z: existingNode.z,
-                            vx: 0,
-                            vy: 0,
-                            vz: 0
-                        };
-                    }
-                }
+                // Use new position if valid, otherwise keep existing or initialize to 0
+                const x = (typeof node.x === 'number' && !isNaN(node.x)) ? node.x : 
+                         (existingNode?.x || 0);
+                const y = (typeof node.y === 'number' && !isNaN(node.y)) ? node.y :
+                         (existingNode?.y || 0);
+                const z = (typeof node.z === 'number' && !isNaN(node.z)) ? node.z :
+                         (existingNode?.z || 0);
 
-                // Initialize velocities for new nodes
                 return {
                     ...node,
-                    vx: 0,
-                    vy: 0,
-                    vz: 0
+                    x, y, z,
+                    vx, vy, vz
                 };
             });
 
@@ -110,29 +97,18 @@ export class GraphDataManager {
             });
 
             const nodes = Array.from(nodeSet).map(id => {
-                // Check if we have existing position data for this node
-                let position = { x: 0, y: 0, z: 0 };
-                if (this.graphData && this.graphData.nodes) {
-                    const existingNode = this.graphData.nodes.find(n => n.id === id);
-                    if (existingNode && 
-                        typeof existingNode.x === 'number' && !isNaN(existingNode.x) &&
-                        typeof existingNode.y === 'number' && !isNaN(existingNode.y) &&
-                        typeof existingNode.z === 'number' && !isNaN(existingNode.z)) {
-                        position = {
-                            x: existingNode.x,
-                            y: existingNode.y,
-                            z: existingNode.z
-                        };
-                    }
-                }
-
+                const existingNode = this.graphData?.nodes?.find(n => n.id === id);
+                
                 return {
                     id,
                     label: id,
-                    ...position,
-                    vx: 0,
-                    vy: 0,
-                    vz: 0
+                    // Preserve existing position and velocity if available
+                    x: existingNode?.x || 0,
+                    y: existingNode?.y || 0,
+                    z: existingNode?.z || 0,
+                    vx: existingNode?.vx || 0,
+                    vy: existingNode?.vy || 0,
+                    vz: existingNode?.vz || 0
                 };
             });
 
@@ -206,6 +182,9 @@ export class GraphDataManager {
         if (serverParamName) {
             this.forceDirectedParams[serverParamName] = value;
             console.log('Force-directed parameters updated:', this.forceDirectedParams);
+            
+            // Request server recalculation with new parameters
+            this.recalculateLayout();
         } else {
             console.warn(`Unknown force-directed parameter: ${name}`);
         }
@@ -215,7 +194,7 @@ export class GraphDataManager {
      * Recalculates the graph layout using the current force-directed parameters.
      */
     recalculateLayout() {
-        console.log('Recalculating graph layout with parameters:', this.forceDirectedParams);
+        console.log('Requesting server layout recalculation with parameters:', this.forceDirectedParams);
         if (this.isGraphDataValid()) {
             this.websocketService.send({
                 type: 'recalculateLayout',
@@ -226,7 +205,6 @@ export class GraphDataManager {
                     damping: this.forceDirectedParams.damping
                 }
             });
-            console.log('Layout recalculation requested');
             
             window.dispatchEvent(new CustomEvent('layoutRecalculationRequested', {
                 detail: this.forceDirectedParams

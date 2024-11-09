@@ -2,7 +2,7 @@ export class LayoutManager {
     constructor() {
         // Configuration
         this.initialIterations = 250;    // High iteration count for initial layout
-        this.updateIterations = 5;       // Low iteration count for interactive updates
+        this.updateIterations = 1;       // Single iteration for smooth continuous updates
         this.forceDirectedSpring = 2.0;
         this.forceDirectedDamping = 0.8;
         this.targetRadius = 200;
@@ -12,12 +12,11 @@ export class LayoutManager {
         this.isInitialized = false;
         this.isSimulating = false;
         this.animationFrameId = null;
-        this.useServerPositions = true;  // New flag to respect server positions
     }
 
     initializePositions(nodes) {
         nodes.forEach(node => {
-            // Only initialize if positions are undefined, null, or NaN
+            // Initialize only if positions are invalid
             if (isNaN(node.x) || isNaN(node.y) || isNaN(node.z)) {
                 const theta = Math.random() * 2 * Math.PI;
                 const phi = Math.acos(2 * Math.random() - 1);
@@ -27,47 +26,11 @@ export class LayoutManager {
                 node.y = r * Math.sin(phi) * Math.sin(theta);
                 node.z = r * Math.cos(phi);
             }
-            // Always initialize velocities
-            node.vx = 0;
-            node.vy = 0;
-            node.vz = 0;
+            // Always ensure velocities are initialized
+            if (!node.vx) node.vx = 0;
+            if (!node.vy) node.vy = 0;
+            if (!node.vz) node.vz = 0;
         });
-    }
-
-    centerAndScaleGraph(nodes) {
-        // Only center and scale if not using server positions
-        if (this.useServerPositions) return;
-
-        let centerX = 0, centerY = 0, centerZ = 0;
-        nodes.forEach(node => {
-            centerX += node.x;
-            centerY += node.y;
-            centerZ += node.z;
-        });
-        centerX /= nodes.length;
-        centerY /= nodes.length;
-        centerZ /= nodes.length;
-
-        nodes.forEach(node => {
-            node.x -= centerX;
-            node.y -= centerY;
-            node.z -= centerZ;
-        });
-
-        let maxRadius = 0;
-        nodes.forEach(node => {
-            const r = Math.sqrt(node.x * node.x + node.y * node.y + node.z * node.z);
-            maxRadius = Math.max(maxRadius, r);
-        });
-
-        if (maxRadius > 0) {
-            const scale = this.targetRadius / maxRadius;
-            nodes.forEach(node => {
-                node.x *= scale;
-                node.y *= scale;
-                node.z *= scale;
-            });
-        }
     }
 
     calculateSpringForce(pos1, pos2, mass1, mass2, isConnected) {
@@ -96,27 +59,16 @@ export class LayoutManager {
     applyForceDirectedLayout(graphData, onComplete) {
         const nodes = graphData.nodes;
         
-        // Check if we have valid server positions
-        const hasValidPositions = nodes.every(node => 
-            !isNaN(node.x) && !isNaN(node.y) && !isNaN(node.z)
-        );
-
-        if (hasValidPositions) {
-            this.useServerPositions = true;
+        // Initialize positions if needed
+        if (!this.isInitialized) {
+            this.initializePositions(nodes);
             this.isInitialized = true;
-            // Don't start continuous simulation when using server positions
-            this.stopSimulation();
-        } else {
-            this.useServerPositions = false;
-            if (!this.isInitialized) {
-                // Initial layout with high iteration count
-                this.performLayout(graphData, this.initialIterations);
-                this.isInitialized = true;
-            } else {
-                // Interactive update with low iteration count
-                this.performLayout(graphData, this.updateIterations);
-            }
+            // Start continuous refinement
+            this.startContinuousSimulation(graphData);
         }
+
+        // Perform a single iteration of force-directed layout
+        this.performLayout(graphData, this.updateIterations);
         
         if (onComplete) {
             onComplete();
@@ -124,15 +76,8 @@ export class LayoutManager {
     }
 
     performLayout(graphData, iterations) {
-        // Skip layout if using server positions
-        if (this.useServerPositions) return;
-
         const nodes = graphData.nodes;
         const edges = graphData.edges;
-
-        if (!this.isInitialized) {
-            this.initializePositions(nodes);
-        }
 
         for (let iteration = 0; iteration < iterations; iteration++) {
             // Calculate forces between all nodes
@@ -179,7 +124,7 @@ export class LayoutManager {
                 // Centering force
                 const distance = Math.sqrt(node.x * node.x + node.y * node.y + node.z * node.z);
                 if (distance > this.targetRadius) {
-                    const centerForce = 0.1 * (distance - this.targetRadius);
+                    const centerForce = 0.05 * (distance - this.targetRadius); // Reduced strength
                     node.vx -= (node.x / distance) * centerForce;
                     node.vy -= (node.y / distance) * centerForce;
                     node.vz -= (node.z / distance) * centerForce;
@@ -199,29 +144,30 @@ export class LayoutManager {
                     node.vz *= scale;
                 }
 
-                // Update positions
-                node.x += node.vx;
-                node.y += node.vy;
-                node.z += node.vz;
+                // Update positions with smaller step size for smoother motion
+                const stepSize = 0.5;
+                node.x += node.vx * stepSize;
+                node.y += node.vy * stepSize;
+                node.z += node.vz * stepSize;
+
+                // Ensure positions stay within bounds
+                const maxCoord = 100.0;
+                node.x = Math.max(Math.min(node.x, maxCoord), -maxCoord);
+                node.y = Math.max(Math.min(node.y, maxCoord), -maxCoord);
+                node.z = Math.max(Math.min(node.z, maxCoord), -maxCoord);
             });
-
-            if (iteration % 10 === 0) {
-                this.centerAndScaleGraph(nodes);
-            }
         }
-
-        this.centerAndScaleGraph(nodes);
     }
 
     startContinuousSimulation(graphData) {
-        // Don't start simulation if using server positions
-        if (this.useServerPositions || this.isSimulating) return;
+        if (this.isSimulating) return;
         
         this.isSimulating = true;
         const animate = () => {
             if (!this.isSimulating) return;
             
-            this.performLayout(graphData, 1);  // Single iteration per frame
+            // Perform continuous gentle refinement
+            this.performLayout(graphData, 1);
             this.animationFrameId = requestAnimationFrame(animate);
         };
         
