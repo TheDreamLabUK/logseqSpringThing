@@ -43,7 +43,7 @@ api_client_timeout = 30
 node_color = "0x1A0B31"
 edge_color = "0xff0000"
 hologram_color = "0xFFD700"
-node_size_scaling_factor = 5
+node_size_scaling_factor = 3
 hologram_scale = 5
 hologram_opacity = 0.1
 edge_opacity = 0.3
@@ -51,11 +51,14 @@ label_font_size = 36
 fog_density = 0.002
 
 # Physics simulation parameters
-force_directed_iterations = 100
-# Default spring strength (range 0.01-10.0)
-force_directed_spring = 1.0  
-# Default damping (range 0.1-0.9)
-force_directed_damping = 0.8  
+force_directed_iterations = 250
+# Spring force (0.001-1.0)
+force_directed_spring = 0.01
+# Required for backend compatibility
+force_directed_repulsion = 1000.0
+force_directed_attraction = 0.01
+# Damping (0.5-0.95)
+force_directed_damping = 0.8
 
 [bloom]
 # Bloom settings for nodes

@@ -67,7 +67,7 @@ pub async fn update_fisheye_settings(
     };
 
     // Update GPU compute service with new fisheye settings
-    if let Err(e) = gpu.set_fisheye_params(
+    if let Err(e) = gpu.update_fisheye_params(
         request.enabled,
         request.strength,
         request.focus_point,

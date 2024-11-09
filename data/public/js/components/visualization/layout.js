@@ -1,25 +1,30 @@
 export class LayoutManager {
     constructor() {
-        this.forceDirectedIterations = 250;  // Matches .env
-        this.forceDirectedSpring = 2.0;      // Matches .env
-        this.forceDirectedDamping = 0.8;     // Matches .env
-        this.targetRadius = 200;             // Matches CENTER_RADIUS in WGSL
-        this.naturalLength = 100;            // Matches NATURAL_LENGTH in WGSL
+        // Configuration
+        this.initialIterations = 250;    // High iteration count for initial layout
+        this.updateIterations = 5;       // Low iteration count for interactive updates
+        this.forceDirectedSpring = 2.0;
+        this.forceDirectedDamping = 0.8;
+        this.targetRadius = 200;
+        this.naturalLength = 100;
+        
+        // State
+        this.isInitialized = false;
+        this.isSimulating = false;
+        this.animationFrameId = null;
     }
 
     initializePositions(nodes) {
         nodes.forEach(node => {
             if (!node.x && !node.y && !node.z) {
-                // Initialize new nodes in a sphere
                 const theta = Math.random() * 2 * Math.PI;
                 const phi = Math.acos(2 * Math.random() - 1);
-                const r = this.targetRadius * Math.cbrt(Math.random()); // Cube root for uniform distribution
+                const r = this.targetRadius * Math.cbrt(Math.random());
                 
                 node.x = r * Math.sin(phi) * Math.cos(theta);
                 node.y = r * Math.sin(phi) * Math.sin(theta);
                 node.z = r * Math.cos(phi);
             }
-            // Initialize velocities
             node.vx = 0;
             node.vy = 0;
             node.vz = 0;
@@ -27,7 +32,6 @@ export class LayoutManager {
     }
 
     centerAndScaleGraph(nodes) {
-        // Calculate center of mass
         let centerX = 0, centerY = 0, centerZ = 0;
         nodes.forEach(node => {
             centerX += node.x;
@@ -38,21 +42,18 @@ export class LayoutManager {
         centerY /= nodes.length;
         centerZ /= nodes.length;
 
-        // Center nodes
         nodes.forEach(node => {
             node.x -= centerX;
             node.y -= centerY;
             node.z -= centerZ;
         });
 
-        // Calculate current radius
         let maxRadius = 0;
         nodes.forEach(node => {
             const r = Math.sqrt(node.x * node.x + node.y * node.y + node.z * node.z);
             maxRadius = Math.max(maxRadius, r);
         });
 
-        // Scale to target radius
         if (maxRadius > 0) {
             const scale = this.targetRadius / maxRadius;
             nodes.forEach(node => {
@@ -71,15 +72,12 @@ export class LayoutManager {
 
         let forceMagnitude;
         if (isConnected) {
-            // Connected nodes: Hooke's law with natural length
             forceMagnitude = this.forceDirectedSpring * (distance - this.naturalLength);
         } else {
-            // Unconnected nodes: Inverse square repulsion
             forceMagnitude = -this.forceDirectedSpring * mass1 * mass2 / (distance * distance + 0.1);
         }
 
-        // Limit maximum force
-        const maxForce = 50.0;  // Matches MAX_FORCE in WGSL
+        const maxForce = 50.0;
         forceMagnitude = Math.min(Math.max(forceMagnitude, -maxForce), maxForce);
 
         return {
@@ -89,22 +87,38 @@ export class LayoutManager {
         };
     }
 
-    applyForceDirectedLayout(graphData) {
-        console.log('Applying force-directed layout');
+    applyForceDirectedLayout(graphData, onComplete) {
+        if (!this.isInitialized) {
+            // Initial layout with high iteration count
+            this.performLayout(graphData, this.initialIterations);
+            this.isInitialized = true;
+            this.startContinuousSimulation(graphData);
+        } else {
+            // Interactive update with low iteration count
+            this.performLayout(graphData, this.updateIterations);
+        }
+        
+        if (onComplete) {
+            onComplete();
+        }
+    }
+
+    performLayout(graphData, iterations) {
         const nodes = graphData.nodes;
         const edges = graphData.edges;
 
-        // Initialize positions for new nodes
-        this.initializePositions(nodes);
+        if (!this.isInitialized) {
+            this.initializePositions(nodes);
+        }
 
-        for (let iteration = 0; iteration < this.forceDirectedIterations; iteration++) {
+        for (let iteration = 0; iteration < iterations; iteration++) {
             // Calculate forces between all nodes
             for (let i = 0; i < nodes.length; i++) {
                 for (let j = i + 1; j < nodes.length; j++) {
                     const force = this.calculateSpringForce(
                         nodes[i], nodes[j],
                         nodes[i].mass || 1, nodes[j].mass || 1,
-                        false  // Not connected by default
+                        false
                     );
 
                     nodes[i].vx -= force.fx;
@@ -124,7 +138,7 @@ export class LayoutManager {
                     const force = this.calculateSpringForce(
                         source, target,
                         source.mass || 1, target.mass || 1,
-                        true  // Connected by edge
+                        true
                     );
 
                     source.vx += force.fx;
@@ -136,20 +150,18 @@ export class LayoutManager {
                 }
             });
 
-            // Apply centering force
+            // Apply centering force and update positions
+            const maxVelocity = 10.0;
             nodes.forEach(node => {
+                // Centering force
                 const distance = Math.sqrt(node.x * node.x + node.y * node.y + node.z * node.z);
                 if (distance > this.targetRadius) {
-                    const centerForce = 0.1 * (distance - this.targetRadius);  // Matches CENTER_FORCE_STRENGTH in WGSL
+                    const centerForce = 0.1 * (distance - this.targetRadius);
                     node.vx -= (node.x / distance) * centerForce;
                     node.vy -= (node.y / distance) * centerForce;
                     node.vz -= (node.z / distance) * centerForce;
                 }
-            });
 
-            // Update positions with velocity damping
-            const maxVelocity = 10.0;  // Matches MAX_VELOCITY in WGSL
-            nodes.forEach(node => {
                 // Apply damping
                 node.vx *= this.forceDirectedDamping;
                 node.vy *= this.forceDirectedDamping;
@@ -170,16 +182,34 @@ export class LayoutManager {
                 node.z += node.vz;
             });
 
-            // Periodically center and scale the graph
             if (iteration % 10 === 0) {
                 this.centerAndScaleGraph(nodes);
             }
         }
 
-        // Final centering and scaling
         this.centerAndScaleGraph(nodes);
+    }
 
-        console.log('Force-directed layout applied');
+    startContinuousSimulation(graphData) {
+        if (this.isSimulating) return;
+        
+        this.isSimulating = true;
+        const animate = () => {
+            if (!this.isSimulating) return;
+            
+            this.performLayout(graphData, 1);  // Single iteration per frame
+            this.animationFrameId = requestAnimationFrame(animate);
+        };
+        
+        animate();
+    }
+
+    stopSimulation() {
+        this.isSimulating = false;
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
     }
 
     updateFeature(control, value) {
@@ -189,9 +219,6 @@ export class LayoutManager {
                 break;
             case 'force_directed_damping':
                 this.forceDirectedDamping = value;
-                break;
-            case 'forceDirectedIterations':
-                this.forceDirectedIterations = value;
                 break;
         }
     }

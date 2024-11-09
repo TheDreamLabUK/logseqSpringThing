@@ -26,7 +26,7 @@ impl GraphService {
         let mut graph = GraphData::default();
         let mut edge_map: HashMap<(String, String), f32> = HashMap::new();
     
-        // Create nodes
+        // Create nodes with default positions first
         for (file_name, file_metadata) in &metadata {
             let node_id = file_name.trim_end_matches(".md").to_string();
             let mut node_metadata = HashMap::new();
@@ -41,8 +41,12 @@ impl GraphService {
                 id: node_id.clone(),
                 label: node_id.clone(),
                 metadata: node_metadata,
-                x: 0.0, y: 0.0, z: 0.0,
-                vx: 0.0, vy: 0.0, vz: 0.0,
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                vx: 0.0,
+                vy: 0.0,
+                vz: 0.0,
             });
             graph.metadata.insert(node_id.clone(), file_metadata.clone());
         }
@@ -82,9 +86,9 @@ impl GraphService {
         let settings = app_state.settings.read().await;
         let params = SimulationParams::new(
             settings.visualization.force_directed_iterations as u32,
-            settings.visualization.force_directed_repulsion,
-            settings.visualization.force_directed_attraction,
-            0.9, // Default damping value
+            settings.visualization.force_directed_spring,
+            settings.visualization.force_directed_damping,
+            true // Initial layout
         );
 
         Self::calculate_layout(&app_state.gpu_compute, &mut graph, &params).await?;
@@ -94,35 +98,70 @@ impl GraphService {
         Ok(graph)
     }
 
+    /// Initializes random positions for nodes in a spherical distribution
+    fn initialize_random_positions(graph: &mut GraphData) {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        
+        // Use a smaller initial radius to prevent nodes from spreading too far
+        let initial_radius = 30.0;
+        
+        for node in &mut graph.nodes {
+            let theta = rng.gen_range(0.0..std::f32::consts::PI * 2.0);
+            let phi = rng.gen_range(0.0..std::f32::consts::PI);
+            let r = rng.gen_range(0.0..initial_radius);
+            
+            node.x = r * theta.cos() * phi.sin();
+            node.y = r * theta.sin() * phi.sin();
+            node.z = r * phi.cos();
+            
+            // Initialize velocities to 0
+            node.vx = 0.0;
+            node.vy = 0.0;
+            node.vz = 0.0;
+        }
+    }
+
     /// Calculates the force-directed layout using GPUCompute if available, otherwise falls back to CPU.
     pub async fn calculate_layout(
         gpu_compute: &Option<Arc<RwLock<GPUCompute>>>,
         graph: &mut GraphData,
         params: &SimulationParams,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Initialize random positions before layout calculation
+        Self::initialize_random_positions(graph);
+        
         match gpu_compute {
             Some(gpu) => {
                 info!("Using GPU for layout calculation");
                 let mut gpu_compute = gpu.write().await;
-                gpu_compute.set_graph_data(graph)?;
-                gpu_compute.set_force_directed_params(params)?;
-                gpu_compute.compute_forces()?;
-                let updated_nodes = gpu_compute.get_updated_positions().await?;
-
-                // Update graph nodes with new positions
-                for (i, node) in graph.nodes.iter_mut().enumerate() {
-                    node.x = updated_nodes[i].x;
-                    node.y = updated_nodes[i].y;
-                    node.z = updated_nodes[i].z;
-                    node.vx = updated_nodes[i].vx;
-                    node.vy = updated_nodes[i].vy;
-                    node.vz = updated_nodes[i].vz;
+                gpu_compute.update_graph_data(graph)?;
+                gpu_compute.update_simulation_params(params)?;
+                
+                // Run multiple iterations with position updates
+                for i in 0..params.iterations {
+                    gpu_compute.step()?;
+                    
+                    // Update positions every few iterations to maintain stability
+                    if i % 10 == 0 {
+                        let updated_nodes = gpu_compute.get_node_positions().await?;
+                        for (i, node) in graph.nodes.iter_mut().enumerate() {
+                            node.update_from_gpu_node(&updated_nodes[i]);
+                            
+                            // Add bounds checking
+                            let max_coord = 100.0;
+                            node.x = node.x.clamp(-max_coord, max_coord);
+                            node.y = node.y.clamp(-max_coord, max_coord);
+                            node.z = node.z.clamp(-max_coord, max_coord);
+                        }
+                    }
                 }
+                
                 debug!("GPU layout calculation complete. Sample updated node: {:?}", graph.nodes.first());
             },
             None => {
                 warn!("GPU not available. Falling back to CPU-based layout calculation.");
-                Self::calculate_layout_cpu(graph, params.iterations, params.repulsion_strength, params.attraction_strength);
+                Self::calculate_layout_cpu(graph, params.iterations, params.spring_strength, params.damping);
                 debug!("CPU layout calculation complete. Sample updated node: {:?}", graph.nodes.first());
             }
         }
@@ -130,9 +169,9 @@ impl GraphService {
     }
 
     /// Calculates the force-directed layout using CPU.
-    fn calculate_layout_cpu(graph: &mut GraphData, iterations: u32, repulsion: f32, attraction: f32) {
-        const DAMPING: f32 = 0.9;
-
+    fn calculate_layout_cpu(graph: &mut GraphData, iterations: u32, spring_strength: f32, damping: f32) {
+        let repulsion_strength = spring_strength * 10000.0; // Increase repulsion for better spacing
+        
         for _ in 0..iterations {
             // Calculate repulsive forces
             for i in 0..graph.nodes.len() {
@@ -141,17 +180,26 @@ impl GraphService {
                     let dy = graph.nodes[j].y - graph.nodes[i].y;
                     let dz = graph.nodes[j].z - graph.nodes[i].z;
                     let distance = (dx * dx + dy * dy + dz * dz).sqrt().max(0.1);
-                    let force = repulsion / (distance * distance);
+                    let force = repulsion_strength / (distance * distance);
                     let fx = force * dx / distance;
                     let fy = force * dy / distance;
                     let fz = force * dz / distance;
 
-                    graph.nodes[i].vx -= fx;
-                    graph.nodes[i].vy -= fy;
-                    graph.nodes[i].vz -= fz;
-                    graph.nodes[j].vx += fx;
-                    graph.nodes[j].vy += fy;
-                    graph.nodes[j].vz += fz;
+                    // Apply force with a maximum limit
+                    let max_force = 50.0;
+                    let force_magnitude = (fx * fx + fy * fy + fz * fz).sqrt();
+                    let scale = if force_magnitude > max_force {
+                        max_force / force_magnitude
+                    } else {
+                        1.0
+                    };
+
+                    graph.nodes[i].vx -= fx * scale;
+                    graph.nodes[i].vy -= fy * scale;
+                    graph.nodes[i].vz -= fz * scale;
+                    graph.nodes[j].vx += fx * scale;
+                    graph.nodes[j].vy += fy * scale;
+                    graph.nodes[j].vz += fz * scale;
                 }
             }
 
@@ -164,28 +212,56 @@ impl GraphService {
                 let dz = graph.nodes[target].z - graph.nodes[source].z;
                 let distance = (dx * dx + dy * dy + dz * dz).sqrt().max(0.1);
                 
-                // Use only weight for attraction
-                let force = attraction * distance * edge.weight;
+                // Use spring strength and weight for attraction
+                let force = spring_strength * distance * edge.weight;
                 let fx = force * dx / distance;
                 let fy = force * dy / distance;
                 let fz = force * dz / distance;
 
-                graph.nodes[source].vx += fx;
-                graph.nodes[source].vy += fy;
-                graph.nodes[source].vz += fz;
-                graph.nodes[target].vx -= fx;
-                graph.nodes[target].vy -= fy;
-                graph.nodes[target].vz -= fz;
+                // Apply force with a maximum limit
+                let max_force = 50.0;
+                let force_magnitude = (fx * fx + fy * fy + fz * fz).sqrt();
+                let scale = if force_magnitude > max_force {
+                    max_force / force_magnitude
+                } else {
+                    1.0
+                };
+
+                graph.nodes[source].vx += fx * scale;
+                graph.nodes[source].vy += fy * scale;
+                graph.nodes[source].vz += fz * scale;
+                graph.nodes[target].vx -= fx * scale;
+                graph.nodes[target].vy -= fy * scale;
+                graph.nodes[target].vz -= fz * scale;
             }
 
-            // Update positions
+            // Update positions with bounds checking
             for node in &mut graph.nodes {
+                // Apply velocity limits
+                let max_velocity = 10.0;
+                let velocity_magnitude = (node.vx * node.vx + node.vy * node.vy + node.vz * node.vz).sqrt();
+                if velocity_magnitude > max_velocity {
+                    let scale = max_velocity / velocity_magnitude;
+                    node.vx *= scale;
+                    node.vy *= scale;
+                    node.vz *= scale;
+                }
+
+                // Update position
                 node.x += node.vx;
                 node.y += node.vy;
                 node.z += node.vz;
-                node.vx *= DAMPING;
-                node.vy *= DAMPING;
-                node.vz *= DAMPING;
+
+                // Apply position bounds
+                let max_coord = 100.0;
+                node.x = node.x.clamp(-max_coord, max_coord);
+                node.y = node.y.clamp(-max_coord, max_coord);
+                node.z = node.z.clamp(-max_coord, max_coord);
+
+                // Apply damping
+                node.vx *= damping;
+                node.vy *= damping;
+                node.vz *= damping;
             }
         }
     }

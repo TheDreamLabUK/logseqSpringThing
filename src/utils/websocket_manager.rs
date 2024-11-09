@@ -191,7 +191,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                             ctx.spawn(async move {
                                 if let Some(gpu_compute) = &state.gpu_compute {
                                     let mut gpu = gpu_compute.write().await;
-                                    gpu.set_fisheye_params(enabled, strength, focus_point, radius);
+                                    gpu.update_fisheye_params(enabled, strength, focus_point, radius);
                                     
                                     let response = json!({
                                         "type": "fisheye_settings_updated",
@@ -489,6 +489,4 @@ impl WebSocketSession {
             }
         }.into_actor(self));
     }
-
-    // ... (rest of the implementation remains unchanged)
 }

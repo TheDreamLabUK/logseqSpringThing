@@ -56,7 +56,7 @@ fn apply_fisheye(position: vec3<f32>) -> vec3<f32> {
 
 // Main compute shader function
 @compute @workgroup_size(256)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+fn compute_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let node_id = global_id.x;
     let n_nodes = arrayLength(&nodes_buffer.nodes);
     

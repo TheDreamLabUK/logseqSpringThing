@@ -1,5 +1,3 @@
-// Structure definitions remain unchanged...
-
 struct Node {
     position: vec3<f32>,  // 12 bytes
     velocity: vec3<f32>,  // 12 bytes
@@ -12,15 +10,6 @@ struct Edge {
     target_idx: u32,  // 4 bytes
     weight: f32,      // 4 bytes
     padding1: u32,    // 4 bytes
-    padding2: u32,    // 4 bytes
-    padding3: u32,    // 4 bytes
-    padding4: u32,    // 4 bytes
-    padding5: u32,    // 4 bytes
-}
-
-struct Adjacency {
-    offset: u32,
-    count: u32,
 }
 
 struct NodesBuffer {
@@ -31,51 +20,32 @@ struct EdgesBuffer {
     edges: array<Edge>,
 }
 
-struct AdjacencyBuffer {
-    adjacency: array<Adjacency>,
-}
-
-struct AdjacencyListBuffer {
-    indices: array<u32>,
-}
-
 struct SimulationParams {
     iterations: u32,           // 4 bytes
-    spring_strength: f32,      // 4 bytes - Combined spring force parameter
+    spring_strength: f32,      // 4 bytes
     damping: f32,             // 4 bytes
-    padding1: u32,            // 4 bytes
+    is_initial_layout: u32,   // 4 bytes - Flag for initial vs interactive mode
+    time_step: f32,           // 4 bytes - For smooth animation
     padding2: u32,            // 4 bytes
     padding3: u32,            // 4 bytes
-    padding4: u32,            // 4 bytes
-    padding5: u32,            // 4 bytes - Total: 32 bytes, aligned to 16
+    padding4: u32,            // 4 bytes - Total: 32 bytes, aligned to 16
 }
 
-struct GridCell {
-    start_idx: u32,
-    count: u32,
-}
-
-// Constants with adjusted spacing values
+// Constants optimized for stability and performance
 const WORKGROUP_SIZE: u32 = 256;
 const MAX_FORCE: f32 = 50.0;
 const MIN_DISTANCE: f32 = 1.0;
-const GRID_DIM: u32 = 16;
-const TOTAL_GRID_SIZE: u32 = 4096;
-const CENTER_FORCE_STRENGTH: f32 = 0.1;
-const CENTER_RADIUS: f32 = 200.0;  // Increased from 100.0
-const MAX_VELOCITY: f32 = 10.0;
-const NATURAL_LENGTH: f32 = 100.0;  // Increased from 50.0
+const GRID_DIM: u32 = 32;
+const TOTAL_GRID_SIZE: u32 = GRID_DIM * GRID_DIM * GRID_DIM;
+const CENTER_FORCE_STRENGTH: f32 = 0.05;  // Reduced for more stability
+const CENTER_RADIUS: f32 = 50.0;  // Reduced to match CPU implementation
+const MAX_VELOCITY: f32 = 10.0;  // Matches CPU implementation
+const NATURAL_LENGTH: f32 = 30.0;  // Reduced to match initial distribution
+const REPULSION_SCALE: f32 = 10000.0;  // Matches CPU implementation
 
-// Bind groups
 @group(0) @binding(0) var<storage, read_write> nodes_buffer: NodesBuffer;
 @group(0) @binding(1) var<storage, read> edges_buffer: EdgesBuffer;
-@group(0) @binding(2) var<storage, read> adjacency_buffer: AdjacencyBuffer;
-@group(0) @binding(3) var<storage, read> adjacency_list_buffer: AdjacencyListBuffer;
-@group(0) @binding(4) var<uniform> params: SimulationParams;
-
-// Workgroup variables
-var<workgroup> grid: array<GridCell, 4096>;
-var<workgroup> node_counts: array<atomic<u32>, 4096>;
+@group(0) @binding(2) var<uniform> params: SimulationParams;
 
 // Utility functions
 fn is_valid_float(x: f32) -> bool {
@@ -94,16 +64,25 @@ fn clamp_vector(v: vec3<f32>, max_magnitude: f32) -> vec3<f32> {
     return v;
 }
 
+fn clamp_position(pos: vec3<f32>) -> vec3<f32> {
+    let max_coord = 100.0;  // Matches CPU implementation
+    return vec3<f32>(
+        clamp(pos.x, -max_coord, max_coord),
+        clamp(pos.y, -max_coord, max_coord),
+        clamp(pos.z, -max_coord, max_coord)
+    );
+}
+
 fn get_grid_index(position: vec3<f32>) -> u32 {
     let grid_pos = vec3<u32>(
-        u32(clamp((position.x + 100.0) * f32(GRID_DIM) / 200.0, 0.0, f32(GRID_DIM - 1))),
-        u32(clamp((position.y + 100.0) * f32(GRID_DIM) / 200.0, 0.0, f32(GRID_DIM - 1))),
-        u32(clamp((position.z + 100.0) * f32(GRID_DIM) / 200.0, 0.0, f32(GRID_DIM - 1)))
+        u32(clamp((position.x + CENTER_RADIUS) * f32(GRID_DIM) / (2.0 * CENTER_RADIUS), 0.0, f32(GRID_DIM - 1))),
+        u32(clamp((position.y + CENTER_RADIUS) * f32(GRID_DIM) / (2.0 * CENTER_RADIUS), 0.0, f32(GRID_DIM - 1))),
+        u32(clamp((position.z + CENTER_RADIUS) * f32(GRID_DIM) / (2.0 * CENTER_RADIUS), 0.0, f32(GRID_DIM - 1)))
     );
     return grid_pos.x + grid_pos.y * GRID_DIM + grid_pos.z * GRID_DIM * GRID_DIM;
 }
 
-fn calculate_spring_force(pos1: vec3<f32>, pos2: vec3<f32>, mass1: f32, mass2: f32, is_connected: bool) -> vec3<f32> {
+fn calculate_spring_force(pos1: vec3<f32>, pos2: vec3<f32>, mass1: f32, mass2: f32, is_connected: bool, weight: f32) -> vec3<f32> {
     if (!is_valid_vec3(pos1) || !is_valid_vec3(pos2)) {
         return vec3<f32>(0.0);
     }
@@ -120,17 +99,18 @@ fn calculate_spring_force(pos1: vec3<f32>, pos2: vec3<f32>, mass1: f32, mass2: f
     
     if (is_connected) {
         // Connected nodes: Hooke's law with natural length
-        force_magnitude = params.spring_strength * (distance - NATURAL_LENGTH);
+        force_magnitude = params.spring_strength * (distance - NATURAL_LENGTH) * weight;
     } else {
         // Unconnected nodes: Inverse square repulsion
-        force_magnitude = -params.spring_strength * mass1 * mass2 / (distance_sq + MIN_DISTANCE);
+        let repulsion_scale = select(1.0, 0.5, params.is_initial_layout == 0u);
+        force_magnitude = -params.spring_strength * REPULSION_SCALE * repulsion_scale * mass1 * mass2 / (distance_sq + MIN_DISTANCE);
     }
     
     return clamp_vector(normalize(direction) * force_magnitude, MAX_FORCE);
 }
 
 @compute @workgroup_size(WORKGROUP_SIZE)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+fn compute_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let node_id = global_id.x;
     let n_nodes = arrayLength(&nodes_buffer.nodes);
 
@@ -150,7 +130,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var force = vec3<f32>(0.0);
     let grid_idx = get_grid_index(node.position);
     
-    // Calculate forces with all nearby nodes
+    // Calculate forces with nearby nodes only
     for (var dx = -1; dx <= 1; dx = dx + 1) {
         for (var dy = -1; dy <= 1; dy = dy + 1) {
             for (var dz = -1; dz <= 1; dz = dz + 1) {
@@ -174,7 +154,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     }
                     let other = nodes_buffer.nodes[i];
                     if (is_valid_vec3(other.position)) {
-                        force += calculate_spring_force(node.position, other.position, node.mass, other.mass, false);
+                        force += calculate_spring_force(node.position, other.position, node.mass, other.mass, false, 1.0);
                     }
                 }
             }
@@ -182,12 +162,14 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     // Calculate forces with connected nodes
-    let adj = adjacency_buffer.adjacency[node_id];
-    for (var i = 0u; i < adj.count; i = i + 1u) {
-        let target_idx = adjacency_list_buffer.indices[adj.offset + i];
-        let other = nodes_buffer.nodes[target_idx];
-        if (is_valid_vec3(other.position)) {
-            force += calculate_spring_force(node.position, other.position, node.mass, other.mass, true);
+    let n_edges = arrayLength(&edges_buffer.edges);
+    for (var i = 0u; i < n_edges; i = i + 1u) {
+        let edge = edges_buffer.edges[i];
+        if (edge.source == node_id) {
+            let target_node = nodes_buffer.nodes[edge.target_idx];
+            if (is_valid_vec3(target_node.position)) {
+                force += calculate_spring_force(node.position, target_node.position, node.mass, target_node.mass, true, edge.weight);
+            }
         }
     }
 
@@ -198,9 +180,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         force += normalize(to_center) * CENTER_FORCE_STRENGTH * (center_distance - CENTER_RADIUS);
     }
 
-    // Update velocity and position
+    // Update velocity and position with time step
     node.velocity = clamp_vector((node.velocity + force / node.mass) * params.damping, MAX_VELOCITY);
-    node.position = node.position + node.velocity;
+    node.position = clamp_position(node.position + node.velocity * params.time_step);
 
     if (!is_valid_vec3(node.position) || !is_valid_vec3(node.velocity)) {
         node.position = vec3<f32>(0.0);

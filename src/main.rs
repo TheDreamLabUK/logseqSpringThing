@@ -145,7 +145,9 @@ async fn main() -> std::io::Result<()> {
 
     let websocket_manager = Arc::new(WebSocketManager::new());
     
-    let gpu_compute = match GPUCompute::new().await {
+    // Initialize with default graph data first
+    let initial_graph_data = graph_data.read().await;
+    let gpu_compute = match GPUCompute::new(&initial_graph_data).await {
         Ok(gpu) => {
             log::info!("GPU initialization successful");
             Some(Arc::new(RwLock::new(gpu)))
@@ -155,6 +157,7 @@ async fn main() -> std::io::Result<()> {
             None
         }
     };
+    drop(initial_graph_data); // Release the read lock
 
     let speech_service = Arc::new(SpeechService::new(websocket_manager.clone(), settings.clone()));
     if let Err(e) = speech_service.initialize().await {

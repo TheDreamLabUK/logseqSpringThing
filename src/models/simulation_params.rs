@@ -8,28 +8,35 @@ pub enum SimulationMode {
     Local,   // CPU-based local computation
 }
 
+/// Enum defining the simulation phase
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum SimulationPhase {
+    Initial,    // Heavy computation for initial layout
+    Interactive // Light computation for real-time updates
+}
+
 /// Parameters controlling the force-directed graph layout simulation
 #[derive(Serialize, Deserialize)]
 #[repr(C)]
 pub struct SimulationParams {
-    pub iterations: u32,              // Range: 10-500, Default: 100
-    pub repulsion_strength: f32,      // Range: 100-5000, Default: 1000.0
-    pub attraction_strength: f32,     // Range: 0.01-1.0, Default: 0.01
-    pub damping: f32,                 // Range: 0.1-0.9, Default: 0.8
-    pub padding1: u32,                // First padding to ensure 16-byte alignment
-    pub padding2: u32,                // Second padding
-    pub padding3: u32,                // Third padding
-    pub padding4: u32,                // Fourth padding to complete 32-byte alignment
+    pub iterations: u32,           // Range: 1-500, Default: varies by phase
+    pub spring_strength: f32,      // Range: 0.001-1.0, Default: 0.01 (reduced for stability)
+    pub damping: f32,             // Range: 0.5-0.95, Default: 0.8
+    pub is_initial_layout: u32,   // 1 for initial layout, 0 for interactive
+    pub time_step: f32,           // Animation time step (0.1-1.0)
+    pub padding2: u32,            // Padding for alignment
+    pub padding3: u32,            // Padding for alignment
+    pub padding4: u32,            // Complete 32-byte alignment
 }
 
 impl Default for SimulationParams {
     fn default() -> Self {
         Self {
-            iterations: 100,           // Matches settings.toml force_directed_iterations
-            repulsion_strength: 1000.0,// Matches settings.toml force_directed_repulsion
-            attraction_strength: 0.01, // Matches settings.toml force_directed_attraction
-            damping: 0.8,             // Matches settings.toml force_directed_damping
-            padding1: 0,
+            iterations: 5,          // Default to interactive mode iterations
+            spring_strength: 0.01,  // Reduced default strength for better stability
+            damping: 0.8,          // Balanced damping for smooth movement
+            is_initial_layout: 0,   // Default to interactive mode
+            time_step: 0.5,        // Reduced time step for smoother animation
             padding2: 0,
             padding3: 0,
             padding4: 0,
@@ -39,51 +46,60 @@ impl Default for SimulationParams {
 
 impl SimulationParams {
     /// Creates new simulation parameters with validation
-    pub fn new(iterations: u32, repulsion_strength: f32, attraction_strength: f32, damping: f32) -> Self {
+    pub fn new(iterations: u32, spring_strength: f32, damping: f32, is_initial: bool) -> Self {
         Self {
-            iterations: iterations.clamp(10, 500),
-            repulsion_strength: repulsion_strength.clamp(100.0, 5000.0),
-            attraction_strength: attraction_strength.clamp(0.01, 1.0),
-            damping: damping.clamp(0.1, 0.9),
-            padding1: 0,
+            iterations: if is_initial { 
+                iterations.clamp(200, 500) // More iterations for initial layout
+            } else {
+                iterations.clamp(1, 10)    // Fewer iterations for interactive updates
+            },
+            spring_strength: spring_strength.clamp(0.001, 1.0), // Reduced range for better control
+            damping: damping.clamp(0.5, 0.95), // Increased minimum damping for stability
+            is_initial_layout: if is_initial { 1 } else { 0 },
+            time_step: 0.5, // Default to moderate time step
             padding2: 0,
             padding3: 0,
             padding4: 0,
         }
     }
 
-    /// Updates iterations with validation
+    /// Creates simulation parameters from configuration settings
+    pub fn from_config(config: &crate::config::VisualizationSettings, phase: SimulationPhase) -> Self {
+        let is_initial = matches!(phase, SimulationPhase::Initial);
+        Self::new(
+            if is_initial { config.force_directed_iterations } else { 5 },
+            config.force_directed_spring,
+            config.force_directed_damping,
+            is_initial
+        )
+    }
+
+    /// Updates iterations with phase-appropriate validation
     pub fn with_iterations(mut self, iterations: u32) -> Self {
-        self.iterations = iterations.clamp(10, 500);
+        self.iterations = if self.is_initial_layout == 1 {
+            iterations.clamp(200, 500)
+        } else {
+            iterations.clamp(1, 10)
+        };
         self
     }
 
-    /// Updates repulsion strength with validation
-    pub fn with_repulsion(mut self, repulsion: f32) -> Self {
-        self.repulsion_strength = repulsion.clamp(100.0, 5000.0);
-        self
-    }
-
-    /// Updates attraction strength with validation
-    pub fn with_attraction(mut self, attraction: f32) -> Self {
-        self.attraction_strength = attraction.clamp(0.01, 1.0);
+    /// Updates spring strength with validation
+    pub fn with_spring_strength(mut self, strength: f32) -> Self {
+        self.spring_strength = strength.clamp(0.001, 1.0);
         self
     }
 
     /// Updates damping with validation
     pub fn with_damping(mut self, damping: f32) -> Self {
-        self.damping = damping.clamp(0.1, 0.9);
+        self.damping = damping.clamp(0.5, 0.95);
         self
     }
 
-    /// Creates simulation parameters from configuration settings
-    pub fn from_config(config: &crate::config::VisualizationSettings) -> Self {
-        Self::new(
-            config.force_directed_iterations,
-            config.force_directed_repulsion,
-            config.force_directed_attraction,
-            config.force_directed_damping,
-        )
+    /// Updates time step with validation
+    pub fn with_time_step(mut self, time_step: f32) -> Self {
+        self.time_step = time_step.clamp(0.1, 1.0);
+        self
     }
 }
 
@@ -100,9 +116,10 @@ impl std::fmt::Debug for SimulationParams {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SimulationParams")
             .field("iterations", &self.iterations)
-            .field("repulsion_strength", &self.repulsion_strength)
-            .field("attraction_strength", &self.attraction_strength)
+            .field("spring_strength", &self.spring_strength)
             .field("damping", &self.damping)
+            .field("is_initial_layout", &self.is_initial_layout)
+            .field("time_step", &self.time_step)
             .finish()
     }
 }
@@ -121,38 +138,41 @@ mod tests {
     #[test]
     fn test_simulation_params_default() {
         let params = SimulationParams::default();
-        assert_eq!(params.iterations, 100);
-        assert_eq!(params.repulsion_strength, 1000.0);
-        assert_eq!(params.attraction_strength, 0.01);
+        assert_eq!(params.iterations, 5);
+        assert_eq!(params.spring_strength, 0.01);
         assert_eq!(params.damping, 0.8);
+        assert_eq!(params.is_initial_layout, 0);
+        assert_eq!(params.time_step, 0.5);
     }
 
     #[test]
     fn test_simulation_params_validation() {
-        let params = SimulationParams::new(5, 50.0, 0.001, 0.05);
-        assert_eq!(params.iterations, 10); // Clamped to min
-        assert_eq!(params.repulsion_strength, 100.0); // Clamped to min
-        assert_eq!(params.attraction_strength, 0.01); // Clamped to min
-        assert_eq!(params.damping, 0.1); // Clamped to min
+        // Test interactive mode limits
+        let params = SimulationParams::new(20, 0.0001, 0.3, false);
+        assert_eq!(params.iterations, 10); // Clamped to interactive max
+        assert_eq!(params.spring_strength, 0.001); // Clamped to min
+        assert_eq!(params.damping, 0.5); // Clamped to min
+        assert_eq!(params.is_initial_layout, 0);
 
-        let params = SimulationParams::new(600, 6000.0, 2.0, 1.0);
+        // Test initial layout mode limits
+        let params = SimulationParams::new(600, 2.0, 1.0, true);
         assert_eq!(params.iterations, 500); // Clamped to max
-        assert_eq!(params.repulsion_strength, 5000.0); // Clamped to max
-        assert_eq!(params.attraction_strength, 1.0); // Clamped to max
-        assert_eq!(params.damping, 0.9); // Clamped to max
+        assert_eq!(params.spring_strength, 1.0); // Clamped to max
+        assert_eq!(params.damping, 0.95); // Clamped to max
+        assert_eq!(params.is_initial_layout, 1);
     }
 
     #[test]
     fn test_simulation_params_builder() {
         let params = SimulationParams::default()
             .with_iterations(200)
-            .with_repulsion(2000.0)
-            .with_attraction(0.05)
-            .with_damping(0.7);
+            .with_spring_strength(0.5)
+            .with_damping(0.7)
+            .with_time_step(0.8);
 
-        assert_eq!(params.iterations, 200);
-        assert_eq!(params.repulsion_strength, 2000.0);
-        assert_eq!(params.attraction_strength, 0.05);
+        assert_eq!(params.iterations, 10); // Clamped to interactive max
+        assert_eq!(params.spring_strength, 0.5);
         assert_eq!(params.damping, 0.7);
+        assert_eq!(params.time_step, 0.8);
     }
 }

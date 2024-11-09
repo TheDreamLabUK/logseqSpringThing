@@ -166,7 +166,7 @@ pub trait MessageHandler: Actor<Context = ws::WebsocketContext<Self>> {
 
     fn handle_fisheye_update(&self, settings: ClientMessage, gpu_compute: &mut crate::utils::gpu_compute::GPUCompute, ctx: &mut ws::WebsocketContext<Self>) {
         if let ClientMessage::UpdateFisheyeSettings { enabled, strength, focus_point, radius } = settings {
-            match gpu_compute.set_fisheye_params(enabled, strength, focus_point, radius) {
+            match gpu_compute.update_fisheye_params(enabled, strength, focus_point, radius) {
                 Ok(_) => {
                     // Send confirmation back to client
                     self.send_server_message(
