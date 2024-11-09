@@ -27,8 +27,8 @@ export class GraphDataManager {
      * Requests the initial graph data from the server via WebSocket.
      */
     requestInitialData() {
-        console.log('Requesting initial graph data');
-        this.websocketService.send({ type: 'getInitialData' }); // Changed from get_initial_data to match server expectation
+        console.log('Requesting initial data');
+        this.websocketService.send({ type: 'getInitialData' });
     }
 
     /**
@@ -36,7 +36,7 @@ export class GraphDataManager {
      * @param {object} data - The received graph data.
      */
     handleGraphUpdate(data) {
-        console.log('Processing graph update:', data);
+        console.log('Received graph update:', data);
         if (!data || !data.graphData) {
             console.error('Invalid graph update data received:', data);
             return;
@@ -58,22 +58,86 @@ export class GraphDataManager {
 
         // Handle the case where newData already has nodes and edges arrays
         if (Array.isArray(newData.nodes) && Array.isArray(newData.edges)) {
+            // Preserve existing positions if they're valid
+            const nodes = newData.nodes.map(node => {
+                // Check if the node has valid position data
+                const hasValidPosition = 
+                    typeof node.x === 'number' && !isNaN(node.x) &&
+                    typeof node.y === 'number' && !isNaN(node.y) &&
+                    typeof node.z === 'number' && !isNaN(node.z);
+
+                // If this node exists in current data and new node doesn't have valid position,
+                // try to preserve existing position
+                if (!hasValidPosition && this.graphData && this.graphData.nodes) {
+                    const existingNode = this.graphData.nodes.find(n => n.id === node.id);
+                    if (existingNode && 
+                        typeof existingNode.x === 'number' && !isNaN(existingNode.x) &&
+                        typeof existingNode.y === 'number' && !isNaN(existingNode.y) &&
+                        typeof existingNode.z === 'number' && !isNaN(existingNode.z)) {
+                        return {
+                            ...node,
+                            x: existingNode.x,
+                            y: existingNode.y,
+                            z: existingNode.z,
+                            vx: 0,
+                            vy: 0,
+                            vz: 0
+                        };
+                    }
+                }
+
+                // Initialize velocities for new nodes
+                return {
+                    ...node,
+                    vx: 0,
+                    vy: 0,
+                    vz: 0
+                };
+            });
+
             this.graphData = {
-                nodes: newData.nodes,
+                nodes,
                 edges: newData.edges,
                 metadata: newData.metadata || {}
             };
         }
         // Handle the case where we need to construct nodes from edges
         else if (Array.isArray(newData.edges)) {
-            const nodes = new Set();
+            const nodeSet = new Set();
             newData.edges.forEach(edge => {
-                nodes.add(edge.source);
-                nodes.add(edge.target_node);
+                nodeSet.add(edge.source);
+                nodeSet.add(edge.target_node);
+            });
+
+            const nodes = Array.from(nodeSet).map(id => {
+                // Check if we have existing position data for this node
+                let position = { x: 0, y: 0, z: 0 };
+                if (this.graphData && this.graphData.nodes) {
+                    const existingNode = this.graphData.nodes.find(n => n.id === id);
+                    if (existingNode && 
+                        typeof existingNode.x === 'number' && !isNaN(existingNode.x) &&
+                        typeof existingNode.y === 'number' && !isNaN(existingNode.y) &&
+                        typeof existingNode.z === 'number' && !isNaN(existingNode.z)) {
+                        position = {
+                            x: existingNode.x,
+                            y: existingNode.y,
+                            z: existingNode.z
+                        };
+                    }
+                }
+
+                return {
+                    id,
+                    label: id,
+                    ...position,
+                    vx: 0,
+                    vy: 0,
+                    vz: 0
+                };
             });
 
             this.graphData = {
-                nodes: Array.from(nodes).map(id => ({ id, label: id })),
+                nodes,
                 edges: newData.edges.map(e => ({
                     source: e.source,
                     target: e.target_node,
@@ -132,7 +196,6 @@ export class GraphDataManager {
      */
     updateForceDirectedParams(name, value) {
         console.log(`Updating force-directed parameter: ${name} = ${value}`);
-        // Map the parameter names from the control panel to the server's expected names
         const paramMap = {
             'iterations': 'iterations',
             'repulsion_strength': 'repulsion_strength',
@@ -154,7 +217,6 @@ export class GraphDataManager {
     recalculateLayout() {
         console.log('Recalculating graph layout with parameters:', this.forceDirectedParams);
         if (this.isGraphDataValid()) {
-            // Send a message to the server to recalculate the layout
             this.websocketService.send({
                 type: 'recalculateLayout',
                 params: {
@@ -166,7 +228,6 @@ export class GraphDataManager {
             });
             console.log('Layout recalculation requested');
             
-            // Dispatch an event to notify that a layout recalculation has been requested
             window.dispatchEvent(new CustomEvent('layoutRecalculationRequested', {
                 detail: this.forceDirectedParams
             }));

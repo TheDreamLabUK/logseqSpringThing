@@ -12,11 +12,13 @@ export class LayoutManager {
         this.isInitialized = false;
         this.isSimulating = false;
         this.animationFrameId = null;
+        this.useServerPositions = true;  // New flag to respect server positions
     }
 
     initializePositions(nodes) {
         nodes.forEach(node => {
-            if (!node.x && !node.y && !node.z) {
+            // Only initialize if positions are undefined, null, or NaN
+            if (isNaN(node.x) || isNaN(node.y) || isNaN(node.z)) {
                 const theta = Math.random() * 2 * Math.PI;
                 const phi = Math.acos(2 * Math.random() - 1);
                 const r = this.targetRadius * Math.cbrt(Math.random());
@@ -25,6 +27,7 @@ export class LayoutManager {
                 node.y = r * Math.sin(phi) * Math.sin(theta);
                 node.z = r * Math.cos(phi);
             }
+            // Always initialize velocities
             node.vx = 0;
             node.vy = 0;
             node.vz = 0;
@@ -32,6 +35,9 @@ export class LayoutManager {
     }
 
     centerAndScaleGraph(nodes) {
+        // Only center and scale if not using server positions
+        if (this.useServerPositions) return;
+
         let centerX = 0, centerY = 0, centerZ = 0;
         nodes.forEach(node => {
             centerX += node.x;
@@ -88,14 +94,28 @@ export class LayoutManager {
     }
 
     applyForceDirectedLayout(graphData, onComplete) {
-        if (!this.isInitialized) {
-            // Initial layout with high iteration count
-            this.performLayout(graphData, this.initialIterations);
+        const nodes = graphData.nodes;
+        
+        // Check if we have valid server positions
+        const hasValidPositions = nodes.every(node => 
+            !isNaN(node.x) && !isNaN(node.y) && !isNaN(node.z)
+        );
+
+        if (hasValidPositions) {
+            this.useServerPositions = true;
             this.isInitialized = true;
-            this.startContinuousSimulation(graphData);
+            // Don't start continuous simulation when using server positions
+            this.stopSimulation();
         } else {
-            // Interactive update with low iteration count
-            this.performLayout(graphData, this.updateIterations);
+            this.useServerPositions = false;
+            if (!this.isInitialized) {
+                // Initial layout with high iteration count
+                this.performLayout(graphData, this.initialIterations);
+                this.isInitialized = true;
+            } else {
+                // Interactive update with low iteration count
+                this.performLayout(graphData, this.updateIterations);
+            }
         }
         
         if (onComplete) {
@@ -104,6 +124,9 @@ export class LayoutManager {
     }
 
     performLayout(graphData, iterations) {
+        // Skip layout if using server positions
+        if (this.useServerPositions) return;
+
         const nodes = graphData.nodes;
         const edges = graphData.edges;
 
@@ -191,7 +214,8 @@ export class LayoutManager {
     }
 
     startContinuousSimulation(graphData) {
-        if (this.isSimulating) return;
+        // Don't start simulation if using server positions
+        if (this.useServerPositions || this.isSimulating) return;
         
         this.isSimulating = true;
         const animate = () => {
