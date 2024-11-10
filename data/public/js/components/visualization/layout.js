@@ -13,7 +13,8 @@ export class LayoutManager {
         this.lastPositions = null;       // Store previous positions for change detection
         this.updateThreshold = 0.001;    // Minimum position change to trigger update
         this.lastUpdateTime = 0;         // Last time positions were sent to server
-        this.updateInterval = 16;        // ~60fps for smooth updates
+        this.updateInterval = 16.67;     // Exactly 60fps
+        this.positionBuffer = null;
     }
 
     initializePositions(nodes) {
@@ -42,23 +43,21 @@ export class LayoutManager {
         }));
     }
 
+    initializePositionBuffer(nodeCount) {
+        // Pre-allocate buffer for position updates
+        this.positionBuffer = new ArrayBuffer(nodeCount * 12);
+        this.positionView = new Float32Array(this.positionBuffer);
+    }
+
     // Update position of a node (e.g., from VR interaction)
-    updateNodePosition(nodeId, position, nodes) {
-        const node = nodes.find(n => n.id === nodeId);
-        if (!node) return;
-
-        // Update node position
-        node.x = position.x;
-        node.y = position.y;
-        node.z = position.z;
+    updateNodePosition(nodeId, position) {
+        const offset = nodeId * 3;
+        this.positionView[offset] = position.x;
+        this.positionView[offset + 1] = position.y;
+        this.positionView[offset + 2] = position.z;
         
-        // Clear velocity since position was directly set
-        node.vx = 0;
-        node.vy = 0;
-        node.vz = 0;
-
-        // Send immediate update of all positions to GPU
-        this.sendPositionUpdates(nodes);
+        // Mark for update
+        this.needsUpdate = true;
     }
 
     performLayout(graphData) {
@@ -153,6 +152,22 @@ export class LayoutManager {
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
+        }
+    }
+
+    update() {
+        if (!this.needsUpdate) return;
+        
+        const now = Date.now();
+        if (now - this.lastUpdateTime >= this.updateInterval) {
+            this.lastUpdateTime = now;
+            
+            // Send position updates
+            window.dispatchEvent(new CustomEvent('positionUpdate', {
+                detail: this.positionBuffer
+            }));
+            
+            this.needsUpdate = false;
         }
     }
 }

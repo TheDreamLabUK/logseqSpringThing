@@ -6,11 +6,17 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use actix_web::web;
 use log::{info, warn};
+use rand::Rng;
 use crate::models::graph::GraphData;
 use crate::models::node::Node;
 use crate::models::edge::Edge;
 use crate::models::simulation_params::SimulationParams;
 use crate::utils::gpu_compute::GPUCompute;
+use crate::AppState;
+
+pub struct FileMetadata {
+    pub topic_counts: HashMap<String, u32>,
+}
 
 pub struct GraphService {
     pub graph_data: Arc<RwLock<GraphData>>,
@@ -19,26 +25,46 @@ pub struct GraphService {
 impl GraphService {
     pub fn new() -> Self {
         GraphService {
-            graph_data: Arc::new(RwLock::new(GraphData {
-                nodes: Vec::new(),
-                edges: Vec::new(),
-                metadata: HashMap::new(),
-            })),
+            graph_data: Arc::new(RwLock::new(GraphData::new())),
         }
+    }
+
+    pub async fn build_graph(state: &web::Data<AppState>) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
+        let file_cache = state.file_cache.read().await;
+        let mut graph = GraphData::new();
+        let edge_map = HashMap::new();
+
+        // Build nodes from file cache
+        for (file_name, _content) in file_cache.iter() {
+            let source_id = file_name.trim_end_matches(".md").to_string();
+            if !graph.nodes.iter().any(|n| n.id == source_id) {
+                graph.nodes.push(Node::new(source_id));
+            }
+        }
+
+        // Initialize random positions for all nodes
+        Self::initialize_random_positions(&mut graph);
+
+        // Convert edge_map to edges
+        graph.edges = edge_map.into_iter().map(|((source, target), weight)| {
+            Edge::new(source, target, weight)
+        }).collect();
+
+        info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
+        Ok(graph)
     }
 
     pub async fn load_graph(&self, path: &Path) -> Result<(), Error> {
         info!("Loading graph from {}", path.display());
         let mut nodes = Vec::new();
-        let mut edges = Vec::new();
-        let mut edge_map = HashMap::new();
+        let edge_map = HashMap::new();
 
         // Read directory and create nodes
         if let Ok(entries) = fs::read_dir(path) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_file() {
-                    let file_size = fs::metadata(&path)
+                    let _file_size = fs::metadata(&path)
                         .map(|m| m.len())
                         .unwrap_or(0);
 
@@ -47,36 +73,25 @@ impl GraphService {
                         .unwrap_or("unknown")
                         .to_string();
 
-                    nodes.push(Node {
-                        id: file_name.clone(),
-                        label: file_name,
-                        metadata: HashMap::new(),
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                        vx: 0.0,
-                        vy: 0.0,
-                        vz: 0.0,
-                        file_size,
-                    });
+                    nodes.push(Node::new(file_name));
                 }
             }
         }
 
-        // Convert edge_map to edges
-        edges = edge_map.into_iter().map(|((source, target), weight)| {
-            Edge::new(source, target, weight)
-        }).collect();
-        
-        info!("Graph data built with {} nodes and {} edges", nodes.len(), edges.len());
-
-        // Update graph data
-        let mut graph_data = self.graph_data.write().await;
-        *graph_data = GraphData {
+        // Initialize random positions for the nodes
+        let mut graph = GraphData {
             nodes,
-            edges,
+            edges: edge_map.into_iter().map(|((source, target), weight)| {
+                Edge::new(source, target, weight)
+            }).collect(),
             metadata: HashMap::new(),
         };
+
+        Self::initialize_random_positions(&mut graph);
+        
+        // Update graph data
+        let mut graph_data = self.graph_data.write().await;
+        *graph_data = graph;
 
         info!("Graph loaded with {} nodes and {} edges", 
             graph_data.nodes.len(), graph_data.edges.len());
@@ -84,7 +99,6 @@ impl GraphService {
     }
 
     fn initialize_random_positions(graph: &mut GraphData) {
-        use rand::Rng;
         let mut rng = rand::thread_rng();
         let initial_radius = 30.0;
         
@@ -189,7 +203,42 @@ impl GraphService {
         }
     }
 
-    pub fn get_service(data: web::Data<crate::AppState>) -> Arc<GraphService> {
-        data.graph_service.clone()
+    pub async fn build_graph_from_metadata(
+        metadata: &HashMap<String, FileMetadata>
+    ) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
+        let mut graph = GraphData::new();
+        let mut edge_map = HashMap::new();
+
+        // Build nodes and edges
+        for (file_name, file_metadata) in metadata {
+            let source_id = file_name.trim_end_matches(".md").to_string();
+            
+            // Add node if it doesn't exist
+            if !graph.nodes.iter().any(|n| n.id == source_id) {
+                graph.nodes.push(Node::new(source_id.clone()));
+            }
+
+            // Process references
+            for (target_id, reference_count) in &file_metadata.topic_counts {
+                if source_id != *target_id {
+                    let edge_key = if source_id < *target_id {
+                        (source_id.clone(), target_id.clone())
+                    } else {
+                        (target_id.clone(), source_id.clone())
+                    };
+
+                    edge_map.entry(edge_key)
+                        .and_modify(|weight| { *weight += *reference_count as f32 })
+                        .or_insert(*reference_count as f32);
+                }
+            }
+        }
+
+        // Convert edge map to edges
+        graph.edges = edge_map.into_iter().map(|((source, target), weight)| {
+            Edge::new(source, target, weight)
+        }).collect();
+
+        Ok(graph)
     }
 }

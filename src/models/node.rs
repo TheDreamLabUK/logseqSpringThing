@@ -20,11 +20,11 @@ pub struct Node {
     pub file_size: u64, // Used to calculate mass
 }
 
-impl Default for Node {
-    fn default() -> Self {
+impl Node {
+    pub fn new(id: String) -> Self {
         Self {
-            id: String::new(),
-            label: String::new(),
+            id: id.clone(),
+            label: id,
             metadata: HashMap::new(),
             x: 0.0,
             y: 0.0,
@@ -35,49 +35,7 @@ impl Default for Node {
             file_size: 0,
         }
     }
-}
 
-/// GPU-compatible representation of a node, matching WGSL layout.
-/// WGSL struct:
-/// ```wgsl
-/// struct Node {
-///     position: vec3<f32>,  // 12 bytes
-///     velocity: vec3<f32>,  // 12 bytes
-///     mass: u8,            // 1 byte (quantized from file size)
-///     flags: u8,           // 1 byte (can be used for node state)
-///     padding: vec2<u8>,   // 2 bytes to align to 28 bytes total
-/// }
-/// ```
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-pub struct GPUNode {
-    // position (vec3<f32>)
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    // velocity (vec3<f32>)
-    pub vx: f32,
-    pub vy: f32,
-    pub vz: f32,
-    // Additional fields packed into 4 bytes
-    pub mass: u8,    // Quantized mass from file size
-    pub flags: u8,   // Node state flags
-    pub padding: [u8; 2], // Padding for alignment
-}
-
-/// For position-only updates between client/server (24 bytes)
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-pub struct GPUNodePositionUpdate {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub vx: f32,
-    pub vy: f32,
-    pub vz: f32,
-}
-
-impl Node {
     /// Convert file size to quantized mass value (0-255)
     fn calculate_mass(&self) -> u8 {
         // Scale file size logarithmically to 0-255 range
@@ -133,4 +91,61 @@ impl Node {
         self.vy = update.vy;
         self.vz = update.vz;
     }
+}
+
+impl Default for Node {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            label: String::new(),
+            metadata: HashMap::new(),
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            vx: 0.0,
+            vy: 0.0,
+            vz: 0.0,
+            file_size: 0,
+        }
+    }
+}
+
+/// GPU-compatible representation of a node, matching WGSL layout.
+/// WGSL struct:
+/// ```wgsl
+/// struct Node {
+///     position: vec3<f32>,  // 12 bytes
+///     velocity: vec3<f32>,  // 12 bytes
+///     mass: u8,            // 1 byte (quantized from file size)
+///     flags: u8,           // 1 byte (can be used for node state)
+///     padding: vec2<u8>,   // 2 bytes to align to 28 bytes total
+/// }
+/// ```
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub struct GPUNode {
+    // position (vec3<f32>)
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    // velocity (vec3<f32>)
+    pub vx: f32,
+    pub vy: f32,
+    pub vz: f32,
+    // Additional fields packed into 4 bytes
+    pub mass: u8,    // Quantized mass from file size
+    pub flags: u8,   // Node state flags
+    pub padding: [u8; 2], // Padding for alignment
+}
+
+/// For position-only updates between client/server (24 bytes)
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub struct GPUNodePositionUpdate {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub vx: f32,
+    pub vy: f32,
+    pub vz: f32,
 }

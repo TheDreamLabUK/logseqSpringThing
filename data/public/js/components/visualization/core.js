@@ -283,4 +283,52 @@ export class WebXRVisualization {
 
         console.log('WebXRVisualization disposed');
     }
+
+    handleNodeDrag(nodeId, position) {
+        // Update local node position
+        this.nodeManager.updateNodePosition(nodeId, position);
+
+        const now = Date.now();
+        if (now - this.lastPositionUpdate >= this.positionUpdateThreshold) {
+            this.lastPositionUpdate = now;
+            
+            // Get all node positions for synchronization
+            const positions = this.nodeManager.getNodePositions();
+            
+            // Create binary position data - only x,y,z per node (12 bytes)
+            const buffer = new ArrayBuffer(positions.length * 12); 
+            const view = new Float32Array(buffer);
+            
+            positions.forEach((pos, index) => {
+                const offset = index * 3;
+                view[offset] = pos.position.x;
+                view[offset + 1] = pos.position.y;
+                view[offset + 2] = pos.position.z;
+            });
+
+            // Dispatch binary position update
+            window.dispatchEvent(new CustomEvent('positionUpdate', {
+                detail: buffer
+            }));
+        }
+    }
+
+    handleBinaryPositionUpdate(buffer) {
+        const positions = new Float32Array(buffer);
+        const updates = [];
+        
+        // Each position update contains 3 float values (x,y,z)
+        for (let i = 0; i < positions.length; i += 3) {
+            updates.push({
+                position: new THREE.Vector3(
+                    positions[i],
+                    positions[i + 1],
+                    positions[i + 2]
+                )
+            });
+        }
+
+        // Fast update through node manager
+        this.nodeManager.updateNodePositions(updates);
+    }
 }

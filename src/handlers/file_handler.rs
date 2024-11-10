@@ -1,9 +1,10 @@
-use actix_web::{web, HttpResponse};
+use actix_web::{web, Error as ActixError, HttpResponse};
 use serde_json::json;
 use log::{info, error, debug};
+use std::collections::HashMap;
 use crate::AppState;
 use crate::services::file_service::FileService;
-use crate::services::graph_service::GraphService;
+use crate::services::graph_service::{GraphService, FileMetadata};
 
 pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse {
     info!("Initiating optimized file fetch and processing");
@@ -138,6 +139,40 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
                 "status": "error",
                 "message": format!("Failed to refresh graph data: {}", e)
             }))
+        }
+    }
+}
+
+pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, ActixError> {
+    let metadata = state.file_cache.read().await;
+    
+    // Convert the file cache into the expected metadata format
+    let metadata_map: HashMap<String, FileMetadata> = metadata
+        .iter()
+        .map(|(key, _)| {
+            (key.clone(), FileMetadata {
+                topic_counts: HashMap::new(),
+            })
+        })
+        .collect();
+    
+    match GraphService::build_graph_from_metadata(&metadata_map).await {
+        Ok(graph) => {
+            // Update graph data
+            *state.graph_data.write().await = graph.clone();
+            
+            Ok(HttpResponse::Ok().json(json!({
+                "status": "success",
+                "message": "Graph updated successfully",
+                "data": graph
+            })))
+        },
+        Err(e) => {
+            error!("Failed to build graph: {}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Failed to build graph: {}", e)
+            })))
         }
     }
 }

@@ -1,13 +1,12 @@
 use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor};
 use wgpu::util::DeviceExt;
 use std::io::Error;
-use log::{debug, info, warn};
+use log::{debug, info};
 use crate::models::graph::GraphData;
-use crate::models::node::{GPUNode, GPUNodePositionUpdate};
 use crate::models::edge::GPUEdge;
+use crate::models::node::GPUNode;
 use crate::models::simulation_params::SimulationParams;
 use futures::channel::oneshot;
-use rand::Rng;
 
 // Constants for buffer management and computation
 const WORKGROUP_SIZE: u32 = 256;
@@ -67,6 +66,10 @@ pub struct GPUCompute {
     simulation_params: SimulationParams,
     fisheye_params: FisheyeParams,
     is_initialized: bool,
+    position_update_buffer: Buffer,
+    position_staging_buffer: Buffer,
+    position_pipeline: ComputePipeline,
+    position_bind_group: BindGroup,
 }
 
 impl GPUCompute {
@@ -257,6 +260,72 @@ impl GPUCompute {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        // Create dedicated position buffers
+        let position_update_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Position Update Buffer"),
+            size: (MAX_NODES as u64) * 12, // 3 floats per node
+            usage: wgpu::BufferUsages::STORAGE 
+                | wgpu::BufferUsages::COPY_DST 
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        let position_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Position Staging Buffer"),
+            size: (MAX_NODES as u64) * 12,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Create position update shader module
+        let position_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Position Update Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("update_positions.wgsl").into()),
+        });
+
+        // Create position bind group layout
+        let position_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Position Update Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        // Create position pipeline
+        let position_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Position Update Pipeline"),
+            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Position Pipeline Layout"),
+                bind_group_layouts: &[&position_bind_group_layout],
+                push_constant_ranges: &[],
+            })),
+            module: &position_module,
+            entry_point: Some("update_positions"),
+            cache: None,
+            compilation_options: Default::default(),
+        });
+
+        // Create position bind group
+        let position_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Position Update Bind Group"),
+            layout: &position_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: position_update_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         // Create bind groups
         let force_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Force Compute Bind Group"),
@@ -311,6 +380,10 @@ impl GPUCompute {
             simulation_params,
             fisheye_params,
             is_initialized: false,
+            position_update_buffer,
+            position_staging_buffer,
+            position_pipeline,
+            position_bind_group,
         })
     }
 
@@ -341,50 +414,101 @@ impl GPUCompute {
         Ok(())
     }
 
-    /// Updates node positions from binary data received from client
-    pub async fn update_node_positions(&mut self, binary_data: &[u8]) -> Result<(), Error> {
-        // Verify data length matches expected size for position updates
-        let position_size = std::mem::size_of::<GPUNodePositionUpdate>();
-        if binary_data.len() % position_size != 0 {
+    /// Fast path for position updates from client
+    pub async fn update_positions(&mut self, binary_data: &[u8]) -> Result<(), Error> {
+        // Verify data length (12 bytes per node)
+        let expected_size = self.num_nodes as usize * 12;
+        if binary_data.len() != expected_size {
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("Invalid binary data length: {}", binary_data.len())
+                format!("Invalid position data length: expected {}, got {}", 
+                    expected_size, binary_data.len())
             ));
         }
 
-        let num_updates = binary_data.len() / position_size;
-        if num_updates != self.num_nodes as usize {
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Node count mismatch: expected {}, got {}", self.num_nodes, num_updates)
-            ));
+        // Write directly to position buffer
+        self.queue.write_buffer(
+            &self.position_update_buffer,
+            0,
+            binary_data
+        );
+
+        // Run position validation shader
+        let mut encoder = self.device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor {
+                label: Some("Position Update Encoder"),
+            }
+        );
+
+        {
+            let mut compute_pass = encoder.begin_compute_pass(
+                &wgpu::ComputePassDescriptor {
+                    label: Some("Position Validation Pass"),
+                    timestamp_writes: None,
+                }
+            );
+
+            compute_pass.set_pipeline(&self.position_pipeline);
+            compute_pass.set_bind_group(0, &self.position_bind_group, &[]);
+            compute_pass.dispatch_workgroups(
+                (self.num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 
+                1, 
+                1
+            );
         }
 
-        // Get current nodes to preserve mass and flags
-        let nodes = self.get_node_positions().await?;
-        
-        // Create updated nodes with preserved mass and flags
-        let mut updated_nodes = Vec::with_capacity(num_updates);
-        let updates = bytemuck::cast_slice::<u8, GPUNodePositionUpdate>(binary_data);
-        
-        for (i, update) in updates.iter().enumerate() {
-            updated_nodes.push(GPUNode {
-                x: update.x,
-                y: update.y,
-                z: update.z,
-                vx: update.vx,
-                vy: update.vy,
-                vz: update.vz,
-                mass: nodes[i].mass,
-                flags: nodes[i].flags,
-                padding: nodes[i].padding,
-            });
-        }
+        // Copy validated positions to node buffer
+        encoder.copy_buffer_to_buffer(
+            &self.position_update_buffer,
+            0,
+            &self.nodes_buffer,
+            0,
+            expected_size as u64,
+        );
 
-        // Write updated nodes to GPU buffer
-        self.queue.write_buffer(&self.nodes_buffer, 0, bytemuck::cast_slice(&updated_nodes));
-        
+        self.queue.submit(Some(encoder.finish()));
+
         Ok(())
+    }
+
+    /// Get current positions in binary format for client updates
+    pub async fn get_position_updates(&self) -> Result<Vec<u8>, Error> {
+        let mut encoder = self.device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor {
+                label: Some("Position Readback Encoder"),
+            }
+        );
+
+        // Copy only position data
+        encoder.copy_buffer_to_buffer(
+            &self.nodes_buffer,
+            0,
+            &self.position_staging_buffer,
+            0,
+            (self.num_nodes as u64) * 12,
+        );
+
+        self.queue.submit(Some(encoder.finish()));
+
+        // Map buffer and read positions
+        let buffer_slice = self.position_staging_buffer.slice(..);
+        let (sender, receiver) = futures::channel::oneshot::channel();
+        
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            sender.send(result).unwrap();
+        });
+        
+        self.device.poll(wgpu::Maintain::Wait);
+
+        receiver.await.unwrap()
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
+        let data = buffer_slice.get_mapped_range();
+        let positions = data.to_vec();
+        drop(data);
+        self.position_staging_buffer.unmap();
+
+        Ok(positions)
     }
 
     /// Updates simulation parameters

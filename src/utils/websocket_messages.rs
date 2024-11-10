@@ -4,7 +4,6 @@ use serde_json::{json, Value};
 use crate::models::simulation_params::SimulationParams;
 use actix_web_actors::ws;
 use log::{error, debug};
-use actix_web::web::Bytes;
 use bytestring::ByteString;
 
 /// Helper function to convert hex color to proper format
@@ -242,9 +241,13 @@ mod tests {
             focus_point: [0.0, 0.0, 0.0],
             radius: 100.0,
         };
-        let serialized = serde_json::to_string(&fisheye_message).unwrap();
-        assert!(serialized.contains("fisheyeSettingsUpdated"));
-        assert!(serialized.contains("strength"));
+        
+        let json = serde_json::to_string(&fisheye_message).unwrap();
+        assert!(json.contains("\"type\":\"fisheye_settings_updated\""));
+        assert!(json.contains("\"enabled\":true"));
+        assert!(json.contains("\"strength\":0.5"));
+        assert!(json.contains("\"focus_point\":[0.0,0.0,0.0]"));
+        assert!(json.contains("\"radius\":100.0"));
     }
 
     #[test]
