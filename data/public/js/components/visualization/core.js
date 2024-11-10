@@ -28,6 +28,8 @@ export class WebXRVisualization {
 
         this.controls = null;
         this.animationFrameId = null;
+        this.lastPositionUpdate = 0;
+        this.positionUpdateThreshold = 16; // ~60fps for smooth updates
 
         // Get initial settings
         const settings = visualizationSettings.getSettings();
@@ -66,22 +68,10 @@ export class WebXRVisualization {
         });
 
         // Handle incoming position updates from other clients
-        window.addEventListener('graphPositionsUpdated', (event) => {
+        window.addEventListener('nodePositionsUpdated', (event) => {
             console.log('Received position update from server');
-            if (this.layoutManager && event.detail instanceof ArrayBuffer) {
-                this.layoutManager.applyPositionUpdates(event.detail);
-                
-                // Extract positions from binary data for node manager
-                const dataView = new DataView(event.detail);
-                const positions = [];
-                for (let i = 0; i < event.detail.byteLength; i += 24) { // 24 bytes per node
-                    positions.push({
-                        x: dataView.getFloat32(i, true),
-                        y: dataView.getFloat32(i + 4, true),
-                        z: dataView.getFloat32(i + 8, true)
-                    });
-                }
-                this.nodeManager.updateNodePositions(positions);
+            if (Array.isArray(event.detail)) {
+                this.nodeManager.updateNodePositions(event.detail);
             }
         });
 
@@ -295,15 +285,20 @@ export class WebXRVisualization {
             // Get all node positions for synchronization
             const positions = this.nodeManager.getNodePositions();
             
-            // Create binary position data - only x,y,z per node (12 bytes)
-            const buffer = new ArrayBuffer(positions.length * 12); 
+            // Create binary position data with positions and velocities (24 bytes per node)
+            const buffer = new ArrayBuffer(positions.length * 24);
             const view = new Float32Array(buffer);
             
             positions.forEach((pos, index) => {
-                const offset = index * 3;
+                const offset = index * 6;
+                // Position
                 view[offset] = pos.position.x;
                 view[offset + 1] = pos.position.y;
                 view[offset + 2] = pos.position.z;
+                // Velocity
+                view[offset + 3] = pos.velocity.x;
+                view[offset + 4] = pos.velocity.y;
+                view[offset + 5] = pos.velocity.z;
             });
 
             // Dispatch binary position update
@@ -317,13 +312,18 @@ export class WebXRVisualization {
         const positions = new Float32Array(buffer);
         const updates = [];
         
-        // Each position update contains 3 float values (x,y,z)
-        for (let i = 0; i < positions.length; i += 3) {
+        // Each position update contains 6 float values (x,y,z, vx,vy,vz)
+        for (let i = 0; i < positions.length; i += 6) {
             updates.push({
                 position: new THREE.Vector3(
                     positions[i],
                     positions[i + 1],
                     positions[i + 2]
+                ),
+                velocity: new THREE.Vector3(
+                    positions[i + 3],
+                    positions[i + 4],
+                    positions[i + 5]
                 )
             });
         }

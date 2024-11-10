@@ -43,15 +43,15 @@ export default class WebsocketService {
     }
 
     getWebSocketUrl() {
-        // Always use wss:// since nginx is handling SSL on 8443
         const host = window.location.hostname;
-        return `wss://${host}:8443/ws`;
+        return `wss://${host}:8443/ws`;  // Always use wss:// and port 8443 for SSL
     }
 
     connect() {
         const url = this.getWebSocketUrl();
         console.log('Attempting to connect to WebSocket at:', url);
         this.socket = new WebSocket(url);
+        this.socket.binaryType = 'arraybuffer';  // Set binary type for position updates
 
         this.socket.onopen = () => {
             console.log('WebSocket connection established');
@@ -65,24 +65,30 @@ export default class WebsocketService {
 
         this.socket.onmessage = async (event) => {
             try {
-                // Handle binary messages (GPU position updates)
-                if (event.data instanceof Blob) {
-                    const arrayBuffer = await event.data.arrayBuffer();
-                    const positions = new Float32Array(arrayBuffer);
+                if (event.data instanceof ArrayBuffer) {
+                    // Handle binary position updates
+                    const positions = new Float32Array(event.data);
                     const positionArray = [];
                     
-                    // Each position is 3 float values (x, y, z)
-                    for (let i = 0; i < positions.length; i += 3) {
-                        positionArray.push([
-                            positions[i],
-                            positions[i + 1],
-                            positions[i + 2]
-                        ]);
+                    // Each position update contains 6 float values (x,y,z, vx,vy,vz)
+                    for (let i = 0; i < positions.length; i += 6) {
+                        positionArray.push({
+                            position: {
+                                x: positions[i],
+                                y: positions[i + 1],
+                                z: positions[i + 2]
+                            },
+                            velocity: {
+                                x: positions[i + 3],
+                                y: positions[i + 4],
+                                z: positions[i + 5]
+                            }
+                        });
                     }
                     
-                    this.emit('gpuPositions', {
-                        positions: positionArray
-                    });
+                    window.dispatchEvent(new CustomEvent('nodePositionsUpdated', {
+                        detail: positionArray
+                    }));
                     return;
                 }
 
@@ -126,8 +132,14 @@ export default class WebsocketService {
 
     send(data) {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-            console.log('Sending WebSocket message:', data);
-            this.socket.send(JSON.stringify(data));
+            if (data instanceof ArrayBuffer) {
+                // Send binary data directly
+                this.socket.send(data);
+            } else {
+                // Send JSON data
+                console.log('Sending WebSocket message:', data);
+                this.socket.send(JSON.stringify(data));
+            }
         } else {
             console.warn('WebSocket is not open. Unable to send message:', data);
             this.emit('error', { type: 'send_error', message: 'WebSocket is not open' });
@@ -183,20 +195,16 @@ export default class WebsocketService {
                 }
                 if (data.settings) {
                     console.log('Dispatching server settings:', data.settings);
-                    // Clean up color values before dispatching
                     if (data.settings.visualization) {
                         const viz = data.settings.visualization;
-                        // Convert color values to proper hex format
                         ['nodeColor', 'edgeColor', 'hologramColor'].forEach(key => {
                             if (viz[key]) {
-                                // Remove quotes and 0x prefix, ensure proper hex format
-                                let color = viz[key].replace(/['"]/g, '');  // Remove quotes
+                                let color = viz[key].replace(/['"]/g, '');
                                 if (color.startsWith('0x')) {
-                                    color = color.slice(2);  // Remove 0x prefix
+                                    color = color.slice(2);
                                 } else if (color.startsWith('#')) {
-                                    color = color.slice(1);  // Remove # prefix
+                                    color = color.slice(1);
                                 }
-                                // Ensure 6 characters for hex color
                                 color = color.padStart(6, '0');
                                 viz[key] = '#' + color;
                             }
@@ -245,7 +253,6 @@ export default class WebsocketService {
 
             case 'fisheyeSettingsUpdated':
                 console.log('Fisheye settings updated:', data);
-                // Convert focus_point to focusPoint for client-side consistency
                 const settings = {
                     enabled: data.enabled,
                     strength: data.strength,
@@ -382,7 +389,6 @@ export default class WebsocketService {
 
     updateFisheyeSettings(settings) {
         console.log('Updating fisheye settings:', settings);
-        // Convert focusPoint to focus_point to match Rust struct field name
         const focus_point = settings.focusPoint || [0, 0, 0];
         this.send({
             type: 'updateFisheyeSettings',

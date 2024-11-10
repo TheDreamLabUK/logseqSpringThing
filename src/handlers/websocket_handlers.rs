@@ -1,17 +1,22 @@
 use actix::prelude::*;
+use actix::ResponseActFuture;
 use actix_web::web;
 use actix_web_actors::ws::WebsocketContext;
-use log::{info, error, debug};
-use serde_json::json;
-use tokio::time::Duration;
-use std::sync::{Arc, Mutex};
-use futures::StreamExt;
 use bytes::Bytes;
 use bytestring::ByteString;
+use bytemuck;
+use futures::StreamExt;
+use log::{debug, error, info};
+use serde_json::json;
+use std::sync::{Arc, Mutex};
+use tokio::time::Duration;
 
 use crate::AppState;
+use crate::models::node::{GPUNode, GPUNodePositionUpdate};
 use crate::models::simulation_params::{SimulationMode, SimulationParams};
-use crate::utils::websocket_messages::{SendText, SendBinary, OpenAIMessage, MessageHandler, OpenAIConnected, OpenAIConnectionFailed};
+use crate::utils::websocket_messages::{
+    MessageHandler, OpenAIConnected, OpenAIConnectionFailed, OpenAIMessage, SendBinary, SendText,
+};
 use crate::utils::websocket_openai::OpenAIWebSocket;
 
 pub const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -45,14 +50,21 @@ pub fn format_color(color: &str) -> String {
     format!("#{}", color)
 }
 
-/// Helper function to convert positions to binary Float32Array data
-pub fn positions_to_binary(positions: &Vec<[f32; 3]>) -> Vec<u8> {
-    let mut binary_data = Vec::with_capacity(positions.len() * 12); // 3 floats * 4 bytes each
-    for pos in positions {
-        // Ensure little-endian byte order for JavaScript Float32Array compatibility
-        binary_data.extend_from_slice(&pos[0].to_le_bytes());
-        binary_data.extend_from_slice(&pos[1].to_le_bytes());
-        binary_data.extend_from_slice(&pos[2].to_le_bytes());
+/// Helper function to convert GPU nodes to binary position updates
+pub fn positions_to_binary(nodes: &[GPUNode]) -> Vec<u8> {
+    let mut binary_data = Vec::with_capacity(nodes.len() * std::mem::size_of::<GPUNodePositionUpdate>());
+    for node in nodes {
+        // Convert to position update format (24 bytes)
+        let update = GPUNodePositionUpdate {
+            x: node.x,
+            y: node.y,
+            z: node.z,
+            vx: node.vx,
+            vy: node.vy,
+            vz: node.vz,
+        };
+        // Use as_bytes() since GPUNodePositionUpdate is Pod
+        binary_data.extend_from_slice(bytemuck::bytes_of(&update));
     }
     binary_data
 }
@@ -86,18 +98,7 @@ impl Handler<GpuUpdate> for WebSocketSession {
             }
 
             if let Ok(nodes) = gpu.get_node_positions().await {
-                let binary_data = nodes.iter()
-                    .flat_map(|node| {
-                        let mut data = Vec::with_capacity(24);
-                        data.extend_from_slice(&node.x.to_le_bytes());
-                        data.extend_from_slice(&node.y.to_le_bytes());
-                        data.extend_from_slice(&node.z.to_le_bytes());
-                        data.extend_from_slice(&node.vx.to_le_bytes());
-                        data.extend_from_slice(&node.vy.to_le_bytes());
-                        data.extend_from_slice(&node.vz.to_le_bytes());
-                        data
-                    })
-                    .collect::<Vec<u8>>();
+                let binary_data = positions_to_binary(&nodes);
 
                 if let Ok(sessions) = state.websocket_manager.sessions.lock() {
                     for session in sessions.iter() {
@@ -330,12 +331,7 @@ impl WebSocketSessionHandler for WebSocketSession {
 
                 match gpu.get_node_positions().await {
                     Ok(nodes) => {
-                        let positions: Vec<[f32; 3]> = nodes.iter()
-                            .map(|node| [node.x, node.y, node.z])
-                            .collect();
-
-                        let binary_data = positions_to_binary(&positions);
-
+                        let binary_data = positions_to_binary(&nodes);
                         ctx_addr.do_send(SendBinary(binary_data));
                     },
                     Err(e) => {

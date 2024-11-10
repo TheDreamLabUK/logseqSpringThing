@@ -35,26 +35,34 @@ export class LayoutManager {
             if (!node.vz) node.vz = 0;
         });
 
-        // Initialize last positions
+        // Initialize last positions with velocities
         this.lastPositions = nodes.map(node => ({
             x: node.x,
             y: node.y,
-            z: node.z
+            z: node.z,
+            vx: node.vx,
+            vy: node.vy,
+            vz: node.vz
         }));
     }
 
     initializePositionBuffer(nodeCount) {
-        // Pre-allocate buffer for position updates
-        this.positionBuffer = new ArrayBuffer(nodeCount * 12);
+        // Pre-allocate buffer for position and velocity updates (24 bytes per node)
+        this.positionBuffer = new ArrayBuffer(nodeCount * 24);
         this.positionView = new Float32Array(this.positionBuffer);
     }
 
-    // Update position of a node (e.g., from VR interaction)
-    updateNodePosition(nodeId, position) {
-        const offset = nodeId * 3;
+    // Update position and velocity of a node (e.g., from VR interaction)
+    updateNodePosition(nodeId, position, velocity = { x: 0, y: 0, z: 0 }) {
+        const offset = nodeId * 6; // 6 floats per node (x,y,z, vx,vy,vz)
+        // Position
         this.positionView[offset] = position.x;
         this.positionView[offset + 1] = position.y;
         this.positionView[offset + 2] = position.z;
+        // Velocity
+        this.positionView[offset + 3] = velocity.x;
+        this.positionView[offset + 4] = velocity.y;
+        this.positionView[offset + 5] = velocity.z;
         
         // Mark for update
         this.needsUpdate = true;
@@ -71,7 +79,7 @@ export class LayoutManager {
     sendPositionUpdates(nodes) {
         if (!this.lastPositions) return;
 
-        // Create binary buffer for all node positions (24 bytes per node)
+        // Create binary buffer for all node positions and velocities (24 bytes per node)
         const buffer = new ArrayBuffer(nodes.length * 24);
         const dataView = new DataView(buffer);
         let hasChanges = false;
@@ -83,15 +91,21 @@ export class LayoutManager {
             if (!lastPos || 
                 Math.abs(node.x - lastPos.x) > this.updateThreshold ||
                 Math.abs(node.y - lastPos.y) > this.updateThreshold ||
-                Math.abs(node.z - lastPos.z) > this.updateThreshold) {
+                Math.abs(node.z - lastPos.z) > this.updateThreshold ||
+                Math.abs(node.vx - lastPos.vx) > this.updateThreshold ||
+                Math.abs(node.vy - lastPos.vy) > this.updateThreshold ||
+                Math.abs(node.vz - lastPos.vz) > this.updateThreshold) {
                 
                 hasChanges = true;
                 
-                // Update last position
+                // Update last position and velocity
                 if (lastPos) {
                     lastPos.x = node.x;
                     lastPos.y = node.y;
                     lastPos.z = node.z;
+                    lastPos.vx = node.vx;
+                    lastPos.vy = node.vy;
+                    lastPos.vz = node.vz;
                 }
 
                 // Position (vec3<f32>)
@@ -126,7 +140,10 @@ export class LayoutManager {
                 this.lastPositions[i] = {
                     x: dataView.getFloat32(offset, true),
                     y: dataView.getFloat32(offset + 4, true),
-                    z: dataView.getFloat32(offset + 8, true)
+                    z: dataView.getFloat32(offset + 8, true),
+                    vx: dataView.getFloat32(offset + 12, true),
+                    vy: dataView.getFloat32(offset + 16, true),
+                    vz: dataView.getFloat32(offset + 20, true)
                 };
             }
         }

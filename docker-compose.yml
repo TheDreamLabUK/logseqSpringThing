@@ -13,4 +13,5 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+      - ./ssl:/etc/nginx/ssl
     command: sh -c "service nginx start && /app/webxr-graph"
