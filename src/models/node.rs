@@ -16,6 +16,8 @@ pub struct Node {
     pub vy: f32,
     #[serde(skip)]
     pub vz: f32,
+    #[serde(skip)]
+    pub file_size: u64, // Used to calculate mass
 }
 
 impl Default for Node {
@@ -30,6 +32,7 @@ impl Default for Node {
             vx: 0.0,
             vy: 0.0,
             vz: 0.0,
+            file_size: 0,
         }
     }
 }
@@ -40,9 +43,10 @@ impl Default for Node {
 /// struct Node {
 ///     position: vec3<f32>,  // 12 bytes
 ///     velocity: vec3<f32>,  // 12 bytes
-///     mass: f32,           // 4 bytes
-///     padding1: u32,        // 4 bytes
-/// }                        // Total: 32 bytes
+///     mass: u8,            // 1 byte (quantized from file size)
+///     flags: u8,           // 1 byte (can be used for node state)
+///     padding: vec2<u8>,   // 2 bytes to align to 28 bytes total
+/// }
 /// ```
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -55,29 +59,50 @@ pub struct GPUNode {
     pub vx: f32,
     pub vy: f32,
     pub vz: f32,
-    // Additional fields
-    pub mass: f32,
-    pub padding1: u32,  // Final padding to match WGSL struct
+    // Additional fields packed into 4 bytes
+    pub mass: u8,    // Quantized mass from file size
+    pub flags: u8,   // Node state flags
+    pub padding: [u8; 2], // Padding for alignment
 }
 
-impl From<&Node> for GPUNode {
-    fn from(node: &Node) -> Self {
-        Self {
-            x: node.x,
-            y: node.y,
-            z: node.z,
-            vx: node.vx,
-            vy: node.vy,
-            vz: node.vz,
-            mass: 1.0,
-            padding1: 0,
-        }
-    }
+/// For position-only updates between client/server (24 bytes)
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub struct GPUNodePositionUpdate {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub vx: f32,
+    pub vy: f32,
+    pub vz: f32,
 }
 
 impl Node {
+    /// Convert file size to quantized mass value (0-255)
+    fn calculate_mass(&self) -> u8 {
+        // Scale file size logarithmically to 0-255 range
+        // Assuming file sizes from 0 to ~1GB
+        if self.file_size == 0 {
+            return 127; // Default mass for nodes without size
+        }
+        let log_size = (self.file_size as f64).log2();
+        let max_log = (1024.0 * 1024.0 * 1024.0_f64).log2(); // 1GB
+        let normalized = (log_size / max_log).min(1.0);
+        (normalized * 255.0) as u8
+    }
+
     pub fn to_gpu_node(&self) -> GPUNode {
-        GPUNode::from(self)
+        GPUNode {
+            x: self.x,
+            y: self.y,
+            z: self.z,
+            vx: self.vx,
+            vy: self.vy,
+            vz: self.vz,
+            mass: self.calculate_mass(),
+            flags: 0,
+            padding: [0; 2],
+        }
     }
 
     pub fn update_from_gpu_node(&mut self, gpu_node: &GPUNode) {
@@ -87,5 +112,25 @@ impl Node {
         self.vx = gpu_node.vx;
         self.vy = gpu_node.vy;
         self.vz = gpu_node.vz;
+    }
+
+    pub fn to_position_update(&self) -> GPUNodePositionUpdate {
+        GPUNodePositionUpdate {
+            x: self.x,
+            y: self.y,
+            z: self.z,
+            vx: self.vx,
+            vy: self.vy,
+            vz: self.vz,
+        }
+    }
+
+    pub fn update_from_position_update(&mut self, update: &GPUNodePositionUpdate) {
+        self.x = update.x;
+        self.y = update.y;
+        self.z = update.z;
+        self.vx = update.vx;
+        self.vy = update.vy;
+        self.vz = update.vz;
     }
 }

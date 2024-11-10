@@ -7,19 +7,24 @@ use serde_json::json;
 use futures::stream::StreamExt;
 use serde::Deserialize;
 use tokio::time::Duration;
-use actix_web::web::Bytes;
 use bytestring::ByteString;
+use bytes::Bytes;
 
 use crate::AppState;
 use crate::models::simulation_params::{SimulationMode, SimulationParams};
 use crate::utils::websocket_messages::{
-    MessageHandler, OpenAIMessage, ServerMessage,
+    MessageHandler, OpenAIMessage,
     OpenAIConnected, OpenAIConnectionFailed, SendText, SendBinary
 };
 use crate::utils::websocket_openai::OpenAIWebSocket;
 
 const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(50); // 20 fps
+const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(16); // ~60fps for smooth updates
+
+// Message for GPU updates
+#[derive(Message)]
+#[rtype(result = "()")]
+struct GpuUpdate;
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -164,6 +169,47 @@ impl Actor for WebSocketSession {
     }
 }
 
+impl Handler<GpuUpdate> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, _: GpuUpdate, ctx: &mut Self::Context) {
+        if let Some(gpu_compute) = &self.state.gpu_compute {
+            let state = self.state.clone();
+            let ctx_addr = ctx.address();
+
+            let fut = async move {
+                let mut gpu = gpu_compute.write().await;
+                
+                if let Err(e) = gpu.step() {
+                    error!("GPU compute step failed: {}", e);
+                    return;
+                }
+
+                if let Ok(nodes) = gpu.get_node_positions().await {
+                    let binary_data = nodes.iter()
+                        .flat_map(|node| {
+                            let mut data = Vec::with_capacity(24);
+                            data.extend_from_slice(&node.x.to_le_bytes());
+                            data.extend_from_slice(&node.y.to_le_bytes());
+                            data.extend_from_slice(&node.z.to_le_bytes());
+                            data.extend_from_slice(&node.vx.to_le_bytes());
+                            data.extend_from_slice(&node.vy.to_le_bytes());
+                            data.extend_from_slice(&node.vz.to_le_bytes());
+                            data
+                        })
+                        .collect::<Vec<u8>>();
+
+                    let sessions = state.websocket_manager.sessions.lock().unwrap().clone();
+                    for session in sessions {
+                        session.do_send(SendBinary(binary_data.clone()));
+                    }
+                }
+            };
+            ctx.spawn(fut.into_actor(self));
+        }
+    }
+}
+
 impl MessageHandler for WebSocketSession {}
 
 impl Handler<SendText> for WebSocketSession {
@@ -206,7 +252,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                             let state = self.state.clone();
                             let ctx_addr = ctx.address();
                             
-                            ctx.spawn(async move {
+                            let fut = async move {
                                 if let Some(gpu_compute) = &state.gpu_compute {
                                     let mut gpu = gpu_compute.write().await;
                                     gpu.update_fisheye_params(enabled, strength, focus_point, radius);
@@ -231,7 +277,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                                         ctx_addr.do_send(SendText(error_str));
                                     }
                                 }
-                            }.into_actor(self));
+                            };
+                            ctx.spawn(fut.into_actor(self));
                         },
                     },
                     Err(e) => {
@@ -245,12 +292,59 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 }
             },
             Ok(ws::Message::Binary(bin)) => {
-                error!("Unexpected binary message received");
-                let error_message = json!({
-                    "type": "error",
-                    "message": "Unexpected binary message"
-                });
-                self.send_json_response(error_message, ctx);
+                // Handle binary position updates from client
+                if let Some(gpu_compute) = &self.state.gpu_compute {
+                    let state = self.state.clone();
+                    let ctx_addr = ctx.address();
+                    let bin_data = bin.to_vec();
+                    
+                    let fut = async move {
+                        let mut gpu = gpu_compute.write().await;
+                        
+                        // Update GPU nodes with received binary data
+                        if let Err(e) = gpu.update_node_positions(&bin_data).await {
+                            error!("Failed to update node positions: {}", e);
+                            let error_message = json!({
+                                "type": "error",
+                                "message": format!("Failed to update node positions: {}", e)
+                            });
+                            if let Ok(error_str) = serde_json::to_string(&error_message) {
+                                ctx_addr.do_send(SendText(error_str));
+                            }
+                            return;
+                        }
+
+                        // Run GPU computation and broadcast updates
+                        if let Err(e) = gpu.step() {
+                            error!("GPU compute step failed: {}", e);
+                            return;
+                        }
+
+                        // Get updated positions
+                        if let Ok(nodes) = gpu.get_node_positions().await {
+                            // Convert to position-only updates
+                            let binary_data = nodes.iter()
+                                .flat_map(|node| {
+                                    let mut data = Vec::with_capacity(24);
+                                    data.extend_from_slice(&node.x.to_le_bytes());
+                                    data.extend_from_slice(&node.y.to_le_bytes());
+                                    data.extend_from_slice(&node.z.to_le_bytes());
+                                    data.extend_from_slice(&node.vx.to_le_bytes());
+                                    data.extend_from_slice(&node.vy.to_le_bytes());
+                                    data.extend_from_slice(&node.vz.to_le_bytes());
+                                    data
+                                })
+                                .collect::<Vec<u8>>();
+
+                            // Broadcast to all sessions
+                            let sessions = state.websocket_manager.sessions.lock().unwrap().clone();
+                            for session in sessions {
+                                session.do_send(SendBinary(binary_data.clone()));
+                            }
+                        }
+                    };
+                    ctx.spawn(fut.into_actor(self));
+                }
             },
             Ok(ws::Message::Close(reason)) => {
                 ctx.close(reason);
@@ -266,13 +360,20 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
 }
 
 impl WebSocketSession {
+    fn start_gpu_updates(&self, ctx: &mut ws::WebsocketContext<Self>) {
+        let addr = ctx.address();
+        ctx.run_interval(GPU_UPDATE_INTERVAL, move |_, _| {
+            addr.do_send(GpuUpdate);
+        });
+    }
+
     fn handle_chat_message(&mut self, ctx: &mut ws::WebsocketContext<Self>, message: String, use_openai: bool) {
         let state = self.state.clone();
         let conversation_id = self.conversation_id.clone();
         let ctx_addr = ctx.address();
         let settings = self.state.settings.clone();
         
-        ctx.spawn(async move {
+        let fut = async move {
             let conv_id = if let Some(conv_arc) = conversation_id {
                 if let Some(id) = conv_arc.lock().unwrap().clone() {
                     id
@@ -353,7 +454,8 @@ impl WebSocketSession {
                     }
                 }
             }
-        }.into_actor(self));
+        };
+        ctx.spawn(fut.into_actor(self));
     }
 
     fn handle_simulation(&mut self, ctx: &mut ws::WebsocketContext<Self>, mode: &str) {
@@ -392,7 +494,7 @@ impl WebSocketSession {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
         
-        ctx.spawn(async move {
+        let fut = async move {
             if let Some(gpu_compute) = &state.gpu_compute {
                 let mut gpu = gpu_compute.write().await;
                 
@@ -459,56 +561,15 @@ impl WebSocketSession {
                     ctx_addr.do_send(SendText(error_str));
                 }
             }
-        }.into_actor(self));
-    }
-
-    fn start_gpu_updates(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        let state = self.state.clone();
-        let ctx_addr = ctx.address();
-
-        // Start a timer to periodically fetch and broadcast GPU positions
-        ctx.run_interval(GPU_UPDATE_INTERVAL, move |_act, _ctx| {
-            let state_clone = state.clone();
-            let addr_clone = ctx_addr.clone();
-
-            actix::spawn(async move {
-                if let Some(gpu_compute) = &state_clone.gpu_compute {
-                    let mut gpu = gpu_compute.write().await;
-                    
-                    // Run one step of GPU computation
-                    if let Err(e) = gpu.step() {
-                        error!("GPU compute step failed: {}", e);
-                        return;
-                    }
-
-                    // Get updated positions
-                    match gpu.get_node_positions().await {
-                        Ok(nodes) => {
-                            // Convert GPU nodes to position arrays
-                            let positions: Vec<[f32; 3]> = nodes.iter()
-                                .map(|node| [node.x, node.y, node.z])
-                                .collect();
-
-                            // Convert positions to binary Float32Array data
-                            let binary_data = positions_to_binary(&positions);
-
-                            // Send binary data
-                            addr_clone.do_send(SendBinary(binary_data));
-                        },
-                        Err(e) => {
-                            error!("Failed to get GPU node positions: {}", e);
-                        }
-                    }
-                }
-            });
-        });
+        };
+        ctx.spawn(fut.into_actor(self));
     }
 
     fn handle_initial_data(&mut self, ctx: &mut ws::WebsocketContext<Self>) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
         
-        ctx.spawn(async move {
+        let fut = async move {
             let graph_data = state.graph_data.read().await;
             let settings = state.settings.read().await;
             
@@ -555,7 +616,14 @@ impl WebSocketSession {
             if let Ok(response_str) = serde_json::to_string(&response) {
                 ctx_addr.do_send(SendText(response_str));
             }
-        }.into_actor(self));
+        };
+        ctx.spawn(fut.into_actor(self));
+    }
+
+    fn send_json_response(&self, response: serde_json::Value, ctx: &mut ws::WebsocketContext<Self>) {
+        if let Ok(response_str) = serde_json::to_string(&response) {
+            ctx.text(response_str);
+        }
     }
 }
 

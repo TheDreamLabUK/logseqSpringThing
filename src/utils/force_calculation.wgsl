@@ -1,8 +1,9 @@
 struct Node {
     position: vec3<f32>,  // 12 bytes
     velocity: vec3<f32>,  // 12 bytes
-    mass: f32,           // 4 bytes
-    padding1: u32,        // 4 bytes
+    mass: u8,            // 1 byte (quantized 0-255 maps to 0.0-2.0)
+    flags: u8,           // 1 byte (can be used for node state)
+    padding: vec2<u8>,   // 2 bytes to align to 28 bytes total
 }
 
 struct Edge {
@@ -82,7 +83,12 @@ fn get_grid_index(position: vec3<f32>) -> u32 {
     return grid_pos.x + grid_pos.y * GRID_DIM + grid_pos.z * GRID_DIM * GRID_DIM;
 }
 
-fn calculate_spring_force(pos1: vec3<f32>, pos2: vec3<f32>, mass1: f32, mass2: f32, is_connected: bool, weight: f32) -> vec3<f32> {
+// Convert quantized mass (0-255) to float (0.0-2.0)
+fn decode_mass(mass: u8) -> f32 {
+    return f32(mass) / 127.5;
+}
+
+fn calculate_spring_force(pos1: vec3<f32>, pos2: vec3<f32>, mass1: u8, mass2: u8, is_connected: bool, weight: f32) -> vec3<f32> {
     if (!is_valid_vec3(pos1) || !is_valid_vec3(pos2)) {
         return vec3<f32>(0.0);
     }
@@ -97,13 +103,17 @@ fn calculate_spring_force(pos1: vec3<f32>, pos2: vec3<f32>, mass1: f32, mass2: f
     let distance = sqrt(distance_sq);
     var force_magnitude: f32;
     
+    // Convert quantized masses to float
+    let mass1_f = decode_mass(mass1);
+    let mass2_f = decode_mass(mass2);
+    
     if (is_connected) {
         // Connected nodes: Hooke's law with natural length
         force_magnitude = params.spring_strength * (distance - NATURAL_LENGTH) * weight;
     } else {
         // Unconnected nodes: Inverse square repulsion
         let repulsion_scale = select(1.0, 0.5, params.is_initial_layout == 0u);
-        force_magnitude = -params.spring_strength * REPULSION_SCALE * repulsion_scale * mass1 * mass2 / (distance_sq + MIN_DISTANCE);
+        force_magnitude = -params.spring_strength * REPULSION_SCALE * repulsion_scale * mass1_f * mass2_f / (distance_sq + MIN_DISTANCE);
     }
     
     return clamp_vector(normalize(direction) * force_magnitude, MAX_FORCE);
@@ -181,7 +191,7 @@ fn compute_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     // Update velocity and position with time step
-    node.velocity = clamp_vector((node.velocity + force / node.mass) * params.damping, MAX_VELOCITY);
+    node.velocity = clamp_vector((node.velocity + force / decode_mass(node.mass)) * params.damping, MAX_VELOCITY);
     node.position = clamp_position(node.position + node.velocity * params.time_step);
 
     if (!is_valid_vec3(node.position) || !is_valid_vec3(node.velocity)) {

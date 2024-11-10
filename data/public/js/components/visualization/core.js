@@ -58,18 +58,29 @@ export class WebXRVisualization {
 
         // Handle position updates from layout manager
         window.addEventListener('positionUpdate', (event) => {
-            console.log('Received position update:', event.detail);
-            if (this.graphDataManager.websocketService) {
-                this.graphDataManager.websocketService.sendGraphMessage(event.detail);
+            console.log('Received position update');
+            if (this.graphDataManager.websocketService && this.graphDataManager.websocketService.socket) {
+                // Send binary position data directly through websocket
+                this.graphDataManager.websocketService.socket.send(event.detail);
             }
         });
 
         // Handle incoming position updates from other clients
         window.addEventListener('graphPositionsUpdated', (event) => {
-            console.log('Received position update from server:', event.detail);
-            const { positions } = event.detail;
-            if (this.layoutManager) {
-                this.layoutManager.applyPositionUpdates(positions);
+            console.log('Received position update from server');
+            if (this.layoutManager && event.detail instanceof ArrayBuffer) {
+                this.layoutManager.applyPositionUpdates(event.detail);
+                
+                // Extract positions from binary data for node manager
+                const dataView = new DataView(event.detail);
+                const positions = [];
+                for (let i = 0; i < event.detail.byteLength; i += 24) { // 24 bytes per node
+                    positions.push({
+                        x: dataView.getFloat32(i, true),
+                        y: dataView.getFloat32(i + 4, true),
+                        z: dataView.getFloat32(i + 8, true)
+                    });
+                }
                 this.nodeManager.updateNodePositions(positions);
             }
         });

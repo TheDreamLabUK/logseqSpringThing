@@ -3,7 +3,7 @@ use wgpu::util::DeviceExt;
 use std::io::Error;
 use log::{debug, info, warn};
 use crate::models::graph::GraphData;
-use crate::models::node::GPUNode;
+use crate::models::node::{GPUNode, GPUNodePositionUpdate};
 use crate::models::edge::GPUEdge;
 use crate::models::simulation_params::SimulationParams;
 use futures::channel::oneshot;
@@ -14,7 +14,7 @@ const WORKGROUP_SIZE: u32 = 256;
 const INITIAL_BUFFER_SIZE: u64 = 1024 * 1024;  // 1MB initial size
 const BUFFER_ALIGNMENT: u64 = 256;  // Required GPU memory alignment
 const EDGE_SIZE: u64 = 32;  // Size of Edge struct (must match WGSL)
-const NODE_SIZE: u64 = 32;  // Size of Node struct in WGSL (vec3 alignment)
+const NODE_SIZE: u64 = 28;  // Size of Node struct in WGSL (optimized)
 const MAX_NODES: u32 = 1_000_000;  // Safety limit for number of nodes
 const MAX_EDGES: u32 = 5_000_000;  // Safety limit for number of edges
 
@@ -323,8 +323,9 @@ impl GPUCompute {
             vx: node.vx,
             vy: node.vy,
             vz: node.vz,
-            mass: 1.0,
-            padding1: 0,
+            mass: 127, // Default mass of 1.0
+            flags: 0,
+            padding: [0; 2],
         }).collect();
 
         let gpu_edges: Vec<GPUEdge> = graph.edges.iter()
@@ -336,6 +337,52 @@ impl GPUCompute {
         
         self.num_nodes = graph.nodes.len() as u32;
         self.num_edges = graph.edges.len() as u32;
+        
+        Ok(())
+    }
+
+    /// Updates node positions from binary data received from client
+    pub async fn update_node_positions(&mut self, binary_data: &[u8]) -> Result<(), Error> {
+        // Verify data length matches expected size for position updates
+        let position_size = std::mem::size_of::<GPUNodePositionUpdate>();
+        if binary_data.len() % position_size != 0 {
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Invalid binary data length: {}", binary_data.len())
+            ));
+        }
+
+        let num_updates = binary_data.len() / position_size;
+        if num_updates != self.num_nodes as usize {
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Node count mismatch: expected {}, got {}", self.num_nodes, num_updates)
+            ));
+        }
+
+        // Get current nodes to preserve mass and flags
+        let nodes = self.get_node_positions().await?;
+        
+        // Create updated nodes with preserved mass and flags
+        let mut updated_nodes = Vec::with_capacity(num_updates);
+        let updates = bytemuck::cast_slice::<u8, GPUNodePositionUpdate>(binary_data);
+        
+        for (i, update) in updates.iter().enumerate() {
+            updated_nodes.push(GPUNode {
+                x: update.x,
+                y: update.y,
+                z: update.z,
+                vx: update.vx,
+                vy: update.vy,
+                vz: update.vz,
+                mass: nodes[i].mass,
+                flags: nodes[i].flags,
+                padding: nodes[i].padding,
+            });
+        }
+
+        // Write updated nodes to GPU buffer
+        self.queue.write_buffer(&self.nodes_buffer, 0, bytemuck::cast_slice(&updated_nodes));
         
         Ok(())
     }
