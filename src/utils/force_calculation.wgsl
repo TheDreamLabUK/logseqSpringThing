@@ -1,9 +1,8 @@
 struct Node {
     position: vec3<f32>,  // 12 bytes
     velocity: vec3<f32>,  // 12 bytes
-    mass: u8,            // 1 byte (quantized 0-255 maps to 0.0-2.0)
-    flags: u8,           // 1 byte (can be used for node state)
-    padding: vec2<u8>,   // 2 bytes to align to 28 bytes total
+    mass: u32,           // 4 bytes (quantized 0-255 maps to 0.0-2.0, stored in lower 8 bits)
+    flags: u32,          // 4 bytes (can be used for node state)
 }
 
 struct Edge {
@@ -84,11 +83,11 @@ fn get_grid_index(position: vec3<f32>) -> u32 {
 }
 
 // Convert quantized mass (0-255) to float (0.0-2.0)
-fn decode_mass(mass: u8) -> f32 {
-    return f32(mass) / 127.5;
+fn decode_mass(mass: u32) -> f32 {
+    return f32(mass & 0xFFu) / 127.5;
 }
 
-fn calculate_spring_force(pos1: vec3<f32>, pos2: vec3<f32>, mass1: u8, mass2: u8, is_connected: bool, weight: f32) -> vec3<f32> {
+fn calculate_spring_force(pos1: vec3<f32>, pos2: vec3<f32>, mass1: u32, mass2: u32, is_connected: bool, weight: f32) -> vec3<f32> {
     if (!is_valid_vec3(pos1) || !is_valid_vec3(pos2)) {
         return vec3<f32>(0.0);
     }

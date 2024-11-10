@@ -1,15 +1,17 @@
 use actix::prelude::*;
 use actix_web::web;
-use actix_web_actors::ws;
+use actix_web_actors::ws::WebsocketContext;
 use log::{info, error, debug};
 use serde_json::json;
 use tokio::time::Duration;
 use std::sync::{Arc, Mutex};
 use futures::StreamExt;
+use bytes::Bytes;
+use bytestring::ByteString;
 
 use crate::AppState;
 use crate::models::simulation_params::{SimulationMode, SimulationParams};
-use crate::utils::websocket_messages::{SendText, SendBinary, OpenAIMessage, MessageHandler};
+use crate::utils::websocket_messages::{SendText, SendBinary, OpenAIMessage, MessageHandler, OpenAIConnected, OpenAIConnectionFailed};
 use crate::utils::websocket_openai::OpenAIWebSocket;
 
 pub const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -30,7 +32,7 @@ pub struct WebSocketSession {
 }
 
 impl Actor for WebSocketSession {
-    type Context = ws::WebsocketContext<Self>;
+    type Context = WebsocketContext<Self>;
 }
 
 impl MessageHandler for WebSocketSession {}
@@ -56,13 +58,12 @@ pub fn positions_to_binary(positions: &Vec<[f32; 3]>) -> Vec<u8> {
 }
 
 pub trait WebSocketSessionHandler {
-    fn send_json_response(&self, response: serde_json::Value, ctx: &mut ws::WebsocketContext<WebSocketSession>);
-    fn start_gpu_updates(&self, ctx: &mut ws::WebsocketContext<WebSocketSession>);
-    fn handle_chat_message(&mut self, ctx: &mut ws::WebsocketContext<WebSocketSession>, message: String, use_openai: bool);
-    fn handle_simulation_mode(&mut self, ctx: &mut ws::WebsocketContext<WebSocketSession>, mode: &str);
-    fn handle_layout(&mut self, ctx: &mut ws::WebsocketContext<WebSocketSession>, params: SimulationParams);
-    fn handle_initial_data(&mut self, ctx: &mut ws::WebsocketContext<WebSocketSession>);
-    fn handle_fisheye_settings(&mut self, ctx: &mut ws::WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32);
+    fn start_gpu_updates(&self, ctx: &mut WebsocketContext<WebSocketSession>);
+    fn handle_chat_message(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, message: String, use_openai: bool);
+    fn handle_simulation_mode(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, mode: &str);
+    fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, params: SimulationParams);
+    fn handle_initial_data(&mut self, ctx: &mut WebsocketContext<WebSocketSession>);
+    fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32);
 }
 
 impl Handler<GpuUpdate> for WebSocketSession {
@@ -73,7 +74,7 @@ impl Handler<GpuUpdate> for WebSocketSession {
         let gpu_compute = if let Some(gpu) = &state.gpu_compute {
             gpu.clone()
         } else {
-            return Box::pin(async {}.into_actor(self));
+            return Box::pin(futures::future::ready(()).into_actor(self));
         };
         let ctx_addr = ctx.address();
 
@@ -115,7 +116,7 @@ impl Handler<SendText> for WebSocketSession {
     type Result = ();
 
     fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
-        ctx.text(msg.0);
+        ctx.text(ByteString::from(msg.0));
     }
 }
 
@@ -123,7 +124,7 @@ impl Handler<SendBinary> for WebSocketSession {
     type Result = ();
 
     fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
-        ctx.binary(msg.0);
+        ctx.binary(Bytes::from(msg.0));
     }
 }
 
@@ -155,20 +156,14 @@ impl Handler<OpenAIConnectionFailed> for WebSocketSession {
 }
 
 impl WebSocketSessionHandler for WebSocketSession {
-    fn send_json_response(&self, response: serde_json::Value, ctx: &mut ws::WebsocketContext<WebSocketSession>) {
-        if let Ok(response_str) = serde_json::to_string(&response) {
-            ctx.text(response_str);
-        }
-    }
-
-    fn start_gpu_updates(&self, ctx: &mut ws::WebsocketContext<WebSocketSession>) {
+    fn start_gpu_updates(&self, ctx: &mut WebsocketContext<WebSocketSession>) {
         let addr = ctx.address();
         ctx.run_interval(GPU_UPDATE_INTERVAL, move |_, _| {
             addr.do_send(GpuUpdate);
         });
     }
 
-    fn handle_chat_message(&mut self, ctx: &mut ws::WebsocketContext<WebSocketSession>, message: String, use_openai: bool) {
+    fn handle_chat_message(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, message: String, use_openai: bool) {
         let state = self.state.clone();
         let conversation_id = self.conversation_id.clone();
         let ctx_addr = ctx.address();
@@ -266,7 +261,7 @@ impl WebSocketSessionHandler for WebSocketSession {
         ctx.spawn(fut.into_actor(self));
     }
 
-    fn handle_simulation_mode(&mut self, ctx: &mut ws::WebsocketContext<WebSocketSession>, mode: &str) {
+    fn handle_simulation_mode(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, mode: &str) {
         self.simulation_mode = match mode {
             "remote" => {
                 info!("Simulation mode set to Remote (GPU-accelerated)");
@@ -295,10 +290,10 @@ impl WebSocketSessionHandler for WebSocketSession {
             "mode": mode,
             "gpu_enabled": matches!(self.simulation_mode, SimulationMode::Remote | SimulationMode::GPU)
         });
-        self.send_json_response(response, ctx);
+        <Self as MessageHandler>::send_json_response(self, response, ctx);
     }
 
-    fn handle_layout(&mut self, ctx: &mut ws::WebsocketContext<WebSocketSession>, params: SimulationParams) {
+    fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, params: SimulationParams) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
         let weak_addr = ctx.address().downgrade();
@@ -374,7 +369,7 @@ impl WebSocketSessionHandler for WebSocketSession {
         ctx.spawn(fut.into_actor(self));
     }
 
-    fn handle_initial_data(&mut self, ctx: &mut ws::WebsocketContext<WebSocketSession>) {
+    fn handle_initial_data(&mut self, ctx: &mut WebsocketContext<WebSocketSession>) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
         let weak_addr = ctx.address().downgrade();
@@ -436,7 +431,7 @@ impl WebSocketSessionHandler for WebSocketSession {
         ctx.spawn(fut.into_actor(self));
     }
 
-    fn handle_fisheye_settings(&mut self, ctx: &mut ws::WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32) {
+    fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
         let weak_addr = ctx.address().downgrade();

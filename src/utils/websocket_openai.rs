@@ -16,7 +16,7 @@ use std::time::Instant;
 
 use crate::config::Settings;
 use crate::utils::websocket_messages::{OpenAIMessage, OpenAIConnected, OpenAIConnectionFailed, SendText};
-use crate::utils::websocket_manager::WebSocketSession;
+use crate::handlers::WebSocketSession;  // Updated import path
 
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
 const CONNECTION_WAIT: Duration = Duration::from_millis(500);
