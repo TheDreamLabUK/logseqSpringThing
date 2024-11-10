@@ -13,48 +13,19 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+# Check for domain configuration
+if [ -z "$DOMAIN" ]; then
+    echo "Warning: DOMAIN environment variable not set in .env file."
+    echo "The application will run with self-signed certificates."
+    echo "To use Let's Encrypt SSL certificates, add these to your .env file:"
+    echo "DOMAIN=your-domain.com"
+    echo "CERTBOT_EMAIL=your-email@example.com"
+    echo ""
+fi
+
 # Stop and remove existing container, including associated volumes
 docker stop $CONTAINER_NAME >/dev/null 2>&1 || true
 docker rm -v $CONTAINER_NAME >/dev/null 2>&1 || true
-
-# Create SSL directory and generate certificates if they don't exist
-mkdir -p ssl
-
-# Create OpenSSL config file with SAN
-cat > ssl/openssl.cnf << EOF
-[req]
-default_bits = 2048
-prompt = no
-default_md = sha256
-req_extensions = req_ext
-distinguished_name = dn
-x509_extensions = v3_req
-
-[dn]
-C = US
-ST = State
-L = City
-O = Organization
-CN = localhost
-
-[req_ext]
-subjectAltName = @alt_names
-
-[v3_req]
-subjectAltName = @alt_names
-
-[alt_names]
-DNS.1 = localhost
-IP.1 = 127.0.0.1
-IP.2 = 192.168.0.51
-EOF
-
-# Generate self-signed SSL certificate with SAN
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout ssl/nginx-selfsigned.key \
-  -out ssl/nginx-selfsigned.crt \
-  -config ssl/openssl.cnf \
-  -extensions v3_req
 
 # Build the Docker image
 echo "Building Docker image..."
@@ -66,14 +37,14 @@ fi
 # Ensure data/markdown directory exists
 mkdir -p data/markdown
 
-# Run the Docker container with GPU 0 enabled, correct environment variables, and volume mounts
+# Run the Docker container with GPU support
 echo "Running Docker container..."
 if ! docker run -d \
     --name $CONTAINER_NAME \
     --gpus all \
     -v "$(pwd)/data/markdown:/app/data/markdown" \
     -v "$(pwd)/settings.toml:/app/settings.toml" \
-    -v "$(pwd)/ssl:/etc/nginx/ssl" \
+    -p 80:80 \
     -p 8443:8443 \
     --env-file .env \
     logseq-xr-image; then
@@ -82,9 +53,21 @@ if ! docker run -d \
 fi
 
 echo "Docker container is now running."
-echo "Access the application at https://localhost:8443"
-echo "WebSocket should be available at wss://localhost:8443/ws"
-echo "Note: You may see a security warning in your browser due to the self-signed certificate. This is expected for local development."
+
+if [ ! -z "$DOMAIN" ]; then
+    echo "The application will be available at:"
+    echo "https://$DOMAIN:8443"
+    echo ""
+    echo "Let's Encrypt certificate will be automatically requested for $DOMAIN"
+    echo "Please ensure your domain's DNS is properly configured and ports 80 and 8443 are accessible."
+else
+    echo "Access the application at https://localhost:8443"
+    echo "Note: You will see a security warning due to the self-signed certificate."
+fi
+
+echo ""
+echo "To view the certificate setup progress, use:"
+echo "docker logs -f $CONTAINER_NAME"
 
 # Display container logs
 echo "Container logs:"

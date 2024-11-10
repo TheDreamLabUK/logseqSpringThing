@@ -44,79 +44,163 @@ export default class WebsocketService {
 
     getWebSocketUrl() {
         const host = window.location.hostname;
-        return `wss://${host}:8443/ws`;  // Always use wss:// and port 8443 for SSL
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = '8443';
+        const url = `${protocol}//${host}:${port}/ws`;
+        console.log('Generated WebSocket URL:', url);
+        console.log('Current page protocol:', window.location.protocol);
+        console.log('Current page hostname:', host);
+        
+        // Add warning for non-HTTPS connections
+        if (window.location.protocol !== 'https:') {
+            console.warn('Warning: Page is not loaded over HTTPS. WebSocket connection may fail.');
+            const warningDiv = document.createElement('div');
+            warningDiv.style.position = 'fixed';
+            warningDiv.style.top = '50%';
+            warningDiv.style.left = '50%';
+            warningDiv.style.transform = 'translate(-50%, -50%)';
+            warningDiv.style.backgroundColor = '#ffeb3b';
+            warningDiv.style.padding = '20px';
+            warningDiv.style.borderRadius = '5px';
+            warningDiv.style.zIndex = '9999';
+            warningDiv.innerHTML = `
+                <h3>Security Warning</h3>
+                <p>This page should be accessed via HTTPS for secure WebSocket connections.</p>
+                <p>Try accessing the page at: <a href="https://${host}:8443">https://${host}:8443</a></p>
+                <p>Note: You may need to accept the self-signed certificate warning in your browser.</p>
+            `;
+            document.body.appendChild(warningDiv);
+        }
+        
+        return url;
     }
 
     connect() {
         const url = this.getWebSocketUrl();
         console.log('Attempting to connect to WebSocket at:', url);
-        this.socket = new WebSocket(url);
-        this.socket.binaryType = 'arraybuffer';  // Set binary type for position updates
+        
+        try {
+            this.socket = new WebSocket(url);
+            this.socket.binaryType = 'arraybuffer';  // Set binary type for position updates
 
-        this.socket.onopen = () => {
-            console.log('WebSocket connection established');
-            this.reconnectAttempts = 0;
-            this.emit('open');
-            
-            // Request initial graph data and settings
-            console.log('Requesting initial data');
-            this.send({ type: 'getInitialData' });
-        };
-
-        this.socket.onmessage = async (event) => {
-            try {
-                if (event.data instanceof ArrayBuffer) {
-                    // Handle binary position updates
-                    const positions = new Float32Array(event.data);
-                    const positionArray = [];
-                    
-                    // Each position update contains 6 float values (x,y,z, vx,vy,vz)
-                    for (let i = 0; i < positions.length; i += 6) {
-                        positionArray.push({
-                            position: {
-                                x: positions[i],
-                                y: positions[i + 1],
-                                z: positions[i + 2]
-                            },
-                            velocity: {
-                                x: positions[i + 3],
-                                y: positions[i + 4],
-                                z: positions[i + 5]
-                            }
-                        });
-                    }
-                    
-                    window.dispatchEvent(new CustomEvent('nodePositionsUpdated', {
-                        detail: positionArray
-                    }));
-                    return;
+            this.socket.onopen = () => {
+                console.log('WebSocket connection established');
+                this.reconnectAttempts = 0;
+                this.emit('open');
+                
+                // Update connection status indicator
+                const statusElement = document.getElementById('connection-status');
+                if (statusElement) {
+                    statusElement.textContent = 'Connected';
+                    statusElement.className = 'connected';
                 }
+                
+                // Request initial graph data and settings
+                console.log('Requesting initial data');
+                this.send({ type: 'getInitialData' });
+            };
 
-                // Handle JSON messages
-                const data = JSON.parse(event.data);
-                console.log('Received message:', data);
-                this.handleServerMessage(data);
-            } catch (error) {
-                console.error('Error processing WebSocket message:', error);
-                console.error('Raw message:', event.data);
-                this.emit('error', { 
-                    type: 'parse_error', 
-                    message: error.message, 
-                    rawData: event.data 
-                });
-            }
-        };
+            this.socket.onclose = (event) => {
+                console.log('WebSocket connection closed:', event);
+                
+                // Update connection status indicator
+                const statusElement = document.getElementById('connection-status');
+                if (statusElement) {
+                    statusElement.textContent = 'Disconnected';
+                    statusElement.className = 'disconnected';
+                }
+                
+                this.emit('close');
+                
+                // Add detailed error message for certificate errors
+                if (window.location.protocol === 'https:' && !event.wasClean) {
+                    console.warn('Connection may have failed due to certificate issues.');
+                    const errorDiv = document.createElement('div');
+                    errorDiv.style.position = 'fixed';
+                    errorDiv.style.top = '50%';
+                    errorDiv.style.left = '50%';
+                    errorDiv.style.transform = 'translate(-50%, -50%)';
+                    errorDiv.style.backgroundColor = '#f44336';
+                    errorDiv.style.color = 'white';
+                    errorDiv.style.padding = '20px';
+                    errorDiv.style.borderRadius = '5px';
+                    errorDiv.style.zIndex = '9999';
+                    errorDiv.innerHTML = `
+                        <h3>Connection Error</h3>
+                        <p>The WebSocket connection failed. This may be due to:</p>
+                        <ul>
+                            <li>Self-signed certificate not being trusted</li>
+                            <li>Certificate mismatch with the domain</li>
+                            <li>Server not running or unreachable</li>
+                        </ul>
+                        <p>Try:</p>
+                        <ul>
+                            <li>Accessing via <a href="https://localhost:8443" style="color: white;">https://localhost:8443</a></li>
+                            <li>Accepting any certificate warnings in your browser</li>
+                            <li>Checking if the server is running</li>
+                        </ul>
+                    `;
+                    document.body.appendChild(errorDiv);
+                }
+                
+                this.reconnect();
+            };
 
-        this.socket.onerror = (error) => {
-            console.error('WebSocket error:', error);
+            this.socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                this.emit('error', error);
+            };
+
+            this.socket.onmessage = this.handleMessage.bind(this);
+            
+        } catch (error) {
+            console.error('Error creating WebSocket connection:', error);
             this.emit('error', error);
-        };
+        }
+    }
 
-        this.socket.onclose = () => {
-            console.log('WebSocket connection closed.');
-            this.emit('close');
-            this.reconnect();
-        };
+    handleMessage = async (event) => {
+        try {
+            if (event.data instanceof ArrayBuffer) {
+                // Handle binary position updates
+                const positions = new Float32Array(event.data);
+                const positionArray = [];
+                
+                // Each position update contains 6 float values (x,y,z, vx,vy,vz)
+                for (let i = 0; i < positions.length; i += 6) {
+                    positionArray.push({
+                        position: {
+                            x: positions[i],
+                            y: positions[i + 1],
+                            z: positions[i + 2]
+                        },
+                        velocity: {
+                            x: positions[i + 3],
+                            y: positions[i + 4],
+                            z: positions[i + 5]
+                        }
+                    });
+                }
+                
+                window.dispatchEvent(new CustomEvent('nodePositionsUpdated', {
+                    detail: positionArray
+                }));
+                return;
+            }
+
+            // Handle JSON messages
+            const data = JSON.parse(event.data);
+            console.log('Received message:', data);
+            this.handleServerMessage(data);
+        } catch (error) {
+            console.error('Error processing WebSocket message:', error);
+            console.error('Raw message:', event.data);
+            this.emit('error', { 
+                type: 'parse_error', 
+                message: error.message, 
+                rawData: event.data 
+            });
+        }
     }
 
     reconnect() {

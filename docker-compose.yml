@@ -4,14 +4,24 @@ services:
   webxr-graph:
     build: .
     ports:
-      - "8443:8443"
+      - "80:80"      # Required for Let's Encrypt HTTP challenge
+      - "8443:8443"  # HTTPS port
     environment:
       - RUST_LOG=info
       - BIND_ADDRESS=0.0.0.0
       - PORT=8080
+      # Let's Encrypt configuration
+      - DOMAIN=${DOMAIN:-localhost}  # Domain name for the certificate
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL:-admin@example.com}  # Email for Let's Encrypt notifications
     env_file:
       - .env
     volumes:
       - ./data:/app/data
-      - ./ssl:/etc/nginx/ssl
-    command: sh -c "service nginx start && /app/webxr-graph"
+      - letsencrypt:/etc/letsencrypt  # Persistent storage for Let's Encrypt certificates
+      - certbot-www:/var/www/certbot  # For ACME challenges
+    restart: unless-stopped
+    command: sh -c "/app/start.sh"
+
+volumes:
+  letsencrypt:  # Persistent volume for Let's Encrypt certificates
+  certbot-www:  # Persistent volume for ACME challenge files
