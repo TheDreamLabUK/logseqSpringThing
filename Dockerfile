@@ -58,7 +58,7 @@ FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 # Set environment variable to avoid interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install necessary runtime dependencies, nginx, certbot, and Python 3.10
+# Install necessary runtime dependencies and Python 3.10
 RUN apt-get update && apt-get install -y \
     curl \
     libssl3 \
@@ -68,19 +68,15 @@ RUN apt-get update && apt-get install -y \
     libegl1-mesa \
     libasound2 \
     software-properties-common \
-    certbot \
-    python3-certbot-nginx \
     cron \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y python3.10 python3.10-venv python3.10-dev \
+    python3.10 python3.10-venv python3.10-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
 WORKDIR /app
 
 # Create necessary directories
-RUN mkdir -p /app/data/public/dist /app/data/markdown /app/src /app/data/piper /etc/letsencrypt
+RUN mkdir -p /app/data/public/dist /app/data/markdown /app/src /app/data/piper /etc/cloudflared
 
 # Create an empty metadata.json file
 RUN mkdir -p /app/data/markdown && touch /app/data/markdown/metadata.json && echo "{}" > /app/data/markdown/metadata.json
@@ -103,8 +99,8 @@ COPY src/generate_audio.py /app/src/generate_audio.py
 # Set up a persistent volume for Markdown files to ensure data persistence
 VOLUME ["/app/data/markdown"]
 
-# Create directory for Let's Encrypt certificates
-VOLUME ["/etc/letsencrypt"]
+# Create directory for Cloudflare Tunnel credentials
+VOLUME ["/etc/cloudflared"]
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
@@ -121,56 +117,21 @@ RUN pip install --upgrade pip wheel && \
     pip install --upgrade piper-phonemize==1.1.0 && \
     pip install --upgrade piper-tts==1.2.0 onnxruntime-gpu
 
-# Set up automatic certificate renewal
-RUN echo "0 12 * * * root /usr/bin/certbot renew --quiet" > /etc/cron.d/certbot-renew
-RUN chmod 0644 /etc/cron.d/certbot-renew
-
 # Expose HTTP and HTTPS ports
-EXPOSE 80 8443
+EXPOSE 80 8080
 
-# Create startup script for certificate management and service startup
+# Create startup script for service startup without SSL
 RUN echo '#!/bin/bash\n\
 set -e\n\
-\n\
-# Function to request Let'\''s Encrypt certificate\n\
-setup_ssl() {\n\
-    if [ -z "$DOMAIN" ]; then\n\
-        echo "Error: DOMAIN environment variable not set"\n\
-        exit 1\n\
-    fi\n\
-    \n\
-    # Check if certificate already exists\n\
-    if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then\n\
-        echo "Requesting Let'\''s Encrypt certificate for $DOMAIN..."\n\
-        certbot --nginx \\\n\
-            --non-interactive \\\n\
-            --agree-tos \\\n\
-            --email ${CERTBOT_EMAIL:-"admin@example.com"} \\\n\
-            -d $DOMAIN \\\n\
-            --redirect\n\
-    else\n\
-        echo "Certificate for $DOMAIN already exists"\n\
-    fi\n\
-}\n\
-\n\
-# Ensure metadata.json exists\n\
-if [ ! -f /app/data/markdown/metadata.json ]; then\n\
-    echo "{}" > /app/data/markdown/metadata.json\n\
-fi\n\
-\n\
-# Start nginx\n\
+
+# Start nginx
 nginx\n\
-\n\
-# Start cron for certificate renewal\n\
+
+# Start cron for certificate renewal (if needed)\n\
 service cron start\n\
-\n\
-# Set up SSL if domain is provided\n\
-if [ ! -z "$DOMAIN" ]; then\n\
-    setup_ssl\n\
-fi\n\
-\n\
+
 # Start the Rust application\n\
 exec /app/webxr-graph' > /app/start.sh && chmod +x /app/start.sh
 
-# Set the command to run the startup script
-CMD ["/app/start.sh"]
+# Set the entrypoint
+ENTRYPOINT ["/app/start.sh"]
