@@ -45,33 +45,10 @@ export default class WebsocketService {
     getWebSocketUrl() {
         const host = window.location.hostname;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const port = '8443';
-        const url = `${protocol}//${host}:${port}/ws`;
+        const url = `${protocol}//${host}/ws`;
         console.log('Generated WebSocket URL:', url);
         console.log('Current page protocol:', window.location.protocol);
         console.log('Current page hostname:', host);
-        
-        // Add warning for non-HTTPS connections
-        if (window.location.protocol !== 'https:') {
-            console.warn('Warning: Page is not loaded over HTTPS. WebSocket connection may fail.');
-            const warningDiv = document.createElement('div');
-            warningDiv.style.position = 'fixed';
-            warningDiv.style.top = '50%';
-            warningDiv.style.left = '50%';
-            warningDiv.style.transform = 'translate(-50%, -50%)';
-            warningDiv.style.backgroundColor = '#ffeb3b';
-            warningDiv.style.padding = '20px';
-            warningDiv.style.borderRadius = '5px';
-            warningDiv.style.zIndex = '9999';
-            warningDiv.innerHTML = `
-                <h3>Security Warning</h3>
-                <p>This page should be accessed via HTTPS for secure WebSocket connections.</p>
-                <p>Try accessing the page at: <a href="https://${host}:8443">https://${host}:8443</a></p>
-                <p>Note: You may need to accept the self-signed certificate warning in your browser.</p>
-            `;
-            document.body.appendChild(warningDiv);
-        }
-        
         return url;
     }
 
@@ -111,38 +88,6 @@ export default class WebsocketService {
                 }
                 
                 this.emit('close');
-                
-                // Add detailed error message for certificate errors
-                if (window.location.protocol === 'https:' && !event.wasClean) {
-                    console.warn('Connection may have failed due to certificate issues.');
-                    const errorDiv = document.createElement('div');
-                    errorDiv.style.position = 'fixed';
-                    errorDiv.style.top = '50%';
-                    errorDiv.style.left = '50%';
-                    errorDiv.style.transform = 'translate(-50%, -50%)';
-                    errorDiv.style.backgroundColor = '#f44336';
-                    errorDiv.style.color = 'white';
-                    errorDiv.style.padding = '20px';
-                    errorDiv.style.borderRadius = '5px';
-                    errorDiv.style.zIndex = '9999';
-                    errorDiv.innerHTML = `
-                        <h3>Connection Error</h3>
-                        <p>The WebSocket connection failed. This may be due to:</p>
-                        <ul>
-                            <li>Self-signed certificate not being trusted</li>
-                            <li>Certificate mismatch with the domain</li>
-                            <li>Server not running or unreachable</li>
-                        </ul>
-                        <p>Try:</p>
-                        <ul>
-                            <li>Accessing via <a href="https://localhost:8443" style="color: white;">https://localhost:8443</a></li>
-                            <li>Accepting any certificate warnings in your browser</li>
-                            <li>Checking if the server is running</li>
-                        </ul>
-                    `;
-                    document.body.appendChild(errorDiv);
-                }
-                
                 this.reconnect();
             };
 

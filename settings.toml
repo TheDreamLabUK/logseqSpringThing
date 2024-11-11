@@ -80,7 +80,9 @@ environment_bloom_radius = 0.1
 environment_bloom_threshold = 0.0
 
 [fisheye]
-enabled = false
-strength = 0.5
-focus_point = [0.0, 0.0, 0.0]
-radius = 100.0
+fisheye_enabled = false
+fisheye_strength = 0.5
+fisheye_radius = 100.0
+fisheye_focus_x = 0.0
+fisheye_focus_y = 0.0
+fisheye_focus_z = 0.0

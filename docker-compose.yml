@@ -6,7 +6,7 @@ services:
     image: logseq-xr-image:latest
     security_opt:
       - no-new-privileges:true
-    read_only: true
+    read_only: false  # Allow writes to temp directories
     user: "1000:1000"  # Will match typical host user permissions
     deploy:
       resources:
@@ -19,9 +19,11 @@ services:
               count: 1
               capabilities: [gpu]
     ports:
-      - "8080:8080"
+      - "4000:80"    # Map container's 80 to host's 4000
+      - "8080:8080"  # Backend API
     environment:
-      - RUST_LOG=info
+      - RUST_LOG=debug
+      - RUST_BACKTRACE=1
       - BIND_ADDRESS=0.0.0.0
       - PORT=8080
       - NVIDIA_VISIBLE_DEVICES=0
@@ -35,6 +37,7 @@ services:
         target: /tmp
         tmpfs:
           size: 4G
+          mode: 1777  # Allow all users to write, with sticky bit
     networks:
       - logseq-net
     restart: unless-stopped
@@ -47,20 +50,23 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+      - CHOWN        # Add capability to change ownership
+      - DAC_OVERRIDE # Add capability to override file permissions
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 100s
+      start_period: 300s
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    container_name: logseqxr-tunnel  # Changed to avoid conflicts
+    container_name: logseqxr-tunnel
     security_opt:
       - no-new-privileges:true
     read_only: true
-    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    # Use internal service name and port
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN} --url http://webxr-graph:80
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
     deploy:

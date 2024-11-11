@@ -34,10 +34,14 @@ pub async fn get_visualization_settings(
             "environmentBloomThreshold": settings.bloom.environment_bloom_threshold,
         },
         "fisheye": {
-            "enabled": settings.fisheye.enabled,
-            "strength": settings.fisheye.strength,
-            "focusPoint": settings.fisheye.focus_point,
-            "radius": settings.fisheye.radius,
+            "enabled": settings.fisheye.fisheye_enabled,
+            "strength": settings.fisheye.fisheye_strength,
+            "focusPoint": [
+                settings.fisheye.fisheye_focus_x,
+                settings.fisheye.fisheye_focus_y,
+                settings.fisheye.fisheye_focus_z
+            ],
+            "radius": settings.fisheye.fisheye_radius,
         }
     });
 

@@ -404,10 +404,12 @@ impl WebSocketSessionHandler for WebSocketSession {
                         "environmentBloomThreshold": settings.bloom.environment_bloom_threshold,
                     },
                     "fisheye": {
-                        "enabled": settings.fisheye.enabled,
-                        "strength": settings.fisheye.strength,
-                        "focusPoint": settings.fisheye.focus_point,
-                        "radius": settings.fisheye.radius,
+                        "fisheye_enabled": settings.fisheye.fisheye_enabled,
+                        "fisheye_strength": settings.fisheye.fisheye_strength,
+                        "fisheye_focus_x": settings.fisheye.fisheye_focus_x,
+                        "fisheye_focus_y": settings.fisheye.fisheye_focus_y,
+                        "fisheye_focus_z": settings.fisheye.fisheye_focus_z,
+                        "fisheye_radius": settings.fisheye.fisheye_radius,
                     }
                 }
             });
@@ -439,10 +441,12 @@ impl WebSocketSessionHandler for WebSocketSession {
                 
                 let response = json!({
                     "type": "fisheye_settings_updated",
-                    "enabled": enabled,
-                    "strength": strength,
-                    "focus_point": focus_point,
-                    "radius": radius
+                    "fisheye_enabled": enabled,
+                    "fisheye_strength": strength,
+                    "fisheye_focus_x": focus_point[0],
+                    "fisheye_focus_y": focus_point[1],
+                    "fisheye_focus_z": focus_point[2],
+                    "fisheye_radius": radius
                 });
                 if let Ok(response_str) = serde_json::to_string(&response) {
                     ctx_addr.do_send(SendText(response_str));

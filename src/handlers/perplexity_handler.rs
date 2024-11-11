@@ -3,7 +3,7 @@ use log::{info, error};
 use chrono::Utc;
 use std::collections::HashMap;
 use crate::app_state::AppState;
-use crate::services::perplexity_service::{ApiClientImpl, PerplexityService};
+use crate::services::perplexity_service::ApiClientImpl;
 use crate::services::file_service::ProcessedFile;
 use crate::models::metadata::Metadata;
 

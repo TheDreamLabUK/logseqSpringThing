@@ -10,3 +10,4 @@ data/public/node_modules
 dist
 data/markdown
 
+data/piper/en_GB-northern_english_male-medium.onnx
