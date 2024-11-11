@@ -65,6 +65,11 @@ async fn test_speech_service(app_state: web::Data<AppState>) -> HttpResponse {
     }
 }
 
+// Simple health check endpoint that returns 200 OK when the service is running
+async fn health_check() -> HttpResponse {
+    HttpResponse::Ok().finish()
+}
+
 async fn randomize_nodes_periodically(app_state: web::Data<AppState>) {
     let mut interval = interval(Duration::from_secs(30));
 
@@ -203,6 +208,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(app_state.clone())
             .wrap(middleware::Logger::default())
+            .route("/health", web::get().to(health_check))  // Add health check endpoint
             .service(
                 web::scope("/api/files")
                     .route("/fetch", web::get().to(file_handler::fetch_and_process_files))
