@@ -52,7 +52,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 200s
+      start_period: 100s
 
   cloudflared:
     image: cloudflare/cloudflared:latest

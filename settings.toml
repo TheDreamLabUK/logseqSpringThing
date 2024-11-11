@@ -1,5 +1,8 @@
 # settings.toml
 
+# Debug mode - when true, only processes Debug Test Page.md and debug linked node.md
+debug_mode = false
+
 # Prompt for the AI assistant
 prompt = """
 You are an AI assistant building summaries of web links and text. You will visit any web links found in the text and integrate

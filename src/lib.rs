@@ -16,7 +16,6 @@ pub use services::perplexity_service::{
     PerplexityRequest,
     PerplexityError,
     call_perplexity_api,
-    process_markdown,
     PerplexityService,
     clean_logseq_links,
     process_markdown_block,

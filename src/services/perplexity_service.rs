@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 use reqwest::Client;
 use tokio::time::{sleep, Duration};
 use tokio::sync::Semaphore;
-use log::error;
+use log::{error, info};
 use thiserror::Error;
 use lazy_static::lazy_static;
 use std::env;
@@ -60,8 +60,18 @@ fn split_markdown_blocks(content: &str) -> Vec<String> {
     blocks
 }
 
-pub fn select_context_blocks(_content: &str, active_block: &str) -> Vec<String> {
-    vec![active_block.to_string()]
+pub fn select_context_blocks(content: &str, active_block: &str) -> Vec<String> {
+    let blocks = split_markdown_blocks(content);
+    let active_block_index = blocks.iter().position(|block| block == active_block);
+    
+    match active_block_index {
+        Some(idx) => {
+            let start = if idx > 2 { idx - 2 } else { 0 };
+            let end = if idx + 3 < blocks.len() { idx + 3 } else { blocks.len() };
+            blocks[start..end].to_vec()
+        }
+        None => vec![active_block.to_string()]
+    }
 }
 
 pub fn clean_logseq_links(input: &str) -> String {
@@ -71,19 +81,29 @@ pub fn clean_logseq_links(input: &str) -> String {
 
 pub fn process_markdown_block(input: &str, prompt: &str, topics: &[String], api_response: &str) -> String {
     let cleaned_input = clean_logseq_links(input);
+    let mut processed_response = api_response.to_string();
+
+    // Ensure topics are properly formatted as Logseq links
+    for topic in topics {
+        let topic_pattern = format!(r"\b{}\b", regex::escape(topic));
+        let re = Regex::new(&topic_pattern).unwrap();
+        processed_response = re.replace(&processed_response, |_: &regex::Captures| {
+            format!("[[{}]]", topic)
+        }).to_string();
+    }
 
     format!(
         "- ```\n{}```\nPrompt: {}\nTopics: {}\nResponse: {}",
         cleaned_input.trim_start_matches("- ").trim_end(),
         prompt,
         topics.join(", "),
-        api_response
+        processed_response
     )
 }
 
 #[async_trait]
 pub trait PerplexityService: Send + Sync {
-    async fn process_file(&self, file_content: String, settings: &Settings, api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError>;
+    async fn process_file(&self, file: ProcessedFile, settings: &Settings, api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError>;
 }
 
 pub struct PerplexityServiceImpl;
@@ -96,14 +116,43 @@ impl PerplexityServiceImpl {
 
 #[async_trait]
 impl PerplexityService for PerplexityServiceImpl {
-    async fn process_file(&self, file_content: String, settings: &Settings, api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError> {
-        let processed_content = process_markdown(&file_content, settings, api_client).await?;
-        Ok(ProcessedFile {
-            file_name: "processed.md".to_string(),
-            content: processed_content,
-            is_public: true,
-            metadata: Default::default(),
-        })
+    async fn process_file(&self, mut file: ProcessedFile, settings: &Settings, api_client: &dyn ApiClient) -> Result<ProcessedFile, PerplexityError> {
+        info!("Processing file: {}", file.file_name);
+        let blocks = split_markdown_blocks(&file.content);
+        let mut processed_blocks = Vec::new();
+
+        for block in blocks {
+            if block.trim().is_empty() || block.trim() == "public:: true" {
+                processed_blocks.push(block.clone());
+                continue;
+            }
+
+            let context_blocks = select_context_blocks(&file.content, &block);
+            let topics: Vec<String> = file.metadata.topic_counts.keys().cloned().collect();
+
+            match call_perplexity_api(
+                &settings.prompt,
+                &context_blocks,
+                &topics,
+                api_client,
+                &settings.perplexity,
+            ).await {
+                Ok(api_response) => {
+                    let processed_block = process_markdown_block(&block, &settings.prompt, &topics, &api_response);
+                    processed_blocks.push(processed_block);
+                }
+                Err(e) => {
+                    error!("Error processing block in {}: {}", file.file_name, e);
+                    processed_blocks.push(block);
+                }
+            }
+
+            // Rate limiting
+            sleep(Duration::from_millis(100)).await;
+        }
+
+        file.content = processed_blocks.join("\n\n");
+        Ok(file)
     }
 }
 
@@ -235,10 +284,6 @@ impl ApiClient for ApiClientImpl {
     }
 }
 
-pub async fn process_markdown(file_content: &str, _settings: &Settings, _api_client: &dyn ApiClient) -> Result<String, PerplexityError> {
-    Ok(file_content.to_string())
-}
-
 pub async fn call_perplexity_api(
     prompt: &str,
     context: &[String],
@@ -275,7 +320,7 @@ pub async fn call_perplexity_api(
         max_tokens: Some(perplexity_settings.perplexity_max_tokens),
         temperature: Some(perplexity_settings.perplexity_temperature),
         top_p: Some(perplexity_settings.perplexity_top_p),
-        return_citations: Some(false),
+        return_citations: Some(true),
         stream: Some(false),
         presence_penalty: Some(perplexity_settings.perplexity_presence_penalty),
         frequency_penalty: Some(perplexity_settings.perplexity_frequency_penalty),

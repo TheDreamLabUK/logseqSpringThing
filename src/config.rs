@@ -1,23 +1,23 @@
 use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
-use std::env;
-use std::fmt;
+use std::{env, fmt};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
-    pub prompt: String,
-    pub github: GithubSettings,
-    pub ragflow: RagflowSettings,
+    pub debug_mode: bool,
+    pub github: GitHubSettings,
+    pub ragflow: RagFlowSettings,
     pub perplexity: PerplexitySettings,
     pub openai: OpenAISettings,
     pub default: DefaultSettings,
     pub visualization: VisualizationSettings,
     pub bloom: BloomSettings,
     pub fisheye: FisheyeSettings,
+    pub prompt: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GithubSettings {
+pub struct GitHubSettings {
     pub github_access_token: String,
     pub github_owner: String,
     pub github_repo: String,
@@ -25,7 +25,7 @@ pub struct GithubSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RagflowSettings {
+pub struct RagFlowSettings {
     pub ragflow_api_key: String,
     pub ragflow_api_base_url: String,
 }
@@ -51,7 +51,7 @@ pub struct OpenAISettings {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DefaultSettings {
     pub max_concurrent_requests: usize,
-    pub max_retries: usize,
+    pub max_retries: u32,
     pub retry_delay: u64,
     pub api_client_timeout: u64,
 }
@@ -89,10 +89,12 @@ pub struct BloomSettings {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FisheyeSettings {
-    pub enabled: bool,
-    pub strength: f32,
-    pub focus_point: [f32; 3],
-    pub radius: f32,
+    pub fisheye_enabled: bool,
+    pub fisheye_strength: f32,
+    pub fisheye_radius: f32,
+    pub fisheye_focus_x: f32,
+    pub fisheye_focus_y: f32,
+    pub fisheye_focus_z: f32,
 }
 
 impl Settings {
@@ -102,6 +104,9 @@ impl Settings {
             .add_source(Environment::with_prefix("APP"));
 
         // Override settings with environment variables if they exist
+        if let Ok(value) = env::var("DEBUG_MODE") {
+            builder = builder.set_override("debug_mode", value)?;
+        }
         if let Ok(value) = env::var("GITHUB_ACCESS_TOKEN") {
             builder = builder.set_override("github.github_access_token", value)?;
         }
@@ -240,7 +245,7 @@ impl Settings {
         if let Ok(value) = env::var("FISHEYE_RADIUS") {
             builder = builder.set_override("fisheye.radius", value)?;
         }
-
+        
         builder.build()?.try_deserialize()
     }
 }

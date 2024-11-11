@@ -74,6 +74,7 @@ pub struct RealGitHubService {
     repo: String,
     base_path: String,
     metadata_cache: Arc<RwLock<HashMap<String, GithubFileMetadata>>>,
+    settings: Arc<RwLock<Settings>>,
 }
 
 impl RealGitHubService {
@@ -82,6 +83,7 @@ impl RealGitHubService {
         owner: String,
         repo: String,
         base_path: String,
+        settings: Arc<RwLock<Settings>>,
     ) -> Result<Self, Box<dyn StdError + Send + Sync>> {
         let client = Client::builder()
             .user_agent("rust-github-api")
@@ -95,6 +97,7 @@ impl RealGitHubService {
             repo,
             base_path,
             metadata_cache: Arc::new(RwLock::new(HashMap::new())),
+            settings,
         })
     }
 }
@@ -113,6 +116,8 @@ impl GitHubService for RealGitHubService {
             .await?;
 
         let contents: Vec<serde_json::Value> = response.json().await?;
+        let settings = self.settings.read().await;
+        let debug_mode = settings.debug_mode;
         
         let mut markdown_files = Vec::new();
         
@@ -120,6 +125,12 @@ impl GitHubService for RealGitHubService {
             if item["type"].as_str().unwrap_or("") == "file" && 
                item["name"].as_str().unwrap_or("").ends_with(".md") {
                 let name = item["name"].as_str().unwrap_or("").to_string();
+                
+                // In debug mode, only process Debug Test Page.md and debug linked node.md
+                if debug_mode && !name.contains("Debug Test Page") && !name.contains("debug linked node") {
+                    continue;
+                }
+                
                 let last_modified = self.get_file_last_modified(&format!("{}/{}", self.base_path, name)).await?;
                 
                 markdown_files.push(GithubFileMetadata {
@@ -131,6 +142,10 @@ impl GitHubService for RealGitHubService {
                     last_modified: Some(last_modified),
                 });
             }
+        }
+
+        if debug_mode {
+            info!("Debug mode: Processing only debug test files");
         }
 
         Ok(markdown_files)

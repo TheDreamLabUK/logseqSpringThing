@@ -8,13 +8,20 @@ use tokio::time::{interval, Duration};
 
 use crate::app_state::AppState;
 use crate::config::Settings;
-use crate::handlers::{file_handler, graph_handler, ragflow_handler, visualization_handler};
+use crate::handlers::{
+    file_handler, 
+    graph_handler, 
+    ragflow_handler, 
+    visualization_handler,
+    perplexity_handler,
+};
 use crate::models::graph::GraphData;
 use crate::services::file_service::{GitHubService, RealGitHubService, FileService};
 use crate::services::perplexity_service::PerplexityServiceImpl;
 use crate::services::ragflow_service::RAGFlowService;
 use crate::services::speech_service::SpeechService;
 use crate::services::graph_service::GraphService;
+use crate::services::github_service::{GitHubPRService, RealGitHubPRService};
 use crate::utils::websocket_manager::WebSocketManager;
 use crate::utils::gpu_compute::GPUCompute;
 
@@ -118,11 +125,28 @@ async fn main() -> std::io::Result<()> {
             settings_read.github.github_owner.clone(),
             settings_read.github.github_repo.clone(),
             settings_read.github.github_directory.clone(),
+            settings.clone(),
         ) {
             Ok(service) => Arc::new(service),
             Err(e) => {
                 log::error!("Failed to initialize GitHubService: {:?}", e);
                 return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHubService: {:?}", e)));
+            }
+        }
+    };
+
+    let github_pr_service: Arc<dyn GitHubPRService + Send + Sync> = {
+        let settings_read = settings.read().await;
+        match RealGitHubPRService::new(
+            settings_read.github.github_access_token.clone(),
+            settings_read.github.github_owner.clone(),
+            settings_read.github.github_repo.clone(),
+            settings_read.github.github_directory.clone(),
+        ) {
+            Ok(service) => Arc::new(service),
+            Err(e) => {
+                log::error!("Failed to initialize GitHubPRService: {:?}", e);
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHubPRService: {:?}", e)));
             }
         }
     };
@@ -181,6 +205,7 @@ async fn main() -> std::io::Result<()> {
         websocket_manager.clone(),
         gpu_compute,
         ragflow_conversation_id,
+        github_pr_service,
     ));
 
     if let Err(e) = initialize_graph_data(&app_state).await {
@@ -208,7 +233,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(app_state.clone())
             .wrap(middleware::Logger::default())
-            .route("/health", web::get().to(health_check))  // Add health check endpoint
+            .route("/health", web::get().to(health_check))
             .service(
                 web::scope("/api/files")
                     .route("/fetch", web::get().to(file_handler::fetch_and_process_files))
@@ -226,6 +251,10 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/api/visualization")
                     .route("/settings", web::get().to(visualization_handler::get_visualization_settings))
+            )
+            .service(
+                web::scope("/api/perplexity")
+                    .route("/process", web::post().to(perplexity_handler::process_files))
             )
             .route("/ws", web::get().to(WebSocketManager::handle_websocket))
             .route("/test_speech", web::get().to(test_speech_service))
