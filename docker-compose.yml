@@ -16,13 +16,11 @@ services:
               count: 1
               capabilities: [gpu]
     ports:
-      - "4000:80"    # Map container's 80 to host's 4000
-      - "8080:8080"  # Backend API
+      - "8080:8080"  # Map container's 8080 to host's 8080
     environment:
       - RUST_LOG=debug
       - RUST_BACKTRACE=1
       - BIND_ADDRESS=0.0.0.0
-      - PORT=8080
       - NVIDIA_VISIBLE_DEVICES=0
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     env_file:
@@ -44,7 +42,7 @@ services:
         max-size: "1g"
         max-file: "5"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]  # Updated to use port 8080
       interval: 10s
       timeout: 5s
       retries: 3
@@ -54,7 +52,7 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: logseqxr-tunnel
     read_only: true
-    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN} --url http://webxr-graph:80
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN} --url http://webxr-graph:8080
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
     deploy:

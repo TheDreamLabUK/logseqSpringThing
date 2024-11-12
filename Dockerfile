@@ -78,13 +78,14 @@ RUN pip install --no-cache-dir --upgrade pip==23.3.1 wheel==0.41.3 && \
 # Stage 5: Final Runtime Image
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1 \
-    PATH="/app/venv/bin:$PATH" \
-    NVIDIA_VISIBLE_DEVICES=all \
-    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
-    RUST_LOG=debug \
-    RUST_BACKTRACE=1
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/app/venv/bin:$PATH"
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV RUST_LOG=debug
+ENV RUST_BACKTRACE=1
+ENV PORT=3000
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -123,7 +124,7 @@ COPY --from=python-builder /app/venv /app/venv
 # Copy built artifacts
 COPY --from=rust-builder /usr/src/app/target/release/webxr-graph /app/
 COPY --from=rust-builder /usr/src/app/settings.toml /app/
-COPY --from=frontend-builder /app/data/dist /app/data/public/dist
+COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
 
 # Copy configuration and scripts
 COPY src/generate_audio.py /app/src/
@@ -163,7 +164,7 @@ APP_PID=$!\n\
 \n\
 # Wait for the backend to be ready\n\
 log "Waiting for application to be ready..."\n\
-if ! wait_for_port 8080; then\n\
+if ! wait_for_port $PORT; then\n\
     log "Application failed to start. Backend logs:"\n\
     cat /tmp/webxr.log\n\
     if [ -n "$APP_PID" ] && ps -p $APP_PID > /dev/null; then\n\
@@ -174,7 +175,7 @@ fi\n\
 \n\
 # Check if the backend health endpoint is responding\n\
 log "Checking backend health endpoint..."\n\
-if ! curl -s -f http://localhost:8080/health; then\n\
+if ! curl -s -f http://localhost:$PORT/health; then\n\
     log "Backend health check failed. Backend logs:"\n\
     cat /tmp/webxr.log\n\
     if [ -n "$APP_PID" ] && ps -p $APP_PID > /dev/null; then\n\
@@ -204,7 +205,7 @@ while true; do\n\
         nginx -s stop\n\
         exit 1\n\
     fi\n\
-    if ! curl -s -f http://localhost:8080/health > /dev/null; then\n\
+    if ! curl -s -f http://localhost:$PORT/health > /dev/null; then\n\
         log "Backend health check failed. Logs:"\n\
         cat /tmp/webxr.log\n\
         nginx -s stop\n\
@@ -218,8 +219,8 @@ done' > /app/start.sh && \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Expose ports
-EXPOSE 80 8080
+# Expose port
+EXPOSE 8080
 
 # Start application
 ENTRYPOINT ["/app/start.sh"]
