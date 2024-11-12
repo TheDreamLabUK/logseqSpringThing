@@ -7,11 +7,19 @@ export default defineConfig({
   root: path.resolve(__dirname, 'data/public'),
   plugins: [
     vue(),
-    createHtmlPlugin(),
+    createHtmlPlugin({
+      minify: true,
+      inject: {
+        data: {
+          title: 'WebXR Graph Visualization'
+        }
+      }
+    }),
   ],
   build: {
-    outDir: path.resolve(__dirname, 'data/dist'),
+    outDir: 'dist',
     emptyOutDir: true,
+    assetsDir: 'assets',
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'data/public/index.html'),
@@ -41,6 +49,7 @@ export default defineConfig({
     },
     chunkSizeWarningLimit: 1000,
   },
+  base: '/',
   publicDir: path.resolve(__dirname, 'data/public/assets'),
   resolve: {
     alias: {

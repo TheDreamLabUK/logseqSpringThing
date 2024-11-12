@@ -78,17 +78,11 @@ RUN pip install --no-cache-dir --upgrade pip==23.3.1 wheel==0.41.3 && \
 # Stage 5: Final Runtime Image
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
-# Create non-root user with same UID as typical host user
-RUN groupadd -g 1000 appuser && \
-    useradd -u 1000 -g appuser -s /bin/false -m appuser
-
-# Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PATH="/app/venv/bin:$PATH" \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility \
-    XDG_RUNTIME_DIR=/tmp/runtime-appuser \
     RUST_LOG=debug \
     RUST_BACKTRACE=1
 
@@ -112,7 +106,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /usr/share/doc/* \
     && rm -rf /usr/share/man/*
 
-# Set up directory structure and permissions
+# Set up directory structure
 WORKDIR /app
 RUN mkdir -p /app/data/public/dist /app/data/markdown /app/src /app/data/piper && \
     mkdir -p /app/nginx/client_temp \
@@ -121,25 +115,21 @@ RUN mkdir -p /app/data/public/dist /app/data/markdown /app/src /app/data/piper &
              /app/nginx/uwsgi_temp \
              /app/nginx/scgi_temp && \
     touch /app/nginx/error.log && \
-    touch /app/nginx/access.log && \
-    chown -R appuser:appuser /app && \
-    chmod -R 755 /app && \
-    chown -R appuser:appuser /etc/nginx && \
-    chmod -R 755 /etc/nginx
+    touch /app/nginx/access.log
 
 # Copy Python virtual environment
-COPY --from=python-builder --chown=appuser:appuser /app/venv /app/venv
+COPY --from=python-builder /app/venv /app/venv
 
 # Copy built artifacts
-COPY --from=rust-builder --chown=appuser:appuser /usr/src/app/target/release/webxr-graph /app/
-COPY --from=rust-builder --chown=appuser:appuser /usr/src/app/settings.toml /app/
-COPY --from=frontend-builder --chown=appuser:appuser /app/data/dist /app/data/public/dist
+COPY --from=rust-builder /usr/src/app/target/release/webxr-graph /app/
+COPY --from=rust-builder /usr/src/app/settings.toml /app/
+COPY --from=frontend-builder /app/data/dist /app/data/public/dist
 
 # Copy configuration and scripts
-COPY --chown=appuser:appuser src/generate_audio.py /app/src/
-COPY --chown=appuser:appuser nginx.conf /etc/nginx/nginx.conf
+COPY src/generate_audio.py /app/src/
+COPY nginx.conf /etc/nginx/nginx.conf
 
-# Create startup script with proper permissions
+# Create startup script
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
@@ -222,11 +212,7 @@ while true; do\n\
     fi\n\
     sleep 5\n\
 done' > /app/start.sh && \
-    chmod +x /app/start.sh && \
-    chown appuser:appuser /app/start.sh
-
-# Switch to non-root user
-USER appuser
+    chmod +x /app/start.sh
 
 # Health check with increased start period and interval
 HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
