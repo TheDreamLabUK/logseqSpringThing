@@ -247,7 +247,7 @@ async fn main() -> std::io::Result<()> {
         randomize_nodes_periodically(randomization_state).await;
     });
 
-    let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+    let port = env::var("PORT").unwrap_or_else(|_| "4000".to_string());
     let bind_address = format!("0.0.0.0:{}", port);
 
     log::info!("Starting HTTP server on {}", bind_address);

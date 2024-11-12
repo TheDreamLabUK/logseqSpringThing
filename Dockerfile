@@ -218,10 +218,10 @@ done' > /app/start.sh && \
 
 # Health check with increased start period and interval
 HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:4000/health || exit 1
 
 # Expose port
-EXPOSE 8080
+EXPOSE 4000
 
 # Start application
 ENTRYPOINT ["/app/start.sh"]

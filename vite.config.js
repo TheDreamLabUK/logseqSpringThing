@@ -8,7 +8,13 @@ export default defineConfig({
   plugins: [
     vue(),
     createHtmlPlugin({
-      minify: true,
+      minify: {
+        collapseWhitespace: true,
+        removeComments: true,
+        // Preserve JavaScript and CSS
+        minifyJS: false,
+        minifyCSS: true
+      },
       inject: {
         data: {
           title: 'WebXR Graph Visualization'
@@ -20,41 +26,41 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     assetsDir: 'assets',
+    sourcemap: true,
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'data/public/index.html'),
       },
       output: {
-        manualChunks: (id) => {
-          // Three.js and related modules
-          if (id.includes('three') || id.includes('OrbitControls') || 
-              id.includes('EffectComposer') || id.includes('RenderPass') || 
-              id.includes('UnrealBloomPass')) {
-            return 'vendor-three';
-          }
-          // Vue and related modules
-          if (id.includes('vue') || id.includes('runtime-dom') || 
-              id.includes('runtime-core')) {
-            return 'vendor-vue';
-          }
-          // Other dependencies
-          if (id.includes('pako')) {
-            return 'vendor-utils';
-          }
+        manualChunks: {
+          'vendor-three': ['three'],
+          'vendor-vue': ['vue'],
+          'vendor-utils': ['pako']
         },
-        globals: {
-          'three': 'THREE'
-        }
+        format: 'es',
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]'
       }
     },
     chunkSizeWarningLimit: 1000,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: false,
+        drop_debugger: true
+      },
+      format: {
+        comments: false
+      }
+    }
   },
   base: '/',
   publicDir: path.resolve(__dirname, 'data/public/assets'),
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'data/public/js'),
-      'vue': 'vue/dist/vue.esm-bundler.js'
+      'vue': 'vue/dist/vue.runtime.esm-bundler.js'  // Use runtime build
     },
     extensions: ['.js', '.json', '.vue']
   },

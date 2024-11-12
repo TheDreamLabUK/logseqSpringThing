@@ -17,7 +17,7 @@ services:
               count: 1
               capabilities: [gpu]
     ports:
-      - "8080:8080"  # Map container's 8080 to host's 8080
+      - "4000:4000"
     environment:
       - RUST_LOG=debug
       - RUST_BACKTRACE=1
@@ -33,10 +33,6 @@ services:
         target: /tmp
         tmpfs:
           size: 4G
-          mode: 1777
-    networks:
-      logseq-net:
-        ipv4_address: 172.28.0.2
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -44,47 +40,8 @@ services:
         max-size: "1g"
         max-file: "5"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 10s
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: logseqxr-tunnel
-    read_only: false
-    command: tunnel --config /etc/cloudflared/config.yml run
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
-    volumes:
-      - ./config.yml:/etc/cloudflared/config.yml:ro
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 4G
-    networks:
-      logseq-net:
-        ipv4_address: 172.28.0.3
-    restart: unless-stopped
-    depends_on:
-      webxr-graph:
-        condition: service_healthy
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1g"
-        max-file: "5"
-
-networks:
-  logseq-net:
-    driver: bridge
-    internal: false
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.28.0.0/16
-          gateway: 172.28.0.1
-    driver_opts:
-      "com.docker.network.driver.mtu": "1420"

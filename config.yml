@@ -3,22 +3,20 @@ credentials-file: /etc/cloudflared/creds.json
 
 ingress:
   - hostname: visionflow.info
-    service: http://172.28.0.2:8080
+    service: http://localhost:4000
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s
       keepAliveConnections: 100
       keepAliveTimeout: 60s
       tcpKeepAlive: 60s
+      httpHostHeader: visionflow.info
 
   - service: http_status:404
 
 # Logging
 logLevel: debug
 transport-loglevel: debug
-
-# Metrics
-metrics: 0.0.0.0:44678
 
 # Connection settings
 protocol: quic

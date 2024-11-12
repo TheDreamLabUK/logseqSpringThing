@@ -2,10 +2,6 @@
 
 set -e
 
-# Define the container name
-CONTAINER_NAME="logseqXR"
-echo "Launching $CONTAINER_NAME with Cloudflare Tunnel..."
-
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -14,40 +10,16 @@ NC='\033[0m'
 
 # Function to check system resources
 check_system_resources() {
-    echo -e "${YELLOW}Checking system resources...${NC}"
-    
-    # Check CPU cores
-    local cpu_cores=$(nproc)
-    if [ $cpu_cores -lt 20 ]; then
-        echo -e "${RED}Warning: Less than 20 CPU cores available ($cpu_cores cores)${NC}"
-        echo "Consider adjusting CPU limits in docker-compose.yml"
-    fi
-    
-    # Check available memory
-    local mem_available=$(free -g | awk '/^Mem:/ {print $7}')
-    if [ $mem_available -lt 68 ]; then
-        echo -e "${RED}Warning: Less than 68GB RAM available ($mem_available GB)${NC}"
-        echo "Consider adjusting memory limits in docker-compose.yml"
-    fi
-    
-    # Check GPU availability
+    echo -e "${YELLOW}Checking GPU availability...${NC}"
     if ! command -v nvidia-smi &> /dev/null; then
-        echo -e "${RED}Warning: nvidia-smi not found. GPU support may not be available.${NC}"
-    else
-        local gpu_count=$(nvidia-smi --query-gpu=gpu_name --format=csv,noheader | wc -l)
-        if [ $gpu_count -eq 0 ]; then
-            echo -e "${RED}Error: No NVIDIA GPUs detected${NC}"
-            exit 1
-        fi
-        echo -e "${GREEN}Found $gpu_count NVIDIA GPU(s)${NC}"
-        nvidia-smi --query-gpu=gpu_name,memory.total,memory.free --format=csv,noheader
+        echo -e "${RED}Error: nvidia-smi not found${NC}"
+        exit 1
     fi
+    nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader
 }
 
 # Function to check Docker setup
 check_docker() {
-    echo -e "${YELLOW}Checking Docker setup...${NC}"
-    
     if ! command -v docker &> /dev/null; then
         echo -e "${RED}Error: Docker is not installed${NC}"
         exit 1
@@ -63,34 +35,102 @@ check_docker() {
     fi
 }
 
+# Function to clean up existing processes
+cleanup_existing_processes() {
+    echo -e "${YELLOW}Cleaning up...${NC}"
+    $DOCKER_COMPOSE down --remove-orphans >/dev/null 2>&1
+
+    if netstat -tuln | grep -q ":4000 "; then
+        local pid=$(lsof -t -i:4000)
+        if [ ! -z "$pid" ]; then
+            kill -9 $pid >/dev/null 2>&1
+        fi
+    fi
+    sleep 2
+}
+
 # Function to check container health
 check_container_health() {
     local service=$1
     local max_attempts=30
     local attempt=1
     
-    echo -e "${YELLOW}Checking $service health...${NC}"
+    echo -e "${YELLOW}Checking container health...${NC}"
     while [ $attempt -le $max_attempts ]; do
-        if $DOCKER_COMPOSE ps $service | grep -q "running"; then
-            local health=$($DOCKER_COMPOSE ps $service | grep -o "(healthy)\|unhealthy" || echo "no health check")
-            if [[ $health == "(healthy)" || $health == "no health check" ]]; then
-                echo -e "${GREEN}$service is running and healthy${NC}"
+        local status=$($DOCKER_COMPOSE ps -q $service)
+        if [ ! -z "$status" ]; then
+            local health=$(docker inspect --format='{{.State.Health.Status}}' $status)
+            if [[ "$health" == "healthy" ]]; then
+                echo -e "${GREEN}Container is healthy${NC}"
                 return 0
             fi
         fi
-        echo "Attempt $attempt/$max_attempts: Waiting for $service..."
+        
+        if (( attempt % 10 == 0 )); then
+            echo -e "${YELLOW}Recent logs:${NC}"
+            $DOCKER_COMPOSE logs --tail=10 $service
+        fi
+        
+        echo "Health check attempt $attempt/$max_attempts..."
         sleep 2
         attempt=$((attempt + 1))
     done
     
-    echo -e "${RED}Error: $service failed to start properly${NC}"
+    echo -e "${RED}Container failed to become healthy${NC}"
+    $DOCKER_COMPOSE logs --tail=20 $service
     return 1
 }
 
-# Check if .env file exists
+# Function to check application readiness
+check_application_readiness() {
+    local max_attempts=30
+    local attempt=1
+    
+    echo -e "${YELLOW}Checking application readiness...${NC}"
+    while [ $attempt -le $max_attempts ]; do
+        if timeout 5 curl -s http://localhost:4000/health >/dev/null; then
+            echo -e "${GREEN}Application is ready${NC}"
+            return 0
+        fi
+        echo "Readiness check attempt $attempt/$max_attempts..."
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+
+    echo -e "${RED}Application failed to become ready${NC}"
+    return 1
+}
+
+# Function to test endpoints
+test_endpoints() {
+    echo -e "\n${YELLOW}Testing endpoints...${NC}"
+    
+    # Test local endpoint
+    echo "Testing local endpoint..."
+    local_response=$(curl -s http://localhost:4000/health)
+    if [ $? -eq 0 ] && [ ! -z "$local_response" ]; then
+        echo -e "${GREEN}Local endpoint: OK${NC}"
+        echo "Response: $local_response"
+    else
+        echo -e "${RED}Local endpoint: Failed${NC}"
+        return 1
+    fi
+    
+    # Test Cloudflare tunnel endpoint
+    echo -e "\nTesting Cloudflare tunnel endpoint..."
+    tunnel_response=$(curl -s --max-time 10 https://visionflow.info/health)
+    if [ $? -eq 0 ] && [ ! -z "$tunnel_response" ]; then
+        echo -e "${GREEN}Cloudflare tunnel: OK${NC}"
+        echo "Response: $tunnel_response"
+    else
+        echo -e "${RED}Cloudflare tunnel: Failed${NC}"
+        echo "Note: The application is still accessible locally"
+    fi
+}
+
+# Check environment
 if [ ! -f .env ]; then
-    echo -e "${RED}Error: .env file not found. Please create a .env file with the necessary environment variables.${NC}"
-    echo "You can use .env_template as a reference."
+    echo -e "${RED}Error: .env file not found${NC}"
     exit 1
 fi
 
@@ -99,33 +139,15 @@ set -a
 source .env
 set +a
 
-# Check for Cloudflare Tunnel token
-if [ -z "$TUNNEL_TOKEN" ]; then
-    echo -e "${RED}Error: TUNNEL_TOKEN environment variable not set in .env file.${NC}"
-    echo "Please add your Cloudflare Tunnel token to the .env file:"
-    echo "TUNNEL_TOKEN=your-tunnel-token"
-    exit 1
-fi
-
-# Run initial checks
+# Initial setup
 check_docker
 check_system_resources
+cleanup_existing_processes
 
-# Create Docker network if it doesn't exist
-docker network create logseq-net 2>/dev/null || true
-
-# Stop and remove existing containers
-echo -e "${YELLOW}Stopping existing containers...${NC}"
-$DOCKER_COMPOSE down --remove-orphans
-
-# Ensure all related containers are removed
-echo "Cleaning up any lingering containers..."
-docker rm -f logseqxr-tunnel logseqXR-tunnel 2>/dev/null || true
-docker rm -f $(docker ps -a | grep 'logseq' | awk '{print $1}') 2>/dev/null || true
-
-# Clean up old images
-echo -e "${YELLOW}Cleaning up old images...${NC}"
-docker image prune -f
+# Clean up old resources
+echo -e "${YELLOW}Cleaning up old resources...${NC}"
+docker volume ls -q | grep "logseqXR" | xargs -r docker volume rm >/dev/null 2>&1
+docker image prune -f >/dev/null 2>&1
 
 # Ensure data directory exists
 mkdir -p data/markdown
@@ -135,35 +157,27 @@ echo -e "${YELLOW}Building and starting services...${NC}"
 $DOCKER_COMPOSE build --pull --no-cache
 $DOCKER_COMPOSE up -d
 
-# Check health of services
-check_container_health "webxr-graph"
-check_container_health "cloudflared"
+# Check health and readiness
+if ! check_container_health "webxr-graph"; then
+    echo -e "${RED}Startup failed${NC}"
+    exit 1
+fi
 
-# Print resource usage
-echo ""
-echo "🖥️  Current Resource Usage:"
-echo "==========================="
-docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"
+if ! check_application_readiness; then
+    echo -e "${RED}Startup failed${NC}"
+    exit 1
+fi
 
-echo ""
-echo -e "${GREEN}🚀 Services are now running!${NC}"
-echo ""
-echo "📊 Status Dashboard:"
-echo "- Main application: Running on port 8080"
-echo "- Cloudflare Tunnel: Active"
-echo "- GPU Support: Enabled for main application"
-echo ""
-echo "📝 Useful Commands:"
-echo "- View all logs:           $DOCKER_COMPOSE logs -f"
-echo "- View app logs:          $DOCKER_COMPOSE logs -f webxr-graph"
-echo "- View tunnel logs:       $DOCKER_COMPOSE logs -f cloudflared"
-echo "- Check GPU usage:        nvidia-smi"
-echo "- Stop all services:      $DOCKER_COMPOSE down"
-echo "- Restart all services:   $DOCKER_COMPOSE restart"
-echo ""
-echo "🌐 Access:"
-echo "The application will be accessible through your Cloudflare Tunnel domain"
-echo "Check the Cloudflare Zero Trust Dashboard for your tunnel status"
-echo ""
-echo -e "${YELLOW}🔍 Monitoring logs...${NC}"
-$DOCKER_COMPOSE logs -f
+# Test endpoints
+test_endpoints
+
+# Print final status
+echo -e "\n${GREEN}🚀 Services are running!${NC}"
+
+echo -e "\nResource Usage:"
+docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
+
+echo -e "\nCommands:"
+echo "logs:    $DOCKER_COMPOSE logs -f"
+echo "stop:    $DOCKER_COMPOSE down"
+echo "restart: $DOCKER_COMPOSE restart"
