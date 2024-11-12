@@ -12,6 +12,10 @@ You should aim to select one or more of these topics in this form appropriate to
 embedding the topic in Logseq double square brackets once in the returned text.
 """
 
+[network]
+domain = "visionflow.info"
+port = 4000
+
 [github]
 github_access_token = "default_github_token"
 github_owner = "default_owner"

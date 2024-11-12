@@ -6,6 +6,8 @@ services:
     image: logseq-xr-image:latest
     container_name: logseq-xr-webxr-graph-1
     read_only: false
+    networks:
+      - logseq_net
     deploy:
       resources:
         limits:
@@ -45,3 +47,27 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: logseq-xr-tunnel-1
+    networks:
+      - logseq_net
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    volumes:
+      - ./config.yml:/etc/cloudflared/config.yml:ro
+    depends_on:
+      webxr-graph:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "5"
+
+networks:
+  logseq_net:
+    driver: bridge
