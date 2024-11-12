@@ -1,0 +1,25 @@
+tunnel: 9a59e21c-7e0d-4cac-8502-59bc66436e0f
+credentials-file: /etc/cloudflared/creds.json
+
+ingress:
+  - hostname: visionflow.info
+    service: http://172.28.0.2:8080
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+      keepAliveConnections: 100
+      keepAliveTimeout: 60s
+      tcpKeepAlive: 60s
+
+  - service: http_status:404
+
+# Logging
+logLevel: debug
+transport-loglevel: debug
+
+# Metrics
+metrics: 0.0.0.0:44678
+
+# Connection settings
+protocol: quic
+noAutoupdateFrequency: true

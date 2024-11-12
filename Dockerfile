@@ -86,6 +86,7 @@ ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 ENV RUST_LOG=debug
 ENV RUST_BACKTRACE=1
 ENV PORT=3000
+ENV BIND_ADDRESS=0.0.0.0
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -142,8 +143,8 @@ log() {\n\
 # Function to check if a port is available\n\
 wait_for_port() {\n\
     local port=$1\n\
-    local retries=150\n\
-    local wait=2\n\
+    local retries=200\n\
+    local wait=3\n\
     while ! nc -z 0.0.0.0 $port && [ $retries -gt 0 ]; do\n\
         log "Waiting for port $port to become available... ($retries retries left)"\n\
         sleep $wait\n\
