@@ -69,13 +69,11 @@ check_container_health() {
 
     echo -e "${YELLOW}Checking container health...${NC}"
     while [ $attempt -le $max_attempts ]; do
-        local status=$($DOCKER_COMPOSE ps -q $service)
-        if [ ! -z "$status" ]; then
-            local health=$(docker inspect --format='{{.State.Health.Status}}' $status)
-            if [[ "$health" == "healthy" ]]; then
-                echo -e "${GREEN}Container is healthy${NC}"
-                return 0
-            fi
+        local container_name="logseq-xr-${service}-1"
+        local health=$(docker inspect --format='{{.State.Health.Status}}' $container_name 2>/dev/null)
+        if [[ "$health" == "healthy" ]]; then
+            echo -e "${GREEN}Container is healthy${NC}"
+            return 0
         fi
 
         if (( attempt % 10 == 0 )); then

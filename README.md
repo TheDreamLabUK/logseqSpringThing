@@ -9,14 +9,14 @@ https://github.com/trebornipsa
 
 ## Project Overview
 
-The **WebXR Graph Visualization** project transforms a LogSeq personal knowledge base into an interactive 3D graph, accessible in mixed reality environments. The system automates the parsing of Markdown files from a privately hosted GitHub repository, enhances the content using the **Perplexity AI API**, and integrates with **RAGFlow** for AI-powered question answering. Processed changes are submitted back to the source repository as pull requests (PRs).
+The **WebXR Graph Visualization** project transforms a Logseq personal knowledge base into an interactive 3D graph, accessible in mixed-reality environments. The system automates the parsing of Markdown files from a privately hosted GitHub repository, enhances the content using the **Perplexity AI API**, and integrates with **RAGFlow** for AI-powered question answering. Processed changes are submitted back to the source repository as pull requests (PRs).
 
 **Key Features:**
 
 Inspired by Prof Rob Aspin's work 
 https://github.com/trebornipsa
 
-Integrates Sonata rust wrapper for Piper
+Integrates Sonata Rust wrapper for Piper
 https://github.com/mush42/sonata
 
 ![P1080785_1728030359430_0](https://github.com/user-attachments/assets/3ecac4a3-95d7-4c75-a3b2-e93deee565d6)
@@ -32,8 +32,6 @@ https://github.com/mush42/sonata
 - **Comprehensive Metadata Management:** Handles both processed and raw JSON metadata for enhanced data representation.
 - **OpenAI Integration:** Provides text-to-speech capabilities for enhanced accessibility.
 
-[Rest of the README content remains unchanged...]
-=======
 ## Architecture
 
 The project comprises a **Rust-based server** running within a Docker container and a **JavaScript client-side application**. The architecture emphasizes GPU acceleration, efficient real-time updates, and immersive AR experiences.
@@ -286,13 +284,15 @@ Ensure that the following dependencies are installed on your system:
     RAGFLOW_API_BASE_URL=your_ragflow_base_url
     OPENAI_API_KEY=your_openai_api_key
     OPENAI_BASE_URL=https://api.openai.com/v1
+    TUNNEL_TOKEN=your_cloudflare_tunnel_token
+    DOMAIN=your_domain_name
     ```
 
     **Note:** Ensure that sensitive information like API keys is **never** hardcoded and is managed securely.
 
 3. **Update Configuration File:**
 
-    Ensure that `settings.toml` is correctly configured with the necessary fields. Refer to the [Settings Configuration](#settings-configuration) section for details.
+    Ensure that `settings.toml` is correctly configured with the necessary fields. Refer to the Settings Configuration section for details.
 
 4. **Build the Rust Server:**
 
@@ -323,18 +323,6 @@ Ensure that the following dependencies are installed on your system:
     ```bash
     ./launch-docker.sh
     ```
-
-4. **Monitor Security:**
-```bash
-# Check container security
-docker inspect logseqXR | grep -A 10 SecurityOpt
-
-# View security logs
-docker compose logs -f
-
-# Monitor resources
-docker stats
-```
 
 ### Security Verification
 
@@ -390,15 +378,6 @@ docker compose ps
 
 # Monitor resource usage
 docker stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}"
-```
-
-3. **Backup Security Configuration:**
-```bash
-# Backup security settings
-cp /etc/logseq-security/security.conf /etc/logseq-security/security.conf.backup
-
-# Backup certificates and keys
-tar -czf security-backup.tar.gz /etc/logseq-security/
 ```
 
 [Rest of the README remains unchanged...]
