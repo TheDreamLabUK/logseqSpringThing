@@ -14,7 +14,7 @@ embedding the topic in Logseq double square brackets once in the returned text.
 
 [network]
 domain = "visionflow.info"
-port = 4000
+port = 3000
 
 [github]
 github_access_token = "default_github_token"

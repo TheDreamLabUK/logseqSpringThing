@@ -1,7 +1,7 @@
 tunnel: 9a59e21c-7e0d-4cac-8502-59bc66436e0f
 
 ingress:
-  - hostname: ${DOMAIN}
+  - hostname: visionflow.info
     service: http://webxr-graph:4000
     originRequest:
       noTLSVerify: true
@@ -9,14 +9,17 @@ ingress:
       keepAliveConnections: 100
       keepAliveTimeout: 60s
       tcpKeepAlive: 60s
-      httpHostHeader: ${DOMAIN}
+      httpHostHeader: visionflow.info
 
   - service: http_status:404
 
 # Logging
-logLevel: debug
-transport-loglevel: debug
 
 # Connection settings
 protocol: quic
 noAutoupdateFrequency: true
+
+# Retry settings
+retryCount: 10
+maxRetries: 10
+backoff: true

@@ -8,6 +8,7 @@ services:
     read_only: false
     networks:
       - logseq_net
+      - docker_ragflow  # This is the actual network name created by RAGFlow's compose
     deploy:
       resources:
         limits:
@@ -26,6 +27,7 @@ services:
       - BIND_ADDRESS=0.0.0.0
       - NVIDIA_VISIBLE_DEVICES=0
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - RAGFLOW_BASE_URL=http://ragflow-server/v1/
     env_file:
       - .env
     volumes:
@@ -41,26 +43,19 @@ services:
       options:
         max-size: "1g"
         max-file: "5"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
 
   tunnel:
     image: cloudflare/cloudflared:latest
     container_name: logseq-xr-tunnel-1
     networks:
       - logseq_net
-    command: tunnel --no-autoupdate run
+    command: tunnel --no-autoupdate run --loglevel debug
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
     volumes:
       - ./config.yml:/etc/cloudflared/config.yml:ro
     depends_on:
-      webxr-graph:
-        condition: service_healthy
+      - webxr-graph
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -71,3 +66,5 @@ services:
 networks:
   logseq_net:
     driver: bridge
+  docker_ragflow:
+    external: true  # Use existing RAGFlow network with correct name

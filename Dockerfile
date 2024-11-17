@@ -143,8 +143,8 @@ log() {\n\
 # Function to check if a port is available\n\
 wait_for_port() {\n\
     local port=$1\n\
-    local retries=200\n\
-    local wait=3\n\
+    local retries=60\n\
+    local wait=5\n\
     while ! nc -z 0.0.0.0 $port && [ $retries -gt 0 ]; do\n\
         log "Waiting for port $port to become available... ($retries retries left)"\n\
         sleep $wait\n\
@@ -158,47 +158,59 @@ wait_for_port() {\n\
     return 0\n\
 }\n\
 \n\
-# Start the Rust backend first\n\
-log "Starting webxr-graph..."\n\
-/app/webxr-graph > /tmp/webxr.log 2>&1 &\n\
-APP_PID=$!\n\
-\n\
-# Wait for the backend to be ready\n\
-log "Waiting for application to be ready..."\n\
-if ! wait_for_port $PORT; then\n\
-    log "Application failed to start. Backend logs:"\n\
-    cat /tmp/webxr.log\n\
-    if [ -n "$APP_PID" ] && ps -p $APP_PID > /dev/null; then\n\
-        kill $APP_PID\n\
+# Function to check RAGFlow connectivity\n\
+check_ragflow() {\n\
+    log "Checking RAGFlow connectivity..."\n\
+    if curl -s -f "http://ragflow-server/v1/" > /dev/null; then\n\
+        log "RAGFlow server is reachable"\n\
+        return 0\n\
+    else\n\
+        log "Warning: Cannot reach RAGFlow server"\n\
+        return 1\n\
     fi\n\
+}\n\
+\n\
+# Wait for RAGFlow to be available\n\
+log "Waiting for RAGFlow server..."\n\
+retries=24\n\
+while ! check_ragflow && [ $retries -gt 0 ]; do\n\
+    log "Retrying RAGFlow connection... ($retries attempts left)"\n\
+    retries=$((retries-1))\n\
+    sleep 5\n\
+done\n\
+\n\
+if [ $retries -eq 0 ]; then\n\
+    log "Failed to connect to RAGFlow server after multiple attempts"\n\
     exit 1\n\
 fi\n\
 \n\
-# Check if the backend health endpoint is responding\n\
-log "Checking backend health endpoint..."\n\
-if ! curl -s -f http://localhost:$PORT/health; then\n\
-    log "Backend health check failed. Backend logs:"\n\
-    cat /tmp/webxr.log\n\
-    if [ -n "$APP_PID" ] && ps -p $APP_PID > /dev/null; then\n\
-        kill $APP_PID\n\
-    fi\n\
-    exit 1\n\
-fi\n\
-log "Backend health check passed"\n\
-\n\
-# Start nginx after backend is ready\n\
+# Start nginx first\n\
 log "Starting nginx..."\n\
 nginx -t && nginx\n\
 if [ $? -ne 0 ]; then\n\
     log "Failed to start nginx"\n\
+    exit 1\n\
+fi\n\
+log "nginx started successfully"\n\
+\n\
+# Start the Rust backend\n\
+log "Starting webxr-graph..."\n\
+/app/webxr-graph > /tmp/webxr.log 2>&1 &\n\
+APP_PID=$!\n\
+\n\
+# Wait for the backend to be ready with increased timeout\n\
+log "Waiting for backend to be ready..."\n\
+if ! wait_for_port $PORT; then\n\
+    log "Backend failed to start. Logs:"\n\
+    cat /tmp/webxr.log\n\
+    nginx -s stop\n\
     if [ -n "$APP_PID" ] && ps -p $APP_PID > /dev/null; then\n\
         kill $APP_PID\n\
     fi\n\
     exit 1\n\
 fi\n\
-log "nginx started successfully"\n\
 \n\
-# Monitor both nginx and the backend\n\
+# Monitor services\n\
 while true; do\n\
     if ! ps -p $APP_PID > /dev/null; then\n\
         log "Backend process died. Logs:"\n\
@@ -206,19 +218,9 @@ while true; do\n\
         nginx -s stop\n\
         exit 1\n\
     fi\n\
-    if ! curl -s -f http://localhost:$PORT/health > /dev/null; then\n\
-        log "Backend health check failed. Logs:"\n\
-        cat /tmp/webxr.log\n\
-        nginx -s stop\n\
-        exit 1\n\
-    fi\n\
     sleep 5\n\
 done' > /app/start.sh && \
     chmod +x /app/start.sh
-
-# Health check with increased start period and interval
-HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
-    CMD curl -f http://localhost:4000/health || exit 1
 
 # Expose port
 EXPOSE 4000
