@@ -111,27 +111,6 @@ check_application_readiness() {
     return 1
 }
 
-# Function to check tunnel readiness
-check_tunnel_readiness() {
-    local max_attempts=30
-    local attempt=1
-
-    echo -e "${YELLOW}Checking tunnel readiness...${NC}"
-    while [ $attempt -le $max_attempts ]; do
-        if timeout 5 curl -s https://www.$DOMAIN/health >/dev/null; then
-            echo -e "${GREEN}Tunnel is ready${NC}"
-            return 0
-        fi
-        echo "Tunnel check attempt $attempt/$max_attempts..."
-        sleep 2
-        attempt=$((attempt + 1))
-    done
-
-    echo -e "${RED}Tunnel failed to become ready${NC}"
-    $DOCKER_COMPOSE logs --tail=20 tunnel
-    return 1
-}
-
 # Function to test endpoints
 test_endpoints() {
     echo -e "\n${YELLOW}Testing endpoints...${NC}"
@@ -158,35 +137,6 @@ test_endpoints() {
     else
         echo -e "${RED}Local index endpoint: Failed${NC}"
         return 1
-    fi
-    
-    # Test Cloudflare tunnel /health endpoint
-    echo -e "\nTesting Cloudflare tunnel /health endpoint..."
-    tunnel_health_response=$(curl -s -w "\nHTTP Status: %{http_code}\n" https://www.$DOMAIN/health)
-    if [ $? -eq 0 ] && [ ! -z "$tunnel_health_response" ]; then
-        http_status_tunnel_health=$(echo "$tunnel_health_response" | grep "HTTP Status" | awk '{print $3}')
-        echo "$tunnel_health_response" | sed '/HTTP Status/d'
-        echo -e "${GREEN}Cloudflare tunnel /health endpoint: OK${NC} (HTTP Status: $http_status_tunnel_health)"
-    else
-        echo -e "${RED}Cloudflare tunnel /health endpoint: Failed${NC}"
-        echo "Note: The application is still accessible locally"
-    fi
-
-    # Test Cloudflare tunnel index endpoint
-    echo -e "\nTesting Cloudflare tunnel index endpoint..."
-    tunnel_index_response=$(curl -s -w "\nHTTP Status: %{http_code}\n" https://www.$DOMAIN/)
-    if [ $? -eq 0 ] && [ ! -z "$tunnel_index_response" ]; then
-        http_status_tunnel_index=$(echo "$tunnel_index_response" | grep "HTTP Status" | awk '{print $3}')
-        echo "$tunnel_index_response" | sed '/HTTP Status/d'
-        if [ "$http_status_tunnel_index" -eq 200 ]; then
-            echo -e "${GREEN}Cloudflare tunnel index endpoint: OK${NC} (HTTP Status: $http_status_tunnel_index)"
-        else
-            echo -e "${RED}Cloudflare tunnel index endpoint: Failed${NC} (HTTP Status: $http_status_tunnel_index)"
-            echo "Note: The application is still accessible locally"
-        fi
-    else
-        echo -e "${RED}Cloudflare tunnel index endpoint: Failed${NC}"
-        echo "Note: The application is still accessible locally"
     fi
 }
 
@@ -230,12 +180,6 @@ fi
 
 if ! check_application_readiness; then
     echo -e "${RED}Startup failed${NC}"
-    exit 1
-fi
-
-# Check tunnel readiness
-if ! check_tunnel_readiness; then
-    echo -e "${RED}Tunnel failed to establish${NC}"
     exit 1
 fi
 
