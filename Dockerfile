@@ -7,7 +7,14 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml vite.config.js ./
 COPY data/public ./data/public
 
-# Install pnpm and build
+# Configure npm and build
+ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
+ENV PATH=/home/node/.npm-global/bin:$PATH
+RUN mkdir -p /home/node/.npm-global && \
+    chown -R node:node /app /home/node/.npm-global && \
+    npm config set prefix /home/node/.npm-global
+
+USER node
 RUN npm install -g pnpm && \
     pnpm install --frozen-lockfile && \
     pnpm run build
@@ -42,11 +49,8 @@ COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn add(a: i32, b: i32) -> i32 { a + b }" > src/lib.rs && \
-    # Build dependencies only
     cargo build --release && \
-    # Remove the dummy source files but keep the dependencies
     rm src/*.rs && \
-    # Remove the target/release/deps files that depend on the dummy source
     rm -f target/release/deps/webxr_graph* target/release/webxr-graph*
 
 # Stage 3: Rust Application Build
@@ -56,7 +60,7 @@ FROM rust-deps-builder AS rust-builder
 COPY src ./src
 COPY settings.toml ./settings.toml
 
-# Build the application, reusing cached dependencies
+# Build the application
 RUN cargo build --release
 
 # Stage 4: Python Dependencies
@@ -78,15 +82,15 @@ RUN pip install --no-cache-dir --upgrade pip==23.3.1 wheel==0.41.3 && \
 # Stage 5: Final Runtime Image
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-ENV PATH="/app/venv/bin:$PATH"
-ENV NVIDIA_VISIBLE_DEVICES=all
-ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
-ENV RUST_LOG=debug
-ENV RUST_BACKTRACE=1
-ENV PORT=3000
-ENV BIND_ADDRESS=0.0.0.0
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/venv/bin:${PATH}" \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    RUST_LOG=info \
+    RUST_BACKTRACE=0 \
+    PORT=3000 \
+    BIND_ADDRESS=0.0.0.0
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -108,36 +112,58 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /usr/share/doc/* \
     && rm -rf /usr/share/man/*
 
+# Create nginx group and non-root user
+RUN groupadd -r nginx -g 101 && \
+    groupadd -r appuser -g 1000 && \
+    useradd -r -g appuser -G nginx -u 1000 -m -d /home/appuser appuser
+
 # Set up directory structure
 WORKDIR /app
-RUN mkdir -p /app/data/public/dist /app/data/markdown /app/src /app/data/piper && \
-    mkdir -p /app/nginx/client_temp \
-             /app/nginx/proxy_temp \
-             /app/nginx/fastcgi_temp \
-             /app/nginx/uwsgi_temp \
-             /app/nginx/scgi_temp && \
-    touch /app/nginx/error.log && \
-    touch /app/nginx/access.log
+
+# Create required directories
+RUN mkdir -p /app/data/public/dist \
+             /app/data/markdown \
+             /app/data/runtime \
+             /app/src \
+             /app/data/piper && \
+    chown -R appuser:appuser /app
 
 # Copy Python virtual environment
-COPY --from=python-builder /app/venv /app/venv
+COPY --from=python-builder --chown=appuser:appuser /app/venv /app/venv
 
 # Copy built artifacts
-COPY --from=rust-builder /usr/src/app/target/release/webxr-graph /app/
-COPY --from=rust-builder /usr/src/app/settings.toml /app/
-COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
+COPY --from=rust-builder --chown=appuser:appuser /usr/src/app/target/release/webxr-graph /app/
+COPY --from=rust-builder --chown=appuser:appuser /usr/src/app/settings.toml /app/
+COPY --from=frontend-builder --chown=appuser:appuser /app/data/public/dist /app/data/public/dist
 
 # Copy configuration and scripts
-COPY src/generate_audio.py /app/src/
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY --chown=appuser:appuser src/generate_audio.py /app/src/
+COPY --chown=root:root nginx.conf /etc/nginx/nginx.conf
 
-# Create startup script
+# Create and configure startup script with proper permissions
 RUN echo '#!/bin/bash\n\
-set -e\n\
+set -euo pipefail\n\
 \n\
 # Function to log messages with timestamps\n\
 log() {\n\
     echo "[$(date "+%Y-%m-%d %H:%M:%S")] $1"\n\
+}\n\
+\n\
+# Function to setup nginx directories\n\
+setup_nginx_dirs() {\n\
+    log "Setting up nginx directories..."\n\
+    # Create required directories\n\
+    mkdir -p /var/lib/nginx/client_temp \\\n\
+             /var/lib/nginx/proxy_temp \\\n\
+             /var/lib/nginx/fastcgi_temp \\\n\
+             /var/lib/nginx/uwsgi_temp \\\n\
+             /var/lib/nginx/scgi_temp\n\
+\n\
+    # Create and set permissions for log files\n\
+    touch /var/log/nginx/error.log \\\n\
+          /var/log/nginx/access.log\n\
+\n\
+    log "Nginx directories setup complete"\n\
 }\n\
 \n\
 # Function to check if a port is available\n\
@@ -145,7 +171,7 @@ wait_for_port() {\n\
     local port=$1\n\
     local retries=60\n\
     local wait=5\n\
-    while ! nc -z 0.0.0.0 $port && [ $retries -gt 0 ]; do\n\
+    while ! timeout 1 bash -c "cat < /dev/null > /dev/tcp/0.0.0.0/$port" 2>/dev/null && [ $retries -gt 0 ]; do\n\
         log "Waiting for port $port to become available... ($retries retries left)"\n\
         sleep $wait\n\
         retries=$((retries-1))\n\
@@ -161,7 +187,7 @@ wait_for_port() {\n\
 # Function to check RAGFlow connectivity\n\
 check_ragflow() {\n\
     log "Checking RAGFlow connectivity..."\n\
-    if curl -s -f "http://ragflow-server/v1/" > /dev/null; then\n\
+    if curl -s -f --max-time 5 "http://ragflow-server/v1/" > /dev/null; then\n\
         log "RAGFlow server is reachable"\n\
         return 0\n\
     else\n\
@@ -169,6 +195,9 @@ check_ragflow() {\n\
         return 1\n\
     fi\n\
 }\n\
+\n\
+# Setup nginx directories\n\
+setup_nginx_dirs\n\
 \n\
 # Wait for RAGFlow to be available\n\
 log "Waiting for RAGFlow server..."\n\
@@ -184,7 +213,7 @@ if [ $retries -eq 0 ]; then\n\
     exit 1\n\
 fi\n\
 \n\
-# Start nginx first\n\
+# Start nginx\n\
 log "Starting nginx..."\n\
 nginx -t && nginx\n\
 if [ $? -ne 0 ]; then\n\
@@ -195,35 +224,28 @@ log "nginx started successfully"\n\
 \n\
 # Start the Rust backend\n\
 log "Starting webxr-graph..."\n\
-/app/webxr-graph > /tmp/webxr.log 2>&1 &\n\
-APP_PID=$!\n\
-\n\
-# Wait for the backend to be ready with increased timeout\n\
-log "Waiting for backend to be ready..."\n\
-if ! wait_for_port $PORT; then\n\
-    log "Backend failed to start. Logs:"\n\
-    cat /tmp/webxr.log\n\
-    nginx -s stop\n\
-    if [ -n "$APP_PID" ] && ps -p $APP_PID > /dev/null; then\n\
-        kill $APP_PID\n\
-    fi\n\
-    exit 1\n\
-fi\n\
-\n\
-# Monitor services\n\
-while true; do\n\
-    if ! ps -p $APP_PID > /dev/null; then\n\
-        log "Backend process died. Logs:"\n\
-        cat /tmp/webxr.log\n\
-        nginx -s stop\n\
-        exit 1\n\
-    fi\n\
-    sleep 5\n\
-done' > /app/start.sh && \
-    chmod +x /app/start.sh
+exec /app/webxr-graph\n\
+' > /app/start.sh && \
+    chown appuser:appuser /app/start.sh && \
+    chmod 755 /app/start.sh
+
+# Add security labels
+LABEL org.opencontainers.image.source="https://github.com/yourusername/logseq-xr" \
+      org.opencontainers.image.description="LogseqXR WebXR Graph Visualization" \
+      org.opencontainers.image.licenses="MIT" \
+      security.capabilities="cap_net_bind_service" \
+      security.privileged="false" \
+      security.allow-privilege-escalation="false"
+
+# Switch to non-root user
+USER appuser
 
 # Expose port
 EXPOSE 4000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:4000/ || exit 1
 
 # Start application
 ENTRYPOINT ["/app/start.sh"]

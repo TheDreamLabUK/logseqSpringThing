@@ -15,16 +15,42 @@ embedding the topic in Logseq double square brackets once in the returned text.
 [network]
 domain = "visionflow.info"
 port = 3000
+bind_address = "127.0.0.1"  # Bind to localhost for security
+enable_tls = true
+min_tls_version = "TLS1.3"
+enable_http2 = true
+max_request_size = 10485760  # 10MB in bytes
+enable_rate_limiting = true
+rate_limit_requests = 100
+rate_limit_window = 60
+
+[security]
+enable_cors = false
+allowed_origins = []
+enable_csrf = true
+csrf_token_timeout = 3600
+session_timeout = 3600
+cookie_secure = true
+cookie_httponly = true
+cookie_samesite = "Strict"
+enable_security_headers = true
+enable_request_validation = true
+enable_audit_logging = true
+audit_log_path = "/app/logs/audit.log"
 
 [github]
 github_access_token = "default_github_token"
 github_owner = "default_owner"
 github_repo = "default_repo"
 github_directory = "default_directory"
+github_api_version = "2022-11-28"
+github_rate_limit_enabled = true
 
 [ragflow]
 ragflow_api_key = "default_ragflow_key"
 ragflow_api_base_url = "http://192.168.0.51/v1/"
+ragflow_timeout = 30
+ragflow_max_retries = 3
 
 [perplexity]
 perplexity_api_key = "default_perplexity_key"
@@ -35,16 +61,29 @@ perplexity_temperature = 0.5
 perplexity_top_p = 0.9
 perplexity_presence_penalty = 0.0
 perplexity_frequency_penalty = 1.0
+perplexity_timeout = 30
+perplexity_rate_limit = 100
 
 [openai]
 openai_api_key = "default_openai_key"
 openai_base_url = "wss://api.openai.com/v1/realtime"
+openai_timeout = 30
+openai_rate_limit = 100
+
 
 [default]
 max_concurrent_requests = 5
 max_retries = 3
 retry_delay = 5
 api_client_timeout = 30
+max_payload_size = 5242880  # 5MB in bytes
+enable_request_logging = false
+
+[monitoring]
+enable_metrics = true
+metrics_port = 9090
+log_level = "info"
+log_format = "json"
 
 [visualization]
 node_color = "0x1A0B31"
