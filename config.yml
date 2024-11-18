@@ -2,7 +2,7 @@ tunnel: 9a59e21c-7e0d-4cac-8502-59bc66436e0f
 
 ingress:
   - hostname: visionflow.info
-    service: http://192.168.0.51:80
+    service: http://logseq-xr-webxr-graph-1:4000
   - service: http_status:404
 
 # Connection settings
