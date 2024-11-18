@@ -4,7 +4,7 @@ services:
   webxr-graph:
     build: .
     image: logseq-xr-image:latest
-    container_name: logseq-xr-webxr-graph-1
+    container_name: logseq-xr-webxr
     read_only: false
     networks:
       - logseq_net
@@ -55,8 +55,12 @@ services:
     container_name: cloudflared-tunnel
     volumes:
       - ./config.yml:/etc/cloudflared/config.yml:ro
-    command: tunnel --config /etc/cloudflared/config.yml run
+    command: tunnel --loglevel debug --config /etc/cloudflared/config.yml run
     restart: unless-stopped
+    environment:
+      - TUNNEL_ORIGIN_CERT=/etc/cloudflared/cert.pem
+      - TUNNEL_METRICS=0.0.0.0:2000
+      - TUNNEL_DNS_UPSTREAM=https://1.1.1.1/dns-query,https://1.0.0.1/dns-query
     env_file:
       - .env
     networks:
@@ -64,6 +68,12 @@ services:
     depends_on:
       webxr-graph:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "info"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 networks:
   logseq_net:
