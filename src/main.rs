@@ -112,7 +112,13 @@ async fn randomize_nodes_periodically(app_state: web::Data<AppState>) {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    dotenv::dotenv().ok();
+    // Load environment variables from .env file if it exists
+    if let Ok(vars) = envy::from_env::<HashMap<String, String>>() {
+        for (key, value) in vars {
+            env::set_var(key, value);
+        }
+    }
+
     std::env::set_var("RUST_LOG", "debug");
     env_logger::init();
     log::info!("Starting WebXR Graph Server");

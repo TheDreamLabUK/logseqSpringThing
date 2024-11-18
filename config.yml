@@ -1,15 +1,41 @@
 tunnel: ${TUNNEL_ID}
 
 ingress:
-  - hostname: www.visionflow.info
+  - hostname: www.${DOMAIN}
     service: http://logseq-xr-webxr:4000
     originRequest:
-      noTLSVerify: true
-      connectTimeout: 30s
+      # Enable TLS verification for security
+      noTLSVerify: false
+      # Connection timeouts
+      connectTimeout: 10s
       tcpKeepAlive: 30s
-      keepAliveTimeout: 2m
-      keepAliveConnections: 100
-      httpHostHeader: www.visionflow.info
+      keepAliveTimeout: 1m
+      keepAliveConnections: 50
+      httpHostHeader: www.${DOMAIN}
+      # Security headers
+      http2Origin: true
+      # Request headers
+      originServerName: www.${DOMAIN}
+      # TLS settings
+      tlsTimeout: 10s
+      # Proxy settings
+      proxyType: http
+      # Connection pooling
+      disableChunkedEncoding: false
+      # HTTP version settings
+      http2: true
+      # Security headers to add
+      headers:
+        - name: X-Content-Type-Options
+          value: nosniff
+        - name: X-Frame-Options
+          value: SAMEORIGIN
+        - name: X-XSS-Protection
+          value: "1; mode=block"
+        - name: Strict-Transport-Security
+          value: "max-age=31536000; includeSubDomains"
+        - name: Referrer-Policy
+          value: strict-origin-when-cross-origin
   - service: http_status:404
 
 # Connection settings
@@ -17,7 +43,60 @@ protocol: quic
 no-autoupdate: true
 
 # Logging settings
-loglevel: debug
+loglevel: info
 
-# Metrics settings
-metrics: 0.0.0.0:2000
+# Metrics settings - Only accessible from localhost
+metrics: 127.0.0.1:2000
+
+# Retries configuration
+retries: 5
+retry-range-start: 1s
+retry-range-end: 5s
+
+# Access policies
+access:
+  # Only allow specific request methods
+  request:
+    methods:
+      - GET
+      - POST
+      - OPTIONS
+  # Block common attack patterns
+  block:
+    # Block common exploit paths
+    paths:
+      - "(?i)/wp-.*"
+      - "(?i)/admin.*"
+      - "(?i)/.git.*"
+      - "(?i)/.env.*"
+      - "(?i)/vendor.*"
+    # Block potentially harmful file extensions
+    extensions:
+      - .php
+      - .asp
+      - .aspx
+      - .jsp
+      - .cgi
+      - .exe
+      - .bat
+      - .cmd
+      - .sh
+      - .pl
+
+# Rate limiting
+rate_limits:
+  # Global rate limit
+  global:
+    requests_per_second: 100
+  # Per-IP rate limit
+  per_ip:
+    requests_per_minute: 60
+
+# Connection optimization
+optimization:
+  # Compression settings
+  compression: true
+  # WebSocket settings
+  websocket:
+    enabled: true
+    timeout: 30s
