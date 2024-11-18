@@ -1,4 +1,4 @@
-tunnel: 9a59e21c-7e0d-4cac-8502-59bc66436e0f
+tunnel: ${TUNNEL_ID}
 
 ingress:
   - hostname: www.visionflow.info
