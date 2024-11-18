@@ -25,5 +25,5 @@ tests/
 # Environment variables
 .env
 
-# Documentation
-README.md
+# Cloudflared
+config.yml

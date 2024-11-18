@@ -2,24 +2,12 @@ tunnel: 9a59e21c-7e0d-4cac-8502-59bc66436e0f
 
 ingress:
   - hostname: visionflow.info
-    service: http://webxr-graph:4000
-    originRequest:
-      noTLSVerify: true
-      connectTimeout: 30s
-      keepAliveConnections: 100
-      keepAliveTimeout: 60s
-      tcpKeepAlive: 60s
-      httpHostHeader: visionflow.info
-
+    service: http://192.168.0.51:80
   - service: http_status:404
-
-# Logging
 
 # Connection settings
 protocol: quic
-noAutoupdateFrequency: true
+no-autoupdate: true
 
 # Retry settings
-retryCount: 10
-maxRetries: 10
-backoff: true
+retries: 10

@@ -44,25 +44,6 @@ services:
         max-size: "1g"
         max-file: "5"
 
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    container_name: logseq-xr-tunnel-1
-    networks:
-      - logseq_net
-    command: tunnel --no-autoupdate run --loglevel debug
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
-    volumes:
-      - ./config.yml:/etc/cloudflared/config.yml:ro
-    depends_on:
-      - webxr-graph
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1g"
-        max-file: "5"
-
 networks:
   logseq_net:
     driver: bridge
