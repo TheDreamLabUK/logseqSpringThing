@@ -111,6 +111,10 @@ check_container_health() {
         # Check container logs for successful startup
         if docker logs "logseq-xr-${service}-1" 2>&1 | grep -q "Port 3000 is available"; then
             echo -e "${GREEN}Container startup completed${NC}"
+<<<<<<< HEAD
+=======
+            # Add delay to allow nginx to fully initialize
+>>>>>>> 3a6e4f41e53ef47a9adff08820fb3a9846be94b6
             sleep 5
             return 0
         fi
@@ -201,9 +205,12 @@ check_cloudflared_connectivity() {
     return 1
 }
 
+<<<<<<< HEAD
 # Check Docker permissions first
 check_docker_permissions
 
+=======
+>>>>>>> 3a6e4f41e53ef47a9adff08820fb3a9846be94b6
 # Check environment
 if [ ! -f .env ]; then
     echo -e "${RED}Error: .env file not found${NC}"
@@ -262,6 +269,10 @@ fi
 echo -e "\n${YELLOW}Restarting Cloudflared tunnel...${NC}"
 if docker ps | grep -q cloudflared-tunnel; then
     docker restart cloudflared-tunnel
+<<<<<<< HEAD
+=======
+    # Add delay to allow cloudflared to fully initialize
+>>>>>>> 3a6e4f41e53ef47a9adff08820fb3a9846be94b6
     sleep 5
 else
     echo -e "${RED}Cloudflared tunnel container is not running. Starting it now.${NC}"

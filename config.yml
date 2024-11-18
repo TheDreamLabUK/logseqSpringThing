@@ -1,15 +1,26 @@
 tunnel: ${TUNNEL_ID}
 
 ingress:
+<<<<<<< HEAD
   - hostname: www.${DOMAIN}
     service: http://logseq-xr-webxr:4000
     originRequest:
       noTLSVerify: false
+=======
+  - hostname: www.visionflow.info
+    service: http://logseq-xr-webxr:4000
+    originRequest:
+      noTLSVerify: true
+>>>>>>> 3a6e4f41e53ef47a9adff08820fb3a9846be94b6
       connectTimeout: 30s
       tcpKeepAlive: 30s
       keepAliveTimeout: 2m
       keepAliveConnections: 100
+<<<<<<< HEAD
       httpHostHeader: www.${DOMAIN}
+=======
+      httpHostHeader: www.visionflow.info
+>>>>>>> 3a6e4f41e53ef47a9adff08820fb3a9846be94b6
   - service: http_status:404
 
 # Connection settings
@@ -17,7 +28,14 @@ protocol: quic
 no-autoupdate: true
 
 # Logging settings
+<<<<<<< HEAD
 loglevel: info
 
 # Metrics settings
 metrics: 127.0.0.1:2000
+=======
+loglevel: debug
+
+# Metrics settings
+metrics: 0.0.0.0:2000
+>>>>>>> 3a6e4f41e53ef47a9adff08820fb3a9846be94b6

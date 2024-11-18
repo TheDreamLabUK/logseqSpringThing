@@ -59,7 +59,11 @@ services:
     container_name: cloudflared-tunnel
     volumes:
       - ./config.yml:/etc/cloudflared/config.yml:ro
+<<<<<<< HEAD
     command: tunnel --loglevel info --config /etc/cloudflared/config.yml run
+=======
+    command: tunnel --loglevel debug --config /etc/cloudflared/config.yml run
+>>>>>>> 3a6e4f41e53ef47a9adff08820fb3a9846be94b6
     restart: unless-stopped
     environment:
       - TUNNEL_ORIGIN_CERT=/etc/cloudflared/cert.pem
@@ -68,9 +72,13 @@ services:
     env_file:
       - .env
     networks:
+<<<<<<< HEAD
       logseq_net:
         aliases:
           - cloudflared  # Explicit alias for cloudflared
+=======
+      - logseq_net
+>>>>>>> 3a6e4f41e53ef47a9adff08820fb3a9846be94b6
     depends_on:
       webxr-graph:
         condition: service_healthy
