@@ -7,8 +7,12 @@ services:
     container_name: logseq-xr-webxr
     read_only: false
     networks:
-      - logseq_net
-      - docker_ragflow  # This is the actual network name created by RAGFlow's compose
+      logseq_net:
+        aliases:
+          - logseq-xr-webxr  # Explicit alias to match the service name in config.yml
+      docker_ragflow:
+        aliases:
+          - webxr-client
     deploy:
       resources:
         limits:
@@ -64,7 +68,9 @@ services:
     env_file:
       - .env
     networks:
-      - logseq_net
+      logseq_net:
+        aliases:
+          - cloudflared  # Explicit alias for cloudflared
     depends_on:
       webxr-graph:
         condition: service_healthy

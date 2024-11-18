@@ -117,6 +117,28 @@ RUN groupadd -r nginx -g 101 && \
     groupadd -r appuser -g 1000 && \
     useradd -r -g appuser -G nginx -u 1000 -m -d /home/appuser appuser
 
+# Set up nginx directories and permissions
+RUN mkdir -p /var/lib/nginx/client_temp \
+             /var/lib/nginx/proxy_temp \
+             /var/lib/nginx/fastcgi_temp \
+             /var/lib/nginx/uwsgi_temp \
+             /var/lib/nginx/scgi_temp \
+             /var/log/nginx \
+             /var/run/nginx \
+             /var/cache/nginx && \
+    chown -R appuser:nginx /var/lib/nginx \
+                          /var/log/nginx \
+                          /var/run/nginx \
+                          /var/cache/nginx && \
+    chmod -R 770 /var/lib/nginx \
+                 /var/log/nginx \
+                 /var/run/nginx \
+                 /var/cache/nginx && \
+    touch /var/log/nginx/error.log \
+          /var/log/nginx/access.log && \
+    chown appuser:nginx /var/log/nginx/*.log && \
+    chmod 660 /var/log/nginx/*.log
+
 # Set up directory structure
 WORKDIR /app
 
@@ -149,23 +171,6 @@ log() {\n\
     echo "[$(date "+%Y-%m-%d %H:%M:%S")] $1"\n\
 }\n\
 \n\
-# Function to setup nginx directories\n\
-setup_nginx_dirs() {\n\
-    log "Setting up nginx directories..."\n\
-    # Create required directories\n\
-    mkdir -p /var/lib/nginx/client_temp \\\n\
-             /var/lib/nginx/proxy_temp \\\n\
-             /var/lib/nginx/fastcgi_temp \\\n\
-             /var/lib/nginx/uwsgi_temp \\\n\
-             /var/lib/nginx/scgi_temp\n\
-\n\
-    # Create and set permissions for log files\n\
-    touch /var/log/nginx/error.log \\\n\
-          /var/log/nginx/access.log\n\
-\n\
-    log "Nginx directories setup complete"\n\
-}\n\
-\n\
 # Function to check if a port is available\n\
 wait_for_port() {\n\
     local port=$1\n\
@@ -195,9 +200,6 @@ check_ragflow() {\n\
         return 1\n\
     fi\n\
 }\n\
-\n\
-# Setup nginx directories\n\
-setup_nginx_dirs\n\
 \n\
 # Wait for RAGFlow to be available\n\
 log "Waiting for RAGFlow server..."\n\
