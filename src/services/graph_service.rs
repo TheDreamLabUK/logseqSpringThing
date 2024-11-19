@@ -32,13 +32,35 @@ impl GraphService {
     pub async fn build_graph(state: &web::Data<AppState>) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
         let file_cache = state.file_cache.read().await;
         let mut graph = GraphData::new();
-        let edge_map = HashMap::new();
+        let mut edge_map = HashMap::new();
 
-        // Build nodes from file cache
+        // Build nodes from file cache and collect valid node IDs
+        let mut valid_nodes = Vec::new();
         for (file_name, _content) in file_cache.iter() {
             let source_id = file_name.trim_end_matches(".md").to_string();
             if !graph.nodes.iter().any(|n| n.id == source_id) {
-                graph.nodes.push(Node::new(source_id));
+                graph.nodes.push(Node::new(source_id.clone()));
+                valid_nodes.push(source_id);
+            }
+        }
+
+        // Create edges based on metadata topic counts
+        for node in &graph.nodes {
+            if let Some(metadata) = state.graph_data.read().await.metadata.get(&format!("{}.md", node.id)) {
+                for (target_id, count) in &metadata.topic_counts {
+                    // Ensure both source and target nodes exist
+                    if valid_nodes.contains(&node.id) && valid_nodes.contains(target_id) {
+                        let edge_key = if node.id < target_id.to_string() {
+                            (node.id.clone(), target_id.clone())
+                        } else {
+                            (target_id.clone(), node.id.clone())
+                        };
+
+                        edge_map.entry(edge_key)
+                            .and_modify(|weight| *weight += *count as f32)
+                            .or_insert(*count as f32);
+                    }
+                }
             }
         }
 
