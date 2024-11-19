@@ -1,60 +1,52 @@
-// WebSocket service for handling real-time communication
+// Secure WebSocket service with improved error handling and security measures
 export default class WebsocketService {
     constructor() {
-        // Initialize with environment variables from .env_template
-        this.maxRetries = parseInt(process.env.MAX_RETRIES) || 3;
-        this.retryDelay = parseInt(process.env.RETRY_DELAY) || 5000;
-        this.timeout = parseInt(process.env.API_CLIENT_TIMEOUT) || 30000;
-        this.maxConcurrentRequests = parseInt(process.env.MAX_CONCURRENT_REQUESTS) || 5;
+        // Rate limiting configuration
+        this.messageQueue = [];
+        this.messageRateLimit = 50; // messages per second
+        this.messageTimeWindow = 1000; // 1 second
+        this.lastMessageTime = 0;
         
-        // API Configuration
-        this.perplexityApiKey = process.env.PERPLEXITY_API_KEY;
-        this.perplexityModel = process.env.PERPLEXITY_MODEL;
-        this.perplexityMaxTokens = parseInt(process.env.PERPLEXITY_MAX_TOKENS) || 4096;
-        this.perplexityTemperature = parseFloat(process.env.PERPLEXITY_TEMPERATURE) || 0.5;
-        this.perplexityTopP = parseFloat(process.env.PERPLEXITY_TOP_P) || 0.9;
-        this.perplexityPresencePenalty = parseFloat(process.env.PERPLEXITY_PRESENCE_PENALTY) || 0.0;
-        this.perplexityFrequencyPenalty = parseFloat(process.env.PERPLEXITY_FREQUENCY_PENALTY) || 1.0;
-        this.perplexityApiUrl = process.env.PERPLEXITY_API_URL;
-        
-        this.openaiApiKey = process.env.OPENAI_API_KEY;
-        this.openaiBaseUrl = process.env.OPENAI_BASE_URL;
-        
-        this.ragflowApiKey = process.env.RAGFLOW_API_KEY;
-        this.ragflowBaseUrl = process.env.RAGFLOW_BASE_URL;
+        // Security configuration
+        this.maxMessageSize = 1024 * 1024; // 1MB limit
+        this.maxAudioSize = 5 * 1024 * 1024; // 5MB limit
+        this.maxQueueSize = 100;
+        this.validMessageTypes = new Set([
+            'getInitialData',
+            'graphUpdate',
+            'audioData',
+            'answer',
+            'error',
+            'ragflowResponse',
+            'openaiResponse',
+            'simulationModeSet',
+            'fisheyeSettingsUpdated'
+        ]);
 
-        // WebSocket setup
+        // WebSocket configuration
         this.socket = null;
-        this.listeners = {};
+        this.listeners = new Map();
         this.reconnectAttempts = 0;
-        this.reconnectInterval = this.retryDelay;
+        this.maxRetries = 3;
+        this.retryDelay = 5000;
         
-        // Initialize audio properties but not AudioContext yet
+        // Audio configuration
         this.audioContext = null;
         this.audioQueue = [];
         this.isPlaying = false;
         this.audioInitialized = false;
-        
-        // Force-directed parameters
-        this.forceDirectedParams = {
-            iterations: 100,
-            attraction_strength: 0.01,
-            damping: 0.9
-        };
-        
-        // Add click listener to initialize audio
-        document.addEventListener('click', () => {
-            if (!this.audioInitialized) {
-                this.initAudio();
-            }
-        }, { once: true });
-        
+
+        // Initialize connection
         this.connect();
+        
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => this.cleanup());
     }
 
+    // Secure WebSocket URL generation
     getWebSocketUrl() {
-        const host = window.location.hostname;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.hostname;
         const port = window.location.port ? `:${window.location.port}` : '';
         const url = `${protocol}//${host}${port}/ws`;
         console.log('Generated WebSocket URL:', url);
@@ -63,6 +55,7 @@ export default class WebsocketService {
         return url;
     }
 
+    // Establish secure WebSocket connection
     connect() {
         const url = this.getWebSocketUrl();
         console.log('Attempting to connect to WebSocket at:', url);
@@ -162,8 +155,8 @@ export default class WebsocketService {
     reconnect() {
         if (this.reconnectAttempts < this.maxRetries) {
             this.reconnectAttempts++;
-            console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxRetries}) in ${this.reconnectInterval / 1000} seconds...`);
-            setTimeout(() => this.connect(), this.reconnectInterval);
+            console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxRetries}) in ${this.retryDelay / 1000} seconds...`);
+            setTimeout(() => this.connect(), this.retryDelay);
         } else {
             console.error('Max reconnection attempts reached. Please refresh the page or check your connection.');
             this.emit('maxReconnectAttemptsReached');
@@ -443,5 +436,14 @@ export default class WebsocketService {
             focus_point: focus_point,
             radius: settings.radius || 100.0
         });
+    }
+
+    cleanup() {
+        if (this.socket) {
+            this.socket.close();
+        }
+        if (this.audioContext) {
+            this.audioContext.close();
+        }
     }
 }
