@@ -8,39 +8,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Function to check Docker permissions
-check_docker_permissions() {
-    echo -e "${YELLOW}Checking Docker permissions...${NC}"
-    
-    # Check if user is in docker group
-    if ! groups | grep -q docker; then
-        echo -e "${YELLOW}User is not in the docker group. You have two options:${NC}"
-        echo -e "1. Add your user to the docker group (recommended):"
-        echo -e "   sudo usermod -aG docker $USER"
-        echo -e "   Then log out and log back in for changes to take effect."
-        echo -e "\n2. Set up rootless Docker (more secure but requires additional setup):"
-        echo -e "   a. Install Docker rootless prerequisites:"
-        echo -e "      sudo apt-get install -y uidmap dbus-user-session"
-        echo -e "   b. Configure kernel parameters:"
-        echo -e "      echo 'kernel.unprivileged_userns_clone=1' | sudo tee /etc/sysctl.d/00-local-userns.conf"
-        echo -e "      sudo systemctl restart systemd-sysctl"
-        echo -e "   c. Install Docker rootless:"
-        echo -e "      dockerd-rootless-setuptool.sh install"
-        echo -e "   d. Add to your ~/.bashrc:"
-        echo -e "      export PATH=/usr/bin:\$PATH"
-        echo -e "      export DOCKER_HOST=unix://\$XDG_RUNTIME_DIR/docker.sock"
-        echo -e "\nChoose one option and try again."
-        exit 1
-    fi
-
-    # Test Docker access
-    if ! docker info >/dev/null 2>&1; then
-        echo -e "${RED}Cannot connect to Docker daemon. Check if Docker is running:${NC}"
-        echo -e "sudo systemctl start docker"
-        exit 1
-    fi
-}
-
 # Function to read settings from TOML file
 read_settings() {
     # Extract domain and port from settings.toml
@@ -83,12 +50,12 @@ check_docker() {
 # Function to clean up existing processes
 cleanup_existing_processes() {
     echo -e "${YELLOW}Cleaning up...${NC}"
-    $DOCKER_COMPOSE down --remove-orphans >/dev/null 2>&1 || true
+    $DOCKER_COMPOSE down --remove-orphans >/dev/null 2>&1
 
     if netstat -tuln | grep -q ":$PORT "; then
         local pid=$(lsof -t -i:"$PORT")
         if [ ! -z "$pid" ]; then
-            kill -9 $pid >/dev/null 2>&1 || true
+            kill -9 $pid >/dev/null 2>&1
         fi
     fi
     sleep 2
@@ -111,10 +78,7 @@ check_container_health() {
         # Check container logs for successful startup
         if docker logs "logseq-xr-${service}-1" 2>&1 | grep -q "Port 3000 is available"; then
             echo -e "${GREEN}Container startup completed${NC}"
-<<<<<<< HEAD
-=======
             # Add delay to allow nginx to fully initialize
->>>>>>> 3a6e4f41e53ef47a9adff08820fb3a9846be94b6
             sleep 5
             return 0
         fi
@@ -205,12 +169,6 @@ check_cloudflared_connectivity() {
     return 1
 }
 
-<<<<<<< HEAD
-# Check Docker permissions first
-check_docker_permissions
-
-=======
->>>>>>> 3a6e4f41e53ef47a9adff08820fb3a9846be94b6
 # Check environment
 if [ ! -f .env ]; then
     echo -e "${RED}Error: .env file not found${NC}"
@@ -232,8 +190,8 @@ cleanup_existing_processes
 
 # Clean up old resources
 echo -e "${YELLOW}Cleaning up old resources...${NC}"
-docker volume ls -q | grep "logseqXR" | xargs -r docker volume rm >/dev/null 2>&1 || true
-docker image prune -f >/dev/null 2>&1 || true
+docker volume ls -q | grep "logseqXR" | xargs -r docker volume rm >/dev/null 2>&1
+docker image prune -f >/dev/null 2>&1
 
 # Ensure data directory exists
 mkdir -p data/markdown
@@ -269,10 +227,7 @@ fi
 echo -e "\n${YELLOW}Restarting Cloudflared tunnel...${NC}"
 if docker ps | grep -q cloudflared-tunnel; then
     docker restart cloudflared-tunnel
-<<<<<<< HEAD
-=======
     # Add delay to allow cloudflared to fully initialize
->>>>>>> 3a6e4f41e53ef47a9adff08820fb3a9846be94b6
     sleep 5
 else
     echo -e "${RED}Cloudflared tunnel container is not running. Starting it now.${NC}"
