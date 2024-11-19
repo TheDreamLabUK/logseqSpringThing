@@ -15,7 +15,7 @@ embedding the topic in Logseq double square brackets once in the returned text.
 [network]
 domain = "visionflow.info"
 port = 3000
-bind_address = "127.0.0.1"  # Bind to localhost for security
+bind_address = "0.0.0.0"  # should bind to localhost for security
 enable_tls = true
 min_tls_version = "TLS1.3"
 enable_http2 = true

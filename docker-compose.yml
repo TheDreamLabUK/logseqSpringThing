@@ -62,7 +62,7 @@ services:
     command: tunnel --loglevel info --config /etc/cloudflared/config.yml run
     restart: unless-stopped
     environment:
-      - TUNNEL_ORIGIN_CERT=/etc/cloudflared/cert.pem
+      - TUNNEL_TOKEN=$TUNNEL_TOKEN
       - TUNNEL_METRICS=0.0.0.0:2000
       - TUNNEL_DNS_UPSTREAM=https://1.1.1.1/dns-query,https://1.0.0.1/dns-query
     env_file:
