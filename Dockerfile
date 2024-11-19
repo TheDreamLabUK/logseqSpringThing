@@ -89,7 +89,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     RUST_LOG=info \
     RUST_BACKTRACE=0 \
-    PORT=3000 \
+    PORT=4000 \
     BIND_ADDRESS=0.0.0.0
 
 # Install runtime dependencies
@@ -137,7 +137,11 @@ RUN mkdir -p /var/lib/nginx/client_temp \
     touch /var/log/nginx/error.log \
           /var/log/nginx/access.log && \
     chown appuser:nginx /var/log/nginx/*.log && \
-    chmod 660 /var/log/nginx/*.log
+    chmod 660 /var/log/nginx/*.log && \
+    # Ensure nginx can write its pid file
+    touch /var/run/nginx/nginx.pid && \
+    chown appuser:nginx /var/run/nginx/nginx.pid && \
+    chmod 660 /var/run/nginx/nginx.pid
 
 # Set up directory structure
 WORKDIR /app
