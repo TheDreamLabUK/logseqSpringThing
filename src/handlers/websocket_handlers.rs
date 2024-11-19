@@ -19,15 +19,16 @@ use crate::utils::websocket_messages::{
 };
 use crate::utils::websocket_openai::OpenAIWebSocket;
 
+// Constants for timing and performance
 pub const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(16); // ~60fps for smooth updates
 
-// Message for GPU updates
+// Message type for GPU position updates
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct GpuUpdate;
 
-/// WebSocket session actor.
+/// WebSocket session actor handling client communication
 pub struct WebSocketSession {
     pub state: web::Data<AppState>,
     pub tts_method: String,
@@ -43,6 +44,7 @@ impl Actor for WebSocketSession {
 impl MessageHandler for WebSocketSession {}
 
 /// Helper function to convert hex color to proper format
+/// Handles various input formats (0x, #, or raw hex) and normalizes to #RRGGBB
 pub fn format_color(color: &str) -> String {
     let color = color.trim_matches('"')
         .trim_start_matches("0x")
@@ -51,6 +53,7 @@ pub fn format_color(color: &str) -> String {
 }
 
 /// Helper function to convert GPU nodes to binary position updates
+/// Creates efficient binary format for network transfer (24 bytes per node)
 pub fn positions_to_binary(nodes: &[GPUNode]) -> Vec<u8> {
     let mut binary_data = Vec::with_capacity(nodes.len() * std::mem::size_of::<GPUNodePositionUpdate>());
     for node in nodes {
@@ -69,6 +72,7 @@ pub fn positions_to_binary(nodes: &[GPUNode]) -> Vec<u8> {
     binary_data
 }
 
+// WebSocket session handler trait defining main message handlers
 pub trait WebSocketSessionHandler {
     fn start_gpu_updates(&self, ctx: &mut WebsocketContext<WebSocketSession>);
     fn handle_chat_message(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, message: String, use_openai: bool);
@@ -78,6 +82,7 @@ pub trait WebSocketSessionHandler {
     fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32);
 }
 
+// Handler for GPU position updates
 impl Handler<GpuUpdate> for WebSocketSession {
     type Result = ResponseActFuture<Self, ()>;
 
@@ -97,6 +102,7 @@ impl Handler<GpuUpdate> for WebSocketSession {
                 return;
             }
 
+            // Send binary position updates to all connected clients
             if let Ok(nodes) = gpu.get_node_positions().await {
                 let binary_data = positions_to_binary(&nodes);
 
@@ -113,6 +119,7 @@ impl Handler<GpuUpdate> for WebSocketSession {
     }
 }
 
+// Handler for text messages
 impl Handler<SendText> for WebSocketSession {
     type Result = ();
 
@@ -121,6 +128,7 @@ impl Handler<SendText> for WebSocketSession {
     }
 }
 
+// Handler for binary messages
 impl Handler<SendBinary> for WebSocketSession {
     type Result = ();
 
@@ -129,6 +137,7 @@ impl Handler<SendBinary> for WebSocketSession {
     }
 }
 
+// OpenAI message handlers
 impl Handler<OpenAIMessage> for WebSocketSession {
     type Result = ();
 
@@ -156,7 +165,9 @@ impl Handler<OpenAIConnectionFailed> for WebSocketSession {
     }
 }
 
+// Main WebSocket session handler implementation
 impl WebSocketSessionHandler for WebSocketSession {
+    // Start periodic GPU updates at 60fps
     fn start_gpu_updates(&self, ctx: &mut WebsocketContext<WebSocketSession>) {
         let addr = ctx.address();
         ctx.run_interval(GPU_UPDATE_INTERVAL, move |_, _| {
@@ -164,6 +175,7 @@ impl WebSocketSessionHandler for WebSocketSession {
         });
     }
 
+    // Handle chat messages and TTS responses
     fn handle_chat_message(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, message: String, use_openai: bool) {
         let state = self.state.clone();
         let conversation_id = self.conversation_id.clone();
@@ -253,15 +265,22 @@ impl WebSocketSessionHandler for WebSocketSession {
                 }
             }
 
-            // Only send completion message if the actor is still alive
+            // Send completion as proper JSON
             if let Some(addr) = weak_addr.upgrade() {
-                addr.do_send(SendText("Chat message handled".to_string()));
+                let completion = json!({
+                    "type": "completion",
+                    "message": "Chat message handled"
+                });
+                if let Ok(completion_str) = serde_json::to_string(&completion) {
+                    addr.do_send(SendText(completion_str));
+                }
             }
         };
 
         ctx.spawn(fut.into_actor(self));
     }
 
+    // Handle simulation mode changes
     fn handle_simulation_mode(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, mode: &str) {
         self.simulation_mode = match mode {
             "remote" => {
@@ -294,6 +313,7 @@ impl WebSocketSessionHandler for WebSocketSession {
         <Self as MessageHandler>::send_json_response(self, response, ctx);
     }
 
+    // Handle layout parameter updates and GPU computation
     fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, params: SimulationParams) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
@@ -315,6 +335,7 @@ impl WebSocketSessionHandler for WebSocketSession {
                     return;
                 }
 
+                // Run GPU computation steps
                 for _ in 0..params.iterations {
                     if let Err(e) = gpu.step() {
                         error!("GPU compute step failed: {}", e);
@@ -329,6 +350,7 @@ impl WebSocketSessionHandler for WebSocketSession {
                     }
                 }
 
+                // Send updated positions
                 match gpu.get_node_positions().await {
                     Ok(nodes) => {
                         let binary_data = positions_to_binary(&nodes);
@@ -356,15 +378,22 @@ impl WebSocketSessionHandler for WebSocketSession {
                 }
             }
 
-            // Only send completion message if the actor is still alive
+            // Send completion as proper JSON
             if let Some(addr) = weak_addr.upgrade() {
-                addr.do_send(SendText("Layout update complete".to_string()));
+                let completion = json!({
+                    "type": "completion",
+                    "message": "Layout update complete"
+                });
+                if let Ok(completion_str) = serde_json::to_string(&completion) {
+                    addr.do_send(SendText(completion_str));
+                }
             }
         };
 
         ctx.spawn(fut.into_actor(self));
     }
 
+    // Handle initial data request - sends full graph data and settings
     fn handle_initial_data(&mut self, ctx: &mut WebsocketContext<WebSocketSession>) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
@@ -374,6 +403,7 @@ impl WebSocketSessionHandler for WebSocketSession {
             let graph_data = state.graph_data.read().await;
             let settings = state.settings.read().await;
             
+            // Send full graph data and settings
             let response = json!({
                 "type": "getInitialData",
                 "graph_data": &*graph_data,
@@ -420,15 +450,22 @@ impl WebSocketSessionHandler for WebSocketSession {
                 ctx_addr.do_send(SendText(response_str));
             }
 
-            // Only send completion message if the actor is still alive
+            // Send completion as proper JSON
             if let Some(addr) = weak_addr.upgrade() {
-                addr.do_send(SendText("Initial data sent".to_string()));
+                let completion = json!({
+                    "type": "completion",
+                    "message": "Initial data sent"
+                });
+                if let Ok(completion_str) = serde_json::to_string(&completion) {
+                    addr.do_send(SendText(completion_str));
+                }
             }
         };
 
         ctx.spawn(fut.into_actor(self));
     }
 
+    // Handle fisheye distortion settings updates
     fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
@@ -439,6 +476,7 @@ impl WebSocketSessionHandler for WebSocketSession {
                 let mut gpu = gpu_compute.write().await;
                 gpu.update_fisheye_params(enabled, strength, focus_point, radius);
                 
+                // Send updated fisheye settings
                 let response = json!({
                     "type": "fisheye_settings_updated",
                     "fisheye_enabled": enabled,
@@ -462,9 +500,15 @@ impl WebSocketSessionHandler for WebSocketSession {
                 }
             }
 
-            // Only send completion message if the actor is still alive
+            // Send completion as proper JSON
             if let Some(addr) = weak_addr.upgrade() {
-                addr.do_send(SendText("Fisheye settings updated".to_string()));
+                let completion = json!({
+                    "type": "completion",
+                    "message": "Fisheye settings updated"
+                });
+                if let Ok(completion_str) = serde_json::to_string(&completion) {
+                    addr.do_send(SendText(completion_str));
+                }
             }
         };
 
