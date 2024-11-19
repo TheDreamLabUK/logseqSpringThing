@@ -28,9 +28,12 @@ export default class WebsocketService {
         this.listeners = {};
         this.reconnectAttempts = 0;
         this.reconnectInterval = this.retryDelay;
-        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Initialize audio properties but not AudioContext yet
+        this.audioContext = null;
         this.audioQueue = [];
         this.isPlaying = false;
+        this.audioInitialized = false;
         
         // Force-directed parameters
         this.forceDirectedParams = {
@@ -39,13 +42,21 @@ export default class WebsocketService {
             damping: 0.9
         };
         
+        // Add click listener to initialize audio
+        document.addEventListener('click', () => {
+            if (!this.audioInitialized) {
+                this.initAudio();
+            }
+        }, { once: true });
+        
         this.connect();
     }
 
     getWebSocketUrl() {
         const host = window.location.hostname;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const url = `${protocol}//${host}/ws`;
+        const port = window.location.port ? `:${window.location.port}` : '';
+        const url = `${protocol}//${host}${port}/ws`;
         console.log('Generated WebSocket URL:', url);
         console.log('Current page protocol:', window.location.protocol);
         console.log('Current page hostname:', host);
@@ -322,7 +333,7 @@ export default class WebsocketService {
 
     async handleAudioData(audioBlob) {
         if (!this.audioContext) {
-            console.warn('AudioContext not initialized. Call initAudio() first.');
+            console.warn('AudioContext not initialized. Waiting for user interaction...');
             return;
         }
 
@@ -387,17 +398,23 @@ export default class WebsocketService {
     }
 
     initAudio() {
-        if (!this.audioContext) {
+        if (this.audioInitialized) {
+            console.log('Audio already initialized');
+            return;
+        }
+
+        try {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.audioInitialized = true;
             console.log('AudioContext initialized');
-        } else if (this.audioContext.state === 'suspended') {
-            this.audioContext.resume().then(() => {
-                console.log('AudioContext resumed');
-            }).catch((error) => {
-                console.error('Error resuming AudioContext:', error);
-            });
-        } else {
-            console.log('AudioContext already initialized');
+
+            // Process any queued audio data
+            if (this.audioQueue.length > 0 && !this.isPlaying) {
+                this.playNextAudio();
+            }
+        } catch (error) {
+            console.error('Failed to initialize AudioContext:', error);
+            this.emit('error', { type: 'audio_init_error', message: error.message });
         }
     }
 
