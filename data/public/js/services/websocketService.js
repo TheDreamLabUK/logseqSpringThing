@@ -20,7 +20,8 @@ export default class WebsocketService {
             'ragflowResponse',
             'openaiResponse',
             'simulationModeSet',
-            'fisheyeSettingsUpdated'
+            'fisheye_settings_updated',  // Use underscore format consistently
+            'completion'                 // Add completion message type
         ]);
 
         // WebSocket configuration
@@ -215,6 +216,12 @@ export default class WebsocketService {
     handleServerMessage(data) {
         console.log('Handling server message:', data);
         
+        // Validate message type
+        if (!this.validMessageTypes.has(data.type)) {
+            console.warn('Received message with invalid type:', data.type);
+            return;
+        }
+        
         // First emit the raw message for any listeners that need it
         this.emit('message', data);
         
@@ -284,17 +291,26 @@ export default class WebsocketService {
                 this.emit('simulationModeSet', data.mode);
                 break;
 
-            case 'fisheyeSettingsUpdated':
+            case 'fisheye_settings_updated':
                 console.log('Fisheye settings updated:', data);
                 const settings = {
-                    enabled: data.enabled,
-                    strength: data.strength,
-                    focusPoint: data.focus_point,
-                    radius: data.radius
+                    enabled: data.fisheye_enabled,
+                    strength: data.fisheye_strength,
+                    focusPoint: [
+                        data.fisheye_focus_x,
+                        data.fisheye_focus_y,
+                        data.fisheye_focus_z
+                    ],
+                    radius: data.fisheye_radius
                 };
                 window.dispatchEvent(new CustomEvent('fisheyeSettingsUpdated', {
                     detail: settings
                 }));
+                break;
+
+            case 'completion':
+                console.log('Received completion message:', data.message);
+                this.emit('completion', data.message);
                 break;
                 
             default:

@@ -196,9 +196,14 @@ export class WebXRVisualization {
             return;
         }
 
-        this.layoutManager.applyForceDirectedLayout(graphData);
+        // Update visual elements without applying force-directed layout
         this.nodeManager.updateNodes(graphData.nodes);
         this.nodeManager.updateEdges(graphData.edges);
+        
+        // Initialize layout manager with current positions if needed
+        if (!this.layoutManager.isInitialized) {
+            this.layoutManager.initializePositions(graphData.nodes);
+        }
     }
 
     updateVisualFeatures(control, value) {
@@ -214,8 +219,8 @@ export class WebXRVisualization {
         } else if (control.startsWith('bloom') || control.startsWith('hologram')) {
             this.effectsManager.updateFeature(control, value);
         } else if (control.startsWith('forceDirected')) {
-            this.layoutManager.updateFeature(control, value);
-            this.updateVisualization();
+            // Forward force-directed parameters to the server via graphDataManager
+            this.graphDataManager.updateForceDirectedParams(control.replace('forceDirected', ''), value);
         }
 
         // Handle lighting and other scene-level features
