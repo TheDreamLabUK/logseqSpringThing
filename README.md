@@ -372,4 +372,3 @@ docker compose ps
 docker stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}"
 ```
 
-[Rest of the README remains unchanged...]
