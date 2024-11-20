@@ -4,7 +4,7 @@ use log::{info, error, debug};
 use std::collections::HashMap;
 use crate::AppState;
 use crate::services::file_service::FileService;
-use crate::services::graph_service::{GraphService, FileMetadata};
+use crate::services::graph_service::GraphService;
 
 pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse {
     info!("Initiating optimized file fetch and processing");
@@ -114,7 +114,7 @@ pub async fn get_file_content(state: web::Data<AppState>, file_name: web::Path<S
 pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
     info!("Manually triggering graph refresh");
 
-    // First load metadata from file
+    // Load metadata from file
     let metadata_map = match FileService::load_or_create_metadata() {
         Ok(map) => map,
         Err(e) => {
@@ -126,13 +126,8 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
         }
     };
 
-    // Update graph metadata before building
-    {
-        let mut graph = state.graph_data.write().await;
-        graph.metadata = metadata_map;
-    }
-
-    match GraphService::build_graph(&state).await {
+    // Build graph directly from metadata
+    match GraphService::build_graph_from_metadata(&metadata_map).await {
         Ok(graph_data) => {
             let mut graph = state.graph_data.write().await;
             *graph = graph_data.clone();
@@ -165,21 +160,9 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
 }
 
 pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, ActixError> {
-    // Load existing metadata from file
+    // Load metadata from file
     let metadata_map = match FileService::load_or_create_metadata() {
-        Ok(map) => {
-            // Convert Metadata to FileMetadata
-            map.into_iter()
-                .map(|(key, metadata)| {
-                    (key, FileMetadata {
-                        topic_counts: metadata.topic_counts
-                            .into_iter()
-                            .map(|(k, v)| (k, v as u32))
-                            .collect(),
-                    })
-                })
-                .collect()
-        },
+        Ok(map) => map,
         Err(e) => {
             error!("Failed to load metadata: {}", e);
             return Ok(HttpResponse::InternalServerError().json(json!({
@@ -188,7 +171,8 @@ pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, Ac
             })));
         }
     };
-    
+
+    // Build graph directly from metadata
     match GraphService::build_graph_from_metadata(&metadata_map).await {
         Ok(graph) => {
             // Update graph data

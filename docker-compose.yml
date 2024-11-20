@@ -43,11 +43,11 @@ services:
           size: 4G
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      test: ["CMD", "sh", "-c", "netstat -tuln | grep -q ':4000'"]
+      interval: 5s
+      timeout: 3s
+      retries: 2
+      start_period: 5s
     logging:
       driver: "json-file"
       options:

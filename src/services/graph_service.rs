@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::io::Error;
@@ -15,10 +15,6 @@ use crate::models::simulation_params::SimulationParams;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::AppState;
 
-pub struct FileMetadata {
-    pub topic_counts: HashMap<String, u32>,
-}
-
 pub struct GraphService {
     pub graph_data: Arc<RwLock<GraphData>>,
 }
@@ -31,35 +27,35 @@ impl GraphService {
     }
 
     pub async fn build_graph(state: &web::Data<AppState>) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
-        let file_cache = state.file_cache.read().await;
         let current_graph = state.graph_data.read().await;
         let mut graph = GraphData::new();
+
+        // Copy metadata from current graph
+        graph.metadata = current_graph.metadata.clone();
+
+        debug!("Building graph from {} metadata entries", graph.metadata.len());
+
         let mut edge_map = HashMap::new();
 
-        debug!("Building graph from {} files with {} metadata entries", 
-               file_cache.len(), current_graph.metadata.len());
-
-        // First pass: Build all nodes from file cache
-        let mut valid_nodes = Vec::new();
-        for file_name in file_cache.keys() {
+        // Create nodes from metadata entries
+        let mut valid_nodes = HashSet::new();
+        for file_name in graph.metadata.keys() {
             let node_id = file_name.trim_end_matches(".md").to_string();
-            if !graph.nodes.iter().any(|n| n.id == node_id) {
-                debug!("Creating node for file: {}", node_id);
-                graph.nodes.push(Node::new(node_id.clone()));
-                valid_nodes.push(node_id);
-            }
+            valid_nodes.insert(node_id);
         }
 
-        debug!("Created {} nodes", valid_nodes.len());
+        // Create nodes for all valid node IDs
+        for node_id in &valid_nodes {
+            debug!("Creating node for file: {}", node_id);
+            graph.nodes.push(Node::new(node_id.clone()));
+        }
 
-        // Second pass: Create edges from metadata topic counts
-        for (source_file, metadata) in current_graph.metadata.iter() {
+        debug!("Created {} nodes", graph.nodes.len());
+
+        // Create edges from metadata topic counts
+        for (source_file, metadata) in &graph.metadata {
             let source_id = source_file.trim_end_matches(".md").to_string();
-            if !valid_nodes.contains(&source_id) {
-                debug!("Skipping edges for non-existent source node: {}", source_id);
-                continue;
-            }
-
+            
             debug!("Processing outbound links for {} with {} topic counts", 
                   source_id, metadata.topic_counts.len());
             
@@ -82,8 +78,6 @@ impl GraphService {
                     edge_map.entry(edge_key)
                         .and_modify(|w| *w += *count as f32)
                         .or_insert(*count as f32);
-                } else {
-                    debug!("Skipping edge to non-existent target node: {} -> {}", source_id, target_id);
                 }
             }
         }
@@ -96,54 +90,11 @@ impl GraphService {
             })
             .collect();
 
-        // Copy over metadata
-        graph.metadata = current_graph.metadata.clone();
-
         // Initialize random positions for all nodes
         Self::initialize_random_positions(&mut graph);
 
         info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
         Ok(graph)
-    }
-
-    pub async fn load_graph(&self, path: &Path) -> Result<(), Error> {
-        info!("Loading graph from {}", path.display());
-        let mut nodes = Vec::new();
-        let edge_map = HashMap::new();
-
-        // Read directory and create nodes
-        if let Ok(entries) = fs::read_dir(path) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    let file_name = path.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("unknown")
-                        .to_string();
-
-                    nodes.push(Node::new(file_name));
-                }
-            }
-        }
-
-        // Initialize random positions for the nodes
-        let mut graph = GraphData {
-            nodes,
-            edges: edge_map.into_iter().map(|((source, target), weight)| {
-                Edge::new(source, target, weight)
-            }).collect(),
-            metadata: HashMap::new(),
-        };
-
-        Self::initialize_random_positions(&mut graph);
-        
-        // Update graph data
-        let mut graph_data = self.graph_data.write().await;
-        *graph_data = graph;
-
-        info!("Graph loaded with {} nodes and {} edges", 
-            graph_data.nodes.len(), graph_data.edges.len());
-        Ok(())
     }
 
     fn initialize_random_positions(graph: &mut GraphData) {
@@ -293,33 +244,34 @@ impl GraphService {
     }
 
     pub async fn build_graph_from_metadata(
-        metadata: &HashMap<String, FileMetadata>
+        metadata: &HashMap<String, Metadata>
     ) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
         let mut graph = GraphData::new();
         let mut edge_map = HashMap::new();
 
-        // First pass: Create nodes from all files mentioned in metadata
-        let mut valid_nodes = Vec::new();
-        for (file_name, _) in metadata {
+        // First pass: Create nodes from files in metadata
+        let mut valid_nodes = HashSet::new();
+        for file_name in metadata.keys() {
             let node_id = file_name.trim_end_matches(".md").to_string();
-            if !graph.nodes.iter().any(|n| n.id == node_id) {
-                debug!("Creating node for file: {}", node_id);
-                graph.nodes.push(Node::new(node_id.clone()));
-                valid_nodes.push(node_id);
-            }
+            valid_nodes.insert(node_id);
+        }
+
+        // Create nodes for all valid node IDs
+        for node_id in &valid_nodes {
+            debug!("Creating node for file: {}", node_id);
+            graph.nodes.push(Node::new(node_id.clone()));
         }
 
         debug!("Created {} nodes", valid_nodes.len());
 
+        // Store metadata in graph
+        graph.metadata = metadata.clone();
+
         // Second pass: Create edges from topic counts
-        for (source_file, file_metadata) in metadata {
+        for (source_file, metadata) in metadata {
             let source_id = source_file.trim_end_matches(".md").to_string();
-            if !valid_nodes.contains(&source_id) {
-                debug!("Skipping edges for non-existent source node: {}", source_id);
-                continue;
-            }
             
-            for (target_file, count) in &file_metadata.topic_counts {
+            for (target_file, count) in &metadata.topic_counts {
                 let target_id = target_file.trim_end_matches(".md").to_string();
                 
                 // Only create edge if both nodes exist and they're different
@@ -336,15 +288,16 @@ impl GraphService {
                     edge_map.entry(edge_key)
                         .and_modify(|weight| *weight += *count as f32)
                         .or_insert(*count as f32);
-                } else {
-                    debug!("Skipping edge to non-existent target node: {} -> {}", source_id, target_id);
                 }
             }
         }
 
         // Convert edge map to edges
         graph.edges = edge_map.into_iter()
-            .map(|((source, target), weight)| Edge::new(source, target, weight))
+            .map(|((source, target), weight)| {
+                debug!("Adding edge: {} -> {} (weight: {})", source, target, weight);
+                Edge::new(source, target, weight)
+            })
             .collect();
 
         // Initialize random positions
