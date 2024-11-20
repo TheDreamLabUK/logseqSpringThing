@@ -238,39 +238,27 @@ impl FileService {
         size.max(MIN_NODE_SIZE).min(MAX_NODE_SIZE)
     }
 
-    /// Extract references to other files based on their names and markdown links
+    /// Extract references to other files based on their names (case insensitive)
     fn extract_references(content: &str, valid_nodes: &[String]) -> HashMap<String, ReferenceInfo> {
         let mut references = HashMap::new();
         let content_lower = content.to_lowercase();
-        
-        // Create regex patterns for markdown links
-        let link_pattern = Regex::new(r"\[\[([^\]]+)\]\]|\[([^\]]+)\]\([^)]+\)").unwrap();
         
         for node_name in valid_nodes {
             let mut ref_info = ReferenceInfo::default();
             let node_name_lower = node_name.to_lowercase();
             
-            // Count exact matches of the filename (case insensitive)
-            let count = content_lower.matches(&node_name_lower).count();
-            
-            // Count markdown link references
-            let link_count = link_pattern.captures_iter(&content)
-                .filter(|cap| {
-                    let link_text = cap.get(1)
-                        .or_else(|| cap.get(2))
-                        .map(|m| m.as_str().to_lowercase())
-                        .unwrap_or_default();
-                    link_text.contains(&node_name_lower)
-                })
-                .count();
-            
-            // If we found any references, add them to the map
-            let total_count = count + link_count;
-            if total_count > 0 {
-                debug!("Found {} references to {} in content (direct: {}, links: {})", 
-                      total_count, node_name, count, link_count);
-                ref_info.direct_mentions = total_count;
-                references.insert(format!("{}.md", node_name), ref_info);
+            // Create a regex pattern with word boundaries
+            let pattern = format!(r"\b{}\b", regex::escape(&node_name_lower));
+            if let Ok(re) = Regex::new(&pattern) {
+                // Count case-insensitive matches of the filename
+                let count = re.find_iter(&content_lower).count();
+                
+                // If we found any references, add them to the map
+                if count > 0 {
+                    debug!("Found {} references to {} in content", count, node_name);
+                    ref_info.direct_mentions = count;
+                    references.insert(format!("{}.md", node_name), ref_info);
+                }
             }
         }
         

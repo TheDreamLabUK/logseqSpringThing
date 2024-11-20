@@ -35,13 +35,26 @@ mod utils;
 async fn initialize_graph_data(app_state: &web::Data<AppState>) -> std::io::Result<()> {
     log::info!("Starting graph data initialization...");
     
-    let mut metadata_map = HashMap::new();
+    // First load existing metadata
+    let mut metadata_map = match FileService::load_or_create_metadata() {
+        Ok(map) => {
+            log::info!("Loaded existing metadata with {} entries", map.len());
+            map
+        },
+        Err(e) => {
+            log::error!("Failed to load metadata: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to load metadata: {}", e)));
+        }
+    };
+
+    // Update metadata with any new or changed files
     log::info!("Fetching and processing files from GitHub...");
     match FileService::fetch_and_process_files(&*app_state.github_service, app_state.settings.clone(), &mut metadata_map).await {
         Ok(processed_files) => {
             log::info!("Successfully processed {} files", processed_files.len());
             log::debug!("Processed files: {:?}", processed_files.iter().map(|f| &f.file_name).collect::<Vec<_>>());
 
+            // Update file cache
             let mut file_cache = app_state.file_cache.write().await;
             for processed_file in &processed_files {
                 log::debug!("Caching file: {}", processed_file.file_name);
@@ -49,8 +62,15 @@ async fn initialize_graph_data(app_state: &web::Data<AppState>) -> std::io::Resu
             }
             drop(file_cache); // Explicitly drop the write lock
 
-            log::info!("Building graph from processed files...");
-            match GraphService::build_graph(&app_state).await {
+            // Update graph metadata
+            {
+                let mut graph = app_state.graph_data.write().await;
+                graph.metadata = metadata_map.clone();
+            }
+
+            // Build graph from metadata
+            log::info!("Building graph from metadata...");
+            match GraphService::build_graph_from_metadata(&metadata_map).await {
                 Ok(graph_data) => {
                     let mut graph = app_state.graph_data.write().await;
                     *graph = graph_data;
@@ -95,17 +115,35 @@ async fn randomize_nodes_periodically(app_state: web::Data<AppState>) {
         interval.tick().await;
         
         log::debug!("Starting periodic graph rebuild...");
-        // Recalculate graph data
-        if let Err(e) = GraphService::build_graph(&app_state).await {
-            log::error!("Failed to rebuild graph: {}", e);
-            continue;
+        
+        // Load current metadata
+        let metadata_map = match FileService::load_or_create_metadata() {
+            Ok(map) => map,
+            Err(e) => {
+                log::error!("Failed to load metadata: {}", e);
+                continue;
+            }
+        };
+
+        // Build graph from metadata
+        match GraphService::build_graph_from_metadata(&metadata_map).await {
+            Ok(graph_data) => {
+                // Update graph data
+                let mut graph = app_state.graph_data.write().await;
+                *graph = graph_data.clone();
+                drop(graph);
+
+                // Notify WebSocket clients about the updated graph
+                let graph_data = app_state.graph_data.read().await;
+                if let Err(e) = app_state.websocket_manager.broadcast_graph_update(&graph_data).await {
+                    log::error!("Failed to broadcast graph update: {}", e);
+                }
+            },
+            Err(e) => {
+                log::error!("Failed to rebuild graph: {}", e);
+            }
         }
 
-        // Notify WebSocket clients about the updated graph data
-        let graph_data = app_state.graph_data.read().await;
-        if let Err(e) = app_state.websocket_manager.broadcast_graph_update(&graph_data).await {
-            log::error!("Failed to broadcast graph update: {}", e);
-        }
         log::debug!("Completed periodic graph rebuild");
     }
 }
