@@ -108,9 +108,11 @@ export class App {
                         console.log('Updating visualization:', data);
                         
                         // Handle force-directed graph parameters
-                        if (data.name === 'forceDirectedIterations' || 
-                            data.name === 'forceDirectedRepulsion' || 
-                            data.name === 'forceDirectedAttraction') {
+                        if (data.name === 'force_directed_iterations' || 
+                            data.name === 'force_directed_spring' ||
+                            data.name === 'force_directed_repulsion' || 
+                            data.name === 'force_directed_attraction' ||
+                            data.name === 'force_directed_damping') {
                             updateForceDirectedParams(data.name, data.value);
                         } else {
                             // Pass name and value separately to updateVisualFeatures

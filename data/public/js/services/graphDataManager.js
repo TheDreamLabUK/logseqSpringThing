@@ -12,12 +12,13 @@ export class GraphDataManager {
         this.websocketService = websocketService;
         this.graphData = null;
         this.forceDirectedParams = {
-            forceDirectedIterations: 250,
-            forceDirectedSpring: 0.1,
-            forceDirectedRepulsion: 1000,
-            forceDirectedAttraction: 0.01,
-            forceDirectedDamping: 0.8
+            iterations: 250,
+            spring_strength: 0.1,
+            repulsion_strength: 1000,
+            attraction_strength: 0.01,
+            damping: 0.8
         };
+        this.pendingRecalculation = false;
         console.log('GraphDataManager initialized');
         
         this.websocketService.on('graphUpdate', this.handleGraphUpdate.bind(this));
@@ -168,6 +169,13 @@ export class GraphDataManager {
         
         // Dispatch an event to notify that the graph data has been updated
         window.dispatchEvent(new CustomEvent('graphDataUpdated', { detail: this.graphData }));
+
+        // If there was a pending recalculation, do it now
+        if (this.pendingRecalculation) {
+            console.log('Processing pending layout recalculation');
+            this.pendingRecalculation = false;
+            this.recalculateLayout();
+        }
     }
 
     getGraphData() {
@@ -190,11 +198,27 @@ export class GraphDataManager {
     updateForceDirectedParams(name, value) {
         console.log(`Updating force-directed parameter: ${name} = ${value}`);
         
-        // Handle full parameter names
-        if (this.forceDirectedParams.hasOwnProperty(name)) {
-            this.forceDirectedParams[name] = value;
+        // Convert from forceDirected prefixed names to server parameter names
+        const paramMap = {
+            'forceDirectedIterations': 'iterations',
+            'forceDirectedSpring': 'spring_strength',
+            'forceDirectedRepulsion': 'repulsion_strength',
+            'forceDirectedAttraction': 'attraction_strength',
+            'forceDirectedDamping': 'damping'
+        };
+
+        const serverParamName = paramMap[name] || name;
+        if (this.forceDirectedParams.hasOwnProperty(serverParamName)) {
+            this.forceDirectedParams[serverParamName] = value;
             console.log('Force-directed parameters updated:', this.forceDirectedParams);
-            this.recalculateLayout();
+            
+            // Only recalculate if we have valid graph data, otherwise mark as pending
+            if (this.isGraphDataValid()) {
+                this.recalculateLayout();
+            } else {
+                console.log('Marking layout recalculation as pending until graph data is available');
+                this.pendingRecalculation = true;
+            }
         } else {
             console.warn(`Unknown force-directed parameter: ${name}`);
         }
@@ -206,11 +230,11 @@ export class GraphDataManager {
             this.websocketService.send({
                 type: 'recalculateLayout',
                 params: {
-                    iterations: this.forceDirectedParams.forceDirectedIterations,
-                    spring_strength: this.forceDirectedParams.forceDirectedSpring,
-                    repulsion_strength: this.forceDirectedParams.forceDirectedRepulsion,
-                    attraction_strength: this.forceDirectedParams.forceDirectedAttraction,
-                    damping: this.forceDirectedParams.forceDirectedDamping
+                    iterations: this.forceDirectedParams.iterations,
+                    spring_strength: this.forceDirectedParams.spring_strength,
+                    repulsion_strength: this.forceDirectedParams.repulsion_strength,
+                    attraction_strength: this.forceDirectedParams.attraction_strength,
+                    damping: this.forceDirectedParams.damping
                 }
             });
             
@@ -219,6 +243,7 @@ export class GraphDataManager {
             }));
         } else {
             console.error('Cannot recalculate layout: Invalid graph data');
+            this.pendingRecalculation = true;
         }
     }
 }

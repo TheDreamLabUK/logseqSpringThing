@@ -261,10 +261,37 @@ export default defineComponent({
                     name: 'force_directed_spring', 
                     label: 'Spring Strength', 
                     type: 'range', 
-                    value: settings.visualization.forceDirectedSpring, 
+                    value: settings.visualization.spring_strength || 0.1, 
                     min: 0.01, 
                     max: 10.0, 
                     step: 0.01 
+                },
+                {
+                    name: 'force_directed_repulsion',
+                    label: 'Repulsion Strength',
+                    type: 'range',
+                    value: settings.visualization.repulsion_strength || 1000,
+                    min: 100,
+                    max: 5000,
+                    step: 100
+                },
+                {
+                    name: 'force_directed_attraction',
+                    label: 'Attraction Strength',
+                    type: 'range',
+                    value: settings.visualization.attraction_strength || 0.01,
+                    min: 0.001,
+                    max: 0.1,
+                    step: 0.001
+                },
+                {
+                    name: 'force_directed_iterations',
+                    label: 'Iterations',
+                    type: 'range',
+                    value: settings.visualization.iterations || 250,
+                    min: 50,
+                    max: 500,
+                    step: 50
                 }
             ];
 

@@ -151,8 +151,19 @@ export class LayoutManager {
 
     updateFeature(control, value) {
         console.log(`Updating layout feature: ${control} = ${value}`);
-        switch(control) {
-            case 'forceDirectedIterations':
+        
+        // Convert from forceDirected prefixed names to internal parameter names
+        const paramMap = {
+            'forceDirectedIterations': 'iterations',
+            'forceDirectedSpring': 'spring_strength',
+            'forceDirectedRepulsion': 'repulsion_strength',
+            'forceDirectedAttraction': 'attraction_strength',
+            'forceDirectedDamping': 'damping'
+        };
+
+        const paramName = paramMap[control] || control;
+        switch(paramName) {
+            case 'iterations':
                 this.initialIterations = value;
                 break;
             case 'spring_strength':
@@ -167,6 +178,8 @@ export class LayoutManager {
             case 'damping':
                 this.damping = value;
                 break;
+            default:
+                console.warn(`Unknown layout parameter: ${control}`);
         }
     }
 
