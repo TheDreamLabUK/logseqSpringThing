@@ -196,13 +196,24 @@ export class WebXRVisualization {
             return;
         }
 
-        // Update visual elements without applying force-directed layout
-        this.nodeManager.updateNodes(graphData.nodes);
-        this.nodeManager.updateEdges(graphData.edges);
-        
-        // Initialize layout manager with current positions if needed
-        if (!this.layoutManager.isInitialized) {
-            this.layoutManager.initializePositions(graphData.nodes);
+        try {
+            // Update visual elements
+            this.nodeManager.updateNodes(graphData.nodes);
+            this.nodeManager.updateEdges(graphData.edges);
+            
+            // Initialize layout manager if needed
+            if (!this.layoutManager.isInitialized) {
+                console.log('Initializing layout manager');
+                this.layoutManager.initializePositions(graphData.nodes);
+                this.layoutManager.isInitialized = true;
+                // Start continuous simulation after initialization
+                this.layoutManager.startContinuousSimulation(graphData);
+            } else {
+                // Update layout for existing simulation
+                this.layoutManager.performLayout(graphData);
+            }
+        } catch (error) {
+            console.error('Error updating visualization:', error);
         }
     }
 
@@ -219,7 +230,9 @@ export class WebXRVisualization {
         } else if (control.startsWith('bloom') || control.startsWith('hologram')) {
             this.effectsManager.updateFeature(control, value);
         } else if (control.startsWith('forceDirected')) {
-            // Forward force-directed parameters to the server via graphDataManager
+            // Update layout manager parameters
+            this.layoutManager.updateFeature(control, value);
+            // Also forward to server via graphDataManager
             this.graphDataManager.updateForceDirectedParams(control.replace('forceDirected', ''), value);
         }
 
@@ -270,6 +283,7 @@ export class WebXRVisualization {
 
         this.nodeManager.dispose();
         this.effectsManager.dispose();
+        this.layoutManager.stopSimulation();
 
         this.renderer.dispose();
         if (this.controls) {

@@ -30,15 +30,18 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
 
             info!("Successfully processed {} public markdown files", processed_files.len());
 
-            // Update file cache with processed files
+            // Update file cache and graph metadata with processed files
             {
                 let mut file_cache = state.file_cache.write().await;
+                let mut graph = state.graph_data.write().await;
                 for processed_file in &processed_files {
                     // Only public files reach this point due to optimization
                     metadata_map.insert(processed_file.file_name.clone(), processed_file.metadata.clone());
                     file_cache.insert(processed_file.file_name.clone(), processed_file.content.clone());
                     debug!("Updated file cache with: {}", processed_file.file_name);
                 }
+                // Update graph metadata
+                graph.metadata = metadata_map.clone();
             }
 
             // Save the updated metadata
@@ -111,6 +114,24 @@ pub async fn get_file_content(state: web::Data<AppState>, file_name: web::Path<S
 pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
     info!("Manually triggering graph refresh");
 
+    // First load metadata from file
+    let metadata_map = match FileService::load_or_create_metadata() {
+        Ok(map) => map,
+        Err(e) => {
+            error!("Failed to load metadata: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Failed to load metadata: {}", e)
+            }));
+        }
+    };
+
+    // Update graph metadata before building
+    {
+        let mut graph = state.graph_data.write().await;
+        graph.metadata = metadata_map;
+    }
+
     match GraphService::build_graph(&state).await {
         Ok(graph_data) => {
             let mut graph = state.graph_data.write().await;
@@ -144,17 +165,29 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
 }
 
 pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, ActixError> {
-    let metadata = state.file_cache.read().await;
-    
-    // Convert the file cache into the expected metadata format
-    let metadata_map: HashMap<String, FileMetadata> = metadata
-        .iter()
-        .map(|(key, _)| {
-            (key.clone(), FileMetadata {
-                topic_counts: HashMap::new(),
-            })
-        })
-        .collect();
+    // Load existing metadata from file
+    let metadata_map = match FileService::load_or_create_metadata() {
+        Ok(map) => {
+            // Convert Metadata to FileMetadata
+            map.into_iter()
+                .map(|(key, metadata)| {
+                    (key, FileMetadata {
+                        topic_counts: metadata.topic_counts
+                            .into_iter()
+                            .map(|(k, v)| (k, v as u32))
+                            .collect(),
+                    })
+                })
+                .collect()
+        },
+        Err(e) => {
+            error!("Failed to load metadata: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Failed to load metadata: {}", e)
+            })));
+        }
+    };
     
     match GraphService::build_graph_from_metadata(&metadata_map).await {
         Ok(graph) => {

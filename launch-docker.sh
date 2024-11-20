@@ -50,7 +50,9 @@ check_docker() {
 # Function to clean up existing processes
 cleanup_existing_processes() {
     echo -e "${YELLOW}Cleaning up...${NC}"
-    $DOCKER_COMPOSE down --remove-orphans >/dev/null 2>&1
+    # Stop all services except cloudflared
+    $DOCKER_COMPOSE stop $(docker compose ps --services | grep -v cloudflared) >/dev/null 2>&1
+    $DOCKER_COMPOSE rm -f $(docker compose ps --services | grep -v cloudflared) >/dev/null 2>&1
 
     if netstat -tuln | grep -q ":$PORT "; then
         local pid=$(lsof -t -i:"$PORT")
@@ -70,16 +72,16 @@ check_container_health() {
     echo -e "${YELLOW}Checking container health...${NC}"
     while [ $attempt -le $max_attempts ]; do
         # Check if container is running
-        if ! docker ps | grep -q "logseq-xr-${service}-1"; then
+        if ! docker ps | grep -q "logseq-xr-${service}"; then
             echo -e "${RED}Container is not running${NC}"
             return 1
         fi
 
-        # Check container logs for successful startup
-        if docker logs "logseq-xr-${service}-1" 2>&1 | grep -q "Port 3000 is available"; then
-            echo -e "${GREEN}Container startup completed${NC}"
-            # Add delay to allow nginx to fully initialize
-            sleep 5
+        # Check container health status directly
+        local health_status=$(docker inspect --format='{{.State.Health.Status}}' "logseq-xr-${service}")
+        
+        if [ "$health_status" = "healthy" ]; then
+            echo -e "${GREEN}Container is healthy${NC}"
             return 0
         fi
 
@@ -88,7 +90,7 @@ check_container_health() {
             $DOCKER_COMPOSE logs --tail=10 $service
         fi
 
-        echo "Health check attempt $attempt/$max_attempts..."
+        echo "Health check attempt $attempt/$max_attempts... (status: $health_status)"
         sleep 2
         attempt=$((attempt + 1))
     done
@@ -135,38 +137,99 @@ test_endpoints() {
     fi
 }
 
-# Function to check cloudflared tunnel connectivity
-check_cloudflared_connectivity() {
-    echo -e "\n${YELLOW}Checking Cloudflared tunnel connectivity...${NC}"
-    
-    # Check if cloudflared container is running
-    if ! docker ps | grep -q cloudflared-tunnel; then
-        echo -e "${RED}Cloudflared tunnel container is not running${NC}"
-        return 1
-    fi
-
-    # Wait for tunnel connections with timeout
-    local max_attempts=30
+# Function to ensure cloudflared is running and healthy
+ensure_cloudflared() {
+    local max_attempts=3
     local attempt=1
-    
-    echo "Waiting for tunnel connections to establish..."
-    while [ $attempt -le $max_attempts ]; do
-        # Check for active tunnel connections
-        local connection_count=$(docker logs cloudflared-tunnel 2>&1 | grep -c "Registered tunnel connection")
-        local error_count=$(docker logs cloudflared-tunnel 2>&1 | grep -c "no more connections active and exiting")
+    local success=false
+
+    while [ $attempt -le $max_attempts ] && [ "$success" = false ]; do
+        echo -e "\n${YELLOW}Checking cloudflared status (Attempt $attempt/$max_attempts)...${NC}"
         
-        if [ $connection_count -gt 0 ] && [ $error_count -eq 0 ]; then
-            echo -e "${GREEN}Tunnel connections established successfully${NC}"
-            return 0
+        if ! docker ps | grep -q cloudflared-tunnel; then
+            echo -e "${YELLOW}Cloudflared tunnel not running, starting it...${NC}"
+            $DOCKER_COMPOSE up -d cloudflared
+            sleep 10
         fi
+
+        # Check container health status
+        local health_status=$(docker inspect --format='{{.State.Health.Status}}' cloudflared-tunnel 2>/dev/null || echo "unknown")
         
-        echo "Attempt $attempt/$max_attempts..."
-        sleep 2
+        if [ "$health_status" = "healthy" ]; then
+            echo -e "${GREEN}Cloudflared tunnel is healthy${NC}"
+            success=true
+            break
+        fi
+
+        # Validate ingress configuration
+        echo -e "${YELLOW}Validating cloudflared ingress configuration...${NC}"
+        if ! docker exec cloudflared-tunnel cloudflared tunnel ingress validate; then
+            echo -e "${RED}Ingress validation failed${NC}"
+            if [ $attempt -lt $max_attempts ]; then
+                echo -e "${YELLOW}Restarting cloudflared...${NC}"
+                $DOCKER_COMPOSE restart cloudflared
+                sleep 10
+                attempt=$((attempt + 1))
+                continue
+            else
+                echo -e "${RED}Failed to validate cloudflared configuration after $max_attempts attempts${NC}"
+                return 1
+            fi
+        fi
+
+        # Check connectivity
+        echo -e "${YELLOW}Checking cloudflared tunnel connectivity...${NC}"
+        local conn_attempts=30
+        local conn_attempt=1
+        
+        while [ $conn_attempt -le $conn_attempts ]; do
+            # Check for active tunnel connections and errors
+            local connection_count=$(docker logs cloudflared-tunnel 2>&1 | grep -c "Registered tunnel connection")
+            local error_count=$(docker logs cloudflared-tunnel 2>&1 | grep -c "no more connections active and exiting")
+            local conn_error_count=$(docker logs cloudflared-tunnel 2>&1 | grep -c "Unable to reach the origin service")
+            
+            if [ $connection_count -gt 0 ] && [ $error_count -eq 0 ] && [ $conn_error_count -eq 0 ]; then
+                echo -e "${GREEN}Cloudflared tunnel is connected${NC}"
+                success=true
+                break
+            fi
+            
+            if [ $conn_error_count -gt 0 ]; then
+                echo -e "${RED}Connection errors detected${NC}"
+                if [ $attempt -lt $max_attempts ]; then
+                    echo -e "${YELLOW}Restarting cloudflared...${NC}"
+                    $DOCKER_COMPOSE restart cloudflared
+                    sleep 10
+                    break
+                fi
+            fi
+            
+            echo "Connection attempt $conn_attempt/$conn_attempts..."
+            sleep 2
+            conn_attempt=$((conn_attempt + 1))
+        done
+
+        if [ "$success" = false ]; then
+            if [ $attempt -lt $max_attempts ]; then
+                echo -e "${YELLOW}Retrying cloudflared setup...${NC}"
+                $DOCKER_COMPOSE restart cloudflared
+                sleep 10
+            else
+                echo -e "${RED}Failed to establish cloudflared tunnel after $max_attempts attempts${NC}"
+                echo -e "${YELLOW}Recent cloudflared logs:${NC}"
+                docker logs --tail 50 cloudflared-tunnel
+                return 1
+            fi
+        fi
+
         attempt=$((attempt + 1))
     done
 
-    echo -e "${RED}Failed to establish tunnel connections${NC}"
-    return 1
+    if [ "$success" = true ]; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 # Check environment
@@ -199,10 +262,10 @@ mkdir -p data/markdown
 # Build and start services
 echo -e "${YELLOW}Building and starting services...${NC}"
 $DOCKER_COMPOSE build --pull --no-cache
-$DOCKER_COMPOSE up -d
+$DOCKER_COMPOSE up -d $(docker compose ps --services | grep -v cloudflared)
 
 # Check health and readiness
-if ! check_container_health "webxr-graph"; then
+if ! check_container_health "webxr"; then
     echo -e "${RED}Startup failed${NC}"
     exit 1
 fi
@@ -216,30 +279,9 @@ fi
 # Test endpoints
 test_endpoints
 
-# Validate and restart cloudflared tunnel
-echo -e "\n${YELLOW}Validating Cloudflared ingress configuration...${NC}"
-docker exec cloudflared-tunnel cloudflared tunnel ingress validate
-if [ $? -ne 0 ]; then
-    echo -e "${RED}Cloudflared ingress validation failed. Please check your config.yml.${NC}"
-    exit 1
-fi
-
-echo -e "\n${YELLOW}Restarting Cloudflared tunnel...${NC}"
-if docker ps | grep -q cloudflared-tunnel; then
-    docker restart cloudflared-tunnel
-    # Add delay to allow cloudflared to fully initialize
-    sleep 5
-else
-    echo -e "${RED}Cloudflared tunnel container is not running. Starting it now.${NC}"
-    $DOCKER_COMPOSE up -d cloudflared
-    sleep 5
-fi
-
-# Check cloudflared connectivity
-if ! check_cloudflared_connectivity; then
-    echo -e "${RED}Cloudflared tunnel connectivity check failed${NC}"
-    echo -e "${YELLOW}Showing recent cloudflared logs:${NC}"
-    docker logs --tail 50 cloudflared-tunnel
+# Ensure cloudflared is running and healthy
+if ! ensure_cloudflared; then
+    echo -e "${RED}Failed to ensure cloudflared is running and healthy${NC}"
     exit 1
 fi
 
