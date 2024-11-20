@@ -1,6 +1,6 @@
 # WebXR Graph Visualization of Logseq Knowledge Graphs with RAGFlow Integration
 
-![image](https://github.com/user-attachments/assets/9e5880cc-8f2e-4a0b-a40b-87930962a216)
+![image](https://github.com/user-attachments/assets/269a678d-88a5-42de-9d67-d73b64f4e520)
 
 Inspired by Prof Rob Aspin's work 
 https://github.com/trebornipsa
