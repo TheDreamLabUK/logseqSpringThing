@@ -73,6 +73,11 @@ pub struct GPUCompute {
 }
 
 impl GPUCompute {
+        // Add public getter for num_nodes
+        pub fn get_num_nodes(&self) -> u32 {
+            self.num_nodes
+        }
+    
     /// Creates a new instance of GPUCompute with initialized GPU resources
     pub async fn new(graph: &GraphData) -> Result<Self, Error> {
         debug!("Initializing GPU compute capabilities");
@@ -263,7 +268,7 @@ impl GPUCompute {
         // Create dedicated position buffers
         let position_update_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Position Update Buffer"),
-            size: (MAX_NODES as u64) * 12, // 3 floats per node
+            size: (MAX_NODES as u64) * 24, // 6 floats per node (position + velocity)
             usage: wgpu::BufferUsages::STORAGE 
                 | wgpu::BufferUsages::COPY_DST 
                 | wgpu::BufferUsages::COPY_SRC,
@@ -272,7 +277,7 @@ impl GPUCompute {
 
         let position_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Position Staging Buffer"),
-            size: (MAX_NODES as u64) * 12,
+            size: (MAX_NODES as u64) * 24, // 6 floats per node (position + velocity)
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -416,8 +421,8 @@ impl GPUCompute {
 
     /// Fast path for position updates from client
     pub async fn update_positions(&mut self, binary_data: &[u8]) -> Result<(), Error> {
-        // Verify data length (12 bytes per node)
-        let expected_size = self.num_nodes as usize * 12;
+        // Verify data length (24 bytes per node - position + velocity)
+        let expected_size = self.num_nodes as usize * 24;
         if binary_data.len() != expected_size {
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -457,7 +462,7 @@ impl GPUCompute {
             );
         }
 
-        // Copy validated positions to node buffer
+        // Copy validated positions and velocities to node buffer
         encoder.copy_buffer_to_buffer(
             &self.position_update_buffer,
             0,
@@ -479,13 +484,13 @@ impl GPUCompute {
             }
         );
 
-        // Copy only position data
+        // Copy position and velocity data
         encoder.copy_buffer_to_buffer(
             &self.nodes_buffer,
             0,
             &self.position_staging_buffer,
             0,
-            (self.num_nodes as u64) * 12,
+            (self.num_nodes as u64) * 24, // 24 bytes per node
         );
 
         self.queue.submit(Some(encoder.finish()));

@@ -123,6 +123,23 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                     ctx.spawn(
                         async move {
                             let mut gpu = gpu.write().await;
+                            let expected_size = gpu.num_nodes as usize * 24;
+                            
+                            if bin_data.len() != expected_size {
+                                error!("Invalid position data length: expected {}, got {}", 
+                                    expected_size, bin_data.len());
+                                let error_message = json!({
+                                    "type": "error",
+                                    "message": format!("Invalid position data length: expected {}, got {}", 
+                                        expected_size, bin_data.len())
+                                });
+                                if let Ok(error_str) = serde_json::to_string(&error_message) {
+                                    let msg: SendText = SendText(error_str);
+                                    ctx_addr.do_send(msg);
+                                }
+                                return;
+                            }
+
                             if let Err(e) = gpu.update_positions(&bin_data).await {
                                 error!("Failed to update node positions: {}", e);
                                 let error_message = json!({
@@ -133,9 +150,17 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                                     let msg: SendText = SendText(error_str);
                                     ctx_addr.do_send(msg);
                                 }
+                            } else {
+                                // Send position update completion as JSON
+                                let completion_message = json!({
+                                    "type": "position_update_complete",
+                                    "status": "success"
+                                });
+                                if let Ok(msg_str) = serde_json::to_string(&completion_message) {
+                                    let msg: SendText = SendText(msg_str);
+                                    ctx_addr.do_send(msg);
+                                }
                             }
-                            let msg: SendText = SendText("Position update complete".to_string());
-                            ctx_addr.do_send(msg);
                         }
                         .into_actor(self)
                     );
