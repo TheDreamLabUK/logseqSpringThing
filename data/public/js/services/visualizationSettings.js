@@ -23,7 +23,7 @@ export class VisualizationSettings {
             fogDensity: parseFloat(process.env.FOG_DENSITY) || 0.002,
             
             // Force-directed layout settings
-            forceDirectedIterations: parseInt(process.env.FORCE_DIRECTED_ITERATIONS) || 100,
+            iterations: parseInt(process.env.FORCE_DIRECTED_ITERATIONS) || 100,
             spring_strength: parseFloat(process.env.FORCE_DIRECTED_SPRING) || 0.1,
             repulsion_strength: parseFloat(process.env.FORCE_DIRECTED_REPULSION) || 1000.0,
             attraction_strength: parseFloat(process.env.FORCE_DIRECTED_ATTRACTION) || 0.01,
@@ -103,7 +103,7 @@ export class VisualizationSettings {
 
     getLayoutSettings() {
         return {
-            iterations: this.settings.forceDirectedIterations,
+            iterations: this.settings.iterations,
             spring_strength: this.settings.spring_strength,
             repulsion_strength: this.settings.repulsion_strength,
             attraction_strength: this.settings.attraction_strength,

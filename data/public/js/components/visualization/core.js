@@ -10,8 +10,6 @@ const TRANSLATION_SPEED = 0.01;
 const ROTATION_SPEED = 0.01;
 
 export class WebXRVisualization {
-    // ... [previous methods unchanged until positionUpdate event listener] ...
-
     constructor(graphDataManager) {
         console.log('WebXRVisualization constructor called');
         this.graphDataManager = graphDataManager;
@@ -247,8 +245,8 @@ export class WebXRVisualization {
                 this.effectsManager.updateFeature(control, value);
             } else if (control.startsWith('forceDirected')) {
                 console.log('Updating layout feature:', control, value);
+                // Pass the parameter to both managers, they will handle the conversion internally
                 this.layoutManager.updateFeature(control, value);
-                // Pass the full parameter name to graphDataManager
                 this.graphDataManager.updateForceDirectedParams(control, value);
             }
 
@@ -352,7 +350,6 @@ export class WebXRVisualization {
 
     showError(message) {
         console.error('Visualization error:', message);
-        // You could add visual feedback here, like a floating error message
         const errorEvent = new CustomEvent('visualizationError', {
             detail: { message }
         });
