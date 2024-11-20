@@ -226,6 +226,7 @@ export default defineComponent({
 
             sizeOpacityControls.value = [
                 { name: 'nodeSizeScalingFactor', label: 'Node Size Scaling', type: 'range', value: settings.visualization.nodeSizeScalingFactor, min: 1, max: 10, step: 0.1 },
+                { name: 'nodeMassScalingFactor', label: 'Node Mass Scaling', type: 'range', value: settings.visualization.nodeMassScalingFactor || 1.0, min: 0.1, max: 5, step: 0.1 },
                 { name: 'hologramScale', label: 'Hologram Scale', type: 'range', value: settings.visualization.hologramScale, min: 1, max: 10, step: 0.1 },
                 { name: 'hologramOpacity', label: 'Hologram Opacity', type: 'range', value: settings.visualization.hologramOpacity, min: 0, max: 1, step: 0.01 },
                 { name: 'edgeOpacity', label: 'Edge Opacity', type: 'range', value: settings.visualization.edgeOpacity, min: 0, max: 1, step: 0.01 }

@@ -21,7 +21,8 @@ export default class WebsocketService {
             'openaiResponse',
             'simulationModeSet',
             'fisheye_settings_updated',  // Use underscore format consistently
-            'completion'                 // Add completion message type
+            'completion',                // Add completion message type
+            'position_update_complete'   // Add position update completion type
         ]);
 
         // WebSocket configuration
@@ -51,8 +52,6 @@ export default class WebsocketService {
         const port = window.location.port ? `:${window.location.port}` : '';
         const url = `${protocol}//${host}${port}/ws`;
         console.log('Generated WebSocket URL:', url);
-        console.log('Current page protocol:', window.location.protocol);
-        console.log('Current page hostname:', host);
         return url;
     }
 
@@ -112,28 +111,9 @@ export default class WebsocketService {
     handleMessage = async (event) => {
         try {
             if (event.data instanceof ArrayBuffer) {
-                // Handle binary position updates
-                const positions = new Float32Array(event.data);
-                const positionArray = [];
-                
-                // Each position update contains 6 float values (x,y,z, vx,vy,vz)
-                for (let i = 0; i < positions.length; i += 6) {
-                    positionArray.push({
-                        position: {
-                            x: positions[i],
-                            y: positions[i + 1],
-                            z: positions[i + 2]
-                        },
-                        velocity: {
-                            x: positions[i + 3],
-                            y: positions[i + 4],
-                            z: positions[i + 5]
-                        }
-                    });
-                }
-                
-                window.dispatchEvent(new CustomEvent('nodePositionsUpdated', {
-                    detail: positionArray
+                // Handle binary position updates by passing directly to visualization
+                window.dispatchEvent(new CustomEvent('binaryPositionUpdate', {
+                    detail: event.data
                 }));
                 return;
             }
@@ -311,6 +291,11 @@ export default class WebsocketService {
             case 'completion':
                 console.log('Received completion message:', data.message);
                 this.emit('completion', data.message);
+                break;
+
+            case 'position_update_complete':
+                console.log('Position update completed:', data.status);
+                this.emit('positionUpdateComplete', data.status);
                 break;
                 
             default:

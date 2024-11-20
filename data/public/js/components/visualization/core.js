@@ -64,19 +64,17 @@ export class WebXRVisualization {
 
         // Handle position updates from layout manager
         window.addEventListener('positionUpdate', (event) => {
-            console.log('Received position update');
+            console.log('Sending position update');
             if (this.graphDataManager.websocketService && this.graphDataManager.websocketService.socket) {
                 // Send binary position data directly through websocket
                 this.graphDataManager.websocketService.socket.send(event.detail);
             }
         });
 
-        // Handle incoming position updates from other clients
-        window.addEventListener('nodePositionsUpdated', (event) => {
-            console.log('Received position update from server');
-            if (Array.isArray(event.detail)) {
-                this.nodeManager.updateNodePositions(event.detail);
-            }
+        // Handle binary position updates from server
+        window.addEventListener('binaryPositionUpdate', (event) => {
+            console.log('Received binary position update from server');
+            this.handleBinaryPositionUpdate(event.detail);
         });
 
         console.log('WebXRVisualization constructor completed');
@@ -316,12 +314,12 @@ export class WebXRVisualization {
             // Get all node positions for synchronization
             const positions = this.nodeManager.getNodePositions();
             
-            // Create binary position data with positions and velocities (24 bytes per node)
-            const buffer = new ArrayBuffer(positions.length * 24);
+            // Create binary position data (28 bytes per node - position, velocity, mass, padding)
+            const buffer = new ArrayBuffer(positions.length * 28);
             const view = new Float32Array(buffer);
             
             positions.forEach((pos, index) => {
-                const offset = index * 6;
+                const offset = index * 7; // 7 floats per node (3 pos + 3 vel + 1 mass)
                 // Position
                 view[offset] = pos.position.x;
                 view[offset + 1] = pos.position.y;
@@ -330,36 +328,45 @@ export class WebXRVisualization {
                 view[offset + 3] = pos.velocity.x;
                 view[offset + 4] = pos.velocity.y;
                 view[offset + 5] = pos.velocity.z;
+                // Mass (based on node size/importance)
+                const mass = pos.scale ? Math.max(1.0, pos.scale) : 1.0;
+                view[offset + 6] = mass;
             });
 
-            // Dispatch binary position update
-            window.dispatchEvent(new CustomEvent('positionUpdate', {
-                detail: buffer
-            }));
+            // Send binary position update
+            if (this.graphDataManager.websocketService && this.graphDataManager.websocketService.socket) {
+                this.graphDataManager.websocketService.socket.send(buffer);
+            }
         }
     }
 
     handleBinaryPositionUpdate(buffer) {
-        const positions = new Float32Array(buffer);
-        const updates = [];
-        
-        // Each position update contains 6 float values (x,y,z, vx,vy,vz)
-        for (let i = 0; i < positions.length; i += 6) {
-            updates.push({
-                position: new THREE.Vector3(
-                    positions[i],
-                    positions[i + 1],
-                    positions[i + 2]
-                ),
-                velocity: new THREE.Vector3(
-                    positions[i + 3],
-                    positions[i + 4],
-                    positions[i + 5]
-                )
-            });
-        }
+        try {
+            const positions = new Float32Array(buffer);
+            const updates = [];
+            
+            // Each position update contains 7 float values (x,y,z, vx,vy,vz, mass)
+            for (let i = 0; i < positions.length; i += 7) {
+                updates.push({
+                    position: new THREE.Vector3(
+                        positions[i],
+                        positions[i + 1],
+                        positions[i + 2]
+                    ),
+                    velocity: new THREE.Vector3(
+                        positions[i + 3],
+                        positions[i + 4],
+                        positions[i + 5]
+                    ),
+                    mass: positions[i + 6]
+                });
+            }
 
-        // Fast update through node manager
-        this.nodeManager.updateNodePositions(updates);
+            // Fast update through node manager
+            this.nodeManager.updateNodePositions(updates);
+        } catch (error) {
+            console.error('Error handling binary position update:', error);
+            console.error('Error stack:', error.stack);
+        }
     }
 }
