@@ -89,11 +89,16 @@ export class GraphDataManager {
             return;
         }
 
+        // Preserve metadata if it exists in newData
+        const metadata = newData.metadata || {};
+        console.log('Received metadata:', metadata);
+
         // Handle the case where newData already has nodes and edges arrays
         if (Array.isArray(newData.nodes) && Array.isArray(newData.edges)) {
-            // Integrate new positions with existing velocities
+            // Integrate new positions with existing velocities and metadata
             const nodes = newData.nodes.map(node => {
                 const existingNode = this.graphData?.nodes?.find(n => n.id === node.id);
+                const nodeMetadata = metadata[`${node.id}.md`] || {};
                 
                 // Keep existing velocities if available, otherwise initialize to 0
                 const vx = existingNode?.vx || 0;
@@ -111,14 +116,15 @@ export class GraphDataManager {
                 return {
                     ...node,
                     x, y, z,
-                    vx, vy, vz
+                    vx, vy, vz,
+                    metadata: nodeMetadata
                 };
             });
 
             this.graphData = {
                 nodes,
                 edges: newData.edges,
-                metadata: newData.metadata || {}
+                metadata
             };
         }
         // Handle the case where we need to construct nodes from edges
@@ -126,11 +132,12 @@ export class GraphDataManager {
             const nodeSet = new Set();
             newData.edges.forEach(edge => {
                 nodeSet.add(edge.source);
-                nodeSet.add(edge.target_node);
+                nodeSet.add(edge.target); // Fixed: using target instead of target_node
             });
 
             const nodes = Array.from(nodeSet).map(id => {
                 const existingNode = this.graphData?.nodes?.find(n => n.id === id);
+                const nodeMetadata = metadata[`${id}.md`] || {};
                 
                 return {
                     id,
@@ -141,7 +148,8 @@ export class GraphDataManager {
                     z: existingNode?.z || 0,
                     vx: existingNode?.vx || 0,
                     vy: existingNode?.vy || 0,
-                    vz: existingNode?.vz || 0
+                    vz: existingNode?.vz || 0,
+                    metadata: nodeMetadata
                 };
             });
 
@@ -149,11 +157,11 @@ export class GraphDataManager {
                 nodes,
                 edges: newData.edges.map(e => ({
                     source: e.source,
-                    target: e.target_node,
+                    target: e.target, // Fixed: using target instead of target_node
                     weight: e.weight,
                     hyperlinks: e.hyperlinks
                 })),
-                metadata: newData.metadata || {}
+                metadata
             };
         } else {
             console.error('Received invalid graph data:', newData);
@@ -161,6 +169,7 @@ export class GraphDataManager {
         }
 
         console.log(`Graph data updated: ${this.graphData.nodes.length} nodes, ${this.graphData.edges.length} edges`);
+        console.log('Metadata entries:', Object.keys(this.graphData.metadata).length);
         
         // Dispatch an event to notify that the graph data has been updated
         window.dispatchEvent(new CustomEvent('graphDataUpdated', { detail: this.graphData }));
@@ -173,6 +182,7 @@ export class GraphDataManager {
     getGraphData() {
         if (this.graphData) {
             console.log(`Returning graph data: ${this.graphData.nodes.length} nodes, ${this.graphData.edges.length} edges`);
+            console.log('Metadata entries:', Object.keys(this.graphData.metadata).length);
         } else {
             console.warn('Graph data is null');
         }
@@ -224,6 +234,7 @@ export class GraphDataManager {
                 params: {
                     iterations: this.forceDirectedParams.iterations,
                     springStrength: this.forceDirectedParams.attractionStrength,
+                    repulsionStrength: this.forceDirectedParams.repulsionStrength,
                     damping: this.forceDirectedParams.damping
                 }
             });

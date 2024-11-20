@@ -1,10 +1,12 @@
 export class LayoutManager {
-    constructor() {
+    constructor(settings = {}) {
         // Configuration
-        this.initialIterations = 250;    // High iteration count for initial layout
+        this.initialIterations = settings.forceDirectedIterations || 250;
         this.updateIterations = 1;       // Single iteration for smooth continuous updates
         this.targetRadius = 200;
         this.naturalLength = 100;
+        this.attraction = settings.forceDirectedAttraction || 0.01;
+        this.repulsion = settings.forceDirectedRepulsion || 1000;
         
         // State
         this.isInitialized = false;
@@ -15,9 +17,11 @@ export class LayoutManager {
         this.lastUpdateTime = 0;         // Last time positions were sent to server
         this.updateInterval = 16.67;     // Exactly 60fps
         this.positionBuffer = null;
+        this.edges = [];                 // Store computed edges
     }
 
     initializePositions(nodes) {
+        console.log('Initializing positions for nodes:', nodes);
         nodes.forEach(node => {
             // Initialize only if positions are invalid
             if (isNaN(node.x) || isNaN(node.y) || isNaN(node.z)) {
@@ -44,33 +48,124 @@ export class LayoutManager {
             vy: node.vy,
             vz: node.vz
         }));
+
+        this.isInitialized = true;
+        console.log('Position initialization complete');
     }
 
-    initializePositionBuffer(nodeCount) {
-        // Pre-allocate buffer for position and velocity updates (24 bytes per node)
-        this.positionBuffer = new ArrayBuffer(nodeCount * 24);
-        this.positionView = new Float32Array(this.positionBuffer);
+    applyForceDirectedLayout(nodes, edges) {
+        if (!this.isInitialized) {
+            console.warn('Layout manager not initialized');
+            return;
+        }
+
+        console.log('Applying force-directed layout');
+        const damping = 0.9;
+        const dt = 0.1;
+
+        // Apply forces based on edges (topic counts)
+        edges.forEach(edge => {
+            const sourceNode = nodes.find(n => n.id === edge.source);
+            const targetNode = nodes.find(n => n.id === edge.target);
+            
+            if (sourceNode && targetNode) {
+                // Calculate spring force based on topic counts
+                const dx = targetNode.x - sourceNode.x;
+                const dy = targetNode.y - sourceNode.y;
+                const dz = targetNode.z - sourceNode.z;
+                
+                const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (distance === 0) return;
+
+                // Use edge weight (from topic counts) to scale the force
+                const force = (distance - this.naturalLength) * this.attraction * (edge.weight || 1);
+                
+                const fx = (dx / distance) * force;
+                const fy = (dy / distance) * force;
+                const fz = (dz / distance) * force;
+
+                // Apply forces to both nodes
+                sourceNode.vx += fx;
+                sourceNode.vy += fy;
+                sourceNode.vz += fz;
+                targetNode.vx -= fx;
+                targetNode.vy -= fy;
+                targetNode.vz -= fz;
+            }
+        });
+
+        // Apply repulsion between all nodes
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+                const dx = nodes[j].x - nodes[i].x;
+                const dy = nodes[j].y - nodes[i].y;
+                const dz = nodes[j].z - nodes[i].z;
+                
+                const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (distance === 0) continue;
+
+                const force = this.repulsion / (distance * distance);
+                
+                const fx = (dx / distance) * force;
+                const fy = (dy / distance) * force;
+                const fz = (dz / distance) * force;
+
+                nodes[i].vx -= fx;
+                nodes[i].vy -= fy;
+                nodes[i].vz -= fz;
+                nodes[j].vx += fx;
+                nodes[j].vy += fy;
+                nodes[j].vz += fz;
+            }
+        }
+
+        // Update positions and apply damping
+        nodes.forEach(node => {
+            // Apply current velocity
+            node.x += node.vx * dt;
+            node.y += node.vy * dt;
+            node.z += node.vz * dt;
+
+            // Apply damping
+            node.vx *= damping;
+            node.vy *= damping;
+            node.vz *= damping;
+
+            // Bound checking
+            const bound = 500;
+            if (Math.abs(node.x) > bound) node.vx *= -0.5;
+            if (Math.abs(node.y) > bound) node.vy *= -0.5;
+            if (Math.abs(node.z) > bound) node.vz *= -0.5;
+        });
     }
 
-    // Update position and velocity of a node (e.g., from VR interaction)
-    updateNodePosition(nodeId, position, velocity = { x: 0, y: 0, z: 0 }) {
-        const offset = nodeId * 6; // 6 floats per node (x,y,z, vx,vy,vz)
-        // Position
-        this.positionView[offset] = position.x;
-        this.positionView[offset + 1] = position.y;
-        this.positionView[offset + 2] = position.z;
-        // Velocity
-        this.positionView[offset + 3] = velocity.x;
-        this.positionView[offset + 4] = velocity.y;
-        this.positionView[offset + 5] = velocity.z;
-        
-        // Mark for update
-        this.needsUpdate = true;
+    updateFeature(control, value) {
+        console.log(`Updating layout feature: ${control} = ${value}`);
+        switch(control) {
+            case 'forceDirectedIterations':
+                this.initialIterations = value;
+                break;
+            case 'forceDirectedRepulsion':
+                this.repulsion = value;
+                break;
+            case 'forceDirectedAttraction':
+                this.attraction = value;
+                break;
+        }
     }
 
     performLayout(graphData) {
+        if (!this.isInitialized || !graphData) {
+            console.warn('Cannot perform layout: not initialized or no graph data');
+            return;
+        }
+
         const now = Date.now();
         if (now - this.lastUpdateTime >= this.updateInterval) {
+            // Apply force-directed layout
+            this.applyForceDirectedLayout(graphData.nodes, graphData.edges);
+            
+            // Send position updates
             this.sendPositionUpdates(graphData.nodes);
             this.lastUpdateTime = now;
         }
@@ -128,7 +223,6 @@ export class LayoutManager {
         }
     }
 
-    // Handle incoming position updates from server
     applyPositionUpdates(positions) {
         if (!this.lastPositions) return;
 
@@ -152,6 +246,7 @@ export class LayoutManager {
     startContinuousSimulation(graphData) {
         if (this.isSimulating) return;
         
+        console.log('Starting continuous simulation');
         this.isSimulating = true;
         const animate = () => {
             if (!this.isSimulating) return;
@@ -165,26 +260,11 @@ export class LayoutManager {
     }
 
     stopSimulation() {
+        console.log('Stopping simulation');
         this.isSimulating = false;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null;
-        }
-    }
-
-    update() {
-        if (!this.needsUpdate) return;
-        
-        const now = Date.now();
-        if (now - this.lastUpdateTime >= this.updateInterval) {
-            this.lastUpdateTime = now;
-            
-            // Send position updates
-            window.dispatchEvent(new CustomEvent('positionUpdate', {
-                detail: this.positionBuffer
-            }));
-            
-            this.needsUpdate = false;
         }
     }
 }

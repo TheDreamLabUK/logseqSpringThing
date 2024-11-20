@@ -244,17 +244,9 @@ export class NodeManager {
 
     updateEdges(edges) {
         console.log(`Updating edges: ${edges.length}`);
-        const existingEdgeKeys = new Set(edges.map(edge => `${edge.source}-${edge.target_node}`));
-
-        // Remove non-existent edges
-        this.edgeMeshes.forEach((line, edgeKey) => {
-            if (!existingEdgeKeys.has(edgeKey)) {
-                this.scene.remove(line);
-                this.edgeMeshes.delete(edgeKey);
-            }
-        });
-
-        // Update or create edges
+        
+        // Create a map of edges with their weights from topic counts
+        const edgeWeights = new Map();
         edges.forEach(edge => {
             if (!edge.source || !edge.target_node) {
                 console.warn('Invalid edge data:', edge);
@@ -262,20 +254,37 @@ export class NodeManager {
             }
 
             const edgeKey = `${edge.source}-${edge.target_node}`;
+            const weight = edge.weight || 1; // Use provided weight or default to 1
+            edgeWeights.set(edgeKey, weight);
+        });
+
+        // Remove non-existent edges
+        this.edgeMeshes.forEach((line, edgeKey) => {
+            if (!edgeWeights.has(edgeKey)) {
+                this.scene.remove(line);
+                this.edgeMeshes.delete(edgeKey);
+            }
+        });
+
+        // Update or create edges
+        edgeWeights.forEach((weight, edgeKey) => {
+            const [source, target] = edgeKey.split('-');
             let line = this.edgeMeshes.get(edgeKey);
-            const sourceMesh = this.nodeMeshes.get(edge.source);
-            const targetMesh = this.nodeMeshes.get(edge.target_node);
+            const sourceMesh = this.nodeMeshes.get(source);
+            const targetMesh = this.nodeMeshes.get(target);
 
             if (!line && sourceMesh && targetMesh) {
                 const geometry = new THREE.BufferGeometry();
                 const positions = new Float32Array(6);
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
+                // Scale edge opacity based on weight
+                const normalizedWeight = Math.min(weight / 10, 1); // Normalize weight, cap at 1
                 const material = new THREE.LineBasicMaterial({
                     color: this.edgeColor,
                     transparent: true,
-                    opacity: this.edgeOpacity,
-                    linewidth: 2
+                    opacity: this.edgeOpacity * normalizedWeight,
+                    linewidth: Math.max(1, Math.min(weight, 5)) // Scale line width with weight, between 1-5
                 });
 
                 line = new THREE.Line(geometry, material);
@@ -293,6 +302,11 @@ export class NodeManager {
                 positions[4] = targetMesh.position.y;
                 positions[5] = targetMesh.position.z;
                 line.geometry.attributes.position.needsUpdate = true;
+
+                // Update edge appearance based on weight
+                const normalizedWeight = Math.min(weight / 10, 1);
+                line.material.opacity = this.edgeOpacity * normalizedWeight;
+                line.material.linewidth = Math.max(1, Math.min(weight, 5));
             }
         });
     }

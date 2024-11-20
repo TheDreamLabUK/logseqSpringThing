@@ -5,7 +5,8 @@ use crate::models::node::Node;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Edge {
     pub source: String,
-    pub target_node: String,
+    #[serde(rename = "target_node")]  // Rename for JSON serialization to match client expectations
+    pub target: String,
     pub weight: f32,
 }
 
@@ -24,10 +25,10 @@ pub struct GPUEdge {
 }
 
 impl Edge {
-    pub fn new(source: String, target_node: String, weight: f32) -> Self {
+    pub fn new(source: String, target: String, weight: f32) -> Self {
         Self {
             source,
-            target_node,
+            target,
             weight,
         }
     }
@@ -40,7 +41,7 @@ impl Edge {
             .collect();
 
         let source_idx = node_map.get(&self.source).copied().unwrap_or(0);
-        let target_idx = node_map.get(&self.target_node).copied().unwrap_or(0);
+        let target_idx = node_map.get(&self.target).copied().unwrap_or(0);
 
         GPUEdge {
             source: source_idx,

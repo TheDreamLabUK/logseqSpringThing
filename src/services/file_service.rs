@@ -210,47 +210,67 @@ impl GitHubService for RealGitHubService {
 pub struct FileService;
 
 impl FileService {
-    /// Load or create metadata from file
+    /// Load metadata from file or create new if not exists
     pub fn load_or_create_metadata() -> Result<HashMap<String, Metadata>, Box<dyn StdError + Send + Sync>> {
-        if let Ok(content) = fs::read_to_string(METADATA_PATH) {
+        if Path::new(METADATA_PATH).exists() {
+            let content = fs::read_to_string(METADATA_PATH)?;
             if !content.trim().is_empty() {
-                if let Ok(metadata) = serde_json::from_str(&content) {
-                    return Ok(metadata);
-                }
+                return Ok(serde_json::from_str(&content)?);
             }
         }
         Ok(HashMap::new())
     }
 
-    /// Calculate node size using logarithmic scaling
+    /// Calculate node size based on file size
     fn calculate_node_size(file_size: usize) -> f64 {
-        if file_size == 0 {
-            return MIN_NODE_SIZE;
-        }
-
-        let size_f64: f64 = file_size as f64;
-        let log_size = f64::log10(size_f64 + 1.0);
-        let min_log = f64::log10(1.0);
-        let max_log = f64::log10(269425.0 + 1.0); // Maximum known file size + 1
+        // Use logarithmic scaling for node size
+        let size = if file_size == 0 {
+            MIN_NODE_SIZE
+        } else {
+            let log_size = (file_size as f64).ln();
+            let min_log = 0f64;
+            let max_log = (100_000f64).ln(); // Assuming 100KB as max expected size
+            
+            let normalized = (log_size - min_log) / (max_log - min_log);
+            MIN_NODE_SIZE + normalized * (MAX_NODE_SIZE - MIN_NODE_SIZE)
+        };
         
-        MIN_NODE_SIZE + (log_size - min_log) * (MAX_NODE_SIZE - MIN_NODE_SIZE) / (max_log - min_log)
+        size.max(MIN_NODE_SIZE).min(MAX_NODE_SIZE)
     }
 
-    /// Extract both direct mentions and hyperlink references to other files
+    /// Extract references to other files based on their names and markdown links
     fn extract_references(content: &str, valid_nodes: &[String]) -> HashMap<String, ReferenceInfo> {
         let mut references = HashMap::new();
+        let content_lower = content.to_lowercase();
+        
+        // Create regex patterns for markdown links
+        let link_pattern = Regex::new(r"\[\[([^\]]+)\]\]|\[([^\]]+)\]\([^)]+\)").unwrap();
         
         for node_name in valid_nodes {
             let mut ref_info = ReferenceInfo::default();
+            let node_name_lower = node_name.to_lowercase();
             
-            // Count direct mentions (case insensitive)
-            let direct_pattern = format!(r"(?i)\[\[{}]]|\b{}\b", regex::escape(node_name), regex::escape(node_name));
-            if let Ok(re) = Regex::new(&direct_pattern) {
-                ref_info.direct_mentions = re.find_iter(content).count();
-            }
+            // Count exact matches of the filename (case insensitive)
+            let count = content_lower.matches(&node_name_lower).count();
             
-            if ref_info.direct_mentions > 0 {
-                references.insert(node_name.clone(), ref_info);
+            // Count markdown link references
+            let link_count = link_pattern.captures_iter(&content)
+                .filter(|cap| {
+                    let link_text = cap.get(1)
+                        .or_else(|| cap.get(2))
+                        .map(|m| m.as_str().to_lowercase())
+                        .unwrap_or_default();
+                    link_text.contains(&node_name_lower)
+                })
+                .count();
+            
+            // If we found any references, add them to the map
+            let total_count = count + link_count;
+            if total_count > 0 {
+                debug!("Found {} references to {} in content (direct: {}, links: {})", 
+                      total_count, node_name, count, link_count);
+                ref_info.direct_mentions = total_count;
+                references.insert(format!("{}.md", node_name), ref_info);
             }
         }
         
@@ -259,7 +279,10 @@ impl FileService {
 
     fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>) -> HashMap<String, usize> {
         references.into_iter()
-            .map(|(name, info)| (name, info.direct_mentions))
+            .map(|(name, info)| {
+                debug!("Converting reference for {} with {} mentions", name, info.direct_mentions);
+                (name, info.direct_mentions)
+            })
             .collect()
     }
 
