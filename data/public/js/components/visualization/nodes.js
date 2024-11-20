@@ -26,9 +26,9 @@ export class NodeManager {
         this.edgeMeshes = new Map();
         
         // Node settings
-        this.minNodeSize = 0.1;  // Minimum node size in visualization
-        this.maxNodeSize = 5;    // Maximum node size in visualization
-        this.nodeSizeScalingFactor = 1;  // Global scaling factor
+        this.minNodeSize = 0.01;  // Reduced from 0.1
+        this.maxNodeSize = 0.5;   // Reduced from 5
+        this.nodeSizeScalingFactor = 1;  // Reduced scaling factor
         this.labelFontSize = 18;
         this.nodeColor = new THREE.Color(0x4444ff);  // Initialize as THREE.Color
 
@@ -37,20 +37,24 @@ export class NodeManager {
         this.edgeOpacity = 0.6;
 
         // Server-side node size range (must match constants in file_service.rs)
-        this.serverMinNodeSize = 5.0;
-        this.serverMaxNodeSize = 50.0;
+        this.serverMinNodeSize = 0.5;  // Reduced from 5.0
+        this.serverMaxNodeSize = 5.0;  // Reduced from 50.0
     }
 
     getNodeSize(metadata) {
         // Use the node_size from metadata if available
         if (metadata.node_size) {
-            // Convert from server's range (5.0-50.0) to visualization range (0.1-5.0)
+            // Convert from server's range to visualization range
             const serverSize = parseFloat(metadata.node_size);
-            const normalizedSize = (serverSize - this.serverMinNodeSize) / (this.serverMaxNodeSize - this.serverMinNodeSize);
-            return this.minNodeSize + (this.maxNodeSize - this.minNodeSize) * normalizedSize * this.nodeSizeScalingFactor;
+            const normalizedSize = (serverSize - this.serverMinNodeSize) / 
+                                 (this.serverMaxNodeSize - this.serverMinNodeSize);
+            return this.minNodeSize + 
+                   (this.maxNodeSize - this.minNodeSize) * 
+                   normalizedSize * 
+                   this.nodeSizeScalingFactor;
         }
         
-        // Fallback to a default size if node_size is not available
+        // Fallback to minimum size if node_size is not available
         return this.minNodeSize;
     }
 
@@ -66,8 +70,9 @@ export class NodeManager {
     }
 
     createNodeGeometry(size, hyperlinkCount) {
+        // Adjust geometry creation for smaller sizes
         if (hyperlinkCount < 6) {
-            return new THREE.SphereGeometry(size, 32, 32);
+            return new THREE.SphereGeometry(size, 16, 16); // Reduced segments for better performance
         } else if (hyperlinkCount < 16) {
             return new THREE.BoxGeometry(size, size, size);
         } else {
@@ -106,7 +111,7 @@ export class NodeManager {
             depthWrite: false
         });
         const sprite = new THREE.Sprite(spriteMaterial);
-        sprite.scale.set(canvas.width / 10, canvas.height / 10, 1);
+        sprite.scale.set(canvas.width / 20, canvas.height / 20, 1); // Reduced scale
         sprite.layers.set(NORMAL_LAYER);
 
         return sprite;
@@ -312,8 +317,20 @@ export class NodeManager {
     }
 
     updateLabelOrientations(camera) {
-        this.nodeLabels.forEach(label => {
-            label.lookAt(camera.position);
+        this.nodeLabels.forEach((label, nodeId) => {
+            const mesh = this.nodeMeshes.get(nodeId);
+            if (mesh) {
+                // Position label closer to node due to smaller size
+                const size = mesh.geometry.parameters.radius || 
+                           mesh.geometry.parameters.width || 
+                           this.minNodeSize;
+                label.position.set(
+                    mesh.position.x,
+                    mesh.position.y + size + 0.2, // Reduced offset
+                    mesh.position.z
+                );
+                label.lookAt(camera.position);
+            }
         });
     }
 
@@ -362,58 +379,68 @@ export class NodeManager {
     }
 
     updateNodePositions(positions) {
-        // Handle array-based format (new binary format)
-        if (Array.isArray(positions)) {
-            positions.forEach((position, index) => {
-                const nodeId = Array.from(this.nodeMeshes.keys())[index];
-                if (!nodeId) return;
-
-                const mesh = this.nodeMeshes.get(nodeId);
-                const label = this.nodeLabels.get(nodeId);
-                
-                if (mesh) {
-                    const [x, y, z] = position;
-                    mesh.position.set(x, y, z);
-                    
-                    if (label) {
-                        const size = mesh.geometry.parameters.radius || 
-                                   mesh.geometry.parameters.width || 
-                                   1; // fallback size
-                        label.position.set(x, y + size + 2, z);
-                    }
-
-                    // Update connected edges
-                    this.updateEdgesForNode(nodeId);
-                }
-            });
+        if (!positions) {
+            console.warn('Received null or undefined positions');
+            return;
         }
-        // Handle legacy object-based format
-        else if (typeof positions === 'object') {
-            Object.entries(positions).forEach(([index, position]) => {
-                const nodeId = Array.from(this.nodeMeshes.keys())[index];
-                if (!nodeId) return;
 
-                const mesh = this.nodeMeshes.get(nodeId);
-                const label = this.nodeLabels.get(nodeId);
+        // Ensure positions is an array
+        const positionsArray = Array.isArray(positions) ? positions : Array.from(positions);
+        console.log('Updating positions for', positionsArray.length, 'nodes');
+
+        // Get array of node IDs
+        const nodeIds = Array.from(this.nodeMeshes.keys());
+
+        // Update each node position
+        positionsArray.forEach((position, index) => {
+            const nodeId = nodeIds[index];
+            if (!nodeId) {
+                console.warn(`No node found for index ${index}`);
+                return;
+            }
+
+            const mesh = this.nodeMeshes.get(nodeId);
+            const label = this.nodeLabels.get(nodeId);
+            
+            if (!mesh) {
+                console.warn(`No mesh found for node ${nodeId}`);
+                return;
+            }
+
+            // Extract position values, handling both array and object formats
+            let x, y, z;
+            if (Array.isArray(position)) {
+                [x, y, z] = position;
+            } else if (position && typeof position === 'object') {
+                ({ x, y, z } = position);
+            } else {
+                console.warn(`Invalid position format for node ${nodeId}:`, position);
+                return;
+            }
+
+            // Validate position values
+            if (typeof x === 'number' && typeof y === 'number' && typeof z === 'number' &&
+                !isNaN(x) && !isNaN(y) && !isNaN(z)) {
                 
-                if (mesh) {
-                    mesh.position.set(position.x, position.y, position.z);
-                    
-                    if (label) {
-                        const size = mesh.geometry.parameters.radius || 
-                                   mesh.geometry.parameters.width || 
-                                   1; // fallback size
-                        label.position.set(position.x, position.y + size + 2, position.z);
-                    }
-
-                    // Update connected edges
-                    this.updateEdgesForNode(nodeId);
+                // Update mesh position
+                mesh.position.set(x, y, z);
+                
+                // Update label position if it exists
+                if (label) {
+                    const size = mesh.geometry.parameters.radius || 
+                               mesh.geometry.parameters.width || 
+                               1; // fallback size
+                    label.position.set(x, y + size + 2, z);
                 }
-            });
-        }
+
+                // Update connected edges
+                this.updateEdgesForNode(nodeId);
+            } else {
+                console.warn(`Invalid position values for node ${nodeId}: x=${x}, y=${y}, z=${z}`);
+            }
+        });
     }
 
-    // Helper method to update edges for a specific node
     updateEdgesForNode(nodeId) {
         this.edgeMeshes.forEach((line, edgeKey) => {
             const [source, target] = edgeKey.split('-');

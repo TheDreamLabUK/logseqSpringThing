@@ -10,6 +10,8 @@ const TRANSLATION_SPEED = 0.01;
 const ROTATION_SPEED = 0.01;
 
 export class WebXRVisualization {
+    // ... [previous methods unchanged until positionUpdate event listener] ...
+
     constructor(graphDataManager) {
         console.log('WebXRVisualization constructor called');
         this.graphDataManager = graphDataManager;
@@ -65,9 +67,11 @@ export class WebXRVisualization {
         // Handle position updates from layout manager
         window.addEventListener('positionUpdate', (event) => {
             console.log('Sending position update');
-            if (this.graphDataManager.websocketService && this.graphDataManager.websocketService.socket) {
-                // Send binary position data directly through websocket
-                this.graphDataManager.websocketService.socket.send(event.detail);
+            // Only send position updates if we have valid graph data
+            if (this.graphDataManager.isGraphDataValid()) {
+                if (this.graphDataManager.websocketService && this.graphDataManager.websocketService.socket) {
+                    this.graphDataManager.websocketService.socket.send(event.detail);
+                }
             }
         });
 
@@ -213,8 +217,14 @@ export class WebXRVisualization {
             // Apply force-directed layout
             this.layoutManager.applyForceDirectedLayout(graphData.nodes, graphData.edges);
             
-            // Update node positions
-            this.nodeManager.updateNodePositions(graphData.nodes);
+            // Convert nodes to position array format for NodeManager
+            const positions = graphData.nodes.map(node => ({
+                x: node.x,
+                y: node.y,
+                z: node.z
+            }));
+            
+            this.nodeManager.updateNodePositions(positions);
             
         } catch (error) {
             console.error('Error updating visualization:', error);
@@ -238,7 +248,8 @@ export class WebXRVisualization {
             } else if (control.startsWith('forceDirected')) {
                 console.log('Updating layout feature:', control, value);
                 this.layoutManager.updateFeature(control, value);
-                this.graphDataManager.updateForceDirectedParams(control.replace('forceDirected', ''), value);
+                // Pass the full parameter name to graphDataManager
+                this.graphDataManager.updateForceDirectedParams(control, value);
             }
 
             // Handle lighting and other scene-level features
@@ -314,59 +325,71 @@ export class WebXRVisualization {
             // Get all node positions for synchronization
             const positions = this.nodeManager.getNodePositions();
             
-            // Create binary position data (28 bytes per node - position, velocity, mass, padding)
-            const buffer = new ArrayBuffer(positions.length * 28);
+            // Create binary position data (24 bytes per node - position and velocity only)
+            const buffer = new ArrayBuffer(positions.length * 24);
             const view = new Float32Array(buffer);
             
             positions.forEach((pos, index) => {
-                const offset = index * 7; // 7 floats per node (3 pos + 3 vel + 1 mass)
+                const offset = index * 6; // 6 floats per node (3 pos + 3 vel)
                 // Position
-                view[offset] = pos.position.x;
-                view[offset + 1] = pos.position.y;
-                view[offset + 2] = pos.position.z;
-                // Velocity
-                view[offset + 3] = pos.velocity.x;
-                view[offset + 4] = pos.velocity.y;
-                view[offset + 5] = pos.velocity.z;
-                // Mass (based on node size/importance)
-                const mass = pos.scale ? Math.max(1.0, pos.scale) : 1.0;
-                view[offset + 6] = mass;
+                view[offset] = pos[0];     // x
+                view[offset + 1] = pos[1]; // y
+                view[offset + 2] = pos[2]; // z
+                // Velocity (default to 0 as we don't track velocity during drag)
+                view[offset + 3] = 0;
+                view[offset + 4] = 0;
+                view[offset + 5] = 0;
             });
 
-            // Send binary position update
-            if (this.graphDataManager.websocketService && this.graphDataManager.websocketService.socket) {
-                this.graphDataManager.websocketService.socket.send(buffer);
+            // Only send position updates if we have valid graph data
+            if (this.graphDataManager.isGraphDataValid()) {
+                if (this.graphDataManager.websocketService && this.graphDataManager.websocketService.socket) {
+                    this.graphDataManager.websocketService.socket.send(buffer);
+                }
             }
         }
     }
 
+    showError(message) {
+        console.error('Visualization error:', message);
+        // You could add visual feedback here, like a floating error message
+        const errorEvent = new CustomEvent('visualizationError', {
+            detail: { message }
+        });
+        window.dispatchEvent(errorEvent);
+    }
+
     handleBinaryPositionUpdate(buffer) {
         try {
-            const positions = new Float32Array(buffer);
-            const updates = [];
+            console.log(`Processing binary position update of size: ${buffer.length} positions`);
             
-            // Each position update contains 7 float values (x,y,z, vx,vy,vz, mass)
-            for (let i = 0; i < positions.length; i += 7) {
-                updates.push({
-                    position: new THREE.Vector3(
-                        positions[i],
-                        positions[i + 1],
-                        positions[i + 2]
-                    ),
-                    velocity: new THREE.Vector3(
-                        positions[i + 3],
-                        positions[i + 4],
-                        positions[i + 5]
-                    ),
-                    mass: positions[i + 6]
-                });
+            // Validate buffer size
+            if (buffer.length === 0) {
+                console.warn('Received empty position update buffer');
+                return;
             }
 
-            // Fast update through node manager
+            const updates = [];
+            
+            // Each position update should have 6 values (x,y,z, vx,vy,vz)
+            for (let i = 0; i < buffer.length; i++) {
+                if (i + 2 < buffer.length) {  // Ensure we have at least x,y,z
+                    updates.push([
+                        buffer[i][0],     // x
+                        buffer[i][1],     // y
+                        buffer[i][2]      // z
+                    ]);
+                }
+            }
+
+            console.log(`Processed ${updates.length} position updates`);
+
+            // Update node positions with array format
             this.nodeManager.updateNodePositions(updates);
         } catch (error) {
             console.error('Error handling binary position update:', error);
             console.error('Error stack:', error.stack);
+            this.showError(`Failed to update positions: ${error.message}`);
         }
     }
 }

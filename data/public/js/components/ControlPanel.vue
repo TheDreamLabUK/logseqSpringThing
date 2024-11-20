@@ -10,6 +10,18 @@ export default defineComponent({
         }
     },
     setup(props, { emit }) {
+        console.log('ControlPanel setup called');
+        
+        onMounted(() => {
+            console.log('ControlPanel mounted');
+            // Force visibility after mount
+            const panel = document.getElementById('control-panel');
+            if (panel) {
+                panel.style.display = 'block';
+                panel.style.visibility = 'visible';
+            }
+        });
+
         // Reactive state variables
         const isHidden = ref(false);
         const simulationMode = ref('remote');
@@ -315,6 +327,11 @@ export default defineComponent({
             scrollToBottom();
         });
 
+        // Add watch to debug state changes
+        watch(isHidden, (newVal) => {
+            console.log('isHidden changed to:', newVal);
+        });
+
         return {
             isHidden,
             simulationMode,
@@ -348,8 +365,8 @@ export default defineComponent({
 </script>
 
 <template>
-    <div id="control-panel" :class="{ hidden: isHidden }">
-        <button @click="togglePanel" class="toggle-button">
+    <div id="control-panel" :class="{ hidden: isHidden }" style="display: block !important;">
+        <button @click="togglePanel" class="toggle-button" style="display: block !important;">
             {{ isHidden ? '>' : '<' }}
         </button>
         <div class="panel-content" v-show="!isHidden">
@@ -621,6 +638,8 @@ export default defineComponent({
     overflow-y: auto;
     z-index: 1000;
     transition: transform 0.3s ease-in-out;
+    display: block !important;
+    visibility: visible !important;
 }
 
 #control-panel.hidden {
@@ -638,13 +657,16 @@ export default defineComponent({
     padding: 10px;
     cursor: pointer;
     border-radius: 5px 0 0 5px;
-    z-index: 2;
+    z-index: 1001;
+    display: block !important;
+    visibility: visible !important;
 }
 
 .panel-content {
     padding: 20px 20px 20px 40px;
     height: 100%;
     overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .control-group {

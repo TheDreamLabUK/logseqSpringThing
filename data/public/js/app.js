@@ -3,13 +3,13 @@
 import { createApp } from 'vue';
 import ControlPanel from './components/ControlPanel.vue';
 import ChatManager from './components/chatManager.vue';
-import { WebXRVisualization } from './components/visualization/core.js';  // Updated import path
+import { WebXRVisualization } from './components/visualization/core.js';
 import WebsocketService from './services/websocketService.js';
 import { GraphDataManager } from './services/graphDataManager.js';
 import { isGPUAvailable, initGPU } from './gpuUtils.js';
 import { enableSpacemouse } from './services/spacemouse.js';
 
-class App {
+export class App {
     constructor() {
         console.log('App constructor called');
         this.websocketService = null;
@@ -21,30 +21,42 @@ class App {
     }
 
     initializeApp() {
-        console.log('Initializing Application');
+        console.log('Initializing Application - Step 1: Services');
 
         // Initialize Services
         try {
             this.websocketService = new WebsocketService();
-            console.log('WebsocketService initialized');
+            console.log('WebsocketService initialized successfully');
         } catch (error) {
             console.error('Failed to initialize WebsocketService:', error);
         }
 
         if (this.websocketService) {
             this.graphDataManager = new GraphDataManager(this.websocketService);
-            console.log('GraphDataManager initialized');
+            console.log('GraphDataManager initialized successfully');
         } else {
             console.error('Cannot initialize GraphDataManager: WebsocketService is not available');
         }
         
+        console.log('Initializing Application - Step 2: Visualization');
         try {
+            // Add container check
+            const container = document.getElementById('scene-container');
+            if (!container) {
+                console.error('Scene container not found, creating it');
+                const newContainer = document.createElement('div');
+                newContainer.id = 'scene-container';
+                document.body.appendChild(newContainer);
+            }
+
             this.visualization = new WebXRVisualization(this.graphDataManager);
             console.log('WebXRVisualization initialized successfully');
         } catch (error) {
             console.error('Failed to initialize WebXRVisualization:', error);
+            console.error('Error stack:', error.stack);
         }
 
+        console.log('Initializing Application - Step 3: GPU');
         // Initialize GPU if available
         this.gpuAvailable = isGPUAvailable();
         if (this.gpuAvailable) {
@@ -54,12 +66,15 @@ class App {
             console.warn('GPU acceleration not available, using CPU fallback');
         }
 
+        console.log('Initializing Application - Step 4: Vue App');
         // Initialize Vue App with ChatManager and ControlPanel
         this.initVueApp();
 
+        console.log('Initializing Application - Step 5: Event Listeners');
         // Setup Event Listeners
         this.setupEventListeners();
 
+        console.log('Initializing Application - Step 6: Three.js');
         // Initialize the visualization
         if (this.visualization) {
             this.visualization.initThreeJS();
@@ -69,96 +84,100 @@ class App {
     }
 
     initVueApp() {
-        console.log('Initializing Vue App');
+        console.log('Initializing Vue App - Start');
+        const websocketService = this.websocketService;
+        const visualization = this.visualization;
+        const graphDataManager = this.graphDataManager;
+
+        // Check if Vue is available
+        if (typeof createApp !== 'function') {
+            console.error('Vue createApp not found!');
+            return;
+        }
+
         const app = createApp({
             components: {
                 ControlPanel,
                 ChatManager
             },
-            setup: () => {
-                // Provide the services directly in setup
-                return {
-                    websocketService: this.websocketService,
-                    visualization: this.visualization,
-                    graphDataManager: this.graphDataManager
-                };
-            },
-            template: `
-                <div>
-                    <chat-manager :websocketService="websocketService"></chat-manager>
-                    <control-panel 
-                        :websocketService="websocketService"
-                        @control-change="handleControlChange"
-                        @toggle-fullscreen="toggleFullscreen"
-                        @enable-spacemouse="enableSpacemouse"
-                    ></control-panel>
-                </div>
-            `,
-            methods: {
-                handleControlChange(data) {
+            setup() {
+                console.log('Vue app setup function called');
+                const handleControlChange = (data) => {
                     console.log('Control changed:', data.name, data.value);
-                    if (this.visualization) {
+                    if (visualization) {
                         console.log('Updating visualization:', data);
                         
                         // Handle force-directed graph parameters
                         if (data.name === 'forceDirectedIterations' || 
                             data.name === 'forceDirectedRepulsion' || 
                             data.name === 'forceDirectedAttraction') {
-                            this.updateForceDirectedParams(data.name, data.value);
+                            updateForceDirectedParams(data.name, data.value);
                         } else {
                             // Pass name and value separately to updateVisualFeatures
-                            this.visualization.updateVisualFeatures(data.name, data.value);
+                            visualization.updateVisualFeatures(data.name, data.value);
                         }
                     } else {
                         console.error('Cannot update visualization: not initialized');
                     }
-                },
-                updateForceDirectedParams(name, value) {
-                    if (this.graphDataManager) {
+                };
+
+                const updateForceDirectedParams = (name, value) => {
+                    if (graphDataManager) {
                         // Update the force-directed parameters in the graph data manager
-                        this.graphDataManager.updateForceDirectedParams(name, value);
+                        graphDataManager.updateForceDirectedParams(name, value);
                         
                         // Trigger a recalculation of the graph layout
-                        this.graphDataManager.recalculateLayout();
+                        graphDataManager.recalculateLayout();
                         
                         // Update the visualization with the new layout
-                        this.visualization.updateVisualization();
+                        visualization.updateVisualization();
                     } else {
                         console.error('Cannot update force-directed parameters: GraphDataManager not initialized');
                     }
-                },
-                toggleFullscreen() {
+                };
+
+                const toggleFullscreen = () => {
                     if (document.fullscreenElement) {
                         document.exitFullscreen();
                     } else {
                         document.documentElement.requestFullscreen();
                     }
-                },
-                enableSpacemouse() {
-                    enableSpacemouse();
-                }
-            }
+                };
+
+                return {
+                    websocketService,
+                    handleControlChange,
+                    toggleFullscreen,
+                    enableSpacemouse
+                };
+            },
+            template: `
+                <div id="app-container">
+                    <chat-manager :websocketService="websocketService"></chat-manager>
+                    <control-panel 
+                        :websocketService="websocketService"
+                        @control-change="handleControlChange"
+                        @toggle-fullscreen="toggleFullscreen"
+                        @enable-spacemouse="enableSpacemouse"
+                        style="z-index: 1000;"
+                    ></control-panel>
+                </div>
+            `
         });
 
-        app.config.errorHandler = (err, vm, info) => {
-            console.error('Vue Error:', err, info);
-        };
+        // Mount to a specific element
+        const mountElement = document.getElementById('app');
+        if (!mountElement) {
+            console.error('Could not find #app element for mounting Vue application');
+            return;
+        }
 
-        app.config.warnHandler = (msg, vm, trace) => {
-            console.warn('Vue Warning:', msg, trace);
-        };
-
-        // Make services available globally to the app
-        app.config.globalProperties.$websocketService = this.websocketService;
-        app.config.globalProperties.$visualization = this.visualization;
-        app.config.globalProperties.$graphDataManager = this.graphDataManager;
-
-        app.mount('#app');
-        console.log('Vue App mounted with services:', {
-            websocketService: this.websocketService,
-            visualization: this.visualization,
-            graphDataManager: this.graphDataManager
-        });
+        try {
+            app.mount('#app');
+            console.log('Vue App mounted successfully');
+        } catch (error) {
+            console.error('Failed to mount Vue app:', error);
+        }
     }
 
     setupEventListeners() {
@@ -260,8 +279,14 @@ class App {
             case 'ttsMethodSet':
                 console.log('TTS method set:', data.method);
                 break;
+            case 'error':
+                console.error('Server error:', data.message);
+                if (this.visualization) {
+                    this.visualization.showError(data.message);
+                }
+                break;
             default:
-                console.warn(`Unhandled message type: ${data.type}`);
+                console.warn(`Unhandled message type: ${data.type}`, data);
                 break;
         }
     }
@@ -279,15 +304,10 @@ class App {
     start() {
         console.log('Starting the application');
         if (this.visualization) {
+            console.log('Starting visualization animation');
             this.visualization.animate();
         } else {
             console.error('Cannot start animation: Visualization not initialized');
-        }
-        if (this.gpuAvailable) {
-            console.log('GPU acceleration is available');
-            // Implement GPU-accelerated features here if needed
-        } else {
-            console.log('GPU acceleration is not available, using CPU fallback');
         }
     }
 }

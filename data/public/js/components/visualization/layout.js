@@ -1,12 +1,14 @@
 export class LayoutManager {
     constructor(settings = {}) {
         // Configuration
-        this.initialIterations = settings.forceDirectedIterations || 250;
+        this.initialIterations = settings.iterations || 250;
         this.updateIterations = 1;       // Single iteration for smooth continuous updates
         this.targetRadius = 200;
         this.naturalLength = 100;
-        this.attraction = settings.forceDirectedAttraction || 0.01;
-        this.repulsion = settings.forceDirectedRepulsion || 1000;
+        this.attraction = settings.attraction_strength || 0.01;
+        this.repulsion = settings.repulsion_strength || 1000;
+        this.spring = settings.spring_strength || 0.1;
+        this.damping = settings.damping || 0.8;
         
         // State
         this.isInitialized = false;
@@ -18,10 +20,13 @@ export class LayoutManager {
         this.updateInterval = 16.67;     // Exactly 60fps
         this.positionBuffer = null;
         this.edges = [];                 // Store computed edges
+        this.nodeCount = 0;              // Track number of nodes
+        this.waitingForInitialData = true; // Wait for initial data before sending updates
     }
 
     initializePositions(nodes) {
         console.log('Initializing positions for nodes:', nodes);
+        this.nodeCount = nodes.length;
         nodes.forEach(node => {
             // Initialize only if positions are invalid
             if (isNaN(node.x) || isNaN(node.y) || isNaN(node.z)) {
@@ -50,17 +55,22 @@ export class LayoutManager {
         }));
 
         this.isInitialized = true;
+        this.waitingForInitialData = false; // Initial data received
         console.log('Position initialization complete');
     }
 
     applyForceDirectedLayout(nodes, edges) {
-        if (!this.isInitialized) {
-            console.warn('Layout manager not initialized');
+        if (!nodes || !Array.isArray(nodes) || nodes.length === 0) {
+            console.warn('Invalid nodes array provided to force-directed layout');
             return;
         }
 
-        console.log('Applying force-directed layout');
-        const damping = 0.9;
+        if (!this.isInitialized || this.waitingForInitialData) {
+            console.warn('Layout manager not initialized or waiting for initial data');
+            return;
+        }
+
+        console.log('Applying force-directed layout to', nodes.length, 'nodes');
         const dt = 0.1;
 
         // Apply forces based on edges (topic counts)
@@ -78,19 +88,19 @@ export class LayoutManager {
                 if (distance === 0) return;
 
                 // Use edge weight (from topic counts) to scale the force
-                const force = (distance - this.naturalLength) * this.attraction * (edge.weight || 1);
+                const force = (distance - this.naturalLength) * this.spring * (edge.weight || 1);
                 
                 const fx = (dx / distance) * force;
                 const fy = (dy / distance) * force;
                 const fz = (dz / distance) * force;
 
                 // Apply forces to both nodes
-                sourceNode.vx += fx;
-                sourceNode.vy += fy;
-                sourceNode.vz += fz;
-                targetNode.vx -= fx;
-                targetNode.vy -= fy;
-                targetNode.vz -= fz;
+                sourceNode.vx += fx * this.attraction;
+                sourceNode.vy += fy * this.attraction;
+                sourceNode.vz += fz * this.attraction;
+                targetNode.vx -= fx * this.attraction;
+                targetNode.vy -= fy * this.attraction;
+                targetNode.vz -= fz * this.attraction;
             }
         });
 
@@ -127,9 +137,9 @@ export class LayoutManager {
             node.z += node.vz * dt;
 
             // Apply damping
-            node.vx *= damping;
-            node.vy *= damping;
-            node.vz *= damping;
+            node.vx *= this.damping;
+            node.vy *= this.damping;
+            node.vz *= this.damping;
 
             // Bound checking
             const bound = 500;
@@ -145,18 +155,24 @@ export class LayoutManager {
             case 'forceDirectedIterations':
                 this.initialIterations = value;
                 break;
-            case 'forceDirectedRepulsion':
+            case 'spring_strength':
+                this.spring = value;
+                break;
+            case 'repulsion_strength':
                 this.repulsion = value;
                 break;
-            case 'forceDirectedAttraction':
+            case 'attraction_strength':
                 this.attraction = value;
+                break;
+            case 'damping':
+                this.damping = value;
                 break;
         }
     }
 
     performLayout(graphData) {
-        if (!this.isInitialized || !graphData) {
-            console.warn('Cannot perform layout: not initialized or no graph data');
+        if (!this.isInitialized || !graphData || this.waitingForInitialData) {
+            console.warn('Cannot perform layout: not initialized, no graph data, or waiting for initial data');
             return;
         }
 
@@ -172,15 +188,18 @@ export class LayoutManager {
     }
 
     sendPositionUpdates(nodes) {
-        if (!this.lastPositions) return;
+        if (!this.lastPositions || !this.isInitialized || nodes.length !== this.nodeCount || this.waitingForInitialData) {
+            console.warn('Cannot send position updates: not initialized, node count mismatch, or waiting for initial data');
+            return;
+        }
 
         // Create binary buffer for all node positions and velocities (24 bytes per node)
         const buffer = new ArrayBuffer(nodes.length * 24);
-        const dataView = new DataView(buffer);
+        const dataView = new Float32Array(buffer);
         let hasChanges = false;
 
         nodes.forEach((node, index) => {
-            const offset = index * 24;
+            const offset = index * 6;
             const lastPos = this.lastPositions[index];
 
             if (!lastPos || 
@@ -204,42 +223,25 @@ export class LayoutManager {
                 }
 
                 // Position (vec3<f32>)
-                dataView.setFloat32(offset, node.x, true);
-                dataView.setFloat32(offset + 4, node.y, true);
-                dataView.setFloat32(offset + 8, node.z, true);
+                dataView[offset] = node.x;
+                dataView[offset + 1] = node.y;
+                dataView[offset + 2] = node.z;
 
                 // Velocity (vec3<f32>)
-                dataView.setFloat32(offset + 12, node.vx || 0, true);
-                dataView.setFloat32(offset + 16, node.vy || 0, true);
-                dataView.setFloat32(offset + 20, node.vz || 0, true);
+                dataView[offset + 3] = node.vx || 0;
+                dataView[offset + 4] = node.vy || 0;
+                dataView[offset + 5] = node.vz || 0;
             }
         });
 
         if (hasChanges) {
+            // Log the buffer size before sending
+            console.log(`Sending position update buffer of size: ${buffer.byteLength} bytes for ${nodes.length} nodes`);
+            
             // Dispatch binary data event
             window.dispatchEvent(new CustomEvent('positionUpdate', {
                 detail: buffer
             }));
-        }
-    }
-
-    applyPositionUpdates(positions) {
-        if (!this.lastPositions) return;
-
-        // Handle binary data format (24 bytes per node)
-        if (positions instanceof ArrayBuffer) {
-            const dataView = new DataView(positions);
-            for (let i = 0; i < this.lastPositions.length; i++) {
-                const offset = i * 24;
-                this.lastPositions[i] = {
-                    x: dataView.getFloat32(offset, true),
-                    y: dataView.getFloat32(offset + 4, true),
-                    z: dataView.getFloat32(offset + 8, true),
-                    vx: dataView.getFloat32(offset + 12, true),
-                    vy: dataView.getFloat32(offset + 16, true),
-                    vz: dataView.getFloat32(offset + 20, true)
-                };
-            }
         }
     }
 

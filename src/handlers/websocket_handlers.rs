@@ -2,7 +2,6 @@ use actix::prelude::*;
 use actix::ResponseActFuture;
 use actix_web::web;
 use actix_web_actors::ws::WebsocketContext;
-use bytes::Bytes;
 use bytestring::ByteString;
 use bytemuck;
 use futures::StreamExt;
@@ -133,7 +132,49 @@ impl Handler<SendBinary> for WebSocketSession {
     type Result = ();
 
     fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
-        ctx.binary(Bytes::from(msg.0));
+        if let Some(gpu_compute) = &self.state.gpu_compute {
+            let gpu = gpu_compute.clone();
+            let bin_data = msg.0.clone();
+            let ctx_addr = ctx.address();
+
+            ctx.spawn(
+                async move {
+                    let gpu_read = gpu.read().await;
+                    let expected_size = gpu_read.get_num_nodes() as usize * 24;
+                    drop(gpu_read); // Release the read lock before writing
+
+                    if bin_data.len() != expected_size {
+                        error!("Invalid position data length: expected {}, got {}", 
+                            expected_size, bin_data.len());
+                        let error_message = json!({
+                            "type": "error",
+                            "message": format!("Invalid position data length: expected {}, got {}", 
+                                expected_size, bin_data.len())
+                        });
+                        if let Ok(error_str) = serde_json::to_string(&error_message) {
+                            let msg: SendText = SendText(error_str);
+                            ctx_addr.do_send(msg);
+                            
+                        }
+                        return;
+                    }
+
+                    let mut gpu_write = gpu.write().await;
+                    if let Err(e) = gpu_write.update_positions(&bin_data).await {
+                        error!("Failed to update node positions: {}", e);
+                        let error_message = json!({
+                            "type": "error",
+                            "message": format!("Failed to update node positions: {}", e)
+                        });
+                        if let Ok(error_str) = serde_json::to_string(&error_message) {
+                            let msg: SendText = SendText(error_str);
+                            ctx_addr.do_send(msg);
+                        }
+                    }
+                }
+                .into_actor(self)
+            );
+        }
     }
 }
 
