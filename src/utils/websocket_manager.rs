@@ -122,9 +122,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
 
                     ctx.spawn(
                         async move {
-                            let mut gpu = gpu.write().await;
-                            let expected_size = gpu.num_nodes as usize * 24;
-                            
+                            let gpu_read = gpu.read().await;
+                            let expected_size = gpu_read.get_num_nodes() as usize * 24;
+                            drop(gpu_read); // Release the read lock before writing
+
                             if bin_data.len() != expected_size {
                                 error!("Invalid position data length: expected {}, got {}", 
                                     expected_size, bin_data.len());
@@ -140,7 +141,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                                 return;
                             }
 
-                            if let Err(e) = gpu.update_positions(&bin_data).await {
+                            let mut gpu_write = gpu.write().await;
+                            if let Err(e) = gpu_write.update_positions(&bin_data).await {
                                 error!("Failed to update node positions: {}", e);
                                 let error_message = json!({
                                     "type": "error",

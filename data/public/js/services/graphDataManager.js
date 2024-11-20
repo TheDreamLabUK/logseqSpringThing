@@ -12,30 +12,23 @@ export class GraphDataManager {
         this.websocketService = websocketService;
         this.graphData = null;
         this.forceDirectedParams = {
-            iterations: 100,
-            repulsionStrength: 1.0,
-            attractionStrength: 0.01,
-            damping: 0.9
+            forceDirectedIterations: 250,
+            forceDirectedSpring: 0.1,
+            forceDirectedRepulsion: 1000,
+            forceDirectedAttraction: 0.01,
+            forceDirectedDamping: 0.8
         };
         console.log('GraphDataManager initialized');
         
-        // Set up WebSocket message listeners
         this.websocketService.on('graphUpdate', this.handleGraphUpdate.bind(this));
         this.websocketService.on('gpuPositions', this.handleGPUPositions.bind(this));
     }
 
-    /**
-     * Requests the initial graph data from the server via WebSocket.
-     */
     requestInitialData() {
         console.log('Requesting initial data');
         this.websocketService.send({ type: 'getInitialData' });
     }
 
-    /**
-     * Handles GPU-computed position updates from the server.
-     * @param {object} update - The position update data.
-     */
     handleGPUPositions(update) {
         if (!this.graphData || !this.graphData.nodes) {
             console.error('Cannot apply GPU position update: No graph data exists');
@@ -43,18 +36,28 @@ export class GraphDataManager {
         }
 
         const { positions } = update;
+        console.log('Received GPU position update:', positions);
         
         // Update node positions from GPU computation
         this.graphData.nodes.forEach((node, index) => {
             if (positions[index]) {
-                const [x, y, z] = positions[index];
-                node.x = x;
-                node.y = y;
-                node.z = z;
-                // Clear velocities since GPU is handling movement
-                node.vx = 0;
-                node.vy = 0;
-                node.vz = 0;
+                const pos = positions[index];
+                if (Array.isArray(pos) && pos.length >= 3) {
+                    node.x = pos[0];
+                    node.y = pos[1];
+                    node.z = pos[2];
+                    // Clear velocities since GPU is handling movement
+                    node.vx = 0;
+                    node.vy = 0;
+                    node.vz = 0;
+                } else if (pos && typeof pos === 'object') {
+                    node.x = pos.x;
+                    node.y = pos.y;
+                    node.z = pos.z;
+                    node.vx = 0;
+                    node.vy = 0;
+                    node.vz = 0;
+                }
             }
         });
 
@@ -64,10 +67,6 @@ export class GraphDataManager {
         }));
     }
 
-    /**
-     * Handles graph update messages.
-     * @param {object} data - The received graph data.
-     */
     handleGraphUpdate(data) {
         console.log('Received graph update:', data);
         if (!data || !data.graphData) {
@@ -77,10 +76,6 @@ export class GraphDataManager {
         this.updateGraphData(data.graphData);
     }
 
-    /**
-     * Updates the internal graph data with new data received from the server.
-     * @param {object} newData - The new graph data.
-     */
     updateGraphData(newData) {
         console.log('Updating graph data with:', newData);
         
@@ -132,7 +127,7 @@ export class GraphDataManager {
             const nodeSet = new Set();
             newData.edges.forEach(edge => {
                 nodeSet.add(edge.source);
-                nodeSet.add(edge.target); // Fixed: using target instead of target_node
+                nodeSet.add(edge.target);
             });
 
             const nodes = Array.from(nodeSet).map(id => {
@@ -157,7 +152,7 @@ export class GraphDataManager {
                 nodes,
                 edges: newData.edges.map(e => ({
                     source: e.source,
-                    target: e.target, // Fixed: using target instead of target_node
+                    target: e.target,
                     weight: e.weight,
                     hyperlinks: e.hyperlinks
                 })),
@@ -175,10 +170,6 @@ export class GraphDataManager {
         window.dispatchEvent(new CustomEvent('graphDataUpdated', { detail: this.graphData }));
     }
 
-    /**
-     * Retrieves the current graph data.
-     * @returns {object|null} The current graph data or null if not set.
-     */
     getGraphData() {
         if (this.graphData) {
             console.log(`Returning graph data: ${this.graphData.nodes.length} nodes, ${this.graphData.edges.length} edges`);
@@ -189,10 +180,6 @@ export class GraphDataManager {
         return this.graphData;
     }
 
-    /**
-     * Checks if the graph data is valid.
-     * @returns {boolean} True if the graph data is valid, false otherwise.
-     */
     isGraphDataValid() {
         return this.graphData && 
                Array.isArray(this.graphData.nodes) && 
@@ -200,22 +187,12 @@ export class GraphDataManager {
                this.graphData.nodes.length > 0;
     }
 
-    /**
-     * Updates the force-directed graph parameters.
-     * @param {string} name - The name of the parameter to update.
-     * @param {number} value - The new value for the parameter.
-     */
     updateForceDirectedParams(name, value) {
         console.log(`Updating force-directed parameter: ${name} = ${value}`);
-        const paramMap = {
-            'iterations': 'iterations',
-            'repulsionStrength': 'repulsionStrength',
-            'attractionStrength': 'attractionStrength'
-        };
-
-        const serverParamName = paramMap[name];
-        if (serverParamName) {
-            this.forceDirectedParams[serverParamName] = value;
+        
+        // Handle full parameter names
+        if (this.forceDirectedParams.hasOwnProperty(name)) {
+            this.forceDirectedParams[name] = value;
             console.log('Force-directed parameters updated:', this.forceDirectedParams);
             this.recalculateLayout();
         } else {
@@ -223,19 +200,17 @@ export class GraphDataManager {
         }
     }
 
-    /**
-     * Recalculates the graph layout using the current force-directed parameters.
-     */
     recalculateLayout() {
         console.log('Requesting server layout recalculation with parameters:', this.forceDirectedParams);
         if (this.isGraphDataValid()) {
             this.websocketService.send({
                 type: 'recalculateLayout',
                 params: {
-                    iterations: this.forceDirectedParams.iterations,
-                    springStrength: this.forceDirectedParams.attractionStrength,
-                    repulsionStrength: this.forceDirectedParams.repulsionStrength,
-                    damping: this.forceDirectedParams.damping
+                    iterations: this.forceDirectedParams.forceDirectedIterations,
+                    spring_strength: this.forceDirectedParams.forceDirectedSpring,
+                    repulsion_strength: this.forceDirectedParams.forceDirectedRepulsion,
+                    attraction_strength: this.forceDirectedParams.forceDirectedAttraction,
+                    damping: this.forceDirectedParams.forceDirectedDamping
                 }
             });
             

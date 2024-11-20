@@ -80,7 +80,7 @@ impl GPUCompute {
     
     /// Creates a new instance of GPUCompute with initialized GPU resources
     pub async fn new(graph: &GraphData) -> Result<Self, Error> {
-        debug!("Initializing GPU compute capabilities");
+        debug!("Initializing GPU compute capabilities with {} nodes", graph.nodes.len());
         
         // Initialize GPU instance with high performance preference
         let instance = wgpu::Instance::new(InstanceDescriptor::default());
@@ -366,7 +366,16 @@ impl GPUCompute {
             ],
         });
 
-        Ok(Self {
+        let num_nodes = graph.nodes.len() as u32;
+        if num_nodes == 0 {
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Cannot initialize GPU compute with 0 nodes"
+            ));
+        }
+
+        // Create a mutable instance
+        let mut instance = Self {
             device,
             queue,
             nodes_buffer,
@@ -380,7 +389,7 @@ impl GPUCompute {
             fisheye_bind_group,
             force_pipeline,
             fisheye_pipeline,
-            num_nodes: graph.nodes.len() as u32,
+            num_nodes,  // Initialize with actual node count
             num_edges: graph.edges.len() as u32,
             simulation_params,
             fisheye_params,
@@ -389,7 +398,12 @@ impl GPUCompute {
             position_staging_buffer,
             position_pipeline,
             position_bind_group,
-        })
+        };
+
+        // Initialize with graph data
+        instance.update_graph_data(graph)?;
+
+        Ok(instance)
     }
 
     /// Updates the graph data in GPU buffers

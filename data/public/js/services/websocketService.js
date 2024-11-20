@@ -111,9 +111,32 @@ export default class WebsocketService {
     handleMessage = async (event) => {
         try {
             if (event.data instanceof ArrayBuffer) {
-                // Handle binary position updates by passing directly to visualization
+                // Log received buffer size
+                console.log(`Received binary data of size: ${event.data.byteLength} bytes`);
+                
+                // Convert ArrayBuffer to Float32Array for position updates
+                const positions = new Float32Array(event.data);
+                const positionUpdates = [];
+                
+                // Each node has 6 values (x,y,z, vx,vy,vz)
+                for (let i = 0; i < positions.length; i += 6) {
+                    if (i + 5 < positions.length) {  // Ensure we have complete node data
+                        positionUpdates.push([
+                            positions[i],     // x
+                            positions[i + 1], // y
+                            positions[i + 2], // z
+                            positions[i + 3], // vx
+                            positions[i + 4], // vy
+                            positions[i + 5]  // vz
+                        ]);
+                    }
+                }
+
+                console.log(`Processed ${positionUpdates.length} node position updates`);
+
+                // Dispatch event with properly formatted positions array
                 window.dispatchEvent(new CustomEvent('binaryPositionUpdate', {
-                    detail: event.data
+                    detail: positionUpdates
                 }));
                 return;
             }
@@ -128,7 +151,9 @@ export default class WebsocketService {
             this.emit('error', { 
                 type: 'parse_error', 
                 message: error.message, 
-                rawData: event.data 
+                rawData: event.data instanceof ArrayBuffer ? 
+                    `Binary data of size ${event.data.byteLength}` : 
+                    event.data 
             });
         }
     }
@@ -147,7 +172,8 @@ export default class WebsocketService {
     send(data) {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             if (data instanceof ArrayBuffer) {
-                // Send binary data directly
+                // Log binary data size before sending
+                console.log(`Sending binary data of size: ${data.byteLength} bytes`);
                 this.socket.send(data);
             } else {
                 // Send JSON data
@@ -155,7 +181,8 @@ export default class WebsocketService {
                 this.socket.send(JSON.stringify(data));
             }
         } else {
-            console.warn('WebSocket is not open. Unable to send message:', data);
+            console.warn('WebSocket is not open. Unable to send message:', 
+                data instanceof ArrayBuffer ? `Binary data of size ${data.byteLength}` : data);
             this.emit('error', { type: 'send_error', message: 'WebSocket is not open' });
         }
     }

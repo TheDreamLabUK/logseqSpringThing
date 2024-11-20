@@ -24,10 +24,10 @@ export class VisualizationSettings {
             
             // Force-directed layout settings
             forceDirectedIterations: parseInt(process.env.FORCE_DIRECTED_ITERATIONS) || 100,
-            forceDirectedSpring: parseFloat(process.env.FORCE_DIRECTED_SPRING) || 0.1,
-            forceDirectedRepulsion: parseFloat(process.env.FORCE_DIRECTED_REPULSION) || 1000.0,
-            forceDirectedAttraction: parseFloat(process.env.FORCE_DIRECTED_ATTRACTION) || 0.01,
-            forceDirectedDamping: parseFloat(process.env.FORCE_DIRECTED_DAMPING) || 0.8,
+            spring_strength: parseFloat(process.env.FORCE_DIRECTED_SPRING) || 0.1,
+            repulsion_strength: parseFloat(process.env.FORCE_DIRECTED_REPULSION) || 1000.0,
+            attraction_strength: parseFloat(process.env.FORCE_DIRECTED_ATTRACTION) || 0.01,
+            damping: parseFloat(process.env.FORCE_DIRECTED_DAMPING) || 0.8,
             
             // Bloom settings
             nodeBloomStrength: parseFloat(process.env.NODE_BLOOM_STRENGTH) || 0.1,
@@ -104,10 +104,10 @@ export class VisualizationSettings {
     getLayoutSettings() {
         return {
             iterations: this.settings.forceDirectedIterations,
-            spring: this.settings.forceDirectedSpring,
-            repulsion: this.settings.forceDirectedRepulsion,
-            attraction: this.settings.forceDirectedAttraction,
-            damping: this.settings.forceDirectedDamping
+            spring_strength: this.settings.spring_strength,
+            repulsion_strength: this.settings.repulsion_strength,
+            attraction_strength: this.settings.attraction_strength,
+            damping: this.settings.damping
         };
     }
 
