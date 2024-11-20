@@ -42,7 +42,11 @@ export class WebXRVisualization {
             this.renderer,
             visualizationSettings.getEnvironmentSettings()
         );
-        this.layoutManager = new LayoutManager(visualizationSettings.getLayoutSettings());
+
+        // Initialize layout manager with settings
+        const layoutSettings = visualizationSettings.getLayoutSettings();
+        this.layoutManager = new LayoutManager(layoutSettings);
+        console.log('Layout manager initialized with settings:', layoutSettings);
 
         // Initialize settings
         this.initializeSettings();
@@ -191,8 +195,8 @@ export class WebXRVisualization {
     updateVisualization() {
         console.log('Updating visualization');
         const graphData = this.graphDataManager.getGraphData();
-        if (!graphData) {
-            console.warn('No graph data available');
+        if (!graphData || !graphData.nodes || !graphData.edges) {
+            console.warn('Invalid graph data:', graphData);
             return;
         }
 
@@ -203,17 +207,20 @@ export class WebXRVisualization {
             
             // Initialize layout manager if needed
             if (!this.layoutManager.isInitialized) {
-                console.log('Initializing layout manager');
+                console.log('Initializing layout manager with nodes:', graphData.nodes);
                 this.layoutManager.initializePositions(graphData.nodes);
-                this.layoutManager.isInitialized = true;
-                // Start continuous simulation after initialization
                 this.layoutManager.startContinuousSimulation(graphData);
-            } else {
-                // Update layout for existing simulation
-                this.layoutManager.performLayout(graphData);
             }
+
+            // Apply force-directed layout
+            this.layoutManager.applyForceDirectedLayout(graphData.nodes, graphData.edges);
+            
+            // Update node positions
+            this.nodeManager.updateNodePositions(graphData.nodes);
+            
         } catch (error) {
             console.error('Error updating visualization:', error);
+            console.error('Error stack:', error.stack);
         }
     }
 
@@ -224,35 +231,40 @@ export class WebXRVisualization {
             return;
         }
         
-        // Delegate updates to appropriate managers
-        if (control.startsWith('node') || control.startsWith('edge')) {
-            this.nodeManager.updateFeature(control, value);
-        } else if (control.startsWith('bloom') || control.startsWith('hologram')) {
-            this.effectsManager.updateFeature(control, value);
-        } else if (control.startsWith('forceDirected')) {
-            // Update layout manager parameters
-            this.layoutManager.updateFeature(control, value);
-            // Also forward to server via graphDataManager
-            this.graphDataManager.updateForceDirectedParams(control.replace('forceDirected', ''), value);
-        }
+        try {
+            // Delegate updates to appropriate managers
+            if (control.startsWith('node') || control.startsWith('edge')) {
+                this.nodeManager.updateFeature(control, value);
+            } else if (control.startsWith('bloom') || control.startsWith('hologram')) {
+                this.effectsManager.updateFeature(control, value);
+            } else if (control.startsWith('forceDirected')) {
+                console.log('Updating layout feature:', control, value);
+                this.layoutManager.updateFeature(control, value);
+                this.graphDataManager.updateForceDirectedParams(control.replace('forceDirected', ''), value);
+            }
 
-        // Handle lighting and other scene-level features
-        switch (control) {
-            case 'ambientLightIntensity':
-                this.ambientLight.intensity = value;
-                break;
-            case 'directionalLightIntensity':
-                this.directionalLight.intensity = value;
-                break;
-            case 'ambientLightColor':
-                this.ambientLight.color.setHex(value);
-                break;
-            case 'directionalLightColor':
-                this.directionalLight.color.setHex(value);
-                break;
-            case 'fogDensity':
-                this.scene.fog.density = value;
-                break;
+            // Handle lighting and other scene-level features
+            switch (control) {
+                case 'ambientLightIntensity':
+                    this.ambientLight.intensity = value;
+                    break;
+                case 'directionalLightIntensity':
+                    this.directionalLight.intensity = value;
+                    break;
+                case 'ambientLightColor':
+                    this.ambientLight.color.setHex(value);
+                    break;
+                case 'directionalLightColor':
+                    this.directionalLight.color.setHex(value);
+                    break;
+                case 'fogDensity':
+                    this.scene.fog.density = value;
+                    break;
+            }
+        } catch (error) {
+            console.error('Error updating visual feature:', error);
+            console.error('Control:', control, 'Value:', value);
+            console.error('Stack:', error.stack);
         }
     }
 

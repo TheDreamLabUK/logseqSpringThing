@@ -43,7 +43,7 @@ services:
           size: 4G
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "sh", "-c", "netstat -tuln | grep -q ':4000'"]
+      test: ["CMD", "curl", "-f", "http://localhost:4000/"]
       interval: 5s
       timeout: 3s
       retries: 2
@@ -71,9 +71,6 @@ services:
       logseq_net:
         aliases:
           - cloudflared  # Explicit alias for cloudflared
-    depends_on:
-      webxr-graph:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "cloudflared", "tunnel", "info"]
       interval: 10s

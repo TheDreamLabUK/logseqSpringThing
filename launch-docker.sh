@@ -8,6 +8,54 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Function to check pnpm security
+check_pnpm_security() {
+    echo -e "${YELLOW}Running pnpm security audit...${NC}"
+    
+    # Run pnpm audit and capture the output
+    local audit_output=$(pnpm audit 2>&1)
+    local audit_exit=$?
+    
+    # Count critical vulnerabilities
+    local critical_count=$(echo "$audit_output" | grep -i "critical" | grep -o '[0-9]\+ vulnerabilities' | awk '{print $1}' || echo "0")
+    
+    echo "$audit_output"
+    
+    if [ "$critical_count" -gt 0 ]; then
+        echo -e "${RED}Found $critical_count critical vulnerabilities!${NC}"
+        return 1
+    elif [ "$audit_exit" -ne 0 ]; then
+        echo -e "${YELLOW}Found non-critical vulnerabilities${NC}"
+    else
+        echo -e "${GREEN}No critical vulnerabilities found${NC}"
+    fi
+    return 0
+}
+
+# Function to check Rust security
+check_rust_security() {
+    echo -e "${YELLOW}Running cargo audit...${NC}"
+    
+    # Run cargo audit and capture the output
+    local audit_output=$(cargo audit 2>&1)
+    local audit_exit=$?
+    
+    # Count critical vulnerabilities
+    local critical_count=$(echo "$audit_output" | grep -i "critical" | wc -l || echo "0")
+    
+    echo "$audit_output"
+    
+    if [ "$critical_count" -gt 0 ]; then
+        echo -e "${RED}Found $critical_count critical vulnerabilities!${NC}"
+        return 1
+    elif [ "$audit_exit" -ne 0 ]; then
+        echo -e "${YELLOW}Found non-critical vulnerabilities${NC}"
+    else
+        echo -e "${GREEN}No critical vulnerabilities found${NC}"
+    fi
+    return 0
+}
+
 # Function to read settings from TOML file
 read_settings() {
     # Extract domain and port from settings.toml
@@ -249,6 +297,19 @@ read_settings
 # Initial setup
 check_docker
 check_system_resources
+
+# Run security checks
+echo -e "\n${YELLOW}Running security checks...${NC}"
+if ! check_pnpm_security; then
+    echo -e "${RED}Critical vulnerabilities found in pnpm dependencies. Aborting startup.${NC}"
+    exit 1
+fi
+
+if ! check_rust_security; then
+    echo -e "${RED}Critical vulnerabilities found in Rust dependencies. Aborting startup.${NC}"
+    exit 1
+fi
+
 cleanup_existing_processes
 
 # Clean up old resources
