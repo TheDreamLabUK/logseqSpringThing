@@ -64,7 +64,9 @@ export class NodeManager {
         return this.minNodeSize;
     }
 
-    calculateNodeColor(lastModified) {
+    calculateNodeColor(metadata) {
+        // Use github_last_modified if available, otherwise fall back to last_modified
+        const lastModified = metadata.github_last_modified || metadata.last_modified || new Date().toISOString();
         const now = Date.now();
         const age = now - new Date(lastModified).getTime();
         const dayInMs = 24 * 60 * 60 * 1000;
@@ -82,11 +84,11 @@ export class NodeManager {
         return new THREE.SphereGeometry(size, segments, segments);
     }
 
-    createNodeMaterial(color, age) {
-        // Calculate emissive intensity based on age
-        // Newer nodes glow more brightly
+    createNodeMaterial(color, metadata) {
+        // Use github_last_modified if available, otherwise fall back to last_modified
+        const lastModified = metadata.github_last_modified || metadata.last_modified || new Date().toISOString();
         const now = Date.now();
-        const ageInDays = (now - new Date(age).getTime()) / (24 * 60 * 60 * 1000);
+        const ageInDays = (now - new Date(lastModified).getTime()) / (24 * 60 * 60 * 1000);
         const maxAge = 30; // days
         const minIntensity = 0.3;
         const maxIntensity = 1.0;
@@ -109,14 +111,30 @@ export class NodeManager {
         });
     }
 
-    createNodeLabel(text, fileSize, lastModified, hyperlinkCount) {
+    createNodeLabel(text, metadata) {
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
         context.font = `${this.labelFontSize}px Arial`;
         
+        // Get metadata values with GitHub fallbacks
+        const fileSize = parseInt(metadata.file_size) || 1;
+        const lastModified = metadata.github_last_modified || metadata.last_modified || new Date().toISOString();
+        const hyperlinkCount = parseInt(metadata.hyperlink_count) || 0;
+        const githubInfo = metadata.github_info || {};
+        
         // Measure text dimensions
         const nameMetrics = context.measureText(text);
-        const infoText = `${this.formatFileSize(fileSize)} | ${this.formatAge(lastModified)} | ${hyperlinkCount} links`;
+        
+        // Create info text with GitHub metadata if available
+        let infoText = `${this.formatFileSize(fileSize)} | ${this.formatAge(lastModified)} | ${hyperlinkCount} links`;
+        if (githubInfo.author) {
+            infoText += ` | ${githubInfo.author}`;
+        }
+        if (githubInfo.commit_message) {
+            const shortMessage = githubInfo.commit_message.split('\n')[0].slice(0, 30);
+            infoText += ` | ${shortMessage}${githubInfo.commit_message.length > 30 ? '...' : ''}`;
+        }
+        
         const infoMetrics = context.measureText(infoText);
         
         // Set canvas size to fit text with padding
@@ -368,32 +386,28 @@ export class NodeManager {
             this.nodeData.set(node.id, node);
 
             const metadata = node.metadata || {};
-            const fileSize = parseInt(metadata.file_size) || 1;
-            const lastModified = metadata.last_modified || new Date().toISOString();
-            const hyperlinkCount = parseInt(metadata.hyperlink_count) || 0;
-
             const size = this.getNodeSize(metadata);
-            const color = this.calculateNodeColor(lastModified);
+            const color = this.calculateNodeColor(metadata);
 
             let mesh = this.nodeMeshes.get(node.id);
 
             if (!mesh) {
-                const geometry = this.createNodeGeometry(size, hyperlinkCount);
-                const material = this.createNodeMaterial(color, lastModified);
+                const geometry = this.createNodeGeometry(size, metadata.hyperlink_count || 0);
+                const material = this.createNodeMaterial(color, metadata);
 
                 mesh = new THREE.Mesh(geometry, material);
                 mesh.layers.enable(BLOOM_LAYER);
                 this.scene.add(mesh);
                 this.nodeMeshes.set(node.id, mesh);
 
-                const label = this.createNodeLabel(node.label || node.id, fileSize, lastModified, hyperlinkCount);
+                const label = this.createNodeLabel(node.label || node.id, metadata);
                 this.scene.add(label);
                 this.nodeLabels.set(node.id, label);
             } else {
                 mesh.geometry.dispose();
-                mesh.geometry = this.createNodeGeometry(size, hyperlinkCount);
+                mesh.geometry = this.createNodeGeometry(size, metadata.hyperlink_count || 0);
                 mesh.material.dispose();
-                mesh.material = this.createNodeMaterial(color, lastModified);
+                mesh.material = this.createNodeMaterial(color, metadata);
             }
 
             mesh.position.set(node.x, node.y, node.z);
