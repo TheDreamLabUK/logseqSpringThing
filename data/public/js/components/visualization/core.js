@@ -1,13 +1,32 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { NodeManager } from './nodes.js';
 import { EffectsManager } from './effects.js';
 import { LayoutManager } from './layout.js';
 import { visualizationSettings } from '../../services/visualizationSettings.js';
+import { initXRSession, handleXRSession } from '../../xr/xrSetup.js';
+import { initXRInteraction, handleXRInput, XRLabelManager } from '../../xr/xrInteraction.js';
 
 // Constants for Spacemouse sensitivity
 const TRANSLATION_SPEED = 0.01;
 const ROTATION_SPEED = 0.01;
+
+function updateNodeDynamics(nodeManager, updates, isInitialLayout, timeStep) {
+    if (isInitialLayout) {
+        console.log('Applying initial layout positions and velocities');
+        nodeManager.resetSimulation();
+    }
+
+    nodeManager.updateNodeDynamics(updates);
+
+    if (timeStep > 0) {
+        nodeManager.setTimeStep(timeStep);
+    }
+
+    if (nodeManager.isInteractive()) {
+        nodeManager.updatePhysics(updates);
+    }
+}
 
 export class WebXRVisualization {
     constructor(graphDataManager) {
@@ -18,153 +37,149 @@ export class WebXRVisualization {
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x000000);
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-        this.camera.position.set(0, 0, 500);
+        this.camera.position.set(0, 1.6, 3); // Set initial position at standing height
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        // Initialize renderer with XR support
+        this.renderer = new THREE.WebGLRenderer({ 
+            antialias: true,
+            alpha: true, // Enable alpha for AR
+            logarithmicDepthBuffer: true // Better depth precision for XR
+        });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(window.devicePixelRatio);
-        this.renderer.toneMapping = THREE.ReinhardToneMapping;
-        this.renderer.setClearColor(0x000000);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+        this.renderer.xr.enabled = true;
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        // Initialize XR components
+        this.xrLabelManager = new XRLabelManager(this.scene, this.camera);
+        this.xrControllers = null;
+        this.xrHands = null;
 
         this.controls = null;
         this.animationFrameId = null;
         this.lastPositionUpdate = 0;
-        this.positionUpdateThreshold = 16; // ~60fps for smooth updates
+        this.positionUpdateThreshold = 16;
 
-        // Get initial settings
-        const settings = visualizationSettings.getSettings();
+        this.previousPositions = new Map();
+        this.previousTimes = new Map();
+        this.lastUpdateTime = performance.now();
 
-        // Initialize managers with settings
+        // Initialize managers with settings from service
         this.nodeManager = new NodeManager(this.scene, this.camera, visualizationSettings.getNodeSettings());
         this.effectsManager = new EffectsManager(
-            this.scene, 
-            this.camera, 
+            this.scene,
+            this.camera,
             this.renderer,
             visualizationSettings.getEnvironmentSettings()
         );
+        this.layoutManager = new LayoutManager(visualizationSettings.getLayoutSettings());
 
-        // Initialize layout manager with settings
-        const layoutSettings = visualizationSettings.getLayoutSettings();
-        this.layoutManager = new LayoutManager(layoutSettings);
-        console.log('Layout manager initialized with settings:', layoutSettings);
-
-        // Initialize settings
+        // Initialize settings and add event listeners
         this.initializeSettings();
-
-        // Add event listeners for graph data and position updates
-        window.addEventListener('graphDataUpdated', (event) => {
-            console.log('Received graphDataUpdated event:', event.detail);
-            this.updateVisualization();
-        });
-
-        window.addEventListener('visualizationSettingsUpdated', (event) => {
-            console.log('Received visualizationSettingsUpdated event:', event.detail);
-            this.updateSettings(event.detail);
-        });
-
-        // Handle position updates from layout manager
-        window.addEventListener('positionUpdate', (event) => {
-            console.log('Sending position update');
-            // Only send position updates if we have valid graph data
-            if (this.graphDataManager.isGraphDataValid()) {
-                if (this.graphDataManager.websocketService && this.graphDataManager.websocketService.socket) {
-                    this.graphDataManager.websocketService.socket.send(event.detail);
-                }
-            }
-        });
-
-        // Handle binary position updates from server
-        window.addEventListener('binaryPositionUpdate', (event) => {
-            console.log('Received binary position update from server');
-            this.handleBinaryPositionUpdate(event.detail);
-        });
+        this.setupEventListeners();
 
         console.log('WebXRVisualization constructor completed');
     }
 
-    updateSettings(settings) {
-        console.log('Updating settings:', settings);
-        if (!settings) return;
-
-        // Update visualization settings
-        Object.entries(settings).forEach(([key, value]) => {
-            if (typeof value === 'object') {
-                // Handle nested settings objects
-                Object.entries(value).forEach(([subKey, subValue]) => {
-                    const fullKey = `${key}_${subKey}`;
-                    this.updateVisualFeatures(fullKey, subValue);
-                });
-            } else {
-                this.updateVisualFeatures(key, value);
+    setupEventListeners() {
+        window.addEventListener('graphDataUpdated', (event) => {
+            if (event.detail && Array.isArray(event.detail.nodes)) {
+                this.updateVisualization(event.detail);
             }
+        });
+
+        window.addEventListener('visualizationSettingsUpdated', (event) => {
+            this.updateSettings(event.detail);
+        });
+
+        window.addEventListener('positionUpdate', (event) => {
+            if (this.graphDataManager.isGraphDataValid() && this.graphDataManager.websocketService) {
+                this.graphDataManager.websocketService.send(event.detail);
+            }
+        });
+
+        window.addEventListener('binaryPositionUpdate', (event) => {
+            this.handleBinaryPositionUpdate(event.detail);
+        });
+
+        // XR-specific event listeners
+        window.addEventListener('xrSelectStart', (event) => {
+            this.handleXRSelect(event.detail);
+        });
+
+        window.addEventListener('xrSelectEnd', (event) => {
+            this.handleXRSelectEnd(event.detail);
         });
     }
 
     initializeSettings() {
         console.log('Initializing settings');
-        this.fogDensity = 0.001; // Reduced fog density
+        const envSettings = visualizationSettings.getEnvironmentSettings();
+        
+        // Initialize fog
+        this.fogDensity = envSettings.fogDensity;
         this.scene.fog = new THREE.FogExp2(0x000000, this.fogDensity);
         
-        // Lighting settings
+        // Initialize lighting
         this.ambientLightIntensity = 50;
         this.directionalLightIntensity = 5.0;
         this.directionalLightColor = 0xffffff;
         this.ambientLightColor = 0x404040;
         
-        this.addLights();
-        console.log('Settings initialized');
-    }
-
-    addLights() {
-        console.log('Adding lights to the scene');
-
-        // Create and configure ambient light
+        // Add ambient light
         this.ambientLight = new THREE.AmbientLight(this.ambientLightColor, this.ambientLightIntensity);
         this.scene.add(this.ambientLight);
 
-        // Create and configure main directional light
-        this.directionalLight = new THREE.DirectionalLight(this.directionalLightColor, this.directionalLightIntensity);
-        this.directionalLight.position.set(50, 50, 50);
+        // Add directional light
+        this.directionalLight = new THREE.DirectionalLight(
+            this.directionalLightColor,
+            this.directionalLightIntensity
+        );
+        this.directionalLight.position.set(5, 5, 5);
+        this.directionalLight.castShadow = true;
         this.scene.add(this.directionalLight);
 
-        // Add additional directional lights for better coverage
-        const frontLight = new THREE.DirectionalLight(0xffffff, 3.0);
-        frontLight.position.set(0, 0, 100);
-        this.scene.add(frontLight);
-
-        const backLight = new THREE.DirectionalLight(0xffffff, 3.0);
-        backLight.position.set(0, 0, -100);
-        this.scene.add(backLight);
-
-        const topLight = new THREE.DirectionalLight(0xffffff, 3.0);
-        topLight.position.set(0, 100, 0);
-        this.scene.add(topLight);
-
-        // Add point lights for additional illumination
-        const pointLight1 = new THREE.PointLight(0xffffff, 2.0, 1000);
-        pointLight1.position.set(100, 100, 100);
+        // Add point lights for better illumination
+        const pointLight1 = new THREE.PointLight(0xffffff, 1, 100);
+        pointLight1.position.set(10, 10, 10);
         this.scene.add(pointLight1);
 
-        const pointLight2 = new THREE.PointLight(0xffffff, 2.0, 1000);
-        pointLight2.position.set(-100, -100, -100);
+        const pointLight2 = new THREE.PointLight(0xffffff, 1, 100);
+        pointLight2.position.set(-10, -10, -10);
         this.scene.add(pointLight2);
-
-        console.log('Lights added to the scene');
     }
 
     initThreeJS() {
-        console.log('Initializing Three.js');
+        console.log('Initializing Three.js with XR support');
         const container = document.getElementById('scene-container');
-        if (container) {
-            container.appendChild(this.renderer.domElement);
-        } else {
+        if (!container) {
             console.error("Could not find 'scene-container' element");
             return;
         }
 
+        container.appendChild(this.renderer.domElement);
+
+        // Initialize XR
+        initXRSession(this.renderer, this.scene, this.camera);
+        const xrComponents = initXRInteraction(this.scene, this.camera, this.renderer, this.handleXRSelect.bind(this));
+        this.xrControllers = xrComponents.controllers;
+        this.xrHands = xrComponents.hands;
+
+        // Initialize non-XR controls
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
+
+        // Disable OrbitControls when in XR
+        this.renderer.xr.addEventListener('sessionstart', () => {
+            this.controls.enabled = false;
+        });
+
+        this.renderer.xr.addEventListener('sessionend', () => {
+            this.controls.enabled = true;
+        });
 
         this.effectsManager.initPostProcessing();
         this.effectsManager.createHologramStructure();
@@ -172,137 +187,116 @@ export class WebXRVisualization {
         window.addEventListener('resize', this.onWindowResize.bind(this), false);
 
         this.animate();
-        console.log('Three.js initialization completed');
-    }
-
-    animate() {
-        this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
-        this.controls.update();
-
-        this.effectsManager.animate();
-        this.nodeManager.updateLabelOrientations(this.camera);
-        this.effectsManager.render();
     }
 
     onWindowResize() {
-        console.log('Window resized');
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.effectsManager.onResize(window.innerWidth, window.innerHeight);
+        this.effectsManager.handleResize();
     }
 
-    updateVisualization() {
-        console.log('Updating visualization');
-        const graphData = this.graphDataManager.getGraphData();
-        if (!graphData || !graphData.nodes || !graphData.edges) {
-            console.warn('Invalid graph data:', graphData);
-            return;
-        }
-
-        try {
-            // Update visual elements
-            this.nodeManager.updateNodes(graphData.nodes);
-            this.nodeManager.updateEdges(graphData.edges);
-            
-            // Initialize layout manager if needed
-            if (!this.layoutManager.isInitialized) {
-                console.log('Initializing layout manager with nodes:', graphData.nodes);
-                this.layoutManager.initializePositions(graphData.nodes);
-                this.layoutManager.startContinuousSimulation(graphData);
+    animate() {
+        // Use XR animation loop
+        this.renderer.setAnimationLoop((timestamp, frame) => {
+            // Update non-XR controls if not in XR session
+            if (!this.renderer.xr.isPresenting) {
+                this.controls.update();
             }
 
-            // Apply force-directed layout
-            this.layoutManager.applyForceDirectedLayout(graphData.nodes, graphData.edges);
-            
-            // Convert nodes to position array format for NodeManager
-            const positions = graphData.nodes.map(node => ({
-                x: node.x,
-                y: node.y,
-                z: node.z
-            }));
-            
-            this.nodeManager.updateNodePositions(positions);
-            
-        } catch (error) {
-            console.error('Error updating visualization:', error);
-            console.error('Error stack:', error.stack);
-        }
+            // Update XR interactions if in XR session
+            if (frame) {
+                handleXRInput(frame, this.renderer.xr.getReferenceSpace(), 
+                    this.xrControllers, this.xrHands, this.scene, this.camera);
+            }
+
+            this.effectsManager.animate();
+            this.nodeManager.updateLabelOrientations(this.camera);
+            this.xrLabelManager.update(); // Update XR-specific labels
+
+            // Render the scene
+            if (this.renderer.xr.isPresenting) {
+                this.renderer.render(this.scene, this.camera);
+            } else {
+                this.effectsManager.render();
+            }
+        });
     }
 
-    updateVisualFeatures(control, value) {
-        console.log(`Updating visual feature: ${control} = ${value}`);
-        if (!control || typeof control !== 'string') {
-            console.warn('Invalid control parameter:', control);
-            return;
-        }
-        
-        try {
-            // Delegate updates to appropriate managers
-            if (control.startsWith('node') || control.startsWith('edge')) {
-                this.nodeManager.updateFeature(control, value);
-            } else if (control.startsWith('bloom') || control.startsWith('hologram')) {
-                this.effectsManager.updateFeature(control, value);
-            } else if (control.startsWith('forceDirected')) {
-                console.log('Updating layout feature:', control, value);
-                // Pass the parameter to both managers, they will handle the conversion internally
-                this.layoutManager.updateFeature(control, value);
-                this.graphDataManager.updateForceDirectedParams(control, value);
+    handleXRSelect(event) {
+        // Handle XR selection events (controller triggers or hand pinch)
+        const intersection = event.intersection;
+        if (intersection) {
+            const object = intersection.object;
+            if (object.userData.nodeId) {
+                this.nodeManager.handleNodeSelect(object.userData.nodeId);
             }
-
-            // Handle lighting and other scene-level features
-            switch (control) {
-                case 'ambientLightIntensity':
-                    this.ambientLight.intensity = value;
-                    break;
-                case 'directionalLightIntensity':
-                    this.directionalLight.intensity = value;
-                    break;
-                case 'ambientLightColor':
-                    this.ambientLight.color.setHex(value);
-                    break;
-                case 'directionalLightColor':
-                    this.directionalLight.color.setHex(value);
-                    break;
-                case 'fogDensity':
-                    this.scene.fog.density = value;
-                    break;
-            }
-        } catch (error) {
-            console.error('Error updating visual feature:', error);
-            console.error('Control:', control, 'Value:', value);
-            console.error('Stack:', error.stack);
         }
     }
 
-    handleSpacemouseInput(x, y, z, rx, ry, rz) {
-        if (!this.camera || !this.controls) {
-            console.warn('Camera or controls not initialized for Spacemouse input');
-            return;
-        }
+    handleXRSelectEnd(event) {
+        // Handle XR selection end events
+        this.nodeManager.handleNodeSelectEnd();
+    }
 
-        // Apply translation
+    updateVisualization(graphData) {
+        if (this.nodeManager && graphData) {
+            // Update nodes
+            if (Array.isArray(graphData.nodes)) {
+                this.nodeManager.updateNodes(graphData.nodes);
+            }
+            
+            // Update edges if available
+            if (Array.isArray(graphData.edges)) {
+                this.nodeManager.updateEdges(graphData.edges);
+            }
+        }
+    }
+
+    updateSettings(settings) {
+        // Update each manager with its specific settings
+        this.nodeManager.updateFeature(visualizationSettings.getNodeSettings());
+        this.effectsManager.updateFeature(visualizationSettings.getEnvironmentSettings());
+        this.layoutManager.updateFeature(visualizationSettings.getLayoutSettings());
+    }
+
+    handleSpacemouseInput(x, y, z) {
+        if (!this.camera || this.renderer.xr.isPresenting) return;
+
+        // Translation
         this.camera.position.x += x * TRANSLATION_SPEED;
         this.camera.position.y += y * TRANSLATION_SPEED;
         this.camera.position.z += z * TRANSLATION_SPEED;
-        
-        // Apply rotation
-        this.camera.rotation.x += rx * ROTATION_SPEED;
-        this.camera.rotation.y += ry * ROTATION_SPEED;
-        this.camera.rotation.z += rz * ROTATION_SPEED;
 
-        this.controls.update();
+        // Update controls target
+        if (this.controls) {
+            this.controls.target.copy(this.camera.position).add(
+                new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion)
+            );
+            this.controls.update();
+        }
     }
 
     dispose() {
         console.log('Disposing WebXRVisualization');
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-        }
+        this.renderer.setAnimationLoop(null);
 
         this.nodeManager.dispose();
         this.effectsManager.dispose();
         this.layoutManager.stopSimulation();
+        this.xrLabelManager.dispose();
+
+        if (this.xrControllers) {
+            this.xrControllers.forEach(controller => {
+                this.scene.remove(controller);
+            });
+        }
+
+        if (this.xrHands) {
+            this.xrHands.forEach(hand => {
+                this.scene.remove(hand);
+            });
+        }
 
         this.renderer.dispose();
         if (this.controls) {
@@ -310,83 +304,5 @@ export class WebXRVisualization {
         }
 
         console.log('WebXRVisualization disposed');
-    }
-
-    handleNodeDrag(nodeId, position) {
-        // Update local node position
-        this.nodeManager.updateNodePosition(nodeId, position);
-
-        const now = Date.now();
-        if (now - this.lastPositionUpdate >= this.positionUpdateThreshold) {
-            this.lastPositionUpdate = now;
-            
-            // Get all node positions for synchronization
-            const positions = this.nodeManager.getNodePositions();
-            
-            // Create binary position data (24 bytes per node - position and velocity only)
-            const buffer = new ArrayBuffer(positions.length * 24);
-            const view = new Float32Array(buffer);
-            
-            positions.forEach((pos, index) => {
-                const offset = index * 6; // 6 floats per node (3 pos + 3 vel)
-                // Position
-                view[offset] = pos[0];     // x
-                view[offset + 1] = pos[1]; // y
-                view[offset + 2] = pos[2]; // z
-                // Velocity (default to 0 as we don't track velocity during drag)
-                view[offset + 3] = 0;
-                view[offset + 4] = 0;
-                view[offset + 5] = 0;
-            });
-
-            // Only send position updates if we have valid graph data
-            if (this.graphDataManager.isGraphDataValid()) {
-                if (this.graphDataManager.websocketService && this.graphDataManager.websocketService.socket) {
-                    this.graphDataManager.websocketService.socket.send(buffer);
-                }
-            }
-        }
-    }
-
-    showError(message) {
-        console.error('Visualization error:', message);
-        const errorEvent = new CustomEvent('visualizationError', {
-            detail: { message }
-        });
-        window.dispatchEvent(errorEvent);
-    }
-
-    handleBinaryPositionUpdate(buffer) {
-        try {
-            console.log(`Processing binary position update of size: ${buffer.length} positions`);
-            
-            // Validate buffer size
-            if (buffer.length === 0) {
-                console.warn('Received empty position update buffer');
-                return;
-            }
-
-            const updates = [];
-            
-            // Each position update should have 6 values (x,y,z, vx,vy,vz)
-            for (let i = 0; i < buffer.length; i++) {
-                if (i + 2 < buffer.length) {  // Ensure we have at least x,y,z
-                    updates.push([
-                        buffer[i][0],     // x
-                        buffer[i][1],     // y
-                        buffer[i][2]      // z
-                    ]);
-                }
-            }
-
-            console.log(`Processed ${updates.length} position updates`);
-
-            // Update node positions with array format
-            this.nodeManager.updateNodePositions(updates);
-        } catch (error) {
-            console.error('Error handling binary position update:', error);
-            console.error('Error stack:', error.stack);
-            this.showError(`Failed to update positions: ${error.message}`);
-        }
     }
 }

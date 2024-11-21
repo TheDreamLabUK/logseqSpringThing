@@ -1,8 +1,6 @@
 struct PositionUpdate {
-    position: vec3<f32>,  // 12 bytes
-    velocity: vec3<f32>,  // 12 bytes
-    mass: f32,           // 4 bytes for mass based on node size
-    padding: vec3<f32>,  // 12 bytes padding for alignment
+    position: vec3<f32>,  // 12 bytes (x, y, z)
+    velocity: vec3<f32>,  // 12 bytes (vx, vy, vz)
 }
 
 @group(0) @binding(0) var<storage, read_write> position_updates: array<PositionUpdate>;
@@ -25,7 +23,7 @@ fn update_positions(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     var update = position_updates[node_id];
     
-    // Validate position, velocity, and mass
+    // Validate position and velocity
     if (!is_valid_float3(update.position)) {
         update.position = vec3<f32>(0.0);
     }
@@ -33,13 +31,12 @@ fn update_positions(@builtin(global_invocation_id) global_id: vec3<u32>) {
         update.velocity = vec3<f32>(0.0);
     }
     
-    // Ensure mass is positive and reasonable
-    if (!is_valid_float(update.mass) || update.mass <= 0.0) {
-        update.mass = 1.0; // Default mass if invalid
+    // Apply velocity limits
+    let max_velocity = 100.0;
+    let velocity_length = length(update.velocity);
+    if (velocity_length > max_velocity) {
+        update.velocity = update.velocity * (max_velocity / velocity_length);
     }
-
-    // Scale velocity based on mass (heavier nodes have more momentum)
-    update.velocity = update.velocity * (1.0 / sqrt(update.mass));
     
     position_updates[node_id] = update;
 }

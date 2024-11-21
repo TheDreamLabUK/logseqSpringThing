@@ -11,10 +11,8 @@ export const NODE_COLORS = {
     OLD: new THREE.Color(0xff4444)        // Red for old files (>= 30 days)
 };
 
-// Removed NODE_SHAPES since we're using a single smooth geometry type
-
 export class NodeManager {
-    constructor(scene, camera) {
+    constructor(scene, camera, settings = {}) {
         this.scene = scene;
         this.camera = camera;
         this.nodeMeshes = new Map();
@@ -26,23 +24,27 @@ export class NodeManager {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         
-        // Node settings
-        this.minNodeSize = 0.01;  // Reduced from 0.1
-        this.maxNodeSize = 0.5;   // Reduced from 5
-        this.nodeSizeScalingFactor = 1;  // Reduced scaling factor
-        this.labelFontSize = 18;
-        this.nodeColor = new THREE.Color(0x4444ff);  // Initialize as THREE.Color
+        // Node settings with defaults
+        this.minNodeSize = settings.minNodeSize || 0.01;
+        this.maxNodeSize = settings.maxNodeSize || 0.5;
+        this.nodeSizeScalingFactor = settings.nodeSizeScalingFactor || 1;
+        this.labelFontSize = settings.labelFontSize || 18;
+        this.nodeColor = new THREE.Color(settings.nodeColor || 0x4444ff);
 
         // Edge settings
-        this.edgeColor = new THREE.Color(0x4444ff);  // Initialize as THREE.Color
-        this.edgeOpacity = 0.6;
+        this.edgeColor = new THREE.Color(settings.edgeColor || 0x4444ff);
+        this.edgeOpacity = settings.edgeOpacity || 0.6;
 
         // Server-side node size range (must match constants in file_service.rs)
-        this.serverMinNodeSize = 0.5;  // Reduced from 5.0
-        this.serverMaxNodeSize = 5.0;  // Reduced from 50.0
+        this.serverMinNodeSize = 0.5;
+        this.serverMaxNodeSize = 5.0;
 
         // Bind click handler
         this.handleClick = this.handleClick.bind(this);
+
+        // Add XR support
+        this.xrEnabled = false;
+        this.xrLabelManager = null;
     }
 
     getNodeSize(metadata) {
@@ -176,26 +178,35 @@ export class NodeManager {
     }
 
     formatNodeNameToUrl(nodeName) {
-        // Convert node name to lowercase and replace spaces with %20
-        const formattedName = nodeName.toLowerCase().replace(/ /g, '%20');
-        return `https://narrativegoldmine.com/#/page/${formattedName}`;
+        // Get base URL from environment or default to logseq
+        const baseUrl = window.location.origin;
+        // Convert node name to lowercase and replace spaces with dashes
+        const formattedName = nodeName.toLowerCase().replace(/ /g, '-');
+        return `${baseUrl}/#/page/${formattedName}`;
     }
 
-    handleClick(event) {
-        // Calculate mouse position in normalized device coordinates (-1 to +1)
-        const rect = event.target.getBoundingClientRect();
-        this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    handleClick(event, isXR = false, intersectedObject = null) {
+        let clickedMesh;
 
-        // Update the picking ray with the camera and mouse position
-        this.raycaster.setFromCamera(this.mouse, this.camera);
+        if (isXR) {
+            // In XR mode, use the passed intersected object
+            clickedMesh = intersectedObject;
+        } else {
+            // Regular mouse click handling
+            const rect = event.target.getBoundingClientRect();
+            this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-        // Calculate objects intersecting the picking ray
-        const intersects = this.raycaster.intersectObjects(Array.from(this.nodeMeshes.values()));
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            const intersects = this.raycaster.intersectObjects(Array.from(this.nodeMeshes.values()));
+            
+            if (intersects.length > 0) {
+                clickedMesh = intersects[0].object;
+            }
+        }
 
-        if (intersects.length > 0) {
+        if (clickedMesh) {
             // Find the clicked node
-            const clickedMesh = intersects[0].object;
             const nodeId = Array.from(this.nodeMeshes.entries())
                 .find(([_, mesh]) => mesh === clickedMesh)?.[0];
 
@@ -205,6 +216,21 @@ export class NodeManager {
                     // Open URL in new tab
                     const url = this.formatNodeNameToUrl(nodeData.label || nodeId);
                     window.open(url, '_blank');
+
+                    // Visual feedback
+                    const originalEmissive = clickedMesh.material.emissiveIntensity;
+                    clickedMesh.material.emissiveIntensity = 2.0;
+                    setTimeout(() => {
+                        clickedMesh.material.emissiveIntensity = originalEmissive;
+                    }, 200);
+
+                    // Trigger haptic feedback in XR mode
+                    if (isXR && window.xrSession) {
+                        const gamepad = window.xrSession.inputSources[0]?.gamepad;
+                        if (gamepad?.hapticActuators?.length > 0) {
+                            gamepad.hapticActuators[0].pulse(0.5, 100);
+                        }
+                    }
                 }
             }
         }
@@ -221,47 +247,86 @@ export class NodeManager {
     }
 
     centerNodes(nodes) {
+        if (!nodes || (!Array.isArray(nodes) && typeof nodes !== 'object')) {
+            console.warn('Invalid nodes data passed to centerNodes');
+            return;
+        }
+
+        // Convert position arrays to node objects if necessary
+        const nodeArray = Array.isArray(nodes) ? nodes.map((node, index) => {
+            // If node is an array of positions [x, y, z, vx, vy, vz]
+            if (Array.isArray(node)) {
+                return {
+                    id: index,
+                    x: node[0],
+                    y: node[1],
+                    z: node[2],
+                    vx: node[3],
+                    vy: node[4],
+                    vz: node[5]
+                };
+            }
+            return node;
+        }) : Object.values(nodes);
+
+        if (nodeArray.length === 0) {
+            console.warn('Empty nodes array passed to centerNodes');
+            return;
+        }
+
         // Calculate center of mass
         let centerX = 0, centerY = 0, centerZ = 0;
-        nodes.forEach(node => {
-            centerX += node.x;
-            centerY += node.y;
-            centerZ += node.z;
+        nodeArray.forEach(node => {
+            centerX += node.x || 0;
+            centerY += node.y || 0;
+            centerZ += node.z || 0;
         });
-        centerX /= nodes.length;
-        centerY /= nodes.length;
-        centerZ /= nodes.length;
+        centerX /= nodeArray.length;
+        centerY /= nodeArray.length;
+        centerZ /= nodeArray.length;
 
         // Subtract center from all positions to center around origin
-        nodes.forEach(node => {
-            node.x -= centerX;
-            node.y -= centerY;
-            node.z -= centerZ;
+        nodeArray.forEach(node => {
+            node.x = (node.x || 0) - centerX;
+            node.y = (node.y || 0) - centerY;
+            node.z = (node.z || 0) - centerZ;
         });
 
         // Scale positions to reasonable range
-        const maxDist = nodes.reduce((max, node) => {
-            const dist = Math.sqrt(node.x * node.x + node.y * node.y + node.z * node.z);
+        const maxDist = nodeArray.reduce((max, node) => {
+            const dist = Math.sqrt(
+                (node.x || 0) * (node.x || 0) + 
+                (node.y || 0) * (node.y || 0) + 
+                (node.z || 0) * (node.z || 0)
+            );
             return Math.max(max, dist);
         }, 0);
 
         if (maxDist > 0) {
             const scale = 100 / maxDist; // Scale to fit in 100 unit radius
-            nodes.forEach(node => {
-                node.x *= scale;
-                node.y *= scale;
-                node.z *= scale;
+            nodeArray.forEach(node => {
+                node.x = (node.x || 0) * scale;
+                node.y = (node.y || 0) * scale;
+                node.z = (node.z || 0) * scale;
             });
         }
+
+        return nodeArray;
     }
 
     updateNodes(nodes) {
+        if (!Array.isArray(nodes)) {
+            console.error('updateNodes received invalid nodes:', nodes);
+            return;
+        }
+
         console.log(`Updating nodes: ${nodes.length}`);
         
         // Center and scale nodes
-        this.centerNodes(nodes);
+        const centeredNodes = this.centerNodes(nodes);
+        if (!centeredNodes) return;
         
-        const existingNodeIds = new Set(nodes.map(node => node.id));
+        const existingNodeIds = new Set(centeredNodes.map(node => node.id));
 
         // Remove non-existent nodes
         this.nodeMeshes.forEach((mesh, nodeId) => {
@@ -278,7 +343,7 @@ export class NodeManager {
         });
 
         // Update or create nodes
-        nodes.forEach(node => {
+        centeredNodes.forEach(node => {
             if (!node.id || typeof node.x !== 'number' || typeof node.y !== 'number' || typeof node.z !== 'number') {
                 console.warn('Invalid node data:', node);
                 return;

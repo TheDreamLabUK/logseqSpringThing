@@ -320,6 +320,15 @@ docker image prune -f >/dev/null 2>&1
 # Ensure data directory exists
 mkdir -p data/markdown
 
+# Build frontend assets
+echo -e "${YELLOW}Building frontend assets...${NC}"
+if ! command -v pnpm &> /dev/null; then
+    echo -e "${YELLOW}Installing pnpm...${NC}"
+    npm install -g pnpm
+fi
+pnpm install
+pnpm run build
+
 # Build and start services
 echo -e "${YELLOW}Building and starting services...${NC}"
 $DOCKER_COMPOSE build --pull --no-cache

@@ -1,6 +1,7 @@
 // public/js/xr/xrSetup.js
 
 import * as THREE from 'three';
+import { XRButton } from 'three/addons/webxr/XRButton.js';
 
 /**
  * Initializes the WebXR session for immersive experiences.
@@ -9,39 +10,46 @@ import * as THREE from 'three';
  * @param {THREE.PerspectiveCamera} camera - The Three.js camera.
  */
 export function initXRSession(renderer, scene, camera) {
+    // Configure renderer for XR
+    renderer.xr.enabled = true;
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x000000, 0); // Transparent background for AR
+    renderer.alpha = true; // Enable alpha for AR passthrough
+
     if ('xr' in navigator) {
-        navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
-            if (supported) {
-                const enterXRButton = document.createElement('button');
-                enterXRButton.id = 'enter-vr-button';
-                enterXRButton.textContent = 'Enter VR';
-                enterXRButton.style.position = 'absolute';
-                enterXRButton.style.top = '20px';
-                enterXRButton.style.right = '20px';
-                enterXRButton.style.padding = '10px 15px';
-                enterXRButton.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
-                enterXRButton.style.color = 'white';
-                enterXRButton.style.border = 'none';
-                enterXRButton.style.borderRadius = '4px';
-                enterXRButton.style.cursor = 'pointer';
-                enterXRButton.style.transition = 'background-color 0.3s';
-
-                enterXRButton.addEventListener('mouseenter', () => {
-                    enterXRButton.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
-                });
-
-                enterXRButton.addEventListener('mouseleave', () => {
-                    enterXRButton.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';
-                });
-
-                enterXRButton.onclick = () => {
-                    renderer.xr.setReferenceSpaceType('local');
-                    navigator.xr.requestSession('immersive-vr').then((session) => {
-                        renderer.xr.setSession(session);
-                    });
+        // Check for both VR and AR support
+        Promise.all([
+            navigator.xr.isSessionSupported('immersive-vr'),
+            navigator.xr.isSessionSupported('immersive-ar')
+        ]).then(([vrSupported, arSupported]) => {
+            if (vrSupported || arSupported) {
+                // Session initialization settings
+                const sessionInit = {
+                    requiredFeatures: ['hand-tracking'], // Enable hand tracking
+                    optionalFeatures: ['local-floor', 'bounded-floor']
                 };
 
-                document.body.appendChild(enterXRButton);
+                // Create and configure XR button
+                const xrButton = XRButton.createButton(renderer, {
+                    ...sessionInit,
+                    mode: arSupported ? 'immersive-ar' : 'immersive-vr', // Prefer AR if available
+                    sessionInit: sessionInit
+                });
+
+                document.body.appendChild(xrButton);
+
+                // Set up session start event handler
+                renderer.xr.addEventListener('sessionstart', () => {
+                    console.log('XR session started');
+                    // Additional session start setup can go here
+                });
+
+                // Set up session end event handler
+                renderer.xr.addEventListener('sessionend', () => {
+                    console.log('XR session ended');
+                    // Additional cleanup can go here
+                });
             }
         }).catch((err) => {
             console.error('Error checking XR session support:', err);
@@ -49,6 +57,13 @@ export function initXRSession(renderer, scene, camera) {
     } else {
         console.warn('WebXR not supported in this browser.');
     }
+
+    // Add window resize handler
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
 }
 
 /**
@@ -58,9 +73,36 @@ export function initXRSession(renderer, scene, camera) {
  * @param {THREE.PerspectiveCamera} camera - The Three.js camera.
  */
 export function handleXRSession(renderer, scene, camera) {
-    renderer.setAnimationLoop(() => {
+    renderer.setAnimationLoop((timestamp, frame) => {
+        if (frame) {
+            // Handle XR input sources (controllers/hands)
+            const session = renderer.xr.getSession();
+            if (session) {
+                for (const source of session.inputSources) {
+                    if (source.hand) {
+                        // Handle hand tracking data
+                        handleHandInput(source.hand);
+                    }
+                }
+            }
+        }
         renderer.render(scene, camera);
     });
+}
+
+/**
+ * Updates the XR frame with hand tracking data.
+ * @param {XRHand} hand - The XR hand object containing joint data.
+ */
+function handleHandInput(hand) {
+    // Process hand tracking data
+    for (const joint of hand.values()) {
+        if (joint.jointName) {
+            // You can access joint positions and rotations here
+            // joint.pose.transform.position
+            // joint.pose.transform.orientation
+        }
+    }
 }
 
 /**
@@ -70,6 +112,12 @@ export function handleXRSession(renderer, scene, camera) {
  * @param {THREE.PerspectiveCamera} camera - The Three.js camera.
  */
 export function updateXRFrame(renderer, scene, camera) {
-    // Additional updates can be handled here if needed
+    if (renderer.xr.isPresenting) {
+        const session = renderer.xr.getSession();
+        if (session) {
+            // Additional frame updates can be handled here
+            // For example, updating controller positions, handling gestures, etc.
+        }
+    }
     renderer.render(scene, camera);
 }

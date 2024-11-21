@@ -1,12 +1,6 @@
-import { createApp } from 'vue';
 import { App } from './app.js';
 
 console.log('Script loading...');
-
-// Check if Vue is available
-if (typeof createApp !== 'function') {
-    console.error('Vue is not loaded!');
-}
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, checking elements:');
@@ -21,9 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
         app.start();
     } catch (error) {
         console.error('Failed to initialize app:', error);
+        console.error('Error stack:', error.stack);
         const debugInfo = document.getElementById('debug-info');
         if (debugInfo) {
             debugInfo.innerHTML += `<div>Init Error: ${error.message}</div>`;
+            debugInfo.innerHTML += `<div>Stack: ${error.stack}</div>`;
         }
     }
 });

@@ -1,6 +1,7 @@
 // public/js/threeJS/threeSetup.js
 
 import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 /**
  * Initializes the Three.js scene, camera, and renderer.
@@ -11,26 +12,69 @@ export function initThreeScene() {
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0x000000, 0.002);
 
-    // Create the camera
+    // Create the camera with XR-friendly settings
     const camera = new THREE.PerspectiveCamera(
         75,
         window.innerWidth / window.innerHeight,
-        0.1,
+        0.1,  // Closer near plane for XR
         1000
     );
-    camera.position.set(0, 0, 100);
+    camera.position.set(0, 1.6, 3); // Default height ~1.6m (average human height)
 
-    // Create the renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Create the renderer with XR-specific configuration
+    const renderer = new THREE.WebGLRenderer({ 
+        antialias: true,
+        alpha: true, // Enable alpha for AR passthrough
+        logarithmicDepthBuffer: true, // Better depth precision for XR
+    });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for performance
+    renderer.outputColorSpace = THREE.SRGBColorSpace; // Modern color space handling
     renderer.xr.enabled = true; // Enable WebXR
+    renderer.shadowMap.enabled = true; // Enable shadows for better visual quality
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows for realism
+
+    // Set up XR-friendly lighting
+    setupLighting(scene);
 
     // Append the renderer to the DOM
-    document.getElementById('scene-container').appendChild(renderer.domElement);
+    const container = document.getElementById('scene-container');
+    if (container) {
+        container.appendChild(renderer.domElement);
+    } else {
+        document.body.appendChild(renderer.domElement);
+    }
+
+    // Add ambient light for better visibility in XR
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
 
     return { scene, camera, renderer };
+}
+
+/**
+ * Sets up XR-friendly lighting in the scene
+ * @param {THREE.Scene} scene - The Three.js scene
+ */
+function setupLighting(scene) {
+    // Main directional light
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(5, 5, 5);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    directionalLight.shadow.camera.near = 0.5;
+    directionalLight.shadow.camera.far = 500;
+    scene.add(directionalLight);
+
+    // Fill light
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+    fillLight.position.set(-5, 5, -5);
+    scene.add(fillLight);
+
+    // Ambient light for overall scene brightness
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    scene.add(ambientLight);
 }
 
 /**
@@ -40,9 +84,24 @@ export function initThreeScene() {
  * @returns {OrbitControls} The configured orbit controls.
  */
 export function createOrbitControls(camera, renderer) {
-    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    
+    // Configure controls for XR compatibility
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI * 0.95; // Prevent camera from going below ground
+    controls.minDistance = 1; // Minimum zoom distance
+    controls.maxDistance = 50; // Maximum zoom distance
+    
+    // Disable controls when in XR mode
+    renderer.xr.addEventListener('sessionstart', () => {
+        controls.enabled = false;
+    });
+    
+    renderer.xr.addEventListener('sessionend', () => {
+        controls.enabled = true;
+    });
+
     return controls;
 }
 
@@ -52,8 +111,36 @@ export function createOrbitControls(camera, renderer) {
  * @param {THREE.WebGLRenderer} renderer - The Three.js renderer.
  */
 export function updateSceneSize(camera, renderer) {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
+    // Only update if not in XR session
+    if (!renderer.xr.isPresenting) {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+}
 
-    renderer.setSize(window.innerWidth, window.innerHeight);
+/**
+ * Creates a basic environment for XR scenes
+ * @param {THREE.Scene} scene - The Three.js scene
+ */
+export function createBasicEnvironment(scene) {
+    // Add a ground plane for reference and shadows
+    const groundGeometry = new THREE.PlaneGeometry(100, 100);
+    const groundMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x808080,
+        roughness: 0.8,
+        metalness: 0.2,
+        transparent: true,
+        opacity: 0.8
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Add grid helper for spatial reference
+    const gridHelper = new THREE.GridHelper(100, 100);
+    gridHelper.material.transparent = true;
+    gridHelper.material.opacity = 0.2;
+    scene.add(gridHelper);
 }
