@@ -67,89 +67,82 @@ This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it
 
 ```mermaid
 graph TB
-    subgraph Frontend ["Frontend (JavaScript/WebGL)"]
+    subgraph Frontend
         UI[User Interface Layer]
         VR[WebXR Controller]
         WS[WebSocket Client]
         GPU[GPU Compute Layer]
         ThreeJS[Three.js Renderer]
-        
-        subgraph Components
-            ChatUI[Chat Interface]
-            GraphUI[Graph Interface]
-            ControlPanel[Control Panel]
-            VRControls[VR Control System]
-        end
-        
-        subgraph Services
-            WSService[WebSocket Service]
-            DataManager[Graph Data Manager]
-            LayoutEngine[Layout Engine]
-            SpaceMouse[SpaceMouse Controller]
-        end
+        ChatUI[Chat Interface]
+        GraphUI[Graph Interface]
+        ControlPanel[Control Panel]
+        VRControls[VR Control System]
+        WSService[WebSocket Service]
+        DataManager[Graph Data Manager]
+        LayoutEngine[Layout Engine]
+        SpaceMouse[SpaceMouse Controller]
     end
 
-    subgraph Backend ["Backend (Rust/Actix)"]
+    subgraph Backend
         Server[Actix Web Server]
-        
-        subgraph Handlers
-            FileH[File Handler]
-            GraphH[Graph Handler]
-            WSH[WebSocket Handler]
-            PerplexityH[Perplexity Handler]
-            RagFlowH[RagFlow Handler]
-            VisualizationH[Visualization Handler]
-        end
-        
-        subgraph Services
-            FileS[File Service]
-            GraphS[Graph Service]
-            GPUS[GPU Compute Service]
-            PerplexityS[Perplexity Service]
-            RagFlowS[RagFlow Service]
-            SpeechS[Speech Service]
-        end
-        
-        subgraph Utils
-            WSManager[WebSocket Manager]
-            GPUCompute[GPU Compute]
-            Compression[Compression Utils]
-            AudioProc[Audio Processor]
-        end
-        
-        subgraph Models
-            Node[Node Model]
-            Edge[Edge Model]
-            Graph[Graph Model]
-            Metadata[Metadata Model]
-            Position[Position Update Model]
-            SimParams[Simulation Parameters]
-        end
+        FileH[File Handler]
+        GraphH[Graph Handler]
+        WSH[WebSocket Handler]
+        PerplexityH[Perplexity Handler]
+        RagFlowH[RagFlow Handler]
+        VisualizationH[Visualization Handler]
+        FileS[File Service]
+        GraphS[Graph Service]
+        GPUS[GPU Compute Service]
+        PerplexityS[Perplexity Service]
+        RagFlowS[RagFlow Service]
+        SpeechS[Speech Service]
+        WSManager[WebSocket Manager]
+        GPUCompute[GPU Compute]
+        Compression[Compression Utils]
+        AudioProc[Audio Processor]
+        Node[Node Model]
+        Edge[Edge Model]
+        Graph[Graph Model]
+        Metadata[Metadata Model]
+        Position[Position Update Model]
+        SimParams[Simulation Parameters]
     end
 
-    subgraph External ["External Services"]
+    subgraph External
         GitHub[GitHub API]
         Perplexity[Perplexity AI]
         RagFlow[RagFlow API]
         OpenAI[OpenAI API]
     end
 
-    UI --> Components
-    Components --> Services
+    UI --> ChatUI
+    UI --> GraphUI
+    UI --> ControlPanel
+    UI --> VRControls
+
     VR --> ThreeJS
     WS --> WSService
     WSService --> Server
-    
-    Server --> Handlers
-    Handlers --> Services
-    Services --> Utils
-    Services --> Models
-    
+
+    Server --> FileH
+    Server --> GraphH
+    Server --> WSH
+    Server --> PerplexityH
+    Server --> RagFlowH
+    Server --> VisualizationH
+
+    FileH --> FileS
+    GraphH --> GraphS
+    WSH --> WSManager
+    PerplexityH --> PerplexityS
+    RagFlowH --> RagFlowS
+
     FileS --> GitHub
     PerplexityS --> Perplexity
     RagFlowS --> RagFlow
     SpeechS --> OpenAI
-    
+
     style Frontend fill:#f9f,stroke:#333,stroke-width:2px
     style Backend fill:#bbf,stroke:#333,stroke-width:2px
     style External fill:#bfb,stroke:#333,stroke-width:2px
@@ -160,134 +153,134 @@ graph TB
 ```mermaid
 classDiagram
 class App {
-    websocketService: WebsocketService
-    graphDataManager: GraphDataManager
-    visualization: WebXRVisualization
-    chatManager: ChatManager
-    interface: Interface
-    ragflowService: RAGFlowService
-    start()
-    initializeEventListeners()
-    toggleFullscreen()
+    +websocketService: WebsocketService
+    +graphDataManager: GraphDataManager
+    +visualization: WebXRVisualization
+    +chatManager: ChatManager
+    +interface: Interface
+    +ragflowService: RAGFlowService
+    +start()
+    +initializeEventListeners()
+    +toggleFullscreen()
 }
 class WebsocketService {
-    socket: WebSocket
-    listeners: Object
-    reconnectAttempts: number
-    maxReconnectAttempts: number
-    reconnectInterval: number
-    connect()
-    on(event: string, callback: function)
-    emit(event: string, data: any)
-    send(data: object)
-    reconnect()
+    +socket: WebSocket
+    +listeners: Object
+    +reconnectAttempts: number
+    +maxReconnectAttempts: number
+    +reconnectInterval: number
+    +connect()
+    +on(event: string, callback: function)
+    +emit(event: string, data: any)
+    +send(data: object)
+    +reconnect()
 }
 class GraphDataManager {
-    websocketService: WebsocketService
-    graphData: GraphData
-    requestInitialData()
-    updateGraphData(newData: GraphData)
-    getGraphData(): GraphData
-    recalculateLayout()
-    updateForceDirectedParams(name: string, value: any)
+    +websocketService: WebsocketService
+    +graphData: GraphData
+    +requestInitialData()
+    +updateGraphData(newData: GraphData)
+    +getGraphData(): GraphData
+    +recalculateLayout()
+    +updateForceDirectedParams(name: string, value: any)
 }
 class WebXRVisualization {
-    graphDataManager: GraphDataManager
-    scene: THREE.Scene
-    camera: THREE.PerspectiveCamera
-    renderer: THREE.WebGLRenderer
-    controls: OrbitControls
-    composer: EffectComposer
-    gpu: GPUUtilities (optional)
-    nodeMeshes: Map<string, THREE.Mesh>
-    edgeMeshes: Map<string, THREE.Line>
-    hologramGroup: THREE.Group
-    initialize()
-    updateVisualization()
-    initThreeJS()
-    setupGPU()
-    initPostProcessing()
-    addLights()
-    createHologramStructure()
-    handleSpacemouseInput(x: number, y: number, z: number)
-    handleBinaryPositionUpdate(buffer: ArrayBuffer)
-    animate()
-    updateVisualFeatures(control: string, value: any)
-    onWindowResize()
-    handleNodeDrag(nodeId: string, position: Vector3)
-    getNodePositions(): PositionUpdate[]
-    showError(message: string)
+    +graphDataManager: GraphDataManager
+    +scene: Scene
+    +camera: Camera
+    +renderer: Renderer
+    +controls: Controls
+    +composer: Composer
+    +gpu: GPUUtilities
+    +nodeMeshes: Map<string, Mesh>
+    +edgeMeshes: Map<string, Line>
+    +hologramGroup: Group
+    +initialize()
+    +updateVisualization()
+    +initThreeJS()
+    +setupGPU()
+    +initPostProcessing()
+    +addLights()
+    +createHologramStructure()
+    +handleSpacemouseInput(x: number, y: number, z: number)
+    +handleBinaryPositionUpdate(buffer: ArrayBuffer)
+    +animate()
+    +updateVisualFeatures(control: string, value: any)
+    +onWindowResize()
+    +handleNodeDrag(nodeId: string, position: Vector3)
+    +getNodePositions(): PositionUpdate[]
+    +showError(message: string)
 }
 class ChatManager {
-    websocketService: WebsocketService
-    ragflowService: RAGFlowService
-    sendMessage(message: string)
-    receiveMessage()
-    handleIncomingMessage(message: string)
+    +websocketService: WebsocketService
+    +ragflowService: RAGFlowService
+    +sendMessage(message: string)
+    +receiveMessage()
+    +handleIncomingMessage(message: string)
 }
 class Interface {
-    chatManager: ChatManager
-    visualization: WebXRVisualization
-    handleUserInput(input: string)
-    displayChatMessage(message: string)
-    setupEventListeners()
-    renderUI()
-    updateNodeInfoPanel(node: object)
-    displayErrorMessage(message: string)
+    +chatManager: ChatManager
+    +visualization: WebXRVisualization
+    +handleUserInput(input: string)
+    +displayChatMessage(message: string)
+    +setupEventListeners()
+    +renderUI()
+    +updateNodeInfoPanel(node: object)
+    +displayErrorMessage(message: string)
 }
 class RAGFlowService {
-    settings: Settings
-    apiClient: ApiClient
-    createConversation(userId: string): Promise<string>
-    sendMessage(conversationId: string, message: string, quote: boolean, docIds: string[], stream: boolean): Promise<Stream<Result<string, RAGFlowError>>>
-    getConversationHistory(conversationId: string): Promise<object>
+    +settings: Settings
+    +apiClient: ApiClient
+    +createConversation(userId: string): Promise<string>
+    +sendMessage(conversationId: string, message: string): Promise<string>
+    +getConversationHistory(conversationId: string): Promise<object>
 }
 class GraphService {
-    build_graph(app_state: AppState): Result<GraphData, Box<dyn std::error::Error + Send + Sync>>
-    calculate_layout(gpu_compute: &Option<Arc<RwLock<GPUCompute>>>, graph: &mut GraphData, params: &SimulationParams): Result<(), Box<dyn std::error::Error + Send + Sync>>
-    initialize_random_positions(graph: &mut GraphData)
+    +build_graph(app_state: AppState): Result<GraphData, Error>
+    +calculate_layout(gpu_compute: GPUCompute, graph: GraphData, params: SimulationParams): Result<void, Error>
+    +initialize_random_positions(graph: GraphData)
 }
 class PerplexityService {
-    process_file(file: ProcessedFile, settings: &Settings, api_client: &dyn ApiClient): Result<ProcessedFile, PerplexityError>
+    +process_file(file: ProcessedFile, settings: Settings, api_client: ApiClient): Result<ProcessedFile, Error>
 }
 class FileService {
-    fetch_and_process_files(github_service: &dyn GitHubService, settings: Arc<RwLock<Settings>>, metadata_map: &mut HashMap<String, Metadata>): Result<Vec<ProcessedFile>, Box<dyn std::error::Error + Send + Sync>>
-    load_or_create_metadata(): Result<HashMap<String, Metadata>, Box<dyn std::error::Error + Send + Sync>>
-    save_metadata(metadata: &HashMap<String, Metadata>): Result<(), Box<dyn std::error::Error + Send + Sync>>
-    calculate_node_size(file_size: usize): f64
-    extract_references(content: &str, valid_nodes: &[String]): HashMap<String, ReferenceInfo>
-    convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>): HashMap<String, usize>
-    initialize_local_storage(github_service: &dyn GitHubService, settings: Arc<RwLock<Settings>>): Result<(), Box<dyn std::error::Error + Send + Sync>>
-    count_hyperlinks(content: &str): usize
+    +fetch_and_process_files(github_service: GitHubService, settings: Settings, metadata_map: Map<String, Metadata>): Result<Vec<ProcessedFile>, Error>
+    +load_or_create_metadata(): Result<Map<String, Metadata>, Error>
+    +save_metadata(metadata: Map<String, Metadata>): Result<void, Error>
+    +calculate_node_size(file_size: number): number
+    +extract_references(content: string, valid_nodes: String[]): Map<String, ReferenceInfo>
+    +convert_references_to_topic_counts(references: Map<String, ReferenceInfo>): Map<String, number>
+    +initialize_local_storage(github_service: GitHubService, settings: Settings): Result<void, Error>
+    +count_hyperlinks(content: string): number
 }
 class GitHubService {
-    fetch_file_metadata(): Result<Vec<GithubFileMetadata>, Box<dyn std::error::Error + Send + Sync>>
-    get_download_url(file_name: &str): Result<Option<String>, Box<dyn std::error::Error + Send + Sync>>
-    fetch_file_content(download_url: &str): Result<String, Box<dyn std::error::Error + Send + Sync>>
-    get_file_last_modified(file_path: &str): Result<DateTime<Utc>, Box<dyn std::error::Error + Send + Sync>>
+    +fetch_file_metadata(): Result<Vec<GithubFileMetadata>, Error>
+    +get_download_url(file_name: string): Result<string, Error>
+    +fetch_file_content(download_url: string): Result<string, Error>
+    +get_file_last_modified(file_path: string): Result<Date, Error>
 }
 class GitHubPRService {
-    create_pull_request(file_name: &str, content: &str, original_sha: &str): Result<String, Box<dyn Error + Send + Sync>>
+    +create_pull_request(file_name: string, content: string, original_sha: string): Result<string, Error>
 }
 class ApiClient {
-    post_json(url: &str, body: &PerplexityRequest, perplexity_api_key: &str): Result<String, PerplexityError>
+    +post_json(url: string, body: PerplexityRequest, perplexity_api_key: string): Result<string, Error>
 }
 class SpeechService {
-    websocketManager: Arc<WebSocketManager>
-    settings: Arc<RwLock<Settings>>
-    start(receiver: mpsc::Receiver<SpeechCommand>)
-    initialize(): Result<(), Box<dyn Error>>
-    send_message(message: string): Result<(), Box<dyn Error>>
-    close(): Result<(), Box<dyn Error>>
-    set_tts_provider(use_openai: bool): Result<(), Box<dyn Error>>
+    +websocketManager: WebSocketManager
+    +settings: Settings
+    +start(receiver: Receiver<SpeechCommand>)
+    +initialize(): Result<void, Error>
+    +send_message(message: string): Result<void, Error>
+    +close(): Result<void, Error>
+    +set_tts_provider(use_openai: boolean): Result<void, Error>
 }
 class SpeechWs {
-    websocketManager: Arc<WebSocketManager>
-    settings: Arc<RwLock<Settings>>
-    hb(ctx: &mut ws::WebsocketContext<Self>)
-    check_heartbeat(ctx: &mut ws::WebsocketContext<Self>)
-    started(ctx: &mut Self::Context)
-    handle(msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context)
+    +websocketManager: WebSocketManager
+    +settings: Settings
+    +hb(ctx: Context)
+    +check_heartbeat(ctx: Context)
+    +started(ctx: Context)
+    +handle(msg: Message, ctx: Context)
 }
 
 App --> WebsocketService
@@ -335,7 +328,7 @@ sequenceDiagram
     participant SpeechService
     participant SpeechWs
 
-    rect rgba(200, 255, 200, 0.1)
+    rect #C8FFC8
         activate Server
         Server->>Server: Load env vars & settings (config.rs)
         alt Settings Load Error
@@ -363,14 +356,14 @@ sequenceDiagram
                         alt File needs processing
                             FileService->>PerplexityAPI: process_file (services/perplexity_service.rs)
                             activate PerplexityAPI
-                                PerplexityAPI->>PerplexityAPI: process_markdown (splits into blocks, calls API)
-                                PerplexityAPI->>PerplexityAPI: call_perplexity_api (multiple times)
+                                PerplexityAPI->>PerplexityAPI: process_markdown
+                                PerplexityAPI->>PerplexityAPI: call_perplexity_api
                                 PerplexityAPI-->>FileService: Processed content or Error
                             deactivate PerplexityAPI
                             alt Perplexity Error
                                 FileService-->>Server: Error
                             else Content Processed
-                                FileService->>FileService: save_file_metadata (writes to /app/data/markdown)
+                                FileService->>FileService: save_file_metadata
                             end
                         end
                     end
@@ -380,10 +373,10 @@ sequenceDiagram
             alt File Processing Error
                 Server-->>Server: Error
             else Files Processed Successfully
-                Server->>GraphService: build_graph (services/graph_service.rs)
+                Server->>GraphService: build_graph
                 activate GraphService
                     GraphService->>GraphService: Create nodes and edges
-                    GraphService->>GPUCompute: calculate_layout (or CPU fallback)
+                    GraphService->>GPUCompute: calculate_layout
                     activate GPUCompute
                         GPUCompute->>GPUCompute: set_graph_data
                         GPUCompute->>GPUCompute: compute_forces
@@ -392,7 +385,7 @@ sequenceDiagram
                     deactivate GPUCompute
                     GraphService-->>Server: GraphData
                 deactivate GraphService
-                Server->>WebSocketManager: broadcast_graph_update (utils/websocket_manager.rs)
+                Server->>WebSocketManager: broadcast_graph_update
                 activate WebSocketManager
                     WebSocketManager-->>Client: graph_update_message
                 deactivate WebSocketManager
@@ -434,9 +427,9 @@ sequenceDiagram
     deactivate GraphDataManager
     WebsocketService->>Server: emit("recalculateLayout", params)
     activate Server
-        Server->>GraphService: calculate_layout (services/graph_service.rs)
+        Server->>GraphService: calculate_layout
         activate GraphService
-            GraphService->>GPUCompute: calculate_layout (utils/gpu_compute.rs)
+            GraphService->>GPUCompute: calculate_layout
             activate GPUCompute
                 GPUCompute->>GPUCompute: set_graph_data
                 GPUCompute->>GPUCompute: compute_forces
@@ -445,7 +438,7 @@ sequenceDiagram
             deactivate GPUCompute
             GraphService-->>Server: GraphData
         deactivate GraphService
-        Server->>WebSocketManager: broadcast_graph_update (utils/websocket_manager.rs)
+        Server->>WebSocketManager: broadcast_graph_update
         activate WebSocketManager
             WebSocketManager-->>Client: graph_update_message
         deactivate WebSocketManager
@@ -455,11 +448,11 @@ sequenceDiagram
 
     note right of Client: User clicks "Refresh Graph"
 
-    Client->>Server: POST /api/files/fetch (handlers/file_handler.rs)
+    Client->>Server: POST /api/files/fetch
     activate Server
-        Server->>FileService: fetch_and_process_files (services/file_service.rs)
+        Server->>FileService: fetch_and_process_files
         activate FileService
-            FileService->>GitHub: fetch_files("RealGitHubService::fetch_files")
+            FileService->>GitHub: fetch_files
             activate GitHub
                 GitHub-->>FileService: Files or Error
             deactivate GitHub
@@ -469,16 +462,16 @@ sequenceDiagram
                 loop For each file
                     FileService->>FileService: should_process_file
                     alt File needs processing
-                        FileService->>PerplexityAPI: process_file (services/perplexity_service.rs)
+                        FileService->>PerplexityAPI: process_file
                         activate PerplexityAPI
-                            PerplexityAPI->>PerplexityAPI: process_markdown (splits into blocks, calls API)
-                            PerplexityAPI->>PerplexityAPI: call_perplexity_api (multiple times)
+                            PerplexityAPI->>PerplexityAPI: process_markdown
+                            PerplexityAPI->>PerplexityAPI: call_perplexity_api
                             PerplexityAPI-->>FileService: Processed content or Error
                         deactivate PerplexityAPI
                         alt Perplexity Error
                             FileService-->>Server: Error
                         else Content Processed
-                            FileService->>FileService: save_file_metadata (writes to /app/data/markdown)
+                            FileService->>FileService: save_file_metadata
                         end
                     end
                 end
@@ -486,16 +479,16 @@ sequenceDiagram
             end
         deactivate FileService
         alt File Processing Error
-            Server->>WebSocketManager: broadcast_error_message (utils/websocket_manager.rs)
+            Server->>WebSocketManager: broadcast_error_message
             activate WebSocketManager
                 WebSocketManager-->>Client: error_message
             deactivate WebSocketManager
             Server-->>Client: Error Response
         else Files Processed Successfully
-            Server->>GraphService: build_graph (services/graph_service.rs)
+            Server->>GraphService: build_graph
             activate GraphService
                 GraphService->>GraphService: Create nodes and edges
-                GraphService->>GPUCompute: calculate_layout (or CPU fallback)
+                GraphService->>GPUCompute: calculate_layout
                 activate GPUCompute
                     GPUCompute->>GPUCompute: set_graph_data
                     GPUCompute->>GPUCompute: compute_forces
@@ -504,14 +497,13 @@ sequenceDiagram
                 deactivate GPUCompute
                 GraphService-->>Server: GraphData
             deactivate GraphService
-            Server->>WebSocketManager: broadcast_graph_update (utils/websocket_manager.rs)
+            Server->>WebSocketManager: broadcast_graph_update
             activate WebSocketManager
                 WebSocketManager-->>Client: graph_update_message
             deactivate WebSocketManager
             Server-->>Client: Success Response
         end
     deactivate Server
-
     ```
 
 ### Detailed Data Flow Architecture
