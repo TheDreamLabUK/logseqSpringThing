@@ -2,6 +2,98 @@ import * as THREE from 'three';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 
+// Create a web panel for displaying node content
+const webPanelGeometry = new THREE.PlaneGeometry(2, 1.5); // 2 meters wide, 1.5 meters tall
+let webPanel = null;
+let webPanelTexture = null;
+
+/**
+ * Creates a web panel in VR space
+ * @param {string} url - The URL to display in the panel
+ * @param {THREE.Scene} scene - The Three.js scene
+ * @param {THREE.Vector3} position - The position to place the panel
+ */
+function createWebPanel(url, scene, position) {
+    if (!url || !scene || !position) {
+        console.error('Missing required parameters for createWebPanel');
+        return;
+    }
+
+    // Remove existing panel if it exists
+    if (webPanel) {
+        if (webPanelTexture) {
+            webPanelTexture.dispose();
+        }
+        scene.remove(webPanel);
+    }
+
+    // Create iframe to capture web content
+    const iframe = document.createElement('iframe');
+    iframe.style.width = '1024px';
+    iframe.style.height = '768px';
+    iframe.style.position = 'absolute';
+    iframe.style.left = '-9999px'; // Hide iframe from view
+    iframe.src = url;
+    document.body.appendChild(iframe);
+
+    // Create canvas to render iframe content
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 768;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        console.error('Could not get 2D context for web panel canvas');
+        return;
+    }
+
+    // Wait for iframe to load
+    iframe.onload = () => {
+        // Create texture from canvas
+        webPanelTexture = new THREE.CanvasTexture(canvas);
+        const material = new THREE.MeshBasicMaterial({ 
+            map: webPanelTexture,
+            side: THREE.DoubleSide
+        });
+
+        // Create panel mesh
+        webPanel = new THREE.Mesh(webPanelGeometry, material);
+        webPanel.position.copy(position);
+        
+        // Orient panel to face user
+        webPanel.lookAt(0, position.y, 0);
+        
+        scene.add(webPanel);
+
+        // Update texture periodically
+        const updateInterval = setInterval(() => {
+            if (!webPanel || !webPanelTexture) {
+                clearInterval(updateInterval);
+                return;
+            }
+
+            try {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(iframe, 0, 0, canvas.width, canvas.height);
+                webPanelTexture.needsUpdate = true;
+            } catch (error) {
+                console.error('Error updating web panel:', error);
+                clearInterval(updateInterval);
+            }
+        }, 1000 / 30); // 30 FPS update rate
+
+        // Store interval ID on the panel for cleanup
+        webPanel.userData.updateInterval = updateInterval;
+    };
+
+    // Clean up iframe after a short delay
+    setTimeout(() => {
+        if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+        }
+    }, 100);
+}
+
 /**
  * Initializes XR controller and hand interactions.
  * @param {THREE.Scene} scene - The Three.js scene.
@@ -10,12 +102,29 @@ import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
  * @param {Function} onSelect - Callback function for selection events.
  */
 export function initXRInteraction(scene, camera, renderer, onSelect) {
+    if (!scene || !camera || !renderer) {
+        console.error('Missing required parameters for initXRInteraction');
+        return;
+    }
+
     // Store XR session globally for haptic feedback
     renderer.xr.addEventListener('sessionstart', (event) => {
         window.xrSession = event.target.getSession();
     });
     renderer.xr.addEventListener('sessionend', () => {
         window.xrSession = null;
+        // Clean up web panel if it exists
+        if (webPanel) {
+            if (webPanel.userData.updateInterval) {
+                clearInterval(webPanel.userData.updateInterval);
+            }
+            if (webPanelTexture) {
+                webPanelTexture.dispose();
+            }
+            scene.remove(webPanel);
+            webPanel = null;
+            webPanelTexture = null;
+        }
     });
 
     // Initialize controller model factories
@@ -24,11 +133,15 @@ export function initXRInteraction(scene, camera, renderer, onSelect) {
 
     // Set up controllers
     const controllers = setupControllers(scene, renderer, controllerModelFactory, (event) => {
+        if (!event || !event.target) return;
+
         // Handle controller select event
         const controller = event.target;
-        const ray = controller.getWorldDirection(new THREE.Vector3());
+        if (!controller.matrixWorld) return;
+
+        const ray = new THREE.Vector3(0, 0, -1).applyMatrix4(controller.matrixWorld);
         const raycaster = new THREE.Raycaster();
-        raycaster.set(controller.position, ray);
+        raycaster.set(controller.getWorldPosition(new THREE.Vector3()), ray);
 
         // Create a mock event for the node manager
         const mockEvent = {
@@ -43,6 +156,22 @@ export function initXRInteraction(scene, camera, renderer, onSelect) {
         const intersects = raycaster.intersectObjects(scene.children, true);
         if (intersects.length > 0) {
             mockEvent.detail.intersection = intersects[0];
+            
+            // Check if the intersected object is a node
+            const nodeData = scene.nodeData?.get(intersects[0].object.uuid);
+            if (nodeData) {
+                // Get node URL
+                const url = formatNodeNameToUrl(nodeData.label || nodeData.id);
+                
+                // Calculate position for web panel
+                const panelPosition = new THREE.Vector3();
+                panelPosition.copy(intersects[0].point);
+                panelPosition.add(ray.multiplyScalar(2)); // Place panel 2 meters in front of hit point
+                
+                // Create web panel
+                createWebPanel(url, scene, panelPosition);
+            }
+
             if (onSelect) {
                 onSelect(mockEvent);
             }
@@ -72,9 +201,9 @@ export function initXRInteraction(scene, camera, renderer, onSelect) {
         // Update controller rays
         controllers.forEach((controller, i) => {
             const ray = controllerRays[i];
-            if (ray && controller) {
-                ray.position.copy(controller.position);
-                ray.quaternion.copy(controller.quaternion);
+            if (ray && controller && controller.matrixWorld) {
+                ray.position.setFromMatrixPosition(controller.matrixWorld);
+                ray.quaternion.setFromRotationMatrix(controller.matrixWorld);
             }
         });
 
@@ -83,9 +212,26 @@ export function initXRInteraction(scene, camera, renderer, onSelect) {
 
         // Update labels to face camera
         xrLabelManager.update();
+
+        // Update web panel to face user if it exists
+        if (webPanel && camera) {
+            const cameraPosition = new THREE.Vector3();
+            camera.getWorldPosition(cameraPosition);
+            cameraPosition.y = webPanel.position.y; // Keep panel vertical
+            webPanel.lookAt(cameraPosition);
+        }
     });
 
     return { controllers, hands, controllerRays, xrLabelManager };
+}
+
+/**
+ * Format node name to URL
+ */
+function formatNodeNameToUrl(nodeName) {
+    const baseUrl = window.location.origin;
+    const formattedName = nodeName.toLowerCase().replace(/ /g, '-');
+    return `${baseUrl}/#/page/${formattedName}`;
 }
 
 /**

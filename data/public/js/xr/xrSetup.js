@@ -3,6 +3,8 @@
 import * as THREE from 'three';
 import { XRButton } from 'three/addons/webxr/XRButton.js';
 
+let cameraGroup; // Group to hold and move the camera in VR
+
 /**
  * Initializes the WebXR session for immersive experiences.
  * @param {THREE.WebGLRenderer} renderer - The Three.js renderer.
@@ -10,19 +12,34 @@ import { XRButton } from 'three/addons/webxr/XRButton.js';
  * @param {THREE.PerspectiveCamera} camera - The Three.js camera.
  */
 export function initXRSession(renderer, scene, camera) {
+    if (!scene || !camera) {
+        console.error('Scene or camera not provided to initXRSession');
+        return;
+    }
+
+    // Create camera group for VR movement
+    cameraGroup = new THREE.Group();
+    scene.add(cameraGroup);
+    
+    // Store original camera parent
+    const originalParent = camera.parent;
+    
+    // Add camera to group only if it's not already in a group
+    if (!camera.parent || camera.parent === scene) {
+        cameraGroup.add(camera);
+    }
+
     // Configure renderer for XR
     renderer.xr.enabled = true;
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setClearColor(0x000000, 0); // Transparent background for AR
-    renderer.alpha = true; // Enable alpha for AR passthrough
+    renderer.setClearColor(0x000000, 0);
+    renderer.alpha = true;
 
     if ('xr' in navigator) {
-        // Check for VR support first
         navigator.xr.isSessionSupported('immersive-vr')
             .then(vrSupported => {
                 if (vrSupported) {
-                    // VR is supported, create VR button
                     const sessionInit = {
                         optionalFeatures: ['local-floor', 'bounded-floor']
                     };
@@ -34,6 +51,12 @@ export function initXRSession(renderer, scene, camera) {
                             console.log('VR session started');
                             session.addEventListener('end', () => {
                                 console.log('VR session ended');
+                                // Restore original camera parent when session ends
+                                if (originalParent) {
+                                    originalParent.add(camera);
+                                } else {
+                                    scene.add(camera);
+                                }
                                 window.dispatchEvent(new CustomEvent('xrsessionend'));
                             });
                             window.dispatchEvent(new CustomEvent('xrsessionstart'));
@@ -45,7 +68,6 @@ export function initXRSession(renderer, scene, camera) {
 
                     document.body.appendChild(xrButton);
                 } else {
-                    // If VR is not supported, check for AR
                     return navigator.xr.isSessionSupported('immersive-ar')
                         .then(arSupported => {
                             if (arSupported) {
@@ -70,24 +92,20 @@ export function initXRSession(renderer, scene, camera) {
                 console.error('Error checking XR session support:', err);
             });
 
-        // Set up session start event handler
         renderer.xr.addEventListener('sessionstart', (event) => {
             console.log('XR session started');
             const session = event.target.getSession();
             
-            // Configure reference space
             session.requestReferenceSpace('local-floor').then(refSpace => {
                 renderer.xr.setReferenceSpace(refSpace);
             }).catch(err => {
                 console.warn('Failed to get local-floor reference space:', err);
-                // Fallback to local reference space
                 session.requestReferenceSpace('local').then(refSpace => {
                     renderer.xr.setReferenceSpace(refSpace);
                 });
             });
         });
 
-        // Set up session end event handler
         renderer.xr.addEventListener('sessionend', () => {
             console.log('XR session ended');
         });
@@ -95,12 +113,63 @@ export function initXRSession(renderer, scene, camera) {
         console.warn('WebXR not supported in this browser.');
     }
 
-    // Add window resize handler
     window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        if (camera) {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
     });
+}
+
+// Movement speed for joystick controls
+const MOVEMENT_SPEED = 0.1;
+
+/**
+ * Handles gamepad input in XR.
+ * @param {Gamepad} gamepad - The XR gamepad object.
+ */
+function handleGamepadInput(gamepad) {
+    if (!gamepad || !cameraGroup) return;
+
+    // Handle joystick movement
+    if (gamepad.axes.length >= 2) {
+        const [x, y] = gamepad.axes;
+        if (Math.abs(x) > 0.1 || Math.abs(y) > 0.1) {
+            // Get camera's forward and right vectors
+            const cameraForward = new THREE.Vector3();
+            const cameraRight = new THREE.Vector3();
+            
+            // Get the camera's direction
+            if (cameraGroup.children[0]) {
+                cameraGroup.children[0].getWorldDirection(cameraForward);
+                cameraRight.crossVectors(new THREE.Vector3(0, 1, 0), cameraForward).normalize();
+                
+                // Zero out y component for horizontal movement only
+                cameraForward.y = 0;
+                cameraForward.normalize();
+
+                // Calculate movement
+                const moveX = x * MOVEMENT_SPEED;
+                const moveZ = -y * MOVEMENT_SPEED;
+
+                // Apply movement
+                const movement = new THREE.Vector3();
+                movement.addScaledVector(cameraRight, moveX);
+                movement.addScaledVector(cameraForward, moveZ);
+                cameraGroup.position.add(movement);
+            }
+        }
+    }
+
+    // Handle buttons
+    if (gamepad.buttons) {
+        gamepad.buttons.forEach((button, index) => {
+            if (button && button.pressed) {
+                console.log(`XR Controller button ${index} pressed`);
+            }
+        });
+    }
 }
 
 /**
@@ -110,28 +179,26 @@ export function initXRSession(renderer, scene, camera) {
  * @param {THREE.PerspectiveCamera} camera - The Three.js camera.
  */
 export function handleXRSession(renderer, scene, camera) {
+    if (!renderer || !scene || !camera) {
+        console.error('Required parameters missing in handleXRSession');
+        return;
+    }
+
     renderer.setAnimationLoop((timestamp, frame) => {
         if (frame) {
             try {
-                // Get the XR session and reference space
                 const session = renderer.xr.getSession();
                 const refSpace = renderer.xr.getReferenceSpace();
 
                 if (session && refSpace) {
-                    // Get viewer pose
                     const pose = frame.getViewerPose(refSpace);
-                    if (pose) {
-                        // Handle pose data if needed
-                        // pose.transform.position
-                        // pose.transform.orientation
-                    }
-
+                    
                     // Handle input sources
                     for (const source of session.inputSources) {
-                        if (source.gamepad) {
+                        if (source && source.gamepad) {
                             handleGamepadInput(source.gamepad);
                         }
-                        if (source.hand) {
+                        if (source && source.hand) {
                             handleHandInput(source.hand, frame, refSpace);
                         }
                     }
@@ -142,31 +209,6 @@ export function handleXRSession(renderer, scene, camera) {
         }
         renderer.render(scene, camera);
     });
-}
-
-/**
- * Handles gamepad input in XR.
- * @param {Gamepad} gamepad - The XR gamepad object.
- */
-function handleGamepadInput(gamepad) {
-    if (!gamepad) return;
-
-    // Handle buttons
-    gamepad.buttons.forEach((button, index) => {
-        if (button.pressed) {
-            console.log(`XR Controller button ${index} pressed`);
-            // Handle button press
-        }
-    });
-
-    // Handle axes
-    if (gamepad.axes.length >= 2) {
-        const [x, y] = gamepad.axes;
-        if (Math.abs(x) > 0.1 || Math.abs(y) > 0.1) {
-            // Handle thumbstick/touchpad movement
-            console.log(`XR Controller axes: x=${x}, y=${y}`);
-        }
-    }
 }
 
 /**
@@ -241,7 +283,6 @@ export function updateXRFrame(renderer, scene, camera) {
             const session = renderer.xr.getSession();
             if (session) {
                 // Additional frame updates can be handled here
-                // For example, updating controller positions, handling gestures, etc.
             }
         } catch (error) {
             console.error('Error updating XR frame:', error);
