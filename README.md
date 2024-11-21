@@ -484,7 +484,8 @@ sequenceDiagram
                 end
                 FileService-->>Server: Processed files or Error
             end
-        deactivate FileService
+
+deactivate FileService
         alt File Processing Error
             Server->>WebSocketManager: broadcast_error_message (utils/websocket_manager.rs)
             activate WebSocketManager
@@ -511,7 +512,6 @@ sequenceDiagram
             Server-->>Client: Success Response
         end
     deactivate Server
-
     ```
 
 ### Detailed Data Flow Architecture
