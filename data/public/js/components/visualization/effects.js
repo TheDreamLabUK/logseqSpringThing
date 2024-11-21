@@ -6,7 +6,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { BLOOM_LAYER, NORMAL_LAYER } from './nodes.js';
 
 export class EffectsManager {
-    constructor(scene, camera, renderer) {
+    constructor(scene, camera, renderer, settings = {}) {
         this.scene = scene;
         this.camera = camera;
         this.renderer = renderer;
@@ -14,17 +14,17 @@ export class EffectsManager {
         this.bloomComposer = null;
         this.finalComposer = null;
         
-        // Enhanced bloom settings from older version
-        // this.bloomStrength = 2.0;
-        // this.bloomRadius = 0.5;
-        // this.bloomThreshold = 0.1;
+        // Bloom settings with defaults
+        this.bloomStrength = settings.bloomStrength || 1.5;
+        this.bloomRadius = settings.bloomRadius || 0.4;
+        this.bloomThreshold = settings.bloomThreshold || 0.8;
 
-        // Hologram settings
+        // Hologram settings with defaults
         this.hologramGroup = new THREE.Group();
         this.scene.add(this.hologramGroup);
-        this.hologramColor = new THREE.Color(0xFFD700);  // Initialize as THREE.Color
-        this.hologramScale = 1;
-        this.hologramOpacity = 0.1;
+        this.hologramColor = new THREE.Color(settings.hologramColor || 0xFFD700);
+        this.hologramScale = settings.hologramScale || 1;
+        this.hologramOpacity = settings.hologramOpacity || 0.1;
     }
 
     initPostProcessing() {
@@ -40,7 +40,7 @@ export class EffectsManager {
             }
         );
 
-        // Setup bloom composer with enhanced settings from older version
+        // Setup bloom composer with settings
         this.bloomComposer = new EffectComposer(this.renderer, renderTarget);
         this.bloomComposer.renderToScreen = false;
         
@@ -161,7 +161,6 @@ export class EffectsManager {
         this.hologramGroup.add(triangleSphere);
     }
 
-
     animate() {
         // Animate all hologram elements
         this.hologramGroup.children.forEach(child => {
@@ -179,7 +178,9 @@ export class EffectsManager {
         this.finalComposer.render();
     }
 
-    onResize(width, height) {
+    handleResize() {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
         if (this.bloomComposer) this.bloomComposer.setSize(width, height);
         if (this.finalComposer) this.finalComposer.setSize(width, height);
     }

@@ -2,6 +2,7 @@ use actix::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use crate::models::simulation_params::SimulationParams;
+use crate::models::position_update::NodePositionVelocity;
 use actix_web_actors::ws;
 use log::{error, debug};
 use bytestring::ByteString;
@@ -14,10 +15,69 @@ fn format_color(color: &str) -> String {
     format!("#{}", color)
 }
 
-/// GPU-computed node positions
+/// GPU-computed node positions and velocities
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GPUPositionUpdate {
-    pub positions: Vec<[f32; 3]>
+    pub updates: Vec<NodePositionVelocity>,
+    pub is_initial_layout: bool
+}
+
+impl GPUPositionUpdate {
+    pub fn to_binary(&self) -> Vec<u8> {
+        let mut binary = Vec::with_capacity(4 + self.updates.len() * 24);
+        
+        // Write header (4 bytes)
+        let header_value = if self.is_initial_layout { 1.0f32 } else { 0.0f32 };
+        binary.extend_from_slice(&header_value.to_le_bytes());
+
+        // Write position updates (24 bytes each)
+        for update in &self.updates {
+            binary.extend_from_slice(&update.x.to_le_bytes());
+            binary.extend_from_slice(&update.y.to_le_bytes());
+            binary.extend_from_slice(&update.z.to_le_bytes());
+            binary.extend_from_slice(&update.vx.to_le_bytes());
+            binary.extend_from_slice(&update.vy.to_le_bytes());
+            binary.extend_from_slice(&update.vz.to_le_bytes());
+        }
+
+        binary
+    }
+
+    pub fn from_binary(data: &[u8], num_nodes: usize) -> Result<Self, String> {
+        if data.len() != 4 + num_nodes * 24 {
+            return Err(format!("Invalid data length: expected {}, got {}", 
+                4 + num_nodes * 24, data.len()));
+        }
+
+        // Read header
+        let mut header_bytes = [0u8; 4];
+        header_bytes.copy_from_slice(&data[0..4]);
+        let header_value = f32::from_le_bytes(header_bytes);
+        let is_initial_layout = header_value >= 1.0;
+
+        let mut updates = Vec::with_capacity(num_nodes);
+
+        // Read position updates
+        for i in 0..num_nodes {
+            let offset = 4 + i * 24;
+            let mut pos = [0u8; 24];
+            pos.copy_from_slice(&data[offset..offset + 24]);
+
+            let x = f32::from_le_bytes(pos[0..4].try_into().unwrap());
+            let y = f32::from_le_bytes(pos[4..8].try_into().unwrap());
+            let z = f32::from_le_bytes(pos[8..12].try_into().unwrap());
+            let vx = f32::from_le_bytes(pos[12..16].try_into().unwrap());
+            let vy = f32::from_le_bytes(pos[16..20].try_into().unwrap());
+            let vz = f32::from_le_bytes(pos[20..24].try_into().unwrap());
+
+            updates.push(NodePositionVelocity { x, y, z, vx, vy, vz });
+        }
+
+        Ok(Self {
+            updates,
+            is_initial_layout
+        })
+    }
 }
 
 /// Message for sending text data
@@ -256,5 +316,25 @@ mod tests {
         assert_eq!(format_color("\"0xFF0000\""), "#FF0000");
         assert_eq!(format_color("#FF0000"), "#FF0000");
         assert_eq!(format_color("\"#FF0000\""), "#FF0000");
+    }
+
+    #[test]
+    fn test_gpu_position_update_binary() {
+        let update = GPUPositionUpdate {
+            updates: vec![
+                NodePositionVelocity { x: 1.0, y: 2.0, z: 3.0, vx: 0.1, vy: 0.2, vz: 0.3 },
+                NodePositionVelocity { x: 4.0, y: 5.0, z: 6.0, vx: 0.4, vy: 0.5, vz: 0.6 },
+            ],
+            is_initial_layout: true
+        };
+
+        let binary = update.to_binary();
+        assert_eq!(binary.len(), 52); // 4 bytes header + 2 * 24 bytes data
+
+        let decoded = GPUPositionUpdate::from_binary(&binary, 2).unwrap();
+        assert_eq!(decoded.updates.len(), 2);
+        assert_eq!(decoded.is_initial_layout, true);
+        assert_eq!(decoded.updates[0].x, 1.0);
+        assert_eq!(decoded.updates[1].vz, 0.6);
     }
 }

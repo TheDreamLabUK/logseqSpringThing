@@ -17,6 +17,8 @@ export class App {
         this.visualization = null;
         this.gpuAvailable = false;
         this.gpuUtils = null;
+        this.xrActive = false;
+        this.vueApp = null;
         this.initializeApp();
     }
 
@@ -89,13 +91,8 @@ export class App {
         const visualization = this.visualization;
         const graphDataManager = this.graphDataManager;
 
-        // Check if Vue is available
-        if (typeof createApp !== 'function') {
-            console.error('Vue createApp not found!');
-            return;
-        }
-
-        const app = createApp({
+        // Create root Vue app
+        this.vueApp = createApp({
             components: {
                 ControlPanel,
                 ChatManager
@@ -107,6 +104,12 @@ export class App {
                     if (visualization) {
                         console.log('Updating visualization:', data);
                         
+                        // Handle XR controls
+                        if (data.name === 'xrEnabled') {
+                            handleXRToggle(data.value);
+                            return;
+                        }
+                        
                         // Handle force-directed graph parameters
                         if (data.name === 'force_directed_iterations' || 
                             data.name === 'force_directed_spring' ||
@@ -115,11 +118,42 @@ export class App {
                             data.name === 'force_directed_damping') {
                             updateForceDirectedParams(data.name, data.value);
                         } else {
-                            // Pass name and value separately to updateVisualFeatures
-                            visualization.updateVisualFeatures(data.name, data.value);
+                            // Create settings object with the correct structure
+                            const settings = {};
+                            if (data.name.startsWith('node')) {
+                                settings.nodes = { [data.name]: data.value };
+                            } else if (data.name.startsWith('edge')) {
+                                settings.edges = { [data.name]: data.value };
+                            } else if (data.name.startsWith('environment')) {
+                                settings.environment = { [data.name]: data.value };
+                            } else if (data.name.startsWith('layout')) {
+                                settings.layout = { [data.name]: data.value };
+                            }
+                            visualization.updateSettings(settings);
                         }
                     } else {
                         console.error('Cannot update visualization: not initialized');
+                    }
+                };
+
+                const handleXRToggle = async (xrConfig) => {
+                    if (!visualization) return;
+                    
+                    try {
+                        if (xrConfig.active) {
+                            // Start XR session
+                            await visualization.startXRSession(xrConfig.mode);
+                            window.dispatchEvent(new CustomEvent('xrsessionstart'));
+                        } else {
+                            // End XR session
+                            await visualization.endXRSession();
+                            window.dispatchEvent(new CustomEvent('xrsessionend'));
+                        }
+                    } catch (error) {
+                        console.error('XR session error:', error);
+                        window.dispatchEvent(new CustomEvent('xrsessionerror', {
+                            detail: { error: error.message }
+                        }));
                     }
                 };
 
@@ -132,7 +166,10 @@ export class App {
                         graphDataManager.recalculateLayout();
                         
                         // Update the visualization with the new layout
-                        visualization.updateVisualization();
+                        const currentData = graphDataManager.getGraphData();
+                        if (visualization && currentData) {
+                            visualization.updateVisualization(currentData);
+                        }
                     } else {
                         console.error('Cannot update force-directed parameters: GraphDataManager not initialized');
                     }
@@ -154,20 +191,19 @@ export class App {
                 };
             },
             template: `
-                <div id="app-container">
+                <div>
                     <chat-manager :websocketService="websocketService"></chat-manager>
                     <control-panel 
                         :websocketService="websocketService"
                         @control-change="handleControlChange"
                         @toggle-fullscreen="toggleFullscreen"
                         @enable-spacemouse="enableSpacemouse"
-                        style="z-index: 1000;"
                     ></control-panel>
                 </div>
             `
         });
 
-        // Mount to a specific element
+        // Mount the Vue app
         const mountElement = document.getElementById('app');
         if (!mountElement) {
             console.error('Could not find #app element for mounting Vue application');
@@ -175,10 +211,11 @@ export class App {
         }
 
         try {
-            app.mount('#app');
+            this.vueApp.mount('#app');
             console.log('Vue App mounted successfully');
         } catch (error) {
             console.error('Failed to mount Vue app:', error);
+            console.error('Error details:', error.stack);
         }
     }
 
@@ -215,11 +252,27 @@ export class App {
             console.error('WebsocketService not initialized, cannot set up WebSocket listeners');
         }
 
+        // XR Session Event Listeners
+        window.addEventListener('xrsessionstart', () => {
+            this.xrActive = true;
+            console.log('XR session started');
+        });
+
+        window.addEventListener('xrsessionend', () => {
+            this.xrActive = false;
+            console.log('XR session ended');
+        });
+
+        window.addEventListener('xrsessionerror', (event) => {
+            console.error('XR session error:', event.detail.error);
+            this.xrActive = false;
+        });
+
         // Custom Event Listener for Graph Data Updates
         window.addEventListener('graphDataUpdated', (event) => {
             console.log('Graph data updated event received', event.detail);
             if (this.visualization) {
-                this.visualization.updateVisualization();
+                this.visualization.updateVisualization(event.detail);
             } else {
                 console.error('Cannot update visualization: not initialized');
             }
@@ -228,10 +281,8 @@ export class App {
         // Spacemouse Move Event Listener
         window.addEventListener('spacemouse-move', (event) => {
             const { x, y, z } = event.detail;
-            if (this.visualization) {
+            if (this.visualization && !this.xrActive) {
                 this.visualization.handleSpacemouseInput(x, y, z);
-            } else {
-                console.error('Cannot handle Spacemouse input: Visualization not initialized');
             }
         });
 
@@ -254,7 +305,8 @@ export class App {
                 if (data.graph_data && this.graphDataManager) {
                     this.graphDataManager.updateGraphData(data.graph_data);
                     if (this.visualization) {
-                        this.visualization.updateVisualization();
+                        const graphData = this.graphDataManager.getGraphData();
+                        this.visualization.updateVisualization(graphData);
                     }
                 }
                 if (data.settings) {
@@ -274,7 +326,8 @@ export class App {
                 if (this.graphDataManager) {
                     this.graphDataManager.updateGraphData(data.graphData);
                     if (this.visualization) {
-                        this.visualization.updateVisualization();
+                        const graphData = this.graphDataManager.getGraphData();
+                        this.visualization.updateVisualization(graphData);
                     }
                 }
                 break;
@@ -283,9 +336,6 @@ export class App {
                 break;
             case 'error':
                 console.error('Server error:', data.message);
-                if (this.visualization) {
-                    this.visualization.showError(data.message);
-                }
                 break;
             default:
                 console.warn(`Unhandled message type: ${data.type}`, data);
@@ -305,18 +355,6 @@ export class App {
 
     start() {
         console.log('Starting the application');
-        if (this.visualization) {
-            console.log('Starting visualization animation');
-            this.visualization.animate();
-        } else {
-            console.error('Cannot start animation: Visualization not initialized');
-        }
+        // No need to call animate here since it's already called in initThreeJS
     }
 }
-
-// Initialize the App once the DOM content is fully loaded
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM fully loaded, creating App instance');
-    const app = new App();
-    app.start();
-});

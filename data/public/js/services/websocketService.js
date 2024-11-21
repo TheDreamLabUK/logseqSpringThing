@@ -1,43 +1,45 @@
 // Secure WebSocket service with improved error handling and security measures
 export default class WebsocketService {
+    // Event emitter implementation
+    _events = new Map();
+
+    // Rate limiting configuration
+    messageQueue = [];
+    messageRateLimit = 50; // messages per second
+    messageTimeWindow = 1000; // 1 second
+    lastMessageTime = 0;
+    
+    // Security configuration
+    maxMessageSize = 1024 * 1024; // 1MB limit
+    maxAudioSize = 5 * 1024 * 1024; // 5MB limit
+    maxQueueSize = 100;
+    validMessageTypes = new Set([
+        'getInitialData',
+        'graphUpdate',
+        'audioData',
+        'answer',
+        'error',
+        'ragflowResponse',
+        'openaiResponse',
+        'simulationModeSet',
+        'fisheye_settings_updated',  // Use underscore format consistently
+        'completion',                // Add completion message type
+        'position_update_complete'   // Add position update completion type
+    ]);
+
+    // WebSocket configuration
+    socket = null;
+    reconnectAttempts = 0;
+    maxRetries = 3;
+    retryDelay = 5000;
+    
+    // Audio configuration
+    audioContext = null;
+    audioQueue = [];
+    isPlaying = false;
+    audioInitialized = false;
+
     constructor() {
-        // Rate limiting configuration
-        this.messageQueue = [];
-        this.messageRateLimit = 50; // messages per second
-        this.messageTimeWindow = 1000; // 1 second
-        this.lastMessageTime = 0;
-        
-        // Security configuration
-        this.maxMessageSize = 1024 * 1024; // 1MB limit
-        this.maxAudioSize = 5 * 1024 * 1024; // 5MB limit
-        this.maxQueueSize = 100;
-        this.validMessageTypes = new Set([
-            'getInitialData',
-            'graphUpdate',
-            'audioData',
-            'answer',
-            'error',
-            'ragflowResponse',
-            'openaiResponse',
-            'simulationModeSet',
-            'fisheye_settings_updated',  // Use underscore format consistently
-            'completion',                // Add completion message type
-            'position_update_complete'   // Add position update completion type
-        ]);
-
-        // WebSocket configuration
-        this.socket = null;
-        this.listeners = new Map();
-        this.reconnectAttempts = 0;
-        this.maxRetries = 3;
-        this.retryDelay = 5000;
-        
-        // Audio configuration
-        this.audioContext = null;
-        this.audioQueue = [];
-        this.isPlaying = false;
-        this.audioInitialized = false;
-
         // Initialize connection
         this.connect();
         
@@ -45,8 +47,37 @@ export default class WebsocketService {
         window.addEventListener('beforeunload', () => this.cleanup());
     }
 
+    // Event emitter methods
+    on = (event, callback) => {
+        if (!this._events.has(event)) {
+            this._events.set(event, []);
+        }
+        this._events.get(event).push(callback);
+    }
+
+    off = (event, callback) => {
+        if (!this._events.has(event)) return;
+        const callbacks = this._events.get(event);
+        const index = callbacks.indexOf(callback);
+        if (index !== -1) {
+            callbacks.splice(index, 1);
+        }
+    }
+
+    emit = (event, ...args) => {
+        if (!this._events.has(event)) return;
+        const callbacks = this._events.get(event);
+        callbacks.forEach(callback => {
+            try {
+                callback(...args);
+            } catch (error) {
+                console.error(`Error in event listener for ${event}:`, error);
+            }
+        });
+    }
+
     // Secure WebSocket URL generation
-    getWebSocketUrl() {
+    getWebSocketUrl = () => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.hostname;
         const port = window.location.port ? `:${window.location.port}` : '';
@@ -56,7 +87,7 @@ export default class WebsocketService {
     }
 
     // Establish secure WebSocket connection
-    connect() {
+    connect = () => {
         const url = this.getWebSocketUrl();
         console.log('Attempting to connect to WebSocket at:', url);
         
@@ -79,6 +110,7 @@ export default class WebsocketService {
                 // Request initial graph data and settings
                 console.log('Requesting initial data');
                 this.send({ type: 'getInitialData' });
+                this.processQueuedMessages();
             };
 
             this.socket.onclose = (event) => {
@@ -100,7 +132,7 @@ export default class WebsocketService {
                 this.emit('error', error);
             };
 
-            this.socket.onmessage = this.handleMessage.bind(this);
+            this.socket.onmessage = this.handleMessage;
             
         } catch (error) {
             console.error('Error creating WebSocket connection:', error);
@@ -110,6 +142,7 @@ export default class WebsocketService {
 
     handleMessage = async (event) => {
         try {
+            // Handle binary data (position updates)
             if (event.data instanceof ArrayBuffer) {
                 // Log received buffer size
                 console.log(`Received binary data of size: ${event.data.byteLength} bytes`);
@@ -118,8 +151,14 @@ export default class WebsocketService {
                 const positions = new Float32Array(event.data);
                 const positionUpdates = [];
                 
-                // Each node has 6 values (x,y,z, vx,vy,vz)
-                for (let i = 0; i < positions.length; i += 6) {
+                // Extract header (first float32)
+                const header = positions[0];
+                const isInitialLayout = header >= 1.0;
+                const timeStep = header % 1.0;
+                console.log(`Received position update: isInitial=${isInitialLayout}, timeStep=${timeStep}`);
+                
+                // Process position data (skip header)
+                for (let i = 1; i < positions.length; i += 6) {  // Start from 1 to skip header
                     if (i + 5 < positions.length) {  // Ensure we have complete node data
                         positionUpdates.push([
                             positions[i],     // x
@@ -134,7 +173,10 @@ export default class WebsocketService {
 
                 console.log(`Processed ${positionUpdates.length} node position updates`);
 
-                // Dispatch event with properly formatted positions array
+                // Emit the gpuPositions event with the updates
+                this.emit('gpuPositions', { positions: positionUpdates });
+
+                // Also dispatch the event for backward compatibility
                 window.dispatchEvent(new CustomEvent('binaryPositionUpdate', {
                     detail: positionUpdates
                 }));
@@ -142,23 +184,54 @@ export default class WebsocketService {
             }
 
             // Handle JSON messages
-            const data = JSON.parse(event.data);
-            console.log('Received message:', data);
+            let data;
+            try {
+                data = JSON.parse(event.data);
+            } catch (error) {
+                console.error('Failed to parse JSON message:', error);
+                console.error('Raw message:', event.data);
+                this.emit('error', { 
+                    type: 'parse_error', 
+                    message: 'Invalid JSON message received',
+                    details: error.message
+                });
+                return;
+            }
+
+            // Validate message size
+            if (event.data.length > this.maxMessageSize) {
+                console.error('Message exceeds size limit');
+                this.emit('error', { 
+                    type: 'size_error', 
+                    message: 'Message size exceeds limit'
+                });
+                return;
+            }
+
+            // Validate message type
+            if (!data.type || !this.validMessageTypes.has(data.type)) {
+                console.error('Invalid message type:', data.type);
+                this.emit('error', { 
+                    type: 'validation_error', 
+                    message: 'Invalid message type'
+                });
+                return;
+            }
+
+            // Process the validated message
             this.handleServerMessage(data);
+
         } catch (error) {
             console.error('Error processing WebSocket message:', error);
-            console.error('Raw message:', event.data);
+            console.error('Error stack:', error.stack);
             this.emit('error', { 
-                type: 'parse_error', 
-                message: error.message, 
-                rawData: event.data instanceof ArrayBuffer ? 
-                    `Binary data of size ${event.data.byteLength}` : 
-                    event.data 
+                type: 'processing_error', 
+                message: error.message
             });
         }
     }
 
-    reconnect() {
+    reconnect = () => {
         if (this.reconnectAttempts < this.maxRetries) {
             this.reconnectAttempts++;
             console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxRetries}) in ${this.retryDelay / 1000} seconds...`);
@@ -169,7 +242,7 @@ export default class WebsocketService {
         }
     }
 
-    send(data) {
+    send = (data) => {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             if (data instanceof ArrayBuffer) {
                 // Log binary data size before sending
@@ -178,49 +251,45 @@ export default class WebsocketService {
             } else {
                 // Send JSON data
                 console.log('Sending WebSocket message:', data);
-                this.socket.send(JSON.stringify(data));
+                try {
+                    this.socket.send(JSON.stringify(data));
+                } catch (error) {
+                    console.error('Error sending WebSocket message:', error);
+                    this.emit('error', { type: 'send_error', message: error.message });
+                }
             }
         } else {
-            console.warn('WebSocket is not open. Unable to send message:', 
-                data instanceof ArrayBuffer ? `Binary data of size ${data.byteLength}` : data);
-            this.emit('error', { type: 'send_error', message: 'WebSocket is not open' });
+            console.warn('WebSocket not open. Queuing message...');
+            this.queueMessage(data);
         }
     }
 
-    on(event, callback) {
-        if (typeof callback !== 'function') {
-            console.error('Invalid callback provided for event:', event);
+    queueMessage = (data) => {
+        if (this.messageQueue.length >= this.maxQueueSize) {
+            console.warn('Message queue full. Dropping message:', data);
             return;
         }
-        if (!this.listeners[event]) {
-            this.listeners[event] = [];
-        }
-        this.listeners[event].push(callback);
+        this.messageQueue.push(data);
     }
 
-    off(event, callback) {
-        if (this.listeners[event]) {
-            this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+    processQueuedMessages = () => {
+        const now = Date.now();
+        const messagesToSend = [];
+        let messageCount = 0;
+        for (const message of this.messageQueue) {
+            if (messageCount < this.messageRateLimit && now - this.lastMessageTime >= this.messageTimeWindow / this.messageRateLimit) {
+                messagesToSend.push(message);
+                this.lastMessageTime = now;
+                messageCount++;
+            } else {
+                break; // Stop if rate limit is reached
+            }
         }
+        this.messageQueue.splice(0, messagesToSend.length);
+        messagesToSend.forEach(message => this.send(message));
     }
 
-    emit(event, data) {
-        if (this.listeners[event]) {
-            this.listeners[event].forEach(callback => {
-                if (typeof callback === 'function') {
-                    try {
-                        callback(data);
-                    } catch (error) {
-                        console.error(`Error in listener for event '${event}':`, error);
-                    }
-                } else {
-                    console.warn(`Invalid listener for event '${event}':`, callback);
-                }
-            });
-        }
-    }
-
-    handleServerMessage(data) {
+    handleServerMessage = (data) => {
         console.log('Handling server message:', data);
         
         // Validate message type
@@ -237,8 +306,14 @@ export default class WebsocketService {
             case 'getInitialData':
                 console.log('Received initial data:', data);
                 if (data.graph_data) {
-                    console.log('Emitting graph update with:', data.graph_data);
-                    this.emit('graphUpdate', { graphData: data.graph_data });
+                    // Ensure graph data is properly structured
+                    const graphData = {
+                        nodes: Array.isArray(data.graph_data.nodes) ? data.graph_data.nodes : [],
+                        edges: Array.isArray(data.graph_data.edges) ? data.graph_data.edges : [],
+                        metadata: data.graph_data.metadata || {}
+                    };
+                    console.log('Emitting graph update with structured data:', graphData);
+                    this.emit('graphUpdate', { graphData });
                 }
                 if (data.settings) {
                     console.log('Dispatching server settings:', data.settings);
@@ -268,7 +343,14 @@ export default class WebsocketService {
             case 'graphUpdate':
                 console.log('Received graph update:', data.graph_data);
                 if (data.graph_data) {
-                    this.emit('graphUpdate', { graphData: data.graph_data });
+                    // Ensure graph data is properly structured
+                    const graphData = {
+                        nodes: Array.isArray(data.graph_data.nodes) ? data.graph_data.nodes : [],
+                        edges: Array.isArray(data.graph_data.edges) ? data.graph_data.edges : [],
+                        metadata: data.graph_data.metadata || {}
+                    };
+                    console.log('Emitting graph update with structured data:', graphData);
+                    this.emit('graphUpdate', { graphData });
                 }
                 break;
                 
@@ -331,7 +413,7 @@ export default class WebsocketService {
         }
     }
 
-    handleRagflowResponse(data) {
+    handleRagflowResponse = (data) => {
         console.log('Handling RAGFlow response:', data);
         this.emit('ragflowAnswer', data.answer);
         if (data.audio) {
@@ -342,7 +424,7 @@ export default class WebsocketService {
         }
     }
 
-    base64ToBlob(base64, mimeType) {
+    base64ToBlob = (base64, mimeType) => {
         const byteCharacters = atob(base64);
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) {
@@ -352,7 +434,7 @@ export default class WebsocketService {
         return new Blob([byteArray], { type: mimeType });
     }
 
-    async handleAudioData(audioBlob) {
+    handleAudioData = async (audioBlob) => {
         if (!this.audioContext) {
             console.warn('AudioContext not initialized. Waiting for user interaction...');
             return;
@@ -374,15 +456,11 @@ export default class WebsocketService {
         }
     }
 
-    async decodeWavData(wavData) {
+    decodeWavData = async (wavData) => {
         return new Promise((resolve, reject) => {
             console.log('WAV data size:', wavData.byteLength);
-            const dataView = new DataView(wavData);
-            const firstBytes = Array.from(new Uint8Array(wavData.slice(0, 16)))
-                .map(b => b.toString(16).padStart(2, '0')).join(' ');
-            console.log('First 16 bytes:', firstBytes);
-
-            const header = new TextDecoder().decode(wavData.slice(0, 4));
+            const dataView = new DataView(wavData.slice(0, 16));
+            const header = new TextDecoder().decode(dataView);
             console.log('Header:', header);
             if (header !== 'RIFF') {
                 console.error('Invalid WAV header:', header);
@@ -403,7 +481,7 @@ export default class WebsocketService {
         });
     }
 
-    playNextAudio() {
+    playNextAudio = () => {
         if (this.audioQueue.length === 0) {
             this.isPlaying = false;
             return;
@@ -418,7 +496,7 @@ export default class WebsocketService {
         source.start();
     }
 
-    initAudio() {
+    initAudio = () => {
         if (this.audioInitialized) {
             console.log('Audio already initialized');
             return;
@@ -439,14 +517,14 @@ export default class WebsocketService {
         }
     }
 
-    setSimulationMode(mode) {
+    setSimulationMode = (mode) => {
         this.send({
             type: 'setSimulationMode',
             mode: mode
         });
     }
 
-    sendChatMessage({ message, useOpenAI }) {
+    sendChatMessage = ({ message, useOpenAI }) => {
         this.send({
             type: 'chatMessage',
             message,
@@ -454,7 +532,7 @@ export default class WebsocketService {
         });
     }
 
-    updateFisheyeSettings(settings) {
+    updateFisheyeSettings = (settings) => {
         console.log('Updating fisheye settings:', settings);
         const focus_point = settings.focusPoint || [0, 0, 0];
         this.send({
@@ -466,7 +544,7 @@ export default class WebsocketService {
         });
     }
 
-    cleanup() {
+    cleanup = () => {
         if (this.socket) {
             this.socket.close();
         }

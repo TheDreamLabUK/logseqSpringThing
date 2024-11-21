@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use bytemuck::{Pod, Zeroable};
+use crate::models::position_update::NodePositionVelocity;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Node {
@@ -72,8 +73,8 @@ impl Node {
         self.vz = gpu_node.vz;
     }
 
-    pub fn to_position_update(&self) -> GPUNodePositionUpdate {
-        GPUNodePositionUpdate {
+    pub fn to_position_update(&self) -> NodePositionVelocity {
+        NodePositionVelocity {
             x: self.x,
             y: self.y,
             z: self.z,
@@ -83,7 +84,7 @@ impl Node {
         }
     }
 
-    pub fn update_from_position_update(&mut self, update: &GPUNodePositionUpdate) {
+    pub fn update_from_position_update(&mut self, update: &NodePositionVelocity) {
         self.x = update.x;
         self.y = update.y;
         self.z = update.z;
@@ -136,16 +137,4 @@ pub struct GPUNode {
     pub mass: u8,    // Quantized mass from file size
     pub flags: u8,   // Node state flags
     pub padding: [u8; 2], // Padding for alignment
-}
-
-/// For position-only updates between client/server (24 bytes)
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-pub struct GPUNodePositionUpdate {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub vx: f32,
-    pub vy: f32,
-    pub vz: f32,
 }

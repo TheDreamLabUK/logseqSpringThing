@@ -5,7 +5,8 @@ use log::{debug, info};
 use crate::models::graph::GraphData;
 use crate::models::edge::GPUEdge;
 use crate::models::node::GPUNode;
-use crate::models::simulation_params::SimulationParams;
+use crate::models::simulation_params::{SimulationParams, SimulationMode};
+use crate::models::position_update::NodePositionVelocity;
 use futures::channel::oneshot;
 
 // Constants for buffer management and computation
@@ -435,7 +436,7 @@ impl GPUCompute {
 
     /// Fast path for position updates from client
     pub async fn update_positions(&mut self, binary_data: &[u8]) -> Result<(), Error> {
-        // Verify data length (24 bytes per node - position + velocity, plus 4 bytes for is_initial_layout flag)
+        // Verify data length (24 bytes per node - position + velocity, plus 4 bytes for header)
         let expected_size = self.num_nodes as usize * 24 + 4;
         if binary_data.len() != expected_size {
             return Err(Error::new(
@@ -445,7 +446,22 @@ impl GPUCompute {
             ));
         }
 
-        // Skip the is_initial_layout flag (first 4 bytes) when writing to position buffer
+        // Extract header value as f32
+        let mut header_bytes = [0u8; 4];
+        header_bytes.copy_from_slice(&binary_data[0..4]);
+        let header_value = f32::from_le_bytes(header_bytes);
+        let is_initial_layout = header_value >= 1.0;
+
+        // Update simulation params
+        let mut params = self.simulation_params;
+        params.is_initial_layout = is_initial_layout;
+        self.queue.write_buffer(
+            &self.simulation_params_buffer,
+            0,
+            bytemuck::cast_slice(&[params])
+        );
+
+        // Write position data to buffer (skip header)
         self.queue.write_buffer(
             &self.position_update_buffer,
             0,
@@ -491,7 +507,7 @@ impl GPUCompute {
     }
 
     /// Get current positions in binary format for client updates
-    pub async fn get_position_updates(&self) -> Result<Vec<u8>, Error> {
+    pub async fn get_position_updates(&self) -> Result<Vec<NodePositionVelocity>, Error> {
         let mut encoder = self.device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor {
                 label: Some("Position Readback Encoder"),
@@ -523,7 +539,7 @@ impl GPUCompute {
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
         let data = buffer_slice.get_mapped_range();
-        let positions = data.to_vec();
+        let positions: Vec<NodePositionVelocity> = bytemuck::cast_slice(&data).to_vec();
         drop(data);
         self.position_staging_buffer.unmap();
 

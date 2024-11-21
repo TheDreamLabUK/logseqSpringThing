@@ -11,8 +11,9 @@ use std::sync::{Arc, Mutex};
 use tokio::time::Duration;
 
 use crate::AppState;
-use crate::models::node::{GPUNode, GPUNodePositionUpdate};
+use crate::models::node::GPUNode;
 use crate::models::simulation_params::{SimulationMode, SimulationParams};
+use crate::models::position_update::NodePositionVelocity;
 use crate::utils::websocket_messages::{
     MessageHandler, OpenAIConnected, OpenAIConnectionFailed, OpenAIMessage, SendBinary, SendText,
 };
@@ -54,10 +55,10 @@ pub fn format_color(color: &str) -> String {
 /// Helper function to convert GPU nodes to binary position updates
 /// Creates efficient binary format for network transfer (24 bytes per node)
 pub fn positions_to_binary(nodes: &[GPUNode]) -> Vec<u8> {
-    let mut binary_data = Vec::with_capacity(nodes.len() * std::mem::size_of::<GPUNodePositionUpdate>());
+    let mut binary_data = Vec::with_capacity(nodes.len() * std::mem::size_of::<NodePositionVelocity>());
     for node in nodes {
         // Convert to position update format (24 bytes)
-        let update = GPUNodePositionUpdate {
+        let update = NodePositionVelocity {
             x: node.x,
             y: node.y,
             z: node.z,
@@ -65,7 +66,7 @@ pub fn positions_to_binary(nodes: &[GPUNode]) -> Vec<u8> {
             vy: node.vy,
             vz: node.vz,
         };
-        // Use as_bytes() since GPUNodePositionUpdate is Pod
+        // Use as_bytes() since NodePositionVelocity is Pod
         binary_data.extend_from_slice(bytemuck::bytes_of(&update));
     }
     binary_data
@@ -140,7 +141,8 @@ impl Handler<SendBinary> for WebSocketSession {
             ctx.spawn(
                 async move {
                     let gpu_read = gpu.read().await;
-                    let expected_size = gpu_read.get_num_nodes() as usize * 24;
+                    let num_nodes = gpu_read.get_num_nodes() as usize;
+                    let expected_size = num_nodes * 24 + 4; // +4 for multiplexed header
                     drop(gpu_read); // Release the read lock before writing
 
                     if bin_data.len() != expected_size {
@@ -154,7 +156,6 @@ impl Handler<SendBinary> for WebSocketSession {
                         if let Ok(error_str) = serde_json::to_string(&error_message) {
                             let msg: SendText = SendText(error_str);
                             ctx_addr.do_send(msg);
-                            
                         }
                         return;
                     }
@@ -168,6 +169,26 @@ impl Handler<SendBinary> for WebSocketSession {
                         });
                         if let Ok(error_str) = serde_json::to_string(&error_message) {
                             let msg: SendText = SendText(error_str);
+                            ctx_addr.do_send(msg);
+                        }
+                    } else {
+                        // Convert first byte to f32 for proper comparison
+                        let is_initial = if bin_data.len() >= 4 {
+                            let bytes: [u8; 4] = [bin_data[0], bin_data[1], bin_data[2], bin_data[3]];
+                            let value = f32::from_le_bytes(bytes);
+                            value >= 1.0
+                        } else {
+                            false
+                        };
+
+                        // Send position update completion as JSON
+                        let completion_message = json!({
+                            "type": "position_update_complete",
+                            "status": "success",
+                            "is_initial_layout": is_initial
+                        });
+                        if let Ok(msg_str) = serde_json::to_string(&completion_message) {
+                            let msg: SendText = SendText(msg_str);
                             ctx_addr.do_send(msg);
                         }
                     }
