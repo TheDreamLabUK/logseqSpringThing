@@ -19,6 +19,7 @@ export class GraphDataManager {
             damping: 0.8
         };
         this.pendingRecalculation = false;
+        this.initialLayoutDone = false;
         console.log('GraphDataManager initialized');
         
         this.websocketService.on('graphUpdate', this.handleGraphUpdate.bind(this));
@@ -176,6 +177,13 @@ export class GraphDataManager {
             this.pendingRecalculation = false;
             this.recalculateLayout();
         }
+
+        // If this is the first time we've received graph data, mark it as initial layout
+        if (!this.initialLayoutDone) {
+            console.log('Performing initial layout calculation');
+            this.initialLayoutDone = true;
+            this.recalculateLayout(true);
+        }
     }
 
     getGraphData() {
@@ -224,7 +232,7 @@ export class GraphDataManager {
         }
     }
 
-    recalculateLayout() {
+    recalculateLayout(isInitial = false) {
         console.log('Requesting server layout recalculation with parameters:', this.forceDirectedParams);
         if (this.isGraphDataValid()) {
             this.websocketService.send({
@@ -234,7 +242,8 @@ export class GraphDataManager {
                     spring_strength: this.forceDirectedParams.spring_strength,
                     repulsion_strength: this.forceDirectedParams.repulsion_strength,
                     attraction_strength: this.forceDirectedParams.attraction_strength,
-                    damping: this.forceDirectedParams.damping
+                    damping: this.forceDirectedParams.damping,
+                    is_initial_layout: isInitial
                 }
             });
             

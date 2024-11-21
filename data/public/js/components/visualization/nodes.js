@@ -11,11 +11,7 @@ export const NODE_COLORS = {
     OLD: new THREE.Color(0xff4444)        // Red for old files (>= 30 days)
 };
 
-export const NODE_SHAPES = {
-    FEW_LINKS: 'sphere',      // 0-5 links
-    MEDIUM_LINKS: 'box',      // 6-15 links
-    MANY_LINKS: 'octahedron'  // 16+ links
-};
+// Removed NODE_SHAPES since we're using a single smooth geometry type
 
 export class NodeManager {
     constructor(scene, camera) {
@@ -24,6 +20,11 @@ export class NodeManager {
         this.nodeMeshes = new Map();
         this.nodeLabels = new Map();
         this.edgeMeshes = new Map();
+        this.nodeData = new Map(); // Store node data for click handling
+        
+        // Initialize raycaster for click detection
+        this.raycaster = new THREE.Raycaster();
+        this.mouse = new THREE.Vector2();
         
         // Node settings
         this.minNodeSize = 0.01;  // Reduced from 0.1
@@ -39,6 +40,9 @@ export class NodeManager {
         // Server-side node size range (must match constants in file_service.rs)
         this.serverMinNodeSize = 0.5;  // Reduced from 5.0
         this.serverMaxNodeSize = 5.0;  // Reduced from 50.0
+
+        // Bind click handler
+        this.handleClick = this.handleClick.bind(this);
     }
 
     getNodeSize(metadata) {
@@ -70,14 +74,37 @@ export class NodeManager {
     }
 
     createNodeGeometry(size, hyperlinkCount) {
-        // Adjust geometry creation for smaller sizes
-        if (hyperlinkCount < 6) {
-            return new THREE.SphereGeometry(size, 16, 16); // Reduced segments for better performance
-        } else if (hyperlinkCount < 16) {
-            return new THREE.BoxGeometry(size, size, size);
-        } else {
-            return new THREE.OctahedronGeometry(size);
-        }
+        // Create a smooth sphere with more segments for better quality
+        // Scale detail level based on hyperlink count for performance
+        const segments = Math.min(32, Math.max(16, Math.floor(hyperlinkCount / 2) + 16));
+        return new THREE.SphereGeometry(size, segments, segments);
+    }
+
+    createNodeMaterial(color, age) {
+        // Calculate emissive intensity based on age
+        // Newer nodes glow more brightly
+        const now = Date.now();
+        const ageInDays = (now - new Date(age).getTime()) / (24 * 60 * 60 * 1000);
+        const maxAge = 30; // days
+        const minIntensity = 0.3;
+        const maxIntensity = 1.0;
+        
+        // Normalize age to 0-1 range and invert (newer = brighter)
+        const normalizedAge = Math.min(ageInDays / maxAge, 1);
+        const emissiveIntensity = maxIntensity - (normalizedAge * (maxIntensity - minIntensity));
+
+        return new THREE.MeshPhysicalMaterial({
+            color: color,
+            emissive: color,
+            emissiveIntensity: emissiveIntensity,
+            metalness: 0.2,
+            roughness: 0.2,
+            transparent: true,
+            opacity: 0.9,
+            envMapIntensity: 1.0,
+            clearcoat: 0.3,
+            clearcoatRoughness: 0.2
+        });
     }
 
     createNodeLabel(text, fileSize, lastModified, hyperlinkCount) {
@@ -85,25 +112,31 @@ export class NodeManager {
         const context = canvas.getContext('2d');
         context.font = `${this.labelFontSize}px Arial`;
         
+        // Measure text dimensions
         const nameMetrics = context.measureText(text);
         const infoText = `${this.formatFileSize(fileSize)} | ${this.formatAge(lastModified)} | ${hyperlinkCount} links`;
         const infoMetrics = context.measureText(infoText);
         
+        // Set canvas size to fit text with padding
         const textWidth = Math.max(nameMetrics.width, infoMetrics.width);
-        canvas.width = textWidth + 20;
-        canvas.height = this.labelFontSize * 2 + 30;
+        canvas.width = textWidth + 20;  // Add padding
+        canvas.height = this.labelFontSize * 2 + 30;  // Height for two lines plus padding
 
+        // Draw semi-transparent background
         context.fillStyle = 'rgba(0, 0, 0, 0.8)';
         context.fillRect(0, 0, canvas.width, canvas.height);
 
+        // Draw node name
         context.font = `${this.labelFontSize}px Arial`;
         context.fillStyle = 'white';
         context.fillText(text, 10, this.labelFontSize);
         
+        // Draw info text in smaller size
         context.font = `${this.labelFontSize / 2}px Arial`;
         context.fillStyle = 'lightgray';
         context.fillText(infoText, 10, this.labelFontSize + 20);
 
+        // Create sprite from canvas
         const texture = new THREE.CanvasTexture(canvas);
         const spriteMaterial = new THREE.SpriteMaterial({
             map: texture,
@@ -111,7 +144,9 @@ export class NodeManager {
             depthWrite: false
         });
         const sprite = new THREE.Sprite(spriteMaterial);
-        sprite.scale.set(canvas.width / 20, canvas.height / 20, 1); // Reduced scale
+        
+        // Scale sprite to maintain readable text size
+        sprite.scale.set(canvas.width / 20, canvas.height / 20, 1);
         sprite.layers.set(NORMAL_LAYER);
 
         return sprite;
@@ -138,6 +173,51 @@ export class NodeManager {
         if (days < 30) return `${Math.floor(days / 7)}w ago`;
         if (days < 365) return `${Math.floor(days / 30)}m ago`;
         return `${Math.floor(days / 365)}y ago`;
+    }
+
+    formatNodeNameToUrl(nodeName) {
+        // Convert node name to lowercase and replace spaces with %20
+        const formattedName = nodeName.toLowerCase().replace(/ /g, '%20');
+        return `https://narrativegoldmine.com/#/page/${formattedName}`;
+    }
+
+    handleClick(event) {
+        // Calculate mouse position in normalized device coordinates (-1 to +1)
+        const rect = event.target.getBoundingClientRect();
+        this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        // Update the picking ray with the camera and mouse position
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+
+        // Calculate objects intersecting the picking ray
+        const intersects = this.raycaster.intersectObjects(Array.from(this.nodeMeshes.values()));
+
+        if (intersects.length > 0) {
+            // Find the clicked node
+            const clickedMesh = intersects[0].object;
+            const nodeId = Array.from(this.nodeMeshes.entries())
+                .find(([_, mesh]) => mesh === clickedMesh)?.[0];
+
+            if (nodeId) {
+                const nodeData = this.nodeData.get(nodeId);
+                if (nodeData) {
+                    // Open URL in new tab
+                    const url = this.formatNodeNameToUrl(nodeData.label || nodeId);
+                    window.open(url, '_blank');
+                }
+            }
+        }
+    }
+
+    initClickHandling(renderer) {
+        // Add click event listener to renderer's DOM element
+        renderer.domElement.addEventListener('click', this.handleClick);
+    }
+
+    removeClickHandling(renderer) {
+        // Remove click event listener
+        renderer.domElement.removeEventListener('click', this.handleClick);
     }
 
     centerNodes(nodes) {
@@ -188,6 +268,7 @@ export class NodeManager {
             if (!existingNodeIds.has(nodeId)) {
                 this.scene.remove(mesh);
                 this.nodeMeshes.delete(nodeId);
+                this.nodeData.delete(nodeId);
                 const label = this.nodeLabels.get(nodeId);
                 if (label) {
                     this.scene.remove(label);
@@ -203,6 +284,9 @@ export class NodeManager {
                 return;
             }
 
+            // Store node data for click handling
+            this.nodeData.set(node.id, node);
+
             const metadata = node.metadata || {};
             const fileSize = parseInt(metadata.file_size) || 1;
             const lastModified = metadata.last_modified || new Date().toISOString();
@@ -215,13 +299,7 @@ export class NodeManager {
 
             if (!mesh) {
                 const geometry = this.createNodeGeometry(size, hyperlinkCount);
-                const material = new THREE.MeshStandardMaterial({
-                    color: color,
-                    metalness: 0.2,  // Reduced for more glow
-                    roughness: 0.2,  // Reduced for more glow
-                    emissive: color,
-                    emissiveIntensity: 1.0  // Increased from 0.5 to 1.0 for stronger glow
-                });
+                const material = this.createNodeMaterial(color, lastModified);
 
                 mesh = new THREE.Mesh(geometry, material);
                 mesh.layers.enable(BLOOM_LAYER);
@@ -234,9 +312,8 @@ export class NodeManager {
             } else {
                 mesh.geometry.dispose();
                 mesh.geometry = this.createNodeGeometry(size, hyperlinkCount);
-                mesh.material.color.copy(color);
-                mesh.material.emissive.copy(color);
-                mesh.material.emissiveIntensity = 1.0; // Ensure updated nodes also have strong glow
+                mesh.material.dispose();
+                mesh.material = this.createNodeMaterial(color, lastModified);
             }
 
             mesh.position.set(node.x, node.y, node.z);
@@ -486,5 +563,11 @@ export class NodeManager {
             if (line.geometry) line.geometry.dispose();
             if (line.material) line.material.dispose();
         });
+
+        // Clear data maps
+        this.nodeMeshes.clear();
+        this.nodeLabels.clear();
+        this.edgeMeshes.clear();
+        this.nodeData.clear();
     }
 }
