@@ -311,203 +311,78 @@ SpeechService --> WebSocketManager
 
 ```mermaid
 sequenceDiagram
-    participant Server
-    participant FileService
-    participant GitHub
-    participant GraphService
-    participant GPUCompute
-    participant WebSocketManager
-    participant Client
-    participant WebXRVisualization
-    participant GraphDataManager
-    participant Interface
-    participant ChatManager
-    participant RAGFlowService
-    participant PerplexityAPI
-    participant WebsocketService
-    participant SpeechService
-    participant SpeechWs
+    participant Client as WebXR Client
+    participant WSClient as WebSocket Client
+    participant Server as Actix Server
+    participant WSManager as WebSocket Manager
+    participant FileService as File Service
+    participant GraphService as Graph Service
+    participant GPUCompute as GPU Compute
+    participant GitHub as GitHub API
+    participant Perplexity as Perplexity AI
+    participant RagFlow as RagFlow API
+    participant OpenAI as OpenAI API
+    participant SpeechService as Speech Service
+    participant SpeechWs as Speech WebSocket
 
-    rect #C8FFC8
-        activate Server
-        Server->>Server: Load env vars & settings (config.rs)
-        alt Settings Load Error
-            note right of Server: Error handling in main.rs
-            Server-->>Client: Error Response (500)
-            deactivate Server
-        else Settings Loaded
-            Server->>Server: Initialize AppState (app_state.rs)
-            Server->>Server: Initialize GPUCompute (utils/gpu_compute.rs)
-            alt GPU Initialization Error
-                note right of Server: Fallback to CPU calculation
-            end
-            Server->>Server: initialize_graph_data (main.rs)
-            Server->>FileService: fetch_and_process_files (services/file_service.rs)
-            activate FileService
-                FileService->>GitHub: fetch_files("RealGitHubService::fetch_files")
-                activate GitHub
-                    GitHub-->>FileService: Files or Error
-                deactivate GitHub
-                alt GitHub Error
-                    FileService-->>Server: Error
-                else Files Fetched
-                    loop For each file
-                        FileService->>FileService: should_process_file
-                        alt File needs processing
-                            FileService->>PerplexityAPI: process_file (services/perplexity_service.rs)
-                            activate PerplexityAPI
-                                PerplexityAPI->>PerplexityAPI: process_markdown
-                                PerplexityAPI->>PerplexityAPI: call_perplexity_api
-                                PerplexityAPI-->>FileService: Processed content or Error
-                            deactivate PerplexityAPI
-                            alt Perplexity Error
-                                FileService-->>Server: Error
-                            else Content Processed
-                                FileService->>FileService: save_file_metadata
-                            end
-                        end
-                    end
-                    FileService-->>Server: Processed files or Error
-                end
-            deactivate FileService
-            alt File Processing Error
-                Server-->>Server: Error
-            else Files Processed Successfully
-                Server->>GraphService: build_graph
-                activate GraphService
-                    GraphService->>GraphService: Create nodes and edges
-                    GraphService->>GPUCompute: calculate_layout
-                    activate GPUCompute
-                        GPUCompute->>GPUCompute: set_graph_data
-                        GPUCompute->>GPUCompute: compute_forces
-                        GPUCompute->>GPUCompute: get_updated_positions
-                        GPUCompute-->>GraphService: Updated node positions
-                    deactivate GPUCompute
-                    GraphService-->>Server: GraphData
-                deactivate GraphService
-                Server->>WebSocketManager: broadcast_graph_update
-                activate WebSocketManager
-                    WebSocketManager-->>Client: graph_update_message
-                deactivate WebSocketManager
-                Server-->>Client: Success Response
-            end
-        end
-    end
+    Note over Client,OpenAI: System Initialization
+    Client->>WSClient: Initialize WebXR Connection
+    WSClient->>Server: Establish WebSocket Connection
+    Server->>WSManager: Register New Client Session
+    WSManager-->>Client: Confirm Connection Established
 
-    note right of Client: Initial load
+    Note over Client,OpenAI: File Processing Flow
+    Server->>FileService: Request Fetch Repository Files
+    FileService->>GitHub: API Call to Retrieve Files
+    GitHub-->>FileService: Return File Contents or Error
+    FileService->>Perplexity: Send Files for Markdown Processing
+    Perplexity-->>FileService: Return Enhanced Content or Error
+    FileService->>GraphService: Pass Processed Files for Graph Construction
 
-    Client->>WebXRVisualization: initialize()
-    activate WebXRVisualization
-        WebXRVisualization->>GraphDataManager: requestInitialData()
-        activate GraphDataManager
-            GraphDataManager->>WebsocketService: subscribe()
-            WebsocketService-->>GraphDataManager: Initial GraphData
-            GraphDataManager-->>WebXRVisualization: Provide GraphData
-        deactivate GraphDataManager
-        WebXRVisualization->>WebXRVisualization: setupThreeJS()
-        WebXRVisualization->>WebXRVisualization: renderScene()
-    deactivate WebXRVisualization
-    WebXRVisualization-->>Client: Render 3D Graph
+    Note over Client,OpenAI: Graph Computation
+    GraphService->>GPUCompute: Initialize GPU Compute Pipeline
+    GPUCompute->>GPUCompute: Load Node and Edge Data into Buffers
+    GPUCompute->>GPUCompute: Execute Force-Directed Layout Calculation
+    GPUCompute-->>GraphService: Return Updated Node Positions
+    GraphService-->>WSManager: Send Updated Graph Data to Clients
+    WSManager-->>Client: Broadcast Updated Graph Positions
 
-    note right of Client: User interactions
+    Note over Client,OpenAI: Real-time Interaction
+    Client->>WSClient: Perform Node Drag Operation
+    WSClient->>Server: Transmit Node Position Update
+    Server->>GraphService: Trigger Layout Recalculation
+    GraphService->>GPUCompute: Re-execute Layout Calculation with New Data
+    GPUCompute-->>GraphService: Provide New Node Positions
+    GraphService-->>WSManager: Dispatch Updated Positions to All Clients
+    WSManager-->>Client: Receive and Render Updated Network Layout
 
-    Client->>Interface: handleUserInput(input)
-    Interface->>ChatManager: sendMessage(input)
-    ChatManager->>RAGFlowService: sendQuery(input)
-    RAGFlowService-->>ChatManager: AI Response
-    ChatManager-->>Interface: Display AI Response
-    Interface->>WebXRVisualization: updateGraphData(newData)
-    WebXRVisualization-->>Client: Update Visualization
+    Note over Client,OpenAI: AI Integration Flow
+    Client->>WSClient: Submit User Query
+    WSClient->>Server: Forward Query to Backend
+    Server->>RagFlow: Forward Query for Context-Aware Answering
+    RagFlow-->>Server: Return AI-Generated Response
+    Server->>OpenAI: Send Text for Speech Synthesis
+    OpenAI-->>Server: Return Audio Stream
+    Server->>SpeechService: Send Audio Stream
+    SpeechService->>SpeechWs: Stream Audio to Client
+    SpeechWs-->>Client: Play Audio and Display Text Answer
 
-    note right of Client: User requests layout recalculation
+    Note over Client,OpenAI: File Update Flow
+    Client->>WSClient: Submit Content Update
+    WSClient->>Server: Transmit Update Request
+    Server->>FileService: Process Content Update
+    FileService->>GitHub: Create New Branch for Update
+    GitHub-->>FileService: Confirm Branch Creation
+    FileService->>GitHub: Update File Content in New Branch
+    GitHub-->>FileService: Confirm File Update
+    FileService->>GitHub: Create Pull Request for Updated Content
+    GitHub-->>FileService: Confirm PR Creation
+    FileService-->>WSManager: Notify Update Success
+    WSManager-->>Client: Confirm Update to User
 
-    Client->>GraphDataManager: requestRecalculateLayout()
-    activate GraphDataManager
-        GraphDataManager->>WebsocketService: send("recalculateLayout", params)
-    deactivate GraphDataManager
-    WebsocketService->>Server: emit("recalculateLayout", params)
-    activate Server
-        Server->>GraphService: calculate_layout
-        activate GraphService
-            GraphService->>GPUCompute: calculate_layout
-            activate GPUCompute
-                GPUCompute->>GPUCompute: set_graph_data
-                GPUCompute->>GPUCompute: compute_forces
-                GPUCompute->>GPUCompute: get_updated_positions
-                GPUCompute-->>GraphService: Updated node positions
-            deactivate GPUCompute
-            GraphService-->>Server: GraphData
-        deactivate GraphService
-        Server->>WebSocketManager: broadcast_graph_update
-        activate WebSocketManager
-            WebSocketManager-->>Client: graph_update_message
-        deactivate WebSocketManager
-    deactivate Server
-    Client->>WebXRVisualization: updateVisualization()
-    WebXRVisualization-->>Client: Render Updated 3D Graph
-
-    note right of Client: User clicks "Refresh Graph"
-
-    Client->>Server: POST /api/files/fetch
-    activate Server
-        Server->>FileService: fetch_and_process_files
-        activate FileService
-            FileService->>GitHub: fetch_files
-            activate GitHub
-                GitHub-->>FileService: Files or Error
-            deactivate GitHub
-            alt GitHub Error
-                FileService-->>Server: Error
-            else Files Fetched
-                loop For each file
-                    FileService->>FileService: should_process_file
-                    alt File needs processing
-                        FileService->>PerplexityAPI: process_file
-                        activate PerplexityAPI
-                            PerplexityAPI->>PerplexityAPI: process_markdown
-                            PerplexityAPI->>PerplexityAPI: call_perplexity_api
-                            PerplexityAPI-->>FileService: Processed content or Error
-                        deactivate PerplexityAPI
-                        alt Perplexity Error
-                            FileService-->>Server: Error
-                        else Content Processed
-                            FileService->>FileService: save_file_metadata
-                        end
-                    end
-                end
-                FileService-->>Server: Processed files or Error
-            end
-
-deactivate FileService
-        alt File Processing Error
-            Server->>WebSocketManager: broadcast_error_message
-            activate WebSocketManager
-                WebSocketManager-->>Client: error_message
-            deactivate WebSocketManager
-            Server-->>Client: Error Response
-        else Files Processed Successfully
-            Server->>GraphService: build_graph
-            activate GraphService
-                GraphService->>GraphService: Create nodes and edges
-                GraphService->>GPUCompute: calculate_layout
-                activate GPUCompute
-                    GPUCompute->>GPUCompute: set_graph_data
-                    GPUCompute->>GPUCompute: compute_forces
-                    GPUCompute->>GPUCompute: get_updated_positions
-                    GPUCompute-->>GraphService: Updated node positions
-                deactivate GPUCompute
-                GraphService-->>Server: GraphData
-            deactivate GraphService
-            Server->>WebSocketManager: broadcast_graph_update
-            activate WebSocketManager
-                WebSocketManager-->>Client: graph_update_message
-            deactivate WebSocketManager
-            Server-->>Client: Success Response
-        end
-    deactivate Server
-    ```
-
+```
 ### Detailed Data Flow Architecture
+```
 
 ```mermaid
 sequenceDiagram
@@ -585,26 +460,26 @@ sequenceDiagram
 
 ```mermaid
 graph TB
-    subgraph Input Buffers
+    subgraph "Input Buffers"
         NodesData[Node Data Buffer]
         EdgesData[Edge Data Buffer]
         ForcesData[Force Buffer]
         ParamsData[Simulation Parameters Buffer]
     end
 
-    subgraph Compute Pipeline
+    subgraph "Compute Pipeline"
         BindGroupLayout[Bind Group Layout]
-        
-        subgraph Shaders
+
+        subgraph "Shaders"
             ForceCalculation[Force Calculation Shader]
             PositionUpdate[Position Update Shader]
             FisheyeEffect[Fisheye Distortion Shader]
         end
-        
+
         DispatchBlock[Dispatch Workgroups]
     end
 
-    subgraph Output Buffers
+    subgraph "Output Buffers"
         NewPositions[Updated Position Buffer]
         VisualizationData[Visualization Data Buffer]
     end
@@ -618,286 +493,22 @@ graph TB
     ForceCalculation --> PositionUpdate
     PositionUpdate --> FisheyeEffect
 
-    ForceCalculation --> DispatchBlock
-    DispatchBlock --> |Workgroup 1| ForceCalculation
-    DispatchBlock --> |Workgroup 2| PositionUpdate
-    DispatchBlock --> |Workgroup 3| FisheyeEffect
+    DispatchBlock -->|Workgroup 1| ForceCalculation
+    DispatchBlock -->|Workgroup 2| PositionUpdate
+    DispatchBlock -->|Workgroup 3| FisheyeEffect
 
     FisheyeEffect --> NewPositions
     FisheyeEffect --> VisualizationData
 
-    style Input Buffers fill:#f9f,stroke:#333,stroke-width:2px
-    style Compute Pipeline fill:#bbf,stroke:#333,stroke-width:2px
-    style Output Buffers fill:#bfb,stroke:#333,stroke-width:2px
+    style "Input Buffers" fill:#f9f,stroke:#333,stroke-width:2px
+    style "Compute Pipeline" fill:#bbf,stroke:#333,stroke-width:2px
+    style "Output Buffers" fill:#bfb,stroke:#333,stroke-width:2px
 ```
 
 ### File Structure
 
 ```mermaid
-sequenceDiagram
-    participant Server
-    participant FileService
-    participant GitHub
-    participant GraphService
-    participant GPUCompute
-    participant WebSocketManager
-    participant Client
-    participant WebXRVisualization
-    participant GraphDataManager
-    participant Interface
-    participant ChatManager
-    participant RAGFlowService
-    participant PerplexityAPI
-    participant WebsocketService
 
-    rect rgba(200, 255, 200, 0.1)
-        activate Server
-        Server->>Server: Load env vars & settings (config.rs)
-        alt Settings Load Error
-            note right of Server: Error handling in main.rs
-            Server-->>Client: Error Response (500)
-            deactivate Server
-        else Settings Loaded
-            Server->>Server: Initialize AppState (app_state.rs)
-            Server->>Server: Initialize GPUCompute (utils/gpu_compute.rs)
-            alt GPU Initialization Error
-                note right of Server: Fallback to CPU calculation
-            end
-            Server->>Server: initialize_graph_data (main.rs)
-            Server->>FileService: fetch_and_process_files (services/file_service.rs)
-            activate FileService
-                FileService->>GitHub: fetch_files("RealGitHubService::fetch_files")
-                activate GitHub
-                    GitHub-->>FileService: Files or Error
-                deactivate GitHub
-                alt GitHub Error
-                    FileService-->>Server: Error
-                else Files Fetched
-                    loop For each file
-                        FileService->>FileService: should_process_file
-                        alt File needs processing
-                            FileService->>PerplexityAPI: process_file (services/perplexity_service.rs)
-                            activate PerplexityAPI
-                                PerplexityAPI->>PerplexityAPI: process_markdown (splits into blocks, calls API)
-                                PerplexityAPI->>PerplexityAPI: call_perplexity_api (multiple times)
-                                PerplexityAPI-->>FileService: Processed content or Error
-                            deactivate PerplexityAPI
-                            alt Perplexity Error
-                                FileService-->>Server: Error
-                            else Content Processed
-                                FileService->>FileService: save_file_metadata (writes to /app/data/markdown)
-                            end
-                        end
-                    end
-                    FileService-->>Server: Processed files or Error
-                end
-            deactivate FileService
-            alt File Processing Error
-                Server-->>Server: Error
-            else Files Processed Successfully
-                Server->>GraphService: build_graph (services/graph_service.rs)
-                activate GraphService
-                    GraphService->>GraphService: Create nodes and edges
-                    GraphService->>GPUCompute: calculate_layout (or CPU fallback)
-                    activate GPUCompute
-                        GPUCompute->>GPUCompute: set_graph_data
-                        GPUCompute->>GPUCompute: compute_forces
-                        GPUCompute->>GPUCompute: get_updated_positions
-                        GPUCompute-->>GraphService: Updated node positions
-                    deactivate GPUCompute
-                    GraphService-->>Server: GraphData
-                deactivate GraphService
-                Server->>WebSocketManager: broadcast_graph_update (utils/websocket_manager.rs)
-                activate WebSocketManager
-                    WebSocketManager-->>Client: graph_update_message
-                deactivate WebSocketManager
-                Server-->>Client: Success Response
-            end
-        end
-    end
-
-    note right of Client: Initial load
-
-    Client->>WebXRVisualization: initialize()
-    activate WebXRVisualization
-        WebXRVisualization->>GraphDataManager: requestInitialData()
-        activate GraphDataManager
-            GraphDataManager->>WebsocketService: subscribe()
-            WebsocketService-->>GraphDataManager: Initial GraphData
-            GraphDataManager-->>WebXRVisualization: Provide GraphData
-        deactivate GraphDataManager
-        WebXRVisualization->>WebXRVisualization: setupThreeJS()
-        WebXRVisualization->>WebXRVisualization: renderScene()
-    deactivate WebXRVisualization
-    WebXRVisualization-->>Client: Render 3D Graph
-
-    note right of Client: User interactions
-
-    Client->>Interface: handleUserInput(input)
-    Interface->>ChatManager: sendMessage(input)
-    ChatManager->>RAGFlowService: sendQuery(input)
-    RAGFlowService-->>ChatManager: AI Response
-    ChatManager-->>Interface: Display AI Response
-    Interface->>WebXRVisualization: updateGraphData(newData)
-    WebXRVisualization-->>Client: Update Visualization
-
-    note right of Client: User requests layout recalculation
-
-    Client->>GraphDataManager: requestRecalculateLayout()
-    activate GraphDataManager
-        GraphDataManager->>WebsocketService: send("recalculateLayout", params)
-    deactivate GraphDataManager
-    WebsocketService->>Server: emit("recalculateLayout", params)
-    activate Server
-        Server->>GraphService: calculate_layout (services/graph_service.rs)
-        activate GraphService
-            GraphService->>GPUCompute: calculate_layout (utils/gpu_compute.rs)
-            activate GPUCompute
-                GPUCompute->>GPUCompute: set_graph_data
-                GPUCompute->>GPUCompute: compute_forces
-                GPUCompute->>GPUCompute: get_updated_positions
-                GPUCompute-->>GraphService: Updated node positions
-            deactivate GPUCompute
-            GraphService-->>Server: GraphData
-        deactivate GraphService
-        Server->>WebSocketManager: broadcast_graph_update (utils/websocket_manager.rs)
-        activate WebSocketManager
-            WebSocketManager-->>Client: graph_update_message
-        deactivate WebSocketManager
-    deactivate Server
-    Client->>WebXRVisualization: updateVisualization()
-    WebXRVisualization-->>Client: Render Updated 3D Graph
-
-    note right of Client: User clicks "Refresh Graph"
-
-    Client->>Server: POST /api/files/fetch (handlers/file_handler.rs)
-    activate Server
-        Server->>FileService: fetch_and_process_files (services/file_service.rs)
-        activate FileService
-            FileService->>GitHub: fetch_files("RealGitHubService::fetch_files")
-            activate GitHub
-                GitHub-->>FileService: Files or Error
-            deactivate GitHub
-            alt GitHub Error
-                FileService-->>Server: Error
-            else Files Fetched
-                loop For each file
-                    FileService->>FileService: should_process_file
-                    alt File needs processing
-                        FileService->>PerplexityAPI: process_file (services/perplexity_service.rs)
-                        activate PerplexityAPI
-                            PerplexityAPI->>PerplexityAPI: process_markdown (splits into blocks, calls API)
-                            PerplexityAPI->>PerplexityAPI: call_perplexity_api (multiple times)
-                            PerplexityAPI-->>FileService: Processed content or Error
-                        deactivate PerplexityAPI
-                        alt Perplexity Error
-                            FileService-->>Server: Error
-                        else Content Processed
-                            FileService->>FileService: save_file_metadata (writes to /app/data/markdown)
-                        end
-                    end
-                end
-                FileService-->>Server: Processed files or Error
-            end
-        deactivate FileService
-        alt File Processing Error
-            Server->>WebSocketManager: broadcast_error_message (utils/websocket_manager.rs)
-            activate WebSocketManager
-                WebSocketManager-->>Client: error_message
-            deactivate WebSocketManager
-            Server-->>Client: Error Response
-        else Files Processed Successfully
-            Server->>GraphService: build_graph (services/graph_service.rs)
-            activate GraphService
-                GraphService->>GraphService: Create nodes and edges
-                GraphService->>GPUCompute: calculate_layout (or CPU fallback)
-                activate GPUCompute
-                    GPUCompute->>GPUCompute: set_graph_data
-                    GPUCompute->>GPUCompute: compute_forces
-                    GPUCompute->>GPUCompute: get_updated_positions
-                    GPUCompute-->>GraphService: Updated node positions
-                deactivate GPUCompute
-                GraphService-->>Server: GraphData
-            deactivate GraphService
-            Server->>WebSocketManager: broadcast_graph_update (utils/websocket_manager.rs)
-            activate WebSocketManager
-                WebSocketManager-->>Client: graph_update_message
-            deactivate WebSocketManager
-            Server-->>Client: Success Response
-        end
-    deactivate Server
-- **github:** Configuration for GitHub repository integration.
-- **visualization:** Parameters controlling the graph's visual properties.
-- **ragflow:** Settings for the RAGFlow AI model.
-- **perplexity:** Configuration for Perplexity AI content processing.
-- **speech:** Settings for text-to-speech features.
-
-## Security
-
-### Authentication & Authorization
-
-- **JWT-Based Authentication:** Ensures secure user sessions and data access.
-- **Role-Based Access Control:** Manages permissions based on user roles.
-- **API Key Validation:** Validates incoming API requests to authorized sources.
-- **Rate Limiting Implementation:** Prevents abuse by limiting the number of requests.
-
-### Data Protection
-
-- **Environment Variable Management:** Securely handles sensitive information without hardcoding.
-- **Input Sanitization:** Cleans user inputs to prevent injection attacks and data corruption.
-- **HTTPS Enforcement:** Secures data transmission between client and server.
-- **Secure WebSocket Connections:** Protects real-time data streams from interception.
-
-### Container Security
-
-1. **Docker Security:**
-    ```bash
-    # Run security scan
-    docker scan webxr-graph
-
-    # Inspect container for vulnerabilities
-    docker inspect webxr-graph
-    ```
-
-2. **Network Security:**
-    ```bash
-    # Configure firewall to allow necessary ports
-    sudo ufw allow 8080/tcp
-    sudo ufw allow 443/tcp
-
-    # Setup Cloudflare tunnel for secure exposure
-    cloudflared tunnel run
-    ```
-
-### Data Encryption
-
-- **In-Transit:** All communications are encrypted using TLS.
-- **At-Rest:** Sensitive data stored in databases and files are encrypted.
-
-### Regular Audits
-
-- **Dependency Audits:**
-    ```bash
-    # For JavaScript dependencies
-    pnpm audit
-
-    # For Rust dependencies
-    cargo audit
-    ```
-
-- **Code Reviews:** Regular code reviews to identify and fix security vulnerabilities.
-
-### Monitoring and Incident Response
-
-```bash
-# View application logs
-tail -f /var/log/webxr-graph.log
-
-# Monitor Docker container metrics
-docker stats webxr-graph
-
-# Check service health
-systemctl status webxr-graph
 ```
 
 - **Logging:** Comprehensive logging of all critical operations.
