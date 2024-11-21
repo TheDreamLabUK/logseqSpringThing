@@ -52,20 +52,6 @@ export class WebXRVisualization {
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-        // Initialize XR components
-        this.xrLabelManager = new XRLabelManager(this.scene, this.camera);
-        this.xrControllers = null;
-        this.xrHands = null;
-
-        this.controls = null;
-        this.animationFrameId = null;
-        this.lastPositionUpdate = 0;
-        this.positionUpdateThreshold = 16;
-
-        this.previousPositions = new Map();
-        this.previousTimes = new Map();
-        this.lastUpdateTime = performance.now();
-
         // Initialize managers with settings from service
         this.nodeManager = new NodeManager(this.scene, this.camera, visualizationSettings.getNodeSettings());
         this.effectsManager = new EffectsManager(
@@ -75,6 +61,15 @@ export class WebXRVisualization {
             visualizationSettings.getEnvironmentSettings()
         );
         this.layoutManager = new LayoutManager(visualizationSettings.getLayoutSettings());
+
+        this.controls = null;
+        this.animationFrameId = null;
+        this.lastPositionUpdate = 0;
+        this.positionUpdateThreshold = 16;
+
+        this.previousPositions = new Map();
+        this.previousTimes = new Map();
+        this.lastUpdateTime = performance.now();
 
         // Initialize settings and add event listeners
         this.initializeSettings();
@@ -102,15 +97,6 @@ export class WebXRVisualization {
 
         window.addEventListener('binaryPositionUpdate', (event) => {
             this.handleBinaryPositionUpdate(event.detail);
-        });
-
-        // XR-specific event listeners
-        window.addEventListener('xrSelectStart', (event) => {
-            this.handleXRSelect(event.detail);
-        });
-
-        window.addEventListener('xrSelectEnd', (event) => {
-            this.handleXRSelectEnd(event.detail);
         });
     }
 
@@ -163,9 +149,23 @@ export class WebXRVisualization {
 
         // Initialize XR
         initXRSession(this.renderer, this.scene, this.camera);
-        const xrComponents = initXRInteraction(this.scene, this.camera, this.renderer, this.handleXRSelect.bind(this));
-        this.xrControllers = xrComponents.controllers;
-        this.xrHands = xrComponents.hands;
+
+        // Initialize XR interaction with proper event handling
+        const { controllers, hands, xrLabelManager } = initXRInteraction(
+            this.scene,
+            this.camera,
+            this.renderer,
+            (event) => {
+                if (event.detail && event.detail.intersection) {
+                    const intersectedObject = event.detail.intersection.object;
+                    this.nodeManager.handleClick(null, true, intersectedObject);
+                }
+            }
+        );
+
+        this.xrControllers = controllers;
+        this.xrHands = hands;
+        this.xrLabelManager = xrLabelManager;
 
         // Initialize non-XR controls
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -204,15 +204,8 @@ export class WebXRVisualization {
                 this.controls.update();
             }
 
-            // Update XR interactions if in XR session
-            if (frame) {
-                handleXRInput(frame, this.renderer.xr.getReferenceSpace(), 
-                    this.xrControllers, this.xrHands, this.scene, this.camera);
-            }
-
             this.effectsManager.animate();
             this.nodeManager.updateLabelOrientations(this.camera);
-            this.xrLabelManager.update(); // Update XR-specific labels
 
             // Render the scene
             if (this.renderer.xr.isPresenting) {
@@ -221,22 +214,6 @@ export class WebXRVisualization {
                 this.effectsManager.render();
             }
         });
-    }
-
-    handleXRSelect(event) {
-        // Handle XR selection events (controller triggers or hand pinch)
-        const intersection = event.intersection;
-        if (intersection) {
-            const object = intersection.object;
-            if (object.userData.nodeId) {
-                this.nodeManager.handleNodeSelect(object.userData.nodeId);
-            }
-        }
-    }
-
-    handleXRSelectEnd(event) {
-        // Handle XR selection end events
-        this.nodeManager.handleNodeSelectEnd();
     }
 
     updateVisualization(graphData) {
@@ -284,17 +261,24 @@ export class WebXRVisualization {
         this.nodeManager.dispose();
         this.effectsManager.dispose();
         this.layoutManager.stopSimulation();
-        this.xrLabelManager.dispose();
+        
+        if (this.xrLabelManager) {
+            this.xrLabelManager.dispose();
+        }
 
         if (this.xrControllers) {
             this.xrControllers.forEach(controller => {
-                this.scene.remove(controller);
+                if (controller) {
+                    this.scene.remove(controller);
+                }
             });
         }
 
         if (this.xrHands) {
             this.xrHands.forEach(hand => {
-                this.scene.remove(hand);
+                if (hand) {
+                    this.scene.remove(hand);
+                }
             });
         }
 

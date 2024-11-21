@@ -188,10 +188,10 @@ export class NodeManager {
     handleClick(event, isXR = false, intersectedObject = null) {
         let clickedMesh;
 
-        if (isXR) {
-            // In XR mode, use the passed intersected object
+        if (isXR && intersectedObject) {
+            // In XR mode, use the passed intersected object directly
             clickedMesh = intersectedObject;
-        } else {
+        } else if (!isXR && event) {
             // Regular mouse click handling
             const rect = event.target.getBoundingClientRect();
             this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -224,11 +224,26 @@ export class NodeManager {
                         clickedMesh.material.emissiveIntensity = originalEmissive;
                     }, 200);
 
+                    // Show XR label if in XR mode
+                    if (isXR && this.xrLabelManager) {
+                        this.xrLabelManager.showLabel(
+                            nodeData.label || nodeId,
+                            clickedMesh.position,
+                            {
+                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                color: '#ffffff',
+                                font: '24px Arial'
+                            }
+                        );
+                    }
+
                     // Trigger haptic feedback in XR mode
                     if (isXR && window.xrSession) {
-                        const gamepad = window.xrSession.inputSources[0]?.gamepad;
-                        if (gamepad?.hapticActuators?.length > 0) {
-                            gamepad.hapticActuators[0].pulse(0.5, 100);
+                        const inputSource = Array.from(window.xrSession.inputSources).find(source => 
+                            source.handedness === 'right' || source.handedness === 'left'
+                        );
+                        if (inputSource?.gamepad?.hapticActuators?.length > 0) {
+                            inputSource.gamepad.hapticActuators[0].pulse(0.5, 100);
                         }
                     }
                 }
@@ -617,16 +632,20 @@ export class NodeManager {
         this.nodeMeshes.forEach(mesh => {
             if (mesh.geometry) mesh.geometry.dispose();
             if (mesh.material) mesh.material.dispose();
+            if (mesh.parent) mesh.parent.remove(mesh);
         });
+
         this.nodeLabels.forEach(label => {
             if (label.material.map) label.material.map.dispose();
             if (label.material) label.material.dispose();
+            if (label.parent) label.parent.remove(label);
         });
 
         // Dispose edge resources
         this.edgeMeshes.forEach(line => {
             if (line.geometry) line.geometry.dispose();
             if (line.material) line.material.dispose();
+            if (line.parent) line.parent.remove(line);
         });
 
         // Clear data maps
@@ -634,5 +653,10 @@ export class NodeManager {
         this.nodeLabels.clear();
         this.edgeMeshes.clear();
         this.nodeData.clear();
+
+        // Clean up event listeners
+        if (this.renderer) {
+            this.removeClickHandling(this.renderer);
+        }
     }
 }

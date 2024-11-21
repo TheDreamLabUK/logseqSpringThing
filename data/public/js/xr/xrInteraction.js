@@ -7,24 +7,22 @@ import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
  * @param {THREE.Scene} scene - The Three.js scene.
  * @param {THREE.Camera} camera - The Three.js camera.
  * @param {THREE.WebGLRenderer} renderer - The Three.js renderer.
- * @param {NodeManager} nodeManager - The node manager instance.
+ * @param {Function} onSelect - Callback function for selection events.
  */
-export function initXRInteraction(scene, camera, renderer, nodeManager) {
+export function initXRInteraction(scene, camera, renderer, onSelect) {
     // Store XR session globally for haptic feedback
     renderer.xr.addEventListener('sessionstart', (event) => {
         window.xrSession = event.target.getSession();
-        nodeManager.xrEnabled = true;
     });
     renderer.xr.addEventListener('sessionend', () => {
         window.xrSession = null;
-        nodeManager.xrEnabled = false;
     });
 
     // Initialize controller model factories
     const controllerModelFactory = new XRControllerModelFactory();
     const handModelFactory = new XRHandModelFactory();
 
-    // Set up controllers with node manager
+    // Set up controllers
     const controllers = setupControllers(scene, renderer, controllerModelFactory, (event) => {
         // Handle controller select event
         const controller = event.target;
@@ -32,9 +30,22 @@ export function initXRInteraction(scene, camera, renderer, nodeManager) {
         const raycaster = new THREE.Raycaster();
         raycaster.set(controller.position, ray);
 
-        const intersects = raycaster.intersectObjects(Array.from(nodeManager.nodeMeshes.values()));
+        // Create a mock event for the node manager
+        const mockEvent = {
+            type: 'xr-select',
+            detail: {
+                controller,
+                intersection: null
+            }
+        };
+
+        // Find intersections
+        const intersects = raycaster.intersectObjects(scene.children, true);
         if (intersects.length > 0) {
-            nodeManager.handleClick(null, true, intersects[0].object);
+            mockEvent.detail.intersection = intersects[0];
+            if (onSelect) {
+                onSelect(mockEvent);
+            }
 
             // Trigger haptic feedback
             const gamepad = controller.gamepad;
@@ -53,7 +64,6 @@ export function initXRInteraction(scene, camera, renderer, nodeManager) {
 
     // Create XR label manager
     const xrLabelManager = new XRLabelManager(scene, camera);
-    nodeManager.xrLabelManager = xrLabelManager;
 
     // Update controller rays and handle interactions
     renderer.setAnimationLoop((timestamp, frame) => {
@@ -62,12 +72,14 @@ export function initXRInteraction(scene, camera, renderer, nodeManager) {
         // Update controller rays
         controllers.forEach((controller, i) => {
             const ray = controllerRays[i];
-            ray.position.copy(controller.position);
-            ray.quaternion.copy(controller.quaternion);
+            if (ray && controller) {
+                ray.position.copy(controller.position);
+                ray.quaternion.copy(controller.quaternion);
+            }
         });
 
         // Handle XR input
-        handleXRInput(frame, renderer.xr.getReferenceSpace(), controllers, hands, nodeManager);
+        handleXRInput(frame, renderer.xr.getReferenceSpace(), controllers, hands, scene, onSelect);
 
         // Update labels to face camera
         xrLabelManager.update();
@@ -84,22 +96,30 @@ function setupControllers(scene, renderer, modelFactory, onSelect) {
     
     for (let i = 0; i < 2; i++) {
         const controller = renderer.xr.getController(i);
-        controller.addEventListener('select', onSelect);
-        controller.addEventListener('connected', (event) => {
-            controller.add(buildController(event.data));
-            controller.gamepad = event.data.gamepad;
-        });
-        controller.addEventListener('disconnected', () => {
-            controller.remove(controller.children[0]);
-            controller.gamepad = null;
-        });
-        scene.add(controller);
+        if (controller) {
+            controller.addEventListener('select', onSelect);
+            controller.addEventListener('connected', (event) => {
+                if (event.data) {
+                    controller.add(buildController(event.data));
+                    controller.gamepad = event.data.gamepad;
+                }
+            });
+            controller.addEventListener('disconnected', () => {
+                if (controller.children.length > 0) {
+                    controller.remove(controller.children[0]);
+                }
+                controller.gamepad = null;
+            });
+            scene.add(controller);
 
-        const grip = renderer.xr.getControllerGrip(i);
-        grip.add(modelFactory.createControllerModel(grip));
-        scene.add(grip);
+            const grip = renderer.xr.getControllerGrip(i);
+            if (grip) {
+                grip.add(modelFactory.createControllerModel(grip));
+                scene.add(grip);
+            }
 
-        controllers.push(controller);
+            controllers.push(controller);
+        }
     }
 
     return controllers;
@@ -113,18 +133,21 @@ function setupHands(scene, renderer, modelFactory) {
 
     for (let i = 0; i < 2; i++) {
         const hand = renderer.xr.getHand(i);
-        
-        // Add hand model
-        const model = modelFactory.createHandModel(hand, 'mesh');
-        hand.add(model);
-        
-        // Setup hand joints
-        hand.addEventListener('connected', (event) => {
-            setupHandJoints(hand, event.data);
-        });
+        if (hand) {
+            // Add hand model
+            const model = modelFactory.createHandModel(hand, 'mesh');
+            hand.add(model);
+            
+            // Setup hand joints
+            hand.addEventListener('connected', (event) => {
+                if (event.data) {
+                    setupHandJoints(hand, event.data);
+                }
+            });
 
-        scene.add(hand);
-        hands.push(hand);
+            scene.add(hand);
+            hands.push(hand);
+        }
     }
 
     return hands;
@@ -134,7 +157,7 @@ function setupHands(scene, renderer, modelFactory) {
  * Creates visual rays for controllers
  */
 function createControllerRays(controllers) {
-    const rays = controllers.map(() => {
+    return controllers.map(() => {
         const geometry = new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(0, 0, 0),
             new THREE.Vector3(0, 0, -5)  // 5 meter ray
@@ -146,14 +169,14 @@ function createControllerRays(controllers) {
         });
         return new THREE.Line(geometry, material);
     });
-
-    return rays;
 }
 
 /**
  * Builds controller visual representation
  */
 function buildController(data) {
+    if (!data || !data.targetRayMode) return null;
+
     let geometry, material;
 
     switch (data.targetRayMode) {
@@ -175,6 +198,9 @@ function buildController(data) {
                 transparent: true
             });
             return new THREE.Mesh(geometry, material);
+
+        default:
+            return null;
     }
 }
 
@@ -182,22 +208,28 @@ function buildController(data) {
  * Sets up hand joints for tracking
  */
 function setupHandJoints(hand, data) {
+    if (!hand || !data || !data.joints) return;
+
     const joints = {};
     
     // Create spheres for each joint
     for (const jointName in data.joints) {
-        const joint = data.joints[jointName];
-        const geometry = new THREE.SphereGeometry(0.008);
-        const material = new THREE.MeshPhongMaterial({
-            color: 0x00ff00,
-            transparent: true,
-            opacity: 0.5
-        });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.visible = false;
-        
-        joints[jointName] = mesh;
-        hand.add(mesh);
+        if (data.joints.hasOwnProperty(jointName)) {
+            const joint = data.joints[jointName];
+            if (joint) {
+                const geometry = new THREE.SphereGeometry(0.008);
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0x00ff00,
+                    transparent: true,
+                    opacity: 0.5
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.visible = false;
+                
+                joints[jointName] = mesh;
+                hand.add(mesh);
+            }
+        }
     }
 
     hand.joints = joints;
@@ -206,45 +238,42 @@ function setupHandJoints(hand, data) {
 /**
  * Handles XR input (controllers and hands)
  */
-export function handleXRInput(frame, referenceSpace, controllers, hands, nodeManager) {
-    if (!frame) return;
+export function handleXRInput(frame, referenceSpace, controllers, hands, scene, onSelect) {
+    if (!frame || !referenceSpace) return;
 
     // Handle controller input
     controllers.forEach((controller) => {
+        if (!controller) return;
+
         const ray = controller.getWorldDirection(new THREE.Vector3());
         const raycaster = new THREE.Raycaster();
         raycaster.set(controller.position, ray);
 
-        const intersects = raycaster.intersectObjects(Array.from(nodeManager.nodeMeshes.values()));
+        const intersects = raycaster.intersectObjects(scene.children, true);
         if (intersects.length > 0) {
-            // Highlight intersected node
-            const mesh = intersects[0].object;
-            const originalEmissive = mesh.material.emissiveIntensity;
-            mesh.material.emissiveIntensity = 2.0;
-            setTimeout(() => {
-                mesh.material.emissiveIntensity = originalEmissive;
-            }, 100);
-
-            // Show label in XR
-            if (nodeManager.xrLabelManager) {
-                const nodeId = Array.from(nodeManager.nodeMeshes.entries())
-                    .find(([_, m]) => m === mesh)?.[0];
-                if (nodeId) {
-                    const nodeData = nodeManager.nodeData.get(nodeId);
-                    if (nodeData) {
-                        nodeManager.xrLabelManager.showLabel(nodeData.label || nodeId, mesh.position);
-                    }
+            // Create mock event
+            const mockEvent = {
+                type: 'xr-select',
+                detail: {
+                    controller,
+                    intersection: intersects[0]
                 }
+            };
+
+            if (onSelect) {
+                onSelect(mockEvent);
             }
         }
     });
 
     // Handle hand tracking
     hands.forEach(hand => {
-        if (hand.joints['index-finger-tip'] && hand.joints['thumb-tip']) {
-            const indexTip = hand.joints['index-finger-tip'];
-            const thumbTip = hand.joints['thumb-tip'];
+        if (!hand || !hand.joints) return;
 
+        const indexTip = hand.joints['index-finger-tip'];
+        const thumbTip = hand.joints['thumb-tip'];
+
+        if (indexTip && thumbTip) {
             // Detect pinch gesture
             const distance = indexTip.position.distanceTo(thumbTip.position);
             if (distance < 0.02) {  // 2cm threshold for pinch
@@ -254,9 +283,20 @@ export function handleXRInput(frame, referenceSpace, controllers, hands, nodeMan
                 const raycaster = new THREE.Raycaster();
                 raycaster.set(position, direction);
 
-                const intersects = raycaster.intersectObjects(Array.from(nodeManager.nodeMeshes.values()));
+                const intersects = raycaster.intersectObjects(scene.children, true);
                 if (intersects.length > 0) {
-                    nodeManager.handleClick(null, true, intersects[0].object);
+                    // Create mock event
+                    const mockEvent = {
+                        type: 'xr-select',
+                        detail: {
+                            hand,
+                            intersection: intersects[0]
+                        }
+                    };
+
+                    if (onSelect) {
+                        onSelect(mockEvent);
+                    }
                 }
             }
         }
@@ -275,12 +315,15 @@ export class XRLabelManager {
     }
 
     showLabel(text, position, options = {}) {
+        if (!text || !position) return;
+
         // Remove existing label if present
         this.hideLabel(text);
 
         // Create label sprite
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
+        if (!context) return;
         
         // Configure canvas
         canvas.width = 256;
@@ -322,16 +365,24 @@ export class XRLabelManager {
         const label = this.labels.get(text);
         if (label) {
             this.scene.remove(label);
-            if (label.material.map) label.material.map.dispose();
-            label.material.dispose();
+            if (label.material.map) {
+                label.material.map.dispose();
+            }
+            if (label.material) {
+                label.material.dispose();
+            }
             this.labels.delete(text);
         }
     }
 
     update() {
+        if (!this.camera) return;
+
         // Update all labels to face camera
         this.labels.forEach(label => {
-            label.lookAt(this.camera.position);
+            if (label) {
+                label.lookAt(this.camera.position);
+            }
         });
     }
 
@@ -340,5 +391,6 @@ export class XRLabelManager {
         this.labels.forEach((label, text) => {
             this.hideLabel(text);
         });
+        this.labels.clear();
     }
 }
