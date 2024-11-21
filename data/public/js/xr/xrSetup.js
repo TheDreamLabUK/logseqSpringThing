@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import { XRButton } from 'three/addons/webxr/XRButton.js';
 
-let cameraGroup; // Group to hold and move the camera in VR
+// Movement speed constant
+const MOVEMENT_SPEED = 0.05;
 
 /**
  * Initializes the WebXR session for immersive experiences.
@@ -15,18 +16,6 @@ export function initXRSession(renderer, scene, camera) {
     if (!scene || !camera) {
         console.error('Scene or camera not provided to initXRSession');
         return;
-    }
-
-    // Create camera group for VR movement
-    cameraGroup = new THREE.Group();
-    scene.add(cameraGroup);
-    
-    // Store original camera parent
-    const originalParent = camera.parent;
-    
-    // Add camera to group only if it's not already in a group
-    if (!camera.parent || camera.parent === scene) {
-        cameraGroup.add(camera);
     }
 
     // Configure renderer for XR
@@ -51,12 +40,6 @@ export function initXRSession(renderer, scene, camera) {
                             console.log('VR session started');
                             session.addEventListener('end', () => {
                                 console.log('VR session ended');
-                                // Restore original camera parent when session ends
-                                if (originalParent) {
-                                    originalParent.add(camera);
-                                } else {
-                                    scene.add(camera);
-                                }
                                 window.dispatchEvent(new CustomEvent('xrsessionend'));
                             });
                             window.dispatchEvent(new CustomEvent('xrsessionstart'));
@@ -97,10 +80,12 @@ export function initXRSession(renderer, scene, camera) {
             const session = event.target.getSession();
             
             session.requestReferenceSpace('local-floor').then(refSpace => {
+                console.log('Got local-floor reference space');
                 renderer.xr.setReferenceSpace(refSpace);
             }).catch(err => {
                 console.warn('Failed to get local-floor reference space:', err);
                 session.requestReferenceSpace('local').then(refSpace => {
+                    console.log('Falling back to local reference space');
                     renderer.xr.setReferenceSpace(refSpace);
                 });
             });
@@ -122,53 +107,35 @@ export function initXRSession(renderer, scene, camera) {
     });
 }
 
-// Movement speed for joystick controls
-const MOVEMENT_SPEED = 0.1;
-
 /**
- * Handles gamepad input in XR.
- * @param {Gamepad} gamepad - The XR gamepad object.
+ * Updates camera position based on XR pose
+ * @param {XRFrame} frame - The XR frame
+ * @param {XRReferenceSpace} refSpace - The XR reference space
+ * @param {THREE.Camera} camera - The Three.js camera
  */
-function handleGamepadInput(gamepad) {
-    if (!gamepad || !cameraGroup) return;
+function updateCameraFromXRPose(frame, refSpace, camera) {
+    if (!frame || !refSpace || !camera) return;
 
-    // Handle joystick movement
-    if (gamepad.axes.length >= 2) {
-        const [x, y] = gamepad.axes;
-        if (Math.abs(x) > 0.1 || Math.abs(y) > 0.1) {
-            // Get camera's forward and right vectors
-            const cameraForward = new THREE.Vector3();
-            const cameraRight = new THREE.Vector3();
+    const pose = frame.getViewerPose(refSpace);
+    if (pose) {
+        // Get the position from the first view (center eye in VR)
+        const view = pose.views[0];
+        if (view) {
+            const position = new THREE.Vector3();
+            position.set(
+                view.transform.position.x,
+                view.transform.position.y,
+                view.transform.position.z
+            );
             
-            // Get the camera's direction
-            if (cameraGroup.children[0]) {
-                cameraGroup.children[0].getWorldDirection(cameraForward);
-                cameraRight.crossVectors(new THREE.Vector3(0, 1, 0), cameraForward).normalize();
-                
-                // Zero out y component for horizontal movement only
-                cameraForward.y = 0;
-                cameraForward.normalize();
-
-                // Calculate movement
-                const moveX = x * MOVEMENT_SPEED;
-                const moveZ = -y * MOVEMENT_SPEED;
-
-                // Apply movement
-                const movement = new THREE.Vector3();
-                movement.addScaledVector(cameraRight, moveX);
-                movement.addScaledVector(cameraForward, moveZ);
-                cameraGroup.position.add(movement);
-            }
+            // Update the camera's local position within its parent group
+            camera.position.copy(position);
+            
+            console.log('XR Pose Update - Camera Position:', 
+                position.toArray().map(v => v.toFixed(3)),
+                'Parent Position:', 
+                camera.parent ? camera.parent.position.toArray().map(v => v.toFixed(3)) : 'No parent');
         }
-    }
-
-    // Handle buttons
-    if (gamepad.buttons) {
-        gamepad.buttons.forEach((button, index) => {
-            if (button && button.pressed) {
-                console.log(`XR Controller button ${index} pressed`);
-            }
-        });
     }
 }
 
@@ -191,15 +158,16 @@ export function handleXRSession(renderer, scene, camera) {
                 const refSpace = renderer.xr.getReferenceSpace();
 
                 if (session && refSpace) {
-                    const pose = frame.getViewerPose(refSpace);
-                    
+                    // Update camera position from XR pose
+                    updateCameraFromXRPose(frame, refSpace, camera);
+
                     // Handle input sources
                     for (const source of session.inputSources) {
-                        if (source && source.gamepad) {
-                            handleGamepadInput(source.gamepad);
-                        }
-                        if (source && source.hand) {
-                            handleHandInput(source.hand, frame, refSpace);
+                        if (source && source.gamepad && source.handedness === 'left') {
+                            handleGamepadInput(source.gamepad, camera);
+                            console.log('Processing left controller input:', 
+                                source.gamepad.axes[0].toFixed(2), 
+                                source.gamepad.axes[1].toFixed(2));
                         }
                     }
                 }
@@ -212,63 +180,46 @@ export function handleXRSession(renderer, scene, camera) {
 }
 
 /**
- * Handles hand tracking input in XR.
- * @param {XRHand} hand - The XR hand object.
- * @param {XRFrame} frame - The current XR frame.
- * @param {XRReferenceSpace} refSpace - The XR reference space.
+ * Handles gamepad input in XR.
+ * @param {Gamepad} gamepad - The XR gamepad object.
+ * @param {THREE.Camera} camera - The Three.js camera.
  */
-function handleHandInput(hand, frame, refSpace) {
-    if (!hand || !frame || !refSpace) return;
+function handleGamepadInput(gamepad, camera) {
+    if (!gamepad || !camera || !camera.parent) return;
 
-    try {
-        // Get joint poses
-        for (const joint of hand.values()) {
-            const pose = frame.getJointPose(joint, refSpace);
-            if (pose) {
-                // Handle joint pose data
-                // pose.transform.position
-                // pose.transform.orientation
-            }
-        }
+    // Handle joystick movement
+    if (gamepad.axes.length >= 2) {
+        const [x, y] = gamepad.axes;
 
-        // Check for specific gestures
-        const indexTip = hand.get('index-finger-tip');
-        const thumbTip = hand.get('thumb-tip');
-        
-        if (indexTip && thumbTip) {
-            const indexPose = frame.getJointPose(indexTip, refSpace);
-            const thumbPose = frame.getJointPose(thumbTip, refSpace);
+        // Only process if joystick is moved significantly
+        if (Math.abs(x) > 0.1 || Math.abs(y) > 0.1) {
+            console.log('Joystick input:', x.toFixed(2), y.toFixed(2));
+
+            // Get camera's forward and right vectors
+            const forward = new THREE.Vector3();
+            camera.getWorldDirection(forward);
+            forward.y = 0; // Keep movement horizontal
+            forward.normalize();
+
+            const right = new THREE.Vector3();
+            right.crossVectors(new THREE.Vector3(0, 1, 0), forward);
+
+            // Calculate movement
+            const movement = new THREE.Vector3();
+            movement.addScaledVector(right, x * MOVEMENT_SPEED);
+            movement.addScaledVector(forward, -y * MOVEMENT_SPEED);
+
+            // Move the camera's parent (user group)
+            const userGroup = camera.parent;
+            const oldPosition = userGroup.position.clone();
+            userGroup.position.add(movement);
             
-            if (indexPose && thumbPose) {
-                // Calculate distance between index and thumb tips
-                const distance = calculateDistance(
-                    indexPose.transform.position,
-                    thumbPose.transform.position
-                );
-                
-                // Detect pinch gesture (2cm threshold)
-                if (distance < 0.02) {
-                    console.log('Pinch gesture detected');
-                    // Handle pinch gesture
-                }
-            }
+            console.log('Movement:', 
+                movement.toArray().map(v => v.toFixed(2)),
+                'Old pos:', oldPosition.toArray().map(v => v.toFixed(2)),
+                'New pos:', userGroup.position.toArray().map(v => v.toFixed(2)));
         }
-    } catch (error) {
-        console.error('Error handling hand input:', error);
     }
-}
-
-/**
- * Calculates distance between two XR positions.
- * @param {XRRigidTransform} pos1 - First position.
- * @param {XRRigidTransform} pos2 - Second position.
- * @returns {number} Distance between positions.
- */
-function calculateDistance(pos1, pos2) {
-    const dx = pos1.x - pos2.x;
-    const dy = pos1.y - pos2.y;
-    const dz = pos1.z - pos2.z;
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 /**

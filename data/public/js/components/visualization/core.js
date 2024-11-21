@@ -10,6 +10,7 @@ import { initXRInteraction, handleXRInput, XRLabelManager } from '../../xr/xrInt
 // Constants for Spacemouse sensitivity
 const TRANSLATION_SPEED = 0.01;
 const ROTATION_SPEED = 0.01;
+const VR_MOVEMENT_SPEED = 0.05; // Speed for VR joystick movement
 
 function updateNodeDynamics(nodeManager, updates, isInitialLayout, timeStep) {
     if (isInitialLayout) {
@@ -36,14 +37,36 @@ export class WebXRVisualization {
         // Initialize the scene, camera, and renderer
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x000000);
+        
+        // Create camera
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        this.camera.matrixAutoUpdate = true;
+
+        // Create VR camera rig
+        this.cameraRig = new THREE.Group();
+        this.cameraRig.name = 'cameraRig';
+        this.scene.add(this.cameraRig);
+
+        // Create user movement group
+        this.userGroup = new THREE.Group();
+        this.userGroup.name = 'userGroup';
+        this.cameraRig.add(this.userGroup);
+        
+        // Set initial camera position and add to user group
         this.camera.position.set(0, 1.6, 3); // Set initial position at standing height
+        this.userGroup.add(this.camera);
+        
+        console.log('Camera hierarchy:', {
+            camera: this.camera.name || 'camera',
+            parent: this.camera.parent?.name || 'none',
+            grandparent: this.camera.parent?.parent?.name || 'none'
+        });
 
         // Initialize renderer with XR support
         this.renderer = new THREE.WebGLRenderer({ 
             antialias: true,
-            alpha: true, // Enable alpha for AR
-            logarithmicDepthBuffer: true // Better depth precision for XR
+            alpha: true,
+            logarithmicDepthBuffer: true
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -63,6 +86,10 @@ export class WebXRVisualization {
         this.layoutManager = new LayoutManager(visualizationSettings.getLayoutSettings());
 
         this.controls = null;
+        this.xrControllers = [];
+        this.xrHands = [];
+        this.xrLabelManager = null;
+
         this.animationFrameId = null;
         this.lastPositionUpdate = 0;
         this.positionUpdateThreshold = 16;
@@ -71,11 +98,26 @@ export class WebXRVisualization {
         this.previousTimes = new Map();
         this.lastUpdateTime = performance.now();
 
+        // Bind methods
+        this.onWindowResize = this.onWindowResize.bind(this);
+        this.animate = this.animate.bind(this);
+
         // Initialize settings and add event listeners
         this.initializeSettings();
         this.setupEventListeners();
 
         console.log('WebXRVisualization constructor completed');
+    }
+
+    onWindowResize() {
+        if (this.camera && this.renderer) {
+            this.camera.aspect = window.innerWidth / window.innerHeight;
+            this.camera.updateProjectionMatrix();
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            if (this.effectsManager) {
+                this.effectsManager.handleResize();
+            }
+        }
     }
 
     setupEventListeners() {
@@ -174,33 +216,74 @@ export class WebXRVisualization {
 
         // Disable OrbitControls when in XR
         this.renderer.xr.addEventListener('sessionstart', () => {
+            console.log('XR session started - Disabling OrbitControls');
             this.controls.enabled = false;
+            
+            // Reset positions when entering VR
+            this.userGroup.position.set(0, 0, 0);
+            this.cameraRig.position.set(0, 0, 0);
+            
+            console.log('VR Session Start - Camera hierarchy:', {
+                camera: this.camera.name || 'camera',
+                parent: this.camera.parent?.name || 'none',
+                grandparent: this.camera.parent?.parent?.name || 'none',
+                positions: {
+                    camera: this.camera.position.toArray(),
+                    userGroup: this.userGroup.position.toArray(),
+                    cameraRig: this.cameraRig.position.toArray()
+                }
+            });
         });
 
         this.renderer.xr.addEventListener('sessionend', () => {
+            console.log('XR session ended - Enabling OrbitControls');
             this.controls.enabled = true;
+            
+            // Reset positions when exiting VR
+            this.camera.position.set(0, 1.6, 3);
+            this.userGroup.position.set(0, 0, 0);
+            this.cameraRig.position.set(0, 0, 0);
+            
+            console.log('VR Session End - Camera hierarchy:', {
+                camera: this.camera.name || 'camera',
+                parent: this.camera.parent?.name || 'none',
+                grandparent: this.camera.parent?.parent?.name || 'none',
+                positions: {
+                    camera: this.camera.position.toArray(),
+                    userGroup: this.userGroup.position.toArray(),
+                    cameraRig: this.cameraRig.position.toArray()
+                }
+            });
         });
 
         this.effectsManager.initPostProcessing();
         this.effectsManager.createHologramStructure();
 
-        window.addEventListener('resize', this.onWindowResize.bind(this), false);
+        window.addEventListener('resize', this.onWindowResize);
 
         this.animate();
     }
 
-    onWindowResize() {
-        this.camera.aspect = window.innerWidth / window.innerHeight;
-        this.camera.updateProjectionMatrix();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.effectsManager.handleResize();
-    }
-
     animate() {
-        // Use XR animation loop
         this.renderer.setAnimationLoop((timestamp, frame) => {
-            // Update non-XR controls if not in XR session
-            if (!this.renderer.xr.isPresenting) {
+            // Handle VR movement if in XR session
+            if (this.renderer.xr.isPresenting && frame) {
+                const session = this.renderer.xr.getSession();
+                if (session) {
+                    // Log camera hierarchy and positions for debugging
+                    console.log('Animation Frame - Camera hierarchy:', {
+                        camera: this.camera.name || 'camera',
+                        parent: this.camera.parent?.name || 'none',
+                        grandparent: this.camera.parent?.parent?.name || 'none',
+                        positions: {
+                            camera: this.camera.position.toArray(),
+                            userGroup: this.userGroup.position.toArray(),
+                            cameraRig: this.cameraRig.position.toArray()
+                        }
+                    });
+                }
+            } else {
+                // Update non-XR controls
                 this.controls.update();
             }
 
@@ -257,6 +340,8 @@ export class WebXRVisualization {
     dispose() {
         console.log('Disposing WebXRVisualization');
         this.renderer.setAnimationLoop(null);
+
+        window.removeEventListener('resize', this.onWindowResize);
 
         this.nodeManager.dispose();
         this.effectsManager.dispose();
