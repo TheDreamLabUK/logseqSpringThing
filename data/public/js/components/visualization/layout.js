@@ -57,6 +57,9 @@ export class LayoutManager {
         this.isInitialized = true;
         this.waitingForInitialData = false; // Initial data received
         console.log('Position initialization complete');
+
+        // Send initial positions to server
+        this.sendPositionUpdates(nodes, true);
     }
 
     applyForceDirectedLayout(nodes, edges) {
@@ -195,24 +198,27 @@ export class LayoutManager {
             this.applyForceDirectedLayout(graphData.nodes, graphData.edges);
             
             // Send position updates
-            this.sendPositionUpdates(graphData.nodes);
+            this.sendPositionUpdates(graphData.nodes, false);
             this.lastUpdateTime = now;
         }
     }
 
-    sendPositionUpdates(nodes) {
+    sendPositionUpdates(nodes, isInitialLayout = false) {
         if (!this.lastPositions || !this.isInitialized || nodes.length !== this.nodeCount || this.waitingForInitialData) {
             console.warn('Cannot send position updates: not initialized, node count mismatch, or waiting for initial data');
             return;
         }
 
         // Create binary buffer for all node positions and velocities (24 bytes per node)
-        const buffer = new ArrayBuffer(nodes.length * 24);
+        const buffer = new ArrayBuffer(nodes.length * 24 + 4); // Extra 4 bytes for is_initial_layout flag
         const dataView = new Float32Array(buffer);
         let hasChanges = false;
 
+        // Set is_initial_layout flag (1.0 for true, 0.0 for false)
+        dataView[0] = isInitialLayout ? 1.0 : 0.0;
+
         nodes.forEach((node, index) => {
-            const offset = index * 6;
+            const offset = index * 6 + 1; // +1 to account for is_initial_layout flag
             const lastPos = this.lastPositions[index];
 
             if (!lastPos || 
@@ -247,9 +253,9 @@ export class LayoutManager {
             }
         });
 
-        if (hasChanges) {
+        if (hasChanges || isInitialLayout) {
             // Log the buffer size before sending
-            console.log(`Sending position update buffer of size: ${buffer.byteLength} bytes for ${nodes.length} nodes`);
+            console.log(`Sending position update buffer of size: ${buffer.byteLength} bytes for ${nodes.length} nodes (isInitialLayout: ${isInitialLayout})`);
             
             // Dispatch binary data event
             window.dispatchEvent(new CustomEvent('positionUpdate', {

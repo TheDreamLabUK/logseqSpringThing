@@ -123,7 +123,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                     ctx.spawn(
                         async move {
                             let gpu_read = gpu.read().await;
-                            let expected_size = gpu_read.get_num_nodes() as usize * 24;
+                            let num_nodes = gpu_read.get_num_nodes() as usize;
+                            let expected_size = num_nodes * 24 + 4; // +4 for is_initial_layout flag
                             drop(gpu_read); // Release the read lock before writing
 
                             if bin_data.len() != expected_size {
@@ -141,8 +142,18 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                                 return;
                             }
 
+                            // Read is_initial_layout flag from the first 4 bytes
+                            let is_initial_layout = {
+                                let mut flag_bytes = [0u8; 4];
+                                flag_bytes.copy_from_slice(&bin_data[0..4]);
+                                f32::from_le_bytes(flag_bytes) > 0.5
+                            };
+
+                            // Skip the flag when updating positions
+                            let position_data = &bin_data[4..];
+
                             let mut gpu_write = gpu.write().await;
-                            if let Err(e) = gpu_write.update_positions(&bin_data).await {
+                            if let Err(e) = gpu_write.update_positions(position_data).await {
                                 error!("Failed to update node positions: {}", e);
                                 let error_message = json!({
                                     "type": "error",
@@ -156,7 +167,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                                 // Send position update completion as JSON
                                 let completion_message = json!({
                                     "type": "position_update_complete",
-                                    "status": "success"
+                                    "status": "success",
+                                    "is_initial_layout": is_initial_layout
                                 });
                                 if let Ok(msg_str) = serde_json::to_string(&completion_message) {
                                     let msg: SendText = SendText(msg_str);

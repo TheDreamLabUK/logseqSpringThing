@@ -73,11 +73,11 @@ pub struct GPUCompute {
 }
 
 impl GPUCompute {
-        // Add public getter for num_nodes
-        pub fn get_num_nodes(&self) -> u32 {
-            self.num_nodes
-        }
-    
+    // Add public getter for num_nodes
+    pub fn get_num_nodes(&self) -> u32 {
+        self.num_nodes
+    }
+
     /// Creates a new instance of GPUCompute with initialized GPU resources
     pub async fn new(graph: &GraphData) -> Result<Self, Error> {
         debug!("Initializing GPU compute capabilities with {} nodes", graph.nodes.len());
@@ -435,8 +435,8 @@ impl GPUCompute {
 
     /// Fast path for position updates from client
     pub async fn update_positions(&mut self, binary_data: &[u8]) -> Result<(), Error> {
-        // Verify data length (24 bytes per node - position + velocity)
-        let expected_size = self.num_nodes as usize * 24;
+        // Verify data length (24 bytes per node - position + velocity, plus 4 bytes for is_initial_layout flag)
+        let expected_size = self.num_nodes as usize * 24 + 4;
         if binary_data.len() != expected_size {
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -445,11 +445,11 @@ impl GPUCompute {
             ));
         }
 
-        // Write directly to position buffer
+        // Skip the is_initial_layout flag (first 4 bytes) when writing to position buffer
         self.queue.write_buffer(
             &self.position_update_buffer,
             0,
-            binary_data
+            &binary_data[4..]
         );
 
         // Run position validation shader
@@ -482,7 +482,7 @@ impl GPUCompute {
             0,
             &self.nodes_buffer,
             0,
-            expected_size as u64,
+            (self.num_nodes as u64) * 24,
         );
 
         self.queue.submit(Some(encoder.finish()));
