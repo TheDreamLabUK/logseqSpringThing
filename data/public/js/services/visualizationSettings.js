@@ -1,20 +1,20 @@
-// Manages visualization settings received from the server and provides defaults
+// Manages visualization settings received from the server
 export class VisualizationSettings {
     constructor() {
         // Default values matching settings.toml
         this.settings = {
             // Node colors
-            nodeColor: process.env.NODE_COLOR || '0x1A0B31',
-            nodeColorNew: process.env.NODE_COLOR_NEW || '0x00ff88',
-            nodeColorRecent: process.env.NODE_COLOR_RECENT || '0x4444ff',
-            nodeColorMedium: process.env.NODE_COLOR_MEDIUM || '0xffaa00',
-            nodeColorOld: process.env.NODE_COLOR_OLD || '0xff4444',
-            nodeColorCore: process.env.NODE_COLOR_CORE || '0xffa500',
-            nodeColorSecondary: process.env.NODE_COLOR_SECONDARY || '0x00ffff',
-            nodeColorDefault: process.env.NODE_COLOR_DEFAULT || '0x00ff00',
+            nodeColor: process.env.NODE_COLOR || '#1A0B31',
+            nodeColorNew: process.env.NODE_COLOR_NEW || '#00ff88',
+            nodeColorRecent: process.env.NODE_COLOR_RECENT || '#4444ff',
+            nodeColorMedium: process.env.NODE_COLOR_MEDIUM || '#ffaa00',
+            nodeColorOld: process.env.NODE_COLOR_OLD || '#ff4444',
+            nodeColorCore: process.env.NODE_COLOR_CORE || '#ffa500',
+            nodeColorSecondary: process.env.NODE_COLOR_SECONDARY || '#00ffff',
+            nodeColorDefault: process.env.NODE_COLOR_DEFAULT || '#00ff00',
             
             // Edge settings
-            edgeColor: process.env.EDGE_COLOR || '0xff0000',
+            edgeColor: process.env.EDGE_COLOR || '#ff0000',
             edgeOpacity: parseFloat(process.env.EDGE_OPACITY) || 0.3,
             edgeWeightNormalization: parseFloat(process.env.EDGE_WEIGHT_NORMALIZATION) || 10.0,
             edgeMinWidth: parseFloat(process.env.EDGE_MIN_WIDTH) || 1.0,
@@ -26,7 +26,7 @@ export class VisualizationSettings {
             nodeAgeMaxDays: parseInt(process.env.NODE_AGE_MAX_DAYS) || 30,
             
             // Hologram settings
-            hologramColor: process.env.HOLOGRAM_COLOR || '0xFFD700',
+            hologramColor: process.env.HOLOGRAM_COLOR || '#FFD700',
             hologramScale: parseInt(process.env.HOLOGRAM_SCALE) || 5,
             hologramOpacity: parseFloat(process.env.HOLOGRAM_OPACITY) || 0.1,
             
@@ -104,8 +104,8 @@ export class VisualizationSettings {
         // Deep merge settings with server values
         this.settings = this.deepMerge(this.settings, {
             ...serverSettings.visualization,
-            material: serverSettings.visualization?.material || this.settings.material,
-            fisheye: serverSettings.fisheye || this.settings.fisheye,
+            material: serverSettings.visualization?.material,
+            fisheye: serverSettings.fisheye,
             ...serverSettings.bloom
         });
 
