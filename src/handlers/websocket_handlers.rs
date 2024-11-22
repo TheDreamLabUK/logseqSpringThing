@@ -49,6 +49,13 @@ pub fn format_color(color: &str) -> String {
     let color = color.trim_matches('"')
         .trim_start_matches("0x")
         .trim_start_matches('#');
+    
+    // Handle rgba format
+    if color.starts_with("rgba(") {
+        return color.to_string();
+    }
+    
+    // Handle regular hex colors
     format!("#{}", color)
 }
 
@@ -471,18 +478,63 @@ impl WebSocketSessionHandler for WebSocketSession {
                 "graph_data": &*graph_data,
                 "settings": {
                     "visualization": {
+                        // Colors
                         "nodeColor": format_color(&settings.visualization.node_color),
                         "edgeColor": format_color(&settings.visualization.edge_color),
                         "hologramColor": format_color(&settings.visualization.hologram_color),
-                        "nodeSizeScalingFactor": settings.visualization.node_size_scaling_factor,
+                        "nodeColorNew": format_color(&settings.visualization.node_color_new),
+                        "nodeColorRecent": format_color(&settings.visualization.node_color_recent),
+                        "nodeColorMedium": format_color(&settings.visualization.node_color_medium),
+                        "nodeColorOld": format_color(&settings.visualization.node_color_old),
+                        "nodeColorCore": format_color(&settings.visualization.node_color_core),
+                        "nodeColorSecondary": format_color(&settings.visualization.node_color_secondary),
+                        "nodeColorDefault": format_color(&settings.visualization.node_color_default),
+
+                        // Physical dimensions
+                        "minNodeSize": settings.visualization.min_node_size,  // In meters
+                        "maxNodeSize": settings.visualization.max_node_size,  // In meters
                         "hologramScale": settings.visualization.hologram_scale,
                         "hologramOpacity": settings.visualization.hologram_opacity,
                         "edgeOpacity": settings.visualization.edge_opacity,
+
+                        // Label settings
                         "labelFontSize": settings.visualization.label_font_size,
+                        "labelFontFamily": settings.visualization.label_font_family,
+                        "labelPadding": settings.visualization.label_padding,
+                        "labelVerticalOffset": settings.visualization.label_vertical_offset,
+                        "labelCloseOffset": settings.visualization.label_close_offset,
+                        "labelBackgroundColor": settings.visualization.label_background_color,
+                        "labelTextColor": settings.visualization.label_text_color,
+                        "labelInfoTextColor": settings.visualization.label_info_text_color,
+                        "labelXRFontSize": settings.visualization.label_xr_font_size,
+
+                        // Geometry settings
+                        "geometryMinSegments": settings.visualization.geometry_min_segments,
+                        "geometryMaxSegments": settings.visualization.geometry_max_segments,
+                        "geometrySegmentPerHyperlink": settings.visualization.geometry_segment_per_hyperlink,
+
+                        // Material settings
+                        "nodeMaterialMetalness": settings.visualization.node_material_metalness,
+                        "nodeMaterialRoughness": settings.visualization.node_material_roughness,
+                        "nodeMaterialClearcoat": settings.visualization.node_material_clearcoat,
+                        "nodeMaterialClearcoatRoughness": settings.visualization.node_material_clearcoat_roughness,
+                        "nodeMaterialOpacity": settings.visualization.node_material_opacity,
+                        "nodeEmissiveMinIntensity": settings.visualization.node_emissive_min_intensity,
+                        "nodeEmissiveMaxIntensity": settings.visualization.node_emissive_max_intensity,
+
+                        // Interaction settings
+                        "clickEmissiveBoost": settings.visualization.click_emissive_boost,
+                        "clickFeedbackDuration": settings.visualization.click_feedback_duration,
+
+                        // Environment settings
                         "fogDensity": settings.visualization.fog_density,
+
+                        // Physics simulation parameters
                         "forceDirectedIterations": settings.visualization.force_directed_iterations,
+                        "forceDirectedSpring": settings.visualization.force_directed_spring,
                         "forceDirectedRepulsion": settings.visualization.force_directed_repulsion,
                         "forceDirectedAttraction": settings.visualization.force_directed_attraction,
+                        "forceDirectedDamping": settings.visualization.force_directed_damping,
                     },
                     "bloom": {
                         "nodeBloomStrength": settings.bloom.node_bloom_strength,
@@ -496,12 +548,12 @@ impl WebSocketSessionHandler for WebSocketSession {
                         "environmentBloomThreshold": settings.bloom.environment_bloom_threshold,
                     },
                     "fisheye": {
-                        "fisheye_enabled": settings.fisheye.fisheye_enabled,
-                        "fisheye_strength": settings.fisheye.fisheye_strength,
-                        "fisheye_focus_x": settings.fisheye.fisheye_focus_x,
-                        "fisheye_focus_y": settings.fisheye.fisheye_focus_y,
-                        "fisheye_focus_z": settings.fisheye.fisheye_focus_z,
-                        "fisheye_radius": settings.fisheye.fisheye_radius,
+                        "enabled": settings.fisheye.enabled,
+                        "strength": settings.fisheye.strength,
+                        "radius": settings.fisheye.radius,
+                        "focus_x": settings.fisheye.focus_x,
+                        "focus_y": settings.fisheye.focus_y,
+                        "focus_z": settings.fisheye.focus_z,
                     }
                 }
             });

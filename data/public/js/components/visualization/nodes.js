@@ -1,15 +1,9 @@
 import * as THREE from 'three';
+import { visualizationSettings } from '../../services/visualizationSettings.js';
 
 // Constants
 export const BLOOM_LAYER = 1;
 export const NORMAL_LAYER = 0;
-
-export const NODE_COLORS = {
-    NEW: new THREE.Color(0x00ff88),      // Bright green for very recent files (< 3 days)
-    RECENT: new THREE.Color(0x4444ff),    // Blue for recent files (< 7 days)
-    MEDIUM: new THREE.Color(0xffaa00),    // Orange for medium-age files (< 30 days)
-    OLD: new THREE.Color(0xff4444)        // Red for old files (>= 30 days)
-};
 
 export class NodeManager {
     constructor(scene, camera, settings = {}) {
@@ -18,50 +12,48 @@ export class NodeManager {
         this.nodeMeshes = new Map();
         this.nodeLabels = new Map();
         this.edgeMeshes = new Map();
-        this.nodeData = new Map(); // Store node data for click handling
+        this.nodeData = new Map();
         
-        // Initialize raycaster for click detection
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         
-        // Node settings with defaults
-        this.minNodeSize = settings.minNodeSize || 0.01;
-        this.maxNodeSize = settings.maxNodeSize || 0.5;
-        this.nodeSizeScalingFactor = settings.nodeSizeScalingFactor || 1;
-        this.labelFontSize = settings.labelFontSize || 18;
-        this.nodeColor = new THREE.Color(settings.nodeColor || 0x4444ff);
+        // Get settings from visualization settings service
+        const nodeSettings = visualizationSettings.getNodeSettings();
+        
+        // Physical dimensions in meters
+        this.minNodeSize = settings.minNodeSize || nodeSettings.minNodeSize; // 0.1m = 10cm
+        this.maxNodeSize = settings.maxNodeSize || nodeSettings.maxNodeSize; // 0.3m = 30cm
+        
+        // Visual settings
+        this.labelFontSize = settings.labelFontSize || nodeSettings.labelFontSize;
+        this.nodeColor = new THREE.Color(settings.nodeColor || nodeSettings.color);
+        this.materialSettings = nodeSettings.material;
+        this.ageColors = {
+            NEW: new THREE.Color(nodeSettings.colorNew),
+            RECENT: new THREE.Color(nodeSettings.colorRecent),
+            MEDIUM: new THREE.Color(nodeSettings.colorMedium),
+            OLD: new THREE.Color(nodeSettings.colorOld)
+        };
+        this.maxAge = nodeSettings.ageMaxDays;
 
         // Edge settings
-        this.edgeColor = new THREE.Color(settings.edgeColor || 0x4444ff);
-        this.edgeOpacity = settings.edgeOpacity || 0.6;
+        const edgeSettings = visualizationSettings.getEdgeSettings();
+        this.edgeColor = new THREE.Color(settings.edgeColor || edgeSettings.color);
+        this.edgeOpacity = settings.edgeOpacity || edgeSettings.opacity;
 
-        // Server-side node size range (must match constants in file_service.rs)
-        this.serverMinNodeSize = 0.5;
-        this.serverMaxNodeSize = 5.0;
-
-        // Bind click handler
         this.handleClick = this.handleClick.bind(this);
-
-        // Add XR support
         this.xrEnabled = false;
         this.xrLabelManager = null;
     }
 
     getNodeSize(metadata) {
-        // Use the node_size from metadata if available
+        // Calculate node size in meters based on metadata
         if (metadata.node_size) {
-            // Convert from server's range to visualization range
-            const serverSize = parseFloat(metadata.node_size);
-            const normalizedSize = (serverSize - this.serverMinNodeSize) / 
-                                 (this.serverMaxNodeSize - this.serverMinNodeSize);
-            return this.minNodeSize + 
-                   (this.maxNodeSize - this.minNodeSize) * 
-                   normalizedSize * 
-                   this.nodeSizeScalingFactor;
+            const size = parseFloat(metadata.node_size);
+            // Normalize size between minNodeSize (0.1m) and maxNodeSize (0.3m)
+            return this.minNodeSize + (size * (this.maxNodeSize - this.minNodeSize));
         }
-        
-        // Fallback to minimum size if node_size is not available
-        return this.minNodeSize;
+        return this.minNodeSize; // Default to minimum size (10cm)
     }
 
     calculateNodeColor(metadata) {
@@ -71,16 +63,24 @@ export class NodeManager {
         const age = now - new Date(lastModified).getTime();
         const dayInMs = 24 * 60 * 60 * 1000;
         
-        if (age < 3 * dayInMs) return NODE_COLORS.NEW;        // Less than 3 days old
-        if (age < 7 * dayInMs) return NODE_COLORS.RECENT;     // Less than 7 days old
-        if (age < 30 * dayInMs) return NODE_COLORS.MEDIUM;    // Less than 30 days old
-        return NODE_COLORS.OLD;                               // 30 days or older
+        if (age < 3 * dayInMs) return this.ageColors.NEW;        // Less than 3 days old
+        if (age < 7 * dayInMs) return this.ageColors.RECENT;     // Less than 7 days old
+        if (age < 30 * dayInMs) return this.ageColors.MEDIUM;    // Less than 30 days old
+        return this.ageColors.OLD;                               // 30 days or older
     }
 
     createNodeGeometry(size, hyperlinkCount) {
-        // Create a smooth sphere with more segments for better quality
-        // Scale detail level based on hyperlink count for performance
-        const segments = Math.min(32, Math.max(16, Math.floor(hyperlinkCount / 2) + 16));
+        // Create a sphere with radius in meters
+        // Scale segments based on hyperlink count for performance vs. quality
+        const minSegments = visualizationSettings.getNodeSettings().geometryMinSegments;
+        const maxSegments = visualizationSettings.getNodeSettings().geometryMaxSegments;
+        const segmentPerLink = visualizationSettings.getNodeSettings().geometrySegmentPerHyperlink;
+        
+        const segments = Math.min(
+            maxSegments,
+            Math.max(minSegments, Math.floor(hyperlinkCount * segmentPerLink) + minSegments)
+        );
+        
         return new THREE.SphereGeometry(size, segments, segments);
     }
 
@@ -89,25 +89,23 @@ export class NodeManager {
         const lastModified = metadata.github_last_modified || metadata.last_modified || new Date().toISOString();
         const now = Date.now();
         const ageInDays = (now - new Date(lastModified).getTime()) / (24 * 60 * 60 * 1000);
-        const maxAge = 30; // days
-        const minIntensity = 0.3;
-        const maxIntensity = 1.0;
         
         // Normalize age to 0-1 range and invert (newer = brighter)
-        const normalizedAge = Math.min(ageInDays / maxAge, 1);
-        const emissiveIntensity = maxIntensity - (normalizedAge * (maxIntensity - minIntensity));
+        const normalizedAge = Math.min(ageInDays / this.maxAge, 1);
+        const emissiveIntensity = this.materialSettings.emissiveMaxIntensity - 
+            (normalizedAge * (this.materialSettings.emissiveMaxIntensity - this.materialSettings.emissiveMinIntensity));
 
         return new THREE.MeshPhysicalMaterial({
             color: color,
             emissive: color,
             emissiveIntensity: emissiveIntensity,
-            metalness: 0.2,
-            roughness: 0.2,
+            metalness: this.materialSettings.metalness,
+            roughness: this.materialSettings.roughness,
             transparent: true,
-            opacity: 0.9,
+            opacity: this.materialSettings.opacity,
             envMapIntensity: 1.0,
-            clearcoat: 0.3,
-            clearcoatRoughness: 0.2
+            clearcoat: this.materialSettings.clearcoat,
+            clearcoatRoughness: this.materialSettings.clearcoatRoughness
         });
     }
 
@@ -116,16 +114,14 @@ export class NodeManager {
         const context = canvas.getContext('2d');
         context.font = `${this.labelFontSize}px Arial`;
         
-        // Get metadata values with GitHub fallbacks
+        // Get metadata values
         const fileSize = parseInt(metadata.file_size) || 1;
         const lastModified = metadata.github_last_modified || metadata.last_modified || new Date().toISOString();
         const hyperlinkCount = parseInt(metadata.hyperlink_count) || 0;
         const githubInfo = metadata.github_info || {};
         
-        // Measure text dimensions
+        // Measure and create text
         const nameMetrics = context.measureText(text);
-        
-        // Create info text with GitHub metadata if available
         let infoText = `${this.formatFileSize(fileSize)} | ${this.formatAge(lastModified)} | ${hyperlinkCount} links`;
         if (githubInfo.author) {
             infoText += ` | ${githubInfo.author}`;
@@ -136,27 +132,25 @@ export class NodeManager {
         }
         
         const infoMetrics = context.measureText(infoText);
-        
-        // Set canvas size to fit text with padding
         const textWidth = Math.max(nameMetrics.width, infoMetrics.width);
-        canvas.width = textWidth + 20;  // Add padding
-        canvas.height = this.labelFontSize * 2 + 30;  // Height for two lines plus padding
+        
+        // Set canvas size
+        canvas.width = textWidth + 20;
+        canvas.height = this.labelFontSize * 2 + 30;
 
-        // Draw semi-transparent background
-        context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        // Draw background and text
+        context.fillStyle = visualizationSettings.getLabelSettings().backgroundColor;
         context.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Draw node name
-        context.font = `${this.labelFontSize}px Arial`;
-        context.fillStyle = 'white';
+        context.font = `${this.labelFontSize}px ${visualizationSettings.getLabelSettings().fontFamily}`;
+        context.fillStyle = visualizationSettings.getLabelSettings().textColor;
         context.fillText(text, 10, this.labelFontSize);
         
-        // Draw info text in smaller size
-        context.font = `${this.labelFontSize / 2}px Arial`;
-        context.fillStyle = 'lightgray';
+        context.font = `${this.labelFontSize / 2}px ${visualizationSettings.getLabelSettings().fontFamily}`;
+        context.fillStyle = visualizationSettings.getLabelSettings().infoTextColor;
         context.fillText(infoText, 10, this.labelFontSize + 20);
 
-        // Create sprite from canvas
+        // Create sprite
         const texture = new THREE.CanvasTexture(canvas);
         const spriteMaterial = new THREE.SpriteMaterial({
             map: texture,
@@ -165,8 +159,13 @@ export class NodeManager {
         });
         const sprite = new THREE.Sprite(spriteMaterial);
         
-        // Scale sprite to maintain readable text size
-        sprite.scale.set(canvas.width / 20, canvas.height / 20, 1);
+        // Scale sprite to maintain readable text size in meters
+        const labelScale = visualizationSettings.getLabelSettings().verticalOffset;
+        sprite.scale.set(
+            (canvas.width / this.labelFontSize) * labelScale,
+            (canvas.height / this.labelFontSize) * labelScale,
+            1
+        );
         sprite.layers.set(NORMAL_LAYER);
 
         return sprite;
@@ -203,81 +202,81 @@ export class NodeManager {
         return `${baseUrl}/#/page/${formattedName}`;
     }
 
-    handleClick(event, isXR = false, intersectedObject = null) {
-        let clickedMesh;
-
-        if (isXR && intersectedObject) {
-            // In XR mode, use the passed intersected object directly
-            clickedMesh = intersectedObject;
-        } else if (!isXR && event) {
-            // Regular mouse click handling
-            const rect = event.target.getBoundingClientRect();
-            this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-            this.raycaster.setFromCamera(this.mouse, this.camera);
-            const intersects = this.raycaster.intersectObjects(Array.from(this.nodeMeshes.values()));
-            
-            if (intersects.length > 0) {
-                clickedMesh = intersects[0].object;
+        handleClick(event, isXR = false, intersectedObject = null) {
+            let clickedMesh;
+    
+            if (isXR && intersectedObject) {
+                // In XR mode, use the passed intersected object directly
+                clickedMesh = intersectedObject;
+            } else if (!isXR && event) {
+                // Regular mouse click handling
+                const rect = event.target.getBoundingClientRect();
+                this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                const intersects = this.raycaster.intersectObjects(Array.from(this.nodeMeshes.values()));
+                
+                if (intersects.length > 0) {
+                    clickedMesh = intersects[0].object;
+                }
             }
-        }
-
-        if (clickedMesh) {
-            // Find the clicked node
-            const nodeId = Array.from(this.nodeMeshes.entries())
-                .find(([_, mesh]) => mesh === clickedMesh)?.[0];
-
-            if (nodeId) {
-                const nodeData = this.nodeData.get(nodeId);
-                if (nodeData) {
-                    // Open URL in new tab
-                    const url = this.formatNodeNameToUrl(nodeData.label || nodeId);
-                    window.open(url, '_blank');
-
-                    // Visual feedback
-                    const originalEmissive = clickedMesh.material.emissiveIntensity;
-                    clickedMesh.material.emissiveIntensity = 2.0;
-                    setTimeout(() => {
-                        clickedMesh.material.emissiveIntensity = originalEmissive;
-                    }, 200);
-
-                    // Show XR label if in XR mode
-                    if (isXR && this.xrLabelManager) {
-                        this.xrLabelManager.showLabel(
-                            nodeData.label || nodeId,
-                            clickedMesh.position,
-                            {
-                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                color: '#ffffff',
-                                font: '24px Arial'
+    
+            if (clickedMesh) {
+                // Find the clicked node
+                const nodeId = Array.from(this.nodeMeshes.entries())
+                    .find(([_, mesh]) => mesh === clickedMesh)?.[0];
+    
+                if (nodeId) {
+                    const nodeData = this.nodeData.get(nodeId);
+                    if (nodeData) {
+                        // Open URL in new tab
+                        const url = this.formatNodeNameToUrl(nodeData.label || nodeId);
+                        window.open(url, '_blank');
+    
+                        // Visual feedback
+                        const originalEmissive = clickedMesh.material.emissiveIntensity;
+                        clickedMesh.material.emissiveIntensity = 2.0;
+                        setTimeout(() => {
+                            clickedMesh.material.emissiveIntensity = originalEmissive;
+                        }, 200);
+    
+                        // Show XR label if in XR mode
+                        if (isXR && this.xrLabelManager) {
+                            this.xrLabelManager.showLabel(
+                                nodeData.label || nodeId,
+                                clickedMesh.position,
+                                {
+                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                    color: '#ffffff',
+                                    font: '24px Arial'
+                                }
+                            );
+                        }
+    
+                        // Trigger haptic feedback in XR mode
+                        if (isXR && window.xrSession) {
+                            const inputSource = Array.from(window.xrSession.inputSources).find(source => 
+                                source.handedness === 'right' || source.handedness === 'left'
+                            );
+                            if (inputSource?.gamepad?.hapticActuators?.length > 0) {
+                                inputSource.gamepad.hapticActuators[0].pulse(0.5, 100);
                             }
-                        );
-                    }
-
-                    // Trigger haptic feedback in XR mode
-                    if (isXR && window.xrSession) {
-                        const inputSource = Array.from(window.xrSession.inputSources).find(source => 
-                            source.handedness === 'right' || source.handedness === 'left'
-                        );
-                        if (inputSource?.gamepad?.hapticActuators?.length > 0) {
-                            inputSource.gamepad.hapticActuators[0].pulse(0.5, 100);
                         }
                     }
                 }
             }
         }
-    }
-
-    initClickHandling(renderer) {
-        // Add click event listener to renderer's DOM element
-        renderer.domElement.addEventListener('click', this.handleClick);
-    }
-
-    removeClickHandling(renderer) {
-        // Remove click event listener
-        renderer.domElement.removeEventListener('click', this.handleClick);
-    }
+    
+        initClickHandling(renderer) {
+            // Add click event listener to renderer's DOM element
+            renderer.domElement.addEventListener('click', this.handleClick);
+        }
+    
+        removeClickHandling(renderer) {
+            // Remove click event listener
+            renderer.domElement.removeEventListener('click', this.handleClick);
+        }
 
     centerNodes(nodes) {
         if (!nodes || (!Array.isArray(nodes) && typeof nodes !== 'object')) {
@@ -285,9 +284,7 @@ export class NodeManager {
             return;
         }
 
-        // Convert position arrays to node objects if necessary
         const nodeArray = Array.isArray(nodes) ? nodes.map((node, index) => {
-            // If node is an array of positions [x, y, z, vx, vy, vz]
             if (Array.isArray(node)) {
                 return {
                     id: index,
@@ -318,14 +315,14 @@ export class NodeManager {
         centerY /= nodeArray.length;
         centerZ /= nodeArray.length;
 
-        // Subtract center from all positions to center around origin
+        // Center around origin
         nodeArray.forEach(node => {
             node.x = (node.x || 0) - centerX;
             node.y = (node.y || 0) - centerY;
             node.z = (node.z || 0) - centerZ;
         });
 
-        // Scale positions to reasonable range
+        // Scale positions to reasonable range in meters
         const maxDist = nodeArray.reduce((max, node) => {
             const dist = Math.sqrt(
                 (node.x || 0) * (node.x || 0) + 
@@ -336,7 +333,9 @@ export class NodeManager {
         }, 0);
 
         if (maxDist > 0) {
-            const scale = 100 / maxDist; // Scale to fit in 100 unit radius
+            // Scale to fit in 5 meter radius by default
+            const targetRadius = 5.0; // meters
+            const scale = targetRadius / maxDist;
             nodeArray.forEach(node => {
                 node.x = (node.x || 0) * scale;
                 node.y = (node.y || 0) * scale;
@@ -347,68 +346,68 @@ export class NodeManager {
         return nodeArray;
     }
 
-    updateNodes(nodes) {
-        if (!Array.isArray(nodes)) {
-            console.error('updateNodes received invalid nodes:', nodes);
-            return;
-        }
-
-        console.log(`Updating nodes: ${nodes.length}`);
-        
-        // Center and scale nodes
-        const centeredNodes = this.centerNodes(nodes);
-        if (!centeredNodes) return;
-        
-        const existingNodeIds = new Set(centeredNodes.map(node => node.id));
-
-        // Remove non-existent nodes
-        this.nodeMeshes.forEach((mesh, nodeId) => {
-            if (!existingNodeIds.has(nodeId)) {
-                this.scene.remove(mesh);
-                this.nodeMeshes.delete(nodeId);
-                this.nodeData.delete(nodeId);
-                const label = this.nodeLabels.get(nodeId);
-                if (label) {
-                    this.scene.remove(label);
-                    this.nodeLabels.delete(nodeId);
-                }
-            }
-        });
-
-        // Update or create nodes
-        centeredNodes.forEach(node => {
-            if (!node.id || typeof node.x !== 'number' || typeof node.y !== 'number' || typeof node.z !== 'number') {
-                console.warn('Invalid node data:', node);
+        updateNodes(nodes) {
+            if (!Array.isArray(nodes)) {
+                console.error('updateNodes received invalid nodes:', nodes);
                 return;
             }
-
-            // Store node data for click handling
-            this.nodeData.set(node.id, node);
-
-            const metadata = node.metadata || {};
-            const size = this.getNodeSize(metadata);
-            const color = this.calculateNodeColor(metadata);
-
-            let mesh = this.nodeMeshes.get(node.id);
-
-            if (!mesh) {
-                const geometry = this.createNodeGeometry(size, metadata.hyperlink_count || 0);
-                const material = this.createNodeMaterial(color, metadata);
-
-                mesh = new THREE.Mesh(geometry, material);
-                mesh.layers.enable(BLOOM_LAYER);
-                this.scene.add(mesh);
-                this.nodeMeshes.set(node.id, mesh);
-
-                const label = this.createNodeLabel(node.label || node.id, metadata);
-                this.scene.add(label);
-                this.nodeLabels.set(node.id, label);
-            } else {
-                mesh.geometry.dispose();
-                mesh.geometry = this.createNodeGeometry(size, metadata.hyperlink_count || 0);
-                mesh.material.dispose();
-                mesh.material = this.createNodeMaterial(color, metadata);
-            }
+    
+            console.log(`Updating nodes: ${nodes.length}`);
+            
+            // Center and scale nodes
+            const centeredNodes = this.centerNodes(nodes);
+            if (!centeredNodes) return;
+            
+            const existingNodeIds = new Set(centeredNodes.map(node => node.id));
+    
+            // Remove non-existent nodes
+            this.nodeMeshes.forEach((mesh, nodeId) => {
+                if (!existingNodeIds.has(nodeId)) {
+                    this.scene.remove(mesh);
+                    this.nodeMeshes.delete(nodeId);
+                    this.nodeData.delete(nodeId);
+                    const label = this.nodeLabels.get(nodeId);
+                    if (label) {
+                        this.scene.remove(label);
+                        this.nodeLabels.delete(nodeId);
+                    }
+                }
+            });
+    
+            // Update or create nodes
+            centeredNodes.forEach(node => {
+                if (!node.id || typeof node.x !== 'number' || typeof node.y !== 'number' || typeof node.z !== 'number') {
+                    console.warn('Invalid node data:', node);
+                    return;
+                }
+    
+                // Store node data for click handling
+                this.nodeData.set(node.id, node);
+    
+                const metadata = node.metadata || {};
+                const size = this.getNodeSize(metadata);
+                const color = this.calculateNodeColor(metadata);
+    
+                let mesh = this.nodeMeshes.get(node.id);
+    
+                if (!mesh) {
+                    const geometry = this.createNodeGeometry(size, metadata.hyperlink_count || 0);
+                    const material = this.createNodeMaterial(color, metadata);
+    
+                    mesh = new THREE.Mesh(geometry, material);
+                    mesh.layers.enable(BLOOM_LAYER);
+                    this.scene.add(mesh);
+                    this.nodeMeshes.set(node.id, mesh);
+    
+                    const label = this.createNodeLabel(node.label || node.id, metadata);
+                    this.scene.add(label);
+                    this.nodeLabels.set(node.id, label);
+                } else {
+                    mesh.geometry.dispose();
+                    mesh.geometry = this.createNodeGeometry(size, metadata.hyperlink_count || 0);
+                    mesh.material.dispose();
+                    mesh.material = this.createNodeMaterial(color, metadata);
+    }
 
             mesh.position.set(node.x, node.y, node.z);
             const label = this.nodeLabels.get(node.id);
@@ -520,8 +519,11 @@ export class NodeManager {
                     });
                 }
                 break;
-            case 'nodeSizeScalingFactor':
-                this.nodeSizeScalingFactor = value;
+            case 'minNodeSize':
+                this.minNodeSize = value; // Value in meters
+                break;
+            case 'maxNodeSize':
+                this.maxNodeSize = value; // Value in meters
                 break;
             case 'labelFontSize':
                 this.labelFontSize = value;
