@@ -2,20 +2,12 @@ use actix::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
-use toml;  // Add toml import
+use toml;
 use crate::models::simulation_params::SimulationParams;
 use crate::models::position_update::NodePositionVelocity;
 use actix_web_actors::ws;
 use log::{error, debug};
 use bytestring::ByteString;
-
-/// Helper function to convert hex color to proper format
-fn format_color(color: &str) -> String {
-    let color = color.trim_matches('"')
-        .trim_start_matches("0x")
-        .trim_start_matches('#');
-    format!("#{}", color)
-}
 
 /// GPU-computed node positions and velocities
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -273,24 +265,8 @@ pub trait MessageHandler: Actor<Context = ws::WebsocketContext<Self>> {
     }
 
     fn handle_settings_update(&self, settings: Value, ctx: &mut ws::WebsocketContext<Self>) {
-        // Convert JSON settings to TOML
-        let toml_string = match toml::to_string_pretty(&settings) {
-            Ok(s) => s,
-            Err(e) => {
-                error!("Failed to serialize settings to TOML: {}", e);
-                self.send_server_message(
-                    ServerMessage::Error {
-                        message: format!("Failed to serialize settings: {}", e),
-                        code: Some("SETTINGS_SERIALIZATION_ERROR".to_string()),
-                    },
-                    ctx
-                );
-                return;
-            }
-        };
-
         // Write to settings.toml
-        if let Err(e) = fs::write("settings.toml", toml_string) {
+        if let Err(e) = fs::write("settings.toml", toml::to_string_pretty(&settings).unwrap()) {
             error!("Failed to write settings.toml: {}", e);
             self.send_server_message(
                 ServerMessage::Error {
@@ -339,7 +315,7 @@ mod tests {
         let settings_message = ClientMessage::UpdateSettings {
             settings: json!({
                 "visualization": {
-                    "node_color": "0xFFA500"
+                    "node_color": "#FFA500"
                 }
             })
         };
@@ -374,21 +350,13 @@ mod tests {
         let settings_message = ServerMessage::SettingsUpdated {
             settings: json!({
                 "visualization": {
-                    "node_color": "0xFFA500"
+                    "node_color": "#FFA500"
                 }
             })
         };
         let json = serde_json::to_string(&settings_message).unwrap();
         assert!(json.contains("\"type\":\"settings_updated\""));
         assert!(json.contains("visualization"));
-    }
-
-    #[test]
-    fn test_color_formatting() {
-        assert_eq!(format_color("0xFF0000"), "#FF0000");
-        assert_eq!(format_color("\"0xFF0000\""), "#FF0000");
-        assert_eq!(format_color("#FF0000"), "#FF0000");
-        assert_eq!(format_color("\"#FF0000\""), "#FF0000");
     }
 
     #[test]
