@@ -166,79 +166,8 @@ COPY --from=frontend-builder --chown=appuser:appuser /app/data/public/dist /app/
 # Copy configuration and scripts
 COPY --chown=appuser:appuser src/generate_audio.py /app/src/
 COPY --chown=root:root nginx.conf /etc/nginx/nginx.conf
-
-# Create and configure startup script with proper permissions
-RUN echo '#!/bin/bash\n\
-set -euo pipefail\n\
-\n\
-# Function to log messages with timestamps\n\
-log() {\n\
-    echo "[$(date "+%Y-%m-%d %H:%M:%S")] $1"\n\
-}\n\
-\n\
-# Function to check if a port is available\n\
-wait_for_port() {\n\
-    local port=$1\n\
-    local retries=60\n\
-    local wait=5\n\
-    while ! timeout 1 bash -c "cat < /dev/null > /dev/tcp/0.0.0.0/$port" 2>/dev/null && [ $retries -gt 0 ]; do\n\
-        log "Waiting for port $port to become available... ($retries retries left)"\n\
-        sleep $wait\n\
-        retries=$((retries-1))\n\
-    done\n\
-    if [ $retries -eq 0 ]; then\n\
-        log "Timeout waiting for port $port"\n\
-        return 1\n\
-    fi\n\
-    log "Port $port is available"\n\
-    return 0\n\
-}\n\
-\n\
-# Function to check RAGFlow connectivity\n\
-check_ragflow() {\n\
-    log "Checking RAGFlow connectivity..."\n\
-    if curl -s -f --max-time 5 "http://ragflow-server/v1/" > /dev/null; then\n\
-        log "RAGFlow server is reachable"\n\
-        return 0\n\
-    else\n\
-        log "Warning: Cannot reach RAGFlow server"\n\
-        return 1\n\
-    fi\n\
-}\n\
-\n\
-# Wait for RAGFlow to be available\n\
-log "Waiting for RAGFlow server..."\n\
-retries=24\n\
-while ! check_ragflow && [ $retries -gt 0 ]; do\n\
-    log "Retrying RAGFlow connection... ($retries attempts left)"\n\
-    retries=$((retries-1))\n\
-    sleep 5\n\
-done\n\
-\n\
-if [ $retries -eq 0 ]; then\n\
-    log "Failed to connect to RAGFlow server after multiple attempts"\n\
-    exit 1\n\
-fi\n\
-\n\
-# Update nginx configuration with environment variables\n\
-envsubst \'${DOMAIN}\' < /etc/nginx/nginx.conf > /etc/nginx/nginx.conf.tmp && \
-mv /etc/nginx/nginx.conf.tmp /etc/nginx/nginx.conf\n\
-\n\
-# Start nginx\n\
-log "Starting nginx..."\n\
-nginx -t && nginx\n\
-if [ $? -ne 0 ]; then\n\
-    log "Failed to start nginx"\n\
-    exit 1\n\
-fi\n\
-log "nginx started successfully"\n\
-\n\
-# Start the Rust backend\n\
-log "Starting webxr..."\n\
-exec /app/webxr\n\
-' > /app/start.sh && \
-    chown appuser:appuser /app/start.sh && \
-    chmod 755 /app/start.sh
+COPY --chown=appuser:appuser start.sh /app/start.sh
+RUN chmod 755 /app/start.sh
 
 # Add security labels
 LABEL org.opencontainers.image.source="https://github.com/yourusername/logseq-xr" \
