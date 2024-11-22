@@ -1,4 +1,3 @@
-<!-- ControlPanel.vue -->
 <script>
 import { defineComponent, ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue';
 
@@ -17,11 +16,12 @@ export default defineComponent({
         const isHidden = ref(false);
         const collapsedGroups = reactive({
             chat: false,
-            fisheye: false,
-            colors: false,
-            sizeOpacity: false,
+            nodeAppearance: false,
+            edgeAppearance: false,
             bloom: false,
-            forceDirected: false,
+            physics: false,
+            fisheye: false,
+            environment: false,
             additional: false
         });
 
@@ -30,56 +30,110 @@ export default defineComponent({
         const chatMessages = ref([]);
         const audioInitialized = ref(false);
 
-        // Fisheye controls state
+        // Node Appearance Controls
+        const nodeAppearanceControls = reactive({
+            colors: [
+                { name: 'nodeColor', label: 'Base Color', value: '#FFA500' },
+                { name: 'nodeColorNew', label: 'New Nodes', value: '#FFD700' },
+                { name: 'nodeColorRecent', label: 'Recent Nodes', value: '#FFA500' },
+                { name: 'nodeColorMedium', label: 'Medium-age Nodes', value: '#DAA520' },
+                { name: 'nodeColorOld', label: 'Old Nodes', value: '#CD853F' },
+                { name: 'nodeColorCore', label: 'Core Nodes', value: '#FFB90F' },
+                { name: 'nodeColorSecondary', label: 'Secondary Nodes', value: '#FFC125' }
+            ],
+            size: [
+                { name: 'minNodeSize', label: 'Min Node Size (cm)', value: 15, min: 5, max: 30, step: 1 },
+                { name: 'maxNodeSize', label: 'Max Node Size (cm)', value: 40, min: 20, max: 60, step: 1 }
+            ],
+            material: [
+                { name: 'nodeMaterialMetalness', label: 'Metalness', value: 0.7, min: 0, max: 1, step: 0.1 },
+                { name: 'nodeMaterialRoughness', label: 'Roughness', value: 0.1, min: 0, max: 1, step: 0.1 },
+                { name: 'nodeMaterialClearcoat', label: 'Clearcoat', value: 0.8, min: 0, max: 1, step: 0.1 },
+                { name: 'nodeMaterialClearcoatRoughness', label: 'Clearcoat Roughness', value: 0.1, min: 0, max: 1, step: 0.1 },
+                { name: 'nodeMaterialOpacity', label: 'Opacity', value: 0.95, min: 0, max: 1, step: 0.05 }
+            ],
+            emissive: [
+                { name: 'nodeEmissiveMin', label: 'Min Glow', value: 0.4, min: 0, max: 1, step: 0.1 },
+                { name: 'nodeEmissiveMax', label: 'Max Glow', value: 1.2, min: 0, max: 2, step: 0.1 }
+            ]
+        });
+
+        // Edge Appearance Controls
+        const edgeAppearanceControls = reactive({
+            colors: [
+                { name: 'edgeColor', label: 'Edge Color', value: '#FFD700' }
+            ],
+            properties: [
+                { name: 'edgeOpacity', label: 'Edge Opacity', value: 0.4, min: 0, max: 1, step: 0.1 },
+                { name: 'edgeWeightNorm', label: 'Weight Normalization', value: 12, min: 1, max: 20, step: 1 },
+                { name: 'edgeMinWidth', label: 'Min Width', value: 1.5, min: 0.5, max: 5, step: 0.5 },
+                { name: 'edgeMaxWidth', label: 'Max Width', value: 6.0, min: 2, max: 10, step: 0.5 }
+            ]
+        });
+
+        // Bloom Effect Controls
+        const bloomControls = reactive({
+            node: [
+                { name: 'nodeBloomStrength', label: 'Node Strength', value: 0.8, min: 0, max: 2, step: 0.1 },
+                { name: 'nodeBloomRadius', label: 'Node Radius', value: 0.3, min: 0, max: 1, step: 0.1 },
+                { name: 'nodeBloomThreshold', label: 'Node Threshold', value: 0.2, min: 0, max: 1, step: 0.1 }
+            ],
+            edge: [
+                { name: 'edgeBloomStrength', label: 'Edge Strength', value: 0.6, min: 0, max: 2, step: 0.1 },
+                { name: 'edgeBloomRadius', label: 'Edge Radius', value: 0.4, min: 0, max: 1, step: 0.1 },
+                { name: 'edgeBloomThreshold', label: 'Edge Threshold', value: 0.1, min: 0, max: 1, step: 0.1 }
+            ],
+            environment: [
+                { name: 'envBloomStrength', label: 'Environment Strength', value: 0.7, min: 0, max: 2, step: 0.1 },
+                { name: 'envBloomRadius', label: 'Environment Radius', value: 0.3, min: 0, max: 1, step: 0.1 },
+                { name: 'envBloomThreshold', label: 'Environment Threshold', value: 0.1, min: 0, max: 1, step: 0.1 }
+            ]
+        });
+
+        // Physics Simulation Controls
+        const physicsControls = reactive({
+            simulation: [
+                { name: 'forceDirectedIterations', label: 'Iterations', value: 300, min: 100, max: 500, step: 10 },
+                { name: 'forceDirectedSpring', label: 'Spring Strength', value: 0.015, min: 0.001, max: 0.1, step: 0.001 },
+                { name: 'forceDirectedRepulsion', label: 'Repulsion', value: 1200, min: 100, max: 5000, step: 100 },
+                { name: 'forceDirectedAttraction', label: 'Attraction', value: 0.012, min: 0.001, max: 0.1, step: 0.001 },
+                { name: 'forceDirectedDamping', label: 'Damping', value: 0.85, min: 0.1, max: 0.99, step: 0.01 }
+            ],
+            geometry: [
+                { name: 'geometryMinSegments', label: 'Min Segments', value: 24, min: 8, max: 32, step: 4 },
+                { name: 'geometryMaxSegments', label: 'Max Segments', value: 48, min: 24, max: 64, step: 4 },
+                { name: 'geometrySegmentPerLink', label: 'Segments per Link', value: 0.6, min: 0.2, max: 1, step: 0.1 }
+            ]
+        });
+
+        // Fisheye Controls
         const fisheyeEnabled = ref(false);
-        const fisheyeStrength = ref(0.5);
-        const fisheyeRadius = ref(100);
-        const fisheyeFocusPoint = ref([0, 0, 0]);
+        const fisheyeControls = reactive({
+            properties: [
+                { name: 'fisheyeStrength', label: 'Strength', value: 0.5, min: 0, max: 1, step: 0.1 },
+                { name: 'fisheyeRadius', label: 'Radius', value: 100, min: 10, max: 200, step: 10 }
+            ],
+            focus: [
+                { name: 'fisheyeFocusX', label: 'Focus X', value: 0, min: -100, max: 100, step: 1 },
+                { name: 'fisheyeFocusY', label: 'Focus Y', value: 0, min: -100, max: 100, step: 1 },
+                { name: 'fisheyeFocusZ', label: 'Focus Z', value: 0, min: -100, max: 100, step: 1 }
+            ]
+        });
 
-        // Color controls
-        const colorControls = reactive([
-            { name: 'nodeColor', label: 'Node Color', value: '#ffffff' },
-            { name: 'edgeColor', label: 'Edge Color', value: '#888888' },
-            { name: 'hologramColor', label: 'Hologram Color', value: '#00ff00' }
-        ]);
-
-        // Size and opacity controls
-        const sizeOpacityControls = reactive([
-            { name: 'nodeSize', label: 'Node Size', value: 1, min: 0.1, max: 5, step: 0.1 },
-            { name: 'edgeSize', label: 'Edge Size', value: 1, min: 0.1, max: 5, step: 0.1 },
-            { name: 'nodeOpacity', label: 'Node Opacity', value: 1, min: 0, max: 1, step: 0.1 },
-            { name: 'edgeOpacity', label: 'Edge Opacity', value: 1, min: 0, max: 1, step: 0.1 }
-        ]);
-
-        // Bloom controls
-        const bloomControls = reactive([
-            { name: 'bloomStrength', label: 'Bloom Strength', value: 1.5, min: 0, max: 3, step: 0.1 },
-            { name: 'bloomRadius', label: 'Bloom Radius', value: 0.4, min: 0, max: 1, step: 0.1 },
-            { name: 'bloomThreshold', label: 'Bloom Threshold', value: 0.8, min: 0, max: 1, step: 0.1 }
-        ]);
-
-        // Force-directed controls
-        const forceDirectedControls = reactive([
-            { name: 'force_directed_iterations', label: 'Iterations', value: 250, min: 50, max: 500, step: 10 },
-            { name: 'force_directed_spring', label: 'Spring Strength', value: 0.1, min: 0.01, max: 1, step: 0.01 },
-            { name: 'force_directed_repulsion', label: 'Repulsion', value: 1000, min: 100, max: 5000, step: 100 },
-            { name: 'force_directed_attraction', label: 'Attraction', value: 0.01, min: 0.001, max: 0.1, step: 0.001 }
-        ]);
-
-        // Additional controls
-        const additionalControls = reactive([
-            { name: 'cameraSpeed', label: 'Camera Speed', value: 1, min: 0.1, max: 5, step: 0.1 },
-            { name: 'zoomSpeed', label: 'Zoom Speed', value: 1, min: 0.1, max: 5, step: 0.1 }
-        ]);
+        // Environment Controls
+        const environmentControls = reactive({
+            hologram: [
+                { name: 'hologramColor', label: 'Hologram Color', value: '#FFC125' },
+                { name: 'hologramScale', label: 'Scale', value: 6.0, min: 1, max: 10, step: 0.5 },
+                { name: 'hologramOpacity', label: 'Opacity', value: 0.15, min: 0, max: 1, step: 0.05 }
+            ],
+            fog: [
+                { name: 'fogDensity', label: 'Fog Density', value: 0.001, min: 0, max: 0.01, step: 0.001 }
+            ]
+        });
 
         // Simulation mode
         const simulationMode = ref('remote');
-        const damping = ref(0.8);
-
-        // XR state
-        const xrActive = ref(false);
-        const xrSupported = ref(false);
-        const xrMode = ref('vr');
 
         // Methods
         const togglePanel = () => {
@@ -95,321 +149,129 @@ export default defineComponent({
             emit('control-change', { name, value });
         };
 
-        const initializeAudio = () => {
-            if (props.websocketService) {
-                props.websocketService.initAudio();
-                audioInitialized.value = true;
-            }
-        };
+        const saveSettings = () => {
+            // Collect all settings into TOML structure
+            const settings = {
+                visualization: {
+                    // Node colors
+                    node_color: nodeAppearanceControls.colors.find(c => c.name === 'nodeColor')?.value.replace('#', '0x'),
+                    node_color_new: nodeAppearanceControls.colors.find(c => c.name === 'nodeColorNew')?.value.replace('#', '0x'),
+                    node_color_recent: nodeAppearanceControls.colors.find(c => c.name === 'nodeColorRecent')?.value.replace('#', '0x'),
+                    node_color_medium: nodeAppearanceControls.colors.find(c => c.name === 'nodeColorMedium')?.value.replace('#', '0x'),
+                    node_color_old: nodeAppearanceControls.colors.find(c => c.name === 'nodeColorOld')?.value.replace('#', '0x'),
+                    node_color_core: nodeAppearanceControls.colors.find(c => c.name === 'nodeColorCore')?.value.replace('#', '0x'),
+                    node_color_secondary: nodeAppearanceControls.colors.find(c => c.name === 'nodeColorSecondary')?.value.replace('#', '0x'),
 
-        const sendMessage = () => {
-            if (chatInput.value.trim()) {
-                const message = {
-                    message: chatInput.value,
-                    timestamp: new Date().toLocaleTimeString()
-                };
-                chatMessages.value.push(message);
-                props.websocketService.sendChatMessage({
-                    message: chatInput.value,
-                    useOpenAI: false
-                });
-                chatInput.value = '';
-            }
-        };
-
-        const setSimulationMode = () => {
-            props.websocketService.setSimulationMode(simulationMode.value);
-        };
-
-        const toggleFullscreen = () => {
-            emit('toggle-fullscreen');
-        };
-
-        const enableSpacemouse = () => {
-            emit('enable-spacemouse');
-        };
-
-        const resetControls = () => {
-            // Reset all controls to their default values
-            fisheyeEnabled.value = false;
-            fisheyeStrength.value = 0.5;
-            fisheyeRadius.value = 100;
-            fisheyeFocusPoint.value = [0, 0, 0];
-            
-            colorControls.forEach(control => {
-                control.value = control.name === 'nodeColor' ? '#ffffff' :
-                              control.name === 'edgeColor' ? '#888888' : '#00ff00';
-            });
-
-            sizeOpacityControls.forEach(control => {
-                control.value = 1;
-            });
-
-            bloomControls.forEach(control => {
-                control.value = control.name === 'bloomStrength' ? 1.5 :
-                              control.name === 'bloomRadius' ? 0.4 : 0.8;
-            });
-
-            forceDirectedControls.forEach(control => {
-                control.value = control.name === 'force_directed_iterations' ? 250 :
-                              control.name === 'force_directed_spring' ? 0.1 :
-                              control.name === 'force_directed_repulsion' ? 1000 : 0.01;
-            });
-
-            damping.value = 0.8;
-            simulationMode.value = 'remote';
-
-            // Emit all the reset values
-            emitChange('fisheyeEnabled', false);
-            emitChange('fisheyeStrength', 0.5);
-            emitChange('fisheyeRadius', 100);
-            emitChange('fisheyeFocusPoint', [0, 0, 0]);
-            colorControls.forEach(control => emitChange(control.name, control.value));
-            sizeOpacityControls.forEach(control => emitChange(control.name, control.value));
-            bloomControls.forEach(control => emitChange(control.name, control.value));
-            forceDirectedControls.forEach(control => emitChange(control.name, control.value));
-            emitChange('force_directed_damping', 0.8);
-            setSimulationMode();
-        };
-
-        // XR methods
-        const checkXRSupport = async () => {
-            if ('xr' in navigator) {
-                try {
-                    const vrSupported = await navigator.xr.isSessionSupported('immersive-vr');
-                    const arSupported = await navigator.xr.isSessionSupported('immersive-ar');
-                    xrSupported.value = vrSupported || arSupported;
+                    // Edge colors
+                    edge_color: edgeAppearanceControls.colors.find(c => c.name === 'edgeColor')?.value.replace('#', '0x'),
                     
-                    if (arSupported) {
-                        xrMode.value = 'ar';
-                    } else if (vrSupported) {
-                        xrMode.value = 'vr';
-                    }
-                } catch (err) {
-                    console.error('Error checking XR support:', err);
-                    xrSupported.value = false;
+                    // Hologram
+                    hologram_color: environmentControls.hologram.find(c => c.name === 'hologramColor')?.value.replace('#', '0x'),
+                    hologram_scale: environmentControls.hologram.find(c => c.name === 'hologramScale')?.value,
+                    hologram_opacity: environmentControls.hologram.find(c => c.name === 'hologramOpacity')?.value,
+
+                    // Node dimensions
+                    min_node_size: nodeAppearanceControls.size.find(c => c.name === 'minNodeSize')?.value / 100, // Convert cm to meters
+                    max_node_size: nodeAppearanceControls.size.find(c => c.name === 'maxNodeSize')?.value / 100, // Convert cm to meters
+                    
+                    // Edge properties
+                    edge_opacity: edgeAppearanceControls.properties.find(c => c.name === 'edgeOpacity')?.value,
+
+                    // Material properties
+                    node_material_metalness: nodeAppearanceControls.material.find(c => c.name === 'nodeMaterialMetalness')?.value,
+                    node_material_roughness: nodeAppearanceControls.material.find(c => c.name === 'nodeMaterialRoughness')?.value,
+                    node_material_clearcoat: nodeAppearanceControls.material.find(c => c.name === 'nodeMaterialClearcoat')?.value,
+                    node_material_clearcoat_roughness: nodeAppearanceControls.material.find(c => c.name === 'nodeMaterialClearcoatRoughness')?.value,
+                    node_material_opacity: nodeAppearanceControls.material.find(c => c.name === 'nodeMaterialOpacity')?.value,
+                    
+                    // Emissive properties
+                    node_emissive_min_intensity: nodeAppearanceControls.emissive.find(c => c.name === 'nodeEmissiveMin')?.value,
+                    node_emissive_max_intensity: nodeAppearanceControls.emissive.find(c => c.name === 'nodeEmissiveMax')?.value,
+
+                    // Geometry properties
+                    geometry_min_segments: physicsControls.geometry.find(c => c.name === 'geometryMinSegments')?.value,
+                    geometry_max_segments: physicsControls.geometry.find(c => c.name === 'geometryMaxSegments')?.value,
+                    geometry_segment_per_hyperlink: physicsControls.geometry.find(c => c.name === 'geometrySegmentPerLink')?.value,
+
+                    // Physics simulation parameters
+                    force_directed_iterations: physicsControls.simulation.find(c => c.name === 'forceDirectedIterations')?.value,
+                    force_directed_spring: physicsControls.simulation.find(c => c.name === 'forceDirectedSpring')?.value,
+                    force_directed_repulsion: physicsControls.simulation.find(c => c.name === 'forceDirectedRepulsion')?.value,
+                    force_directed_attraction: physicsControls.simulation.find(c => c.name === 'forceDirectedAttraction')?.value,
+                    force_directed_damping: physicsControls.simulation.find(c => c.name === 'forceDirectedDamping')?.value,
+
+                    // Environment
+                    fog_density: environmentControls.fog.find(c => c.name === 'fogDensity')?.value,
+                },
+                bloom: {
+                    // Node bloom
+                    node_bloom_strength: bloomControls.node.find(c => c.name === 'nodeBloomStrength')?.value,
+                    node_bloom_radius: bloomControls.node.find(c => c.name === 'nodeBloomRadius')?.value,
+                    node_bloom_threshold: bloomControls.node.find(c => c.name === 'nodeBloomThreshold')?.value,
+                    
+                    // Edge bloom
+                    edge_bloom_strength: bloomControls.edge.find(c => c.name === 'edgeBloomStrength')?.value,
+                    edge_bloom_radius: bloomControls.edge.find(c => c.name === 'edgeBloomRadius')?.value,
+                    edge_bloom_threshold: bloomControls.edge.find(c => c.name === 'edgeBloomThreshold')?.value,
+                    
+                    // Environment bloom
+                    environment_bloom_strength: bloomControls.environment.find(c => c.name === 'envBloomStrength')?.value,
+                    environment_bloom_radius: bloomControls.environment.find(c => c.name === 'envBloomRadius')?.value,
+                    environment_bloom_threshold: bloomControls.environment.find(c => c.name === 'envBloomThreshold')?.value
+                },
+                fisheye: {
+                    enabled: fisheyeEnabled.value,
+                    strength: fisheyeControls.properties.find(c => c.name === 'fisheyeStrength')?.value,
+                    radius: fisheyeControls.properties.find(c => c.name === 'fisheyeRadius')?.value,
+                    focus_x: fisheyeControls.focus.find(c => c.name === 'fisheyeFocusX')?.value,
+                    focus_y: fisheyeControls.focus.find(c => c.name === 'fisheyeFocusY')?.value,
+                    focus_z: fisheyeControls.focus.find(c => c.name === 'fisheyeFocusZ')?.value
                 }
-            } else {
-                console.warn('WebXR not supported in this browser');
-                xrSupported.value = false;
-            }
-        };
+            };
 
-        const toggleXR = () => {
-            xrActive.value = !xrActive.value;
-            emit('control-change', { 
-                name: 'xrEnabled', 
-                value: { 
-                    active: xrActive.value, 
-                    mode: xrMode.value 
-                }
+            // Send settings to backend through websocket
+            props.websocketService.send({
+                type: 'updateSettings',
+                settings
             });
         };
-
-        const changeXRMode = () => {
-            emit('control-change', { 
-                name: 'xrEnabled', 
-                value: { 
-                    active: xrActive.value, 
-                    mode: xrMode.value 
-                }
-            });
-        };
-
-        // Lifecycle hooks
-        onMounted(() => {
-            console.log('ControlPanel mounted');
-            // Force visibility after mount
-            const panel = document.getElementById('control-panel');
-            if (panel) {
-                panel.style.display = 'block';
-                panel.style.visibility = 'visible';
-            }
-
-            // Check XR support
-            checkXRSupport();
-
-            // Listen for XR session state changes
-            window.addEventListener('xrsessionstart', () => {
-                xrActive.value = true;
-            });
-
-            window.addEventListener('xrsessionend', () => {
-                xrActive.value = false;
-            });
-        });
-
-        onBeforeUnmount(() => {
-            window.removeEventListener('xrsessionstart', () => {
-                xrActive.value = true;
-            });
-            window.removeEventListener('xrsessionend', () => {
-                xrActive.value = false;
-            });
-        });
 
         // Return all reactive state and methods
         return {
             isHidden,
             collapsedGroups,
-            chatInput,
-            chatMessages,
-            audioInitialized,
-            fisheyeEnabled,
-            fisheyeStrength,
-            fisheyeRadius,
-            fisheyeFocusPoint,
-            colorControls,
-            sizeOpacityControls,
+            nodeAppearanceControls,
+            edgeAppearanceControls,
             bloomControls,
-            forceDirectedControls,
-            additionalControls,
+            physicsControls,
+            fisheyeEnabled,
+            fisheyeControls,
+            environmentControls,
             simulationMode,
-            damping,
-            xrActive,
-            xrSupported,
-            xrMode,
             togglePanel,
             toggleGroup,
             emitChange,
-            initializeAudio,
-            sendMessage,
-            setSimulationMode,
-            toggleFullscreen,
-            enableSpacemouse,
-            resetControls,
-            toggleXR,
-            changeXRMode
+            saveSettings
         };
     }
 });
 </script>
 
 <template>
-    <div id="control-panel" :class="{ hidden: isHidden }" style="display: block !important;">
-        <button @click="togglePanel" class="toggle-button" style="display: block !important;">
+    <div id="control-panel" :class="{ hidden: isHidden }">
+        <button @click="togglePanel" class="toggle-button">
             {{ isHidden ? '>' : '<' }}
         </button>
         <div class="panel-content" v-show="!isHidden">
-            <!-- Chat Interface -->
+            <!-- Node Appearance -->
             <div class="control-group">
-                <div class="group-header" @click="toggleGroup('chat')">
-                    <h3>Chat Interface</h3>
-                    <span class="collapse-icon">{{ collapsedGroups.chat ? '▼' : '▲' }}</span>
+                <div class="group-header" @click="toggleGroup('nodeAppearance')">
+                    <h3>Node Appearance</h3>
+                    <span class="collapse-icon">{{ collapsedGroups.nodeAppearance ? '▼' : '▲' }}</span>
                 </div>
-                <div class="group-content" v-show="!collapsedGroups.chat">
-                    <div v-if="!audioInitialized" class="audio-init-warning">
-                        <p>Audio playback requires initialization</p>
-                        <button @click="initializeAudio" class="audio-init-button">
-                            Enable Audio
-                        </button>
-                    </div>
-                    <div class="chat-messages">
-                        <div v-for="(message, index) in chatMessages" :key="index" class="message user-message">
-                            <div class="message-header">
-                                <span class="message-time">{{ message.timestamp }}</span>
-                            </div>
-                            <div class="message-content">
-                                {{ message.message }}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="chat-input">
-                        <input 
-                            v-model="chatInput" 
-                            @keyup.enter="sendMessage" 
-                            placeholder="Type your message..."
-                            :disabled="!audioInitialized"
-                        >
-                        <button 
-                            @click="sendMessage"
-                            :disabled="!audioInitialized"
-                            :class="{ 'disabled': !audioInitialized }"
-                        >
-                            Send
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Fisheye Distortion Controls -->
-            <div class="control-group">
-                <div class="group-header" @click="toggleGroup('fisheye')">
-                    <h3>Fisheye Distortion</h3>
-                    <span class="collapse-icon">{{ collapsedGroups.fisheye ? '▼' : '▲' }}</span>
-                </div>
-                <div class="group-content" v-show="!collapsedGroups.fisheye">
-                    <div class="control-item">
-                        <label>Enable Fisheye</label>
-                        <div>
-                            <label>
-                                <input 
-                                    type="radio" 
-                                    :value="true"
-                                    v-model="fisheyeEnabled"
-                                    @change="emitChange('fisheyeEnabled', true)"
-                                >
-                                Enable
-                            </label>
-                            <label>
-                                <input 
-                                    type="radio" 
-                                    :value="false"
-                                    v-model="fisheyeEnabled"
-                                    @change="emitChange('fisheyeEnabled', false)"
-                                >
-                                Disable
-                            </label>
-                        </div>
-                    </div>
-                    <div class="control-item">
-                        <label>Fisheye Strength</label>
-                        <input
-                            type="range"
-                            v-model.number="fisheyeStrength"
-                            :min="0"
-                            :max="1"
-                            :step="0.01"
-                            @input="emitChange('fisheyeStrength', fisheyeStrength)"
-                        >
-                        <span class="range-value">{{ fisheyeStrength }}</span>
-                    </div>
-                    <div class="control-item">
-                        <label>Fisheye Radius</label>
-                        <input
-                            type="range"
-                            v-model.number="fisheyeRadius"
-                            :min="10"
-                            :max="200"
-                            :step="1"
-                            @input="emitChange('fisheyeRadius', fisheyeRadius)"
-                        >
-                        <span class="range-value">{{ fisheyeRadius }}</span>
-                    </div>
-                    <!-- Focus Point Controls -->
-                    <div v-for="(axis, index) in ['X', 'Y', 'Z']" :key="axis" class="control-item">
-                        <label>Focus Point {{ axis }}</label>
-                        <input
-                            type="range"
-                            v-model.number="fisheyeFocusPoint[index]"
-                            :min="-100"
-                            :max="100"
-                            :step="1"
-                            @input="emitChange('fisheyeFocusPoint', fisheyeFocusPoint)"
-                        >
-                        <span class="range-value">{{ fisheyeFocusPoint[index] }}</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Color Controls -->
-            <div class="control-group">
-                <div class="group-header" @click="toggleGroup('colors')">
-                    <h3>Colors</h3>
-                    <span class="collapse-icon">{{ collapsedGroups.colors ? '▼' : '▲' }}</span>
-                </div>
-                <div class="group-content" v-show="!collapsedGroups.colors">
-                    <div v-for="control in colorControls" :key="control.name" class="control-item">
+                <div class="group-content" v-show="!collapsedGroups.nodeAppearance">
+                    <h4>Colors</h4>
+                    <div v-for="control in nodeAppearanceControls.colors" :key="control.name" class="control-item">
                         <label>{{ control.label }}</label>
                         <input
                             type="color"
@@ -417,17 +279,37 @@ export default defineComponent({
                             @input="emitChange(control.name, control.value)"
                         >
                     </div>
-                </div>
-            </div>
 
-            <!-- Size and Opacity Controls -->
-            <div class="control-group">
-                <div class="group-header" @click="toggleGroup('sizeOpacity')">
-                    <h3>Size and Opacity</h3>
-                    <span class="collapse-icon">{{ collapsedGroups.sizeOpacity ? '▼' : '▲' }}</span>
-                </div>
-                <div class="group-content" v-show="!collapsedGroups.sizeOpacity">
-                    <div v-for="control in sizeOpacityControls" :key="control.name" class="control-item">
+                    <h4>Size</h4>
+                    <div v-for="control in nodeAppearanceControls.size" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <input
+                            type="range"
+                            v-model.number="control.value"
+                            :min="control.min"
+                            :max="control.max"
+                            :step="control.step"
+                            @input="emitChange(control.name, control.value)"
+                        >
+                        <span class="range-value">{{ control.value }}</span>
+                    </div>
+
+                    <h4>Material</h4>
+                    <div v-for="control in nodeAppearanceControls.material" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <input
+                            type="range"
+                            v-model.number="control.value"
+                            :min="control.min"
+                            :max="control.max"
+                            :step="control.step"
+                            @input="emitChange(control.name, control.value)"
+                        >
+                        <span class="range-value">{{ control.value }}</span>
+                    </div>
+
+                    <h4>Emissive</h4>
+                    <div v-for="control in nodeAppearanceControls.emissive" :key="control.name" class="control-item">
                         <label>{{ control.label }}</label>
                         <input
                             type="range"
@@ -442,14 +324,76 @@ export default defineComponent({
                 </div>
             </div>
 
-            <!-- Bloom Effect Controls -->
+            <!-- Edge Appearance -->
+            <div class="control-group">
+                <div class="group-header" @click="toggleGroup('edgeAppearance')">
+                    <h3>Edge Appearance</h3>
+                    <span class="collapse-icon">{{ collapsedGroups.edgeAppearance ? '▼' : '▲' }}</span>
+                </div>
+                <div class="group-content" v-show="!collapsedGroups.edgeAppearance">
+                    <h4>Colors</h4>
+                    <div v-for="control in edgeAppearanceControls.colors" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <input
+                            type="color"
+                            v-model="control.value"
+                            @input="emitChange(control.name, control.value)"
+                        >
+                    </div>
+
+                    <h4>Properties</h4>
+                    <div v-for="control in edgeAppearanceControls.properties" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <input
+                            type="range"
+                            v-model.number="control.value"
+                            :min="control.min"
+                            :max="control.max"
+                            :step="control.step"
+                            @input="emitChange(control.name, control.value)"
+                        >
+                        <span class="range-value">{{ control.value }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bloom Effects -->
             <div class="control-group">
                 <div class="group-header" @click="toggleGroup('bloom')">
                     <h3>Bloom Effects</h3>
                     <span class="collapse-icon">{{ collapsedGroups.bloom ? '▼' : '▲' }}</span>
                 </div>
                 <div class="group-content" v-show="!collapsedGroups.bloom">
-                    <div v-for="control in bloomControls" :key="control.name" class="control-item">
+                    <h4>Node Bloom</h4>
+                    <div v-for="control in bloomControls.node" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <input
+                            type="range"
+                            v-model.number="control.value"
+                            :min="control.min"
+                            :max="control.max"
+                            :step="control.step"
+                            @input="emitChange(control.name, control.value)"
+                        >
+                        <span class="range-value">{{ control.value }}</span>
+                    </div>
+
+                    <h4>Edge Bloom</h4>
+                    <div v-for="control in bloomControls.edge" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <input
+                            type="range"
+                            v-model.number="control.value"
+                            :min="control.min"
+                            :max="control.max"
+                            :step="control.step"
+                            @input="emitChange(control.name, control.value)"
+                        >
+                        <span class="range-value">{{ control.value }}</span>
+                    </div>
+
+                    <h4>Environment Bloom</h4>
+                    <div v-for="control in bloomControls.environment" :key="control.name" class="control-item">
                         <label>{{ control.label }}</label>
                         <input
                             type="range"
@@ -464,22 +408,24 @@ export default defineComponent({
                 </div>
             </div>
 
-            <!-- Force-Directed Graph Controls -->
+            <!-- Physics Simulation -->
             <div class="control-group">
-                <div class="group-header" @click="toggleGroup('forceDirected')">
-                    <h3>Force-Directed Graph</h3>
-                    <span class="collapse-icon">{{ collapsedGroups.forceDirected ? '▼' : '▲' }}</span>
+                <div class="group-header" @click="toggleGroup('physics')">
+                    <h3>Physics Simulation</h3>
+                    <span class="collapse-icon">{{ collapsedGroups.physics ? '▼' : '▲' }}</span>
                 </div>
-                <div class="group-content" v-show="!collapsedGroups.forceDirected">
+                <div class="group-content" v-show="!collapsedGroups.physics">
                     <div class="control-item">
                         <label>Simulation Mode</label>
-                        <select v-model="simulationMode" @change="setSimulationMode">
+                        <select v-model="simulationMode" @change="emitChange('simulationMode', simulationMode)">
                             <option value="remote">Remote (GPU Server)</option>
                             <option value="gpu">Local GPU</option>
                             <option value="local">Local CPU</option>
                         </select>
                     </div>
-                    <div v-for="control in forceDirectedControls" :key="control.name" class="control-item">
+
+                    <h4>Force Parameters</h4>
+                    <div v-for="control in physicsControls.simulation" :key="control.name" class="control-item">
                         <label>{{ control.label }}</label>
                         <input
                             type="range"
@@ -491,51 +437,58 @@ export default defineComponent({
                         >
                         <span class="range-value">{{ control.value }}</span>
                     </div>
-                    <div class="control-item">
-                        <label>Damping</label>
+
+                    <h4>Geometry</h4>
+                    <div v-for="control in physicsControls.geometry" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
                         <input
                             type="range"
-                            v-model.number="damping"
-                            :min="0.1"
-                            :max="0.9"
-                            :step="0.1"
-                            @input="emitChange('force_directed_damping', damping)"
+                            v-model.number="control.value"
+                            :min="control.min"
+                            :max="control.max"
+                            :step="control.step"
+                            @input="emitChange(control.name, control.value)"
                         >
-                        <span class="range-value">{{ damping }}</span>
+                        <span class="range-value">{{ control.value }}</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Additional Controls -->
+            <!-- Fisheye Controls -->
             <div class="control-group">
-                <div class="group-header" @click="toggleGroup('additional')">
-                    <h3>Additional Settings</h3>
-                    <span class="collapse-icon">{{ collapsedGroups.additional ? '▼' : '▲' }}</span>
+                <div class="group-header" @click="toggleGroup('fisheye')">
+                    <h3>Fisheye Effect</h3>
+                    <span class="collapse-icon">{{ collapsedGroups.fisheye ? '▼' : '▲' }}</span>
                 </div>
-                <div class="group-content" v-show="!collapsedGroups.additional">
-                    <!-- XR Controls -->
-                    <div class="control-item xr-controls" v-if="xrSupported">
-                        <label>XR Mode</label>
-                        <div class="xr-mode-selector">
-                            <select v-model="xrMode" @change="changeXRMode" :disabled="xrActive">
-                                <option value="vr">Virtual Reality</option>
-                                <option value="ar">Augmented Reality</option>
-                            </select>
+                <div class="group-content" v-show="!collapsedGroups.fisheye">
+                    <div class="control-item">
+                        <label>Enable Fisheye</label>
+                        <div class="toggle-switch">
+                            <input
+                                type="checkbox"
+                                v-model="fisheyeEnabled"
+                                @change="emitChange('fisheyeEnabled', fisheyeEnabled)"
+                            >
+                            <span class="toggle-label">{{ fisheyeEnabled ? 'Enabled' : 'Disabled' }}</span>
                         </div>
-                        <button 
-                            @click="toggleXR" 
-                            class="xr-toggle-button"
-                            :class="{ active: xrActive }"
-                        >
-                            {{ xrActive ? 'Exit XR' : 'Enter XR' }}
-                        </button>
-                    </div>
-                    <div v-else class="xr-unsupported">
-                        WebXR not supported in this browser
                     </div>
 
-                    <!-- Additional Controls -->
-                    <div v-for="control in additionalControls" :key="control.name" class="control-item">
+                    <h4>Properties</h4>
+                    <div v-for="control in fisheyeControls.properties" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <input
+                            type="range"
+                            v-model.number="control.value"
+                            :min="control.min"
+                            :max="control.max"
+                            :step="control.step"
+                            @input="emitChange(control.name, control.value)"
+                        >
+                        <span class="range-value">{{ control.value }}</span>
+                    </div>
+
+                    <h4>Focus Point</h4>
+                    <div v-for="control in fisheyeControls.focus" :key="control.name" class="control-item">
                         <label>{{ control.label }}</label>
                         <input
                             type="range"
@@ -550,13 +503,56 @@ export default defineComponent({
                 </div>
             </div>
 
-            <!-- Additional Buttons -->
-            <div class="button-group">
-                <button @click="toggleFullscreen" class="control-button">Toggle Fullscreen</button>
-                <button @click="enableSpacemouse" class="control-button">Enable Spacemouse</button>
+            <!-- Environment Settings -->
+            <div class="control-group">
+                <div class="group-header" @click="toggleGroup('environment')">
+                    <h3>Environment</h3>
+                    <span class="collapse-icon">{{ collapsedGroups.environment ? '▼' : '▲' }}</span>
+                </div>
+                <div class="group-content" v-show="!collapsedGroups.environment">
+                    <h4>Hologram</h4>
+                    <div v-for="control in environmentControls.hologram" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <template v-if="control.name === 'hologramColor'">
+                            <input
+                                type="color"
+                                v-model="control.value"
+                                @input="emitChange(control.name, control.value)"
+                            >
+                        </template>
+                        <template v-else>
+                            <input
+                                type="range"
+                                v-model.number="control.value"
+                                :min="control.min"
+                                :max="control.max"
+                                :step="control.step"
+                                @input="emitChange(control.name, control.value)"
+                            >
+                            <span class="range-value">{{ control.value }}</span>
+                        </template>
+                    </div>
+
+                    <h4>Fog</h4>
+                    <div v-for="control in environmentControls.fog" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <input
+                            type="range"
+                            v-model.number="control.value"
+                            :min="control.min"
+                            :max="control.max"
+                            :step="control.step"
+                            @input="emitChange(control.name, control.value)"
+                        >
+                        <span class="range-value">{{ control.value }}</span>
+                    </div>
+                </div>
             </div>
 
-            <button @click="resetControls" class="reset-button">Reset to Defaults</button>
+            <!-- Settings Actions -->
+            <div class="settings-actions">
+                <button @click="saveSettings" class="save-button">Save Settings to File</button>
+            </div>
         </div>
     </div>
 </template>
@@ -708,133 +704,22 @@ export default defineComponent({
     border-radius: 4px;
 }
 
-.message-header {
-    font-size: 0.8em;
-    color: #aaa;
-    margin-bottom: 4px;
-}
-
-.chat-input {
-    display: flex;
-    gap: 10px;
-}
-
-.chat-input input {
-    flex: 1;
-    padding: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    color: white;
-}
-
-.chat-input button {
-    padding: 8px 15px;
-    background: #2196f3;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.chat-input button:hover {
-    background: #1976d2;
-}
-
-.chat-input button.disabled {
-    background: #666;
-    cursor: not-allowed;
-}
-
-.audio-init-warning {
-    padding: 10px;
-    background: rgba(255, 193, 7, 0.2);
-    border: 1px solid rgba(255, 193, 7, 0.5);
-    border-radius: 4px;
-    margin-bottom: 10px;
-}
-
-.audio-init-button {
+.save-button {
     width: 100%;
-    padding: 8px;
-    background: #ffc107;
-    color: black;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    margin-top: 5px;
-}
-
-.audio-init-button:hover {
-    background: #ffb300;
-}
-
-.xr-controls {
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    padding: 15px;
-    border-radius: 5px;
-    margin-bottom: 20px;
-    background: rgba(0, 0, 0, 0.3);
-}
-
-.xr-mode-selector {
-    margin-bottom: 10px;
-}
-
-.xr-mode-selector select {
-    width: 100%;
-    padding: 8px;
-    background: #333;
-    color: white;
-    border: 1px solid #444;
-    border-radius: 4px;
-}
-
-.xr-toggle-button {
-    width: 100%;
-    padding: 10px;
-    background: #007bff;
+    padding: 12px;
+    background-color: #4CAF50;
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-weight: bold;
+    font-size: 1.1em;
     transition: background-color 0.2s;
 }
 
-.xr-toggle-button:hover {
-    background: #0056b3;
+.save-button:hover {
+    background-color: #45a049;
 }
 
-.xr-toggle-button.active {
-    background: #dc3545;
-}
-
-.xr-toggle-button.active:hover {
-    background: #c82333;
-}
-
-.xr-unsupported {
-    padding: 10px;
-    background: rgba(220, 53, 69, 0.2);
-    border: 1px solid rgba(220, 53, 69, 0.5);
-    color: #dc3545;
-    border-radius: 4px;
-    text-align: center;
-    margin-bottom: 20px;
-}
-
-.xr-mode-selector select:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-/* Collapse icon animation */
-.collapse-icon {
-    transition: transform 0.3s ease;
-}
-
-[v-show="false"] + .collapse-icon {
-    transform: rotate(180deg);
-}
+/* Previous styles remain the same */
 </style>

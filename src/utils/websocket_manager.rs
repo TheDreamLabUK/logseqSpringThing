@@ -95,6 +95,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                         ClientMessage::UpdateFisheyeSettings { enabled, strength, focus_point, radius } => {
                             WebSocketSessionHandler::handle_fisheye_settings(self, ctx, enabled, strength, focus_point, radius);
                         },
+                        ClientMessage::UpdateSettings { settings } => {
+                            MessageHandler::handle_settings_update(self, settings, ctx);
+                        },
                         _ => {
                             error!("Unhandled client message type");
                             let error_message = json!({
