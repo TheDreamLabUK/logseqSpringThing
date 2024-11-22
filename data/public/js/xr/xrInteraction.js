@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
+import { visualizationSettings } from '../services/visualizationSettings.js';
 
 // Create a web panel for displaying node content
+// Using standard dimensions that work well in VR space (in meters)
 const webPanelGeometry = new THREE.PlaneGeometry(2, 1.5); // 2 meters wide, 1.5 meters tall
 let webPanel = null;
 let webPanelTexture = null;
@@ -303,13 +305,14 @@ function setupHands(scene, renderer, modelFactory) {
  * Creates visual rays for controllers
  */
 function createControllerRays(controllers) {
+    const rayLength = 5.0; // 5 meter ray length
     return controllers.map(() => {
         const geometry = new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(0, 0, 0),
-            new THREE.Vector3(0, 0, -5)  // 5 meter ray
+            new THREE.Vector3(0, 0, -rayLength)
         ]);
         const material = new THREE.LineBasicMaterial({
-            color: 0x00ff00,
+            color: visualizationSettings.getSettings().nodeColorDefault,
             transparent: true,
             opacity: 0.5
         });
@@ -458,6 +461,7 @@ export class XRLabelManager {
         this.camera = camera;
         this.labels = new Map();
         this.labelTimeout = 2000;  // Labels disappear after 2 seconds
+        this.labelSettings = visualizationSettings.getLabelSettings();
     }
 
     showLabel(text, position, options = {}) {
@@ -466,22 +470,23 @@ export class XRLabelManager {
         // Remove existing label if present
         this.hideLabel(text);
 
-        // Create label sprite
+        // Create canvas for text rendering
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
         if (!context) return;
         
-        // Configure canvas
+        // Configure canvas using settings
+        const fontSize = this.labelSettings.xrFontSize;
         canvas.width = 256;
         canvas.height = 128;
         
         // Draw background
-        context.fillStyle = options.backgroundColor || 'rgba(0, 0, 0, 0.8)';
+        context.fillStyle = this.labelSettings.backgroundColor;
         context.fillRect(0, 0, canvas.width, canvas.height);
         
         // Draw text
-        context.font = options.font || '24px Arial';
-        context.fillStyle = options.color || '#ffffff';
+        context.font = `${fontSize}px ${this.labelSettings.fontFamily}`;
+        context.fillStyle = this.labelSettings.textColor;
         context.textAlign = 'center';
         context.textBaseline = 'middle';
         context.fillText(text, canvas.width / 2, canvas.height / 2);
@@ -495,10 +500,19 @@ export class XRLabelManager {
         });
         const sprite = new THREE.Sprite(spriteMaterial);
         
-        // Position and scale sprite
+        // Position and scale sprite using meter-based settings
         sprite.position.copy(position);
-        sprite.position.y += 0.1;  // Offset slightly above node
-        sprite.scale.set(0.2, 0.1, 1);
+        // Use verticalOffset from settings (in meters)
+        sprite.position.y += this.labelSettings.verticalOffset;
+        
+        // Scale sprite based on settings
+        // Convert the canvas dimensions to meters using the verticalOffset as a scale reference
+        const meterScale = this.labelSettings.verticalOffset * 0.5; // Scale factor for readable size in VR
+        sprite.scale.set(
+            (canvas.width / canvas.height) * meterScale, // Maintain aspect ratio
+            meterScale,
+            1
+        );
 
         this.scene.add(sprite);
         this.labels.set(text, sprite);

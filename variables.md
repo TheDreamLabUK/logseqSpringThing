@@ -61,7 +61,8 @@
 | node_color | Settings::new() in config.rs | updateFeature in NodeManager |
 | edge_color | Settings::new() in config.rs | updateFeature in NodeManager |
 | hologram_color | Settings::new() in config.rs | N/A |
-| node_size_scaling_factor | Settings::new() in config.rs | updateFeature in NodeManager |
+| min_node_size | Settings::new() in config.rs | updateFeature in NodeManager |
+| max_node_size | Settings::new() in config.rs | updateFeature in NodeManager |
 | hologram_scale | Settings::new() in config.rs | N/A |
 | hologram_opacity | Settings::new() in config.rs | N/A |
 | edge_opacity | Settings::new() in config.rs | updateFeature in NodeManager |
@@ -87,6 +88,10 @@
 | fisheye_focus_x | Settings::new() in config.rs | updateFisheyeParams in GPUCompute |
 | fisheye_focus_y | Settings::new() in config.rs | updateFisheyeParams in GPUCompute |
 | fisheye_focus_z | Settings::new() in config.rs | updateFisheyeParams in GPUCompute |
+| tunnel_id | Settings::new() in config.rs | N/A |
+
 The variables in the .env_template file are used to override the default values in the Settings struct, which is initialized in the Settings::new() function in the config.rs file. The variables in the settings.toml file are also used to initialize the Settings struct.
+
 The variables in the JavaScript files (app.js, ControlPanel.vue, chatManager.vue, core.js, etc.) are initialized and updated within the corresponding components and services.
+
 The variables in the Rust files (main.rs, app_state.rs, config.rs, handlers/*.rs, services/*.rs, utils/*.rs) are initialized and updated within the corresponding modules and functions.

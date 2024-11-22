@@ -13,7 +13,7 @@ embedding the topic in Logseq double square brackets once in the returned text.
 """
 
 [network]
-domain = "visionflow.info"
+domain = "localhost"  # Default domain, override in .env for production
 port = 3000
 bind_address = "0.0.0.0"  # should bind to localhost for security
 enable_tls = true
@@ -23,6 +23,7 @@ max_request_size = 10485760  # 10MB in bytes
 enable_rate_limiting = true
 rate_limit_requests = 100
 rate_limit_window = 60
+tunnel_id = ""  # Cloudflare tunnel ID, set in .env for production
 
 [security]
 enable_cors = false
@@ -39,37 +40,36 @@ enable_audit_logging = true
 audit_log_path = "/app/logs/audit.log"
 
 [github]
-github_access_token = "default_github_token"
-github_owner = "default_owner"
-github_repo = "default_repo"
-github_directory = "default_directory"
-github_api_version = "2022-11-28"
-github_rate_limit_enabled = true
+access_token = "default_github_token"
+owner = "default_owner"
+repo = "default_repo"
+directory = "default_directory"
+api_version = "2022-11-28"
+rate_limit_enabled = true
 
 [ragflow]
-ragflow_api_key = "default_ragflow_key"
-ragflow_api_base_url = "http://192.168.0.51/v1/"
-ragflow_timeout = 30
-ragflow_max_retries = 3
+api_key = "default_ragflow_key"
+base_url = "http://192.168.0.51/v1/"
+timeout = 30
+max_retries = 3
 
 [perplexity]
-perplexity_api_key = "default_perplexity_key"
-perplexity_model = "llama-3.1-sonar-small-128k-online"
-perplexity_api_url = "https://api.perplexity.ai/chat/completions"
-perplexity_max_tokens = 4096
-perplexity_temperature = 0.5
-perplexity_top_p = 0.9
-perplexity_presence_penalty = 0.0
-perplexity_frequency_penalty = 1.0
-perplexity_timeout = 30
-perplexity_rate_limit = 100
+api_key = "default_perplexity_key"
+model = "llama-3.1-sonar-small-128k-online"
+api_url = "https://api.perplexity.ai/chat/completions"
+max_tokens = 4096
+temperature = 0.5
+top_p = 0.9
+presence_penalty = 0.0
+frequency_penalty = 1.0
+timeout = 30
+rate_limit = 100
 
 [openai]
-openai_api_key = "default_openai_key"
-openai_base_url = "wss://api.openai.com/v1/realtime"
-openai_timeout = 30
-openai_rate_limit = 100
-
+api_key = "default_openai_key"
+base_url = "wss://api.openai.com/v1/realtime"
+timeout = 30
+rate_limit = 100
 
 [default]
 max_concurrent_requests = 5
@@ -78,54 +78,103 @@ retry_delay = 5
 api_client_timeout = 30
 max_payload_size = 5242880  # 5MB in bytes
 enable_request_logging = false
-
-[monitoring]
 enable_metrics = true
 metrics_port = 9090
 log_level = "info"
 log_format = "json"
 
 [visualization]
-node_color = "0x1A0B31"
-edge_color = "0xff0000"
-hologram_color = "0xFFD700"
-node_size_scaling_factor = 1
-hologram_scale = 5
-hologram_opacity = 0.1
-edge_opacity = 0.3
-label_font_size = 36
-fog_density = 0.002
+# Colors in hex format - warm golden palette
+node_color = "0xFFA500"             # Base orange
+edge_color = "0xFFD700"             # Golden
+hologram_color = "0xFFC125"         # Deep golden yellow
+
+# Node age-based colors - warm palette
+node_color_new = "0xFFD700"         # Bright gold for very recent files
+node_color_recent = "0xFFA500"      # Orange for recent files
+node_color_medium = "0xDAA520"      # Goldenrod for medium-age files
+node_color_old = "0xCD853F"         # Peru/bronze for old files
+node_age_max_days = 30              # Maximum age in days for color calculation
+
+# Node type colors
+node_color_core = "0xFFB90F"        # Dark golden for core nodes
+node_color_secondary = "0xFFC125"   # Golden yellow for secondary nodes
+node_color_default = "0xFFD700"     # Gold for default nodes
+
+# Physical dimensions in meters
+min_node_size = 0.15                # 15cm minimum node size
+max_node_size = 0.4                 # 40cm maximum node size
+hologram_scale = 6.0                # Increased for better visibility
+hologram_opacity = 0.15             # Slightly increased for better visibility
+edge_opacity = 0.4                  # Increased for better visibility
+label_font_size = 42                # Increased for better readability
+fog_density = 0.001                 # Reduced for clearer distant nodes
+
+# Layout dimensions in meters
+target_radius = 250.0               # Increased target radius
+natural_length = 120.0              # Increased natural length
+boundary_limit = 600.0              # Increased boundary
+
+# Material properties - enhanced metallic look
+node_material_metalness = 0.7       # Increased for more metallic appearance
+node_material_roughness = 0.1       # Reduced for more shine
+node_material_clearcoat = 0.8       # Increased for more glossiness
+node_material_clearcoat_roughness = 0.1
+node_material_opacity = 0.95
+node_emissive_min_intensity = 0.4   # Increased base glow
+node_emissive_max_intensity = 1.2   # Increased maximum glow
+
+# Label properties
+label_font_family = "Arial"
+label_padding = 24
+label_vertical_offset = 2.5
+label_close_offset = 0.25
+label_background_color = "rgba(0, 0, 0, 0.85)"
+label_text_color = "white"
+label_info_text_color = "lightgray"
+label_xr_font_size = 28
+
+# Edge properties
+edge_weight_normalization = 12.0    # Increased for better visibility
+edge_min_width = 1.5               # Increased minimum width
+edge_max_width = 6.0               # Increased maximum width
+
+# Geometry properties
+geometry_min_segments = 24          # Increased for smoother curves
+geometry_max_segments = 48          # Increased for smoother curves
+geometry_segment_per_hyperlink = 0.6
+
+# Interaction properties
+click_emissive_boost = 2.5         # Increased feedback intensity
+click_feedback_duration = 250       # Longer feedback duration
 
 # Physics simulation parameters
-force_directed_iterations = 250
-# Spring force (0.001-1.0)
-force_directed_spring = 0.01
-# Required for backend compatibility
-force_directed_repulsion = 1000.0
-force_directed_attraction = 0.01
-# Damping (0.5-0.95)
-force_directed_damping = 0.8
+force_directed_iterations = 300     # More iterations for better layout
+force_directed_spring = 0.015      # Adjusted for better spacing
+force_directed_repulsion = 1200.0  # Increased repulsion
+force_directed_attraction = 0.012
+force_directed_damping = 0.85      # Adjusted damping
 
 [bloom]
-# Bloom settings for nodes
-node_bloom_strength = 0.1
-node_bloom_radius = 0.1
-node_bloom_threshold = 0.0
+# Enhanced bloom settings for ethereal glow
+node_bloom_strength = 0.8          # Significantly increased
+node_bloom_radius = 0.3           # Increased radius
+node_bloom_threshold = 0.2        # Adjusted threshold
 
-# Bloom settings for edges
-edge_bloom_strength = 0.2
-edge_bloom_radius = 0.3
-edge_bloom_threshold = 0.0
+# Edge bloom for golden trails
+edge_bloom_strength = 0.6         # Increased
+edge_bloom_radius = 0.4          # Increased
+edge_bloom_threshold = 0.1       # Adjusted
 
-# Bloom settings for environmental elements
-environment_bloom_strength = 0.5
-environment_bloom_radius = 0.1
-environment_bloom_threshold = 0.0
+# Environmental bloom for ambient glow
+environment_bloom_strength = 0.7   # Increased
+environment_bloom_radius = 0.3    # Increased
+environment_bloom_threshold = 0.1  # Adjusted
 
 [fisheye]
-fisheye_enabled = false
-fisheye_strength = 0.5
-fisheye_radius = 100.0
-fisheye_focus_x = 0.0
-fisheye_focus_y = 0.0
-fisheye_focus_z = 0.0
+enabled = false
+strength = 0.5
+radius = 100.0
+focus_x = 0.0
+focus_y = 0.0
+focus_z = 0.0
