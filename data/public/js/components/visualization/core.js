@@ -187,6 +187,8 @@ export class WebXRVisualization {
             return;
         }
 
+        // Set pointer-events on the renderer's canvas to ensure it doesn't block Vue components
+        this.renderer.domElement.style.pointerEvents = 'none';
         container.appendChild(this.renderer.domElement);
 
         // Initialize XR
@@ -209,10 +211,31 @@ export class WebXRVisualization {
         this.xrHands = hands;
         this.xrLabelManager = xrLabelManager;
 
-        // Initialize non-XR controls
-        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+        // Create a separate div for OrbitControls to prevent interference with Vue components
+        const controlsContainer = document.createElement('div');
+        controlsContainer.style.position = 'fixed';
+        controlsContainer.style.top = '0';
+        controlsContainer.style.left = '0';
+        controlsContainer.style.width = '100%';
+        controlsContainer.style.height = '100%';
+        controlsContainer.style.zIndex = '1';
+        controlsContainer.style.pointerEvents = 'none';
+        document.body.appendChild(controlsContainer);
+
+        // Initialize non-XR controls with the separate container
+        this.controls = new OrbitControls(this.camera, controlsContainer);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
+
+        // Enable pointer events only when interacting with the scene
+        container.addEventListener('mouseenter', () => {
+            this.renderer.domElement.style.pointerEvents = 'auto';
+            controlsContainer.style.pointerEvents = 'auto';
+        });
+        container.addEventListener('mouseleave', () => {
+            this.renderer.domElement.style.pointerEvents = 'none';
+            controlsContainer.style.pointerEvents = 'none';
+        });
 
         // Disable OrbitControls when in XR
         this.renderer.xr.addEventListener('sessionstart', () => {
@@ -352,15 +375,21 @@ export class WebXRVisualization {
         }
 
         if (settings.physics) {
-            // Update physics settings
-            const physicsSettings = {
-                iterations: settings.physics.iterations,
-                spring_strength: settings.physics.spring,
-                repulsion_strength: settings.physics.repulsion,
-                attraction_strength: settings.physics.attraction,
-                damping: settings.physics.damping
+            // Update physics settings one by one
+            const physicsParamMap = {
+                iterations: 'forceDirectedIterations',
+                spring: 'forceDirectedSpring',
+                repulsion: 'forceDirectedRepulsion',
+                attraction: 'forceDirectedAttraction',
+                damping: 'forceDirectedDamping'
             };
-            this.layoutManager.updateFeature(physicsSettings);
+
+            // Update each physics parameter individually
+            Object.entries(settings.physics).forEach(([key, value]) => {
+                if (physicsParamMap[key]) {
+                    this.layoutManager.updateFeature(physicsParamMap[key], value);
+                }
+            });
         }
 
         if (settings.bloom) {

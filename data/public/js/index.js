@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('app element:', document.getElementById('app'));
     console.log('scene-container:', document.getElementById('scene-container'));
     console.log('connection-status:', document.getElementById('connection-status'));
-    
+
     try {
         console.log('Creating App instance');
         const app = new App();
