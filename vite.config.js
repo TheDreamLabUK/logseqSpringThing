@@ -33,7 +33,17 @@ export default defineConfig({
       },
       output: {
         manualChunks: {
-          'vendor-three': ['three'],
+          'vendor-three': [
+            'three',
+            'three/examples/jsm/controls/OrbitControls',
+            'three/examples/jsm/postprocessing/EffectComposer',
+            'three/examples/jsm/postprocessing/RenderPass',
+            'three/examples/jsm/postprocessing/UnrealBloomPass',
+            'three/examples/jsm/postprocessing/ShaderPass',
+            'three/examples/jsm/webxr/XRButton',
+            'three/examples/jsm/webxr/XRControllerModelFactory',
+            'three/examples/jsm/webxr/XRHandModelFactory'
+          ],
           'vendor-vue': ['vue'],
           'vendor-utils': ['pako']
         },
@@ -60,7 +70,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'data/public/js'),
-      'vue': 'vue/dist/vue.runtime.esm-bundler.js'  // Use runtime build
+      'vue': 'vue/dist/vue.runtime.esm-bundler.js',  // Use runtime build
+      'three/addons/': 'three/examples/jsm/'  // Map addons to examples/jsm
     },
     extensions: ['.js', '.json', '.vue']
   },
@@ -69,7 +80,19 @@ export default defineConfig({
     port: 3000
   },
   optimizeDeps: {
-    include: ['three', 'vue', 'pako'],
+    include: [
+      'three', 
+      'vue', 
+      'pako',
+      'three/examples/jsm/controls/OrbitControls',
+      'three/examples/jsm/postprocessing/EffectComposer',
+      'three/examples/jsm/postprocessing/RenderPass',
+      'three/examples/jsm/postprocessing/UnrealBloomPass',
+      'three/examples/jsm/postprocessing/ShaderPass',
+      'three/examples/jsm/webxr/XRButton',
+      'three/examples/jsm/webxr/XRControllerModelFactory',
+      'three/examples/jsm/webxr/XRHandModelFactory'
+    ],
     exclude: []
   }
 });

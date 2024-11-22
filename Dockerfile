@@ -51,7 +51,7 @@ RUN mkdir src && \
     echo "pub fn add(a: i32, b: i32) -> i32 { a + b }" > src/lib.rs && \
     cargo build --release && \
     rm src/*.rs && \
-    rm -f target/release/deps/webxr_graph* target/release/webxr-graph*
+    rm -f target/release/deps/webxr* target/release/webxr*
 
 # Stage 3: Rust Application Build
 FROM rust-deps-builder AS rust-builder
@@ -158,7 +158,7 @@ RUN mkdir -p /app/data/public/dist \
 COPY --from=python-builder --chown=appuser:appuser /app/venv /app/venv
 
 # Copy built artifacts
-COPY --from=rust-builder --chown=appuser:appuser /usr/src/app/target/release/webxr-graph /app/
+COPY --from=rust-builder --chown=appuser:appuser /usr/src/app/target/release/webxr /app/
 COPY --from=rust-builder --chown=appuser:appuser /usr/src/app/settings.toml /app/
 COPY --from=frontend-builder --chown=appuser:appuser /app/data/public/dist /app/data/public/dist
 
@@ -229,8 +229,8 @@ fi\n\
 log "nginx started successfully"\n\
 \n\
 # Start the Rust backend\n\
-log "Starting webxr-graph..."\n\
-exec /app/webxr-graph\n\
+log "Starting webxr..."\n\
+exec /app/webxr\n\
 ' > /app/start.sh && \
     chown appuser:appuser /app/start.sh && \
     chmod 755 /app/start.sh

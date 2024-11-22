@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { NodeManager } from './nodes.js';
 import { EffectsManager } from './effects.js';
 import { LayoutManager } from './layout.js';

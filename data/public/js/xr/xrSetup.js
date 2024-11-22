@@ -1,7 +1,7 @@
 // public/js/xr/xrSetup.js
 
 import * as THREE from 'three';
-import { XRButton } from 'three/addons/webxr/XRButton.js';
+import { XRButton } from 'three/examples/jsm/webxr/XRButton.js';
 
 // Movement speed constant
 const MOVEMENT_SPEED = 0.05;
