@@ -1,5 +1,5 @@
 [package]
-name = "webxr-graph"
+name = "webxr"
 version = "0.1.0"
 edition = "2021"
 
@@ -102,5 +102,5 @@ wiremock = "0.6"
 ignore = [
     "RUSTSEC-2024-0384",  # instant is unmaintained but used by test dependencies
     "RUSTSEC-2024-0320",  # yaml-rust is unmaintained but used by config
-    "RUSTSEC-2024-0336"   # rustls vulnerability in actix-tls - to be addressed later
+    "RUSTSEC-2024-0336"   # rustls vulnerability in actix-tls - acceptable risk for now
 ]

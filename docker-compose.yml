@@ -1,7 +1,7 @@
 name: logseq-xr
 
 services:
-  webxr-graph:
+  webxr:  # Changed from webxr-graph to match health check expectations
     build: .
     image: logseq-xr-image:latest
     container_name: logseq-xr-webxr
