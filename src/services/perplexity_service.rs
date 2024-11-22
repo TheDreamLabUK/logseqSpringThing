@@ -247,7 +247,7 @@ pub trait ApiClient: Send + Sync {
         &self,
         url: &str,
         body: &PerplexityRequest,
-        perplexity_api_key: &str,
+        api_key: &str,
     ) -> Result<String, PerplexityError>;
 }
 
@@ -269,12 +269,12 @@ impl ApiClient for ApiClientImpl {
         &self,
         url: &str,
         body: &PerplexityRequest,
-        perplexity_api_key: &str,
+        api_key: &str,
     ) -> Result<String, PerplexityError> {
         let response = self
             .client
             .post(url)
-            .header("Authorization", format!("Bearer {}", perplexity_api_key))
+            .header("Authorization", format!("Bearer {}", api_key))
             .json(body)
             .send()
             .await?
@@ -303,7 +303,7 @@ pub async fn call_perplexity_api(
     );
 
     let request = PerplexityRequest {
-        model: perplexity_settings.perplexity_model.clone(),
+        model: perplexity_settings.model.clone(),
         messages: vec![
             Message {
                 role: "system".to_string(),
@@ -317,17 +317,17 @@ pub async fn call_perplexity_api(
                 ),
             },
         ],
-        max_tokens: Some(perplexity_settings.perplexity_max_tokens),
-        temperature: Some(perplexity_settings.perplexity_temperature),
-        top_p: Some(perplexity_settings.perplexity_top_p),
+        max_tokens: Some(perplexity_settings.max_tokens),
+        temperature: Some(perplexity_settings.temperature),
+        top_p: Some(perplexity_settings.top_p),
         return_citations: Some(true),
         stream: Some(false),
-        presence_penalty: Some(perplexity_settings.perplexity_presence_penalty),
-        frequency_penalty: Some(perplexity_settings.perplexity_frequency_penalty),
+        presence_penalty: Some(perplexity_settings.presence_penalty),
+        frequency_penalty: Some(perplexity_settings.frequency_penalty),
     };
 
     for attempt in 1..=max_retries {
-        match api_client.post_json(&perplexity_settings.perplexity_api_url, &request, &perplexity_settings.perplexity_api_key).await {
+        match api_client.post_json(&perplexity_settings.api_url, &request, &perplexity_settings.api_key).await {
             Ok(response_text) => {
                 return parse_perplexity_response(&response_text);
             }
