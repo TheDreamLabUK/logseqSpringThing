@@ -12,7 +12,6 @@ pub async fn get_visualization_settings(
             "nodeColor": settings.visualization.node_color,
             "edgeColor": settings.visualization.edge_color,
             "hologramColor": settings.visualization.hologram_color,
-            "nodeSizeScalingFactor": settings.visualization.node_size_scaling_factor,
             "hologramScale": settings.visualization.hologram_scale,
             "hologramOpacity": settings.visualization.hologram_opacity,
             "edgeOpacity": settings.visualization.edge_opacity,
@@ -34,14 +33,14 @@ pub async fn get_visualization_settings(
             "environmentBloomThreshold": settings.bloom.environment_bloom_threshold,
         },
         "fisheye": {
-            "enabled": settings.fisheye.fisheye_enabled,
-            "strength": settings.fisheye.fisheye_strength,
+            "enabled": settings.fisheye.enabled,
+            "strength": settings.fisheye.strength,
             "focusPoint": [
-                settings.fisheye.fisheye_focus_x,
-                settings.fisheye.fisheye_focus_y,
-                settings.fisheye.fisheye_focus_z
+                settings.fisheye.focus_x,
+                settings.fisheye.focus_y,
+                settings.fisheye.focus_z
             ],
-            "radius": settings.fisheye.fisheye_radius,
+            "radius": settings.fisheye.radius,
         }
     });
 

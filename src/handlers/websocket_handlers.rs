@@ -472,114 +472,91 @@ impl WebSocketSessionHandler for WebSocketSession {
             let graph_data = state.graph_data.read().await;
             let settings = state.settings.read().await;
             
-            // Send full graph data and settings
-            let response = json!({
-                "type": "getInitialData",
-                "graph_data": &*graph_data,
-                "settings": {
-                    "visualization": {
-                        // Colors
-                        "nodeColor": format_color(&settings.visualization.node_color),
-                        "edgeColor": format_color(&settings.visualization.edge_color),
-                        "hologramColor": format_color(&settings.visualization.hologram_color),
-                        "nodeColorNew": format_color(&settings.visualization.node_color_new),
-                        "nodeColorRecent": format_color(&settings.visualization.node_color_recent),
-                        "nodeColorMedium": format_color(&settings.visualization.node_color_medium),
-                        "nodeColorOld": format_color(&settings.visualization.node_color_old),
-                        "nodeColorCore": format_color(&settings.visualization.node_color_core),
-                        "nodeColorSecondary": format_color(&settings.visualization.node_color_secondary),
-                        "nodeColorDefault": format_color(&settings.visualization.node_color_default),
-
-                        // Physical dimensions
-                        "minNodeSize": settings.visualization.min_node_size,  // In meters
-                        "maxNodeSize": settings.visualization.max_node_size,  // In meters
-                        "hologramScale": settings.visualization.hologram_scale,
-                        "hologramOpacity": settings.visualization.hologram_opacity,
-                        "edgeOpacity": settings.visualization.edge_opacity,
-
-                        // Label settings
-                        "labelFontSize": settings.visualization.label_font_size,
-                        "labelFontFamily": settings.visualization.label_font_family,
-                        "labelPadding": settings.visualization.label_padding,
-                        "labelVerticalOffset": settings.visualization.label_vertical_offset,
-                        "labelCloseOffset": settings.visualization.label_close_offset,
-                        "labelBackgroundColor": settings.visualization.label_background_color,
-                        "labelTextColor": settings.visualization.label_text_color,
-                        "labelInfoTextColor": settings.visualization.label_info_text_color,
-                        "labelXRFontSize": settings.visualization.label_xr_font_size,
-
-                        // Geometry settings
-                        "geometryMinSegments": settings.visualization.geometry_min_segments,
-                        "geometryMaxSegments": settings.visualization.geometry_max_segments,
-                        "geometrySegmentPerHyperlink": settings.visualization.geometry_segment_per_hyperlink,
-
-                        // Material settings
-                        "nodeMaterialMetalness": settings.visualization.node_material_metalness,
-                        "nodeMaterialRoughness": settings.visualization.node_material_roughness,
-                        "nodeMaterialClearcoat": settings.visualization.node_material_clearcoat,
-                        "nodeMaterialClearcoatRoughness": settings.visualization.node_material_clearcoat_roughness,
-                        "nodeMaterialOpacity": settings.visualization.node_material_opacity,
-                        "nodeEmissiveMinIntensity": settings.visualization.node_emissive_min_intensity,
-                        "nodeEmissiveMaxIntensity": settings.visualization.node_emissive_max_intensity,
-
-                        // Interaction settings
-                        "clickEmissiveBoost": settings.visualization.click_emissive_boost,
-                        "clickFeedbackDuration": settings.visualization.click_feedback_duration,
-
-                        // Environment settings
-                        "fogDensity": settings.visualization.fog_density,
-
-                        // Physics simulation parameters
-                        "forceDirectedIterations": settings.visualization.force_directed_iterations,
-                        "forceDirectedSpring": settings.visualization.force_directed_spring,
-                        "forceDirectedRepulsion": settings.visualization.force_directed_repulsion,
-                        "forceDirectedAttraction": settings.visualization.force_directed_attraction,
-                        "forceDirectedDamping": settings.visualization.force_directed_damping,
-                    },
-                    "bloom": {
-                        "nodeBloomStrength": settings.bloom.node_bloom_strength,
-                        "nodeBloomRadius": settings.bloom.node_bloom_radius,
-                        "nodeBloomThreshold": settings.bloom.node_bloom_threshold,
-                        "edgeBloomStrength": settings.bloom.edge_bloom_strength,
-                        "edgeBloomRadius": settings.bloom.edge_bloom_radius,
-                        "edgeBloomThreshold": settings.bloom.edge_bloom_threshold,
-                        "environmentBloomStrength": settings.bloom.environment_bloom_strength,
-                        "environmentBloomRadius": settings.bloom.environment_bloom_radius,
-                        "environmentBloomThreshold": settings.bloom.environment_bloom_threshold,
-                    },
-                    "fisheye": {
-                        "enabled": settings.fisheye.enabled,
-                        "strength": settings.fisheye.strength,
-                        "radius": settings.fisheye.radius,
-                        "focus_x": settings.fisheye.focus_x,
-                        "focus_y": settings.fisheye.focus_y,
-                        "focus_z": settings.fisheye.focus_z,
-                    }
+            // Helper function to send a simple JSON message
+            let send_settings = |msg_type: &str, fields: Vec<(&str, serde_json::Value)>| {
+                let mut map = serde_json::Map::new();
+                map.insert("type".to_string(), serde_json::Value::String(msg_type.to_string()));
+                for (key, value) in fields {
+                    map.insert(key.to_string(), value);
                 }
-            });
+                if let Ok(response_str) = serde_json::to_string(&serde_json::Value::Object(map)) {
+                    ctx_addr.do_send(SendText(response_str));
+                }
+            };
 
-            debug!("Sending initial data response: {:?}", response);
+            // Send graph data
+            send_settings("graphData", vec![
+                ("nodes", serde_json::to_value(&graph_data.nodes).unwrap_or_default()),
+                ("edges", serde_json::to_value(&graph_data.edges).unwrap_or_default())
+            ]);
 
-            if let Ok(response_str) = serde_json::to_string(&response) {
-                ctx_addr.do_send(SendText(response_str));
-            }
+            // Send basic visualization settings
+            send_settings("visualSettings", vec![
+                ("nodeColor", serde_json::Value::String(format_color(&settings.visualization.node_color))),
+                ("edgeColor", serde_json::Value::String(format_color(&settings.visualization.edge_color))),
+                ("hologramColor", serde_json::Value::String(format_color(&settings.visualization.hologram_color))),
+                ("minNodeSize", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.min_node_size as f64).unwrap())),
+                ("maxNodeSize", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.max_node_size as f64).unwrap())),
+                ("hologramScale", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.hologram_scale as f64).unwrap())),
+                ("hologramOpacity", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.hologram_opacity as f64).unwrap())),
+                ("edgeOpacity", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.edge_opacity as f64).unwrap())),
+                ("fogDensity", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.fog_density as f64).unwrap()))
+            ]);
 
-            // Send completion as proper JSON
+            // Send material settings
+            send_settings("materialSettings", vec![
+                ("metalness", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_material_metalness as f64).unwrap())),
+                ("roughness", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_material_roughness as f64).unwrap())),
+                ("clearcoat", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_material_clearcoat as f64).unwrap())),
+                ("clearcoatRoughness", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_material_clearcoat_roughness as f64).unwrap())),
+                ("opacity", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_material_opacity as f64).unwrap())),
+                ("emissiveMin", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_emissive_min_intensity as f64).unwrap())),
+                ("emissiveMax", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_emissive_max_intensity as f64).unwrap()))
+            ]);
+
+            // Send physics settings
+            send_settings("physicsSettings", vec![
+                ("iterations", serde_json::Value::Number(serde_json::Number::from(settings.visualization.force_directed_iterations))),
+                ("spring", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.force_directed_spring as f64).unwrap())),
+                ("repulsion", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.force_directed_repulsion as f64).unwrap())),
+                ("attraction", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.force_directed_attraction as f64).unwrap())),
+                ("damping", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.force_directed_damping as f64).unwrap()))
+            ]);
+
+            // Send bloom settings
+            send_settings("bloomSettings", vec![
+                ("nodeStrength", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.node_bloom_strength as f64).unwrap())),
+                ("nodeRadius", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.node_bloom_radius as f64).unwrap())),
+                ("nodeThreshold", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.node_bloom_threshold as f64).unwrap())),
+                ("edgeStrength", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.edge_bloom_strength as f64).unwrap())),
+                ("edgeRadius", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.edge_bloom_radius as f64).unwrap())),
+                ("edgeThreshold", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.edge_bloom_threshold as f64).unwrap())),
+                ("envStrength", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.environment_bloom_strength as f64).unwrap())),
+                ("envRadius", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.environment_bloom_radius as f64).unwrap())),
+                ("envThreshold", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.environment_bloom_threshold as f64).unwrap()))
+            ]);
+
+            // Send fisheye settings
+            send_settings("fisheyeSettings", vec![
+                ("enabled", serde_json::Value::Bool(settings.fisheye.enabled)),
+                ("strength", serde_json::Value::Number(serde_json::Number::from_f64(settings.fisheye.strength as f64).unwrap())),
+                ("radius", serde_json::Value::Number(serde_json::Number::from_f64(settings.fisheye.radius as f64).unwrap())),
+                ("focusX", serde_json::Value::Number(serde_json::Number::from_f64(settings.fisheye.focus_x as f64).unwrap())),
+                ("focusY", serde_json::Value::Number(serde_json::Number::from_f64(settings.fisheye.focus_y as f64).unwrap())),
+                ("focusZ", serde_json::Value::Number(serde_json::Number::from_f64(settings.fisheye.focus_z as f64).unwrap()))
+            ]);
+
+            // Send completion
             if let Some(addr) = weak_addr.upgrade() {
-                let completion = json!({
-                    "type": "completion",
-                    "message": "Initial data sent"
-                });
-                if let Ok(completion_str) = serde_json::to_string(&completion) {
-                    addr.do_send(SendText(completion_str));
-                }
+                send_settings("completion", vec![
+                    ("message", serde_json::Value::String("Initial data sent".to_string()))
+                ]);
             }
         };
 
         ctx.spawn(fut.into_actor(self));
     }
 
-    // Handle fisheye distortion settings updates
     fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
@@ -593,12 +570,12 @@ impl WebSocketSessionHandler for WebSocketSession {
                 // Send updated fisheye settings
                 let response = json!({
                     "type": "fisheye_settings_updated",
-                    "fisheye_enabled": enabled,
-                    "fisheye_strength": strength,
-                    "fisheye_focus_x": focus_point[0],
-                    "fisheye_focus_y": focus_point[1],
-                    "fisheye_focus_z": focus_point[2],
-                    "fisheye_radius": radius
+                    "enabled": enabled,
+                    "strength": strength,
+                    "focusX": focus_point[0],
+                    "focusY": focus_point[1],
+                    "focusZ": focus_point[2],
+                    "radius": radius
                 });
                 if let Ok(response_str) = serde_json::to_string(&response) {
                     ctx_addr.do_send(SendText(response_str));
@@ -614,7 +591,7 @@ impl WebSocketSessionHandler for WebSocketSession {
                 }
             }
 
-            // Send completion as proper JSON
+            // Send completion
             if let Some(addr) = weak_addr.upgrade() {
                 let completion = json!({
                     "type": "completion",

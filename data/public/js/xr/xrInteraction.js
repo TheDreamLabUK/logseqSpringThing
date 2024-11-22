@@ -3,6 +3,9 @@ import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFa
 import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 import { visualizationSettings } from '../services/visualizationSettings.js';
 
+// Get visualization settings
+const settings = visualizationSettings.getSettings();
+
 // Create a web panel for displaying node content
 // Using standard dimensions that work well in VR space (in meters)
 const webPanelGeometry = new THREE.PlaneGeometry(2, 1.5); // 2 meters wide, 1.5 meters tall
@@ -312,9 +315,9 @@ function createControllerRays(controllers) {
             new THREE.Vector3(0, 0, -rayLength)
         ]);
         const material = new THREE.LineBasicMaterial({
-            color: visualizationSettings.getSettings().nodeColorDefault,
+            color: settings.nodeColorDefault,
             transparent: true,
-            opacity: 0.5
+            opacity: settings.edgeOpacity
         });
         return new THREE.Line(geometry, material);
     });
@@ -333,17 +336,17 @@ function buildController(data) {
             geometry = new THREE.BufferGeometry();
             geometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, -1], 3));
             material = new THREE.LineBasicMaterial({
-                color: 0x00ff00,
+                color: settings.nodeColorDefault,
                 transparent: true,
-                opacity: 0.5
+                opacity: settings.edgeOpacity
             });
             return new THREE.Line(geometry, material);
 
         case 'gaze':
-            geometry = new THREE.RingGeometry(0.02, 0.04, 32).translate(0, 0, -1);
+            geometry = new THREE.RingGeometry(settings.minNodeSize/5, settings.minNodeSize/2.5, 32).translate(0, 0, -1);
             material = new THREE.MeshBasicMaterial({
-                color: 0x00ff00,
-                opacity: 0.5,
+                color: settings.nodeColorDefault,
+                opacity: settings.edgeOpacity,
                 transparent: true
             });
             return new THREE.Mesh(geometry, material);
@@ -366,11 +369,11 @@ function setupHandJoints(hand, data) {
         if (data.joints.hasOwnProperty(jointName)) {
             const joint = data.joints[jointName];
             if (joint) {
-                const geometry = new THREE.SphereGeometry(0.008);
+                const geometry = new THREE.SphereGeometry(settings.minNodeSize/12); // Small spheres for joints
                 const material = new THREE.MeshPhongMaterial({
-                    color: 0x00ff00,
+                    color: settings.nodeColorDefault,
                     transparent: true,
-                    opacity: 0.5
+                    opacity: settings.edgeOpacity
                 });
                 const mesh = new THREE.Mesh(geometry, material);
                 mesh.visible = false;
@@ -425,7 +428,7 @@ export function handleXRInput(frame, referenceSpace, controllers, hands, scene, 
         if (indexTip && thumbTip) {
             // Detect pinch gesture
             const distance = indexTip.position.distanceTo(thumbTip.position);
-            if (distance < 0.02) {  // 2cm threshold for pinch
+            if (distance < settings.minNodeSize * 0.2) {  // Pinch threshold based on node size
                 const position = indexTip.position.clone().add(thumbTip.position).multiplyScalar(0.5);
                 const direction = new THREE.Vector3().subVectors(indexTip.position, thumbTip.position).normalize();
                 
@@ -496,21 +499,19 @@ export class XRLabelManager {
         const spriteMaterial = new THREE.SpriteMaterial({ 
             map: texture,
             transparent: true,
-            opacity: 0.8
+            opacity: settings.hologramOpacity
         });
         const sprite = new THREE.Sprite(spriteMaterial);
         
         // Position and scale sprite using meter-based settings
         sprite.position.copy(position);
-        // Use verticalOffset from settings (in meters)
-        sprite.position.y += this.labelSettings.verticalOffset;
+        sprite.position.y += this.labelSettings.verticalOffset; // Offset in meters
         
         // Scale sprite based on settings
-        // Convert the canvas dimensions to meters using the verticalOffset as a scale reference
-        const meterScale = this.labelSettings.verticalOffset * 0.5; // Scale factor for readable size in VR
+        const labelScale = settings.hologramScale * 0.2; // Scale relative to hologram size
         sprite.scale.set(
-            (canvas.width / canvas.height) * meterScale, // Maintain aspect ratio
-            meterScale,
+            (canvas.width / canvas.height) * labelScale,
+            labelScale,
             1
         );
 
@@ -554,3 +555,5 @@ export class XRLabelManager {
         this.labels.clear();
     }
 }
+
+export { createWebPanel };

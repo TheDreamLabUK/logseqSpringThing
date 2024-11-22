@@ -186,10 +186,10 @@ async fn main() -> std::io::Result<()> {
     let github_service: Arc<dyn GitHubService + Send + Sync> = {
         let settings_read = settings.read().await;
         match RealGitHubService::new(
-            settings_read.github.github_access_token.clone(),
-            settings_read.github.github_owner.clone(),
-            settings_read.github.github_repo.clone(),
-            settings_read.github.github_directory.clone(),
+            settings_read.github.access_token.clone(),
+            settings_read.github.owner.clone(),
+            settings_read.github.repo.clone(),
+            settings_read.github.directory.clone(),
             settings.clone(),
         ) {
             Ok(service) => Arc::new(service),
@@ -205,10 +205,10 @@ async fn main() -> std::io::Result<()> {
     let github_pr_service: Arc<dyn GitHubPRService + Send + Sync> = {
         let settings_read = settings.read().await;
         match RealGitHubPRService::new(
-            settings_read.github.github_access_token.clone(),
-            settings_read.github.github_owner.clone(),
-            settings_read.github.github_repo.clone(),
-            settings_read.github.github_directory.clone(),
+            settings_read.github.access_token.clone(),
+            settings_read.github.owner.clone(),
+            settings_read.github.repo.clone(),
+            settings_read.github.directory.clone(),
         ) {
             Ok(service) => Arc::new(service),
             Err(e) => {

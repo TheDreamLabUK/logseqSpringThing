@@ -84,7 +84,7 @@ impl SpeechService {
                             
                             let request = Request::builder()
                                 .uri(url.as_str())
-                                .header("Authorization", format!("Bearer {}", settings.openai.openai_api_key))
+                                .header("Authorization", format!("Bearer {}", settings.openai.api_key))
                                 .header("OpenAI-Beta", "realtime=v1")
                                 .header("Content-Type", "application/json")
                                 .header("User-Agent", "WebXR Graph")

@@ -82,8 +82,8 @@ impl OpenAIWebSocket {
         debug!("Starting OpenAI WebSocket connection process");
 
         let settings = self.settings.read().await;
-        let api_key = settings.openai.openai_api_key.clone();
-        let mut url = settings.openai.openai_base_url.clone();
+        let api_key = settings.openai.api_key.clone();
+        let mut url = settings.openai.base_url.clone();
         
         if !url.starts_with("wss://") && !url.starts_with("ws://") {
             url = format!("wss://{}", url.trim_start_matches("https://").trim_start_matches("http://"));
