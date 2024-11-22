@@ -47,8 +47,7 @@ check_rust_security() {
     
     if [ "$critical_count" -gt 0 ]; then
         echo -e "${RED}Found $critical_count critical vulnerabilities!${NC}"
-        # Return success anyway since we're accepting the risk
-        return 0
+        return 1
     elif [ "$audit_exit" -ne 0 ]; then
         echo -e "${YELLOW}Found non-critical vulnerabilities${NC}"
     else
@@ -99,16 +98,26 @@ check_docker() {
 # Function to clean up existing processes
 cleanup_existing_processes() {
     echo -e "${YELLOW}Cleaning up...${NC}"
-    # Stop all services except cloudflared
-    $DOCKER_COMPOSE stop $(docker compose ps --services | grep -v cloudflared) >/dev/null 2>&1 || true
-    $DOCKER_COMPOSE rm -f $(docker compose ps --services | grep -v cloudflared) >/dev/null 2>&1 || true
+    
+    # Stop and remove all containers from the compose project
+    $DOCKER_COMPOSE down --remove-orphans
+    
+    # Explicitly remove containers if they still exist
+    if docker ps -a | grep -q "logseq-xr-webxr"; then
+        docker rm -f logseq-xr-webxr
+    fi
+    if docker ps -a | grep -q "cloudflared-tunnel"; then
+        docker rm -f cloudflared-tunnel
+    fi
 
+    # Clean up port if in use
     if netstat -tuln | grep -q ":$PORT "; then
         local pid=$(lsof -t -i:"$PORT")
         if [ ! -z "$pid" ]; then
-            kill -9 $pid >/dev/null 2>&1 || true
+            kill -9 $pid
         fi
     fi
+    
     sleep 2
 }
 
@@ -308,8 +317,8 @@ cleanup_existing_processes
 
 # Clean up old resources
 echo -e "${YELLOW}Cleaning up old resources...${NC}"
-docker volume ls -q | grep "logseqXR" | xargs -r docker volume rm >/dev/null 2>&1 || true
-docker image prune -f >/dev/null 2>&1 || true
+docker volume ls -q | grep "logseqXR" | xargs -r docker volume rm
+docker image prune -f
 
 # Ensure data directory exists
 mkdir -p data/markdown

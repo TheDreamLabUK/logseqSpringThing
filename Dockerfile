@@ -108,6 +108,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-dri \
     libgl1-mesa-glx \
     netcat-openbsd \
+    gettext-base \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /usr/share/doc/* \
     && rm -rf /usr/share/man/*
@@ -218,6 +219,10 @@ if [ $retries -eq 0 ]; then\n\
     log "Failed to connect to RAGFlow server after multiple attempts"\n\
     exit 1\n\
 fi\n\
+\n\
+# Update nginx configuration with environment variables\n\
+envsubst \'${DOMAIN}\' < /etc/nginx/nginx.conf > /etc/nginx/nginx.conf.tmp && \
+mv /etc/nginx/nginx.conf.tmp /etc/nginx/nginx.conf\n\
 \n\
 # Start nginx\n\
 log "Starting nginx..."\n\
