@@ -340,6 +340,10 @@ export default class WebsocketService {
                             }
                         });
                     }
+                    // Dispatch both events to ensure compatibility
+                    window.dispatchEvent(new CustomEvent('serverSettings', {
+                        detail: data.settings
+                    }));
                     window.dispatchEvent(new CustomEvent('settingsUpdated', {
                         detail: data.settings
                     }));
@@ -347,7 +351,7 @@ export default class WebsocketService {
                     console.warn('No settings received in initial data');
                 }
                 break;
-                
+
             case 'graphUpdate':
                 console.log('Received graph update:', data.graph_data);
                 if (data.graph_data) {
