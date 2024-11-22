@@ -186,6 +186,32 @@ export class LayoutManager {
         }
     }
 
+    updatePhysics(settings) {
+        console.log('Updating physics settings:', settings);
+        
+        // Update all physics parameters at once
+        if (settings.iterations !== undefined) {
+            this.initialIterations = settings.iterations;
+        }
+        if (settings.spring_strength !== undefined) {
+            this.spring = settings.spring_strength;
+        }
+        if (settings.repulsion_strength !== undefined) {
+            this.repulsion = settings.repulsion_strength;
+        }
+        if (settings.attraction_strength !== undefined) {
+            this.attraction = settings.attraction_strength;
+        }
+        if (settings.damping !== undefined) {
+            this.damping = settings.damping;
+        }
+
+        // If simulation is running, apply new settings immediately
+        if (this.isSimulating) {
+            console.log('Applying new physics settings to running simulation');
+        }
+    }
+
     performLayout(graphData) {
         if (!this.isInitialized || !graphData || this.waitingForInitialData) {
             console.warn('Cannot perform layout: not initialized, no graph data, or waiting for initial data');
