@@ -26,47 +26,67 @@ export function initXRSession(renderer, scene, camera) {
     renderer.alpha = true;
 
     if ('xr' in navigator) {
-        navigator.xr.isSessionSupported('immersive-vr')
-            .then(vrSupported => {
-                if (vrSupported) {
+        // Check for AR support first
+        navigator.xr.isSessionSupported('immersive-ar')
+            .then(arSupported => {
+                if (arSupported) {
                     const sessionInit = {
-                        optionalFeatures: ['local-floor', 'bounded-floor']
+                        optionalFeatures: [
+                            'dom-overlay',
+                            'local-floor',
+                            'bounded-floor',
+                            'hand-tracking',
+                            'layers',
+                            'passthrough'  // Enable passthrough for Quest 3
+                        ],
+                        domOverlay: { root: document.body }
                     };
 
                     const xrButton = XRButton.createButton(renderer, {
-                        mode: 'immersive-vr',
+                        mode: 'immersive-ar',
                         sessionInit: sessionInit,
                         onSessionStarted: (session) => {
-                            console.log('VR session started');
+                            console.log('AR session started');
                             session.addEventListener('end', () => {
-                                console.log('VR session ended');
+                                console.log('AR session ended');
                                 window.dispatchEvent(new CustomEvent('xrsessionend'));
                             });
                             window.dispatchEvent(new CustomEvent('xrsessionstart'));
                         },
                         onSessionEnded: () => {
-                            console.log('VR session cleanup');
+                            console.log('AR session cleanup');
                         }
                     });
 
                     document.body.appendChild(xrButton);
                 } else {
-                    return navigator.xr.isSessionSupported('immersive-ar')
-                        .then(arSupported => {
-                            if (arSupported) {
+                    // Fall back to VR if AR is not supported
+                    return navigator.xr.isSessionSupported('immersive-vr')
+                        .then(vrSupported => {
+                            if (vrSupported) {
                                 const sessionInit = {
-                                    optionalFeatures: ['dom-overlay'],
-                                    domOverlay: { root: document.body }
+                                    optionalFeatures: ['local-floor', 'bounded-floor']
                                 };
 
                                 const xrButton = XRButton.createButton(renderer, {
-                                    mode: 'immersive-ar',
-                                    sessionInit: sessionInit
+                                    mode: 'immersive-vr',
+                                    sessionInit: sessionInit,
+                                    onSessionStarted: (session) => {
+                                        console.log('VR session started');
+                                        session.addEventListener('end', () => {
+                                            console.log('VR session ended');
+                                            window.dispatchEvent(new CustomEvent('xrsessionend'));
+                                        });
+                                        window.dispatchEvent(new CustomEvent('xrsessionstart'));
+                                    },
+                                    onSessionEnded: () => {
+                                        console.log('VR session cleanup');
+                                    }
                                 });
 
                                 document.body.appendChild(xrButton);
                             } else {
-                                console.warn('Neither VR nor AR is supported');
+                                console.warn('Neither AR nor VR is supported');
                             }
                         });
                 }
