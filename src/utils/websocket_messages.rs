@@ -1,6 +1,8 @@
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::fs;
+use toml;  // Add toml import
 use crate::models::simulation_params::SimulationParams;
 use crate::models::position_update::NodePositionVelocity;
 use actix_web_actors::ws;
@@ -143,6 +145,11 @@ pub enum ClientMessage {
         strength: f32,
         focus_point: [f32; 3],
         radius: f32,
+    },
+
+    #[serde(rename = "updateSettings")]
+    UpdateSettings {
+        settings: Value
     }
 }
 
@@ -192,7 +199,12 @@ pub enum ServerMessage {
     },
 
     #[serde(rename = "gpuPositions")]
-    GPUPositions(GPUPositionUpdate)
+    GPUPositions(GPUPositionUpdate),
+
+    #[serde(rename = "settings_updated")]
+    SettingsUpdated {
+        settings: Value
+    }
 }
 
 pub trait MessageHandler: Actor<Context = ws::WebsocketContext<Self>> {
@@ -259,6 +271,45 @@ pub trait MessageHandler: Actor<Context = ws::WebsocketContext<Self>> {
             }
         }
     }
+
+    fn handle_settings_update(&self, settings: Value, ctx: &mut ws::WebsocketContext<Self>) {
+        // Convert JSON settings to TOML
+        let toml_string = match toml::to_string_pretty(&settings) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to serialize settings to TOML: {}", e);
+                self.send_server_message(
+                    ServerMessage::Error {
+                        message: format!("Failed to serialize settings: {}", e),
+                        code: Some("SETTINGS_SERIALIZATION_ERROR".to_string()),
+                    },
+                    ctx
+                );
+                return;
+            }
+        };
+
+        // Write to settings.toml
+        if let Err(e) = fs::write("settings.toml", toml_string) {
+            error!("Failed to write settings.toml: {}", e);
+            self.send_server_message(
+                ServerMessage::Error {
+                    message: format!("Failed to save settings: {}", e),
+                    code: Some("SETTINGS_WRITE_ERROR".to_string()),
+                },
+                ctx
+            );
+            return;
+        }
+
+        // Send confirmation back to client
+        self.send_server_message(
+            ServerMessage::SettingsUpdated {
+                settings
+            },
+            ctx
+        );
+    }
 }
 
 #[cfg(test)]
@@ -284,6 +335,17 @@ mod tests {
         let serialized = serde_json::to_string(&fisheye_message).unwrap();
         assert!(serialized.contains("updateFisheyeSettings"));
         assert!(serialized.contains("strength"));
+
+        let settings_message = ClientMessage::UpdateSettings {
+            settings: json!({
+                "visualization": {
+                    "node_color": "0xFFA500"
+                }
+            })
+        };
+        let serialized = serde_json::to_string(&settings_message).unwrap();
+        assert!(serialized.contains("updateSettings"));
+        assert!(serialized.contains("visualization"));
     }
 
     #[test]
@@ -308,6 +370,17 @@ mod tests {
         assert!(json.contains("\"strength\":0.5"));
         assert!(json.contains("\"focus_point\":[0.0,0.0,0.0]"));
         assert!(json.contains("\"radius\":100.0"));
+
+        let settings_message = ServerMessage::SettingsUpdated {
+            settings: json!({
+                "visualization": {
+                    "node_color": "0xFFA500"
+                }
+            })
+        };
+        let json = serde_json::to_string(&settings_message).unwrap();
+        assert!(json.contains("\"type\":\"settings_updated\""));
+        assert!(json.contains("visualization"));
     }
 
     #[test]

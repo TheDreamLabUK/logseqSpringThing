@@ -1,7 +1,6 @@
-// public/js/xr/xrSetup.js
-
 import * as THREE from 'three';
 import { XRButton } from 'three/examples/jsm/webxr/XRButton.js';
+import { initXRInteraction, handleXRInput } from './xrInteraction.js';
 
 // Movement speed constant
 const MOVEMENT_SPEED = 0.05;
@@ -17,6 +16,9 @@ export function initXRSession(renderer, scene, camera) {
         console.error('Scene or camera not provided to initXRSession');
         return;
     }
+
+    // Initialize hand tracking with enhanced features
+    const xrInteraction = initXRInteraction(scene, camera, renderer);
 
     // Configure renderer for XR
     renderer.xr.enabled = true;
@@ -47,6 +49,15 @@ export function initXRSession(renderer, scene, camera) {
                         sessionInit: sessionInit,
                         onSessionStarted: (session) => {
                             console.log('AR session started');
+                            // Ensure all sprites (labels) are visible in XR
+                            scene.traverse((object) => {
+                                if (object.isSprite) {
+                                    object.layers.enableAll();
+                                    // Adjust sprite scale for better visibility in XR
+                                    const currentScale = object.scale.clone();
+                                    object.scale.set(currentScale.x * 0.5, currentScale.y * 0.5, 1);
+                                }
+                            });
                             session.addEventListener('end', () => {
                                 console.log('AR session ended');
                                 window.dispatchEvent(new CustomEvent('xrsessionend'));
@@ -55,6 +66,13 @@ export function initXRSession(renderer, scene, camera) {
                         },
                         onSessionEnded: () => {
                             console.log('AR session cleanup');
+                            // Reset sprite scales
+                            scene.traverse((object) => {
+                                if (object.isSprite) {
+                                    const currentScale = object.scale.clone();
+                                    object.scale.set(currentScale.x * 2, currentScale.y * 2, 1);
+                                }
+                            });
                         }
                     });
 
@@ -65,7 +83,7 @@ export function initXRSession(renderer, scene, camera) {
                         .then(vrSupported => {
                             if (vrSupported) {
                                 const sessionInit = {
-                                    optionalFeatures: ['local-floor', 'bounded-floor']
+                                    optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
                                 };
 
                                 const xrButton = XRButton.createButton(renderer, {
@@ -73,6 +91,14 @@ export function initXRSession(renderer, scene, camera) {
                                     sessionInit: sessionInit,
                                     onSessionStarted: (session) => {
                                         console.log('VR session started');
+                                        // Apply same label visibility settings in VR
+                                        scene.traverse((object) => {
+                                            if (object.isSprite) {
+                                                object.layers.enableAll();
+                                                const currentScale = object.scale.clone();
+                                                object.scale.set(currentScale.x * 0.5, currentScale.y * 0.5, 1);
+                                            }
+                                        });
                                         session.addEventListener('end', () => {
                                             console.log('VR session ended');
                                             window.dispatchEvent(new CustomEvent('xrsessionend'));
@@ -81,6 +107,13 @@ export function initXRSession(renderer, scene, camera) {
                                     },
                                     onSessionEnded: () => {
                                         console.log('VR session cleanup');
+                                        // Reset sprite scales
+                                        scene.traverse((object) => {
+                                            if (object.isSprite) {
+                                                const currentScale = object.scale.clone();
+                                                object.scale.set(currentScale.x * 2, currentScale.y * 2, 1);
+                                            }
+                                        });
                                     }
                                 });
 
@@ -125,6 +158,8 @@ export function initXRSession(renderer, scene, camera) {
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
     });
+
+    return xrInteraction;
 }
 
 /**
@@ -138,7 +173,6 @@ function updateCameraFromXRPose(frame, refSpace, camera) {
 
     const pose = frame.getViewerPose(refSpace);
     if (pose) {
-        // Get the position from the first view (center eye in VR)
         const view = pose.views[0];
         if (view) {
             const position = new THREE.Vector3();
@@ -147,14 +181,7 @@ function updateCameraFromXRPose(frame, refSpace, camera) {
                 view.transform.position.y,
                 view.transform.position.z
             );
-            
-            // Update the camera's local position within its parent group
             camera.position.copy(position);
-            
-            console.log('XR Pose Update - Camera Position:', 
-                position.toArray().map(v => v.toFixed(3)),
-                'Parent Position:', 
-                camera.parent ? camera.parent.position.toArray().map(v => v.toFixed(3)) : 'No parent');
         }
     }
 }
@@ -164,8 +191,9 @@ function updateCameraFromXRPose(frame, refSpace, camera) {
  * @param {THREE.WebGLRenderer} renderer - The Three.js renderer.
  * @param {THREE.Scene} scene - The Three.js scene.
  * @param {THREE.PerspectiveCamera} camera - The Three.js camera.
+ * @param {Object} xrInteraction - The XR interaction instance.
  */
-export function handleXRSession(renderer, scene, camera) {
+export function handleXRSession(renderer, scene, camera, xrInteraction) {
     if (!renderer || !scene || !camera) {
         console.error('Required parameters missing in handleXRSession');
         return;
@@ -178,16 +206,18 @@ export function handleXRSession(renderer, scene, camera) {
                 const refSpace = renderer.xr.getReferenceSpace();
 
                 if (session && refSpace) {
-                    // Update camera position from XR pose
                     updateCameraFromXRPose(frame, refSpace, camera);
+
+                    // Update hand tracking and interactions
+                    if (xrInteraction) {
+                        xrInteraction.update();
+                        handleXRInput(frame, refSpace);
+                    }
 
                     // Handle input sources
                     for (const source of session.inputSources) {
                         if (source && source.gamepad && source.handedness === 'left') {
                             handleGamepadInput(source.gamepad, camera);
-                            console.log('Processing left controller input:', 
-                                source.gamepad.axes[0].toFixed(2), 
-                                source.gamepad.axes[1].toFixed(2));
                         }
                     }
                 }
@@ -207,37 +237,24 @@ export function handleXRSession(renderer, scene, camera) {
 function handleGamepadInput(gamepad, camera) {
     if (!gamepad || !camera || !camera.parent) return;
 
-    // Handle joystick movement
     if (gamepad.axes.length >= 2) {
         const [x, y] = gamepad.axes;
 
-        // Only process if joystick is moved significantly
         if (Math.abs(x) > 0.1 || Math.abs(y) > 0.1) {
-            console.log('Joystick input:', x.toFixed(2), y.toFixed(2));
-
-            // Get camera's forward and right vectors
             const forward = new THREE.Vector3();
             camera.getWorldDirection(forward);
-            forward.y = 0; // Keep movement horizontal
+            forward.y = 0;
             forward.normalize();
 
             const right = new THREE.Vector3();
             right.crossVectors(new THREE.Vector3(0, 1, 0), forward);
 
-            // Calculate movement
             const movement = new THREE.Vector3();
             movement.addScaledVector(right, x * MOVEMENT_SPEED);
             movement.addScaledVector(forward, -y * MOVEMENT_SPEED);
 
-            // Move the camera's parent (user group)
             const userGroup = camera.parent;
-            const oldPosition = userGroup.position.clone();
             userGroup.position.add(movement);
-            
-            console.log('Movement:', 
-                movement.toArray().map(v => v.toFixed(2)),
-                'Old pos:', oldPosition.toArray().map(v => v.toFixed(2)),
-                'New pos:', userGroup.position.toArray().map(v => v.toFixed(2)));
         }
     }
 }
@@ -247,13 +264,14 @@ function handleGamepadInput(gamepad, camera) {
  * @param {THREE.WebGLRenderer} renderer - The Three.js renderer.
  * @param {THREE.Scene} scene - The Three.js scene.
  * @param {THREE.PerspectiveCamera} camera - The Three.js camera.
+ * @param {Object} xrInteraction - The XR interaction instance.
  */
-export function updateXRFrame(renderer, scene, camera) {
+export function updateXRFrame(renderer, scene, camera, xrInteraction) {
     if (renderer.xr.isPresenting) {
         try {
             const session = renderer.xr.getSession();
-            if (session) {
-                // Additional frame updates can be handled here
+            if (session && xrInteraction) {
+                xrInteraction.update();
             }
         } catch (error) {
             console.error('Error updating XR frame:', error);

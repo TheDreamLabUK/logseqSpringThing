@@ -30,7 +30,9 @@ export default class WebsocketService {
         'materialSettings',
         'physicsSettings',
         'bloomSettings',
-        'fisheyeSettings'
+        'fisheyeSettings',
+        'updateSettings',           // Add new settings update type
+        'settings_updated'          // Add confirmation response type
     ]);
 
     // WebSocket configuration
@@ -338,7 +340,7 @@ export default class WebsocketService {
                             }
                         });
                     }
-                    window.dispatchEvent(new CustomEvent('serverSettings', {
+                    window.dispatchEvent(new CustomEvent('settingsUpdated', {
                         detail: data.settings
                     }));
                 } else {
@@ -400,6 +402,13 @@ export default class WebsocketService {
                 };
                 window.dispatchEvent(new CustomEvent('fisheyeSettingsUpdated', {
                     detail: settings
+                }));
+                break;
+
+            case 'settings_updated':
+                console.log('Settings successfully updated:', data);
+                window.dispatchEvent(new CustomEvent('settingsUpdated', {
+                    detail: data.settings
                 }));
                 break;
 
@@ -558,6 +567,14 @@ export default class WebsocketService {
             strength: settings.strength,
             focus_point: focus_point,
             radius: settings.radius || 100.0
+        });
+    }
+
+    updateSettings = (settings) => {
+        console.log('Sending settings update:', settings);
+        this.send({
+            type: 'updateSettings',
+            settings
         });
     }
 
