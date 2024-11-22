@@ -14,7 +14,7 @@ embedding the topic in Logseq double square brackets once in the returned text.
 
 [network]
 domain = "localhost"  # Default domain, override in .env for production
-port = 3000
+port = 3000          # Port for Rust backend (nginx proxies from 4000 to this)
 bind_address = "0.0.0.0"  # should bind to localhost for security
 enable_tls = true
 min_tls_version = "TLS1.3"
