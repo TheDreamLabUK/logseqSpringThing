@@ -314,10 +314,85 @@ export class WebXRVisualization {
     }
 
     updateSettings(settings) {
-        // Update each manager with its specific settings
-        this.nodeManager.updateFeature(visualizationSettings.getNodeSettings());
-        this.effectsManager.updateFeature(visualizationSettings.getEnvironmentSettings());
-        this.layoutManager.updateFeature(visualizationSettings.getLayoutSettings());
+        console.log('Updating visualization settings:', settings);
+        
+        if (settings.visual) {
+            // Update visual settings
+            const visualSettings = {
+                nodeColor: settings.visual.nodeColor,
+                edgeColor: settings.visual.edgeColor,
+                hologramColor: settings.visual.hologramColor,
+                minNodeSize: settings.visual.minNodeSize,
+                maxNodeSize: settings.visual.maxNodeSize,
+                hologramScale: settings.visual.hologramScale,
+                hologramOpacity: settings.visual.hologramOpacity,
+                edgeOpacity: settings.visual.edgeOpacity,
+                fogDensity: settings.visual.fogDensity
+            };
+            this.nodeManager.updateFeature(visualSettings);
+            
+            // Update fog density
+            if (this.scene.fog && settings.visual.fogDensity !== undefined) {
+                this.scene.fog.density = settings.visual.fogDensity;
+            }
+        }
+
+        if (settings.material) {
+            // Update material settings
+            const materialSettings = {
+                metalness: settings.material.metalness,
+                roughness: settings.material.roughness,
+                clearcoat: settings.material.clearcoat,
+                clearcoatRoughness: settings.material.clearcoatRoughness,
+                opacity: settings.material.opacity,
+                emissiveMinIntensity: settings.material.emissiveMin,
+                emissiveMaxIntensity: settings.material.emissiveMax
+            };
+            this.nodeManager.updateMaterial(materialSettings);
+        }
+
+        if (settings.physics) {
+            // Update physics settings
+            const physicsSettings = {
+                iterations: settings.physics.iterations,
+                spring_strength: settings.physics.spring,
+                repulsion_strength: settings.physics.repulsion,
+                attraction_strength: settings.physics.attraction,
+                damping: settings.physics.damping
+            };
+            this.layoutManager.updateFeature(physicsSettings);
+        }
+
+        if (settings.bloom) {
+            // Update bloom settings
+            const bloomSettings = {
+                nodeBloomStrength: settings.bloom.nodeStrength,
+                nodeBloomRadius: settings.bloom.nodeRadius,
+                nodeBloomThreshold: settings.bloom.nodeThreshold,
+                edgeBloomStrength: settings.bloom.edgeStrength,
+                edgeBloomRadius: settings.bloom.edgeRadius,
+                edgeBloomThreshold: settings.bloom.edgeThreshold,
+                environmentBloomStrength: settings.bloom.envStrength,
+                environmentBloomRadius: settings.bloom.envRadius,
+                environmentBloomThreshold: settings.bloom.envThreshold
+            };
+            this.effectsManager.updateBloom(bloomSettings);
+        }
+
+        if (settings.fisheye) {
+            // Update fisheye settings
+            const fisheyeSettings = {
+                enabled: settings.fisheye.enabled,
+                strength: settings.fisheye.strength,
+                radius: settings.fisheye.radius,
+                focusPoint: [
+                    settings.fisheye.focusX,
+                    settings.fisheye.focusY,
+                    settings.fisheye.focusZ
+                ]
+            };
+            this.effectsManager.updateFisheye(fisheyeSettings);
+        }
     }
 
     handleSpacemouseInput(x, y, z) {

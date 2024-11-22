@@ -24,7 +24,13 @@ export default class WebsocketService {
         'simulationModeSet',
         'fisheye_settings_updated',  // Use underscore format consistently
         'completion',                // Add completion message type
-        'position_update_complete'   // Add position update completion type
+        'position_update_complete',   // Add position update completion type
+        'graphData',                // Add server-sent message types
+        'visualSettings',
+        'materialSettings',
+        'physicsSettings',
+        'bloomSettings',
+        'fisheyeSettings'
     ]);
 
     // WebSocket configuration
@@ -405,6 +411,17 @@ export default class WebsocketService {
             case 'position_update_complete':
                 console.log('Position update completed:', data.status);
                 this.emit('positionUpdateComplete', data.status);
+                break;
+
+            // Add handlers for new message types
+            case 'graphData':
+            case 'visualSettings':
+            case 'materialSettings':
+            case 'physicsSettings':
+            case 'bloomSettings':
+            case 'fisheyeSettings':
+                // These messages are handled by the event listeners
+                console.log(`Received ${data.type} update:`, data);
                 break;
                 
             default:

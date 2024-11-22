@@ -321,6 +321,48 @@ export class App {
                     console.warn('No settings received in initial data');
                 }
                 break;
+
+            case 'graphData':
+                console.log('Received graph data:', data);
+                if (this.graphDataManager) {
+                    this.graphDataManager.updateGraphData(data);
+                    if (this.visualization) {
+                        const graphData = this.graphDataManager.getGraphData();
+                        this.visualization.updateVisualization(graphData);
+                    }
+                }
+                break;
+
+            case 'visualSettings':
+            case 'materialSettings':
+            case 'physicsSettings':
+            case 'bloomSettings':
+            case 'fisheyeSettings':
+                console.log(`Received ${data.type}:`, data);
+                if (this.visualization) {
+                    // Create a settings object with the correct structure
+                    const settings = {};
+                    switch (data.type) {
+                        case 'visualSettings':
+                            settings.visual = data;
+                            break;
+                        case 'materialSettings':
+                            settings.material = data;
+                            break;
+                        case 'physicsSettings':
+                            settings.physics = data;
+                            break;
+                        case 'bloomSettings':
+                            settings.bloom = data;
+                            break;
+                        case 'fisheyeSettings':
+                            settings.fisheye = data;
+                            break;
+                    }
+                    this.visualization.updateSettings(settings);
+                }
+                break;
+
             case 'graphUpdate':
                 console.log('Received graph update:', data.graphData);
                 if (this.graphDataManager) {
@@ -331,12 +373,19 @@ export class App {
                     }
                 }
                 break;
+
             case 'ttsMethodSet':
                 console.log('TTS method set:', data.method);
                 break;
+
+            case 'completion':
+                console.log('Received completion message:', data.message);
+                break;
+
             case 'error':
                 console.error('Server error:', data.message);
                 break;
+
             default:
                 console.warn(`Unhandled message type: ${data.type}`, data);
                 break;

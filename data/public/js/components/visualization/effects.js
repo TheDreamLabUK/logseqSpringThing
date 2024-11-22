@@ -25,6 +25,12 @@ export class EffectsManager {
         this.hologramColor = new THREE.Color(settings.hologramColor || 0xFFD700);
         this.hologramScale = settings.hologramScale || 1;
         this.hologramOpacity = settings.hologramOpacity || 0.1;
+
+        // Fisheye settings with defaults
+        this.fisheyeEnabled = false;
+        this.fisheyeStrength = 0.5;
+        this.fisheyeRadius = 100.0;
+        this.fisheyeFocusPoint = [0, 0, 0];
     }
 
     initPostProcessing() {
@@ -246,6 +252,48 @@ export class EffectsManager {
                     }
                 });
                 break;
+        }
+    }
+
+    updateBloom(settings) {
+        console.log('Updating bloom settings:', settings);
+        if (!this.bloomComposer) return;
+
+        this.bloomComposer.passes.forEach(pass => {
+            if (pass instanceof UnrealBloomPass) {
+                if (settings.nodeBloomStrength !== undefined) {
+                    pass.strength = settings.nodeBloomStrength;
+                }
+                if (settings.nodeBloomRadius !== undefined) {
+                    pass.radius = settings.nodeBloomRadius;
+                }
+                if (settings.nodeBloomThreshold !== undefined) {
+                    pass.threshold = settings.nodeBloomThreshold;
+                }
+            }
+        });
+
+        // Store the updated values
+        this.bloomStrength = settings.nodeBloomStrength ?? this.bloomStrength;
+        this.bloomRadius = settings.nodeBloomRadius ?? this.bloomRadius;
+        this.bloomThreshold = settings.nodeBloomThreshold ?? this.bloomThreshold;
+    }
+
+    updateFisheye(settings) {
+        console.log('Updating fisheye settings:', settings);
+        this.fisheyeEnabled = settings.enabled;
+        this.fisheyeStrength = settings.strength;
+        this.fisheyeRadius = settings.radius;
+        this.fisheyeFocusPoint = settings.focusPoint;
+
+        // Apply fisheye effect if enabled
+        if (this.fisheyeEnabled) {
+            // TODO: Implement fisheye distortion shader
+            console.log('Fisheye effect enabled:', {
+                strength: this.fisheyeStrength,
+                radius: this.fisheyeRadius,
+                focusPoint: this.fisheyeFocusPoint
+            });
         }
     }
 

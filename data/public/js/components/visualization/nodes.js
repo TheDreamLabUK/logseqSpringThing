@@ -551,65 +551,28 @@ export class NodeManager {
         }
     }
 
-    updateNodePositions(positions) {
-        if (!positions) {
-            console.warn('Received null or undefined positions');
-            return;
-        }
+    updateMaterial(settings) {
+        console.log('Updating node material settings:', settings);
+        
+        // Update material settings
+        this.materialSettings = {
+            ...this.materialSettings,
+            metalness: settings.metalness ?? this.materialSettings.metalness,
+            roughness: settings.roughness ?? this.materialSettings.roughness,
+            clearcoat: settings.clearcoat ?? this.materialSettings.clearcoat,
+            clearcoatRoughness: settings.clearcoatRoughness ?? this.materialSettings.clearcoatRoughness,
+            opacity: settings.opacity ?? this.materialSettings.opacity,
+            emissiveMinIntensity: settings.emissiveMinIntensity ?? this.materialSettings.emissiveMinIntensity,
+            emissiveMaxIntensity: settings.emissiveMaxIntensity ?? this.materialSettings.emissiveMaxIntensity
+        };
 
-        // Ensure positions is an array
-        const positionsArray = Array.isArray(positions) ? positions : Array.from(positions);
-        console.log('Updating positions for', positionsArray.length, 'nodes');
-
-        // Get array of node IDs
-        const nodeIds = Array.from(this.nodeMeshes.keys());
-
-        // Update each node position
-        positionsArray.forEach((position, index) => {
-            const nodeId = nodeIds[index];
-            if (!nodeId) {
-                console.warn(`No node found for index ${index}`);
-                return;
-            }
-
-            const mesh = this.nodeMeshes.get(nodeId);
-            const label = this.nodeLabels.get(nodeId);
-            
-            if (!mesh) {
-                console.warn(`No mesh found for node ${nodeId}`);
-                return;
-            }
-
-            // Extract position values, handling both array and object formats
-            let x, y, z;
-            if (Array.isArray(position)) {
-                [x, y, z] = position;
-            } else if (position && typeof position === 'object') {
-                ({ x, y, z } = position);
-            } else {
-                console.warn(`Invalid position format for node ${nodeId}:`, position);
-                return;
-            }
-
-            // Validate position values
-            if (typeof x === 'number' && typeof y === 'number' && typeof z === 'number' &&
-                !isNaN(x) && !isNaN(y) && !isNaN(z)) {
-                
-                // Update mesh position
-                mesh.position.set(x, y, z);
-                
-                // Update label position if it exists
-                if (label) {
-                    const size = mesh.geometry.parameters.radius || 
-                               mesh.geometry.parameters.width || 
-                               1; // fallback size
-                    label.position.set(x, y + size + 2, z);
-                }
-
-                // Update connected edges
-                this.updateEdgesForNode(nodeId);
-            } else {
-                console.warn(`Invalid position values for node ${nodeId}: x=${x}, y=${y}, z=${z}`);
+        // Update all existing node materials
+        this.nodeMeshes.forEach((mesh, nodeId) => {
+            const nodeData = this.nodeData.get(nodeId);
+            if (nodeData && mesh.material) {
+                // Create new material with updated settings
+                mesh.material.dispose(); // Dispose old material
+                mesh.material = this.createNodeMaterial(mesh.material.color, nodeData.metadata || {});
             }
         });
     }
