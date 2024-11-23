@@ -1,19 +1,17 @@
-# settings.toml
-
-# Debug mode - when true, only processes Debug Test Page.md and debug linked node.md
+# Debug mode - when true only processes Debug Test Page.md and debug linked node.md
 debug_mode = false
 
 # Prompt for the AI assistant
 prompt = """
 You are an AI assistant building summaries of web links and text. You will visit any web links found in the text and integrate
-a summary with web citations, aiming for up to two citations explicitly returned in context as raw web hyperlinks.
+a summary with web citations aiming for up to two citations explicitly returned in context as raw web hyperlinks.
 Ensure to return web links as citations separated by new lines.
-You should aim to select one or more of these topics in this form appropriate to the created summary,
+You should aim to select one or more of these topics in this form appropriate to the created summary
 embedding the topic in Logseq double square brackets once in the returned text.
 """
 
 [network]
-domain = "localhost"  # Default domain, override in .env for production
+domain = "localhost"  # Default domain override in .env for production
 port = 3000          # Port for Rust backend (nginx proxies from 4000 to this)
 bind_address = "0.0.0.0"  # should bind to localhost for security
 enable_tls = true
@@ -23,7 +21,7 @@ max_request_size = 10485760  # 10MB in bytes
 enable_rate_limiting = true
 rate_limit_requests = 100
 rate_limit_window = 60
-tunnel_id = ""  # Cloudflare tunnel ID, set in .env for production
+tunnel_id = ""  # Cloudflare tunnel ID set in .env for production
 
 [security]
 enable_cors = false
@@ -94,7 +92,7 @@ node_color_new = "#FFD700"         # Bright gold for very recent files
 node_color_recent = "#FFA500"      # Orange for recent files
 node_color_medium = "#DAA520"      # Goldenrod for medium-age files
 node_color_old = "#CD853F"         # Peru/bronze for old files
-node_age_max_days = 30              # Maximum age in days for color calculation
+node_age_max_days = 30             # Maximum age in days for color calculation
 
 # Node type colors
 node_color_core = "#FFB90F"        # Dark golden for core nodes
@@ -102,27 +100,27 @@ node_color_secondary = "#FFC125"   # Golden yellow for secondary nodes
 node_color_default = "#FFD700"     # Gold for default nodes
 
 # Physical dimensions in meters
-min_node_size = 0.15                # 15cm minimum node size
-max_node_size = 0.4                 # 40cm maximum node size
-hologram_scale = 6.0                # Increased for better visibility
-hologram_opacity = 0.15             # Slightly increased for better visibility
-edge_opacity = 0.4                  # Increased for better visibility
-label_font_size = 42                # Increased for better readability
-fog_density = 0.001                 # Reduced for clearer distant nodes
+min_node_size = 0.15               # 15cm minimum node size
+max_node_size = 0.4                # 40cm maximum node size
+hologram_scale = 6.0               # Increased for better visibility
+hologram_opacity = 0.15            # Slightly increased for better visibility
+edge_opacity = 0.4                 # Increased for better visibility
+label_font_size = 42               # Increased for better readability
+fog_density = 0.001                # Reduced for clearer distant nodes
 
 # Layout dimensions in meters
-target_radius = 250.0               # Increased target radius
-natural_length = 120.0              # Increased natural length
-boundary_limit = 600.0              # Increased boundary
+target_radius = 250.0              # Increased target radius
+natural_length = 120.0             # Increased natural length
+boundary_limit = 600.0             # Increased boundary
 
 # Material properties - enhanced metallic look
-node_material_metalness = 0.3       # Increased for more metallic appearance
-node_material_roughness = 0.5       # Reduced for more shine
-node_material_clearcoat = 0.8       # Increased for more glossiness
+node_material_metalness = 0.7      # High metallic for better reflection
+node_material_roughness = 0.2      # Low roughness for shine
+node_material_clearcoat = 0.8      # High clearcoat for glossiness
 node_material_clearcoat_roughness = 0.1
 node_material_opacity = 0.95
-node_emissive_min_intensity = 0.0   # Increased base glow
-node_emissive_max_intensity = 0.3   # Increased maximum glow
+node_emissive_min_intensity = 0.4  # Good base glow
+node_emissive_max_intensity = 1.0  # Strong maximum glow
 
 # Label properties
 label_font_family = "Arial"
@@ -135,41 +133,41 @@ label_info_text_color = "lightgray"
 label_xr_font_size = 28
 
 # Edge properties
-edge_weight_normalization = 12.0    # Increased for better visibility
-edge_min_width = 1.5               # Increased minimum width
-edge_max_width = 6.0               # Increased maximum width
+edge_weight_normalization = 12.0   # Better visibility
+edge_min_width = 1.5              # Clear minimum width
+edge_max_width = 6.0              # Strong maximum width
 
 # Geometry properties
-geometry_min_segments = 24          # Increased for smoother curves
-geometry_max_segments = 48          # Increased for smoother curves
+geometry_min_segments = 24         # Smooth curves
+geometry_max_segments = 48         # High detail for close objects
 geometry_segment_per_hyperlink = 0.6
 
 # Interaction properties
-click_emissive_boost = 2.5         # Increased feedback intensity
-click_feedback_duration = 250       # Longer feedback duration
+click_emissive_boost = 2.5        # Strong feedback
+click_feedback_duration = 250      # Quarter second feedback
 
 # Physics simulation parameters
-force_directed_iterations = 300     # More iterations for better layout
-force_directed_spring = 0.015      # Adjusted for better spacing
-force_directed_repulsion = 1200.0  # Increased repulsion
-force_directed_attraction = 0.012
-force_directed_damping = 0.85      # Adjusted damping
+force_directed_iterations = 300    # More iterations for better layout
+force_directed_spring = 0.015     # Balanced spring force
+force_directed_repulsion = 1200.0 # Strong repulsion
+force_directed_attraction = 0.012  # Balanced attraction
+force_directed_damping = 0.85     # Good stability
 
 [bloom]
-# Enhanced bloom settings for ethereal glow
-node_bloom_strength = 0.8          # Significantly increased
-node_bloom_radius = 0.3           # Increased radius
-node_bloom_threshold = 0.2        # Adjusted threshold
+# Node bloom settings
+node_bloom_strength = 1.5          # Strong but not overpowering
+node_bloom_radius = 0.4           # Moderate spread
+node_bloom_threshold = 0.2        # Balanced sensitivity
 
-# Edge bloom for golden trails
-edge_bloom_strength = 0.6         # Increased
-edge_bloom_radius = 0.4          # Increased
-edge_bloom_threshold = 0.1       # Adjusted
+# Edge bloom settings
+edge_bloom_strength = 1.2         # Visible but not dominant
+edge_bloom_radius = 0.4          # Consistent with nodes
+edge_bloom_threshold = 0.2       # Balanced sensitivity
 
-# Environmental bloom for ambient glow
-environment_bloom_strength = 0.7   # Increased
-environment_bloom_radius = 0.3    # Increased
-environment_bloom_threshold = 0.1  # Adjusted
+# Environment bloom settings
+environment_bloom_strength = 1.0   # Subtle ambient effect
+environment_bloom_radius = 0.4    # Consistent spread
+environment_bloom_threshold = 0.2  # Balanced sensitivity
 
 [fisheye]
 enabled = false
@@ -178,80 +176,3 @@ radius = 100.0
 focus_x = 0.0
 focus_y = 0.0
 focus_z = 0.0
-
-# Visualization Settings - Colors
-NODE_COLOR="#FFA500"               # Base orange
-EDGE_COLOR="#FFD700"               # Golden
-HOLOGRAM_COLOR="#FFC125"           # Deep golden yellow
-NODE_COLOR_NEW="#FFD700"           # Bright gold for very recent files
-NODE_COLOR_RECENT="#FFA500"        # Orange for recent files
-NODE_COLOR_MEDIUM="#DAA520"        # Goldenrod for medium-age files
-NODE_COLOR_OLD="#CD853F"           # Peru/bronze for old files
-NODE_COLOR_CORE="#FFB90F"          # Dark golden for core nodes
-NODE_COLOR_SECONDARY="#FFC125"     # Golden yellow for secondary nodes
-NODE_COLOR_DEFAULT="#FFD700"       # Gold for default nodes
-
-# Visualization Settings - Physical Dimensions (in meters)
-MIN_NODE_SIZE=0.15                  # 15cm minimum node size
-MAX_NODE_SIZE=0.4                   # 40cm maximum node size
-HOLOGRAM_SCALE=6.0
-HOLOGRAM_OPACITY=0.15
-EDGE_OPACITY=0.4
-
-# Visualization Settings - Labels
-LABEL_FONT_SIZE=42
-LABEL_FONT_FAMILY="Arial"
-LABEL_PADDING=24
-LABEL_VERTICAL_OFFSET=2.5
-LABEL_CLOSE_OFFSET=0.25
-LABEL_BACKGROUND_COLOR="rgba(0, 0, 0, 0.85)"
-LABEL_TEXT_COLOR="white"
-LABEL_INFO_TEXT_COLOR="lightgray"
-LABEL_XR_FONT_SIZE=28
-
-# Visualization Settings - Material
-NODE_MATERIAL_METALNESS=0.7
-NODE_MATERIAL_ROUGHNESS=0.1
-NODE_MATERIAL_CLEARCOAT=0.8
-NODE_MATERIAL_CLEARCOAT_ROUGHNESS=0.1
-NODE_MATERIAL_OPACITY=0.95
-NODE_EMISSIVE_MIN_INTENSITY=0.4
-NODE_EMISSIVE_MAX_INTENSITY=1.2
-
-# Visualization Settings - Geometry
-GEOMETRY_MIN_SEGMENTS=24
-GEOMETRY_MAX_SEGMENTS=48
-GEOMETRY_SEGMENT_PER_HYPERLINK=0.6
-
-# Visualization Settings - Interaction
-CLICK_EMISSIVE_BOOST=2.5
-CLICK_FEEDBACK_DURATION=250
-
-# Visualization Settings - Environment
-FOG_DENSITY=0.001
-
-# Physics Simulation Parameters
-FORCE_DIRECTED_ITERATIONS=300
-FORCE_DIRECTED_SPRING=0.015
-FORCE_DIRECTED_REPULSION=1200.0
-FORCE_DIRECTED_ATTRACTION=0.012
-FORCE_DIRECTED_DAMPING=0.85
-
-# Bloom Settings
-NODE_BLOOM_STRENGTH=0.8
-NODE_BLOOM_RADIUS=0.3
-NODE_BLOOM_THRESHOLD=0.2
-EDGE_BLOOM_STRENGTH=0.6
-EDGE_BLOOM_RADIUS=0.4
-EDGE_BLOOM_THRESHOLD=0.1
-ENVIRONMENT_BLOOM_STRENGTH=0.7
-ENVIRONMENT_BLOOM_RADIUS=0.3
-ENVIRONMENT_BLOOM_THRESHOLD=0.1
-
-# Fisheye Settings
-FISHEYE_ENABLED=false
-FISHEYE_STRENGTH=0.5
-FISHEYE_RADIUS=100.0
-FISHEYE_FOCUS_X=0.0
-FISHEYE_FOCUS_Y=0.0
-FISHEYE_FOCUS_Z=0.0

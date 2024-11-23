@@ -4,6 +4,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { BLOOM_LAYER, NORMAL_LAYER } from './nodes.js';
+import { visualizationSettings } from '../../services/visualizationSettings.js';
 
 export class EffectsManager {
     constructor(scene, camera, renderer, settings = {}) {
@@ -15,26 +16,61 @@ export class EffectsManager {
         this.finalComposer = null;
         this.renderTarget = null;
         
-        // Bloom settings with defaults
-        this.bloomStrength = settings.bloomStrength || 1.5;
-        this.bloomRadius = settings.bloomRadius || 0.4;
-        this.bloomThreshold = settings.bloomThreshold || 0.8;
+        // Get bloom settings from visualization settings service
+        const bloomSettings = visualizationSettings.getBloomSettings();
+        this.bloomStrength = bloomSettings.nodeBloomStrength;
+        this.bloomRadius = bloomSettings.nodeBloomRadius;
+        this.bloomThreshold = bloomSettings.nodeBloomThreshold;
 
-        // Hologram settings with defaults
+        // Hologram settings from visualization settings
+        const hologramSettings = visualizationSettings.getHologramSettings();
         this.hologramGroup = new THREE.Group();
         this.scene.add(this.hologramGroup);
-        this.hologramColor = new THREE.Color(settings.hologramColor || 0xFFD700);
-        this.hologramScale = settings.hologramScale || 1;
-        this.hologramOpacity = settings.hologramOpacity || 0.1;
+        this.hologramColor = new THREE.Color(hologramSettings.color);
+        this.hologramScale = hologramSettings.scale;
+        this.hologramOpacity = hologramSettings.opacity;
 
-        // Fisheye settings with defaults
-        this.fisheyeEnabled = false;
-        this.fisheyeStrength = 0.5;
-        this.fisheyeRadius = 100.0;
-        this.fisheyeFocusPoint = [0, 0, 0];
+        // Fisheye settings from visualization settings
+        const fisheyeSettings = visualizationSettings.getFisheyeSettings();
+        this.fisheyeEnabled = fisheyeSettings.enabled;
+        this.fisheyeStrength = fisheyeSettings.strength;
+        this.fisheyeRadius = fisheyeSettings.radius;
+        this.fisheyeFocusPoint = [fisheyeSettings.focusX, fisheyeSettings.focusY, fisheyeSettings.focusZ];
+
+        // Bind the settings update handler
+        this.handleSettingsUpdate = this.handleSettingsUpdate.bind(this);
+        window.addEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
 
         // Initialize post-processing after a short delay to ensure renderer is ready
         requestAnimationFrame(() => this.initPostProcessing());
+    }
+
+    handleSettingsUpdate(event) {
+        const settings = event.detail;
+            
+        // Update bloom settings if they've changed
+        if (settings.nodeBloomStrength !== undefined ||
+            settings.nodeBloomRadius !== undefined ||
+            settings.nodeBloomThreshold !== undefined) {
+            const bloomSettings = visualizationSettings.getBloomSettings();
+            this.updateBloom(bloomSettings);
+        }
+
+        // Update hologram settings if they've changed
+        if (settings.hologramColor !== undefined ||
+            settings.hologramScale !== undefined ||
+            settings.hologramOpacity !== undefined) {
+            const hologramSettings = visualizationSettings.getHologramSettings();
+            this.updateFeature('hologramColor', hologramSettings.color);
+            this.updateFeature('hologramScale', hologramSettings.scale);
+            this.updateFeature('hologramOpacity', hologramSettings.opacity);
+        }
+
+        // Update fisheye settings if they've changed
+        if (settings.fisheye) {
+            const fisheyeSettings = visualizationSettings.getFisheyeSettings();
+            this.updateFisheye(fisheyeSettings);
+        }
     }
 
     createRenderTarget() {
@@ -49,7 +85,6 @@ export class EffectsManager {
                 minFilter: THREE.LinearFilter,
                 magFilter: THREE.LinearFilter,
                 format: THREE.RGBAFormat,
-                encoding: THREE.sRGBEncoding,
                 type: THREE.HalfFloatType
             }
         );
@@ -105,7 +140,7 @@ export class EffectsManager {
                     void main() {
                         vec4 baseColor = texture2D(baseTexture, vUv);
                         vec4 bloomColor = texture2D(bloomTexture, vUv);
-                        gl_FragColor = baseColor + vec4(1.0) * bloomColor;
+                        gl_FragColor = baseColor + bloomColor;
                     }
                 `,
                 defines: {}
@@ -134,6 +169,9 @@ export class EffectsManager {
             this.hologramGroup.remove(child);
         }
 
+        // Get material settings
+        const materialSettings = visualizationSettings.getNodeSettings().material;
+
         // Create multiple rings with different sizes to match each sphere's radius
         const ringSizes = [40, 30, 20];
         for (let i = 0; i < 3; i++) {
@@ -141,17 +179,18 @@ export class EffectsManager {
             const ringMaterial = new THREE.MeshStandardMaterial({
                 color: this.hologramColor,
                 emissive: this.hologramColor,
-                emissiveIntensity: 0.5,
+                emissiveIntensity: materialSettings.emissiveMaxIntensity,
                 transparent: true,
                 opacity: this.hologramOpacity,
-                metalness: 0.8,
-                roughness: 0.2
+                metalness: materialSettings.metalness,
+                roughness: materialSettings.roughness
             });
 
             const ring = new THREE.Mesh(ringGeometry, ringMaterial);
             ring.rotation.x = Math.PI / 2 * i;
             ring.rotation.y = Math.PI / 4 * i;
             ring.userData.rotationSpeed = 0.002 * (i + 1);
+            ring.layers.enable(BLOOM_LAYER);
             this.hologramGroup.add(ring);
         }
 
@@ -165,7 +204,7 @@ export class EffectsManager {
         });
         const buckySphere = new THREE.Mesh(buckyGeometry, buckyMaterial);
         buckySphere.userData.rotationSpeed = 0.0001;
-        buckySphere.layers.enable(1);
+        buckySphere.layers.enable(BLOOM_LAYER);
         this.hologramGroup.add(buckySphere);
 
         // Add Geodesic Dome
@@ -178,7 +217,7 @@ export class EffectsManager {
         });
         const geodesicDome = new THREE.Mesh(geodesicGeometry, geodesicMaterial);
         geodesicDome.userData.rotationSpeed = 0.0002;
-        geodesicDome.layers.enable(1);
+        geodesicDome.layers.enable(BLOOM_LAYER);
         this.hologramGroup.add(geodesicDome);
 
         // Add Normal Triangle Sphere
@@ -191,7 +230,7 @@ export class EffectsManager {
         });
         const triangleSphere = new THREE.Mesh(triangleGeometry, triangleMaterial);
         triangleSphere.userData.rotationSpeed = 0.0003;
-        triangleSphere.layers.enable(1);
+        triangleSphere.layers.enable(BLOOM_LAYER);
         this.hologramGroup.add(triangleSphere);
     }
 
@@ -208,12 +247,19 @@ export class EffectsManager {
             return;
         }
 
-        // Render with bloom effect
+        // Store original layer state
+        const originalLayers = this.camera.layers.mask;
+
+        // First render the bloom layer
         this.camera.layers.set(BLOOM_LAYER);
         this.bloomComposer.render();
         
+        // Then render the normal scene
         this.camera.layers.set(NORMAL_LAYER);
         this.finalComposer.render();
+
+        // Restore original layer state
+        this.camera.layers.mask = originalLayers;
     }
 
     handleResize() {
@@ -237,7 +283,6 @@ export class EffectsManager {
         }
     }
 
-    // Rest of the methods remain the same...
     updateFeature(control, value) {
         console.log(`Updating effect feature: ${control} = ${value}`);
         switch (control) {
@@ -345,6 +390,9 @@ export class EffectsManager {
     }
 
     dispose() {
+        // Remove event listener
+        window.removeEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
+
         // Dispose render targets
         if (this.renderTarget) {
             this.renderTarget.dispose();

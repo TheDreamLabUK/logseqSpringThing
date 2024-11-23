@@ -224,6 +224,20 @@ export class VisualizationSettings {
     getFisheyeSettings() {
         return this.settings.fisheye;
     }
+
+    getBloomSettings() {
+        return {
+            nodeBloomStrength: this.settings.nodeBloomStrength,
+            nodeBloomRadius: this.settings.nodeBloomRadius,
+            nodeBloomThreshold: this.settings.nodeBloomThreshold,
+            edgeBloomStrength: this.settings.edgeBloomStrength,
+            edgeBloomRadius: this.settings.edgeBloomRadius,
+            edgeBloomThreshold: this.settings.edgeBloomThreshold,
+            environmentBloomStrength: this.settings.environmentBloomStrength,
+            environmentBloomRadius: this.settings.environmentBloomRadius,
+            environmentBloomThreshold: this.settings.environmentBloomThreshold
+        };
+    }
 }
 
 // Create and export a singleton instance
