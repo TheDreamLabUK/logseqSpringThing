@@ -21,18 +21,29 @@ export function initThreeScene() {
     );
     camera.position.set(0, 1.6, 3); // Default height ~1.6m (average human height)
 
-    // Create the renderer with XR-specific configuration
+    // Create the renderer with optimized configuration
     const renderer = new THREE.WebGLRenderer({ 
         antialias: true,
         alpha: true, // Enable alpha for AR passthrough
         logarithmicDepthBuffer: true, // Better depth precision for XR
+        powerPreference: "high-performance",
+        premultipliedAlpha: false,
+        stencil: false,
+        depth: true,
+        preserveDrawingBuffer: false
     });
+
+    // Configure renderer
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for performance
     renderer.outputColorSpace = THREE.SRGBColorSpace; // Modern color space handling
     renderer.xr.enabled = true; // Enable WebXR
     renderer.shadowMap.enabled = true; // Enable shadows for better visual quality
     renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows for realism
+
+    // Add WebGL context loss handling
+    renderer.domElement.addEventListener('webglcontextlost', handleContextLost, false);
+    renderer.domElement.addEventListener('webglcontextrestored', handleContextRestored, false);
 
     // Set up XR-friendly lighting
     setupLighting(scene);
@@ -49,7 +60,30 @@ export function initThreeScene() {
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
 
+    // Set texture memory hints
+    THREE.TextureLoader.prototype.crossOrigin = 'anonymous';
+    renderer.info.autoReset = true;
+    renderer.info.reset();
+
     return { scene, camera, renderer };
+}
+
+/**
+ * Handle WebGL context loss
+ * @param {Event} event - The context loss event
+ */
+function handleContextLost(event) {
+    event.preventDefault();
+    console.warn('WebGL context lost. Attempting to restore...');
+}
+
+/**
+ * Handle WebGL context restoration
+ */
+function handleContextRestored() {
+    console.log('WebGL context restored');
+    // Force a full scene refresh
+    window.dispatchEvent(new Event('webglcontextrestored'));
 }
 
 /**
@@ -61,10 +95,14 @@ function setupLighting(scene) {
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
     directionalLight.position.set(5, 5, 5);
     directionalLight.castShadow = true;
+    
+    // Optimize shadow map settings
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
     directionalLight.shadow.camera.near = 0.5;
     directionalLight.shadow.camera.far = 500;
+    directionalLight.shadow.bias = -0.0001;
+    
     scene.add(directionalLight);
 
     // Fill light
@@ -92,6 +130,10 @@ export function createOrbitControls(camera, renderer) {
     controls.maxPolarAngle = Math.PI * 0.95; // Prevent camera from going below ground
     controls.minDistance = 1; // Minimum zoom distance
     controls.maxDistance = 50; // Maximum zoom distance
+    controls.enablePan = true;
+    controls.panSpeed = 0.5;
+    controls.rotateSpeed = 0.5;
+    controls.zoomSpeed = 0.5;
     
     // Disable controls when in XR mode
     renderer.xr.addEventListener('sessionstart', () => {
@@ -122,6 +164,7 @@ export function updateSceneSize(camera, renderer) {
 /**
  * Creates a basic environment for XR scenes
  * @param {THREE.Scene} scene - The Three.js scene
+ * @returns {Object} Environment meshes for cleanup
  */
 export function createBasicEnvironment(scene) {
     // Add a ground plane for reference and shadows
@@ -143,4 +186,64 @@ export function createBasicEnvironment(scene) {
     gridHelper.material.transparent = true;
     gridHelper.material.opacity = 0.2;
     scene.add(gridHelper);
+
+    return {
+        ground,
+        gridHelper,
+        dispose: () => {
+            // Cleanup materials and geometries
+            groundGeometry.dispose();
+            groundMaterial.dispose();
+            if (gridHelper.material) {
+                gridHelper.material.dispose();
+            }
+            if (gridHelper.geometry) {
+                gridHelper.geometry.dispose();
+            }
+            // Remove from scene
+            scene.remove(ground);
+            scene.remove(gridHelper);
+        }
+    };
+}
+
+/**
+ * Disposes of Three.js resources
+ * @param {THREE.Scene} scene - The Three.js scene
+ * @param {THREE.WebGLRenderer} renderer - The Three.js renderer
+ * @param {OrbitControls} controls - The orbit controls
+ */
+export function disposeThreeResources(scene, renderer, controls) {
+    // Dispose of scene objects
+    scene.traverse((object) => {
+        if (object.geometry) {
+            object.geometry.dispose();
+        }
+        
+        if (object.material) {
+            if (Array.isArray(object.material)) {
+                object.material.forEach(material => {
+                    if (material.map) material.map.dispose();
+                    material.dispose();
+                });
+            } else {
+                if (object.material.map) object.material.map.dispose();
+                object.material.dispose();
+            }
+        }
+    });
+
+    // Dispose of renderer
+    renderer.dispose();
+    renderer.forceContextLoss();
+    renderer.domElement.remove();
+
+    // Remove context loss listeners
+    renderer.domElement.removeEventListener('webglcontextlost', handleContextLost);
+    renderer.domElement.removeEventListener('webglcontextrestored', handleContextRestored);
+
+    // Dispose of controls
+    if (controls) {
+        controls.dispose();
+    }
 }

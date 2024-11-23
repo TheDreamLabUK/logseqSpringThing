@@ -13,6 +13,7 @@ export class EffectsManager {
         
         this.bloomComposer = null;
         this.finalComposer = null;
+        this.renderTarget = null;
         
         // Bloom settings with defaults
         this.bloomStrength = settings.bloomStrength || 1.5;
@@ -31,22 +32,40 @@ export class EffectsManager {
         this.fisheyeStrength = 0.5;
         this.fisheyeRadius = 100.0;
         this.fisheyeFocusPoint = [0, 0, 0];
+
+        // Initialize post-processing after a short delay to ensure renderer is ready
+        requestAnimationFrame(() => this.initPostProcessing());
     }
 
-    initPostProcessing() {
-        // Create render targets
-        const renderTarget = new THREE.WebGLRenderTarget(
+    createRenderTarget() {
+        if (this.renderTarget) {
+            this.renderTarget.dispose();
+        }
+        
+        this.renderTarget = new THREE.WebGLRenderTarget(
             window.innerWidth,
             window.innerHeight,
             {
                 minFilter: THREE.LinearFilter,
                 magFilter: THREE.LinearFilter,
                 format: THREE.RGBAFormat,
-                colorSpace: THREE.SRGBColorSpace
+                encoding: THREE.sRGBEncoding,
+                type: THREE.HalfFloatType
             }
         );
+        return this.renderTarget;
+    }
 
-        // Setup bloom composer with settings
+    initPostProcessing() {
+        if (!this.renderer || !this.renderer.domElement) {
+            console.warn('Renderer not ready, deferring post-processing initialization');
+            return;
+        }
+
+        // Create render targets
+        const renderTarget = this.createRenderTarget();
+
+        // Setup bloom composer
         this.bloomComposer = new EffectComposer(this.renderer, renderTarget);
         this.bloomComposer.renderToScreen = false;
         
@@ -70,7 +89,7 @@ export class EffectsManager {
             new THREE.ShaderMaterial({
                 uniforms: {
                     baseTexture: { value: null },
-                    bloomTexture: { value: this.bloomComposer.renderTarget2.texture }
+                    bloomTexture: { value: null }
                 },
                 vertexShader: `
                     varying vec2 vUv;
@@ -94,6 +113,15 @@ export class EffectsManager {
             "baseTexture"
         );
         finalPass.needsSwap = true;
+        
+        // Update bloom texture reference after render
+        this.bloomComposer.renderToScreen = false;
+        this.bloomComposer.onAfterRender = () => {
+            if (finalPass.uniforms && this.bloomComposer.renderTarget2) {
+                finalPass.uniforms.bloomTexture.value = this.bloomComposer.renderTarget2.texture;
+            }
+        };
+
         this.finalComposer.addPass(finalPass);
     }
 
@@ -176,6 +204,10 @@ export class EffectsManager {
     }
 
     render() {
+        if (!this.bloomComposer || !this.finalComposer) {
+            return;
+        }
+
         // Render with bloom effect
         this.camera.layers.set(BLOOM_LAYER);
         this.bloomComposer.render();
@@ -187,10 +219,25 @@ export class EffectsManager {
     handleResize() {
         const width = window.innerWidth;
         const height = window.innerHeight;
-        if (this.bloomComposer) this.bloomComposer.setSize(width, height);
-        if (this.finalComposer) this.finalComposer.setSize(width, height);
+
+        // Recreate render targets with new size
+        const renderTarget = this.createRenderTarget();
+
+        // Update composers
+        if (this.bloomComposer) {
+            this.bloomComposer.setSize(width, height);
+            this.bloomComposer.renderTarget1.setSize(width, height);
+            this.bloomComposer.renderTarget2.setSize(width, height);
+        }
+        
+        if (this.finalComposer) {
+            this.finalComposer.setSize(width, height);
+            this.finalComposer.renderTarget1.setSize(width, height);
+            this.finalComposer.renderTarget2.setSize(width, height);
+        }
     }
 
+    // Rest of the methods remain the same...
     updateFeature(control, value) {
         console.log(`Updating effect feature: ${control} = ${value}`);
         switch (control) {
@@ -298,6 +345,11 @@ export class EffectsManager {
     }
 
     dispose() {
+        // Dispose render targets
+        if (this.renderTarget) {
+            this.renderTarget.dispose();
+        }
+
         // Dispose bloom resources
         if (this.bloomComposer) {
             this.bloomComposer.renderTarget1.dispose();
