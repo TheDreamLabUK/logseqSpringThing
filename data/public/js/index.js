@@ -12,26 +12,13 @@ class App {
         this.visualization = new WebXRVisualization(this.websocketService);
         this.vueApp = null;
 
-        // Bind the updateVisualization method
-        this.handleGraphData = this.handleGraphData.bind(this);
-    }
-
-    handleGraphData(data) {
-        console.log('Received graph data:', data);
-        if (this.visualization && data.nodes && data.edges) {
-            // Transform edges data to match expected format
-            const transformedEdges = data.edges.map(edge => ({
-                source: edge.source,
-                target_node: edge.target_node,
-                weight: edge.weight || 1
-            }));
-
-            // Update visualization with the transformed data
-            this.visualization.updateVisualization({
-                nodes: data.nodes,
-                edges: transformedEdges
-            });
-        }
+        // Set up graph data handling
+        this.websocketService.on('graphUpdate', ({ graphData }) => {
+            console.log('Received graph update:', graphData);
+            if (this.visualization) {
+                this.visualization.updateVisualization(graphData);
+            }
+        });
     }
 
     async start() {
@@ -45,9 +32,6 @@ class App {
                 throw new Error("Could not find 'scene-container' element");
             }
             await this.visualization.initThreeJS(container);
-
-            // Set up WebSocket event handlers
-            this.websocketService.on('graphData', this.handleGraphData);
             
             // Create Vue application
             const websocketService = this.websocketService;
@@ -106,6 +90,9 @@ class App {
                     this.visualization.onWindowResize();
                 }
             });
+
+            // Request initial data
+            this.websocketService.send({ type: 'getInitialData' });
 
         } catch (error) {
             console.error('Failed to start application:', error);

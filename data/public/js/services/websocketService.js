@@ -297,6 +297,24 @@ export default class WebsocketService {
         messagesToSend.forEach(message => this.send(message));
     }
 
+    // Helper function to handle graph data consistently
+    handleGraphData = (data) => {
+        const graphData = {
+            nodes: Array.isArray(data.nodes) ? data.nodes : 
+                   Array.isArray(data.graph_data?.nodes) ? data.graph_data.nodes : [],
+            edges: Array.isArray(data.edges) ? data.edges : 
+                   Array.isArray(data.graph_data?.edges) ? data.graph_data.edges : [],
+            metadata: data.metadata || data.graph_data?.metadata || {}
+        };
+        
+        console.log('Emitting graph update with structured data:', graphData);
+        // Emit both events to ensure compatibility
+        this.emit('graphUpdate', { graphData });
+        window.dispatchEvent(new CustomEvent('graphDataUpdated', {
+            detail: graphData
+        }));
+    }
+
     handleServerMessage = (data) => {
         console.log('Handling server message:', data);
         
@@ -311,61 +329,17 @@ export default class WebsocketService {
         
         // Then handle specific message types
         switch (data.type) {
-            case 'getInitialData':
-                console.log('Received initial data:', data);
-                if (data.graph_data) {
-                    // Ensure graph data is properly structured
-                    const graphData = {
-                        nodes: Array.isArray(data.graph_data.nodes) ? data.graph_data.nodes : [],
-                        edges: Array.isArray(data.graph_data.edges) ? data.graph_data.edges : [],
-                        metadata: data.graph_data.metadata || {}
-                    };
-                    console.log('Emitting graph update with structured data:', graphData);
-                    this.emit('graphUpdate', { graphData });
-                }
-                if (data.settings) {
-                    console.log('Dispatching server settings:', data.settings);
-                    if (data.settings.visualization) {
-                        const viz = data.settings.visualization;
-                        ['nodeColor', 'edgeColor', 'hologramColor'].forEach(key => {
-                            if (viz[key]) {
-                                let color = viz[key].replace(/['"]/g, '');
-                                if (color.startsWith('0x')) {
-                                    color = color.slice(2);
-                                } else if (color.startsWith('#')) {
-                                    color = color.slice(1);
-                                }
-                                color = color.padStart(6, '0');
-                                viz[key] = '#' + color;
-                            }
-                        });
-                    }
-                    // Dispatch both events to ensure compatibility
-                    window.dispatchEvent(new CustomEvent('serverSettings', {
-                        detail: data.settings
-                    }));
-                    window.dispatchEvent(new CustomEvent('settingsUpdated', {
-                        detail: data.settings
-                    }));
-                } else {
-                    console.warn('No settings received in initial data');
-                }
+            case 'graphData':
+            case 'graphUpdate':
+                this.handleGraphData(data);
                 break;
 
-            case 'graphUpdate':
-                console.log('Received graph update:', data.graph_data);
-                if (data.graph_data) {
-                    // Ensure graph data is properly structured
-                    const graphData = {
-                        nodes: Array.isArray(data.graph_data.nodes) ? data.graph_data.nodes : [],
-                        edges: Array.isArray(data.graph_data.edges) ? data.graph_data.edges : [],
-                        metadata: data.graph_data.metadata || {}
-                    };
-                    console.log('Emitting graph update with structured data:', graphData);
-                    this.emit('graphUpdate', { graphData });
-                }
+            case 'getInitialData':
+            case 'serverSettings':
+                console.log('Received settings from server:', data.settings);
+                this.emit('serverSettings', data.settings);
                 break;
-                
+
             case 'audioData':
                 this.handleAudioData(data.audio_data);
                 break;
@@ -410,7 +384,8 @@ export default class WebsocketService {
                 break;
 
             case 'settings_updated':
-                console.log('Settings successfully updated:', data);
+                console.log('Settings successfully updated:', data.settings);
+                this.emit('serverSettings', data.settings);
                 window.dispatchEvent(new CustomEvent('settingsUpdated', {
                     detail: data.settings
                 }));
@@ -426,15 +401,15 @@ export default class WebsocketService {
                 this.emit('positionUpdateComplete', data.status);
                 break;
 
-            // Add handlers for new message types
-            case 'graphData':
+            // Settings update messages
             case 'visualSettings':
             case 'materialSettings':
             case 'physicsSettings':
             case 'bloomSettings':
             case 'fisheyeSettings':
-                // These messages are handled by the event listeners
-                console.log(`Received ${data.type} update:`, data);
+                this.emit('serverSettings', {
+                    [data.type.replace('Settings', '')]: data.settings
+                });
                 break;
                 
             default:
