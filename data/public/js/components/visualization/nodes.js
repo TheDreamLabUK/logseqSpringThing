@@ -1,10 +1,6 @@
 import * as THREE from 'three';
 import { visualizationSettings } from '../../services/visualizationSettings.js';
-
-// Constants
-export const BLOOM_LAYER = 1;
-export const NORMAL_LAYER = 0;
-export const LABEL_LAYER = 2;  // New layer for labels
+import { LAYERS, LAYER_GROUPS, LayerManager } from './layerManager.js';
 
 export class NodeManager {
     constructor(scene, camera, settings = {}) {
@@ -22,8 +18,8 @@ export class NodeManager {
         const nodeSettings = visualizationSettings.getNodeSettings();
         
         // Physical dimensions in meters
-        this.minNodeSize = settings.minNodeSize || nodeSettings.minNodeSize; // 0.1m = 10cm
-        this.maxNodeSize = settings.maxNodeSize || nodeSettings.maxNodeSize; // 0.3m = 30cm
+        this.minNodeSize = settings.minNodeSize || nodeSettings.minNodeSize;
+        this.maxNodeSize = settings.maxNodeSize || nodeSettings.maxNodeSize;
         
         // Visual settings
         this.labelFontSize = settings.labelFontSize || nodeSettings.labelFontSize;
@@ -45,6 +41,62 @@ export class NodeManager {
         this.handleClick = this.handleClick.bind(this);
         this.xrEnabled = false;
         this.xrLabelManager = null;
+    }
+
+    centerNodes(nodes) {
+        if (!Array.isArray(nodes) || nodes.length === 0) {
+            return nodes;
+        }
+
+        // Calculate center of mass
+        let centerX = 0, centerY = 0, centerZ = 0;
+        nodes.forEach(node => {
+            centerX += node.x || 0;
+            centerY += node.y || 0;
+            centerZ += node.z || 0;
+        });
+        centerX /= nodes.length;
+        centerY /= nodes.length;
+        centerZ /= nodes.length;
+
+        // Center nodes around origin
+        return nodes.map(node => ({
+            ...node,
+            x: (node.x || 0) - centerX,
+            y: (node.y || 0) - centerY,
+            z: (node.z || 0) - centerZ
+        }));
+    }
+
+    formatFileSize(size) {
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let i = 0;
+        while (size >= 1024 && i < units.length - 1) {
+            size /= 1024;
+            i++;
+        }
+        return `${size.toFixed(2)} ${units[i]}`;
+    }
+
+    formatAge(lastModified) {
+        const now = Date.now();
+        const age = now - new Date(lastModified).getTime();
+        const days = Math.floor(age / (24 * 60 * 60 * 1000));
+        
+        if (days < 1) return 'Today';
+        if (days === 1) return 'Yesterday';
+        if (days < 7) return `${days}d ago`;
+        if (days < 30) return `${Math.floor(days / 7)}w ago`;
+        if (days < 365) return `${Math.floor(days / 30)}m ago`;
+        return `${Math.floor(days / 365)}y ago`;
+    }
+
+    formatNodeNameToUrl(nodeName) {
+        // Get base URL from environment or default to logseq
+        const baseUrl = window.location.origin;
+        // Convert node name to lowercase and replace spaces with dashes
+        const formattedName = nodeName.toLowerCase().replace(/ /g, '-');
+        return `${baseUrl}/#/page/${formattedName}`;
     }
 
     getNodeSize(metadata) {
@@ -86,12 +138,10 @@ export class NodeManager {
     }
 
     createNodeMaterial(color, metadata) {
-        // Use github_last_modified if available, otherwise fall back to last_modified
         const lastModified = metadata.github_last_modified || metadata.last_modified || new Date().toISOString();
         const now = Date.now();
         const ageInDays = (now - new Date(lastModified).getTime()) / (24 * 60 * 60 * 1000);
         
-        // Normalize age to 0-1 range and invert (newer = brighter)
         const normalizedAge = Math.min(ageInDays / this.maxAge, 1);
         const emissiveIntensity = this.materialSettings.emissiveMaxIntensity - 
             (normalizedAge * (this.materialSettings.emissiveMaxIntensity - this.materialSettings.emissiveMinIntensity));
@@ -106,7 +156,8 @@ export class NodeManager {
             opacity: this.materialSettings.opacity,
             envMapIntensity: 1.0,
             clearcoat: this.materialSettings.clearcoat,
-            clearcoatRoughness: this.materialSettings.clearcoatRoughness
+            clearcoatRoughness: this.materialSettings.clearcoatRoughness,
+            toneMapped: false
         });
     }
 
@@ -174,60 +225,23 @@ export class NodeManager {
             map: texture,
             transparent: true,
             depthWrite: false,
-            sizeAttenuation: true
+            sizeAttenuation: true,
+            toneMapped: false // Important for proper visibility
         });
         const sprite = new THREE.Sprite(spriteMaterial);
         
         // Scale sprite to maintain readable text size in meters
         const labelScale = visualizationSettings.getLabelSettings().verticalOffset;
         sprite.scale.set(
-            (canvas.width / this.labelFontSize) * labelScale,
-            (canvas.height / this.labelFontSize) * labelScale,
+            (canvas.width / this.labelFontSize) * labelScale * 1.5,
+            (canvas.height / this.labelFontSize) * labelScale * 1.5,
             1
         );
         
-        // Enable visibility in all layers
-        sprite.layers.enable(NORMAL_LAYER);
-        sprite.layers.enable(BLOOM_LAYER);
-        sprite.layers.enable(LABEL_LAYER);
-
-        // Clean up canvas
-        canvas.width = 1;
-        canvas.height = 1;
-        context.clearRect(0, 0, 1, 1);
+        // Set label to be visible in all necessary layers
+        LayerManager.setLayerGroup(sprite, 'LABEL');
 
         return sprite;
-    }
-
-    formatFileSize(size) {
-        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        let i = 0;
-        while (size >= 1024 && i < units.length - 1) {
-            size /= 1024;
-            i++;
-        }
-        return `${size.toFixed(2)} ${units[i]}`;
-    }
-
-    formatAge(lastModified) {
-        const now = Date.now();
-        const age = now - new Date(lastModified).getTime();
-        const days = Math.floor(age / (24 * 60 * 60 * 1000));
-        
-        if (days < 1) return 'Today';
-        if (days === 1) return 'Yesterday';
-        if (days < 7) return `${days}d ago`;
-        if (days < 30) return `${Math.floor(days / 7)}w ago`;
-        if (days < 365) return `${Math.floor(days / 30)}m ago`;
-        return `${Math.floor(days / 365)}y ago`;
-    }
-
-    formatNodeNameToUrl(nodeName) {
-        // Get base URL from environment or default to logseq
-        const baseUrl = window.location.origin;
-        // Convert node name to lowercase and replace spaces with dashes
-        const formattedName = nodeName.toLowerCase().replace(/ /g, '-');
-        return `${baseUrl}/#/page/${formattedName}`;
     }
 
     handleClick(event, isXR = false, intersectedObject = null) {
@@ -297,81 +311,11 @@ export class NodeManager {
     }
 
     initClickHandling(renderer) {
-        // Add click event listener to renderer's DOM element
         renderer.domElement.addEventListener('click', this.handleClick);
     }
 
     removeClickHandling(renderer) {
-        // Remove click event listener
         renderer.domElement.removeEventListener('click', this.handleClick);
-    }
-
-    centerNodes(nodes) {
-        if (!nodes || (!Array.isArray(nodes) && typeof nodes !== 'object')) {
-            console.warn('Invalid nodes data passed to centerNodes');
-            return;
-        }
-
-        const nodeArray = Array.isArray(nodes) ? nodes.map((node, index) => {
-            if (Array.isArray(node)) {
-                return {
-                    id: index,
-                    x: node[0],
-                    y: node[1],
-                    z: node[2],
-                    vx: node[3],
-                    vy: node[4],
-                    vz: node[5]
-                };
-            }
-            return node;
-        }) : Object.values(nodes);
-
-        if (nodeArray.length === 0) {
-            console.warn('Empty nodes array passed to centerNodes');
-            return;
-        }
-
-        // Calculate center of mass
-        let centerX = 0, centerY = 0, centerZ = 0;
-        nodeArray.forEach(node => {
-            centerX += node.x || 0;
-            centerY += node.y || 0;
-            centerZ += node.z || 0;
-        });
-        centerX /= nodeArray.length;
-        centerY /= nodeArray.length;
-        centerZ /= nodeArray.length;
-
-        // Center around origin
-        nodeArray.forEach(node => {
-            node.x = (node.x || 0) - centerX;
-            node.y = (node.y || 0) - centerY;
-            node.z = (node.z || 0) - centerZ;
-        });
-
-        // Scale positions to reasonable range in meters
-        const maxDist = nodeArray.reduce((max, node) => {
-            const dist = Math.sqrt(
-                (node.x || 0) * (node.x || 0) + 
-                (node.y || 0) * (node.y || 0) + 
-                (node.z || 0) * (node.z || 0)
-            );
-            return Math.max(max, dist);
-        }, 0);
-
-        if (maxDist > 0) {
-            // Scale to fit in 5 meter radius by default
-            const targetRadius = 5.0; // meters
-            const scale = targetRadius / maxDist;
-            nodeArray.forEach(node => {
-                node.x = (node.x || 0) * scale;
-                node.y = (node.y || 0) * scale;
-                node.z = (node.z || 0) * scale;
-            });
-        }
-
-        return nodeArray;
     }
 
     updateNodes(nodes) {
@@ -438,7 +382,7 @@ export class NodeManager {
                 const material = this.createNodeMaterial(color, metadata);
 
                 mesh = new THREE.Mesh(geometry, material);
-                mesh.layers.enable(BLOOM_LAYER);
+                LayerManager.setLayerGroup(mesh, 'BLOOM');
                 this.scene.add(mesh);
                 this.nodeMeshes.set(node.id, mesh);
 
@@ -446,27 +390,20 @@ export class NodeManager {
                 this.scene.add(label);
                 this.nodeLabels.set(node.id, label);
             } else {
-                // Properly dispose old resources
-                if (mesh.geometry) {
-                    mesh.geometry.dispose();
-                }
-                if (mesh.material) {
-                    if (Array.isArray(mesh.material)) {
-                        mesh.material.forEach(mat => mat.dispose());
-                    } else {
-                        mesh.material.dispose();
-                    }
-                }
+                // Update existing mesh
+                if (mesh.geometry) mesh.geometry.dispose();
+                if (mesh.material) mesh.material.dispose();
                 
                 mesh.geometry = this.createNodeGeometry(size, metadata.hyperlink_count || 0);
                 mesh.material = this.createNodeMaterial(color, metadata);
-                mesh.layers.enable(BLOOM_LAYER);
+                LayerManager.setLayerGroup(mesh, 'BLOOM');
             }
 
             mesh.position.set(node.x, node.y, node.z);
             const label = this.nodeLabels.get(node.id);
             if (label) {
-                label.position.set(node.x, node.y + size + 2, node.z);
+                const labelOffset = size * 1.5;
+                label.position.set(node.x, node.y + labelOffset, node.z);
             }
         });
     }
@@ -513,17 +450,17 @@ export class NodeManager {
                 const positions = new Float32Array(6);
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
-                // Scale edge opacity based on weight
-                const normalizedWeight = Math.min(weight / 10, 1); // Normalize weight, cap at 1
+                const normalizedWeight = Math.min(weight / 10, 1);
                 const material = new THREE.LineBasicMaterial({
                     color: this.edgeColor,
                     transparent: true,
                     opacity: this.edgeOpacity * normalizedWeight,
-                    linewidth: Math.max(1, Math.min(weight, 5)) // Scale line width with weight, between 1-5
+                    linewidth: Math.max(1, Math.min(weight, 5)),
+                    toneMapped: false
                 });
 
                 line = new THREE.Line(geometry, material);
-                line.layers.set(NORMAL_LAYER);
+                LayerManager.setLayerGroup(line, 'EDGE');
                 this.scene.add(line);
                 this.edgeMeshes.set(edgeKey, line);
             }
@@ -550,13 +487,13 @@ export class NodeManager {
         this.nodeLabels.forEach((label, nodeId) => {
             const mesh = this.nodeMeshes.get(nodeId);
             if (mesh) {
-                // Position label closer to node due to smaller size
                 const size = mesh.geometry.parameters.radius || 
                            mesh.geometry.parameters.width || 
                            this.minNodeSize;
+                const labelOffset = size * 1.5; // Increased offset
                 label.position.set(
                     mesh.position.x,
-                    mesh.position.y + size + 0.2, // Reduced offset
+                    mesh.position.y + labelOffset,
                     mesh.position.z
                 );
                 label.lookAt(camera.position);
