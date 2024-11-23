@@ -10,7 +10,7 @@ import { initXRInteraction, handleXRInput, XRLabelManager } from '../../xr/xrInt
 // Constants for Spacemouse sensitivity
 const TRANSLATION_SPEED = 0.01;
 const ROTATION_SPEED = 0.01;
-const VR_MOVEMENT_SPEED = 0.05; // Speed for VR joystick movement
+const VR_MOVEMENT_SPEED = 0.05;
 
 function updateNodeDynamics(nodeManager, updates, isInitialLayout, timeStep) {
     if (isInitialLayout) {
@@ -188,73 +188,89 @@ export class WebXRVisualization {
             return;
         }
 
-        // Set pointer-events on the renderer's canvas to ensure it doesn't block Vue components
-        this.renderer.domElement.style.pointerEvents = 'none';
+        // Setup renderer with proper stacking context
+        this.renderer.domElement.style.position = 'absolute';
+        this.renderer.domElement.style.top = '0';
+        this.renderer.domElement.style.left = '0';
+        this.renderer.domElement.style.zIndex = '0';
         container.appendChild(this.renderer.domElement);
 
-        // Wait for renderer to be ready
-        await new Promise(resolve => {
-            requestAnimationFrame(() => {
-                // Initialize XR
-                initXRSession(this.renderer, this.scene, this.camera);
-
-                // Initialize XR interaction with proper event handling
-                const { controllers, hands, xrLabelManager } = initXRInteraction(
-                    this.scene,
-                    this.camera,
-                    this.renderer,
-                    (event) => {
-                        if (event.detail && event.detail.intersection) {
-                            const intersectedObject = event.detail.intersection.object;
-                            this.nodeManager.handleClick(null, true, intersectedObject);
-                        }
-                    }
-                );
-
-                this.xrControllers = controllers;
-                this.xrHands = hands;
-                this.xrLabelManager = xrLabelManager;
-
-                resolve();
-            });
-        });
-
-        // Create a separate div for OrbitControls to prevent interference with Vue components
+        // Create a separate div for OrbitControls
         const controlsContainer = document.createElement('div');
-        controlsContainer.style.position = 'fixed';
+        controlsContainer.style.position = 'absolute';
         controlsContainer.style.top = '0';
         controlsContainer.style.left = '0';
         controlsContainer.style.width = '100%';
         controlsContainer.style.height = '100%';
         controlsContainer.style.zIndex = '1';
-        controlsContainer.style.pointerEvents = 'none';
-        document.body.appendChild(controlsContainer);
+        container.appendChild(controlsContainer);
 
-        // Initialize non-XR controls with the separate container
+        // Initialize controls with optimized settings
         this.controls = new OrbitControls(this.camera, controlsContainer);
         this.controls.enableDamping = true;
-        this.controls.dampingFactor = 0.05;
+        this.controls.dampingFactor = 0.1;
+        this.controls.rotateSpeed = 0.8;
+        this.controls.panSpeed = 0.8;
+        this.controls.zoomSpeed = 0.8;
 
-        // Enable pointer events only when interacting with the scene
-        container.addEventListener('mouseenter', () => {
-            this.renderer.domElement.style.pointerEvents = 'auto';
-            controlsContainer.style.pointerEvents = 'auto';
-        });
-        container.addEventListener('mouseleave', () => {
-            this.renderer.domElement.style.pointerEvents = 'none';
-            controlsContainer.style.pointerEvents = 'none';
-        });
+        // Setup pointer events
+        const updatePointerEvents = (isInteracting) => {
+            if (!this.renderer.xr.isPresenting) {
+                this.renderer.domElement.style.pointerEvents = isInteracting ? 'auto' : 'none';
+                controlsContainer.style.pointerEvents = isInteracting ? 'auto' : 'none';
+            }
+        };
 
-        // Disable OrbitControls when in XR
+        container.addEventListener('mouseenter', () => updatePointerEvents(true));
+        container.addEventListener('mouseleave', () => updatePointerEvents(false));
+        
+        // Initialize click handling
+        this.nodeManager.initClickHandling(this.renderer);
+
+        // Initialize XR
+        await this.initializeXR();
+
+        // Initialize effects after XR setup
+        await this.initializeEffects();
+
+        // Add resize listener
+        window.addEventListener('resize', this.onWindowResize);
+
+        // Start animation loop
+        this.animate();
+    }
+
+    async initializeXR() {
+        // Initialize XR session
+        await initXRSession(this.renderer, this.scene, this.camera);
+
+        // Initialize XR interaction
+        const { controllers, hands, xrLabelManager } = await initXRInteraction(
+            this.scene,
+            this.camera,
+            this.renderer,
+            (event) => {
+                if (event.detail?.intersection?.object) {
+                    this.nodeManager.handleClick(null, true, event.detail.intersection.object);
+                }
+            }
+        );
+
+        this.xrControllers = controllers;
+        this.xrHands = hands;
+        this.xrLabelManager = xrLabelManager;
+
+        // Setup XR event listeners
         this.renderer.xr.addEventListener('sessionstart', () => {
             console.log('XR session started - Disabling OrbitControls');
             this.controls.enabled = false;
+            this.renderer.domElement.style.pointerEvents = 'none';
             
-            // Reset positions when entering VR
+            // Reset positions
             this.userGroup.position.set(0, 0, 0);
             this.cameraRig.position.set(0, 0, 0);
             
-            // Disable post-processing in XR mode
+            // Disable effects in XR mode
             if (this.effectsManager) {
                 this.effectsManager.dispose();
             }
@@ -264,62 +280,48 @@ export class WebXRVisualization {
             console.log('XR session ended - Enabling OrbitControls');
             this.controls.enabled = true;
             
-            // Reset positions when exiting VR
+            // Reset positions
             this.camera.position.set(0, 1.6, 3);
             this.userGroup.position.set(0, 0, 0);
             this.cameraRig.position.set(0, 0, 0);
             
-            // Reinitialize post-processing after XR session
+            // Reinitialize effects
             if (this.effectsManager) {
                 requestAnimationFrame(() => {
                     this.effectsManager.initPostProcessing();
-                    this.effectsManager.createHologramStructure();
                 });
             }
         });
+    }
 
-        // Initialize post-processing after renderer is ready
+    async initializeEffects() {
+        // Initialize post-processing with proper timing
         await new Promise(resolve => {
             requestAnimationFrame(() => {
                 this.effectsManager.initPostProcessing();
-                this.effectsManager.createHologramStructure();
                 resolve();
             });
         });
-
-        window.addEventListener('resize', this.onWindowResize);
-
-        this.animate();
     }
 
     animate() {
         const renderFrame = (timestamp, frame) => {
-            // Handle VR movement if in XR session
-            if (this.renderer.xr.isPresenting && frame) {
-                const session = this.renderer.xr.getSession();
-                if (session) {
-                    // Update VR-specific elements
-                    this.nodeManager.updateLabelOrientations(this.camera);
-                    this.effectsManager.animate();
-                    
-                    // Direct render in VR mode
-                    this.renderer.render(this.scene, this.camera);
-                }
-            } else {
-                // Update non-XR controls
+            // Update controls if enabled
+            if (this.controls && this.controls.enabled) {
                 this.controls.update();
-                this.nodeManager.updateLabelOrientations(this.camera);
-                this.effectsManager.animate();
+            }
 
-                // Use post-processing render in non-VR mode
-                if (this.effectsManager && 
-                    this.effectsManager.bloomComposer && 
-                    this.effectsManager.finalComposer) {
-                    this.effectsManager.render();
-                } else {
-                    // Fallback to direct render if effects aren't ready
-                    this.renderer.render(this.scene, this.camera);
-                }
+            // Update labels
+            this.nodeManager.updateLabelOrientations(this.camera);
+
+            // Animate effects
+            this.effectsManager.animate();
+
+            // Render scene
+            if (this.renderer.xr.isPresenting) {
+                this.renderer.render(this.scene, this.camera);
+            } else {
+                this.effectsManager.render();
             }
         };
 

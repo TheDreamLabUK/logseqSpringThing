@@ -3,7 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { BLOOM_LAYER, NORMAL_LAYER } from './nodes.js';
+import { LAYERS } from './layerManager.js';
 import { visualizationSettings } from '../../services/visualizationSettings.js';
 
 export class EffectsManager {
@@ -12,119 +12,107 @@ export class EffectsManager {
         this.camera = camera;
         this.renderer = renderer;
         
-        this.bloomComposer = null;
+        // Composers for each layer
+        this.composers = new Map();
         this.finalComposer = null;
-        this.renderTarget = null;
         
-        // Get bloom settings from visualization settings service
-        const bloomSettings = visualizationSettings.getBloomSettings();
-        this.bloomStrength = bloomSettings.nodeBloomStrength;
-        this.bloomRadius = bloomSettings.nodeBloomRadius;
-        this.bloomThreshold = bloomSettings.nodeBloomThreshold;
-
-        // Hologram settings from visualization settings
-        const hologramSettings = visualizationSettings.getHologramSettings();
+        // Create hologram group
         this.hologramGroup = new THREE.Group();
         this.scene.add(this.hologramGroup);
-        this.hologramColor = new THREE.Color(hologramSettings.color);
-        this.hologramScale = hologramSettings.scale;
-        this.hologramOpacity = hologramSettings.opacity;
-
-        // Fisheye settings from visualization settings
-        const fisheyeSettings = visualizationSettings.getFisheyeSettings();
-        this.fisheyeEnabled = fisheyeSettings.enabled;
-        this.fisheyeStrength = fisheyeSettings.strength;
-        this.fisheyeRadius = fisheyeSettings.radius;
-        this.fisheyeFocusPoint = [fisheyeSettings.focusX, fisheyeSettings.focusY, fisheyeSettings.focusZ];
-
-        // Bind the settings update handler
+        
+        // Get settings
+        this.bloomSettings = visualizationSettings.getBloomSettings();
+        this.hologramSettings = visualizationSettings.getHologramSettings();
+        
+        // Bind settings update handler
         this.handleSettingsUpdate = this.handleSettingsUpdate.bind(this);
         window.addEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
-
-        // Initialize post-processing after a short delay to ensure renderer is ready
-        requestAnimationFrame(() => this.initPostProcessing());
     }
-
-    handleSettingsUpdate(event) {
-        const settings = event.detail;
-            
-        // Update bloom settings if they've changed
-        if (settings.nodeBloomStrength !== undefined ||
-            settings.nodeBloomRadius !== undefined ||
-            settings.nodeBloomThreshold !== undefined) {
-            const bloomSettings = visualizationSettings.getBloomSettings();
-            this.updateBloom(bloomSettings);
-        }
-
-        // Update hologram settings if they've changed
-        if (settings.hologramColor !== undefined ||
-            settings.hologramScale !== undefined ||
-            settings.hologramOpacity !== undefined) {
-            const hologramSettings = visualizationSettings.getHologramSettings();
-            this.updateFeature('hologramColor', hologramSettings.color);
-            this.updateFeature('hologramScale', hologramSettings.scale);
-            this.updateFeature('hologramOpacity', hologramSettings.opacity);
-        }
-
-        // Update fisheye settings if they've changed
-        if (settings.fisheye) {
-            const fisheyeSettings = visualizationSettings.getFisheyeSettings();
-            this.updateFisheye(fisheyeSettings);
-        }
-    }
-
-    createRenderTarget() {
-        if (this.renderTarget) {
-            this.renderTarget.dispose();
-        }
-        
-        this.renderTarget = new THREE.WebGLRenderTarget(
-            window.innerWidth,
-            window.innerHeight,
-            {
-                minFilter: THREE.LinearFilter,
-                magFilter: THREE.LinearFilter,
-                format: THREE.RGBAFormat,
-                type: THREE.HalfFloatType
-            }
-        );
-        return this.renderTarget;
-    }
-
+    
     initPostProcessing() {
         if (!this.renderer || !this.renderer.domElement) {
             console.warn('Renderer not ready, deferring post-processing initialization');
             return;
         }
 
-        // Create render targets
-        const renderTarget = this.createRenderTarget();
-
-        // Setup bloom composer
-        this.bloomComposer = new EffectComposer(this.renderer, renderTarget);
-        this.bloomComposer.renderToScreen = false;
-        
-        const renderScene = new RenderPass(this.scene, this.camera);
-        const bloomPass = new UnrealBloomPass(
-            new THREE.Vector2(window.innerWidth, window.innerHeight),
-            this.bloomStrength,
-            this.bloomRadius,
-            this.bloomThreshold
+        // Create render targets with HDR format
+        const renderTarget = new THREE.WebGLRenderTarget(
+            window.innerWidth,
+            window.innerHeight,
+            {
+                minFilter: THREE.LinearFilter,
+                magFilter: THREE.LinearFilter,
+                format: THREE.RGBAFormat,
+                type: THREE.HalfFloatType,
+                encoding: THREE.sRGBEncoding
+            }
         );
+        
+        // Create bloom composers for each layer
+        const layers = [
+            {
+                layer: LAYERS.BLOOM,
+                settings: {
+                    strength: this.bloomSettings.nodeBloomStrength * 1.2,
+                    radius: this.bloomSettings.nodeBloomRadius,
+                    threshold: this.bloomSettings.nodeBloomThreshold * 0.8
+                }
+            },
+            {
+                layer: LAYERS.HOLOGRAM,
+                settings: {
+                    strength: this.bloomSettings.environmentBloomStrength * 1.5,
+                    radius: this.bloomSettings.environmentBloomRadius * 1.2,
+                    threshold: this.bloomSettings.environmentBloomThreshold * 0.7
+                }
+            },
+            {
+                layer: LAYERS.EDGE,
+                settings: {
+                    strength: this.bloomSettings.edgeBloomStrength * 1.3,
+                    radius: this.bloomSettings.edgeBloomRadius,
+                    threshold: this.bloomSettings.edgeBloomThreshold * 0.9
+                }
+            }
+        ];
+        
+        // Create composers for each layer
+        layers.forEach(({ layer, settings }) => {
+            const composer = new EffectComposer(this.renderer, renderTarget.clone());
+            composer.renderToScreen = false;
+            
+            const renderPass = new RenderPass(this.scene, this.camera);
+            const bloomPass = new UnrealBloomPass(
+                new THREE.Vector2(window.innerWidth, window.innerHeight),
+                settings.strength,
+                settings.radius,
+                settings.threshold
+            );
+            
+            composer.addPass(renderPass);
+            composer.addPass(bloomPass);
+            
+            this.composers.set(layer, composer);
+        });
 
-        this.bloomComposer.addPass(renderScene);
-        this.bloomComposer.addPass(bloomPass);
-
-        // Setup final composer
+        // Create final composer
         this.finalComposer = new EffectComposer(this.renderer);
-        this.finalComposer.addPass(renderScene);
+        
+        // Add render pass for base scene
+        const renderPass = new RenderPass(this.scene, this.camera);
+        this.finalComposer.addPass(renderPass);
 
-        // Add custom shader pass to combine bloom with scene
+        // Add custom shader pass to combine bloom layers
         const finalPass = new ShaderPass(
             new THREE.ShaderMaterial({
                 uniforms: {
                     baseTexture: { value: null },
-                    bloomTexture: { value: null }
+                    bloomTexture0: { value: this.composers.get(LAYERS.BLOOM).renderTarget2.texture },
+                    bloomTexture1: { value: this.composers.get(LAYERS.HOLOGRAM).renderTarget2.texture },
+                    bloomTexture2: { value: this.composers.get(LAYERS.EDGE).renderTarget2.texture },
+                    bloomStrength0: { value: 1.0 },
+                    bloomStrength1: { value: 0.8 },
+                    bloomStrength2: { value: 0.6 }
                 },
                 vertexShader: `
                     varying vec2 vUv;
@@ -135,29 +123,44 @@ export class EffectsManager {
                 `,
                 fragmentShader: `
                     uniform sampler2D baseTexture;
-                    uniform sampler2D bloomTexture;
+                    uniform sampler2D bloomTexture0;
+                    uniform sampler2D bloomTexture1;
+                    uniform sampler2D bloomTexture2;
+                    uniform float bloomStrength0;
+                    uniform float bloomStrength1;
+                    uniform float bloomStrength2;
                     varying vec2 vUv;
+
                     void main() {
-                        vec4 baseColor = texture2D(baseTexture, vUv);
-                        vec4 bloomColor = texture2D(bloomTexture, vUv);
-                        gl_FragColor = baseColor + bloomColor;
+                        vec4 base = texture2D(baseTexture, vUv);
+                        vec4 bloom = vec4(0.0);
+                        
+                        // Combine bloom layers with weights
+                        bloom += texture2D(bloomTexture0, vUv) * bloomStrength0;
+                        bloom += texture2D(bloomTexture1, vUv) * bloomStrength1;
+                        bloom += texture2D(bloomTexture2, vUv) * bloomStrength2;
+                        
+                        // HDR tone mapping
+                        vec3 color = base.rgb + bloom.rgb;
+                        color = color / (vec3(1.0) + color);
+                        
+                        // Gamma correction
+                        color = pow(color, vec3(1.0 / 2.2));
+                        
+                        // Enhance contrast slightly
+                        color = mix(vec3(0.0), color, 1.1);
+                        
+                        gl_FragColor = vec4(color, base.a);
                     }
-                `,
-                defines: {}
+                `
             }),
             "baseTexture"
         );
-        finalPass.needsSwap = true;
         
-        // Update bloom texture reference after render
-        this.bloomComposer.renderToScreen = false;
-        this.bloomComposer.onAfterRender = () => {
-            if (finalPass.uniforms && this.bloomComposer.renderTarget2) {
-                finalPass.uniforms.bloomTexture.value = this.bloomComposer.renderTarget2.texture;
-            }
-        };
-
         this.finalComposer.addPass(finalPass);
+
+        // Create hologram structure after composers are ready
+        this.createHologramStructure();
     }
 
     createHologramStructure() {
@@ -169,243 +172,125 @@ export class EffectsManager {
             this.hologramGroup.remove(child);
         }
 
-        // Get material settings
-        const materialSettings = visualizationSettings.getNodeSettings().material;
+        const hologramColor = new THREE.Color(this.hologramSettings.color);
+        const hologramScale = this.hologramSettings.scale;
+        const hologramOpacity = this.hologramSettings.opacity;
 
-        // Create multiple rings with different sizes to match each sphere's radius
+        // Create multiple rings with different sizes
         const ringSizes = [40, 30, 20];
         for (let i = 0; i < 3; i++) {
-            const ringGeometry = new THREE.TorusGeometry(ringSizes[i], 3, 16, 100);
-            const ringMaterial = new THREE.MeshStandardMaterial({
-                color: this.hologramColor,
-                emissive: this.hologramColor,
-                emissiveIntensity: materialSettings.emissiveMaxIntensity,
+            const ringGeometry = new THREE.TorusGeometry(ringSizes[i], 3, 32, 100);
+            const ringMaterial = new THREE.MeshPhysicalMaterial({
+                color: hologramColor,
+                emissive: hologramColor,
+                emissiveIntensity: 0.5,
                 transparent: true,
-                opacity: this.hologramOpacity,
-                metalness: materialSettings.metalness,
-                roughness: materialSettings.roughness
+                opacity: hologramOpacity,
+                metalness: 0.7,
+                roughness: 0.2,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.1,
+                toneMapped: false
             });
 
             const ring = new THREE.Mesh(ringGeometry, ringMaterial);
             ring.rotation.x = Math.PI / 2 * i;
             ring.rotation.y = Math.PI / 4 * i;
             ring.userData.rotationSpeed = 0.002 * (i + 1);
-            ring.layers.enable(BLOOM_LAYER);
+            ring.layers.set(LAYERS.HOLOGRAM);
             this.hologramGroup.add(ring);
         }
 
-        // Add Buckminster Fullerene 
-        const buckyGeometry = new THREE.IcosahedronGeometry(40 * this.hologramScale, 1);
-        const buckyMaterial = new THREE.MeshBasicMaterial({
-            color: this.hologramColor,
-            wireframe: true,
-            transparent: true,
-            opacity: this.hologramOpacity
-        });
-        const buckySphere = new THREE.Mesh(buckyGeometry, buckyMaterial);
-        buckySphere.userData.rotationSpeed = 0.0001;
-        buckySphere.layers.enable(BLOOM_LAYER);
-        this.hologramGroup.add(buckySphere);
-
-        // Add Geodesic Dome
-        const geodesicGeometry = new THREE.IcosahedronGeometry(30 * this.hologramScale, 1);
-        const geodesicMaterial = new THREE.MeshBasicMaterial({
-            color: this.hologramColor,
-            wireframe: true,
-            transparent: true,
-            opacity: this.hologramOpacity
-        });
-        const geodesicDome = new THREE.Mesh(geodesicGeometry, geodesicMaterial);
-        geodesicDome.userData.rotationSpeed = 0.0002;
-        geodesicDome.layers.enable(BLOOM_LAYER);
-        this.hologramGroup.add(geodesicDome);
-
-        // Add Normal Triangle Sphere
-        const triangleGeometry = new THREE.SphereGeometry(20 * this.hologramScale, 32, 32);
-        const triangleMaterial = new THREE.MeshBasicMaterial({
-            color: this.hologramColor,
-            wireframe: true,
-            transparent: true,
-            opacity: this.hologramOpacity
-        });
-        const triangleSphere = new THREE.Mesh(triangleGeometry, triangleMaterial);
-        triangleSphere.userData.rotationSpeed = 0.0003;
-        triangleSphere.layers.enable(BLOOM_LAYER);
-        this.hologramGroup.add(triangleSphere);
+        // Scale the entire hologram group
+        this.hologramGroup.scale.setScalar(hologramScale);
     }
 
     animate() {
-        // Animate all hologram elements
+        // Animate hologram elements
         this.hologramGroup.children.forEach(child => {
-            child.rotation.x += child.userData.rotationSpeed;
-            child.rotation.y += child.userData.rotationSpeed;
+            if (child.userData.rotationSpeed) {
+                child.rotation.x += child.userData.rotationSpeed;
+                child.rotation.y += child.userData.rotationSpeed;
+            }
         });
     }
-
+    
     render() {
-        if (!this.bloomComposer || !this.finalComposer) {
-            return;
-        }
-
-        // Store original layer state
-        const originalLayers = this.camera.layers.mask;
-
-        // First render the bloom layer
-        this.camera.layers.set(BLOOM_LAYER);
-        this.bloomComposer.render();
+        // Render each bloom layer
+        this.composers.forEach((composer, layer) => {
+            this.camera.layers.set(layer);
+            composer.render();
+        });
         
-        // Then render the normal scene
-        this.camera.layers.set(NORMAL_LAYER);
+        // Reset camera layers and render final composition
+        this.camera.layers.set(LAYERS.NORMAL_LAYER);
         this.finalComposer.render();
-
-        // Restore original layer state
-        this.camera.layers.mask = originalLayers;
     }
-
+    
     handleResize() {
         const width = window.innerWidth;
         const height = window.innerHeight;
-
-        // Recreate render targets with new size
-        const renderTarget = this.createRenderTarget();
-
-        // Update composers
-        if (this.bloomComposer) {
-            this.bloomComposer.setSize(width, height);
-            this.bloomComposer.renderTarget1.setSize(width, height);
-            this.bloomComposer.renderTarget2.setSize(width, height);
-        }
+        
+        // Resize all composers
+        this.composers.forEach(composer => {
+            composer.setSize(width, height);
+        });
         
         if (this.finalComposer) {
             this.finalComposer.setSize(width, height);
-            this.finalComposer.renderTarget1.setSize(width, height);
-            this.finalComposer.renderTarget2.setSize(width, height);
         }
     }
-
-    updateFeature(control, value) {
-        console.log(`Updating effect feature: ${control} = ${value}`);
-        switch (control) {
-            // Bloom features
-            case 'bloomStrength':
-                this.bloomStrength = value;
-                if (this.bloomComposer) {
-                    this.bloomComposer.passes.forEach(pass => {
-                        if (pass instanceof UnrealBloomPass) {
-                            pass.strength = value;
-                        }
-                    });
-                }
-                break;
-            case 'bloomRadius':
-                this.bloomRadius = value;
-                if (this.bloomComposer) {
-                    this.bloomComposer.passes.forEach(pass => {
-                        if (pass instanceof UnrealBloomPass) {
-                            pass.radius = value;
-                        }
-                    });
-                }
-                break;
-            case 'bloomThreshold':
-                this.bloomThreshold = value;
-                if (this.bloomComposer) {
-                    this.bloomComposer.passes.forEach(pass => {
-                        if (pass instanceof UnrealBloomPass) {
-                            pass.threshold = value;
-                        }
-                    });
-                }
-                break;
-
-            // Hologram features
-            case 'hologramColor':
-                if (typeof value === 'number' || typeof value === 'string') {
-                    this.hologramColor = new THREE.Color(value);
-                    this.hologramGroup.children.forEach(child => {
-                        if (child.material) {
-                            child.material.color.copy(this.hologramColor);
-                            if (child.material.emissive) {
-                                child.material.emissive.copy(this.hologramColor);
-                            }
-                        }
-                    });
-                }
-                break;
-            case 'hologramScale':
-                this.hologramScale = value;
-                this.hologramGroup.scale.setScalar(value);
-                break;
-            case 'hologramOpacity':
-                this.hologramOpacity = value;
-                this.hologramGroup.children.forEach(child => {
-                    if (child.material) {
-                        child.material.opacity = value;
-                    }
-                });
-                break;
-        }
-    }
-
+    
     updateBloom(settings) {
-        console.log('Updating bloom settings:', settings);
-        if (!this.bloomComposer) return;
-
-        this.bloomComposer.passes.forEach(pass => {
-            if (pass instanceof UnrealBloomPass) {
-                if (settings.nodeBloomStrength !== undefined) {
-                    pass.strength = settings.nodeBloomStrength;
+        this.composers.forEach((composer, layer) => {
+            composer.passes.forEach(pass => {
+                if (pass instanceof UnrealBloomPass) {
+                    switch (layer) {
+                        case LAYERS.BLOOM:
+                            pass.strength = (settings.nodeBloomStrength ?? pass.strength) * 1.2;
+                            pass.radius = settings.nodeBloomRadius ?? pass.radius;
+                            pass.threshold = (settings.nodeBloomThreshold ?? pass.threshold) * 0.8;
+                            break;
+                        case LAYERS.HOLOGRAM:
+                            pass.strength = (settings.environmentBloomStrength ?? pass.strength) * 1.5;
+                            pass.radius = (settings.environmentBloomRadius ?? pass.radius) * 1.2;
+                            pass.threshold = (settings.environmentBloomThreshold ?? pass.threshold) * 0.7;
+                            break;
+                        case LAYERS.EDGE:
+                            pass.strength = (settings.edgeBloomStrength ?? pass.strength) * 1.3;
+                            pass.radius = settings.edgeBloomRadius ?? pass.radius;
+                            pass.threshold = (settings.edgeBloomThreshold ?? pass.threshold) * 0.9;
+                            break;
+                    }
                 }
-                if (settings.nodeBloomRadius !== undefined) {
-                    pass.radius = settings.nodeBloomRadius;
-                }
-                if (settings.nodeBloomThreshold !== undefined) {
-                    pass.threshold = settings.nodeBloomThreshold;
-                }
-            }
-        });
-
-        // Store the updated values
-        this.bloomStrength = settings.nodeBloomStrength ?? this.bloomStrength;
-        this.bloomRadius = settings.nodeBloomRadius ?? this.bloomRadius;
-        this.bloomThreshold = settings.nodeBloomThreshold ?? this.bloomThreshold;
-    }
-
-    updateFisheye(settings) {
-        console.log('Updating fisheye settings:', settings);
-        this.fisheyeEnabled = settings.enabled;
-        this.fisheyeStrength = settings.strength;
-        this.fisheyeRadius = settings.radius;
-        this.fisheyeFocusPoint = settings.focusPoint;
-
-        // Apply fisheye effect if enabled
-        if (this.fisheyeEnabled) {
-            // TODO: Implement fisheye distortion shader
-            console.log('Fisheye effect enabled:', {
-                strength: this.fisheyeStrength,
-                radius: this.fisheyeRadius,
-                focusPoint: this.fisheyeFocusPoint
             });
+        });
+    }
+    
+    handleSettingsUpdate(event) {
+        const settings = event.detail;
+        
+        if (settings.bloom) {
+            this.bloomSettings = settings.bloom;
+            this.updateBloom(settings.bloom);
+        }
+
+        if (settings.hologram) {
+            this.hologramSettings = settings.hologram;
+            this.createHologramStructure();
         }
     }
-
+    
     dispose() {
-        // Remove event listener
         window.removeEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
-
-        // Dispose render targets
-        if (this.renderTarget) {
-            this.renderTarget.dispose();
-        }
-
-        // Dispose bloom resources
-        if (this.bloomComposer) {
-            this.bloomComposer.renderTarget1.dispose();
-            this.bloomComposer.renderTarget2.dispose();
-        }
+        
+        // Dispose all composers
+        this.composers.forEach(composer => {
+            composer.dispose();
+        });
+        
         if (this.finalComposer) {
-            this.finalComposer.renderTarget1.dispose();
-            this.finalComposer.renderTarget2.dispose();
+            this.finalComposer.dispose();
         }
 
         // Dispose hologram resources
@@ -413,5 +298,6 @@ export class EffectsManager {
             if (child.geometry) child.geometry.dispose();
             if (child.material) child.material.dispose();
         });
+        this.scene.remove(this.hologramGroup);
     }
 }
