@@ -110,8 +110,18 @@ export class NodeManager {
     }
 
     createNodeLabel(text, metadata) {
+        // Dispose existing texture if any
+        const existingLabel = this.nodeLabels.get(text);
+        if (existingLabel && existingLabel.material.map) {
+            existingLabel.material.map.dispose();
+            existingLabel.material.dispose();
+        }
+
         const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
+        const context = canvas.getContext('2d', {
+            alpha: true,
+            desynchronized: true // Optimize for performance
+        });
         context.font = `${this.labelFontSize}px Arial`;
         
         // Get metadata values
@@ -134,9 +144,11 @@ export class NodeManager {
         const infoMetrics = context.measureText(infoText);
         const textWidth = Math.max(nameMetrics.width, infoMetrics.width);
         
-        // Set canvas size
-        canvas.width = textWidth + 20;
-        canvas.height = this.labelFontSize * 2 + 30;
+        // Set canvas size to power of 2 for better texture performance
+        const canvasWidth = Math.pow(2, Math.ceil(Math.log2(textWidth + 20)));
+        const canvasHeight = Math.pow(2, Math.ceil(Math.log2(this.labelFontSize * 2 + 30)));
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
 
         // Draw background and text
         context.fillStyle = visualizationSettings.getLabelSettings().backgroundColor;
@@ -150,12 +162,18 @@ export class NodeManager {
         context.fillStyle = visualizationSettings.getLabelSettings().infoTextColor;
         context.fillText(infoText, 10, this.labelFontSize + 20);
 
-        // Create sprite
+        // Create sprite with optimized texture settings
         const texture = new THREE.CanvasTexture(canvas);
+        texture.generateMipmaps = false;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.format = THREE.RGBAFormat;
+        
         const spriteMaterial = new THREE.SpriteMaterial({
             map: texture,
             transparent: true,
-            depthWrite: false
+            depthWrite: false,
+            sizeAttenuation: true
         });
         const sprite = new THREE.Sprite(spriteMaterial);
         
@@ -167,6 +185,11 @@ export class NodeManager {
             1
         );
         sprite.layers.set(NORMAL_LAYER);
+
+        // Clean up canvas
+        canvas.width = 1;
+        canvas.height = 1;
+        context.clearRect(0, 0, 1, 1);
 
         return sprite;
     }
@@ -202,81 +225,81 @@ export class NodeManager {
         return `${baseUrl}/#/page/${formattedName}`;
     }
 
-        handleClick(event, isXR = false, intersectedObject = null) {
-            let clickedMesh;
-    
-            if (isXR && intersectedObject) {
-                // In XR mode, use the passed intersected object directly
-                clickedMesh = intersectedObject;
-            } else if (!isXR && event) {
-                // Regular mouse click handling
-                const rect = event.target.getBoundingClientRect();
-                this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-                this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    
-                this.raycaster.setFromCamera(this.mouse, this.camera);
-                const intersects = this.raycaster.intersectObjects(Array.from(this.nodeMeshes.values()));
-                
-                if (intersects.length > 0) {
-                    clickedMesh = intersects[0].object;
-                }
+    handleClick(event, isXR = false, intersectedObject = null) {
+        let clickedMesh;
+
+        if (isXR && intersectedObject) {
+            // In XR mode, use the passed intersected object directly
+            clickedMesh = intersectedObject;
+        } else if (!isXR && event) {
+            // Regular mouse click handling
+            const rect = event.target.getBoundingClientRect();
+            this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            const intersects = this.raycaster.intersectObjects(Array.from(this.nodeMeshes.values()));
+            
+            if (intersects.length > 0) {
+                clickedMesh = intersects[0].object;
             }
-    
-            if (clickedMesh) {
-                // Find the clicked node
-                const nodeId = Array.from(this.nodeMeshes.entries())
-                    .find(([_, mesh]) => mesh === clickedMesh)?.[0];
-    
-                if (nodeId) {
-                    const nodeData = this.nodeData.get(nodeId);
-                    if (nodeData) {
-                        // Open URL in new tab
-                        const url = this.formatNodeNameToUrl(nodeData.label || nodeId);
-                        window.open(url, '_blank');
-    
-                        // Visual feedback
-                        const originalEmissive = clickedMesh.material.emissiveIntensity;
-                        clickedMesh.material.emissiveIntensity = 2.0;
-                        setTimeout(() => {
-                            clickedMesh.material.emissiveIntensity = originalEmissive;
-                        }, 200);
-    
-                        // Show XR label if in XR mode
-                        if (isXR && this.xrLabelManager) {
-                            this.xrLabelManager.showLabel(
-                                nodeData.label || nodeId,
-                                clickedMesh.position,
-                                {
-                                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                    color: '#ffffff',
-                                    font: '24px Arial'
-                                }
-                            );
-                        }
-    
-                        // Trigger haptic feedback in XR mode
-                        if (isXR && window.xrSession) {
-                            const inputSource = Array.from(window.xrSession.inputSources).find(source => 
-                                source.handedness === 'right' || source.handedness === 'left'
-                            );
-                            if (inputSource?.gamepad?.hapticActuators?.length > 0) {
-                                inputSource.gamepad.hapticActuators[0].pulse(0.5, 100);
+        }
+
+        if (clickedMesh) {
+            // Find the clicked node
+            const nodeId = Array.from(this.nodeMeshes.entries())
+                .find(([_, mesh]) => mesh === clickedMesh)?.[0];
+
+            if (nodeId) {
+                const nodeData = this.nodeData.get(nodeId);
+                if (nodeData) {
+                    // Open URL in new tab
+                    const url = this.formatNodeNameToUrl(nodeData.label || nodeId);
+                    window.open(url, '_blank');
+
+                    // Visual feedback
+                    const originalEmissive = clickedMesh.material.emissiveIntensity;
+                    clickedMesh.material.emissiveIntensity = 2.0;
+                    setTimeout(() => {
+                        clickedMesh.material.emissiveIntensity = originalEmissive;
+                    }, 200);
+
+                    // Show XR label if in XR mode
+                    if (isXR && this.xrLabelManager) {
+                        this.xrLabelManager.showLabel(
+                            nodeData.label || nodeId,
+                            clickedMesh.position,
+                            {
+                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                color: '#ffffff',
+                                font: '24px Arial'
                             }
+                        );
+                    }
+
+                    // Trigger haptic feedback in XR mode
+                    if (isXR && window.xrSession) {
+                        const inputSource = Array.from(window.xrSession.inputSources).find(source => 
+                            source.handedness === 'right' || source.handedness === 'left'
+                        );
+                        if (inputSource?.gamepad?.hapticActuators?.length > 0) {
+                            inputSource.gamepad.hapticActuators[0].pulse(0.5, 100);
                         }
                     }
                 }
             }
         }
-    
-        initClickHandling(renderer) {
-            // Add click event listener to renderer's DOM element
-            renderer.domElement.addEventListener('click', this.handleClick);
-        }
-    
-        removeClickHandling(renderer) {
-            // Remove click event listener
-            renderer.domElement.removeEventListener('click', this.handleClick);
-        }
+    }
+
+    initClickHandling(renderer) {
+        // Add click event listener to renderer's DOM element
+        renderer.domElement.addEventListener('click', this.handleClick);
+    }
+
+    removeClickHandling(renderer) {
+        // Remove click event listener
+        renderer.domElement.removeEventListener('click', this.handleClick);
+    }
 
     centerNodes(nodes) {
         if (!nodes || (!Array.isArray(nodes) && typeof nodes !== 'object')) {
@@ -346,68 +369,94 @@ export class NodeManager {
         return nodeArray;
     }
 
-        updateNodes(nodes) {
-            if (!Array.isArray(nodes)) {
-                console.error('updateNodes received invalid nodes:', nodes);
-                return;
-            }
-    
-            console.log(`Updating nodes: ${nodes.length}`);
-            
-            // Center and scale nodes
-            const centeredNodes = this.centerNodes(nodes);
-            if (!centeredNodes) return;
-            
-            const existingNodeIds = new Set(centeredNodes.map(node => node.id));
-    
-            // Remove non-existent nodes
-            this.nodeMeshes.forEach((mesh, nodeId) => {
-                if (!existingNodeIds.has(nodeId)) {
-                    this.scene.remove(mesh);
-                    this.nodeMeshes.delete(nodeId);
-                    this.nodeData.delete(nodeId);
-                    const label = this.nodeLabels.get(nodeId);
-                    if (label) {
-                        this.scene.remove(label);
-                        this.nodeLabels.delete(nodeId);
+    updateNodes(nodes) {
+        if (!Array.isArray(nodes)) {
+            console.error('updateNodes received invalid nodes:', nodes);
+            return;
+        }
+
+        console.log(`Updating nodes: ${nodes.length}`);
+        
+        // Center and scale nodes
+        const centeredNodes = this.centerNodes(nodes);
+        if (!centeredNodes) return;
+        
+        const existingNodeIds = new Set(centeredNodes.map(node => node.id));
+
+        // Remove non-existent nodes and properly dispose resources
+        this.nodeMeshes.forEach((mesh, nodeId) => {
+            if (!existingNodeIds.has(nodeId)) {
+                if (mesh.geometry) {
+                    mesh.geometry.dispose();
+                }
+                if (mesh.material) {
+                    if (Array.isArray(mesh.material)) {
+                        mesh.material.forEach(mat => mat.dispose());
+                    } else {
+                        mesh.material.dispose();
                     }
                 }
-            });
-    
-            // Update or create nodes
-            centeredNodes.forEach(node => {
-                if (!node.id || typeof node.x !== 'number' || typeof node.y !== 'number' || typeof node.z !== 'number') {
-                    console.warn('Invalid node data:', node);
-                    return;
+                this.scene.remove(mesh);
+                this.nodeMeshes.delete(nodeId);
+                this.nodeData.delete(nodeId);
+
+                const label = this.nodeLabels.get(nodeId);
+                if (label) {
+                    if (label.material.map) {
+                        label.material.map.dispose();
+                    }
+                    label.material.dispose();
+                    this.scene.remove(label);
+                    this.nodeLabels.delete(nodeId);
                 }
-    
-                // Store node data for click handling
-                this.nodeData.set(node.id, node);
-    
-                const metadata = node.metadata || {};
-                const size = this.getNodeSize(metadata);
-                const color = this.calculateNodeColor(metadata);
-    
-                let mesh = this.nodeMeshes.get(node.id);
-    
-                if (!mesh) {
-                    const geometry = this.createNodeGeometry(size, metadata.hyperlink_count || 0);
-                    const material = this.createNodeMaterial(color, metadata);
-    
-                    mesh = new THREE.Mesh(geometry, material);
-                    mesh.layers.enable(BLOOM_LAYER);
-                    this.scene.add(mesh);
-                    this.nodeMeshes.set(node.id, mesh);
-    
-                    const label = this.createNodeLabel(node.label || node.id, metadata);
-                    this.scene.add(label);
-                    this.nodeLabels.set(node.id, label);
-                } else {
+            }
+        });
+
+        // Update or create nodes
+        centeredNodes.forEach(node => {
+            if (!node.id || typeof node.x !== 'number' || typeof node.y !== 'number' || typeof node.z !== 'number') {
+                console.warn('Invalid node data:', node);
+                return;
+            }
+
+            // Store node data for click handling
+            this.nodeData.set(node.id, node);
+
+            const metadata = node.metadata || {};
+            const size = this.getNodeSize(metadata);
+            const color = this.calculateNodeColor(metadata);
+
+            let mesh = this.nodeMeshes.get(node.id);
+
+            if (!mesh) {
+                const geometry = this.createNodeGeometry(size, metadata.hyperlink_count || 0);
+                const material = this.createNodeMaterial(color, metadata);
+
+                mesh = new THREE.Mesh(geometry, material);
+                mesh.layers.enable(BLOOM_LAYER);
+                this.scene.add(mesh);
+                this.nodeMeshes.set(node.id, mesh);
+
+                const label = this.createNodeLabel(node.label || node.id, metadata);
+                this.scene.add(label);
+                this.nodeLabels.set(node.id, label);
+            } else {
+                // Properly dispose old resources
+                if (mesh.geometry) {
                     mesh.geometry.dispose();
-                    mesh.geometry = this.createNodeGeometry(size, metadata.hyperlink_count || 0);
-                    mesh.material.dispose();
-                    mesh.material = this.createNodeMaterial(color, metadata);
-    }
+                }
+                if (mesh.material) {
+                    if (Array.isArray(mesh.material)) {
+                        mesh.material.forEach(mat => mat.dispose());
+                    } else {
+                        mesh.material.dispose();
+                    }
+                }
+                
+                mesh.geometry = this.createNodeGeometry(size, metadata.hyperlink_count || 0);
+                mesh.material = this.createNodeMaterial(color, metadata);
+                mesh.layers.enable(BLOOM_LAYER);
+            }
 
             mesh.position.set(node.x, node.y, node.z);
             const label = this.nodeLabels.get(node.id);
@@ -436,6 +485,12 @@ export class NodeManager {
         // Remove non-existent edges
         this.edgeMeshes.forEach((line, edgeKey) => {
             if (!edgeWeights.has(edgeKey)) {
+                if (line.geometry) {
+                    line.geometry.dispose();
+                }
+                if (line.material) {
+                    line.material.dispose();
+                }
                 this.scene.remove(line);
                 this.edgeMeshes.delete(edgeKey);
             }
@@ -609,22 +664,50 @@ export class NodeManager {
     dispose() {
         // Dispose node resources
         this.nodeMeshes.forEach(mesh => {
-            if (mesh.geometry) mesh.geometry.dispose();
-            if (mesh.material) mesh.material.dispose();
-            if (mesh.parent) mesh.parent.remove(mesh);
+            if (mesh.geometry) {
+                mesh.geometry.dispose();
+            }
+            if (mesh.material) {
+                if (Array.isArray(mesh.material)) {
+                    mesh.material.forEach(mat => {
+                        if (mat.map) mat.map.dispose();
+                        mat.dispose();
+                    });
+                } else {
+                    if (mesh.material.map) mesh.material.map.dispose();
+                    mesh.material.dispose();
+                }
+            }
+            if (mesh.parent) {
+                mesh.parent.remove(mesh);
+            }
         });
 
+        // Dispose label resources
         this.nodeLabels.forEach(label => {
-            if (label.material.map) label.material.map.dispose();
-            if (label.material) label.material.dispose();
-            if (label.parent) label.parent.remove(label);
+            if (label.material) {
+                if (label.material.map) {
+                    label.material.map.dispose();
+                }
+                label.material.dispose();
+            }
+            if (label.parent) {
+                label.parent.remove(label);
+            }
         });
 
         // Dispose edge resources
         this.edgeMeshes.forEach(line => {
-            if (line.geometry) line.geometry.dispose();
-            if (line.material) line.material.dispose();
-            if (line.parent) line.parent.remove(line);
+            if (line.geometry) {
+                line.geometry.dispose();
+            }
+            if (line.material) {
+                if (line.material.map) line.material.map.dispose();
+                line.material.dispose();
+            }
+            if (line.parent) {
+                line.parent.remove(line);
+            }
         });
 
         // Clear data maps

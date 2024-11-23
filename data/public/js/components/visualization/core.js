@@ -66,7 +66,8 @@ export class WebXRVisualization {
         this.renderer = new THREE.WebGLRenderer({ 
             antialias: true,
             alpha: true,
-            logarithmicDepthBuffer: true
+            logarithmicDepthBuffer: true,
+            powerPreference: "high-performance"
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -179,7 +180,7 @@ export class WebXRVisualization {
         this.scene.add(pointLight2);
     }
 
-    initThreeJS() {
+    async initThreeJS() {
         console.log('Initializing Three.js with XR support');
         const container = document.getElementById('scene-container');
         if (!container) {
@@ -191,25 +192,32 @@ export class WebXRVisualization {
         this.renderer.domElement.style.pointerEvents = 'none';
         container.appendChild(this.renderer.domElement);
 
-        // Initialize XR
-        initXRSession(this.renderer, this.scene, this.camera);
+        // Wait for renderer to be ready
+        await new Promise(resolve => {
+            requestAnimationFrame(() => {
+                // Initialize XR
+                initXRSession(this.renderer, this.scene, this.camera);
 
-        // Initialize XR interaction with proper event handling
-        const { controllers, hands, xrLabelManager } = initXRInteraction(
-            this.scene,
-            this.camera,
-            this.renderer,
-            (event) => {
-                if (event.detail && event.detail.intersection) {
-                    const intersectedObject = event.detail.intersection.object;
-                    this.nodeManager.handleClick(null, true, intersectedObject);
-                }
-            }
-        );
+                // Initialize XR interaction with proper event handling
+                const { controllers, hands, xrLabelManager } = initXRInteraction(
+                    this.scene,
+                    this.camera,
+                    this.renderer,
+                    (event) => {
+                        if (event.detail && event.detail.intersection) {
+                            const intersectedObject = event.detail.intersection.object;
+                            this.nodeManager.handleClick(null, true, intersectedObject);
+                        }
+                    }
+                );
 
-        this.xrControllers = controllers;
-        this.xrHands = hands;
-        this.xrLabelManager = xrLabelManager;
+                this.xrControllers = controllers;
+                this.xrHands = hands;
+                this.xrLabelManager = xrLabelManager;
+
+                resolve();
+            });
+        });
 
         // Create a separate div for OrbitControls to prevent interference with Vue components
         const controlsContainer = document.createElement('div');
@@ -246,16 +254,10 @@ export class WebXRVisualization {
             this.userGroup.position.set(0, 0, 0);
             this.cameraRig.position.set(0, 0, 0);
             
-            console.log('VR Session Start - Camera hierarchy:', {
-                camera: this.camera.name || 'camera',
-                parent: this.camera.parent?.name || 'none',
-                grandparent: this.camera.parent?.parent?.name || 'none',
-                positions: {
-                    camera: this.camera.position.toArray(),
-                    userGroup: this.userGroup.position.toArray(),
-                    cameraRig: this.cameraRig.position.toArray()
-                }
-            });
+            // Disable post-processing in XR mode
+            if (this.effectsManager) {
+                this.effectsManager.dispose();
+            }
         });
 
         this.renderer.xr.addEventListener('sessionend', () => {
@@ -267,20 +269,23 @@ export class WebXRVisualization {
             this.userGroup.position.set(0, 0, 0);
             this.cameraRig.position.set(0, 0, 0);
             
-            console.log('VR Session End - Camera hierarchy:', {
-                camera: this.camera.name || 'camera',
-                parent: this.camera.parent?.name || 'none',
-                grandparent: this.camera.parent?.parent?.name || 'none',
-                positions: {
-                    camera: this.camera.position.toArray(),
-                    userGroup: this.userGroup.position.toArray(),
-                    cameraRig: this.cameraRig.position.toArray()
-                }
-            });
+            // Reinitialize post-processing after XR session
+            if (this.effectsManager) {
+                requestAnimationFrame(() => {
+                    this.effectsManager.initPostProcessing();
+                    this.effectsManager.createHologramStructure();
+                });
+            }
         });
 
-        this.effectsManager.initPostProcessing();
-        this.effectsManager.createHologramStructure();
+        // Initialize post-processing after renderer is ready
+        await new Promise(resolve => {
+            requestAnimationFrame(() => {
+                this.effectsManager.initPostProcessing();
+                this.effectsManager.createHologramStructure();
+                resolve();
+            });
+        });
 
         window.addEventListener('resize', this.onWindowResize);
 
@@ -288,38 +293,37 @@ export class WebXRVisualization {
     }
 
     animate() {
-        this.renderer.setAnimationLoop((timestamp, frame) => {
+        const renderFrame = (timestamp, frame) => {
             // Handle VR movement if in XR session
             if (this.renderer.xr.isPresenting && frame) {
                 const session = this.renderer.xr.getSession();
                 if (session) {
-                    // Log camera hierarchy and positions for debugging
-                    console.log('Animation Frame - Camera hierarchy:', {
-                        camera: this.camera.name || 'camera',
-                        parent: this.camera.parent?.name || 'none',
-                        grandparent: this.camera.parent?.parent?.name || 'none',
-                        positions: {
-                            camera: this.camera.position.toArray(),
-                            userGroup: this.userGroup.position.toArray(),
-                            cameraRig: this.cameraRig.position.toArray()
-                        }
-                    });
+                    // Update VR-specific elements
+                    this.nodeManager.updateLabelOrientations(this.camera);
+                    this.effectsManager.animate();
+                    
+                    // Direct render in VR mode
+                    this.renderer.render(this.scene, this.camera);
                 }
             } else {
                 // Update non-XR controls
                 this.controls.update();
-            }
+                this.nodeManager.updateLabelOrientations(this.camera);
+                this.effectsManager.animate();
 
-            this.effectsManager.animate();
-            this.nodeManager.updateLabelOrientations(this.camera);
-
-            // Render the scene
-            if (this.renderer.xr.isPresenting) {
-                this.renderer.render(this.scene, this.camera);
-            } else {
-                this.effectsManager.render();
+                // Use post-processing render in non-VR mode
+                if (this.effectsManager && 
+                    this.effectsManager.bloomComposer && 
+                    this.effectsManager.finalComposer) {
+                    this.effectsManager.render();
+                } else {
+                    // Fallback to direct render if effects aren't ready
+                    this.renderer.render(this.scene, this.camera);
+                }
             }
-        });
+        };
+
+        this.renderer.setAnimationLoop(renderFrame);
     }
 
     updateVisualization(graphData) {
