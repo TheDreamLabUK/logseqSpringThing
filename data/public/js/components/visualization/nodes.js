@@ -4,6 +4,7 @@ import { visualizationSettings } from '../../services/visualizationSettings.js';
 // Constants
 export const BLOOM_LAYER = 1;
 export const NORMAL_LAYER = 0;
+export const LABEL_LAYER = 2;  // New layer for labels
 
 export class NodeManager {
     constructor(scene, camera, settings = {}) {
@@ -184,7 +185,11 @@ export class NodeManager {
             (canvas.height / this.labelFontSize) * labelScale,
             1
         );
-        sprite.layers.set(NORMAL_LAYER);
+        
+        // Enable visibility in all layers
+        sprite.layers.enable(NORMAL_LAYER);
+        sprite.layers.enable(BLOOM_LAYER);
+        sprite.layers.enable(LABEL_LAYER);
 
         // Clean up canvas
         canvas.width = 1;
