@@ -74,7 +74,7 @@ export class App {
         } catch (error) {
             console.error('Failed to initialize WebXRVisualization:', error);
             console.error('Error stack:', error.stack);
-            throw error; // Propagate error since visualization is critical
+            throw error;
         }
 
         console.log('Initializing Application - Step 3: GPU');
@@ -102,14 +102,18 @@ export class App {
         console.log('Initializing Application - Step 6: Event Listeners');
         // Setup Event Listeners
         this.setupEventListeners();
+
+        // Request initial data
+        this.websocketService.send({ type: 'getInitialData' });
     }
 
     async initVueApp() {
         try {
             console.log('Initializing Vue application');
             
-            // Store websocketService reference for closure
+            // Store references for closure
             const websocketService = this.websocketService;
+            const visualization = this.visualization;
             
             // Create Vue app instance
             const app = createApp({
@@ -118,9 +122,15 @@ export class App {
                     ChatManager
                 },
                 setup() {
+                    const handleControlChange = (change) => {
+                        console.log('Control changed:', change);
+                        visualization.updateSettings(change);
+                    };
+
                     return {
                         websocketService,
-                        enableSpacemouse // Make enableSpacemouse available to components
+                        enableSpacemouse,
+                        handleControlChange
                     };
                 },
                 template: `
@@ -134,13 +144,7 @@ export class App {
                             :websocket-service="websocketService"
                         />
                     </div>
-                `,
-                methods: {
-                    handleControlChange(change) {
-                        console.log('Control changed:', change);
-                        // Handle control changes here if needed
-                    }
-                }
+                `
             });
 
             // Mount the app
@@ -173,6 +177,18 @@ export class App {
             });
 
             // Add other event listeners as needed
+        }
+    }
+
+    stop() {
+        if (this.visualization) {
+            this.visualization.dispose();
+        }
+        if (this.websocketService) {
+            this.websocketService.disconnect();
+        }
+        if (this.vueApp) {
+            this.vueApp.unmount();
         }
     }
 }

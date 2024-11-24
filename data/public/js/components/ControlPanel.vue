@@ -1,4 +1,211 @@
-<!-- Previous template and style sections remain the same -->
+<template>
+    <div id="control-panel" :class="{ hidden: isHidden }">
+        <button class="toggle-button" @click="togglePanel">
+            {{ isHidden ? 'Show Controls' : 'Hide Controls' }}
+        </button>
+        <div class="panel-content">
+            <!-- Audio Controls -->
+            <div class="control-group">
+                <div class="group-header" @click="toggleGroup('audio')">
+                    <h3>Audio System</h3>
+                </div>
+                <div v-if="!collapsedGroups.audio" class="group-content">
+                    <div class="audio-status">
+                        <button v-if="!audioInitialized" @click="initializeAudio" class="save-button">
+                            Initialize Audio
+                        </button>
+                        <div v-else class="status-indicator enabled">
+                            Audio System Active
+                        </div>
+                    </div>
+                    <div class="control-item">
+                        <label>Simulation Mode</label>
+                        <select v-model="simulationMode" @change="setSimulationMode">
+                            <option value="remote">Remote</option>
+                            <option value="local">Local</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Node Appearance -->
+            <div class="control-group">
+                <div class="group-header" @click="toggleGroup('nodeAppearance')">
+                    <h3>Node Appearance</h3>
+                </div>
+                <div v-if="!collapsedGroups.nodeAppearance" class="group-content">
+                    <!-- Node Colors -->
+                    <div v-for="color in nodeColors" :key="color.name" class="control-item">
+                        <label>{{ color.label }}</label>
+                        <input type="color" 
+                               :value="color.value"
+                               @input="emitChange(color.name, $event.target.value)">
+                    </div>
+
+                    <!-- Material Properties -->
+                    <div v-for="prop in materialProperties" :key="prop.name" class="control-item">
+                        <label>{{ prop.label }}</label>
+                        <input type="range"
+                               :min="prop.min"
+                               :max="prop.max"
+                               :step="prop.step"
+                               :value="prop.value"
+                               @input="emitChange(prop.name, parseFloat($event.target.value))">
+                        <span class="range-value">{{ prop.value.toFixed(2) }}</span>
+                    </div>
+
+                    <!-- Size Controls -->
+                    <div v-for="control in sizeControls" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <input type="range"
+                               :min="control.min"
+                               :max="control.max"
+                               :step="control.step"
+                               :value="control.value"
+                               @input="emitChange(control.name, parseFloat($event.target.value))">
+                        <span class="range-value">{{ control.value.toFixed(2) }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Edge Appearance -->
+            <div class="control-group">
+                <div class="group-header" @click="toggleGroup('edgeAppearance')">
+                    <h3>Edge Appearance</h3>
+                </div>
+                <div v-if="!collapsedGroups.edgeAppearance" class="group-content">
+                    <div v-for="control in edgeControls" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <template v-if="control.type === 'color'">
+                            <input type="color"
+                                   :value="control.value"
+                                   @input="emitChange(control.name, $event.target.value)">
+                        </template>
+                        <template v-else>
+                            <input type="range"
+                                   :min="control.min"
+                                   :max="control.max"
+                                   :step="control.step"
+                                   :value="control.value"
+                                   @input="emitChange(control.name, parseFloat($event.target.value))">
+                            <span class="range-value">{{ control.value.toFixed(2) }}</span>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bloom Effects -->
+            <div class="control-group">
+                <div class="group-header" @click="toggleGroup('bloom')">
+                    <h3>Bloom Effects</h3>
+                </div>
+                <div v-if="!collapsedGroups.bloom" class="group-content">
+                    <div v-for="(group, groupKey) in bloomControls" :key="groupKey" class="sub-group">
+                        <h4>{{ group.label }}</h4>
+                        <div v-for="control in group.controls" :key="control.name" class="control-item">
+                            <label>{{ control.label }}</label>
+                            <input type="range"
+                                   :min="control.min"
+                                   :max="control.max"
+                                   :step="control.step"
+                                   :value="control.value"
+                                   @input="emitChange(control.name, parseFloat($event.target.value))">
+                            <span class="range-value">{{ control.value.toFixed(2) }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Physics Controls -->
+            <div class="control-group">
+                <div class="group-header" @click="toggleGroup('physics')">
+                    <h3>Physics Simulation</h3>
+                </div>
+                <div v-if="!collapsedGroups.physics" class="group-content">
+                    <div v-for="control in physicsControls" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <input type="range"
+                               :min="control.min"
+                               :max="control.max"
+                               :step="control.step"
+                               :value="control.value"
+                               @input="emitChange(control.name, parseFloat($event.target.value))">
+                        <span class="range-value">{{ control.value.toFixed(2) }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Environment Controls -->
+            <div class="control-group">
+                <div class="group-header" @click="toggleGroup('environment')">
+                    <h3>Environment</h3>
+                </div>
+                <div v-if="!collapsedGroups.environment" class="group-content">
+                    <!-- Hologram Controls -->
+                    <div v-for="control in hologramControls" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <template v-if="control.type === 'color'">
+                            <input type="color"
+                                   :value="control.value"
+                                   @input="emitChange(control.name, $event.target.value)">
+                        </template>
+                        <template v-else>
+                            <input type="range"
+                                   :min="control.min"
+                                   :max="control.max"
+                                   :step="control.step"
+                                   :value="control.value"
+                                   @input="emitChange(control.name, parseFloat($event.target.value))">
+                            <span class="range-value">{{ control.value.toFixed(2) }}</span>
+                        </template>
+                    </div>
+
+                    <!-- Fog Density -->
+                    <div class="control-item">
+                        <label>Fog Density</label>
+                        <input type="range"
+                               :min="0"
+                               :max="0.01"
+                               :step="0.0001"
+                               :value="fogDensity"
+                               @input="emitChange('fogDensity', parseFloat($event.target.value))">
+                        <span class="range-value">{{ fogDensity.toFixed(4) }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fisheye Controls -->
+            <div class="control-group">
+                <div class="group-header" @click="toggleGroup('fisheye')">
+                    <h3>Fisheye Effect</h3>
+                </div>
+                <div v-if="!collapsedGroups.fisheye" class="group-content">
+                    <div class="control-item">
+                        <label>Enable Fisheye</label>
+                        <input type="checkbox"
+                               :checked="fisheyeEnabled"
+                               @change="emitChange('fisheyeEnabled', $event.target.checked)">
+                    </div>
+                    <div v-for="control in fisheyeControls" :key="control.name" class="control-item">
+                        <label>{{ control.label }}</label>
+                        <input type="range"
+                               :min="control.min"
+                               :max="control.max"
+                               :step="control.step"
+                               :value="control.value"
+                               @input="emitChange(control.name, parseFloat($event.target.value))">
+                        <span class="range-value">{{ control.value.toFixed(2) }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save Settings Button -->
+            <button class="save-button" @click="saveSettings">
+                Save Settings
+            </button>
+        </div>
+    </div>
+</template>
 
 <script>
 import { defineComponent, ref, reactive, onMounted } from 'vue';
@@ -149,6 +356,12 @@ export default defineComponent({
 
         const emitChange = (name, value) => {
             emit('control-change', { name, value });
+            
+            // Dispatch event for visualization settings update
+            window.dispatchEvent(new CustomEvent('visualizationSettingsUpdated', {
+                detail: { [name]: value }
+            }));
+
             if (props.websocketService) {
                 props.websocketService.send({
                     type: 'settingUpdate',
@@ -296,8 +509,8 @@ export default defineComponent({
             simulationMode,
             collapsedGroups,
             nodeColors,
-            nodeMaterialMetalness,
-            minNodeSize,
+            materialProperties,
+            sizeControls,
             edgeControls,
             bloomControls,
             physicsControls,
