@@ -20,6 +20,7 @@ class XRSessionManager {
         this.xrInteraction = null;
         this.sessionActive = false;
         this.cameraRig = null;
+        this.effectsEnabled = true;
     }
 
     /**
@@ -102,6 +103,17 @@ class XRSessionManager {
             this.cameraRig.position.set(0, 0, 0);
             this.camera.position.set(0, 0, 0);
 
+            // Initialize XR-specific effects
+            if (this.effectsManager) {
+                try {
+                    await this.effectsManager.initPostProcessing(true);
+                    this.effectsEnabled = true;
+                } catch (error) {
+                    console.error('Failed to initialize XR effects:', error);
+                    this.effectsEnabled = false;
+                }
+            }
+
             window.dispatchEvent(new CustomEvent('xrsessionstart'));
         });
 
@@ -111,8 +123,45 @@ class XRSessionManager {
             this.sessionActive = false;
             this.handleXRSprites(false);
             this.resetCameraRig();
+
+            // Reinitialize desktop effects
+            if (this.effectsManager) {
+                try {
+                    this.effectsManager.initPostProcessing(false);
+                    this.effectsEnabled = true;
+                } catch (error) {
+                    console.error('Failed to reinitialize desktop effects:', error);
+                    this.effectsEnabled = false;
+                }
+            }
+
             window.dispatchEvent(new CustomEvent('xrsessionend'));
         });
+    }
+
+    /**
+     * Render scene with effects fallback
+     */
+    render() {
+        if (this.effectsManager && this.effectsEnabled) {
+            try {
+                this.effectsManager.render();
+            } catch (error) {
+                console.error('Error in effects rendering:', error);
+                this.effectsEnabled = false;
+                this.fallbackRender();
+            }
+        } else {
+            this.fallbackRender();
+        }
+    }
+
+    /**
+     * Fallback render without effects
+     */
+    fallbackRender() {
+        const currentCamera = this.sessionActive ? this.renderer.xr.getCamera() : this.camera;
+        this.renderer.render(this.scene, currentCamera);
     }
 
     /**
@@ -358,35 +407,25 @@ export async function addXRButton(xrSessionManager) {
     await xrSessionManager.addXRButton();
 }
 
-export function handleXRSession(renderer, scene, camera, xrSessionManager, effectsManager) {
+export function handleXRSession(renderer, scene, camera, xrSessionManager) {
     if (!xrSessionManager) return;
 
     renderer.setAnimationLoop((timestamp, frame) => {
         // Update XR session
         xrSessionManager.update(timestamp, frame);
 
-        // Render scene
-        if (effectsManager) {
-            effectsManager.animate();
-            effectsManager.render();
-        } else {
-            renderer.render(scene, camera);
-        }
+        // Render scene with effects fallback
+        xrSessionManager.render();
     });
 }
 
-export function updateXRFrame(renderer, scene, camera, xrSessionManager, effectsManager) {
+export function updateXRFrame(renderer, scene, camera, xrSessionManager) {
     if (!xrSessionManager?.sessionActive) return;
 
     // Update XR session
     const frame = renderer.xr.getFrame();
     xrSessionManager.update(performance.now(), frame);
 
-    // Render scene
-    if (effectsManager) {
-        effectsManager.animate();
-        effectsManager.render();
-    } else {
-        renderer.render(scene, camera);
-    }
+    // Render scene with effects fallback
+    xrSessionManager.render();
 }

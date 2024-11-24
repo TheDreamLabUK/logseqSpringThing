@@ -3,21 +3,28 @@ FROM node:23.1.0-slim AS frontend-builder
 
 WORKDIR /app
 
-# Copy package files, vite config, and the public directory
-COPY package.json pnpm-lock.yaml vite.config.js ./
-COPY data/public ./data/public
-
-# Configure npm and build
+# Configure npm
 ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
 ENV PATH=/home/node/.npm-global/bin:$PATH
 RUN mkdir -p /home/node/.npm-global && \
     chown -R node:node /app /home/node/.npm-global && \
     npm config set prefix /home/node/.npm-global
 
+# Copy only necessary files for the build
+COPY --chown=node:node package.json pnpm-lock.yaml ./
+COPY --chown=node:node vite.config.js ./
+COPY --chown=node:node data ./data
+
 USER node
-RUN npm install -g pnpm && \
+RUN set -x && \
+    npm install -g pnpm && \
     pnpm install --frozen-lockfile && \
-    pnpm run build
+    pwd && \
+    ls -la && \
+    echo "Running build..." && \
+    pnpm run build && \
+    echo "Build complete" && \
+    ls -la data/public/dist
 
 # Stage 2: Rust Dependencies Cache
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04 AS rust-deps-builder
@@ -130,11 +137,13 @@ RUN mkdir -p /var/lib/nginx/client_temp \
     chown -R appuser:nginx /var/lib/nginx \
                           /var/log/nginx \
                           /var/run/nginx \
-                          /var/cache/nginx && \
+                          /var/cache/nginx \
+                          /etc/nginx && \
     chmod -R 770 /var/lib/nginx \
                  /var/log/nginx \
                  /var/run/nginx \
-                 /var/cache/nginx && \
+                 /var/cache/nginx \
+                 /etc/nginx && \
     touch /var/log/nginx/error.log \
           /var/log/nginx/access.log && \
     chown appuser:nginx /var/log/nginx/*.log && \
@@ -147,13 +156,14 @@ RUN mkdir -p /var/lib/nginx/client_temp \
 # Set up directory structure
 WORKDIR /app
 
-# Create required directories
-RUN mkdir -p /app/data/public/dist \
+# Create required directories with correct permissions
+RUN mkdir -p /app/data/public \
              /app/data/markdown \
              /app/data/runtime \
              /app/src \
              /app/data/piper && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    chmod -R 755 /app
 
 # Copy Python virtual environment
 COPY --from=python-builder --chown=appuser:appuser /app/venv /app/venv
@@ -165,9 +175,11 @@ COPY --from=frontend-builder --chown=appuser:appuser /app/data/public/dist /app/
 
 # Copy configuration and scripts
 COPY --chown=appuser:appuser src/generate_audio.py /app/src/
-COPY --chown=root:root nginx.conf /etc/nginx/nginx.conf
+COPY --chown=appuser:nginx nginx.conf /etc/nginx/nginx.conf
 COPY --chown=appuser:appuser start.sh /app/start.sh
-RUN chmod 755 /app/start.sh
+RUN chmod 755 /app/start.sh && \
+    chmod 644 /etc/nginx/nginx.conf && \
+    ls -la /app/data/public/dist
 
 # Add security labels
 LABEL org.opencontainers.image.source="https://github.com/yourusername/logseq-xr" \

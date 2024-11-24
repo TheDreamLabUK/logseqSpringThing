@@ -43,19 +43,36 @@ export class App {
 
         // Initialize Services
         try {
-            // Create WebsocketService but don't connect yet (it auto-connects in constructor)
+            // Create WebsocketService and wait for connection
             this.websocketService = new WebsocketService();
-            console.log('WebsocketService initialized successfully');
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('WebSocket connection timeout'));
+                }, 5000); // 5 second timeout
+
+                this.websocketService.on('connect', () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+
+                this.websocketService.on('error', (error) => {
+                    clearTimeout(timeout);
+                    reject(error);
+                });
+            });
+            console.log('WebsocketService connected successfully');
         } catch (error) {
             console.error('Failed to initialize WebsocketService:', error);
             throw error; // Propagate error since WebsocketService is critical
         }
 
-        if (this.websocketService) {
+        // Initialize GraphDataManager after websocket is connected
+        try {
             this.graphDataManager = new GraphDataManager(this.websocketService);
             console.log('GraphDataManager initialized successfully');
-        } else {
-            throw new Error('Cannot initialize GraphDataManager: WebsocketService is not available');
+        } catch (error) {
+            console.error('Failed to initialize GraphDataManager:', error);
+            throw error;
         }
         
         console.log('Initializing Application - Step 2: Visualization');
@@ -79,9 +96,9 @@ export class App {
 
         console.log('Initializing Application - Step 3: GPU');
         // Initialize GPU if available
-        this.gpuAvailable = isGPUAvailable();
+        this.gpuAvailable = await isGPUAvailable();
         if (this.gpuAvailable) {
-            this.gpuUtils = initGPU();
+            this.gpuUtils = await initGPU();
             console.log('GPU acceleration initialized');
         } else {
             console.warn('GPU acceleration not available, using CPU fallback');
@@ -103,7 +120,8 @@ export class App {
         // Setup Event Listeners
         this.setupEventListeners();
 
-        // Request initial data
+        // Request initial data after everything is initialized
+        console.log('Requesting initial graph data');
         this.websocketService.send({ type: 'getInitialData' });
     }
 
@@ -170,13 +188,18 @@ export class App {
             // Setup websocket event listeners
             this.websocketService.on('connect', () => {
                 console.log('WebSocket connected');
+                // Re-request initial data if reconnected
+                this.websocketService.send({ type: 'getInitialData' });
             });
 
             this.websocketService.on('disconnect', () => {
                 console.log('WebSocket disconnected');
             });
 
-            // Add other event listeners as needed
+            // Add debug listener for graph updates
+            this.websocketService.on('graphUpdate', (data) => {
+                console.log('Received graph update:', data);
+            });
         }
     }
 

@@ -1,0 +1,4223 @@
+diff --git a/data/public/js/app.js b/data/public/js/app.js
+index edd12b51..8692aa0d 100755
+--- a/data/public/js/app.js
++++ b/data/public/js/app.js
+@@ -74,7 +74,7 @@ export class App {
+         } catch (error) {
+             console.error('Failed to initialize WebXRVisualization:', error);
+             console.error('Error stack:', error.stack);
+-            throw error; // Propagate error since visualization is critical
++            throw error;
+         }
+ 
+         console.log('Initializing Application - Step 3: GPU');
+@@ -102,14 +102,18 @@ export class App {
+         console.log('Initializing Application - Step 6: Event Listeners');
+         // Setup Event Listeners
+         this.setupEventListeners();
++
++        // Request initial data
++        this.websocketService.send({ type: 'getInitialData' });
+     }
+ 
+     async initVueApp() {
+         try {
+             console.log('Initializing Vue application');
+             
+-            // Store websocketService reference for closure
++            // Store references for closure
+             const websocketService = this.websocketService;
++            const visualization = this.visualization;
+             
+             // Create Vue app instance
+             const app = createApp({
+@@ -118,9 +122,15 @@ export class App {
+                     ChatManager
+                 },
+                 setup() {
++                    const handleControlChange = (change) => {
++                        console.log('Control changed:', change);
++                        visualization.updateSettings(change);
++                    };
++
+                     return {
+                         websocketService,
+-                        enableSpacemouse // Make enableSpacemouse available to components
++                        enableSpacemouse,
++                        handleControlChange
+                     };
+                 },
+                 template: `
+@@ -134,13 +144,7 @@ export class App {
+                             :websocket-service="websocketService"
+                         />
+                     </div>
+-                `,
+-                methods: {
+-                    handleControlChange(change) {
+-                        console.log('Control changed:', change);
+-                        // Handle control changes here if needed
+-                    }
+-                }
++                `
+             });
+ 
+             // Mount the app
+@@ -175,4 +179,16 @@ export class App {
+             // Add other event listeners as needed
+         }
+     }
++
++    stop() {
++        if (this.visualization) {
++            this.visualization.dispose();
++        }
++        if (this.websocketService) {
++            this.websocketService.disconnect();
++        }
++        if (this.vueApp) {
++            this.vueApp.unmount();
++        }
++    }
+ }
+diff --git a/data/public/js/components/ControlPanel.vue b/data/public/js/components/ControlPanel.vue
+index 6f1ba0e1..2df416aa 100755
+--- a/data/public/js/components/ControlPanel.vue
++++ b/data/public/js/components/ControlPanel.vue
+@@ -1,4 +1,211 @@
+-<!-- Previous template and style sections remain the same -->
++<template>
++    <div id="control-panel" :class="{ hidden: isHidden }">
++        <button class="toggle-button" @click="togglePanel">
++            {{ isHidden ? 'Show Controls' : 'Hide Controls' }}
++        </button>
++        <div class="panel-content">
++            <!-- Audio Controls -->
++            <div class="control-group">
++                <div class="group-header" @click="toggleGroup('audio')">
++                    <h3>Audio System</h3>
++                </div>
++                <div v-if="!collapsedGroups.audio" class="group-content">
++                    <div class="audio-status">
++                        <button v-if="!audioInitialized" @click="initializeAudio" class="save-button">
++                            Initialize Audio
++                        </button>
++                        <div v-else class="status-indicator enabled">
++                            Audio System Active
++                        </div>
++                    </div>
++                    <div class="control-item">
++                        <label>Simulation Mode</label>
++                        <select v-model="simulationMode" @change="setSimulationMode">
++                            <option value="remote">Remote</option>
++                            <option value="local">Local</option>
++                        </select>
++                    </div>
++                </div>
++            </div>
++
++            <!-- Node Appearance -->
++            <div class="control-group">
++                <div class="group-header" @click="toggleGroup('nodeAppearance')">
++                    <h3>Node Appearance</h3>
++                </div>
++                <div v-if="!collapsedGroups.nodeAppearance" class="group-content">
++                    <!-- Node Colors -->
++                    <div v-for="color in nodeColors" :key="color.name" class="control-item">
++                        <label>{{ color.label }}</label>
++                        <input type="color" 
++                               :value="color.value"
++                               @input="emitChange(color.name, $event.target.value)">
++                    </div>
++
++                    <!-- Material Properties -->
++                    <div v-for="prop in materialProperties" :key="prop.name" class="control-item">
++                        <label>{{ prop.label }}</label>
++                        <input type="range"
++                               :min="prop.min"
++                               :max="prop.max"
++                               :step="prop.step"
++                               :value="prop.value"
++                               @input="emitChange(prop.name, parseFloat($event.target.value))">
++                        <span class="range-value">{{ prop.value.toFixed(2) }}</span>
++                    </div>
++
++                    <!-- Size Controls -->
++                    <div v-for="control in sizeControls" :key="control.name" class="control-item">
++                        <label>{{ control.label }}</label>
++                        <input type="range"
++                               :min="control.min"
++                               :max="control.max"
++                               :step="control.step"
++                               :value="control.value"
++                               @input="emitChange(control.name, parseFloat($event.target.value))">
++                        <span class="range-value">{{ control.value.toFixed(2) }}</span>
++                    </div>
++                </div>
++            </div>
++
++            <!-- Edge Appearance -->
++            <div class="control-group">
++                <div class="group-header" @click="toggleGroup('edgeAppearance')">
++                    <h3>Edge Appearance</h3>
++                </div>
++                <div v-if="!collapsedGroups.edgeAppearance" class="group-content">
++                    <div v-for="control in edgeControls" :key="control.name" class="control-item">
++                        <label>{{ control.label }}</label>
++                        <template v-if="control.type === 'color'">
++                            <input type="color"
++                                   :value="control.value"
++                                   @input="emitChange(control.name, $event.target.value)">
++                        </template>
++                        <template v-else>
++                            <input type="range"
++                                   :min="control.min"
++                                   :max="control.max"
++                                   :step="control.step"
++                                   :value="control.value"
++                                   @input="emitChange(control.name, parseFloat($event.target.value))">
++                            <span class="range-value">{{ control.value.toFixed(2) }}</span>
++                        </template>
++                    </div>
++                </div>
++            </div>
++
++            <!-- Bloom Effects -->
++            <div class="control-group">
++                <div class="group-header" @click="toggleGroup('bloom')">
++                    <h3>Bloom Effects</h3>
++                </div>
++                <div v-if="!collapsedGroups.bloom" class="group-content">
++                    <div v-for="(group, groupKey) in bloomControls" :key="groupKey" class="sub-group">
++                        <h4>{{ group.label }}</h4>
++                        <div v-for="control in group.controls" :key="control.name" class="control-item">
++                            <label>{{ control.label }}</label>
++                            <input type="range"
++                                   :min="control.min"
++                                   :max="control.max"
++                                   :step="control.step"
++                                   :value="control.value"
++                                   @input="emitChange(control.name, parseFloat($event.target.value))">
++                            <span class="range-value">{{ control.value.toFixed(2) }}</span>
++                        </div>
++                    </div>
++                </div>
++            </div>
++
++            <!-- Physics Controls -->
++            <div class="control-group">
++                <div class="group-header" @click="toggleGroup('physics')">
++                    <h3>Physics Simulation</h3>
++                </div>
++                <div v-if="!collapsedGroups.physics" class="group-content">
++                    <div v-for="control in physicsControls" :key="control.name" class="control-item">
++                        <label>{{ control.label }}</label>
++                        <input type="range"
++                               :min="control.min"
++                               :max="control.max"
++                               :step="control.step"
++                               :value="control.value"
++                               @input="emitChange(control.name, parseFloat($event.target.value))">
++                        <span class="range-value">{{ control.value.toFixed(2) }}</span>
++                    </div>
++                </div>
++            </div>
++
++            <!-- Environment Controls -->
++            <div class="control-group">
++                <div class="group-header" @click="toggleGroup('environment')">
++                    <h3>Environment</h3>
++                </div>
++                <div v-if="!collapsedGroups.environment" class="group-content">
++                    <!-- Hologram Controls -->
++                    <div v-for="control in hologramControls" :key="control.name" class="control-item">
++                        <label>{{ control.label }}</label>
++                        <template v-if="control.type === 'color'">
++                            <input type="color"
++                                   :value="control.value"
++                                   @input="emitChange(control.name, $event.target.value)">
++                        </template>
++                        <template v-else>
++                            <input type="range"
++                                   :min="control.min"
++                                   :max="control.max"
++                                   :step="control.step"
++                                   :value="control.value"
++                                   @input="emitChange(control.name, parseFloat($event.target.value))">
++                            <span class="range-value">{{ control.value.toFixed(2) }}</span>
++                        </template>
++                    </div>
++
++                    <!-- Fog Density -->
++                    <div class="control-item">
++                        <label>Fog Density</label>
++                        <input type="range"
++                               :min="0"
++                               :max="0.01"
++                               :step="0.0001"
++                               :value="fogDensity"
++                               @input="emitChange('fogDensity', parseFloat($event.target.value))">
++                        <span class="range-value">{{ fogDensity.toFixed(4) }}</span>
++                    </div>
++                </div>
++            </div>
++
++            <!-- Fisheye Controls -->
++            <div class="control-group">
++                <div class="group-header" @click="toggleGroup('fisheye')">
++                    <h3>Fisheye Effect</h3>
++                </div>
++                <div v-if="!collapsedGroups.fisheye" class="group-content">
++                    <div class="control-item">
++                        <label>Enable Fisheye</label>
++                        <input type="checkbox"
++                               :checked="fisheyeEnabled"
++                               @change="emitChange('fisheyeEnabled', $event.target.checked)">
++                    </div>
++                    <div v-for="control in fisheyeControls" :key="control.name" class="control-item">
++                        <label>{{ control.label }}</label>
++                        <input type="range"
++                               :min="control.min"
++                               :max="control.max"
++                               :step="control.step"
++                               :value="control.value"
++                               @input="emitChange(control.name, parseFloat($event.target.value))">
++                        <span class="range-value">{{ control.value.toFixed(2) }}</span>
++                    </div>
++                </div>
++            </div>
++
++            <!-- Save Settings Button -->
++            <button class="save-button" @click="saveSettings">
++                Save Settings
++            </button>
++        </div>
++    </div>
++</template>
+ 
+ <script>
+ import { defineComponent, ref, reactive, onMounted } from 'vue';
+@@ -149,6 +356,12 @@ export default defineComponent({
+ 
+         const emitChange = (name, value) => {
+             emit('control-change', { name, value });
++            
++            // Dispatch event for visualization settings update
++            window.dispatchEvent(new CustomEvent('visualizationSettingsUpdated', {
++                detail: { [name]: value }
++            }));
++
+             if (props.websocketService) {
+                 props.websocketService.send({
+                     type: 'settingUpdate',
+@@ -296,8 +509,8 @@ export default defineComponent({
+             simulationMode,
+             collapsedGroups,
+             nodeColors,
+-            nodeMaterialMetalness,
+-            minNodeSize,
++            materialProperties,
++            sizeControls,
+             edgeControls,
+             bloomControls,
+             physicsControls,
+diff --git a/data/public/js/components/visualization/core.js b/data/public/js/components/visualization/core.js
+index 56d1000f..716cddbc 100755
+--- a/data/public/js/components/visualization/core.js
++++ b/data/public/js/components/visualization/core.js
+@@ -2,65 +2,30 @@ import * as THREE from 'three';
+ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+ import { NodeManager } from './nodes.js';
+ import { EffectsManager } from './effects.js';
+-import { LayoutManager } from './layout.js';
+ import { visualizationSettings } from '../../services/visualizationSettings.js';
+-import { initXRSession, handleXRSession } from '../../xr/xrSetup.js';
+-import { initXRInteraction, handleXRInput, XRLabelManager } from '../../xr/xrInteraction.js';
++import { initXRSession, addXRButton, handleXRSession } from '../../xr/xrSetup.js';
++import { initXRInteraction } from '../../xr/xrInteraction.js';
+ 
+ // Constants for Spacemouse sensitivity
+ const TRANSLATION_SPEED = 0.01;
+ const ROTATION_SPEED = 0.01;
+ const VR_MOVEMENT_SPEED = 0.05;
+ 
+-function updateNodeDynamics(nodeManager, updates, isInitialLayout, timeStep) {
+-    if (isInitialLayout) {
+-        console.log('Applying initial layout positions and velocities');
+-        nodeManager.resetSimulation();
+-    }
+-
+-    nodeManager.updateNodeDynamics(updates);
+-
+-    if (timeStep > 0) {
+-        nodeManager.setTimeStep(timeStep);
+-    }
+-
+-    if (nodeManager.isInteractive()) {
+-        nodeManager.updatePhysics(updates);
+-    }
+-}
+-
+ export class WebXRVisualization {
+     constructor(graphDataManager) {
+         console.log('WebXRVisualization constructor called');
+         this.graphDataManager = graphDataManager;
+ 
+-        // Initialize the scene, camera, and renderer
++        // Initialize the scene
+         this.scene = new THREE.Scene();
+         this.scene.background = new THREE.Color(0x000000);
+         
+         // Create camera
+         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+         this.camera.matrixAutoUpdate = true;
+-
+-        // Create VR camera rig
+-        this.cameraRig = new THREE.Group();
+-        this.cameraRig.name = 'cameraRig';
+-        this.scene.add(this.cameraRig);
+-
+-        // Create user movement group
+-        this.userGroup = new THREE.Group();
+-        this.userGroup.name = 'userGroup';
+-        this.cameraRig.add(this.userGroup);
+-        
+-        // Set initial camera position and add to user group
+-        this.camera.position.set(0, 1.6, 3); // Set initial position at standing height
+-        this.userGroup.add(this.camera);
+         
+-        console.log('Camera hierarchy:', {
+-            camera: this.camera.name || 'camera',
+-            parent: this.camera.parent?.name || 'none',
+-            grandparent: this.camera.parent?.parent?.name || 'none'
+-        });
++        // Set initial camera position for desktop mode
++        this.camera.position.set(0, 1.6, 3);
+ 
+         // Initialize renderer with XR support
+         this.renderer = new THREE.WebGLRenderer({ 
+@@ -72,7 +37,6 @@ export class WebXRVisualization {
+         this.renderer.setSize(window.innerWidth, window.innerHeight);
+         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+-        this.renderer.xr.enabled = true;
+         this.renderer.shadowMap.enabled = true;
+         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+ 
+@@ -84,24 +48,17 @@ export class WebXRVisualization {
+             this.renderer,
+             visualizationSettings.getEnvironmentSettings()
+         );
+-        this.layoutManager = new LayoutManager(visualizationSettings.getLayoutSettings());
+ 
+         this.controls = null;
++        this.xrSessionManager = null;
+         this.xrControllers = [];
+         this.xrHands = [];
+         this.xrLabelManager = null;
+ 
+-        this.animationFrameId = null;
+-        this.lastPositionUpdate = 0;
+-        this.positionUpdateThreshold = 16;
+-
+-        this.previousPositions = new Map();
+-        this.previousTimes = new Map();
+-        this.lastUpdateTime = performance.now();
+-
+         // Bind methods
+         this.onWindowResize = this.onWindowResize.bind(this);
+         this.animate = this.animate.bind(this);
++        this.updateVisualization = this.updateVisualization.bind(this);
+ 
+         // Initialize settings and add event listeners
+         this.initializeSettings();
+@@ -139,10 +96,38 @@ export class WebXRVisualization {
+         });
+ 
+         window.addEventListener('binaryPositionUpdate', (event) => {
+-            this.handleBinaryPositionUpdate(event.detail);
++            // Apply position updates received from server
++            if (event.detail) {
++                this.applyPositionUpdate(event.detail);
++            }
+         });
+     }
+ 
++    applyPositionUpdate(buffer) {
++        try {
++            const dataView = new Float32Array(buffer);
++            const isInitialLayout = dataView[0] === 1.0;
++            
++            // Skip the first float (isInitialLayout flag)
++            for (let i = 1; i < dataView.length; i += 6) {
++                const nodeId = Math.floor((i - 1) / 6);
++                const x = dataView[i];
++                const y = dataView[i + 1];
++                const z = dataView[i + 2];
++                
++                // Update node position in the visualization
++                const mesh = this.nodeManager.nodeMeshes.get(nodeId);
++                if (mesh) {
++                    mesh.position.set(x, y, z);
++                    // Update connected edges
++                    this.nodeManager.updateEdgesForNode(nodeId);
++                }
++            }
++        } catch (error) {
++            console.error('Error applying position update:', error);
++        }
++    }
++
+     initializeSettings() {
+         console.log('Initializing settings');
+         const envSettings = visualizationSettings.getEnvironmentSettings();
+@@ -181,7 +166,7 @@ export class WebXRVisualization {
+     }
+ 
+     async initThreeJS() {
+-        console.log('Initializing Three.js with XR support');
++        console.log('Initializing Three.js');
+         const container = document.getElementById('scene-container');
+         if (!container) {
+             console.error("Could not find 'scene-container' element");
+@@ -227,81 +212,24 @@ export class WebXRVisualization {
+         // Initialize click handling
+         this.nodeManager.initClickHandling(this.renderer);
+ 
+-        // Initialize XR
+-        await this.initializeXR();
++        // Initialize basic XR support
++        this.xrSessionManager = await initXRSession(this.renderer, this.scene, this.camera, this.effectsManager);
+ 
+         // Initialize effects after XR setup
+-        await this.initializeEffects();
++        if (this.effectsManager) {
++            this.effectsManager.initPostProcessing();
++        }
+ 
+         // Add resize listener
+         window.addEventListener('resize', this.onWindowResize);
+ 
+         // Start animation loop
+         this.animate();
+-    }
+-
+-    async initializeXR() {
+-        // Initialize XR session
+-        await initXRSession(this.renderer, this.scene, this.camera);
+-
+-        // Initialize XR interaction
+-        const { controllers, hands, xrLabelManager } = await initXRInteraction(
+-            this.scene,
+-            this.camera,
+-            this.renderer,
+-            (event) => {
+-                if (event.detail?.intersection?.object) {
+-                    this.nodeManager.handleClick(null, true, event.detail.intersection.object);
+-                }
+-            }
+-        );
+-
+-        this.xrControllers = controllers;
+-        this.xrHands = hands;
+-        this.xrLabelManager = xrLabelManager;
+-
+-        // Setup XR event listeners
+-        this.renderer.xr.addEventListener('sessionstart', () => {
+-            console.log('XR session started - Disabling OrbitControls');
+-            this.controls.enabled = false;
+-            this.renderer.domElement.style.pointerEvents = 'none';
+-            
+-            // Reset positions
+-            this.userGroup.position.set(0, 0, 0);
+-            this.cameraRig.position.set(0, 0, 0);
+-            
+-            // Disable effects in XR mode
+-            if (this.effectsManager) {
+-                this.effectsManager.dispose();
+-            }
+-        });
+-
+-        this.renderer.xr.addEventListener('sessionend', () => {
+-            console.log('XR session ended - Enabling OrbitControls');
+-            this.controls.enabled = true;
+-            
+-            // Reset positions
+-            this.camera.position.set(0, 1.6, 3);
+-            this.userGroup.position.set(0, 0, 0);
+-            this.cameraRig.position.set(0, 0, 0);
+-            
+-            // Reinitialize effects
+-            if (this.effectsManager) {
+-                requestAnimationFrame(() => {
+-                    this.effectsManager.initPostProcessing();
+-                });
+-            }
+-        });
+-    }
+-
+-    async initializeEffects() {
+-        // Initialize post-processing with proper timing
+-        await new Promise(resolve => {
+-            requestAnimationFrame(() => {
+-                this.effectsManager.initPostProcessing();
+-                resolve();
+-            });
+-        });
++        
++        // Add XR button if supported
++        if (this.xrSessionManager) {
++            await addXRButton(this.xrSessionManager);
++        }
+     }
+ 
+     animate() {
+@@ -314,14 +242,11 @@ export class WebXRVisualization {
+             // Update labels
+             this.nodeManager.updateLabelOrientations(this.camera);
+ 
+-            // Animate effects
+-            this.effectsManager.animate();
+-
+-            // Render scene
+-            if (this.renderer.xr.isPresenting) {
+-                this.renderer.render(this.scene, this.camera);
+-            } else {
++            // Render scene with effects in both desktop and XR modes
++            if (this.effectsManager) {
+                 this.effectsManager.render();
++            } else {
++                this.renderer.render(this.scene, this.camera);
+             }
+         };
+ 
+@@ -329,16 +254,17 @@ export class WebXRVisualization {
+     }
+ 
+     updateVisualization(graphData) {
+-        if (this.nodeManager && graphData) {
+-            // Update nodes
+-            if (Array.isArray(graphData.nodes)) {
+-                this.nodeManager.updateNodes(graphData.nodes);
+-            }
+-            
+-            // Update edges if available
+-            if (Array.isArray(graphData.edges)) {
+-                this.nodeManager.updateEdges(graphData.edges);
+-            }
++        if (!this.nodeManager || !graphData) return;
++
++        console.log('Updating visualization with new graph data');
++
++        // Update visual representation
++        if (Array.isArray(graphData.nodes)) {
++            this.nodeManager.updateNodes(graphData.nodes);
++        }
++        
++        if (Array.isArray(graphData.edges)) {
++            this.nodeManager.updateEdges(graphData.edges);
+         }
+     }
+ 
+@@ -380,24 +306,6 @@ export class WebXRVisualization {
+             this.nodeManager.updateMaterial(materialSettings);
+         }
+ 
+-        if (settings.physics) {
+-            // Update physics settings one by one
+-            const physicsParamMap = {
+-                iterations: 'forceDirectedIterations',
+-                spring: 'forceDirectedSpring',
+-                repulsion: 'forceDirectedRepulsion',
+-                attraction: 'forceDirectedAttraction',
+-                damping: 'forceDirectedDamping'
+-            };
+-
+-            // Update each physics parameter individually
+-            Object.entries(settings.physics).forEach(([key, value]) => {
+-                if (physicsParamMap[key]) {
+-                    this.layoutManager.updateFeature(physicsParamMap[key], value);
+-                }
+-            });
+-        }
+-
+         if (settings.bloom) {
+             // Update bloom settings
+             const bloomSettings = {
+@@ -455,7 +363,6 @@ export class WebXRVisualization {
+ 
+         this.nodeManager.dispose();
+         this.effectsManager.dispose();
+-        this.layoutManager.stopSimulation();
+         
+         if (this.xrLabelManager) {
+             this.xrLabelManager.dispose();
+diff --git a/data/public/js/components/visualization/effects.js b/data/public/js/components/visualization/effects.js
+index 616ccb22..70037499 100755
+--- a/data/public/js/components/visualization/effects.js
++++ b/data/public/js/components/visualization/effects.js
+@@ -1,303 +1,222 @@
+ import * as THREE from 'three';
+-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
++import { BloomEffect } from './effects/BloomEffect.js';
++import { CompositionEffect } from './effects/CompositionEffect.js';
+ import { LAYERS } from './layerManager.js';
+ import { visualizationSettings } from '../../services/visualizationSettings.js';
+ 
+ export class EffectsManager {
+-    constructor(scene, camera, renderer, settings = {}) {
++    constructor(scene, camera, renderer) {
++        if (!renderer || !renderer.domElement) {
++            throw new Error('Invalid renderer provided to EffectsManager');
++        }
+         this.scene = scene;
+         this.camera = camera;
+         this.renderer = renderer;
+         
+-        // Composers for each layer
+-        this.composers = new Map();
+-        this.finalComposer = null;
++        // Store original renderer settings
++        this.originalClearColor = this.renderer.getClearColor(new THREE.Color());
++        this.originalClearAlpha = this.renderer.getClearAlpha();
++        this.originalAutoClear = this.renderer.autoClear;
++        
++        // Configure renderer for optimal performance
++        this.renderer.outputColorSpace = THREE.SRGBColorSpace;
++        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
++        this.renderer.toneMappingExposure = 1.0;
+         
+-        // Create hologram group
+-        this.hologramGroup = new THREE.Group();
+-        this.scene.add(this.hologramGroup);
++        // Initialize effects as null
++        this.bloomEffect = null;
++        this.compositionEffect = null;
++        this.initialized = false;
+         
+-        // Get settings
+-        this.bloomSettings = visualizationSettings.getBloomSettings();
+-        this.hologramSettings = visualizationSettings.getHologramSettings();
++        // XR properties
++        this.isXRActive = false;
+         
+-        // Bind settings update handler
++        // Settings handler
+         this.handleSettingsUpdate = this.handleSettingsUpdate.bind(this);
+         window.addEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
++
++        // XR session handlers
++        this.renderer.xr.addEventListener('sessionstart', () => {
++            this.isXRActive = true;
++            this.handleXRSessionStart();
++        });
++
++        this.renderer.xr.addEventListener('sessionend', () => {
++            this.isXRActive = false;
++            this.handleXRSessionEnd();
++        });
+     }
+     
+     initPostProcessing() {
+-        if (!this.renderer || !this.renderer.domElement) {
+-            console.warn('Renderer not ready, deferring post-processing initialization');
+-            return;
+-        }
+-
+-        // Create render targets with HDR format
+-        const renderTarget = new THREE.WebGLRenderTarget(
+-            window.innerWidth,
+-            window.innerHeight,
+-            {
+-                minFilter: THREE.LinearFilter,
+-                magFilter: THREE.LinearFilter,
+-                format: THREE.RGBAFormat,
+-                type: THREE.HalfFloatType,
+-                encoding: THREE.sRGBEncoding
++        try {
++            if (!this.renderer || !this.renderer.domElement) {
++                throw new Error('Renderer not ready for post-processing initialization');
+             }
+-        );
+-        
+-        // Create bloom composers for each layer
+-        const layers = [
+-            {
+-                layer: LAYERS.BLOOM,
+-                settings: {
+-                    strength: this.bloomSettings.nodeBloomStrength * 1.2,
+-                    radius: this.bloomSettings.nodeBloomRadius,
+-                    threshold: this.bloomSettings.nodeBloomThreshold * 0.8
+-                }
+-            },
+-            {
+-                layer: LAYERS.HOLOGRAM,
+-                settings: {
+-                    strength: this.bloomSettings.environmentBloomStrength * 1.5,
+-                    radius: this.bloomSettings.environmentBloomRadius * 1.2,
+-                    threshold: this.bloomSettings.environmentBloomThreshold * 0.7
+-                }
+-            },
+-            {
+-                layer: LAYERS.EDGE,
+-                settings: {
+-                    strength: this.bloomSettings.edgeBloomStrength * 1.3,
+-                    radius: this.bloomSettings.edgeBloomRadius,
+-                    threshold: this.bloomSettings.edgeBloomThreshold * 0.9
+-                }
++
++            // Clean up existing effects if reinitializing
++            if (this.initialized) {
++                this.dispose();
+             }
+-        ];
+-        
+-        // Create composers for each layer
+-        layers.forEach(({ layer, settings }) => {
+-            const composer = new EffectComposer(this.renderer, renderTarget.clone());
+-            composer.renderToScreen = false;
++
++            // Configure renderer
++            this.renderer.autoClear = false;
+             
+-            const renderPass = new RenderPass(this.scene, this.camera);
+-            const bloomPass = new UnrealBloomPass(
+-                new THREE.Vector2(window.innerWidth, window.innerHeight),
+-                settings.strength,
+-                settings.radius,
+-                settings.threshold
+-            );
++            // Initialize effects
++            this.bloomEffect = new BloomEffect(this.renderer, this.scene, this.camera);
++            this.compositionEffect = new CompositionEffect(this.renderer);
+             
+-            composer.addPass(renderPass);
+-            composer.addPass(bloomPass);
++            // Initialize effects with current settings
++            const bloomSettings = visualizationSettings.getBloomSettings();
+             
+-            this.composers.set(layer, composer);
+-        });
+-
+-        // Create final composer
+-        this.finalComposer = new EffectComposer(this.renderer);
+-        
+-        // Add render pass for base scene
+-        const renderPass = new RenderPass(this.scene, this.camera);
+-        this.finalComposer.addPass(renderPass);
+-
+-        // Add custom shader pass to combine bloom layers
+-        const finalPass = new ShaderPass(
+-            new THREE.ShaderMaterial({
+-                uniforms: {
+-                    baseTexture: { value: null },
+-                    bloomTexture0: { value: this.composers.get(LAYERS.BLOOM).renderTarget2.texture },
+-                    bloomTexture1: { value: this.composers.get(LAYERS.HOLOGRAM).renderTarget2.texture },
+-                    bloomTexture2: { value: this.composers.get(LAYERS.EDGE).renderTarget2.texture },
+-                    bloomStrength0: { value: 1.0 },
+-                    bloomStrength1: { value: 0.8 },
+-                    bloomStrength2: { value: 0.6 }
+-                },
+-                vertexShader: `
+-                    varying vec2 vUv;
+-                    void main() {
+-                        vUv = uv;
+-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+-                    }
+-                `,
+-                fragmentShader: `
+-                    uniform sampler2D baseTexture;
+-                    uniform sampler2D bloomTexture0;
+-                    uniform sampler2D bloomTexture1;
+-                    uniform sampler2D bloomTexture2;
+-                    uniform float bloomStrength0;
+-                    uniform float bloomStrength1;
+-                    uniform float bloomStrength2;
+-                    varying vec2 vUv;
+-
+-                    void main() {
+-                        vec4 base = texture2D(baseTexture, vUv);
+-                        vec4 bloom = vec4(0.0);
+-                        
+-                        // Combine bloom layers with weights
+-                        bloom += texture2D(bloomTexture0, vUv) * bloomStrength0;
+-                        bloom += texture2D(bloomTexture1, vUv) * bloomStrength1;
+-                        bloom += texture2D(bloomTexture2, vUv) * bloomStrength2;
+-                        
+-                        // HDR tone mapping
+-                        vec3 color = base.rgb + bloom.rgb;
+-                        color = color / (vec3(1.0) + color);
+-                        
+-                        // Gamma correction
+-                        color = pow(color, vec3(1.0 / 2.2));
+-                        
+-                        // Enhance contrast slightly
+-                        color = mix(vec3(0.0), color, 1.1);
+-                        
+-                        gl_FragColor = vec4(color, base.a);
+-                    }
+-                `
+-            }),
+-            "baseTexture"
+-        );
+-        
+-        this.finalComposer.addPass(finalPass);
+-
+-        // Create hologram structure after composers are ready
+-        this.createHologramStructure();
+-    }
+-
+-    createHologramStructure() {
+-        // Clear existing hologram structure
+-        while (this.hologramGroup.children.length > 0) {
+-            const child = this.hologramGroup.children[0];
+-            if (child.geometry) child.geometry.dispose();
+-            if (child.material) child.material.dispose();
+-            this.hologramGroup.remove(child);
++            // Initialize bloom first
++            this.bloomEffect.init(bloomSettings);
++            
++            // Initialize composition effect with bloom render targets
++            const bloomRenderTargets = this.bloomEffect.getRenderTargets();
++            if (!bloomRenderTargets) {
++                throw new Error('Failed to get bloom render targets');
++            }
++            
++            // Initialize composition effect
++            this.compositionEffect.init(bloomRenderTargets);
++            
++            this.initialized = true;
++            console.log('Post-processing initialized successfully');
++        } catch (error) {
++            console.error('Error initializing post-processing:', error);
++            this.dispose();
+         }
++    }
+ 
+-        const hologramColor = new THREE.Color(this.hologramSettings.color);
+-        const hologramScale = this.hologramSettings.scale;
+-        const hologramOpacity = this.hologramSettings.opacity;
+-
+-        // Create multiple rings with different sizes
+-        const ringSizes = [40, 30, 20];
+-        for (let i = 0; i < 3; i++) {
+-            const ringGeometry = new THREE.TorusGeometry(ringSizes[i], 3, 32, 100);
+-            const ringMaterial = new THREE.MeshPhysicalMaterial({
+-                color: hologramColor,
+-                emissive: hologramColor,
+-                emissiveIntensity: 0.5,
+-                transparent: true,
+-                opacity: hologramOpacity,
+-                metalness: 0.7,
+-                roughness: 0.2,
+-                clearcoat: 1.0,
+-                clearcoatRoughness: 0.1,
+-                toneMapped: false
+-            });
+-
+-            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+-            ring.rotation.x = Math.PI / 2 * i;
+-            ring.rotation.y = Math.PI / 4 * i;
+-            ring.userData.rotationSpeed = 0.002 * (i + 1);
+-            ring.layers.set(LAYERS.HOLOGRAM);
+-            this.hologramGroup.add(ring);
++    handleXRSessionStart() {
++        try {
++            const session = this.renderer.xr.getSession();
++            if (session) {
++                const baseLayer = session.renderState.baseLayer;
++                const { width, height } = baseLayer.getViewport(session.views[0]);
++                this.handleResize(width, height);
++            }
++        } catch (error) {
++            console.error('Error handling XR session start:', error);
+         }
+-
+-        // Scale the entire hologram group
+-        this.hologramGroup.scale.setScalar(hologramScale);
+     }
+ 
+-    animate() {
+-        // Animate hologram elements
+-        this.hologramGroup.children.forEach(child => {
+-            if (child.userData.rotationSpeed) {
+-                child.rotation.x += child.userData.rotationSpeed;
+-                child.rotation.y += child.userData.rotationSpeed;
+-            }
+-        });
++    handleXRSessionEnd() {
++        this.handleResize(window.innerWidth, window.innerHeight);
+     }
+     
+     render() {
+-        // Render each bloom layer
+-        this.composers.forEach((composer, layer) => {
+-            this.camera.layers.set(layer);
+-            composer.render();
+-        });
+-        
+-        // Reset camera layers and render final composition
+-        this.camera.layers.set(LAYERS.NORMAL_LAYER);
+-        this.finalComposer.render();
+-    }
+-    
+-    handleResize() {
+-        const width = window.innerWidth;
+-        const height = window.innerHeight;
+-        
+-        // Resize all composers
+-        this.composers.forEach(composer => {
+-            composer.setSize(width, height);
+-        });
+-        
+-        if (this.finalComposer) {
+-            this.finalComposer.setSize(width, height);
++        if (!this.initialized || !this.bloomEffect || !this.compositionEffect) {
++            // If effects aren't initialized yet, do a normal render
++            this.renderer.render(this.scene, this.camera);
++            return;
++        }
++
++        try {
++            const currentCamera = this.isXRActive ? this.renderer.xr.getCamera() : this.camera;
++            
++            // Clear everything
++            this.renderer.clear(true, true, true);
++
++            // Render bloom layers
++            this.bloomEffect.render(currentCamera);
++            
++            // Get base texture from bloom effect
++            const bloomRenderTargets = this.bloomEffect.getRenderTargets();
++            if (!bloomRenderTargets) {
++                throw new Error('No bloom render targets available');
++            }
++            
++            const baseTexture = bloomRenderTargets.get(LAYERS.BLOOM).texture;
++            if (!baseTexture) {
++                throw new Error('No base texture available');
++            }
++            
++            // Reset camera to normal layer and render final composition
++            currentCamera.layers.set(LAYERS.NORMAL_LAYER);
++            this.compositionEffect.render(baseTexture);
++        } catch (error) {
++            console.error('Error during effect rendering:', error);
++            // Fallback to normal rendering
++            this.renderer.render(this.scene, this.camera);
+         }
+     }
+     
+-    updateBloom(settings) {
+-        this.composers.forEach((composer, layer) => {
+-            composer.passes.forEach(pass => {
+-                if (pass instanceof UnrealBloomPass) {
+-                    switch (layer) {
+-                        case LAYERS.BLOOM:
+-                            pass.strength = (settings.nodeBloomStrength ?? pass.strength) * 1.2;
+-                            pass.radius = settings.nodeBloomRadius ?? pass.radius;
+-                            pass.threshold = (settings.nodeBloomThreshold ?? pass.threshold) * 0.8;
+-                            break;
+-                        case LAYERS.HOLOGRAM:
+-                            pass.strength = (settings.environmentBloomStrength ?? pass.strength) * 1.5;
+-                            pass.radius = (settings.environmentBloomRadius ?? pass.radius) * 1.2;
+-                            pass.threshold = (settings.environmentBloomThreshold ?? pass.threshold) * 0.7;
+-                            break;
+-                        case LAYERS.EDGE:
+-                            pass.strength = (settings.edgeBloomStrength ?? pass.strength) * 1.3;
+-                            pass.radius = settings.edgeBloomRadius ?? pass.radius;
+-                            pass.threshold = (settings.edgeBloomThreshold ?? pass.threshold) * 0.9;
+-                            break;
+-                    }
+-                }
+-            });
+-        });
++    handleResize(width = window.innerWidth, height = window.innerHeight) {
++        if (!this.initialized) {
++            return;
++        }
++
++        try {
++            if (this.bloomEffect) {
++                this.bloomEffect.resize(width, height);
++            }
++            if (this.compositionEffect) {
++                this.compositionEffect.resize(width, height);
++            }
++        } catch (error) {
++            console.error('Error handling resize:', error);
++        }
+     }
+     
+     handleSettingsUpdate(event) {
+-        const settings = event.detail;
+-        
+-        if (settings.bloom) {
+-            this.bloomSettings = settings.bloom;
+-            this.updateBloom(settings.bloom);
++        if (!this.initialized) {
++            return;
+         }
+ 
+-        if (settings.hologram) {
+-            this.hologramSettings = settings.hologram;
+-            this.createHologramStructure();
++        try {
++            const settings = event.detail;
++            if (settings.bloom) {
++                const bloomSettings = {
++                    nodeBloomStrength: settings.bloom.nodeStrength || 0.8,
++                    nodeBloomRadius: settings.bloom.nodeRadius || 0.3,
++                    nodeBloomThreshold: settings.bloom.nodeThreshold || 0.2,
++                    edgeBloomStrength: settings.bloom.edgeStrength || 0.6,
++                    edgeBloomRadius: settings.bloom.edgeRadius || 0.4,
++                    edgeBloomThreshold: settings.bloom.edgeThreshold || 0.1,
++                    environmentBloomStrength: settings.bloom.envStrength || 0.7,
++                    environmentBloomRadius: settings.bloom.envRadius || 0.3,
++                    environmentBloomThreshold: settings.bloom.envThreshold || 0.1
++                };
++                
++                // Reinitialize bloom with new settings
++                this.bloomEffect.init(bloomSettings);
++                
++                // Reinitialize composition effect with updated bloom render targets
++                const bloomRenderTargets = this.bloomEffect.getRenderTargets();
++                if (bloomRenderTargets) {
++                    this.compositionEffect.init(bloomRenderTargets);
++                }
++            }
++        } catch (error) {
++            console.error('Error updating settings:', error);
+         }
+     }
+     
+     dispose() {
+-        window.removeEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
+-        
+-        // Dispose all composers
+-        this.composers.forEach(composer => {
+-            composer.dispose();
+-        });
+-        
+-        if (this.finalComposer) {
+-            this.finalComposer.dispose();
++        try {
++            // Remove event listeners
++            window.removeEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
++            
++            // Restore original renderer settings
++            if (this.renderer) {
++                this.renderer.autoClear = this.originalAutoClear;
++                this.renderer.setClearColor(this.originalClearColor, this.originalClearAlpha);
++            }
++            
++            // Dispose effects
++            if (this.bloomEffect) {
++                this.bloomEffect.dispose();
++                this.bloomEffect = null;
++            }
++            if (this.compositionEffect) {
++                this.compositionEffect.dispose();
++                this.compositionEffect = null;
++            }
++            
++            this.initialized = false;
++        } catch (error) {
++            console.error('Error disposing effects:', error);
+         }
+-
+-        // Dispose hologram resources
+-        this.hologramGroup.children.forEach(child => {
+-            if (child.geometry) child.geometry.dispose();
+-            if (child.material) child.material.dispose();
+-        });
+-        this.scene.remove(this.hologramGroup);
+     }
+ }
+diff --git a/data/public/js/components/visualization/effects/BloomEffect.js b/data/public/js/components/visualization/effects/BloomEffect.js
+new file mode 100644
+index 00000000..9b249435
+--- /dev/null
++++ b/data/public/js/components/visualization/effects/BloomEffect.js
+@@ -0,0 +1,184 @@
++import * as THREE from 'three';
++import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
++import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
++import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
++import { LAYERS } from '../layerManager.js';
++
++export class BloomEffect {
++    constructor(renderer, scene, camera) {
++        if (!renderer || !renderer.domElement) {
++            throw new Error('Invalid renderer provided to BloomEffect');
++        }
++        this.renderer = renderer;
++        this.scene = scene;
++        this.camera = camera;
++        this.composers = new Map();
++        this.renderTargets = new Map();
++        this.initialized = false;
++    }
++
++    createRenderTarget() {
++        if (!this.renderer.capabilities.isWebGL2) {
++            console.warn('WebGL 2 not available, some features may be limited');
++        }
++
++        const pixelRatio = this.renderer.getPixelRatio();
++        const width = Math.floor(window.innerWidth * pixelRatio);
++        const height = Math.floor(window.innerHeight * pixelRatio);
++
++        return new THREE.WebGLRenderTarget(
++            width,
++            height,
++            {
++                minFilter: THREE.LinearFilter,
++                magFilter: THREE.LinearFilter,
++                format: THREE.RGBAFormat,
++                type: THREE.UnsignedByteType,
++                colorSpace: THREE.SRGBColorSpace,
++                stencilBuffer: false,
++                depthBuffer: true,
++                samples: 4 // Enable MSAA
++            }
++        );
++    }
++
++    init(settings) {
++        // Clean up existing resources if reinitializing
++        if (this.initialized) {
++            this.dispose();
++        }
++
++        if (!this.renderer || !this.renderer.domElement) {
++            console.error('Renderer not ready for bloom effect initialization');
++            return;
++        }
++
++        const layers = [
++            {
++                layer: LAYERS.BLOOM,
++                settings: {
++                    strength: settings.nodeBloomStrength * 1.2,
++                    radius: settings.nodeBloomRadius,
++                    threshold: settings.nodeBloomThreshold * 0.8
++                }
++            },
++            {
++                layer: LAYERS.HOLOGRAM,
++                settings: {
++                    strength: settings.environmentBloomStrength * 1.5,
++                    radius: settings.environmentBloomRadius * 1.2,
++                    threshold: settings.environmentBloomThreshold * 0.7
++                }
++            },
++            {
++                layer: LAYERS.EDGE,
++                settings: {
++                    strength: settings.edgeBloomStrength * 1.3,
++                    radius: settings.edgeBloomRadius,
++                    threshold: settings.edgeBloomThreshold * 0.9
++                }
++            }
++        ];
++
++        try {
++            layers.forEach(({ layer, settings }) => {
++                const renderTarget = this.createRenderTarget();
++                if (!renderTarget) {
++                    throw new Error('Failed to create render target');
++                }
++                this.renderTargets.set(layer, renderTarget);
++                
++                const composer = new EffectComposer(this.renderer, renderTarget);
++                composer.renderToScreen = false;
++                
++                const renderPass = new RenderPass(this.scene, this.camera);
++                renderPass.clear = true;
++                
++                const bloomPass = new UnrealBloomPass(
++                    new THREE.Vector2(window.innerWidth, window.innerHeight),
++                    settings.strength,
++                    settings.radius,
++                    settings.threshold
++                );
++                
++                composer.addPass(renderPass);
++                composer.addPass(bloomPass);
++                
++                this.composers.set(layer, composer);
++            });
++
++            this.initialized = true;
++        } catch (error) {
++            console.error('Error initializing bloom effect:', error);
++            this.dispose();
++        }
++    }
++
++    render(currentCamera) {
++        if (!this.initialized || !currentCamera) {
++            return;
++        }
++
++        try {
++            this.composers.forEach((composer, layer) => {
++                const originalLayerMask = currentCamera.layers.mask;
++                currentCamera.layers.set(layer);
++                
++                if (composer.outputBuffer) {
++                    composer.render();
++                }
++                
++                currentCamera.layers.mask = originalLayerMask;
++            });
++        } catch (error) {
++            console.error('Error rendering bloom effect:', error);
++        }
++    }
++
++    resize(width, height) {
++        if (!this.initialized) {
++            return;
++        }
++
++        const pixelRatio = this.renderer.getPixelRatio();
++        const actualWidth = Math.floor(width * pixelRatio);
++        const actualHeight = Math.floor(height * pixelRatio);
++
++        this.renderTargets.forEach(target => {
++            if (target && target.setSize) {
++                target.setSize(actualWidth, actualHeight);
++            }
++        });
++        
++        this.composers.forEach(composer => {
++            if (composer && composer.setSize) {
++                composer.setSize(actualWidth, actualHeight);
++            }
++        });
++    }
++
++    dispose() {
++        this.renderTargets.forEach(target => {
++            if (target && target.dispose) {
++                target.dispose();
++            }
++        });
++        
++        this.composers.forEach(composer => {
++            if (composer && composer.dispose) {
++                composer.dispose();
++            }
++        });
++        
++        this.renderTargets.clear();
++        this.composers.clear();
++        this.initialized = false;
++    }
++
++    getRenderTargets() {
++        if (!this.initialized) {
++            return null;
++        }
++        return this.renderTargets;
++    }
++}
+diff --git a/data/public/js/components/visualization/effects/CompositionEffect.js b/data/public/js/components/visualization/effects/CompositionEffect.js
+new file mode 100644
+index 00000000..6994bde4
+--- /dev/null
++++ b/data/public/js/components/visualization/effects/CompositionEffect.js
+@@ -0,0 +1,161 @@
++import * as THREE from 'three';
++import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
++import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
++import { LAYERS } from '../layerManager.js';
++
++export class CompositionEffect {
++    constructor(renderer) {
++        if (!renderer || !renderer.domElement) {
++            throw new Error('Invalid renderer provided to CompositionEffect');
++        }
++        this.renderer = renderer;
++        this.composer = null;
++        this.initialized = false;
++    }
++
++    createRenderTarget() {
++        const pixelRatio = this.renderer.getPixelRatio();
++        const width = Math.floor(window.innerWidth * pixelRatio);
++        const height = Math.floor(window.innerHeight * pixelRatio);
++
++        return new THREE.WebGLRenderTarget(
++            width,
++            height,
++            {
++                minFilter: THREE.LinearFilter,
++                magFilter: THREE.LinearFilter,
++                format: THREE.RGBAFormat,
++                type: THREE.UnsignedByteType,
++                colorSpace: THREE.SRGBColorSpace,
++                stencilBuffer: false,
++                depthBuffer: true,
++                samples: 4 // Enable MSAA
++            }
++        );
++    }
++
++    init(bloomRenderTargets) {
++        try {
++            // Clean up existing resources if reinitializing
++            if (this.initialized) {
++                this.dispose();
++            }
++
++            if (!bloomRenderTargets) {
++                throw new Error('No bloom render targets provided');
++            }
++
++            // Verify all required textures are available
++            const requiredLayers = [LAYERS.BLOOM, LAYERS.HOLOGRAM, LAYERS.EDGE];
++            requiredLayers.forEach(layer => {
++                const target = bloomRenderTargets.get(layer);
++                if (!target || !target.texture) {
++                    throw new Error(`Missing bloom render target for layer ${layer}`);
++                }
++            });
++
++            const renderTarget = this.createRenderTarget();
++            this.composer = new EffectComposer(this.renderer, renderTarget);
++
++            const shader = {
++                uniforms: {
++                    baseTexture: { value: null },
++                    bloomTexture0: { value: bloomRenderTargets.get(LAYERS.BLOOM).texture },
++                    bloomTexture1: { value: bloomRenderTargets.get(LAYERS.HOLOGRAM).texture },
++                    bloomTexture2: { value: bloomRenderTargets.get(LAYERS.EDGE).texture }
++                },
++                vertexShader: `
++                    varying vec2 vUv;
++                    void main() {
++                        vUv = uv;
++                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
++                    }
++                `,
++                fragmentShader: `
++                    uniform sampler2D baseTexture;
++                    uniform sampler2D bloomTexture0;
++                    uniform sampler2D bloomTexture1;
++                    uniform sampler2D bloomTexture2;
++                    varying vec2 vUv;
++
++                    void main() {
++                        vec4 baseColor = texture2D(baseTexture, vUv);
++                        vec3 bloomColor0 = texture2D(bloomTexture0, vUv).rgb;
++                        vec3 bloomColor1 = texture2D(bloomTexture1, vUv).rgb;
++                        vec3 bloomColor2 = texture2D(bloomTexture2, vUv).rgb;
++                        
++                        // Combine bloom layers with proper HDR handling
++                        vec3 bloomSum = bloomColor0 + bloomColor1 + bloomColor2;
++                        vec3 color = baseColor.rgb + bloomSum;
++                        
++                        // Apply tone mapping in shader for better control
++                        color = color / (vec3(1.0) + color); // Simple Reinhard tone mapping
++                        
++                        // Gamma correction
++                        color = pow(color, vec3(1.0 / 2.2));
++                        
++                        gl_FragColor = vec4(color, baseColor.a);
++                    }
++                `
++            };
++
++            const finalPass = new ShaderPass(new THREE.ShaderMaterial(shader));
++            finalPass.renderToScreen = true;
++            this.composer.addPass(finalPass);
++
++            this.initialized = true;
++        } catch (error) {
++            console.error('Error initializing composition effect:', error);
++            this.dispose();
++        }
++    }
++
++    render(baseTexture) {
++        if (!this.initialized || !this.composer) {
++            return;
++        }
++
++        try {
++            if (!baseTexture) {
++                console.warn('No base texture provided for composition render');
++                return;
++            }
++
++            const finalPass = this.composer.passes[0];
++            if (finalPass && finalPass.uniforms) {
++                finalPass.uniforms.baseTexture.value = baseTexture;
++                this.composer.render();
++            }
++        } catch (error) {
++            console.error('Error rendering composition effect:', error);
++        }
++    }
++
++    resize(width, height) {
++        if (!this.initialized || !this.composer) {
++            return;
++        }
++
++        try {
++            const pixelRatio = this.renderer.getPixelRatio();
++            const actualWidth = Math.floor(width * pixelRatio);
++            const actualHeight = Math.floor(height * pixelRatio);
++            
++            this.composer.setSize(actualWidth, actualHeight);
++        } catch (error) {
++            console.error('Error resizing composition effect:', error);
++        }
++    }
++
++    dispose() {
++        if (this.composer) {
++            try {
++                this.composer.dispose();
++            } catch (error) {
++                console.error('Error disposing composition effect:', error);
++            }
++        }
++        this.composer = null;
++        this.initialized = false;
++    }
++}
+diff --git a/data/public/js/components/visualization/layerManager.js b/data/public/js/components/visualization/layerManager.js
+index 0d703c2e..28fcbcab 100644
+--- a/data/public/js/components/visualization/layerManager.js
++++ b/data/public/js/components/visualization/layerManager.js
+@@ -1,3 +1,5 @@
++import * as THREE from 'three';
++
+ // Layer constants for rendering pipeline
+ export const LAYERS = {
+     NORMAL_LAYER: 0,  // Base layer for regular rendering
+@@ -7,7 +9,7 @@ export const LAYERS = {
+     LABEL: 4         // Layer for labels
+ };
+ 
+-// Layer groups for optimization
++// Layer groups with specific rendering requirements
+ export const LAYER_GROUPS = {
+     // Base scene elements (no bloom)
+     BASE: [LAYERS.NORMAL_LAYER],
+@@ -15,10 +17,10 @@ export const LAYER_GROUPS = {
+     // Elements that should have bloom
+     BLOOM: [LAYERS.NORMAL_LAYER, LAYERS.BLOOM],
+     
+-    // Hologram elements
++    // Hologram elements with enhanced bloom
+     HOLOGRAM: [LAYERS.NORMAL_LAYER, LAYERS.HOLOGRAM],
+     
+-    // Edge elements
++    // Edge elements with subtle bloom
+     EDGE: [LAYERS.NORMAL_LAYER, LAYERS.EDGE],
+     
+     // Label elements (should be visible in all layers)
+@@ -31,18 +33,66 @@ export const LAYER_GROUPS = {
+     ]
+ };
+ 
+-// Helper functions for layer management
++// Material presets for different layer groups
++const MATERIAL_PRESETS = {
++    BLOOM: {
++        emissiveIntensity: 1.0,
++        transparent: true,
++        opacity: 0.9,
++        blending: THREE.AdditiveBlending,
++        depthWrite: false,
++        toneMapped: false
++    },
++    HOLOGRAM: {
++        emissiveIntensity: 1.5,
++        transparent: true,
++        opacity: 0.7,
++        blending: THREE.AdditiveBlending,
++        depthWrite: false,
++        toneMapped: false
++    },
++    EDGE: {
++        emissiveIntensity: 0.8,
++        transparent: true,
++        opacity: 0.6,
++        blending: THREE.NormalBlending,
++        depthWrite: true,
++        toneMapped: false
++    }
++};
++
++// Enhanced LayerManager with better type checking and error handling
+ export const LayerManager = {
+     // Enable multiple layers for an object
+     enableLayers(object, layers) {
++        if (!object || !object.layers) {
++            console.error('Invalid object provided to enableLayers');
++            return;
++        }
++
+         if (!Array.isArray(layers)) {
+             layers = [layers];
+         }
+-        layers.forEach(layer => object.layers.enable(layer));
++
++        // Reset layers before enabling new ones
++        object.layers.mask = 0;
++        
++        layers.forEach(layer => {
++            if (typeof layer === 'number' && layer >= 0) {
++                object.layers.enable(layer);
++            } else {
++                console.warn(`Invalid layer value: ${layer}`);
++            }
++        });
+     },
+ 
+-    // Set object to specific layer group
++    // Set object to specific layer group with material optimization
+     setLayerGroup(object, groupName) {
++        if (!object || !object.layers) {
++            console.error('Invalid object provided to setLayerGroup');
++            return;
++        }
++
+         const layers = LAYER_GROUPS[groupName];
+         if (!layers) {
+             console.warn(`Unknown layer group: ${groupName}`);
+@@ -54,21 +104,122 @@ export const LayerManager = {
+         
+         // Enable all layers in group
+         layers.forEach(layer => object.layers.enable(layer));
++
++        // Apply material presets if object has material
++        if (object.material && MATERIAL_PRESETS[groupName]) {
++            // Clone material to avoid affecting other objects
++            if (!object.material._isCloned) {
++                object.material = object.material.clone();
++                object.material._isCloned = true;
++            }
++            
++            // Apply preset properties
++            Object.assign(object.material, MATERIAL_PRESETS[groupName]);
++            
++            // Special handling for emissive color
++            if (object.material.color && object.material.emissive) {
++                object.material.emissive.copy(object.material.color);
++            }
++        }
+     },
+ 
+-    // Check if object is in layer
++    // Check if object is in layer with proper type checking
+     isInLayer(object, layer) {
++        if (!object || !object.layers || typeof layer !== 'number') {
++            return false;
++        }
+         return object.layers.test(new THREE.Layers().set(layer));
+     },
+ 
+-    // Get all objects in a specific layer
+-    getObjectsInLayer(scene, layer) {
++    // Get all objects in a specific layer with filtering options
++    getObjectsInLayer(scene, layer, options = {}) {
++        if (!scene || typeof layer !== 'number') {
++            console.error('Invalid parameters provided to getObjectsInLayer');
++            return [];
++        }
++
+         const objects = [];
++        const {
++            includeInvisible = false,
++            includeHelpers = false
++        } = options;
++
+         scene.traverse(object => {
+             if (this.isInLayer(object, layer)) {
++                if (!includeInvisible && !object.visible) return;
++                if (!includeHelpers && object.isHelper) return;
+                 objects.push(object);
+             }
+         });
+         return objects;
++    },
++
++    // Get objects that should receive bloom
++    getBloomObjects(scene) {
++        return this.getObjectsInLayer(scene, LAYERS.BLOOM).concat(
++            this.getObjectsInLayer(scene, LAYERS.HOLOGRAM),
++            this.getObjectsInLayer(scene, LAYERS.EDGE)
++        );
++    },
++
++    // Optimize material for bloom rendering
++    optimizeForBloom(object, intensity = 1.0) {
++        if (!object || !object.material) return;
++
++        // Clone material to avoid affecting other objects
++        if (!object.material._isCloned) {
++            object.material = object.material.clone();
++            object.material._isCloned = true;
++        }
++
++        // Apply bloom-specific optimizations
++        object.material.toneMapped = false;
++        object.material.transparent = true;
++        object.material.blending = THREE.AdditiveBlending;
++        object.material.depthWrite = false;
++        
++        if (object.material.emissive) {
++            object.material.emissive.copy(object.material.color || new THREE.Color(1, 1, 1));
++            object.material.emissiveIntensity = intensity;
++        }
++    },
++
++    // Reset object to base layer
++    resetToBaseLayer(object) {
++        if (!object || !object.layers) return;
++        
++        object.layers.set(LAYERS.NORMAL_LAYER);
++        
++        if (object.material && object.material._isCloned) {
++            object.material.dispose();
++            object.material = new THREE.MeshStandardMaterial({
++                color: object.material.color,
++                transparent: false,
++                toneMapped: true,
++                emissiveIntensity: 0
++            });
++            object.material._isCloned = false;
++        }
++    },
++
++    // Check if object should receive bloom
++    shouldReceiveBloom(object) {
++        return this.isInLayer(object, LAYERS.BLOOM) ||
++               this.isInLayer(object, LAYERS.HOLOGRAM) ||
++               this.isInLayer(object, LAYERS.EDGE);
++    },
++
++    // Create a bloom-optimized material
++    createBloomMaterial(color, intensity = 1.0) {
++        return new THREE.MeshPhysicalMaterial({
++            color: color,
++            emissive: color,
++            emissiveIntensity: intensity,
++            transparent: true,
++            opacity: 0.9,
++            blending: THREE.AdditiveBlending,
++            depthWrite: false,
++            toneMapped: false
++        });
+     }
+ };
+diff --git a/data/public/js/components/visualization/nodes.js b/data/public/js/components/visualization/nodes.js
+index d088d042..894705b8 100755
+--- a/data/public/js/components/visualization/nodes.js
++++ b/data/public/js/components/visualization/nodes.js
+@@ -38,11 +38,68 @@ export class NodeManager {
+         this.edgeColor = new THREE.Color(settings.edgeColor || edgeSettings.color);
+         this.edgeOpacity = settings.edgeOpacity || edgeSettings.opacity;
+ 
++        // Bind event handlers
+         this.handleClick = this.handleClick.bind(this);
++        this.handleSettingsUpdate = this.handleSettingsUpdate.bind(this);
++        
++        // Add settings update listener
++        window.addEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
++
+         this.xrEnabled = false;
+         this.xrLabelManager = null;
+     }
+ 
++    handleSettingsUpdate(event) {
++        const settings = event.detail;
++        if (!settings) return;
++
++        if (settings.visual) {
++            // Update visual settings
++            if (settings.visual.nodeColor !== undefined) {
++                this.updateFeature('nodeColor', settings.visual.nodeColor);
++            }
++            if (settings.visual.minNodeSize !== undefined) {
++                this.updateFeature('minNodeSize', settings.visual.minNodeSize);
++            }
++            if (settings.visual.maxNodeSize !== undefined) {
++                this.updateFeature('maxNodeSize', settings.visual.maxNodeSize);
++            }
++            if (settings.visual.labelFontSize !== undefined) {
++                this.updateFeature('labelFontSize', settings.visual.labelFontSize);
++            }
++            if (settings.visual.edgeColor !== undefined) {
++                this.updateFeature('edgeColor', settings.visual.edgeColor);
++            }
++            if (settings.visual.edgeOpacity !== undefined) {
++                this.updateFeature('edgeOpacity', settings.visual.edgeOpacity);
++            }
++        }
++
++        if (settings.material) {
++            this.updateMaterial(settings.material);
++        }
++
++        // Update node colors if age-based colors are changed
++        if (settings.ageColors) {
++            if (settings.ageColors.new) this.ageColors.NEW.set(settings.ageColors.new);
++            if (settings.ageColors.recent) this.ageColors.RECENT.set(settings.ageColors.recent);
++            if (settings.ageColors.medium) this.ageColors.MEDIUM.set(settings.ageColors.medium);
++            if (settings.ageColors.old) this.ageColors.OLD.set(settings.ageColors.old);
++            
++            // Update all nodes to reflect new colors
++            this.nodeMeshes.forEach((mesh, nodeId) => {
++                const nodeData = this.nodeData.get(nodeId);
++                if (nodeData) {
++                    const color = this.calculateNodeColor(nodeData.metadata || {});
++                    if (mesh.material) {
++                        mesh.material.color.copy(color);
++                        mesh.material.emissive.copy(color);
++                    }
++                }
++            });
++        }
++    }
++
+     centerNodes(nodes) {
+         if (!Array.isArray(nodes) || nodes.length === 0) {
+             return nodes;
+@@ -604,6 +661,13 @@ export class NodeManager {
+     }
+ 
+     dispose() {
++        // Remove event listeners
++        window.removeEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
++        
++        if (this.renderer) {
++            this.removeClickHandling(this.renderer);
++        }
++
+         // Dispose node resources
+         this.nodeMeshes.forEach(mesh => {
+             if (mesh.geometry) {
+@@ -657,10 +721,5 @@ export class NodeManager {
+         this.nodeLabels.clear();
+         this.edgeMeshes.clear();
+         this.nodeData.clear();
+-
+-        // Clean up event listeners
+-        if (this.renderer) {
+-            this.removeClickHandling(this.renderer);
+-        }
+     }
+ }
+diff --git a/data/public/js/gpuUtils.js b/data/public/js/gpuUtils.js
+index 7b20497f..d393a7f8 100755
+--- a/data/public/js/gpuUtils.js
++++ b/data/public/js/gpuUtils.js
+@@ -1,50 +1,299 @@
+ // public/js/gpuUtils.js
+ 
+ /**
+- * Checks if the GPU is available for acceleration.
+- * @returns {boolean} True if GPU is available, false otherwise.
++ * GPU Accelerated Utilities using WebGL Compute Shaders
+  */
+-export function isGPUAvailable() {
+-  try {
+-      const canvas = document.createElement('canvas');
+-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+-      return !!gl;
+-  } catch (e) {
+-      console.error('GPU availability check failed:', e);
+-      return false;
+-  }
++
++// WebGL compute shader for force-directed layout
++const forceDirectedComputeShader = `#version 310 es
++layout(local_size_x = 256) in;
++
++struct Node {
++    vec4 position;  // w component used for mass
++    vec4 velocity;  // w component used for charge
++};
++
++layout(std430, binding = 0) buffer NodesBuffer {
++    Node nodes[];
++};
++
++layout(std430, binding = 1) buffer LinksBuffer {
++    ivec2 links[];  // source and target indices
++};
++
++uniform float deltaTime;
++uniform float springLength;
++uniform float springStiffness;
++uniform float repulsion;
++uniform float damping;
++
++void main() {
++    uint nodeIndex = gl_GlobalInvocationID.x;
++    if (nodeIndex >= nodes.length()) return;
++
++    vec3 force = vec3(0.0);
++    vec3 pos = nodes[nodeIndex].position.xyz;
++    float charge = nodes[nodeIndex].velocity.w;
++
++    // Repulsion forces (node-node)
++    for (uint i = 0; i < nodes.length(); i++) {
++        if (i == nodeIndex) continue;
++        vec3 diff = pos - nodes[i].position.xyz;
++        float dist = length(diff);
++        if (dist > 0.0) {
++            force += normalize(diff) * repulsion * charge * nodes[i].velocity.w / (dist * dist);
++        }
++    }
++
++    // Spring forces (links)
++    for (uint i = 0; i < links.length(); i++) {
++        if (links[i].x == int(nodeIndex)) {
++            vec3 diff = pos - nodes[links[i].y].position.xyz;
++            float dist = length(diff);
++            force -= normalize(diff) * springStiffness * (dist - springLength);
++        }
++        else if (links[i].y == int(nodeIndex)) {
++            vec3 diff = pos - nodes[links[i].x].position.xyz;
++            float dist = length(diff);
++            force -= normalize(diff) * springStiffness * (dist - springLength);
++        }
++    }
++
++    // Update velocity and position
++    vec3 velocity = nodes[nodeIndex].velocity.xyz;
++    velocity = (velocity + force * deltaTime) * damping;
++    pos += velocity * deltaTime;
++
++    // Write back results
++    nodes[nodeIndex].position.xyz = pos;
++    nodes[nodeIndex].velocity.xyz = velocity;
++}`;
++
++export class GPUAccelerator {
++    constructor() {
++        this.gl = null;
++        this.computeProgram = null;
++        this.nodesBuffer = null;
++        this.linksBuffer = null;
++        this.initialized = false;
++    }
++
++    /**
++     * Initialize WebGL compute resources
++     * @returns {boolean} Success status
++     */
++    async init() {
++        try {
++            // Create WebGL 2.0 Compute context
++            const canvas = document.createElement('canvas');
++            this.gl = canvas.getContext('webgl2-compute');
++            
++            if (!this.gl) {
++                console.warn('WebGL 2.0 Compute not available, falling back to CPU computation');
++                return false;
++            }
++
++            // Create and compile compute shader
++            const shader = this.gl.createShader(this.gl.COMPUTE_SHADER);
++            this.gl.shaderSource(shader, forceDirectedComputeShader);
++            this.gl.compileShader(shader);
++
++            if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
++                console.error('Compute shader compilation failed:', this.gl.getShaderInfoLog(shader));
++                return false;
++            }
++
++            // Create compute program
++            this.computeProgram = this.gl.createProgram();
++            this.gl.attachShader(this.computeProgram, shader);
++            this.gl.linkProgram(this.computeProgram);
++
++            if (!this.gl.getProgramParameter(this.computeProgram, this.gl.LINK_STATUS)) {
++                console.error('Compute program linking failed:', this.gl.getProgramInfoLog(this.computeProgram));
++                return false;
++            }
++
++            this.initialized = true;
++            return true;
++        } catch (error) {
++            console.error('GPU initialization failed:', error);
++            return false;
++        }
++    }
++
++    /**
++     * Allocate GPU buffers for nodes and links
++     * @param {number} numNodes - Number of nodes
++     * @param {number} numLinks - Number of links
++     */
++    allocateBuffers(numNodes, numLinks) {
++        if (!this.initialized) return;
++
++        // Create and bind nodes buffer
++        this.nodesBuffer = this.gl.createBuffer();
++        this.gl.bindBuffer(this.gl.SHADER_STORAGE_BUFFER, this.nodesBuffer);
++        this.gl.bufferData(this.gl.SHADER_STORAGE_BUFFER, numNodes * 32, this.gl.DYNAMIC_DRAW); // 32 bytes per node (2 vec4s)
++        this.gl.bindBufferBase(this.gl.SHADER_STORAGE_BUFFER, 0, this.nodesBuffer);
++
++        // Create and bind links buffer
++        this.linksBuffer = this.gl.createBuffer();
++        this.gl.bindBuffer(this.gl.SHADER_STORAGE_BUFFER, this.linksBuffer);
++        this.gl.bufferData(this.gl.SHADER_STORAGE_BUFFER, numLinks * 8, this.gl.DYNAMIC_DRAW); // 8 bytes per link (2 ints)
++        this.gl.bindBufferBase(this.gl.SHADER_STORAGE_BUFFER, 1, this.linksBuffer);
++    }
++
++    /**
++     * Update node data in GPU buffer
++     * @param {Float32Array} nodeData - Node positions and properties
++     */
++    updateNodes(nodeData) {
++        if (!this.initialized) return;
++        this.gl.bindBuffer(this.gl.SHADER_STORAGE_BUFFER, this.nodesBuffer);
++        this.gl.bufferSubData(this.gl.SHADER_STORAGE_BUFFER, 0, nodeData);
++    }
++
++    /**
++     * Update link data in GPU buffer
++     * @param {Int32Array} linkData - Link source and target indices
++     */
++    updateLinks(linkData) {
++        if (!this.initialized) return;
++        this.gl.bindBuffer(this.gl.SHADER_STORAGE_BUFFER, this.linksBuffer);
++        this.gl.bufferSubData(this.gl.SHADER_STORAGE_BUFFER, 0, linkData);
++    }
++
++    /**
++     * Compute force-directed layout on GPU
++     * @param {object} params - Layout parameters
++     * @returns {Float32Array} Updated node positions
++     */
++    computeLayout(params) {
++        if (!this.initialized) return null;
++
++        try {
++            // Use compute program
++            this.gl.useProgram(this.computeProgram);
++
++            // Set uniforms
++            const uniforms = {
++                deltaTime: params.deltaTime || 0.016,
++                springLength: params.springLength || 1.0,
++                springStiffness: params.springStiffness || 0.1,
++                repulsion: params.repulsion || 1.0,
++                damping: params.damping || 0.98
++            };
++
++            for (const [name, value] of Object.entries(uniforms)) {
++                const location = this.gl.getUniformLocation(this.computeProgram, name);
++                this.gl.uniform1f(location, value);
++            }
++
++            // Dispatch compute shader
++            const workGroupSize = 256;
++            const numWorkGroups = Math.ceil(params.numNodes / workGroupSize);
++            this.gl.dispatchCompute(numWorkGroups, 1, 1);
++
++            // Wait for computation to complete
++            this.gl.memoryBarrier(this.gl.SHADER_STORAGE_BARRIER_BIT);
++
++            // Read back results
++            const resultBuffer = new Float32Array(params.numNodes * 8); // 8 floats per node
++            this.gl.getBufferSubData(this.gl.SHADER_STORAGE_BUFFER, 0, resultBuffer);
++
++            return resultBuffer;
++        } catch (error) {
++            console.error('GPU computation failed:', error);
++            return null;
++        }
++    }
++
++    /**
++     * Clean up GPU resources
++     */
++    dispose() {
++        if (!this.initialized) return;
++
++        try {
++            // Delete buffers
++            if (this.nodesBuffer) this.gl.deleteBuffer(this.nodesBuffer);
++            if (this.linksBuffer) this.gl.deleteBuffer(this.linksBuffer);
++
++            // Delete program and shader
++            if (this.computeProgram) {
++                const shader = this.gl.getAttachedShaders(this.computeProgram)[0];
++                this.gl.deleteShader(shader);
++                this.gl.deleteProgram(this.computeProgram);
++            }
++
++            this.initialized = false;
++        } catch (error) {
++            console.error('Error disposing GPU resources:', error);
++        }
++    }
+ }
+ 
++// Export singleton instance
++export const gpuAccelerator = new GPUAccelerator();
++
+ /**
+-* Initializes GPU computation utilities.
+-* @returns {object} An object containing GPU-related methods.
+-*/
+-export function initGPU() {
+-  // Placeholder for GPU computation initialization
+-  console.log('Initializing GPU utilities.');
+-
+-  // Implement GPU-related initializations here, such as setting up compute shaders
+-  // For this example, we'll return an empty object
+-  return {
+-      compute: (data) => {
+-          // Implement GPU computation logic here
+-          console.log('Performing GPU computation with data:', data);
+-      }
+-  };
++ * Check if GPU acceleration is available
++ * @returns {Promise<boolean>} True if GPU is available
++ */
++export async function isGPUAvailable() {
++    try {
++        return await gpuAccelerator.init();
++    } catch (e) {
++        console.error('GPU availability check failed:', e);
++        return false;
++    }
++}
++
++/**
++ * Initialize GPU computation utilities
++ * @returns {Promise<GPUAccelerator>} GPU accelerator instance
++ */
++export async function initGPU() {
++    if (await isGPUAvailable()) {
++        return gpuAccelerator;
++    }
++    return null;
+ }
+ 
+ /**
+-* Performs computations on the GPU.
+-* @param {object} gpu - The GPU utilities object.
+-* @param {object} data - The data to compute.
+-* @returns {boolean} True if computation was successful, false otherwise.
+-*/
+-export function computeOnGPU(gpu, data) {
+-  if (gpu && typeof gpu.compute === 'function') {
+-      gpu.compute(data);
+-      return true;
+-  } else {
+-      console.warn('GPU compute function is not available.');
+-      return false;
+-  }
++ * Perform computations on the GPU
++ * @param {GPUAccelerator} gpu - GPU accelerator instance
++ * @param {object} data - Computation data
++ * @param {object} params - Computation parameters
++ * @returns {Float32Array|null} Computation results
++ */
++export function computeOnGPU(gpu, data, params) {
++    if (!gpu?.initialized) return null;
++
++    try {
++        // Prepare node and link data
++        const nodeData = new Float32Array(data.nodes.flatMap(node => [
++            node.x, node.y, node.z, node.mass || 1.0,
++            node.vx || 0, node.vy || 0, node.vz || 0, node.charge || 1.0
++        ]));
++
++        const linkData = new Int32Array(data.links.flatMap(link => [
++            link.source, link.target
++        ]));
++
++        // Allocate buffers if needed
++        gpu.allocateBuffers(data.nodes.length, data.links.length);
++
++        // Update data
++        gpu.updateNodes(nodeData);
++        gpu.updateLinks(linkData);
++
++        // Compute layout
++        return gpu.computeLayout({
++            ...params,
++            numNodes: data.nodes.length
++        });
++    } catch (error) {
++        console.error('Error in GPU computation:', error);
++        return null;
++    }
+ }
+diff --git a/data/public/js/index.js b/data/public/js/index.js
+index 8e09eb5e..7dc49cbe 100755
+--- a/data/public/js/index.js
++++ b/data/public/js/index.js
+@@ -1,117 +1,6 @@
+-import { createApp } from 'vue';
+-import WebsocketService from './services/websocketService.js';
+-import { WebXRVisualization } from './components/visualization/core.js';
+-import ControlPanel from './components/ControlPanel.vue';
++// data/public/js/index.js
+ 
+-class App {
+-    constructor() {
+-        // Initialize WebSocket service first
+-        this.websocketService = new WebsocketService();
+-        
+-        // Initialize visualization with the websocket service as the graph data manager
+-        this.visualization = new WebXRVisualization(this.websocketService);
+-        this.vueApp = null;
+-
+-        // Set up graph data handling
+-        this.websocketService.on('graphUpdate', ({ graphData }) => {
+-            console.log('Received graph update:', graphData);
+-            if (this.visualization) {
+-                this.visualization.updateVisualization(graphData);
+-            }
+-        });
+-    }
+-
+-    async start() {
+-        try {
+-            // Initialize WebSocket connection
+-            await this.websocketService.connect();
+-            
+-            // Initialize visualization
+-            const container = document.getElementById('scene-container');
+-            if (!container) {
+-                throw new Error("Could not find 'scene-container' element");
+-            }
+-            await this.visualization.initThreeJS(container);
+-            
+-            // Create Vue application
+-            const websocketService = this.websocketService;
+-            const visualization = this.visualization;
+-            
+-            this.vueApp = createApp({
+-                components: {
+-                    ControlPanel
+-                },
+-                setup() {
+-                    return {
+-                        websocketService,
+-                        handleControlChange(change) {
+-                            console.log('Control changed:', change);
+-                            visualization.updateSettings(change);
+-                        }
+-                    };
+-                },
+-                template: `
+-                    <div class="app-wrapper">
+-                        <ControlPanel 
+-                            :websocket-service="websocketService"
+-                            @control-change="handleControlChange"
+-                        />
+-                    </div>
+-                `
+-            });
+-
+-            // Mount the application
+-            const appContainer = document.getElementById('app');
+-            if (!appContainer) {
+-                throw new Error("Could not find 'app' element");
+-            }
+-            this.vueApp.mount(appContainer);
+-
+-            // Update connection status
+-            this.websocketService.on('connect', () => {
+-                const statusEl = document.getElementById('connection-status');
+-                if (statusEl) {
+-                    statusEl.textContent = 'Connected';
+-                    statusEl.className = 'connected';
+-                }
+-            });
+-
+-            this.websocketService.on('disconnect', () => {
+-                const statusEl = document.getElementById('connection-status');
+-                if (statusEl) {
+-                    statusEl.textContent = 'Disconnected';
+-                    statusEl.className = 'disconnected';
+-                }
+-            });
+-
+-            // Handle window resize
+-            window.addEventListener('resize', () => {
+-                if (this.visualization) {
+-                    this.visualization.onWindowResize();
+-                }
+-            });
+-
+-            // Request initial data
+-            this.websocketService.send({ type: 'getInitialData' });
+-
+-        } catch (error) {
+-            console.error('Failed to start application:', error);
+-            throw error;
+-        }
+-    }
+-
+-    stop() {
+-        if (this.visualization) {
+-            this.visualization.dispose();
+-        }
+-        if (this.websocketService) {
+-            this.websocketService.disconnect();
+-        }
+-        if (this.vueApp) {
+-            this.vueApp.unmount();
+-        }
+-    }
+-}
++import { App } from './app.js';
+ 
+ // Initialize application when DOM is ready
+ document.addEventListener('DOMContentLoaded', () => {
+@@ -125,5 +14,3 @@ document.addEventListener('DOMContentLoaded', () => {
+         app.stop();
+     });
+ });
+-
+-export { App };
+diff --git a/data/public/js/threeJS/threeGraph.js b/data/public/js/threeJS/threeGraph.js
+index 5ccc0535..942fc02a 100755
+--- a/data/public/js/threeJS/threeGraph.js
++++ b/data/public/js/threeJS/threeGraph.js
+@@ -4,43 +4,37 @@ import * as THREE from 'three';
+ import { visualizationSettings } from '../services/visualizationSettings.js';
+ 
+ /**
+- * ForceGraph class manages the creation and updating of nodes and edges in the Three.js scene.
++ * Enhanced ForceGraph class with instanced mesh rendering
+  */
+ export class ForceGraph {
+-    /**
+-     * Creates a new ForceGraph instance.
+-     * @param {THREE.Scene} scene - The Three.js scene.
+-     */
+     constructor(scene) {
+         this.scene = scene;
+ 
+         // Data structures
+         this.nodes = [];
+         this.links = [];
++        this.nodeInstances = new Map();
++        this.linkInstances = new Map();
+ 
+-        // Meshes
+-        this.nodeMeshes = new Map();
+-        this.linkMeshes = new Map();
++        // Instanced meshes
++        this.nodeInstancedMesh = null;
++        this.linkInstancedMesh = null;
+ 
+-        // Object pools with pre-allocation
+-        this.nodeMeshPool = [];
+-        this.linkMeshPool = [];
+-        this.geometryPool = new Map(); // Pool for reusing geometries
+-        this.materialPool = new Map(); // Pool for reusing materials
++        // Temporary objects for matrix calculations
++        this.tempMatrix = new THREE.Matrix4();
++        this.tempColor = new THREE.Color();
++        this.tempVector = new THREE.Vector3();
++        this.tempQuaternion = new THREE.Quaternion();
++        this.tempScale = new THREE.Vector3();
+ 
+         // Level of Detail
+         this.lod = new THREE.LOD();
+         this.scene.add(this.lod);
+ 
+-        // Shared geometry for instancing
+-        this.sharedNodeGeometry = null;
+-        this.sharedEdgeGeometry = null;
+-
+-        // Get settings
++        // Settings
+         const nodeSettings = visualizationSettings.getNodeSettings();
+         const edgeSettings = visualizationSettings.getEdgeSettings();
+         
+-        // Store settings
+         this.nodeColors = {
+             NEW: new THREE.Color(nodeSettings.colorNew),
+             RECENT: new THREE.Color(nodeSettings.colorRecent),
+@@ -52,276 +46,98 @@ export class ForceGraph {
+         };
+         this.edgeColor = new THREE.Color(edgeSettings.color);
+         this.edgeOpacity = edgeSettings.opacity;
+-        this.minNodeSize = nodeSettings.minNodeSize;  // In meters (0.1m = 10cm)
+-        this.maxNodeSize = nodeSettings.maxNodeSize;  // In meters (0.3m = 30cm)
++        this.minNodeSize = nodeSettings.minNodeSize;
++        this.maxNodeSize = nodeSettings.maxNodeSize;
+         this.materialSettings = nodeSettings.material;
+ 
+-        // Initialize shared resources
+-        this.initSharedResources();
+-    }
+-
+-    /**
+-     * Initialize shared geometries and materials
+-     */
+-    initSharedResources() {
+-        // Create shared node geometry with different LOD levels
+-        const highDetail = new THREE.SphereGeometry(1, 32, 32);
+-        const mediumDetail = new THREE.SphereGeometry(1, 16, 16);
+-        const lowDetail = new THREE.SphereGeometry(1, 8, 8);
+-
+-        this.geometryPool.set('node-high', highDetail);
+-        this.geometryPool.set('node-medium', mediumDetail);
+-        this.geometryPool.set('node-low', lowDetail);
+-
+-        // Create shared edge geometry
+-        const edgeGeometry = new THREE.BufferGeometry();
+-        const positions = new Float32Array(6);
+-        edgeGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+-        this.geometryPool.set('edge', edgeGeometry);
++        // Initialize instanced meshes
++        this.initInstancedMeshes();
+     }
+ 
+     /**
+-     * Get or create a geometry from the pool
+-     * @param {string} type - The type of geometry
+-     * @param {number} size - The size for node geometries
+-     * @returns {THREE.BufferGeometry}
++     * Initialize instanced meshes for nodes and links
+      */
+-    getGeometry(type, size = 1) {
+-        const key = `${type}-${size}`;
+-        if (this.geometryPool.has(key)) {
+-            return this.geometryPool.get(key);
+-        }
++    initInstancedMeshes() {
++        // Create node geometry with different LOD levels
++        const highDetailGeometry = new THREE.SphereGeometry(1, 32, 32);
++        const mediumDetailGeometry = new THREE.SphereGeometry(1, 16, 16);
++        const lowDetailGeometry = new THREE.SphereGeometry(1, 8, 8);
++
++        // Create node material
++        const nodeMaterial = new THREE.MeshPhysicalMaterial({
++            metalness: this.materialSettings.metalness,
++            roughness: this.materialSettings.roughness,
++            transparent: true,
++            opacity: this.materialSettings.opacity,
++            envMapIntensity: 1.0,
++            clearcoat: this.materialSettings.clearcoat,
++            clearcoatRoughness: this.materialSettings.clearcoatRoughness
++        });
+ 
+-        let geometry;
+-        switch (type) {
+-            case 'node-high':
+-                geometry = new THREE.SphereGeometry(size, 32, 32);
+-                break;
+-            case 'node-medium':
+-                geometry = new THREE.SphereGeometry(size, 16, 16);
+-                break;
+-            case 'node-low':
+-                geometry = new THREE.SphereGeometry(size, 8, 8);
+-                break;
+-            case 'edge':
+-                geometry = new THREE.BufferGeometry();
+-                geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+-                break;
+-        }
++        // Create instanced meshes for each LOD level
++        const maxInstances = 10000; // Adjust based on expected graph size
++        this.nodeInstancedMeshes = {
++            high: new THREE.InstancedMesh(highDetailGeometry, nodeMaterial.clone(), maxInstances),
++            medium: new THREE.InstancedMesh(mediumDetailGeometry, nodeMaterial.clone(), maxInstances),
++            low: new THREE.InstancedMesh(lowDetailGeometry, nodeMaterial.clone(), maxInstances)
++        };
+ 
+-        this.geometryPool.set(key, geometry);
+-        return geometry;
+-    }
++        // Add LOD levels
++        this.lod.addLevel(this.nodeInstancedMeshes.high, 0);
++        this.lod.addLevel(this.nodeInstancedMeshes.medium, 10);
++        this.lod.addLevel(this.nodeInstancedMeshes.low, 20);
++
++        // Create link geometry
++        const linkGeometry = new THREE.CylinderGeometry(0.01, 0.01, 1, 8, 1);
++        linkGeometry.rotateX(Math.PI / 2); // Align with Z-axis
++
++        // Create link material
++        const linkMaterial = new THREE.MeshBasicMaterial({
++            color: this.edgeColor,
++            transparent: true,
++            opacity: this.edgeOpacity,
++            depthWrite: false
++        });
+ 
+-    /**
+-     * Get or create a material from the pool
+-     * @param {string} type - The type of material
+-     * @param {object} params - Material parameters
+-     * @returns {THREE.Material}
+-     */
+-    getMaterial(type, params) {
+-        const key = `${type}-${JSON.stringify(params)}`;
+-        if (this.materialPool.has(key)) {
+-            return this.materialPool.get(key);
+-        }
++        // Create instanced mesh for links
++        this.linkInstancedMesh = new THREE.InstancedMesh(
++            linkGeometry,
++            linkMaterial,
++            maxInstances * 2 // Links typically more numerous than nodes
++        );
+ 
+-        let material;
+-        switch (type) {
+-            case 'node':
+-                material = new THREE.MeshPhysicalMaterial({
+-                    color: params.color,
+-                    emissive: params.color,
+-                    emissiveIntensity: params.emissiveIntensity,
+-                    metalness: this.materialSettings.metalness,
+-                    roughness: this.materialSettings.roughness,
+-                    transparent: true,
+-                    opacity: this.materialSettings.opacity,
+-                    envMapIntensity: 1.0,
+-                    clearcoat: this.materialSettings.clearcoat,
+-                    clearcoatRoughness: this.materialSettings.clearcoatRoughness
+-                });
+-                break;
+-            case 'edge':
+-                material = new THREE.LineBasicMaterial({
+-                    color: params.color,
+-                    opacity: params.opacity,
+-                    transparent: true,
+-                    linewidth: params.linewidth || 1
+-                });
+-                break;
+-        }
++        this.scene.add(this.linkInstancedMesh);
+ 
+-        this.materialPool.set(key, material);
+-        return material;
++        // Initialize instance counts
++        this.nodeInstanceCount = 0;
++        this.linkInstanceCount = 0;
+     }
+ 
+-    // Previous methods remain the same until updateNodes...
+-
+     /**
+-     * Updates nodes in the scene based on the graph data.
++     * Calculate node size based on metadata
++     * @param {object} node - Node object
++     * @returns {number} Node size
+      */
+-    updateNodes() {
+-        const newNodeIds = new Set(this.nodes.map((node) => node.id));
+-
+-        // Remove nodes that no longer exist
+-        this.nodeMeshes.forEach((mesh, nodeId) => {
+-            if (!newNodeIds.has(nodeId)) {
+-                this.lod.removeLevel(mesh);
+-                this.nodeMeshes.delete(nodeId);
+-                
+-                // Return mesh to pool
+-                if (mesh.material) {
+-                    mesh.material.dispose();
+-                }
+-                this.nodeMeshPool.push(mesh);
+-            }
+-        });
+-
+-        // Add or update nodes
+-        this.nodes.forEach((node) => {
+-            const nodeSize = this.getNodeSize(node);
+-            const nodeColor = this.getNodeColor(node);
+-            const distance = node.metadata?.distance || 0;
+-
+-            if (this.nodeMeshes.has(node.id)) {
+-                const mesh = this.nodeMeshes.get(node.id);
+-                mesh.position.set(node.x, node.y, node.z);
+-                
+-                // Update material if needed
+-                const material = this.getMaterial('node', {
+-                    color: nodeColor,
+-                    emissiveIntensity: this.calculateEmissiveIntensity(node)
+-                });
+-                
+-                if (mesh.material !== material) {
+-                    if (mesh.material) mesh.material.dispose();
+-                    mesh.material = material;
+-                }
+-
+-                // Update geometry if size changed
+-                if (mesh.geometry.parameters.radius !== nodeSize) {
+-                    const geometry = this.getGeometry('node-high', nodeSize);
+-                    mesh.geometry = geometry;
+-                }
+-            } else {
+-                // Create LOD levels
+-                const highDetail = new THREE.Mesh(
+-                    this.getGeometry('node-high', nodeSize),
+-                    this.getMaterial('node', {
+-                        color: nodeColor,
+-                        emissiveIntensity: this.calculateEmissiveIntensity(node)
+-                    })
+-                );
+-                
+-                const mediumDetail = new THREE.Mesh(
+-                    this.getGeometry('node-medium', nodeSize),
+-                    highDetail.material
+-                );
+-                
+-                const lowDetail = new THREE.Mesh(
+-                    this.getGeometry('node-low', nodeSize),
+-                    highDetail.material
+-                );
+-
+-                // Create LOD object
+-                const nodeLOD = new THREE.LOD();
+-                nodeLOD.addLevel(highDetail, 0);
+-                nodeLOD.addLevel(mediumDetail, 10);
+-                nodeLOD.addLevel(lowDetail, 20);
+-                nodeLOD.position.set(node.x, node.y, node.z);
+-                
+-                this.lod.addLevel(nodeLOD, distance);
+-                this.nodeMeshes.set(node.id, nodeLOD);
+-            }
+-        });
++    getNodeSize(node) {
++        const baseSize = (node.metadata?.size || 1) * this.minNodeSize;
++        const weight = node.metadata?.weight || 1;
++        return Math.min(baseSize * Math.sqrt(weight), this.maxNodeSize);
+     }
+ 
+     /**
+-     * Updates edges in the scene based on the graph data.
++     * Get node color based on metadata
++     * @param {object} node - Node object
++     * @returns {THREE.Color} Node color
+      */
+-    updateLinks() {
+-        const newLinkKeys = new Set(this.links.map((link) => `${link.source}-${link.target}`));
+-
+-        // Remove edges that no longer exist
+-        this.linkMeshes.forEach((line, linkKey) => {
+-            if (!newLinkKeys.has(linkKey)) {
+-                this.scene.remove(line);
+-                if (line.material) line.material.dispose();
+-                this.linkMeshes.delete(linkKey);
+-                this.linkMeshPool.push(line);
+-            }
+-        });
+-
+-        // Add or update edges
+-        this.links.forEach((link) => {
+-            const linkKey = `${link.source}-${link.target}`;
+-            const weight = link.weight || 1;
+-            const normalizedWeight = Math.min(weight / 10, 1);
+-
+-            const sourceMesh = this.nodeMeshes.get(link.source);
+-            const targetMesh = this.nodeMeshes.get(link.target);
+-            
+-            if (!sourceMesh || !targetMesh) return;
+-
+-            if (this.linkMeshes.has(linkKey)) {
+-                const line = this.linkMeshes.get(linkKey);
+-                const positions = line.geometry.attributes.position.array;
+-                positions[0] = sourceMesh.position.x;
+-                positions[1] = sourceMesh.position.y;
+-                positions[2] = sourceMesh.position.z;
+-                positions[3] = targetMesh.position.x;
+-                positions[4] = targetMesh.position.y;
+-                positions[5] = targetMesh.position.z;
+-                line.geometry.attributes.position.needsUpdate = true;
+-                
+-                // Update material if needed
+-                const material = this.getMaterial('edge', {
+-                    color: this.edgeColor,
+-                    opacity: this.edgeOpacity * normalizedWeight,
+-                    linewidth: Math.max(1, Math.min(weight, 5))
+-                });
+-                
+-                if (line.material !== material) {
+-                    if (line.material) line.material.dispose();
+-                    line.material = material;
+-                }
+-            } else {
+-                // Create new edge
+-                const geometry = this.getGeometry('edge');
+-                const material = this.getMaterial('edge', {
+-                    color: this.edgeColor,
+-                    opacity: this.edgeOpacity * normalizedWeight,
+-                    linewidth: Math.max(1, Math.min(weight, 5))
+-                });
+-
+-                let line;
+-                if (this.linkMeshPool.length > 0) {
+-                    line = this.linkMeshPool.pop();
+-                    line.geometry = geometry;
+-                    line.material = material;
+-                } else {
+-                    line = new THREE.Line(geometry, material);
+-                }
+-
+-                const positions = line.geometry.attributes.position.array;
+-                positions[0] = sourceMesh.position.x;
+-                positions[1] = sourceMesh.position.y;
+-                positions[2] = sourceMesh.position.z;
+-                positions[3] = targetMesh.position.x;
+-                positions[4] = targetMesh.position.y;
+-                positions[5] = targetMesh.position.z;
+-                line.geometry.attributes.position.needsUpdate = true;
+-
+-                this.scene.add(line);
+-                this.linkMeshes.set(linkKey, line);
+-            }
+-        });
++    getNodeColor(node) {
++        const type = node.metadata?.type || 'DEFAULT';
++        return this.nodeColors[type] || this.nodeColors.DEFAULT;
+     }
+ 
+     /**
+      * Calculate emissive intensity based on node age
+-     * @param {object} node - The node object
+-     * @returns {number} - The emissive intensity
++     * @param {object} node - Node object
++     * @returns {number} Emissive intensity
+      */
+     calculateEmissiveIntensity(node) {
+         const lastModified = node.metadata?.github_last_modified || 
+@@ -330,66 +146,139 @@ export class ForceGraph {
+         const now = Date.now();
+         const ageInDays = (now - new Date(lastModified).getTime()) / (24 * 60 * 60 * 1000);
+         
+-        // Normalize age to 0-1 range and invert (newer = brighter)
+         const normalizedAge = Math.min(ageInDays / 30, 1);
+         return this.materialSettings.emissiveMaxIntensity - 
+             (normalizedAge * (this.materialSettings.emissiveMaxIntensity - this.materialSettings.emissiveMinIntensity));
+     }
+ 
+     /**
+-     * Dispose of all resources
++     * Update node instances
+      */
+-    dispose() {
+-        // Dispose of node resources
+-        this.nodeMeshes.forEach(mesh => {
+-            if (mesh.geometry) mesh.geometry.dispose();
+-            if (mesh.material) {
+-                if (Array.isArray(mesh.material)) {
+-                    mesh.material.forEach(mat => mat.dispose());
+-                } else {
+-                    mesh.material.dispose();
+-                }
+-            }
++    updateNodes() {
++        // Reset instance count
++        this.nodeInstanceCount = 0;
++
++        // Update node instances
++        this.nodes.forEach((node, index) => {
++            const size = this.getNodeSize(node);
++            const color = this.getNodeColor(node);
++            const emissiveIntensity = this.calculateEmissiveIntensity(node);
++
++            // Set transform matrix
++            this.tempMatrix.compose(
++                new THREE.Vector3(node.x, node.y, node.z),
++                this.tempQuaternion,
++                new THREE.Vector3(size, size, size)
++            );
++
++            // Update instances for each LOD level
++            Object.values(this.nodeInstancedMeshes).forEach(instancedMesh => {
++                instancedMesh.setMatrixAt(index, this.tempMatrix);
++                instancedMesh.setColorAt(index, color);
++                instancedMesh.material.emissiveIntensity = emissiveIntensity;
++            });
++
++            this.nodeInstances.set(node.id, index);
++            this.nodeInstanceCount = Math.max(this.nodeInstanceCount, index + 1);
+         });
+ 
+-        // Dispose of edge resources
+-        this.linkMeshes.forEach(line => {
+-            if (line.geometry) line.geometry.dispose();
+-            if (line.material) line.material.dispose();
++        // Update instance meshes
++        Object.values(this.nodeInstancedMeshes).forEach(instancedMesh => {
++            instancedMesh.count = this.nodeInstanceCount;
++            instancedMesh.instanceMatrix.needsUpdate = true;
++            if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
+         });
++    }
++
++    /**
++     * Update link instances
++     */
++    updateLinks() {
++        // Reset instance count
++        this.linkInstanceCount = 0;
++
++        // Update link instances
++        this.links.forEach((link, index) => {
++            const sourceIndex = this.nodeInstances.get(link.source);
++            const targetIndex = this.nodeInstances.get(link.target);
++
++            if (sourceIndex === undefined || targetIndex === undefined) return;
++
++            const sourcePos = new THREE.Vector3(
++                this.nodes[sourceIndex].x,
++                this.nodes[sourceIndex].y,
++                this.nodes[sourceIndex].z
++            );
++            const targetPos = new THREE.Vector3(
++                this.nodes[targetIndex].x,
++                this.nodes[targetIndex].y,
++                this.nodes[targetIndex].z
++            );
++
++            // Calculate link transform
++            const distance = sourcePos.distanceTo(targetPos);
++            this.tempVector.subVectors(targetPos, sourcePos);
++            this.tempQuaternion.setFromUnitVectors(
++                new THREE.Vector3(0, 0, 1),
++                this.tempVector.normalize()
++            );
++
++            this.tempMatrix.compose(
++                sourcePos.lerp(targetPos, 0.5), // Position at midpoint
++                this.tempQuaternion,
++                new THREE.Vector3(1, 1, distance)
++            );
++
++            // Update link instance
++            this.linkInstancedMesh.setMatrixAt(index, this.tempMatrix);
++            
++            const weight = link.weight || 1;
++            const normalizedWeight = Math.min(weight / 10, 1);
++            this.tempColor.copy(this.edgeColor).multiplyScalar(normalizedWeight);
++            this.linkInstancedMesh.setColorAt(index, this.tempColor);
+ 
+-        // Dispose of pooled resources
+-        this.nodeMeshPool.forEach(mesh => {
+-            if (mesh.geometry) mesh.geometry.dispose();
+-            if (mesh.material) {
+-                if (Array.isArray(mesh.material)) {
+-                    mesh.material.forEach(mat => mat.dispose());
+-                } else {
+-                    mesh.material.dispose();
+-                }
+-            }
++            this.linkInstances.set(`${link.source}-${link.target}`, index);
++            this.linkInstanceCount = Math.max(this.linkInstanceCount, index + 1);
+         });
+ 
+-        this.linkMeshPool.forEach(line => {
+-            if (line.geometry) line.geometry.dispose();
+-            if (line.material) line.material.dispose();
++        // Update link instance mesh
++        this.linkInstancedMesh.count = this.linkInstanceCount;
++        this.linkInstancedMesh.instanceMatrix.needsUpdate = true;
++        if (this.linkInstancedMesh.instanceColor) this.linkInstancedMesh.instanceColor.needsUpdate = true;
++    }
++
++    /**
++     * Update graph visualization
++     */
++    update() {
++        this.updateNodes();
++        this.updateLinks();
++    }
++
++    /**
++     * Clean up resources
++     */
++    dispose() {
++        // Dispose of node resources
++        Object.values(this.nodeInstancedMeshes).forEach(instancedMesh => {
++            instancedMesh.geometry.dispose();
++            instancedMesh.material.dispose();
+         });
+ 
+-        // Dispose of shared resources
+-        this.geometryPool.forEach(geometry => geometry.dispose());
+-        this.materialPool.forEach(material => material.dispose());
+-
+-        // Clear all collections
+-        this.nodeMeshes.clear();
+-        this.linkMeshes.clear();
+-        this.nodeMeshPool.length = 0;
+-        this.linkMeshPool.length = 0;
+-        this.geometryPool.clear();
+-        this.materialPool.clear();
+-
+-        // Remove LOD from scene
+-        if (this.lod.parent) {
+-            this.lod.parent.remove(this.lod);
++        // Dispose of link resources
++        if (this.linkInstancedMesh) {
++            this.linkInstancedMesh.geometry.dispose();
++            this.linkInstancedMesh.material.dispose();
+         }
++
++        // Remove from scene
++        this.scene.remove(this.lod);
++        this.scene.remove(this.linkInstancedMesh);
++
++        // Clear collections
++        this.nodeInstances.clear();
++        this.linkInstances.clear();
++        this.nodes = [];
++        this.links = [];
+     }
+ }
+diff --git a/data/public/js/xr/xrInteraction.js b/data/public/js/xr/xrInteraction.js
+index 5b7d4c64..b3764b43 100755
+--- a/data/public/js/xr/xrInteraction.js
++++ b/data/public/js/xr/xrInteraction.js
+@@ -8,440 +8,315 @@ const PINCH_STRENGTH_THRESHOLD = 0.7;
+ const LABEL_SIZE = { width: 256, height: 128 };
+ const LABEL_SCALE = { x: 0.5, y: 0.25, z: 1 };
+ 
+-// Resource pools
+-const materialPool = new Map();
+-const geometryPool = new Map();
+-const texturePool = new Map();
+-
+-// Hand tracking setup
+-const handModelFactory = new XRHandModelFactory();
+-const hands = { left: null, right: null };
+-const grabStates = {
+-    left: { grabbedObject: null, pinching: false },
+-    right: { grabbedObject: null, pinching: false }
+-};
+-const pinchIndicators = { left: null, right: null };
+-const interactableObjects = new Set();
+-
+-// XR Label Manager Class
+-export class XRLabelManager {
+-    constructor(scene, camera) {
++/**
++ * Enhanced XR Interaction Handler
++ */
++class EnhancedXRInteractionHandler {
++    constructor(scene, camera, renderer) {
+         this.scene = scene;
+         this.camera = camera;
+-        this.labels = new Map();
+-        this.labelCanvas = document.createElement('canvas');
+-        this.labelContext = this.labelCanvas.getContext('2d', {
+-            alpha: true,
+-            desynchronized: true
+-        });
++        this.renderer = renderer;
+         
+-        // Set canvas size to power of 2
+-        this.labelCanvas.width = LABEL_SIZE.width;
+-        this.labelCanvas.height = LABEL_SIZE.height;
+-    }
+-
+-    /**
+-     * Get or create a texture for label
+-     * @param {string} text - Label text
+-     * @returns {THREE.Texture} The texture
+-     */
+-    getTexture(text) {
+-        if (texturePool.has(text)) {
+-            return texturePool.get(text);
+-        }
+-
+-        // Clear canvas
+-        this.labelContext.clearRect(0, 0, LABEL_SIZE.width, LABEL_SIZE.height);
++        // Hand tracking
++        this.handModelFactory = new XRHandModelFactory();
++        this.hands = { left: null, right: null };
++        this.handModels = { left: null, right: null };
++        
++        // Interaction states
++        this.grabStates = {
++            left: { grabbedObject: null, pinching: false },
++            right: { grabbedObject: null, pinching: false }
++        };
+         
+-        // Draw background
+-        this.labelContext.fillStyle = 'rgba(0, 0, 0, 0.8)';
+-        this.labelContext.fillRect(0, 0, LABEL_SIZE.width, LABEL_SIZE.height);
++        // Visual feedback
++        this.pinchIndicators = { left: null, right: null };
+         
+-        // Draw text
+-        this.labelContext.fillStyle = '#ffffff';
+-        this.labelContext.font = '24px Arial';
+-        this.labelContext.textBaseline = 'middle';
+-        this.labelContext.fillText(text, 10, LABEL_SIZE.height / 2);
+-
+-        const texture = new THREE.CanvasTexture(this.labelCanvas);
+-        texture.generateMipmaps = false;
+-        texture.minFilter = THREE.LinearFilter;
+-        texture.magFilter = THREE.LinearFilter;
++        // Interactable objects
++        this.interactableObjects = new Set();
+         
+-        texturePool.set(text, texture);
+-        return texture;
++        // Resource pools
++        this.materialPool = new Map();
++        this.geometryPool = new Map();
++        
++        // Initialize resources
++        this.initResources();
+     }
+ 
+     /**
+-     * Get or create a material for label
+-     * @param {THREE.Texture} texture - The label texture
+-     * @returns {THREE.SpriteMaterial} The material
++     * Initialize shared resources
+      */
+-    getMaterial(texture) {
+-        const key = texture.uuid;
+-        if (materialPool.has(key)) {
+-            return materialPool.get(key);
+-        }
+-
+-        const material = new THREE.SpriteMaterial({
+-            map: texture,
++    initResources() {
++        // Create pinch indicator geometry
++        const geometry = new THREE.SphereGeometry(0.01, 8, 8);
++        this.geometryPool.set('pinchIndicator', geometry);
++
++        // Create pinch indicator material
++        const material = new THREE.MeshPhongMaterial({
++            color: 0x00ff00,
+             transparent: true,
+-            depthWrite: false,
+-            sizeAttenuation: true
++            opacity: 0.5,
++            depthWrite: false
+         });
++        this.materialPool.set('pinchIndicator', material);
+ 
+-        materialPool.set(key, material);
+-        return material;
++        // Create pinch indicators
++        this.pinchIndicators.left = this.createPinchIndicator();
++        this.pinchIndicators.right = this.createPinchIndicator();
++        this.scene.add(this.pinchIndicators.left);
++        this.scene.add(this.pinchIndicators.right);
+     }
+ 
+-    createLabel(text, position) {
++    /**
++     * Initialize hand tracking
++     * @param {XRSession} session - The XR session
++     */
++    async initHandTracking(session) {
+         try {
+-            const texture = this.getTexture(text);
+-            const material = this.getMaterial(texture);
+-            const sprite = new THREE.Sprite(material);
+-            
+-            sprite.position.copy(position);
+-            sprite.scale.set(LABEL_SCALE.x, LABEL_SCALE.y, LABEL_SCALE.z);
+-            
+-            this.scene.add(sprite);
+-            this.labels.set(text, sprite);
+-            
+-            return sprite;
+-        } catch (error) {
+-            console.error('Error creating label:', error);
+-            return null;
+-        }
+-    }
++            // Set up hand tracking
++            for (const handedness of ['left', 'right']) {
++                const hand = this.renderer.xr.getHand(handedness === 'left' ? 0 : 1);
++                const handModel = this.handModelFactory.createHandModel(hand, 'mesh');
++                
++                this.hands[handedness] = hand;
++                this.handModels[handedness] = handModel;
++                
++                hand.add(handModel);
++                this.scene.add(hand);
+ 
+-    updateLabel(text, position) {
+-        const label = this.labels.get(text);
+-        if (label) {
+-            label.position.copy(position);
+-            label.lookAt(this.camera.position);
+-        }
+-    }
++                // Add hand input event listeners
++                hand.addEventListener('pinchstart', () => this.onPinchStart(handedness));
++                hand.addEventListener('pinchend', () => this.onPinchEnd(handedness));
++            }
+ 
+-    removeLabel(text) {
+-        const label = this.labels.get(text);
+-        if (label) {
+-            this.scene.remove(label);
+-            
+-            // Return material and texture to pools
+-            if (label.material) {
+-                const texture = label.material.map;
+-                if (texture) {
+-                    texturePool.delete(text);
+-                    texture.dispose();
++            // Set up hand tracking events
++            session.addEventListener('handtracking', (event) => {
++                const hand = event.hand;
++                const handedness = hand.handedness;
++                
++                // Update hand model visibility
++                if (this.handModels[handedness]) {
++                    this.handModels[handedness].visible = hand.visible;
+                 }
+-                materialPool.delete(label.material.uuid);
+-                label.material.dispose();
+-            }
+-            
+-            this.labels.delete(text);
++            });
++        } catch (error) {
++            console.error('Error initializing hand tracking:', error);
+         }
+     }
+ 
+-    updateAll() {
+-        const cameraPosition = this.camera.position;
+-        this.labels.forEach(label => {
+-            label.lookAt(cameraPosition);
+-        });
++    /**
++     * Create visual feedback for pinch state
++     * @returns {THREE.Mesh} Pinch indicator mesh
++     */
++    createPinchIndicator() {
++        const geometry = this.geometryPool.get('pinchIndicator');
++        const material = this.materialPool.get('pinchIndicator').clone();
++        return new THREE.Mesh(geometry, material);
+     }
+ 
+-    dispose() {
+-        // Dispose of all labels
+-        this.labels.forEach((label, text) => {
+-            this.removeLabel(text);
+-        });
++    /**
++     * Update pinch indicator position and appearance
++     * @param {XRHand} hand - The XR hand
++     * @param {THREE.Mesh} indicator - The pinch indicator mesh
++     */
++    updatePinchIndicator(hand, indicator) {
++        if (!hand?.joints || !indicator) return;
+ 
+-        // Clear pools
+-        texturePool.forEach(texture => texture.dispose());
+-        materialPool.forEach(material => material.dispose());
+-        
+-        texturePool.clear();
+-        materialPool.clear();
+-        
+-        // Clear canvas
+-        this.labelContext.clearRect(0, 0, LABEL_SIZE.width, LABEL_SIZE.height);
+-        this.labelCanvas.width = 1;
+-        this.labelCanvas.height = 1;
++        try {
++            const indexTip = hand.joints['index-finger-tip'];
++            const thumbTip = hand.joints['thumb-tip'];
++            
++            if (indexTip && thumbTip) {
++                // Position indicator between finger and thumb
++                indicator.position.copy(indexTip.position).lerp(thumbTip.position, 0.5);
++                
++                // Update appearance based on pinch strength
++                const { strength } = this.isPinching(hand);
++                indicator.material.opacity = strength * 0.8;
++                indicator.scale.setScalar(1 - (strength * 0.5));
++            }
++        } catch (error) {
++            console.error('Error updating pinch indicator:', error);
++        }
+     }
+-}
+ 
+-// Detect pinch with strength
+-function isPinching(hand) {
+-    try {
+-        const indexTip = hand.joints['index-finger-tip'];
+-        const thumbTip = hand.joints['thumb-tip'];
++    /**
++     * Check if hand is performing pinch gesture
++     * @param {XRHand} hand - The XR hand
++     * @returns {object} Pinch state and strength
++     */
++    isPinching(hand) {
++        try {
++            const indexTip = hand.joints['index-finger-tip'];
++            const thumbTip = hand.joints['thumb-tip'];
+ 
+-        if (indexTip && thumbTip) {
+-            const distance = indexTip.position.distanceTo(thumbTip.position);
+-            const strength = Math.max(0, 1 - (distance / PINCH_THRESHOLD));
+-            return { isPinched: distance < PINCH_THRESHOLD, strength };
++            if (indexTip && thumbTip) {
++                const distance = indexTip.position.distanceTo(thumbTip.position);
++                const strength = Math.max(0, 1 - (distance / PINCH_THRESHOLD));
++                return { isPinched: distance < PINCH_THRESHOLD, strength };
++            }
++        } catch (error) {
++            console.error('Error detecting pinch:', error);
+         }
+-    } catch (error) {
+-        console.error('Error detecting pinch:', error);
+-    }
+-    return { isPinched: false, strength: 0 };
+-}
+-
+-// Get or create geometry for pinch indicator
+-function getPinchIndicatorGeometry() {
+-    const key = 'pinchIndicator';
+-    if (geometryPool.has(key)) {
+-        return geometryPool.get(key);
++        return { isPinched: false, strength: 0 };
+     }
+ 
+-    const geometry = new THREE.SphereGeometry(0.01, 8, 8);
+-    geometryPool.set(key, geometry);
+-    return geometry;
+-}
+-
+-// Get or create material for pinch indicator
+-function getPinchIndicatorMaterial() {
+-    const key = 'pinchIndicator';
+-    if (materialPool.has(key)) {
+-        return materialPool.get(key);
+-    }
++    /**
++     * Handle pinch start event
++     * @param {string} handedness - The hand that started pinching
++     */
++    onPinchStart(handedness) {
++        const hand = this.hands[handedness];
++        const grabState = this.grabStates[handedness];
+ 
+-    const material = new THREE.MeshPhongMaterial({
+-        color: 0x00ff00,
+-        transparent: true,
+-        opacity: 0.5,
+-        depthWrite: false
+-    });
+-    materialPool.set(key, material);
+-    return material;
+-}
++        if (!hand || grabState.pinching) return;
+ 
+-// Create visual feedback sphere for pinch state
+-function createPinchIndicator() {
+-    const geometry = getPinchIndicatorGeometry();
+-    const material = getPinchIndicatorMaterial();
+-    return new THREE.Mesh(geometry, material);
+-}
++        try {
++            const indexTip = hand.joints['index-finger-tip'];
++            
++            // Find closest interactable object
++            let closestObject = null;
++            let closestDistance = GRAB_THRESHOLD;
++
++            for (const object of this.interactableObjects) {
++                if (!object.userData.isGrabbed) {
++                    const distance = indexTip.position.distanceTo(object.position);
++                    if (distance < closestDistance) {
++                        closestDistance = distance;
++                        closestObject = object;
++                    }
++                }
++            }
+ 
+-// Update pinch indicator position and appearance
+-function updatePinchIndicator(hand, indicator) {
+-    if (!hand?.joints || !indicator) return;
++            if (closestObject) {
++                grabState.grabbedObject = closestObject;
++                closestObject.userData.isGrabbed = true;
++                
++                // Highlight grabbed object
++                if (closestObject.material?.emissive) {
++                    closestObject.material.emissive.setHex(0x222222);
++                }
++            }
+ 
+-    try {
+-        const indexTip = hand.joints['index-finger-tip'];
+-        const thumbTip = hand.joints['thumb-tip'];
+-        
+-        if (indexTip && thumbTip) {
+-            indicator.position.copy(indexTip.position).lerp(thumbTip.position, 0.5);
+-            const { strength } = isPinching(hand);
+-            indicator.material.opacity = strength * 0.8;
+-            indicator.scale.setScalar(1 - (strength * 0.5));
++            grabState.pinching = true;
++        } catch (error) {
++            console.error('Error handling pinch start:', error);
+         }
+-    } catch (error) {
+-        console.error('Error updating pinch indicator:', error);
+     }
+-}
+ 
+-// Initialize XR interaction
+-export function initXRInteraction(scene, camera, renderer, onSelect) {
+-    const xrLabelManager = new XRLabelManager(scene, camera);
+-    
+-    // Create default interactable object geometry and material
+-    const interactableGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+-    geometryPool.set('interactable', interactableGeometry);
+-    
+-    const interactableMaterial = new THREE.MeshStandardMaterial({
+-        color: 0xff0000,
+-        roughness: 0.7,
+-        metalness: 0.3
+-    });
+-    materialPool.set('interactable', interactableMaterial);
+-
+-    // Create interactable object function
+-    const createInteractableObject = (position) => {
+-        const geometry = geometryPool.get('interactable');
+-        const material = materialPool.get('interactable').clone(); // Clone material for individual control
+-        
+-        const object = new THREE.Mesh(geometry, material);
+-        object.position.copy(position);
+-        object.userData.interactable = true;
+-        scene.add(object);
+-        interactableObjects.add(object);
+-        return object;
+-    };
+-
+-    // Create default objects
+-    createInteractableObject(new THREE.Vector3(0, 1.5, -1));
+-    createInteractableObject(new THREE.Vector3(0.2, 1.5, -1));
+-    createInteractableObject(new THREE.Vector3(-0.2, 1.5, -1));
+-
+-    // Initialize pinch indicators
+-    pinchIndicators.left = createPinchIndicator();
+-    pinchIndicators.right = createPinchIndicator();
+-    scene.add(pinchIndicators.left);
+-    scene.add(pinchIndicators.right);
+-
+-    // Set up hand tracking
+-    renderer.xr.addEventListener('sessionstart', () => {
++    /**
++     * Handle pinch end event
++     * @param {string} handedness - The hand that ended pinching
++     */
++    onPinchEnd(handedness) {
++        const grabState = this.grabStates[handedness];
++
++        if (!grabState.pinching) return;
++
+         try {
+-            const session = renderer.xr.getSession();
+-            
+-            hands.left = renderer.xr.getHand(0);
+-            hands.right = renderer.xr.getHand(1);
+-            
+-            // Add hand models
+-            for (const [handedness, hand] of Object.entries(hands)) {
+-                if (hand) {
+-                    const handModel = handModelFactory.createHandModel(hand, 'mesh');
+-                    hand.add(handModel);
+-                    scene.add(hand);
++            if (grabState.grabbedObject) {
++                grabState.grabbedObject.userData.isGrabbed = false;
++                if (grabState.grabbedObject.material?.emissive) {
++                    grabState.grabbedObject.material.emissive.setHex(0x000000);
+                 }
++                grabState.grabbedObject = null;
+             }
++
++            grabState.pinching = false;
+         } catch (error) {
+-            console.error('Error setting up hand tracking:', error);
++            console.error('Error handling pinch end:', error);
+         }
+-    });
++    }
+ 
+-    // Create update function
+-    const update = () => {
++    /**
++     * Make an object interactable
++     * @param {THREE.Object3D} object - The object to make interactable
++     */
++    makeInteractable(object) {
++        object.userData.interactable = true;
++        this.interactableObjects.add(object);
++    }
++
++    /**
++     * Remove interactable status from object
++     * @param {THREE.Object3D} object - The object to remove
++     */
++    removeInteractable(object) {
++        object.userData.interactable = false;
++        this.interactableObjects.delete(object);
++    }
++
++    /**
++     * Update interaction state
++     */
++    update() {
+         try {
+             // Update both hands
+-            for (const [handedness, hand] of Object.entries(hands)) {
++            for (const [handedness, hand] of Object.entries(this.hands)) {
+                 if (hand?.joints) {
+-                    const grabState = grabStates[handedness];
+-                    const { isPinched, strength } = isPinching(hand);
++                    const grabState = this.grabStates[handedness];
++                    const { isPinched, strength } = this.isPinching(hand);
+                     
+-                    updatePinchIndicator(hand, pinchIndicators[handedness]);
++                    this.updatePinchIndicator(hand, this.pinchIndicators[handedness]);
+ 
+                     if (isPinched && strength > PINCH_STRENGTH_THRESHOLD) {
+-                        if (!grabState.grabbedObject) {
+-                            const indexTip = hand.joints['index-finger-tip'];
+-                            
+-                            for (const object of interactableObjects) {
+-                                const distance = indexTip.position.distanceTo(object.position);
+-                                if (distance < GRAB_THRESHOLD && !object.userData.isGrabbed) {
+-                                    grabState.grabbedObject = object;
+-                                    object.userData.isGrabbed = true;
+-                                    object.material.emissive.setHex(0x222222);
+-                                    break;
+-                                }
+-                            }
+-                        } else if (grabState.grabbedObject) {
++                        if (grabState.grabbedObject) {
++                            // Update grabbed object position
+                             const indexTip = hand.joints['index-finger-tip'];
+                             grabState.grabbedObject.position.copy(indexTip.position);
+                         }
+-                        grabState.pinching = true;
+-                    } else if (grabState.pinching) {
+-                        if (grabState.grabbedObject) {
+-                            grabState.grabbedObject.userData.isGrabbed = false;
+-                            grabState.grabbedObject.material.emissive.setHex(0x000000);
+-                            grabState.grabbedObject = null;
+-                        }
+-                        grabState.pinching = false;
+                     }
+                 }
+             }
+-
+-            // Update labels if in XR
+-            if (renderer.xr.isPresenting) {
+-                xrLabelManager.updateAll();
+-            }
+         } catch (error) {
+-            console.error('Error in XR update:', error);
++            console.error('Error in XR interaction update:', error);
+         }
+-    };
++    }
+ 
+-    // Create cleanup function
+-    const cleanup = () => {
++    /**
++     * Clean up resources
++     */
++    cleanup() {
+         try {
+-            // Dispose of all pooled resources
+-            geometryPool.forEach(geometry => geometry.dispose());
+-            materialPool.forEach(material => material.dispose());
+-            
+-            // Clear pools
+-            geometryPool.clear();
+-            materialPool.clear();
+-            
+-            // Dispose of pinch indicators
+-            Object.values(pinchIndicators).forEach(indicator => {
++            // Dispose of geometries
++            this.geometryPool.forEach(geometry => geometry.dispose());
++            this.geometryPool.clear();
++
++            // Dispose of materials
++            this.materialPool.forEach(material => material.dispose());
++            this.materialPool.clear();
++
++            // Remove pinch indicators
++            Object.values(this.pinchIndicators).forEach(indicator => {
+                 if (indicator) {
+                     if (indicator.geometry) indicator.geometry.dispose();
+                     if (indicator.material) indicator.material.dispose();
+-                    scene.remove(indicator);
++                    this.scene.remove(indicator);
+                 }
+             });
+-            
+-            // Dispose of hand models
+-            Object.values(hands).forEach(hand => {
++
++            // Remove hand models
++            Object.values(this.hands).forEach(hand => {
+                 if (hand) {
+-                    scene.remove(hand);
++                    this.scene.remove(hand);
+                 }
+             });
+-            
+-            // Clear interactable objects
+-            interactableObjects.clear();
+-            
+-            // Dispose of label manager
+-            xrLabelManager.dispose();
++
++            // Clear collections
++            this.interactableObjects.clear();
++            this.grabStates.left = { grabbedObject: null, pinching: false };
++            this.grabStates.right = { grabbedObject: null, pinching: false };
+         } catch (error) {
+-            console.error('Error cleaning up XR resources:', error);
+-        }
+-    };
+-
+-    return {
+-        hands: Object.values(hands),
+-        controllers: [],
+-        xrLabelManager,
+-        update,
+-        cleanup,
+-        addInteractableObject: (object) => {
+-            object.userData.interactable = true;
+-            interactableObjects.add(object);
+-        },
+-        removeInteractableObject: (object) => {
+-            interactableObjects.delete(object);
++            console.error('Error cleaning up XR interaction:', error);
+         }
+-    };
++    }
++}
++
++// Export functions
++export function initXRInteraction(scene, camera, renderer) {
++    return new EnhancedXRInteractionHandler(scene, camera, renderer);
+ }
+ 
+-// Handle XR input
+ export function handleXRInput(frame, referenceSpace) {
+-    try {
+-        // Update both hands
+-        for (const [handedness, hand] of Object.entries(hands)) {
+-            if (hand?.joints) {
+-                const grabState = grabStates[handedness];
+-                const { isPinched, strength } = isPinching(hand);
+-                
+-                updatePinchIndicator(hand, pinchIndicators[handedness]);
+-
+-                if (isPinched && strength > PINCH_STRENGTH_THRESHOLD) {
+-                    if (!grabState.grabbedObject) {
+-                        const indexTip = hand.joints['index-finger-tip'];
+-                        
+-                        for (const object of interactableObjects) {
+-                            const distance = indexTip.position.distanceTo(object.position);
+-                            if (distance < GRAB_THRESHOLD && !object.userData.isGrabbed) {
+-                                grabState.grabbedObject = object;
+-                                object.userData.isGrabbed = true;
+-                                object.material.emissive.setHex(0x222222);
+-                                break;
+-                            }
+-                        }
+-                    } else if (grabState.grabbedObject) {
+-                        const indexTip = hand.joints['index-finger-tip'];
+-                        grabState.grabbedObject.position.copy(indexTip.position);
+-                    }
+-                    grabState.pinching = true;
+-                } else if (grabState.pinching) {
+-                    if (grabState.grabbedObject) {
+-                        grabState.grabbedObject.userData.isGrabbed = false;
+-                        grabState.grabbedObject.material.emissive.setHex(0x000000);
+-                        grabState.grabbedObject = null;
+-                    }
+-                    grabState.pinching = false;
+-                }
+-            }
+-        }
+-    } catch (error) {
+-        console.error('Error handling XR input:', error);
+-    }
++    // This function is now handled internally by EnhancedXRInteractionHandler
++    // Left for backward compatibility
+ }
+diff --git a/data/public/js/xr/xrSetup.js b/data/public/js/xr/xrSetup.js
+index be3e9c12..4c022259 100755
+--- a/data/public/js/xr/xrSetup.js
++++ b/data/public/js/xr/xrSetup.js
+@@ -7,60 +7,216 @@ const MOVEMENT_SPEED = 0.05;
+ const XR_SPRITE_SCALE = 0.5;
+ 
+ /**
+- * Initializes the WebXR session for immersive experiences.
+- * @param {THREE.WebGLRenderer} renderer - The Three.js renderer.
+- * @param {THREE.Scene} scene - The Three.js scene.
+- * @param {THREE.PerspectiveCamera} camera - The Three.js camera.
++ * Enhanced XR Session Manager using Three.js WebXR
+  */
+-export function initXRSession(renderer, scene, camera) {
+-    if (!scene || !camera) {
+-        console.error('Scene or camera not provided to initXRSession');
+-        return;
++class XRSessionManager {
++    constructor(renderer, scene, camera, effectsManager) {
++        this.renderer = renderer;
++        this.scene = scene;
++        this.camera = camera;
++        this.effectsManager = effectsManager;
++        this.referenceSpace = null;
++        this.originalScales = new WeakMap();
++        this.xrInteraction = null;
++        this.sessionActive = false;
++        this.cameraRig = null;
++    }
++
++    /**
++     * Initialize XR session manager
++     */
++    async init() {
++        try {
++            // Check if XR is supported
++            if (!this.renderer.xr) {
++                console.warn('WebXR not supported by renderer');
++                return;
++            }
++
++            // Enable XR on renderer
++            this.renderer.xr.enabled = true;
++
++            // Initialize camera rig
++            this.initCameraRig();
++
++            // Initialize XR interaction
++            this.xrInteraction = initXRInteraction(this.scene, this.camera, this.renderer);
++
++            // Set up session event handlers
++            this.setupEventHandlers();
++
++        } catch (error) {
++            console.error('Error initializing XR session manager:', error);
++        }
++    }
++
++    /**
++     * Initialize camera rig with proper hierarchy
++     */
++    initCameraRig() {
++        // Create camera rig if it doesn't exist
++        if (!this.cameraRig) {
++            this.cameraRig = new THREE.Group();
++            this.cameraRig.name = 'cameraRig';
++        }
++
++        // Create camera offset for height adjustment if not already a child of the rig
++        let cameraOffset = this.cameraRig.children.find(child => child.name === 'cameraOffset');
++        if (!cameraOffset) {
++            cameraOffset = new THREE.Group();
++            cameraOffset.name = 'cameraOffset';
++            cameraOffset.position.y = 1.6; // Average eye height
++            this.cameraRig.add(cameraOffset);
++        }
++
++        // Add camera to offset if not already there
++        if (!cameraOffset.children.includes(this.camera)) {
++            this.camera.name = 'xrCamera';
++            cameraOffset.add(this.camera);
++        }
++
++        // Add rig to scene if not already there
++        if (!this.scene.children.includes(this.cameraRig)) {
++            this.scene.add(this.cameraRig);
++        }
++
++        // Set initial positions
++        this.camera.position.set(0, 0, 0);
++        this.cameraRig.position.set(0, 0, 0);
++    }
++
++    /**
++     * Set up session event handlers
++     */
++    setupEventHandlers() {
++        // Session start handler
++        this.renderer.xr.addEventListener('sessionstart', async (event) => {
++            console.log('XR session started');
++            this.sessionActive = true;
++
++            const session = this.renderer.xr.getSession();
++            await this.setupReferenceSpace(session);
++            this.handleXRSprites(true);
++
++            // Initialize camera position
++            this.cameraRig.position.set(0, 0, 0);
++            this.camera.position.set(0, 0, 0);
++
++            window.dispatchEvent(new CustomEvent('xrsessionstart'));
++        });
++
++        // Session end handler
++        this.renderer.xr.addEventListener('sessionend', () => {
++            console.log('XR session ended');
++            this.sessionActive = false;
++            this.handleXRSprites(false);
++            this.resetCameraRig();
++            window.dispatchEvent(new CustomEvent('xrsessionend'));
++        });
++    }
++
++    /**
++     * Add XR button to the scene
++     * @returns {Promise<void>}
++     */
++    async addXRButton() {
++        try {
++            if (!this.renderer.xr.enabled) {
++                console.warn('XR not enabled on renderer');
++                return;
++            }
++
++            const sessionInit = {
++                optionalFeatures: [
++                    'local-floor',
++                    'bounded-floor',
++                    'hand-tracking',
++                    'layers'
++                ]
++            };
++
++            // Check if VR is supported
++            const isVRSupported = await navigator.xr?.isSessionSupported('immersive-vr');
++            
++            if (isVRSupported) {
++                const button = XRButton.createButton(this.renderer, {
++                    mode: 'immersive-vr',
++                    sessionInit,
++                    onSessionStarted: (session) => this.onSessionStarted(session),
++                    onSessionEnded: () => this.onSessionEnded()
++                });
++                document.body.appendChild(button);
++            } else {
++                console.warn('VR not supported on this device');
++            }
++        } catch (error) {
++            console.error('Error adding XR button:', error);
++        }
+     }
+ 
+-    // Store original sprite scales for restoration
+-    const originalScales = new WeakMap();
++    /**
++     * Handle session start
++     * @param {XRSession} session - The XR session
++     */
++    async onSessionStarted(session) {
++        try {
++            await this.setupReferenceSpace(session);
++            this.handleXRSprites(true);
++        } catch (error) {
++            console.error('Error starting XR session:', error);
++        }
++    }
+ 
+-    // Initialize hand tracking with enhanced features
+-    const xrInteraction = initXRInteraction(scene, camera, renderer);
++    /**
++     * Handle session end
++     */
++    onSessionEnded() {
++        this.handleXRSprites(false);
++        this.resetCameraRig();
++    }
+ 
+-    // Configure renderer for XR with optimized settings
+-    renderer.xr.enabled = true;
+-    renderer.xr.setFramebufferScaleFactor(1.0); // Optimize resolution
+-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+-    renderer.setSize(window.innerWidth, window.innerHeight);
+-    renderer.setClearColor(0x000000, 0);
+-    renderer.alpha = true;
++    /**
++     * Set up reference space with fallback options
++     * @param {XRSession} session - The XR session
++     */
++    async setupReferenceSpace(session) {
++        try {
++            this.referenceSpace = await session.requestReferenceSpace('local-floor');
++            console.log('Using local-floor reference space');
++        } catch (error) {
++            console.warn('Failed to get local-floor reference space:', error);
++            try {
++                this.referenceSpace = await session.requestReferenceSpace('local');
++                console.log('Falling back to local reference space');
++            } catch (error) {
++                console.error('Failed to get any reference space:', error);
++            }
++        }
++    }
+ 
+     /**
+-     * Handles sprite scaling and visibility for XR
++     * Handle sprite scaling for XR
+      * @param {boolean} enteringXR - Whether entering or exiting XR
+      */
+-    function handleXRSprites(enteringXR) {
+-        scene.traverse((object) => {
++    handleXRSprites(enteringXR) {
++        this.scene.traverse((object) => {
+             if (object.isSprite) {
+                 if (enteringXR) {
+-                    // Store original scale
+-                    originalScales.set(object, object.scale.clone());
+-                    
+-                    // Scale for XR
++                    this.originalScales.set(object, object.scale.clone());
+                     object.scale.multiplyScalar(XR_SPRITE_SCALE);
+                     object.layers.enableAll();
+                     
+-                    // Optimize sprite texture
+                     if (object.material.map) {
+                         object.material.map.generateMipmaps = false;
+                         object.material.map.minFilter = THREE.LinearFilter;
+                         object.material.map.needsUpdate = true;
+                     }
+                 } else {
+-                    // Restore original scale
+-                    const originalScale = originalScales.get(object);
++                    const originalScale = this.originalScales.get(object);
+                     if (originalScale) {
+                         object.scale.copy(originalScale);
+                     }
+                     
+-                    // Reset texture settings
+                     if (object.material.map) {
+                         object.material.map.generateMipmaps = true;
+                         object.material.map.minFilter = THREE.LinearMipmapLinearFilter;
+@@ -72,279 +228,165 @@ export function initXRSession(renderer, scene, camera) {
+     }
+ 
+     /**
+-     * Creates XR session configuration
+-     * @param {string} mode - XR session mode
+-     * @returns {Object} Session configuration
++     * Reset camera rig to initial position
+      */
+-    function createSessionConfig(mode) {
+-        return {
+-            mode: mode,
+-            sessionInit: {
+-                optionalFeatures: [
+-                    'dom-overlay',
+-                    'local-floor',
+-                    'bounded-floor',
+-                    'hand-tracking',
+-                    'layers',
+-                    mode === 'immersive-ar' ? 'passthrough' : null
+-                ].filter(Boolean),
+-                domOverlay: { root: document.body }
+-            },
+-            onSessionStarted: (session) => {
+-                console.log(`${mode} session started`);
+-                handleXRSprites(true);
+-                
+-                session.addEventListener('end', () => {
+-                    console.log(`${mode} session ended`);
+-                    handleXRSprites(false);
+-                    window.dispatchEvent(new CustomEvent('xrsessionend'));
+-                });
+-
+-                // Request reference space with fallback
+-                requestReferenceSpace(session, renderer);
+-                
+-                window.dispatchEvent(new CustomEvent('xrsessionstart'));
+-            },
+-            onSessionEnded: () => {
+-                console.log(`${mode} session cleanup`);
+-                handleXRSprites(false);
+-                
+-                // Clear any cached resources
+-                originalScales.clear();
+-                
+-                // Force renderer reset
+-                renderer.setPixelRatio(window.devicePixelRatio);
+-                renderer.setSize(window.innerWidth, window.innerHeight);
+-            }
+-        };
+-    }
+-
+-    if ('xr' in navigator) {
+-        // Check for AR support first
+-        navigator.xr.isSessionSupported('immersive-ar')
+-            .then(arSupported => {
+-                if (arSupported) {
+-                    const xrButton = XRButton.createButton(renderer, createSessionConfig('immersive-ar'));
+-                    document.body.appendChild(xrButton);
+-                } else {
+-                    // Fall back to VR if AR is not supported
+-                    return navigator.xr.isSessionSupported('immersive-vr')
+-                        .then(vrSupported => {
+-                            if (vrSupported) {
+-                                const xrButton = XRButton.createButton(renderer, createSessionConfig('immersive-vr'));
+-                                document.body.appendChild(xrButton);
+-                            } else {
+-                                console.warn('Neither AR nor VR is supported');
+-                            }
+-                        });
+-                }
+-            })
+-            .catch(err => {
+-                console.error('Error checking XR session support:', err);
+-            });
+-
+-        // Add session event listeners
+-        renderer.xr.addEventListener('sessionstart', (event) => {
+-            console.log('XR session started');
+-            const session = event.target.getSession();
+-            requestReferenceSpace(session, renderer);
+-        });
+-
+-        renderer.xr.addEventListener('sessionend', () => {
+-            console.log('XR session ended');
+-            // Force a renderer reset
+-            renderer.setPixelRatio(window.devicePixelRatio);
+-            renderer.setSize(window.innerWidth, window.innerHeight);
+-        });
+-    } else {
+-        console.warn('WebXR not supported in this browser.');
+-    }
+-
+-    // Handle window resizes
+-    window.addEventListener('resize', () => {
+-        if (!renderer.xr.isPresenting) {
+-            camera.aspect = window.innerWidth / window.innerHeight;
+-            camera.updateProjectionMatrix();
+-            renderer.setSize(window.innerWidth, window.innerHeight);
+-        }
+-    });
+-
+-    return xrInteraction;
+-}
+-
+-/**
+- * Request reference space with fallback options
+- * @param {XRSession} session - The XR session
+- * @param {THREE.WebGLRenderer} renderer - The Three.js renderer
+- */
+-async function requestReferenceSpace(session, renderer) {
+-    try {
+-        const refSpace = await session.requestReferenceSpace('local-floor');
+-        console.log('Got local-floor reference space');
+-        renderer.xr.setReferenceSpace(refSpace);
+-    } catch (err) {
+-        console.warn('Failed to get local-floor reference space:', err);
+-        try {
+-            const refSpace = await session.requestReferenceSpace('local');
+-            console.log('Falling back to local reference space');
+-            renderer.xr.setReferenceSpace(refSpace);
+-        } catch (err) {
+-            console.error('Failed to get any reference space:', err);
++    resetCameraRig() {
++        if (this.cameraRig) {
++            this.cameraRig.position.set(0, 0, 0);
++            this.cameraRig.rotation.set(0, 0, 0);
+         }
+-    }
+-}
+-
+-/**
+- * Updates camera position based on XR pose with error handling
+- * @param {XRFrame} frame - The XR frame
+- * @param {XRReferenceSpace} refSpace - The XR reference space
+- * @param {THREE.Camera} camera - The Three.js camera
+- */
+-function updateCameraFromXRPose(frame, refSpace, camera) {
+-    if (!frame || !refSpace || !camera) return;
+-
+-    try {
+-        const pose = frame.getViewerPose(refSpace);
+-        if (pose) {
+-            const view = pose.views[0];
+-            if (view) {
+-                const position = new THREE.Vector3(
+-                    view.transform.position.x,
+-                    view.transform.position.y,
+-                    view.transform.position.z
+-                );
+-                camera.position.copy(position);
+-            }
++        if (this.camera) {
++            this.camera.position.set(0, 0, 0);
++            this.camera.rotation.set(0, 0, 0);
+         }
+-    } catch (error) {
+-        console.error('Error updating camera from XR pose:', error);
+     }
+-}
+ 
+-/**
+- * Handles the XR session's rendering loop with error recovery
+- * @param {THREE.WebGLRenderer} renderer - The Three.js renderer
+- * @param {THREE.Scene} scene - The Three.js scene
+- * @param {THREE.Camera} camera - The Three.js camera
+- * @param {Object} xrInteraction - The XR interaction instance
+- */
+-export function handleXRSession(renderer, scene, camera, xrInteraction) {
+-    if (!renderer || !scene || !camera) {
+-        console.error('Required parameters missing in handleXRSession');
+-        return;
+-    }
+-
+-    let frameCount = 0;
+-    const MAX_ERRORS = 5;
+-    let errorCount = 0;
+-
+-    renderer.setAnimationLoop((timestamp, frame) => {
+-        if (frame) {
+-            try {
+-                frameCount++;
+-                const session = renderer.xr.getSession();
+-                const refSpace = renderer.xr.getReferenceSpace();
+-
+-                if (session && refSpace) {
+-                    updateCameraFromXRPose(frame, refSpace, camera);
++    /**
++     * Update XR frame
++     * @param {number} timestamp - Frame timestamp
++     * @param {XRFrame} frame - XR frame
++     */
++    update(timestamp, frame) {
++        if (!this.sessionActive || !frame) return;
+ 
+-                    // Update hand tracking and interactions
+-                    if (xrInteraction) {
+-                        xrInteraction.update();
+-                        handleXRInput(frame, refSpace);
+-                    }
++        try {
++            // Update XR camera pose
++            if (this.referenceSpace) {
++                const pose = frame.getViewerPose(this.referenceSpace);
++                if (pose) {
++                    // Update camera rig based on pose
++                    const position = pose.transform.position;
++                    const orientation = pose.transform.orientation;
++                    
++                    this.cameraRig.position.set(position.x, position.y, position.z);
++                    this.cameraRig.quaternion.set(
++                        orientation.x,
++                        orientation.y,
++                        orientation.z,
++                        orientation.w
++                    );
++                }
++            }
+ 
+-                    // Handle input sources
+-                    for (const source of session.inputSources) {
+-                        if (source?.gamepad?.handedness === 'left') {
+-                            handleGamepadInput(source.gamepad, camera);
+-                        }
+-                    }
++            // Update XR interaction
++            if (this.xrInteraction) {
++                this.xrInteraction.update();
++                handleXRInput(frame, this.referenceSpace);
++            }
+ 
+-                    // Reset error count on successful frames
+-                    if (frameCount % 60 === 0) {
+-                        errorCount = 0;
+-                    }
+-                }
+-            } catch (error) {
+-                console.error('Error in XR frame:', error);
+-                errorCount++;
+-                
+-                // End session if too many errors occur
+-                if (errorCount >= MAX_ERRORS) {
+-                    console.error('Too many XR errors, ending session');
+-                    renderer.xr.getSession()?.end();
+-                    return;
++            // Handle input sources
++            const session = frame.session;
++            for (const inputSource of session.inputSources) {
++                if (inputSource.gamepad) {
++                    this.handleControllerInput(inputSource.gamepad);
+                 }
+             }
+-        }
+-        
+-        // Render the scene
+-        try {
+-            renderer.render(scene, camera);
++
+         } catch (error) {
+-            console.error('Error rendering scene:', error);
++            console.error('Error updating XR frame:', error);
+         }
+-    });
+-}
++    }
+ 
+-/**
+- * Handles gamepad input in XR with improved movement
+- * @param {Gamepad} gamepad - The XR gamepad
+- * @param {THREE.Camera} camera - The Three.js camera
+- */
+-function handleGamepadInput(gamepad, camera) {
+-    if (!gamepad || !camera || !camera.parent) return;
++    /**
++     * Handle controller input
++     * @param {Gamepad} gamepad - The XR gamepad
++     */
++    handleControllerInput(gamepad) {
++        if (!gamepad?.axes || gamepad.axes.length < 2) return;
+ 
+-    try {
+-        if (gamepad.axes.length >= 2) {
++        try {
+             const [x, y] = gamepad.axes;
+             const deadzone = 0.1;
+ 
+             if (Math.abs(x) > deadzone || Math.abs(y) > deadzone) {
++                // Get movement direction in camera space
+                 const forward = new THREE.Vector3();
+-                camera.getWorldDirection(forward);
++                this.camera.getWorldDirection(forward);
+                 forward.y = 0;
+                 forward.normalize();
+ 
+                 const right = new THREE.Vector3();
+                 right.crossVectors(new THREE.Vector3(0, 1, 0), forward);
+ 
++                // Calculate movement
+                 const movement = new THREE.Vector3();
+                 movement.addScaledVector(right, x * MOVEMENT_SPEED);
+                 movement.addScaledVector(forward, -y * MOVEMENT_SPEED);
+ 
+-                const userGroup = camera.parent;
+-                userGroup.position.add(movement);
++                // Apply movement to camera rig
++                this.cameraRig.position.add(movement);
+             }
++        } catch (error) {
++            console.error('Error handling controller input:', error);
++        }
++    }
++
++    /**
++     * Clean up resources
++     */
++    dispose() {
++        this.originalScales.clear();
++        if (this.xrInteraction) {
++            this.xrInteraction.cleanup();
+         }
+-    } catch (error) {
+-        console.error('Error handling gamepad input:', error);
+     }
+ }
+ 
++// Export functions
++export function initXRSession(renderer, scene, camera, effectsManager) {
++    // Check if renderer has XR capability
++    if (!renderer.xr) {
++        console.warn('WebXR not supported by renderer');
++        return null;
++    }
++
++    const xrSessionManager = new XRSessionManager(renderer, scene, camera, effectsManager);
++    xrSessionManager.init();
++    return xrSessionManager;
++}
++
+ /**
+- * Updates the XR frame with error handling
+- * @param {THREE.WebGLRenderer} renderer - The Three.js renderer
+- * @param {THREE.Scene} scene - The Three.js scene
+- * @param {THREE.Camera} camera - The Three.js camera
+- * @param {Object} xrInteraction - The XR interaction instance
++ * Add XR button to enable VR mode
++ * @param {XRSessionManager} xrSessionManager - The XR session manager
++ * @returns {Promise<void>}
+  */
+-export function updateXRFrame(renderer, scene, camera, xrInteraction) {
+-    if (renderer.xr.isPresenting) {
+-        try {
+-            const session = renderer.xr.getSession();
+-            if (session && xrInteraction) {
+-                xrInteraction.update();
+-            }
+-        } catch (error) {
+-            console.error('Error updating XR frame:', error);
+-        }
++export async function addXRButton(xrSessionManager) {
++    if (!xrSessionManager) {
++        console.warn('XR session manager not initialized');
++        return;
+     }
+-    
+-    try {
++    await xrSessionManager.addXRButton();
++}
++
++export function handleXRSession(renderer, scene, camera, xrSessionManager, effectsManager) {
++    if (!xrSessionManager) return;
++
++    renderer.setAnimationLoop((timestamp, frame) => {
++        // Update XR session
++        xrSessionManager.update(timestamp, frame);
++
++        // Render scene
++        if (effectsManager) {
++            effectsManager.animate();
++            effectsManager.render();
++        } else {
++            renderer.render(scene, camera);
++        }
++    });
++}
++
++export function updateXRFrame(renderer, scene, camera, xrSessionManager, effectsManager) {
++    if (!xrSessionManager?.sessionActive) return;
++
++    // Update XR session
++    const frame = renderer.xr.getFrame();
++    xrSessionManager.update(performance.now(), frame);
++
++    // Render scene
++    if (effectsManager) {
++        effectsManager.animate();
++        effectsManager.render();
++    } else {
+         renderer.render(scene, camera);
+-    } catch (error) {
+-        console.error('Error rendering scene:', error);
+     }
+ }

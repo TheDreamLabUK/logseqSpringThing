@@ -35,7 +35,11 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data:/app/data
+      - ./data/markdown:/app/data/markdown
+      - ./data/piper:/app/data/piper
+      - ./data/public/js:/app/data/public/js
+      - ./data/public/favicon.ico:/app/data/public/favicon.ico
+      - ./data/public/index.html:/app/data/public/index.html
       - ./settings.toml:/app/settings.toml:ro
       - type: tmpfs
         target: /tmp

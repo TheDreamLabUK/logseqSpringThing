@@ -1,6 +1,7 @@
 # Git
 .git
 .gitignore
+.pmpm-store
 
 # Rust
 target/
