@@ -11,8 +11,9 @@ const XR_SPRITE_SCALE = 0.5;
  * @param {THREE.WebGLRenderer} renderer - The Three.js renderer.
  * @param {THREE.Scene} scene - The Three.js scene.
  * @param {THREE.PerspectiveCamera} camera - The Three.js camera.
+ * @param {EffectsManager} effectsManager - The effects manager instance.
  */
-export function initXRSession(renderer, scene, camera) {
+export function initXRSession(renderer, scene, camera, effectsManager) {
     if (!scene || !camera) {
         console.error('Scene or camera not provided to initXRSession');
         return;
@@ -227,8 +228,9 @@ function updateCameraFromXRPose(frame, refSpace, camera) {
  * @param {THREE.Scene} scene - The Three.js scene
  * @param {THREE.Camera} camera - The Three.js camera
  * @param {Object} xrInteraction - The XR interaction instance
+ * @param {EffectsManager} effectsManager - The effects manager instance
  */
-export function handleXRSession(renderer, scene, camera, xrInteraction) {
+export function handleXRSession(renderer, scene, camera, xrInteraction, effectsManager) {
     if (!renderer || !scene || !camera) {
         console.error('Required parameters missing in handleXRSession');
         return;
@@ -279,11 +281,13 @@ export function handleXRSession(renderer, scene, camera, xrInteraction) {
             }
         }
         
-        // Render the scene
-        try {
+        // Render the scene using the effects manager
+        if (effectsManager) {
+            effectsManager.animate();
+            effectsManager.render();
+        } else {
+            // Fallback to direct rendering if effects manager is not available
             renderer.render(scene, camera);
-        } catch (error) {
-            console.error('Error rendering scene:', error);
         }
     });
 }
@@ -329,8 +333,9 @@ function handleGamepadInput(gamepad, camera) {
  * @param {THREE.Scene} scene - The Three.js scene
  * @param {THREE.Camera} camera - The Three.js camera
  * @param {Object} xrInteraction - The XR interaction instance
+ * @param {EffectsManager} effectsManager - The effects manager instance
  */
-export function updateXRFrame(renderer, scene, camera, xrInteraction) {
+export function updateXRFrame(renderer, scene, camera, xrInteraction, effectsManager) {
     if (renderer.xr.isPresenting) {
         try {
             const session = renderer.xr.getSession();
@@ -342,9 +347,11 @@ export function updateXRFrame(renderer, scene, camera, xrInteraction) {
         }
     }
     
-    try {
+    // Use effects manager for rendering if available
+    if (effectsManager) {
+        effectsManager.animate();
+        effectsManager.render();
+    } else {
         renderer.render(scene, camera);
-    } catch (error) {
-        console.error('Error rendering scene:', error);
     }
 }

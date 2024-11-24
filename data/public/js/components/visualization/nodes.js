@@ -202,19 +202,20 @@ export class NodeManager {
         canvas.width = canvasWidth;
         canvas.height = canvasHeight;
 
-        // Draw background and text
-        context.fillStyle = visualizationSettings.getLabelSettings().backgroundColor;
+        // Draw background with higher opacity
+        context.fillStyle = 'rgba(0, 0, 0, 0.9)'; // Increased opacity for better visibility
         context.fillRect(0, 0, canvas.width, canvas.height);
 
+        // Draw text with enhanced contrast
         context.font = `${this.labelFontSize}px ${visualizationSettings.getLabelSettings().fontFamily}`;
-        context.fillStyle = visualizationSettings.getLabelSettings().textColor;
+        context.fillStyle = '#ffffff'; // Pure white for better visibility
         context.fillText(text, 10, this.labelFontSize);
         
         context.font = `${this.labelFontSize / 2}px ${visualizationSettings.getLabelSettings().fontFamily}`;
-        context.fillStyle = visualizationSettings.getLabelSettings().infoTextColor;
+        context.fillStyle = '#cccccc'; // Light gray for info text
         context.fillText(infoText, 10, this.labelFontSize + 20);
 
-        // Create sprite with optimized texture settings
+        // Create sprite with optimized texture and material settings
         const texture = new THREE.CanvasTexture(canvas);
         texture.generateMipmaps = false;
         texture.minFilter = THREE.LinearFilter;
@@ -224,10 +225,14 @@ export class NodeManager {
         const spriteMaterial = new THREE.SpriteMaterial({
             map: texture,
             transparent: true,
+            opacity: 1.0, // Full opacity
             depthWrite: false,
+            depthTest: true,
             sizeAttenuation: true,
-            toneMapped: false // Important for proper visibility
+            toneMapped: false,
+            blending: THREE.NormalBlending
         });
+
         const sprite = new THREE.Sprite(spriteMaterial);
         
         // Scale sprite to maintain readable text size in meters
@@ -240,6 +245,11 @@ export class NodeManager {
         
         // Set label to be visible in all necessary layers
         LayerManager.setLayerGroup(sprite, 'LABEL');
+
+        // Ensure sprite is always facing the camera
+        sprite.onBeforeRender = (renderer, scene, camera) => {
+            sprite.quaternion.copy(camera.quaternion);
+        };
 
         return sprite;
     }
