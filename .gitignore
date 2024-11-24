@@ -9,6 +9,7 @@ data/public/dist
 data/public/node_modules
 dist
 data/markdown
+.pmpm-store
 
 data/piper/en_GB-northern_english_male-medium.onnx
 config.yml

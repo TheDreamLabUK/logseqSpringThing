@@ -30,24 +30,35 @@ export class EffectsManager {
         
         // XR properties
         this.isXRActive = false;
+        this.xrRenderTargets = new Map();
         
-        // Settings handler
-        this.handleSettingsUpdate = this.handleSettingsUpdate.bind(this);
+        // Bind methods that need binding
+        this.render = this.render.bind(this);
+        this.handleResize = this.handleResize.bind(this);
+        this.updateBloom = this.updateBloom.bind(this);
+        this.updateFisheye = this.updateFisheye.bind(this);
+        this.dispose = this.dispose.bind(this);
+        
+        // Settings handler - bind and add listener
+        this.handleSettingsUpdate = (event) => {
+            if (!this.initialized) return;
+            try {
+                const settings = event.detail;
+                if (settings.bloom) {
+                    this.updateBloom(settings.bloom);
+                }
+                if (settings.fisheye) {
+                    this.updateFisheye(settings.fisheye);
+                }
+            } catch (error) {
+                console.error('Error handling settings update:', error);
+            }
+        };
+        
         window.addEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
-
-        // XR session handlers
-        this.renderer.xr.addEventListener('sessionstart', () => {
-            this.isXRActive = true;
-            this.handleXRSessionStart();
-        });
-
-        this.renderer.xr.addEventListener('sessionend', () => {
-            this.isXRActive = false;
-            this.handleXRSessionEnd();
-        });
     }
     
-    initPostProcessing() {
+    async initPostProcessing(isXR = false) {
         try {
             if (!this.renderer || !this.renderer.domElement) {
                 throw new Error('Renderer not ready for post-processing initialization');
@@ -60,56 +71,49 @@ export class EffectsManager {
 
             // Configure renderer
             this.renderer.autoClear = false;
+            this.isXRActive = isXR;
             
-            // Initialize effects
-            this.bloomEffect = new BloomEffect(this.renderer, this.scene, this.camera);
-            this.compositionEffect = new CompositionEffect(this.renderer);
-            
-            // Initialize effects with current settings
+            // Initialize effects with mode-specific settings
             const bloomSettings = visualizationSettings.getBloomSettings();
+            if (isXR) {
+                // Adjust settings for XR
+                bloomSettings.nodeBloomStrength *= 0.8;
+                bloomSettings.edgeBloomRadius *= 0.7;
+                bloomSettings.environmentBloomThreshold *= 1.2;
+            }
             
             // Initialize bloom first
-            this.bloomEffect.init(bloomSettings);
+            this.bloomEffect = new BloomEffect(this.renderer, this.scene, this.camera);
+            await this.bloomEffect.init(bloomSettings);
             
-            // Initialize composition effect with bloom render targets
+            // Get bloom render targets
             const bloomRenderTargets = this.bloomEffect.getRenderTargets();
             if (!bloomRenderTargets) {
                 throw new Error('Failed to get bloom render targets');
             }
             
+            // Store XR-specific render targets if needed
+            if (isXR) {
+                this.xrRenderTargets = bloomRenderTargets;
+            }
+            
             // Initialize composition effect
-            this.compositionEffect.init(bloomRenderTargets);
+            this.compositionEffect = new CompositionEffect(this.renderer);
+            await this.compositionEffect.init(bloomRenderTargets);
             
             this.initialized = true;
-            console.log('Post-processing initialized successfully');
+            console.log(`Post-processing initialized successfully for ${isXR ? 'XR' : 'desktop'} mode`);
+            return true;
         } catch (error) {
             console.error('Error initializing post-processing:', error);
             this.dispose();
+            return false;
         }
-    }
-
-    handleXRSessionStart() {
-        try {
-            const session = this.renderer.xr.getSession();
-            if (session) {
-                const baseLayer = session.renderState.baseLayer;
-                const { width, height } = baseLayer.getViewport(session.views[0]);
-                this.handleResize(width, height);
-            }
-        } catch (error) {
-            console.error('Error handling XR session start:', error);
-        }
-    }
-
-    handleXRSessionEnd() {
-        this.handleResize(window.innerWidth, window.innerHeight);
     }
     
     render() {
         if (!this.initialized || !this.bloomEffect || !this.compositionEffect) {
-            // If effects aren't initialized yet, do a normal render
-            this.renderer.render(this.scene, this.camera);
-            return;
+            throw new Error('Effects not properly initialized');
         }
 
         try {
@@ -121,13 +125,13 @@ export class EffectsManager {
             // Render bloom layers
             this.bloomEffect.render(currentCamera);
             
-            // Get base texture from bloom effect
-            const bloomRenderTargets = this.bloomEffect.getRenderTargets();
-            if (!bloomRenderTargets) {
-                throw new Error('No bloom render targets available');
+            // Get appropriate render targets
+            const renderTargets = this.isXRActive ? this.xrRenderTargets : this.bloomEffect.getRenderTargets();
+            if (!renderTargets) {
+                throw new Error('No render targets available');
             }
             
-            const baseTexture = bloomRenderTargets.get(LAYERS.BLOOM).texture;
+            const baseTexture = renderTargets.get(LAYERS.BLOOM).texture;
             if (!baseTexture) {
                 throw new Error('No base texture available');
             }
@@ -136,9 +140,7 @@ export class EffectsManager {
             currentCamera.layers.set(LAYERS.NORMAL_LAYER);
             this.compositionEffect.render(baseTexture);
         } catch (error) {
-            console.error('Error during effect rendering:', error);
-            // Fallback to normal rendering
-            this.renderer.render(this.scene, this.camera);
+            throw new Error(`Error during effect rendering: ${error.message}`);
         }
     }
     
@@ -156,41 +158,46 @@ export class EffectsManager {
             }
         } catch (error) {
             console.error('Error handling resize:', error);
+            throw error;
         }
     }
     
-    handleSettingsUpdate(event) {
-        if (!this.initialized) {
+    updateBloom(settings) {
+        if (!this.initialized || !this.bloomEffect) {
             return;
         }
 
         try {
-            const settings = event.detail;
-            if (settings.bloom) {
-                const bloomSettings = {
-                    nodeBloomStrength: settings.bloom.nodeStrength || 0.8,
-                    nodeBloomRadius: settings.bloom.nodeRadius || 0.3,
-                    nodeBloomThreshold: settings.bloom.nodeThreshold || 0.2,
-                    edgeBloomStrength: settings.bloom.edgeStrength || 0.6,
-                    edgeBloomRadius: settings.bloom.edgeRadius || 0.4,
-                    edgeBloomThreshold: settings.bloom.edgeThreshold || 0.1,
-                    environmentBloomStrength: settings.bloom.envStrength || 0.7,
-                    environmentBloomRadius: settings.bloom.envRadius || 0.3,
-                    environmentBloomThreshold: settings.bloom.envThreshold || 0.1
+            // Adjust settings for XR if needed
+            if (this.isXRActive) {
+                settings = {
+                    ...settings,
+                    nodeBloomStrength: settings.nodeBloomStrength * 0.8,
+                    edgeBloomRadius: settings.edgeBloomRadius * 0.7,
+                    environmentBloomThreshold: settings.environmentBloomThreshold * 1.2
                 };
-                
-                // Reinitialize bloom with new settings
-                this.bloomEffect.init(bloomSettings);
-                
-                // Reinitialize composition effect with updated bloom render targets
-                const bloomRenderTargets = this.bloomEffect.getRenderTargets();
-                if (bloomRenderTargets) {
-                    this.compositionEffect.init(bloomRenderTargets);
+            }
+            
+            // Reinitialize bloom with new settings
+            this.bloomEffect.init(settings);
+            
+            // Reinitialize composition effect with updated bloom render targets
+            const bloomRenderTargets = this.bloomEffect.getRenderTargets();
+            if (bloomRenderTargets) {
+                if (this.isXRActive) {
+                    this.xrRenderTargets = bloomRenderTargets;
                 }
+                this.compositionEffect.init(bloomRenderTargets);
             }
         } catch (error) {
-            console.error('Error updating settings:', error);
+            console.error('Error updating bloom settings:', error);
+            throw error;
         }
+    }
+    
+    updateFisheye(settings) {
+        // Placeholder for future fisheye effect implementation
+        console.log('Fisheye effect not yet implemented');
     }
     
     dispose() {
@@ -213,6 +220,9 @@ export class EffectsManager {
                 this.compositionEffect.dispose();
                 this.compositionEffect = null;
             }
+            
+            // Clear XR render targets
+            this.xrRenderTargets.clear();
             
             this.initialized = false;
         } catch (error) {
