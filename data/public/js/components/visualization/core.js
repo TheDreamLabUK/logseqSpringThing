@@ -304,11 +304,10 @@ export class WebXRVisualization {
             // Update labels
             this.nodeManager.updateLabelOrientations(this.camera);
 
-            // Animate effects
-            this.effectsManager.animate();
-
             // Render scene with effects in both desktop and XR modes
-            this.effectsManager.render();
+            if (this.effectsManager) {
+                this.effectsManager.render();
+            }
         };
 
         this.renderer.setAnimationLoop(renderFrame);

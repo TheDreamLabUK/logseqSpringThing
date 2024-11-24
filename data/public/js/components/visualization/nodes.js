@@ -38,9 +38,66 @@ export class NodeManager {
         this.edgeColor = new THREE.Color(settings.edgeColor || edgeSettings.color);
         this.edgeOpacity = settings.edgeOpacity || edgeSettings.opacity;
 
+        // Bind event handlers
         this.handleClick = this.handleClick.bind(this);
+        this.handleSettingsUpdate = this.handleSettingsUpdate.bind(this);
+        
+        // Add settings update listener
+        window.addEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
+
         this.xrEnabled = false;
         this.xrLabelManager = null;
+    }
+
+    handleSettingsUpdate(event) {
+        const settings = event.detail;
+        if (!settings) return;
+
+        if (settings.visual) {
+            // Update visual settings
+            if (settings.visual.nodeColor !== undefined) {
+                this.updateFeature('nodeColor', settings.visual.nodeColor);
+            }
+            if (settings.visual.minNodeSize !== undefined) {
+                this.updateFeature('minNodeSize', settings.visual.minNodeSize);
+            }
+            if (settings.visual.maxNodeSize !== undefined) {
+                this.updateFeature('maxNodeSize', settings.visual.maxNodeSize);
+            }
+            if (settings.visual.labelFontSize !== undefined) {
+                this.updateFeature('labelFontSize', settings.visual.labelFontSize);
+            }
+            if (settings.visual.edgeColor !== undefined) {
+                this.updateFeature('edgeColor', settings.visual.edgeColor);
+            }
+            if (settings.visual.edgeOpacity !== undefined) {
+                this.updateFeature('edgeOpacity', settings.visual.edgeOpacity);
+            }
+        }
+
+        if (settings.material) {
+            this.updateMaterial(settings.material);
+        }
+
+        // Update node colors if age-based colors are changed
+        if (settings.ageColors) {
+            if (settings.ageColors.new) this.ageColors.NEW.set(settings.ageColors.new);
+            if (settings.ageColors.recent) this.ageColors.RECENT.set(settings.ageColors.recent);
+            if (settings.ageColors.medium) this.ageColors.MEDIUM.set(settings.ageColors.medium);
+            if (settings.ageColors.old) this.ageColors.OLD.set(settings.ageColors.old);
+            
+            // Update all nodes to reflect new colors
+            this.nodeMeshes.forEach((mesh, nodeId) => {
+                const nodeData = this.nodeData.get(nodeId);
+                if (nodeData) {
+                    const color = this.calculateNodeColor(nodeData.metadata || {});
+                    if (mesh.material) {
+                        mesh.material.color.copy(color);
+                        mesh.material.emissive.copy(color);
+                    }
+                }
+            });
+        }
     }
 
     centerNodes(nodes) {
@@ -202,20 +259,19 @@ export class NodeManager {
         canvas.width = canvasWidth;
         canvas.height = canvasHeight;
 
-        // Draw background with higher opacity
-        context.fillStyle = 'rgba(0, 0, 0, 0.9)'; // Increased opacity for better visibility
+        // Draw background and text
+        context.fillStyle = visualizationSettings.getLabelSettings().backgroundColor;
         context.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Draw text with enhanced contrast
         context.font = `${this.labelFontSize}px ${visualizationSettings.getLabelSettings().fontFamily}`;
-        context.fillStyle = '#ffffff'; // Pure white for better visibility
+        context.fillStyle = visualizationSettings.getLabelSettings().textColor;
         context.fillText(text, 10, this.labelFontSize);
         
         context.font = `${this.labelFontSize / 2}px ${visualizationSettings.getLabelSettings().fontFamily}`;
-        context.fillStyle = '#cccccc'; // Light gray for info text
+        context.fillStyle = visualizationSettings.getLabelSettings().infoTextColor;
         context.fillText(infoText, 10, this.labelFontSize + 20);
 
-        // Create sprite with optimized texture and material settings
+        // Create sprite with optimized texture settings
         const texture = new THREE.CanvasTexture(canvas);
         texture.generateMipmaps = false;
         texture.minFilter = THREE.LinearFilter;
@@ -225,14 +281,10 @@ export class NodeManager {
         const spriteMaterial = new THREE.SpriteMaterial({
             map: texture,
             transparent: true,
-            opacity: 1.0, // Full opacity
             depthWrite: false,
-            depthTest: true,
             sizeAttenuation: true,
-            toneMapped: false,
-            blending: THREE.NormalBlending
+            toneMapped: false // Important for proper visibility
         });
-
         const sprite = new THREE.Sprite(spriteMaterial);
         
         // Scale sprite to maintain readable text size in meters
@@ -245,11 +297,6 @@ export class NodeManager {
         
         // Set label to be visible in all necessary layers
         LayerManager.setLayerGroup(sprite, 'LABEL');
-
-        // Ensure sprite is always facing the camera
-        sprite.onBeforeRender = (renderer, scene, camera) => {
-            sprite.quaternion.copy(camera.quaternion);
-        };
 
         return sprite;
     }
@@ -614,6 +661,13 @@ export class NodeManager {
     }
 
     dispose() {
+        // Remove event listeners
+        window.removeEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
+        
+        if (this.renderer) {
+            this.removeClickHandling(this.renderer);
+        }
+
         // Dispose node resources
         this.nodeMeshes.forEach(mesh => {
             if (mesh.geometry) {
@@ -667,10 +721,5 @@ export class NodeManager {
         this.nodeLabels.clear();
         this.edgeMeshes.clear();
         this.nodeData.clear();
-
-        // Clean up event listeners
-        if (this.renderer) {
-            this.removeClickHandling(this.renderer);
-        }
     }
 }
