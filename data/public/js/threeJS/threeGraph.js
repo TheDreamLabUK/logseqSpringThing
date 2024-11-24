@@ -4,43 +4,37 @@ import * as THREE from 'three';
 import { visualizationSettings } from '../services/visualizationSettings.js';
 
 /**
- * ForceGraph class manages the creation and updating of nodes and edges in the Three.js scene.
+ * Enhanced ForceGraph class with instanced mesh rendering
  */
 export class ForceGraph {
-    /**
-     * Creates a new ForceGraph instance.
-     * @param {THREE.Scene} scene - The Three.js scene.
-     */
     constructor(scene) {
         this.scene = scene;
 
         // Data structures
         this.nodes = [];
         this.links = [];
+        this.nodeInstances = new Map();
+        this.linkInstances = new Map();
 
-        // Meshes
-        this.nodeMeshes = new Map();
-        this.linkMeshes = new Map();
+        // Instanced meshes
+        this.nodeInstancedMesh = null;
+        this.linkInstancedMesh = null;
 
-        // Object pools with pre-allocation
-        this.nodeMeshPool = [];
-        this.linkMeshPool = [];
-        this.geometryPool = new Map(); // Pool for reusing geometries
-        this.materialPool = new Map(); // Pool for reusing materials
+        // Temporary objects for matrix calculations
+        this.tempMatrix = new THREE.Matrix4();
+        this.tempColor = new THREE.Color();
+        this.tempVector = new THREE.Vector3();
+        this.tempQuaternion = new THREE.Quaternion();
+        this.tempScale = new THREE.Vector3();
 
         // Level of Detail
         this.lod = new THREE.LOD();
         this.scene.add(this.lod);
 
-        // Shared geometry for instancing
-        this.sharedNodeGeometry = null;
-        this.sharedEdgeGeometry = null;
-
-        // Get settings
+        // Settings
         const nodeSettings = visualizationSettings.getNodeSettings();
         const edgeSettings = visualizationSettings.getEdgeSettings();
         
-        // Store settings
         this.nodeColors = {
             NEW: new THREE.Color(nodeSettings.colorNew),
             RECENT: new THREE.Color(nodeSettings.colorRecent),
@@ -52,276 +46,98 @@ export class ForceGraph {
         };
         this.edgeColor = new THREE.Color(edgeSettings.color);
         this.edgeOpacity = edgeSettings.opacity;
-        this.minNodeSize = nodeSettings.minNodeSize;  // In meters (0.1m = 10cm)
-        this.maxNodeSize = nodeSettings.maxNodeSize;  // In meters (0.3m = 30cm)
+        this.minNodeSize = nodeSettings.minNodeSize;
+        this.maxNodeSize = nodeSettings.maxNodeSize;
         this.materialSettings = nodeSettings.material;
 
-        // Initialize shared resources
-        this.initSharedResources();
+        // Initialize instanced meshes
+        this.initInstancedMeshes();
     }
 
     /**
-     * Initialize shared geometries and materials
+     * Initialize instanced meshes for nodes and links
      */
-    initSharedResources() {
-        // Create shared node geometry with different LOD levels
-        const highDetail = new THREE.SphereGeometry(1, 32, 32);
-        const mediumDetail = new THREE.SphereGeometry(1, 16, 16);
-        const lowDetail = new THREE.SphereGeometry(1, 8, 8);
+    initInstancedMeshes() {
+        // Create node geometry with different LOD levels
+        const highDetailGeometry = new THREE.SphereGeometry(1, 32, 32);
+        const mediumDetailGeometry = new THREE.SphereGeometry(1, 16, 16);
+        const lowDetailGeometry = new THREE.SphereGeometry(1, 8, 8);
 
-        this.geometryPool.set('node-high', highDetail);
-        this.geometryPool.set('node-medium', mediumDetail);
-        this.geometryPool.set('node-low', lowDetail);
-
-        // Create shared edge geometry
-        const edgeGeometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(6);
-        edgeGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        this.geometryPool.set('edge', edgeGeometry);
-    }
-
-    /**
-     * Get or create a geometry from the pool
-     * @param {string} type - The type of geometry
-     * @param {number} size - The size for node geometries
-     * @returns {THREE.BufferGeometry}
-     */
-    getGeometry(type, size = 1) {
-        const key = `${type}-${size}`;
-        if (this.geometryPool.has(key)) {
-            return this.geometryPool.get(key);
-        }
-
-        let geometry;
-        switch (type) {
-            case 'node-high':
-                geometry = new THREE.SphereGeometry(size, 32, 32);
-                break;
-            case 'node-medium':
-                geometry = new THREE.SphereGeometry(size, 16, 16);
-                break;
-            case 'node-low':
-                geometry = new THREE.SphereGeometry(size, 8, 8);
-                break;
-            case 'edge':
-                geometry = new THREE.BufferGeometry();
-                geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-                break;
-        }
-
-        this.geometryPool.set(key, geometry);
-        return geometry;
-    }
-
-    /**
-     * Get or create a material from the pool
-     * @param {string} type - The type of material
-     * @param {object} params - Material parameters
-     * @returns {THREE.Material}
-     */
-    getMaterial(type, params) {
-        const key = `${type}-${JSON.stringify(params)}`;
-        if (this.materialPool.has(key)) {
-            return this.materialPool.get(key);
-        }
-
-        let material;
-        switch (type) {
-            case 'node':
-                material = new THREE.MeshPhysicalMaterial({
-                    color: params.color,
-                    emissive: params.color,
-                    emissiveIntensity: params.emissiveIntensity,
-                    metalness: this.materialSettings.metalness,
-                    roughness: this.materialSettings.roughness,
-                    transparent: true,
-                    opacity: this.materialSettings.opacity,
-                    envMapIntensity: 1.0,
-                    clearcoat: this.materialSettings.clearcoat,
-                    clearcoatRoughness: this.materialSettings.clearcoatRoughness
-                });
-                break;
-            case 'edge':
-                material = new THREE.LineBasicMaterial({
-                    color: params.color,
-                    opacity: params.opacity,
-                    transparent: true,
-                    linewidth: params.linewidth || 1
-                });
-                break;
-        }
-
-        this.materialPool.set(key, material);
-        return material;
-    }
-
-    // Previous methods remain the same until updateNodes...
-
-    /**
-     * Updates nodes in the scene based on the graph data.
-     */
-    updateNodes() {
-        const newNodeIds = new Set(this.nodes.map((node) => node.id));
-
-        // Remove nodes that no longer exist
-        this.nodeMeshes.forEach((mesh, nodeId) => {
-            if (!newNodeIds.has(nodeId)) {
-                this.lod.removeLevel(mesh);
-                this.nodeMeshes.delete(nodeId);
-                
-                // Return mesh to pool
-                if (mesh.material) {
-                    mesh.material.dispose();
-                }
-                this.nodeMeshPool.push(mesh);
-            }
+        // Create node material
+        const nodeMaterial = new THREE.MeshPhysicalMaterial({
+            metalness: this.materialSettings.metalness,
+            roughness: this.materialSettings.roughness,
+            transparent: true,
+            opacity: this.materialSettings.opacity,
+            envMapIntensity: 1.0,
+            clearcoat: this.materialSettings.clearcoat,
+            clearcoatRoughness: this.materialSettings.clearcoatRoughness
         });
 
-        // Add or update nodes
-        this.nodes.forEach((node) => {
-            const nodeSize = this.getNodeSize(node);
-            const nodeColor = this.getNodeColor(node);
-            const distance = node.metadata?.distance || 0;
+        // Create instanced meshes for each LOD level
+        const maxInstances = 10000; // Adjust based on expected graph size
+        this.nodeInstancedMeshes = {
+            high: new THREE.InstancedMesh(highDetailGeometry, nodeMaterial.clone(), maxInstances),
+            medium: new THREE.InstancedMesh(mediumDetailGeometry, nodeMaterial.clone(), maxInstances),
+            low: new THREE.InstancedMesh(lowDetailGeometry, nodeMaterial.clone(), maxInstances)
+        };
 
-            if (this.nodeMeshes.has(node.id)) {
-                const mesh = this.nodeMeshes.get(node.id);
-                mesh.position.set(node.x, node.y, node.z);
-                
-                // Update material if needed
-                const material = this.getMaterial('node', {
-                    color: nodeColor,
-                    emissiveIntensity: this.calculateEmissiveIntensity(node)
-                });
-                
-                if (mesh.material !== material) {
-                    if (mesh.material) mesh.material.dispose();
-                    mesh.material = material;
-                }
+        // Add LOD levels
+        this.lod.addLevel(this.nodeInstancedMeshes.high, 0);
+        this.lod.addLevel(this.nodeInstancedMeshes.medium, 10);
+        this.lod.addLevel(this.nodeInstancedMeshes.low, 20);
 
-                // Update geometry if size changed
-                if (mesh.geometry.parameters.radius !== nodeSize) {
-                    const geometry = this.getGeometry('node-high', nodeSize);
-                    mesh.geometry = geometry;
-                }
-            } else {
-                // Create LOD levels
-                const highDetail = new THREE.Mesh(
-                    this.getGeometry('node-high', nodeSize),
-                    this.getMaterial('node', {
-                        color: nodeColor,
-                        emissiveIntensity: this.calculateEmissiveIntensity(node)
-                    })
-                );
-                
-                const mediumDetail = new THREE.Mesh(
-                    this.getGeometry('node-medium', nodeSize),
-                    highDetail.material
-                );
-                
-                const lowDetail = new THREE.Mesh(
-                    this.getGeometry('node-low', nodeSize),
-                    highDetail.material
-                );
+        // Create link geometry
+        const linkGeometry = new THREE.CylinderGeometry(0.01, 0.01, 1, 8, 1);
+        linkGeometry.rotateX(Math.PI / 2); // Align with Z-axis
 
-                // Create LOD object
-                const nodeLOD = new THREE.LOD();
-                nodeLOD.addLevel(highDetail, 0);
-                nodeLOD.addLevel(mediumDetail, 10);
-                nodeLOD.addLevel(lowDetail, 20);
-                nodeLOD.position.set(node.x, node.y, node.z);
-                
-                this.lod.addLevel(nodeLOD, distance);
-                this.nodeMeshes.set(node.id, nodeLOD);
-            }
+        // Create link material
+        const linkMaterial = new THREE.MeshBasicMaterial({
+            color: this.edgeColor,
+            transparent: true,
+            opacity: this.edgeOpacity,
+            depthWrite: false
         });
+
+        // Create instanced mesh for links
+        this.linkInstancedMesh = new THREE.InstancedMesh(
+            linkGeometry,
+            linkMaterial,
+            maxInstances * 2 // Links typically more numerous than nodes
+        );
+
+        this.scene.add(this.linkInstancedMesh);
+
+        // Initialize instance counts
+        this.nodeInstanceCount = 0;
+        this.linkInstanceCount = 0;
     }
 
     /**
-     * Updates edges in the scene based on the graph data.
+     * Calculate node size based on metadata
+     * @param {object} node - Node object
+     * @returns {number} Node size
      */
-    updateLinks() {
-        const newLinkKeys = new Set(this.links.map((link) => `${link.source}-${link.target}`));
+    getNodeSize(node) {
+        const baseSize = (node.metadata?.size || 1) * this.minNodeSize;
+        const weight = node.metadata?.weight || 1;
+        return Math.min(baseSize * Math.sqrt(weight), this.maxNodeSize);
+    }
 
-        // Remove edges that no longer exist
-        this.linkMeshes.forEach((line, linkKey) => {
-            if (!newLinkKeys.has(linkKey)) {
-                this.scene.remove(line);
-                if (line.material) line.material.dispose();
-                this.linkMeshes.delete(linkKey);
-                this.linkMeshPool.push(line);
-            }
-        });
-
-        // Add or update edges
-        this.links.forEach((link) => {
-            const linkKey = `${link.source}-${link.target}`;
-            const weight = link.weight || 1;
-            const normalizedWeight = Math.min(weight / 10, 1);
-
-            const sourceMesh = this.nodeMeshes.get(link.source);
-            const targetMesh = this.nodeMeshes.get(link.target);
-            
-            if (!sourceMesh || !targetMesh) return;
-
-            if (this.linkMeshes.has(linkKey)) {
-                const line = this.linkMeshes.get(linkKey);
-                const positions = line.geometry.attributes.position.array;
-                positions[0] = sourceMesh.position.x;
-                positions[1] = sourceMesh.position.y;
-                positions[2] = sourceMesh.position.z;
-                positions[3] = targetMesh.position.x;
-                positions[4] = targetMesh.position.y;
-                positions[5] = targetMesh.position.z;
-                line.geometry.attributes.position.needsUpdate = true;
-                
-                // Update material if needed
-                const material = this.getMaterial('edge', {
-                    color: this.edgeColor,
-                    opacity: this.edgeOpacity * normalizedWeight,
-                    linewidth: Math.max(1, Math.min(weight, 5))
-                });
-                
-                if (line.material !== material) {
-                    if (line.material) line.material.dispose();
-                    line.material = material;
-                }
-            } else {
-                // Create new edge
-                const geometry = this.getGeometry('edge');
-                const material = this.getMaterial('edge', {
-                    color: this.edgeColor,
-                    opacity: this.edgeOpacity * normalizedWeight,
-                    linewidth: Math.max(1, Math.min(weight, 5))
-                });
-
-                let line;
-                if (this.linkMeshPool.length > 0) {
-                    line = this.linkMeshPool.pop();
-                    line.geometry = geometry;
-                    line.material = material;
-                } else {
-                    line = new THREE.Line(geometry, material);
-                }
-
-                const positions = line.geometry.attributes.position.array;
-                positions[0] = sourceMesh.position.x;
-                positions[1] = sourceMesh.position.y;
-                positions[2] = sourceMesh.position.z;
-                positions[3] = targetMesh.position.x;
-                positions[4] = targetMesh.position.y;
-                positions[5] = targetMesh.position.z;
-                line.geometry.attributes.position.needsUpdate = true;
-
-                this.scene.add(line);
-                this.linkMeshes.set(linkKey, line);
-            }
-        });
+    /**
+     * Get node color based on metadata
+     * @param {object} node - Node object
+     * @returns {THREE.Color} Node color
+     */
+    getNodeColor(node) {
+        const type = node.metadata?.type || 'DEFAULT';
+        return this.nodeColors[type] || this.nodeColors.DEFAULT;
     }
 
     /**
      * Calculate emissive intensity based on node age
-     * @param {object} node - The node object
-     * @returns {number} - The emissive intensity
+     * @param {object} node - Node object
+     * @returns {number} Emissive intensity
      */
     calculateEmissiveIntensity(node) {
         const lastModified = node.metadata?.github_last_modified || 
@@ -330,66 +146,139 @@ export class ForceGraph {
         const now = Date.now();
         const ageInDays = (now - new Date(lastModified).getTime()) / (24 * 60 * 60 * 1000);
         
-        // Normalize age to 0-1 range and invert (newer = brighter)
         const normalizedAge = Math.min(ageInDays / 30, 1);
         return this.materialSettings.emissiveMaxIntensity - 
             (normalizedAge * (this.materialSettings.emissiveMaxIntensity - this.materialSettings.emissiveMinIntensity));
     }
 
     /**
-     * Dispose of all resources
+     * Update node instances
+     */
+    updateNodes() {
+        // Reset instance count
+        this.nodeInstanceCount = 0;
+
+        // Update node instances
+        this.nodes.forEach((node, index) => {
+            const size = this.getNodeSize(node);
+            const color = this.getNodeColor(node);
+            const emissiveIntensity = this.calculateEmissiveIntensity(node);
+
+            // Set transform matrix
+            this.tempMatrix.compose(
+                new THREE.Vector3(node.x, node.y, node.z),
+                this.tempQuaternion,
+                new THREE.Vector3(size, size, size)
+            );
+
+            // Update instances for each LOD level
+            Object.values(this.nodeInstancedMeshes).forEach(instancedMesh => {
+                instancedMesh.setMatrixAt(index, this.tempMatrix);
+                instancedMesh.setColorAt(index, color);
+                instancedMesh.material.emissiveIntensity = emissiveIntensity;
+            });
+
+            this.nodeInstances.set(node.id, index);
+            this.nodeInstanceCount = Math.max(this.nodeInstanceCount, index + 1);
+        });
+
+        // Update instance meshes
+        Object.values(this.nodeInstancedMeshes).forEach(instancedMesh => {
+            instancedMesh.count = this.nodeInstanceCount;
+            instancedMesh.instanceMatrix.needsUpdate = true;
+            if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
+        });
+    }
+
+    /**
+     * Update link instances
+     */
+    updateLinks() {
+        // Reset instance count
+        this.linkInstanceCount = 0;
+
+        // Update link instances
+        this.links.forEach((link, index) => {
+            const sourceIndex = this.nodeInstances.get(link.source);
+            const targetIndex = this.nodeInstances.get(link.target);
+
+            if (sourceIndex === undefined || targetIndex === undefined) return;
+
+            const sourcePos = new THREE.Vector3(
+                this.nodes[sourceIndex].x,
+                this.nodes[sourceIndex].y,
+                this.nodes[sourceIndex].z
+            );
+            const targetPos = new THREE.Vector3(
+                this.nodes[targetIndex].x,
+                this.nodes[targetIndex].y,
+                this.nodes[targetIndex].z
+            );
+
+            // Calculate link transform
+            const distance = sourcePos.distanceTo(targetPos);
+            this.tempVector.subVectors(targetPos, sourcePos);
+            this.tempQuaternion.setFromUnitVectors(
+                new THREE.Vector3(0, 0, 1),
+                this.tempVector.normalize()
+            );
+
+            this.tempMatrix.compose(
+                sourcePos.lerp(targetPos, 0.5), // Position at midpoint
+                this.tempQuaternion,
+                new THREE.Vector3(1, 1, distance)
+            );
+
+            // Update link instance
+            this.linkInstancedMesh.setMatrixAt(index, this.tempMatrix);
+            
+            const weight = link.weight || 1;
+            const normalizedWeight = Math.min(weight / 10, 1);
+            this.tempColor.copy(this.edgeColor).multiplyScalar(normalizedWeight);
+            this.linkInstancedMesh.setColorAt(index, this.tempColor);
+
+            this.linkInstances.set(`${link.source}-${link.target}`, index);
+            this.linkInstanceCount = Math.max(this.linkInstanceCount, index + 1);
+        });
+
+        // Update link instance mesh
+        this.linkInstancedMesh.count = this.linkInstanceCount;
+        this.linkInstancedMesh.instanceMatrix.needsUpdate = true;
+        if (this.linkInstancedMesh.instanceColor) this.linkInstancedMesh.instanceColor.needsUpdate = true;
+    }
+
+    /**
+     * Update graph visualization
+     */
+    update() {
+        this.updateNodes();
+        this.updateLinks();
+    }
+
+    /**
+     * Clean up resources
      */
     dispose() {
         // Dispose of node resources
-        this.nodeMeshes.forEach(mesh => {
-            if (mesh.geometry) mesh.geometry.dispose();
-            if (mesh.material) {
-                if (Array.isArray(mesh.material)) {
-                    mesh.material.forEach(mat => mat.dispose());
-                } else {
-                    mesh.material.dispose();
-                }
-            }
+        Object.values(this.nodeInstancedMeshes).forEach(instancedMesh => {
+            instancedMesh.geometry.dispose();
+            instancedMesh.material.dispose();
         });
 
-        // Dispose of edge resources
-        this.linkMeshes.forEach(line => {
-            if (line.geometry) line.geometry.dispose();
-            if (line.material) line.material.dispose();
-        });
-
-        // Dispose of pooled resources
-        this.nodeMeshPool.forEach(mesh => {
-            if (mesh.geometry) mesh.geometry.dispose();
-            if (mesh.material) {
-                if (Array.isArray(mesh.material)) {
-                    mesh.material.forEach(mat => mat.dispose());
-                } else {
-                    mesh.material.dispose();
-                }
-            }
-        });
-
-        this.linkMeshPool.forEach(line => {
-            if (line.geometry) line.geometry.dispose();
-            if (line.material) line.material.dispose();
-        });
-
-        // Dispose of shared resources
-        this.geometryPool.forEach(geometry => geometry.dispose());
-        this.materialPool.forEach(material => material.dispose());
-
-        // Clear all collections
-        this.nodeMeshes.clear();
-        this.linkMeshes.clear();
-        this.nodeMeshPool.length = 0;
-        this.linkMeshPool.length = 0;
-        this.geometryPool.clear();
-        this.materialPool.clear();
-
-        // Remove LOD from scene
-        if (this.lod.parent) {
-            this.lod.parent.remove(this.lod);
+        // Dispose of link resources
+        if (this.linkInstancedMesh) {
+            this.linkInstancedMesh.geometry.dispose();
+            this.linkInstancedMesh.material.dispose();
         }
+
+        // Remove from scene
+        this.scene.remove(this.lod);
+        this.scene.remove(this.linkInstancedMesh);
+
+        // Clear collections
+        this.nodeInstances.clear();
+        this.linkInstances.clear();
+        this.nodes = [];
+        this.links = [];
     }
 }

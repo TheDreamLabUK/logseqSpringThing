@@ -7,61 +7,216 @@ const MOVEMENT_SPEED = 0.05;
 const XR_SPRITE_SCALE = 0.5;
 
 /**
- * Initializes the WebXR session for immersive experiences.
- * @param {THREE.WebGLRenderer} renderer - The Three.js renderer.
- * @param {THREE.Scene} scene - The Three.js scene.
- * @param {THREE.PerspectiveCamera} camera - The Three.js camera.
- * @param {EffectsManager} effectsManager - The effects manager instance.
+ * Enhanced XR Session Manager using Three.js WebXR
  */
-export function initXRSession(renderer, scene, camera, effectsManager) {
-    if (!scene || !camera) {
-        console.error('Scene or camera not provided to initXRSession');
-        return;
+class XRSessionManager {
+    constructor(renderer, scene, camera, effectsManager) {
+        this.renderer = renderer;
+        this.scene = scene;
+        this.camera = camera;
+        this.effectsManager = effectsManager;
+        this.referenceSpace = null;
+        this.originalScales = new WeakMap();
+        this.xrInteraction = null;
+        this.sessionActive = false;
+        this.cameraRig = null;
     }
 
-    // Store original sprite scales for restoration
-    const originalScales = new WeakMap();
+    /**
+     * Initialize XR session manager
+     */
+    async init() {
+        try {
+            // Check if XR is supported
+            if (!this.renderer.xr) {
+                console.warn('WebXR not supported by renderer');
+                return;
+            }
 
-    // Initialize hand tracking with enhanced features
-    const xrInteraction = initXRInteraction(scene, camera, renderer);
+            // Enable XR on renderer
+            this.renderer.xr.enabled = true;
 
-    // Configure renderer for XR with optimized settings
-    renderer.xr.enabled = true;
-    renderer.xr.setFramebufferScaleFactor(1.0); // Optimize resolution
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setClearColor(0x000000, 0);
-    renderer.alpha = true;
+            // Initialize camera rig
+            this.initCameraRig();
+
+            // Initialize XR interaction
+            this.xrInteraction = initXRInteraction(this.scene, this.camera, this.renderer);
+
+            // Set up session event handlers
+            this.setupEventHandlers();
+
+        } catch (error) {
+            console.error('Error initializing XR session manager:', error);
+        }
+    }
 
     /**
-     * Handles sprite scaling and visibility for XR
+     * Initialize camera rig with proper hierarchy
+     */
+    initCameraRig() {
+        // Create camera rig if it doesn't exist
+        if (!this.cameraRig) {
+            this.cameraRig = new THREE.Group();
+            this.cameraRig.name = 'cameraRig';
+        }
+
+        // Create camera offset for height adjustment if not already a child of the rig
+        let cameraOffset = this.cameraRig.children.find(child => child.name === 'cameraOffset');
+        if (!cameraOffset) {
+            cameraOffset = new THREE.Group();
+            cameraOffset.name = 'cameraOffset';
+            cameraOffset.position.y = 1.6; // Average eye height
+            this.cameraRig.add(cameraOffset);
+        }
+
+        // Add camera to offset if not already there
+        if (!cameraOffset.children.includes(this.camera)) {
+            this.camera.name = 'xrCamera';
+            cameraOffset.add(this.camera);
+        }
+
+        // Add rig to scene if not already there
+        if (!this.scene.children.includes(this.cameraRig)) {
+            this.scene.add(this.cameraRig);
+        }
+
+        // Set initial positions
+        this.camera.position.set(0, 0, 0);
+        this.cameraRig.position.set(0, 0, 0);
+    }
+
+    /**
+     * Set up session event handlers
+     */
+    setupEventHandlers() {
+        // Session start handler
+        this.renderer.xr.addEventListener('sessionstart', async (event) => {
+            console.log('XR session started');
+            this.sessionActive = true;
+
+            const session = this.renderer.xr.getSession();
+            await this.setupReferenceSpace(session);
+            this.handleXRSprites(true);
+
+            // Initialize camera position
+            this.cameraRig.position.set(0, 0, 0);
+            this.camera.position.set(0, 0, 0);
+
+            window.dispatchEvent(new CustomEvent('xrsessionstart'));
+        });
+
+        // Session end handler
+        this.renderer.xr.addEventListener('sessionend', () => {
+            console.log('XR session ended');
+            this.sessionActive = false;
+            this.handleXRSprites(false);
+            this.resetCameraRig();
+            window.dispatchEvent(new CustomEvent('xrsessionend'));
+        });
+    }
+
+    /**
+     * Add XR button to the scene
+     * @returns {Promise<void>}
+     */
+    async addXRButton() {
+        try {
+            if (!this.renderer.xr.enabled) {
+                console.warn('XR not enabled on renderer');
+                return;
+            }
+
+            const sessionInit = {
+                optionalFeatures: [
+                    'local-floor',
+                    'bounded-floor',
+                    'hand-tracking',
+                    'layers'
+                ]
+            };
+
+            // Check if VR is supported
+            const isVRSupported = await navigator.xr?.isSessionSupported('immersive-vr');
+            
+            if (isVRSupported) {
+                const button = XRButton.createButton(this.renderer, {
+                    mode: 'immersive-vr',
+                    sessionInit,
+                    onSessionStarted: (session) => this.onSessionStarted(session),
+                    onSessionEnded: () => this.onSessionEnded()
+                });
+                document.body.appendChild(button);
+            } else {
+                console.warn('VR not supported on this device');
+            }
+        } catch (error) {
+            console.error('Error adding XR button:', error);
+        }
+    }
+
+    /**
+     * Handle session start
+     * @param {XRSession} session - The XR session
+     */
+    async onSessionStarted(session) {
+        try {
+            await this.setupReferenceSpace(session);
+            this.handleXRSprites(true);
+        } catch (error) {
+            console.error('Error starting XR session:', error);
+        }
+    }
+
+    /**
+     * Handle session end
+     */
+    onSessionEnded() {
+        this.handleXRSprites(false);
+        this.resetCameraRig();
+    }
+
+    /**
+     * Set up reference space with fallback options
+     * @param {XRSession} session - The XR session
+     */
+    async setupReferenceSpace(session) {
+        try {
+            this.referenceSpace = await session.requestReferenceSpace('local-floor');
+            console.log('Using local-floor reference space');
+        } catch (error) {
+            console.warn('Failed to get local-floor reference space:', error);
+            try {
+                this.referenceSpace = await session.requestReferenceSpace('local');
+                console.log('Falling back to local reference space');
+            } catch (error) {
+                console.error('Failed to get any reference space:', error);
+            }
+        }
+    }
+
+    /**
+     * Handle sprite scaling for XR
      * @param {boolean} enteringXR - Whether entering or exiting XR
      */
-    function handleXRSprites(enteringXR) {
-        scene.traverse((object) => {
+    handleXRSprites(enteringXR) {
+        this.scene.traverse((object) => {
             if (object.isSprite) {
                 if (enteringXR) {
-                    // Store original scale
-                    originalScales.set(object, object.scale.clone());
-                    
-                    // Scale for XR
+                    this.originalScales.set(object, object.scale.clone());
                     object.scale.multiplyScalar(XR_SPRITE_SCALE);
                     object.layers.enableAll();
                     
-                    // Optimize sprite texture
                     if (object.material.map) {
                         object.material.map.generateMipmaps = false;
                         object.material.map.minFilter = THREE.LinearFilter;
                         object.material.map.needsUpdate = true;
                     }
                 } else {
-                    // Restore original scale
-                    const originalScale = originalScales.get(object);
+                    const originalScale = this.originalScales.get(object);
                     if (originalScale) {
                         object.scale.copy(originalScale);
                     }
                     
-                    // Reset texture settings
                     if (object.material.map) {
                         object.material.map.generateMipmaps = true;
                         object.material.map.minFilter = THREE.LinearMipmapLinearFilter;
@@ -73,281 +228,161 @@ export function initXRSession(renderer, scene, camera, effectsManager) {
     }
 
     /**
-     * Creates XR session configuration
-     * @param {string} mode - XR session mode
-     * @returns {Object} Session configuration
+     * Reset camera rig to initial position
      */
-    function createSessionConfig(mode) {
-        return {
-            mode: mode,
-            sessionInit: {
-                optionalFeatures: [
-                    'dom-overlay',
-                    'local-floor',
-                    'bounded-floor',
-                    'hand-tracking',
-                    'layers',
-                    mode === 'immersive-ar' ? 'passthrough' : null
-                ].filter(Boolean),
-                domOverlay: { root: document.body }
-            },
-            onSessionStarted: (session) => {
-                console.log(`${mode} session started`);
-                handleXRSprites(true);
-                
-                session.addEventListener('end', () => {
-                    console.log(`${mode} session ended`);
-                    handleXRSprites(false);
-                    window.dispatchEvent(new CustomEvent('xrsessionend'));
-                });
-
-                // Request reference space with fallback
-                requestReferenceSpace(session, renderer);
-                
-                window.dispatchEvent(new CustomEvent('xrsessionstart'));
-            },
-            onSessionEnded: () => {
-                console.log(`${mode} session cleanup`);
-                handleXRSprites(false);
-                
-                // Clear any cached resources
-                originalScales.clear();
-                
-                // Force renderer reset
-                renderer.setPixelRatio(window.devicePixelRatio);
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            }
-        };
-    }
-
-    if ('xr' in navigator) {
-        // Check for AR support first
-        navigator.xr.isSessionSupported('immersive-ar')
-            .then(arSupported => {
-                if (arSupported) {
-                    const xrButton = XRButton.createButton(renderer, createSessionConfig('immersive-ar'));
-                    document.body.appendChild(xrButton);
-                } else {
-                    // Fall back to VR if AR is not supported
-                    return navigator.xr.isSessionSupported('immersive-vr')
-                        .then(vrSupported => {
-                            if (vrSupported) {
-                                const xrButton = XRButton.createButton(renderer, createSessionConfig('immersive-vr'));
-                                document.body.appendChild(xrButton);
-                            } else {
-                                console.warn('Neither AR nor VR is supported');
-                            }
-                        });
-                }
-            })
-            .catch(err => {
-                console.error('Error checking XR session support:', err);
-            });
-
-        // Add session event listeners
-        renderer.xr.addEventListener('sessionstart', (event) => {
-            console.log('XR session started');
-            const session = event.target.getSession();
-            requestReferenceSpace(session, renderer);
-        });
-
-        renderer.xr.addEventListener('sessionend', () => {
-            console.log('XR session ended');
-            // Force a renderer reset
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-    } else {
-        console.warn('WebXR not supported in this browser.');
-    }
-
-    // Handle window resizes
-    window.addEventListener('resize', () => {
-        if (!renderer.xr.isPresenting) {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+    resetCameraRig() {
+        if (this.cameraRig) {
+            this.cameraRig.position.set(0, 0, 0);
+            this.cameraRig.rotation.set(0, 0, 0);
         }
-    });
+        if (this.camera) {
+            this.camera.position.set(0, 0, 0);
+            this.camera.rotation.set(0, 0, 0);
+        }
+    }
 
-    return xrInteraction;
-}
+    /**
+     * Update XR frame
+     * @param {number} timestamp - Frame timestamp
+     * @param {XRFrame} frame - XR frame
+     */
+    update(timestamp, frame) {
+        if (!this.sessionActive || !frame) return;
 
-/**
- * Request reference space with fallback options
- * @param {XRSession} session - The XR session
- * @param {THREE.WebGLRenderer} renderer - The Three.js renderer
- */
-async function requestReferenceSpace(session, renderer) {
-    try {
-        const refSpace = await session.requestReferenceSpace('local-floor');
-        console.log('Got local-floor reference space');
-        renderer.xr.setReferenceSpace(refSpace);
-    } catch (err) {
-        console.warn('Failed to get local-floor reference space:', err);
         try {
-            const refSpace = await session.requestReferenceSpace('local');
-            console.log('Falling back to local reference space');
-            renderer.xr.setReferenceSpace(refSpace);
-        } catch (err) {
-            console.error('Failed to get any reference space:', err);
-        }
-    }
-}
-
-/**
- * Updates camera position based on XR pose with error handling
- * @param {XRFrame} frame - The XR frame
- * @param {XRReferenceSpace} refSpace - The XR reference space
- * @param {THREE.Camera} camera - The Three.js camera
- */
-function updateCameraFromXRPose(frame, refSpace, camera) {
-    if (!frame || !refSpace || !camera) return;
-
-    try {
-        const pose = frame.getViewerPose(refSpace);
-        if (pose) {
-            const view = pose.views[0];
-            if (view) {
-                const position = new THREE.Vector3(
-                    view.transform.position.x,
-                    view.transform.position.y,
-                    view.transform.position.z
-                );
-                camera.position.copy(position);
-            }
-        }
-    } catch (error) {
-        console.error('Error updating camera from XR pose:', error);
-    }
-}
-
-/**
- * Handles the XR session's rendering loop with error recovery
- * @param {THREE.WebGLRenderer} renderer - The Three.js renderer
- * @param {THREE.Scene} scene - The Three.js scene
- * @param {THREE.Camera} camera - The Three.js camera
- * @param {Object} xrInteraction - The XR interaction instance
- * @param {EffectsManager} effectsManager - The effects manager instance
- */
-export function handleXRSession(renderer, scene, camera, xrInteraction, effectsManager) {
-    if (!renderer || !scene || !camera) {
-        console.error('Required parameters missing in handleXRSession');
-        return;
-    }
-
-    let frameCount = 0;
-    const MAX_ERRORS = 5;
-    let errorCount = 0;
-
-    renderer.setAnimationLoop((timestamp, frame) => {
-        if (frame) {
-            try {
-                frameCount++;
-                const session = renderer.xr.getSession();
-                const refSpace = renderer.xr.getReferenceSpace();
-
-                if (session && refSpace) {
-                    updateCameraFromXRPose(frame, refSpace, camera);
-
-                    // Update hand tracking and interactions
-                    if (xrInteraction) {
-                        xrInteraction.update();
-                        handleXRInput(frame, refSpace);
-                    }
-
-                    // Handle input sources
-                    for (const source of session.inputSources) {
-                        if (source?.gamepad?.handedness === 'left') {
-                            handleGamepadInput(source.gamepad, camera);
-                        }
-                    }
-
-                    // Reset error count on successful frames
-                    if (frameCount % 60 === 0) {
-                        errorCount = 0;
-                    }
-                }
-            } catch (error) {
-                console.error('Error in XR frame:', error);
-                errorCount++;
-                
-                // End session if too many errors occur
-                if (errorCount >= MAX_ERRORS) {
-                    console.error('Too many XR errors, ending session');
-                    renderer.xr.getSession()?.end();
-                    return;
+            // Update XR camera pose
+            if (this.referenceSpace) {
+                const pose = frame.getViewerPose(this.referenceSpace);
+                if (pose) {
+                    // Update camera rig based on pose
+                    const position = pose.transform.position;
+                    const orientation = pose.transform.orientation;
+                    
+                    this.cameraRig.position.set(position.x, position.y, position.z);
+                    this.cameraRig.quaternion.set(
+                        orientation.x,
+                        orientation.y,
+                        orientation.z,
+                        orientation.w
+                    );
                 }
             }
-        }
-        
-        // Render the scene using the effects manager
-        if (effectsManager) {
-            effectsManager.animate();
-            effectsManager.render();
-        } else {
-            // Fallback to direct rendering if effects manager is not available
-            renderer.render(scene, camera);
-        }
-    });
-}
 
-/**
- * Handles gamepad input in XR with improved movement
- * @param {Gamepad} gamepad - The XR gamepad
- * @param {THREE.Camera} camera - The Three.js camera
- */
-function handleGamepadInput(gamepad, camera) {
-    if (!gamepad || !camera || !camera.parent) return;
+            // Update XR interaction
+            if (this.xrInteraction) {
+                this.xrInteraction.update();
+                handleXRInput(frame, this.referenceSpace);
+            }
 
-    try {
-        if (gamepad.axes.length >= 2) {
+            // Handle input sources
+            const session = frame.session;
+            for (const inputSource of session.inputSources) {
+                if (inputSource.gamepad) {
+                    this.handleControllerInput(inputSource.gamepad);
+                }
+            }
+
+        } catch (error) {
+            console.error('Error updating XR frame:', error);
+        }
+    }
+
+    /**
+     * Handle controller input
+     * @param {Gamepad} gamepad - The XR gamepad
+     */
+    handleControllerInput(gamepad) {
+        if (!gamepad?.axes || gamepad.axes.length < 2) return;
+
+        try {
             const [x, y] = gamepad.axes;
             const deadzone = 0.1;
 
             if (Math.abs(x) > deadzone || Math.abs(y) > deadzone) {
+                // Get movement direction in camera space
                 const forward = new THREE.Vector3();
-                camera.getWorldDirection(forward);
+                this.camera.getWorldDirection(forward);
                 forward.y = 0;
                 forward.normalize();
 
                 const right = new THREE.Vector3();
                 right.crossVectors(new THREE.Vector3(0, 1, 0), forward);
 
+                // Calculate movement
                 const movement = new THREE.Vector3();
                 movement.addScaledVector(right, x * MOVEMENT_SPEED);
                 movement.addScaledVector(forward, -y * MOVEMENT_SPEED);
 
-                const userGroup = camera.parent;
-                userGroup.position.add(movement);
+                // Apply movement to camera rig
+                this.cameraRig.position.add(movement);
             }
+        } catch (error) {
+            console.error('Error handling controller input:', error);
         }
-    } catch (error) {
-        console.error('Error handling gamepad input:', error);
+    }
+
+    /**
+     * Clean up resources
+     */
+    dispose() {
+        this.originalScales.clear();
+        if (this.xrInteraction) {
+            this.xrInteraction.cleanup();
+        }
     }
 }
 
-/**
- * Updates the XR frame with error handling
- * @param {THREE.WebGLRenderer} renderer - The Three.js renderer
- * @param {THREE.Scene} scene - The Three.js scene
- * @param {THREE.Camera} camera - The Three.js camera
- * @param {Object} xrInteraction - The XR interaction instance
- * @param {EffectsManager} effectsManager - The effects manager instance
- */
-export function updateXRFrame(renderer, scene, camera, xrInteraction, effectsManager) {
-    if (renderer.xr.isPresenting) {
-        try {
-            const session = renderer.xr.getSession();
-            if (session && xrInteraction) {
-                xrInteraction.update();
-            }
-        } catch (error) {
-            console.error('Error updating XR frame:', error);
-        }
+// Export functions
+export function initXRSession(renderer, scene, camera, effectsManager) {
+    // Check if renderer has XR capability
+    if (!renderer.xr) {
+        console.warn('WebXR not supported by renderer');
+        return null;
     }
-    
-    // Use effects manager for rendering if available
+
+    const xrSessionManager = new XRSessionManager(renderer, scene, camera, effectsManager);
+    xrSessionManager.init();
+    return xrSessionManager;
+}
+
+/**
+ * Add XR button to enable VR mode
+ * @param {XRSessionManager} xrSessionManager - The XR session manager
+ * @returns {Promise<void>}
+ */
+export async function addXRButton(xrSessionManager) {
+    if (!xrSessionManager) {
+        console.warn('XR session manager not initialized');
+        return;
+    }
+    await xrSessionManager.addXRButton();
+}
+
+export function handleXRSession(renderer, scene, camera, xrSessionManager, effectsManager) {
+    if (!xrSessionManager) return;
+
+    renderer.setAnimationLoop((timestamp, frame) => {
+        // Update XR session
+        xrSessionManager.update(timestamp, frame);
+
+        // Render scene
+        if (effectsManager) {
+            effectsManager.animate();
+            effectsManager.render();
+        } else {
+            renderer.render(scene, camera);
+        }
+    });
+}
+
+export function updateXRFrame(renderer, scene, camera, xrSessionManager, effectsManager) {
+    if (!xrSessionManager?.sessionActive) return;
+
+    // Update XR session
+    const frame = renderer.xr.getFrame();
+    xrSessionManager.update(performance.now(), frame);
+
+    // Render scene
     if (effectsManager) {
         effectsManager.animate();
         effectsManager.render();
