@@ -231,7 +231,9 @@ export class WebXRVisualization {
         await this.initializeXR();
 
         // Initialize effects after XR setup
-        await this.initializeEffects();
+        if (this.effectsManager) {
+            this.effectsManager.initPostProcessing();
+        }
 
         // Add resize listener
         window.addEventListener('resize', this.onWindowResize);
@@ -241,8 +243,8 @@ export class WebXRVisualization {
     }
 
     async initializeXR() {
-        // Initialize XR session
-        await initXRSession(this.renderer, this.scene, this.camera);
+        // Initialize XR session with effects manager
+        await initXRSession(this.renderer, this.scene, this.camera, this.effectsManager);
 
         // Initialize XR interaction
         const { controllers, hands, xrLabelManager } = await initXRInteraction(
@@ -270,9 +272,9 @@ export class WebXRVisualization {
             this.userGroup.position.set(0, 0, 0);
             this.cameraRig.position.set(0, 0, 0);
             
-            // Disable effects in XR mode
+            // Update effects manager for XR mode
             if (this.effectsManager) {
-                this.effectsManager.dispose();
+                this.effectsManager.handleXRSessionStart();
             }
         });
 
@@ -285,22 +287,10 @@ export class WebXRVisualization {
             this.userGroup.position.set(0, 0, 0);
             this.cameraRig.position.set(0, 0, 0);
             
-            // Reinitialize effects
+            // Update effects manager for desktop mode
             if (this.effectsManager) {
-                requestAnimationFrame(() => {
-                    this.effectsManager.initPostProcessing();
-                });
+                this.effectsManager.handleXRSessionEnd();
             }
-        });
-    }
-
-    async initializeEffects() {
-        // Initialize post-processing with proper timing
-        await new Promise(resolve => {
-            requestAnimationFrame(() => {
-                this.effectsManager.initPostProcessing();
-                resolve();
-            });
         });
     }
 
@@ -317,12 +307,8 @@ export class WebXRVisualization {
             // Animate effects
             this.effectsManager.animate();
 
-            // Render scene
-            if (this.renderer.xr.isPresenting) {
-                this.renderer.render(this.scene, this.camera);
-            } else {
-                this.effectsManager.render();
-            }
+            // Render scene with effects in both desktop and XR modes
+            this.effectsManager.render();
         };
 
         this.renderer.setAnimationLoop(renderFrame);
