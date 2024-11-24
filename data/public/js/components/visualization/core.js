@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { NodeManager } from './nodes.js';
 import { EffectsManager } from './effects.js';
-import { LayoutManager } from './layout.js';
 import { visualizationSettings } from '../../services/visualizationSettings.js';
 import { initXRSession, addXRButton, handleXRSession } from '../../xr/xrSetup.js';
 import { initXRInteraction } from '../../xr/xrInteraction.js';
@@ -11,23 +10,6 @@ import { initXRInteraction } from '../../xr/xrInteraction.js';
 const TRANSLATION_SPEED = 0.01;
 const ROTATION_SPEED = 0.01;
 const VR_MOVEMENT_SPEED = 0.05;
-
-function updateNodeDynamics(nodeManager, updates, isInitialLayout, timeStep) {
-    if (isInitialLayout) {
-        console.log('Applying initial layout positions and velocities');
-        nodeManager.resetSimulation();
-    }
-
-    nodeManager.updateNodeDynamics(updates);
-
-    if (timeStep > 0) {
-        nodeManager.setTimeStep(timeStep);
-    }
-
-    if (nodeManager.isInteractive()) {
-        nodeManager.updatePhysics(updates);
-    }
-}
 
 export class WebXRVisualization {
     constructor(graphDataManager) {
@@ -43,7 +25,6 @@ export class WebXRVisualization {
         this.camera.matrixAutoUpdate = true;
         
         // Set initial camera position for desktop mode
-        // Note: Don't add to scene here, as it will be managed by XR session manager
         this.camera.position.set(0, 1.6, 3);
 
         // Initialize renderer with XR support
@@ -67,7 +48,6 @@ export class WebXRVisualization {
             this.renderer,
             visualizationSettings.getEnvironmentSettings()
         );
-        this.layoutManager = new LayoutManager(visualizationSettings.getLayoutSettings());
 
         this.controls = null;
         this.xrSessionManager = null;
@@ -75,17 +55,10 @@ export class WebXRVisualization {
         this.xrHands = [];
         this.xrLabelManager = null;
 
-        this.animationFrameId = null;
-        this.lastPositionUpdate = 0;
-        this.positionUpdateThreshold = 16;
-
-        this.previousPositions = new Map();
-        this.previousTimes = new Map();
-        this.lastUpdateTime = performance.now();
-
         // Bind methods
         this.onWindowResize = this.onWindowResize.bind(this);
         this.animate = this.animate.bind(this);
+        this.updateVisualization = this.updateVisualization.bind(this);
 
         // Initialize settings and add event listeners
         this.initializeSettings();
@@ -123,8 +96,36 @@ export class WebXRVisualization {
         });
 
         window.addEventListener('binaryPositionUpdate', (event) => {
-            this.handleBinaryPositionUpdate(event.detail);
+            // Apply position updates received from server
+            if (event.detail) {
+                this.applyPositionUpdate(event.detail);
+            }
         });
+    }
+
+    applyPositionUpdate(buffer) {
+        try {
+            const dataView = new Float32Array(buffer);
+            const isInitialLayout = dataView[0] === 1.0;
+            
+            // Skip the first float (isInitialLayout flag)
+            for (let i = 1; i < dataView.length; i += 6) {
+                const nodeId = Math.floor((i - 1) / 6);
+                const x = dataView[i];
+                const y = dataView[i + 1];
+                const z = dataView[i + 2];
+                
+                // Update node position in the visualization
+                const mesh = this.nodeManager.nodeMeshes.get(nodeId);
+                if (mesh) {
+                    mesh.position.set(x, y, z);
+                    // Update connected edges
+                    this.nodeManager.updateEdgesForNode(nodeId);
+                }
+            }
+        } catch (error) {
+            console.error('Error applying position update:', error);
+        }
     }
 
     initializeSettings() {
@@ -253,16 +254,17 @@ export class WebXRVisualization {
     }
 
     updateVisualization(graphData) {
-        if (this.nodeManager && graphData) {
-            // Update nodes
-            if (Array.isArray(graphData.nodes)) {
-                this.nodeManager.updateNodes(graphData.nodes);
-            }
-            
-            // Update edges if available
-            if (Array.isArray(graphData.edges)) {
-                this.nodeManager.updateEdges(graphData.edges);
-            }
+        if (!this.nodeManager || !graphData) return;
+
+        console.log('Updating visualization with new graph data');
+
+        // Update visual representation
+        if (Array.isArray(graphData.nodes)) {
+            this.nodeManager.updateNodes(graphData.nodes);
+        }
+        
+        if (Array.isArray(graphData.edges)) {
+            this.nodeManager.updateEdges(graphData.edges);
         }
     }
 
@@ -302,24 +304,6 @@ export class WebXRVisualization {
                 emissiveMaxIntensity: settings.material.emissiveMax
             };
             this.nodeManager.updateMaterial(materialSettings);
-        }
-
-        if (settings.physics) {
-            // Update physics settings one by one
-            const physicsParamMap = {
-                iterations: 'forceDirectedIterations',
-                spring: 'forceDirectedSpring',
-                repulsion: 'forceDirectedRepulsion',
-                attraction: 'forceDirectedAttraction',
-                damping: 'forceDirectedDamping'
-            };
-
-            // Update each physics parameter individually
-            Object.entries(settings.physics).forEach(([key, value]) => {
-                if (physicsParamMap[key]) {
-                    this.layoutManager.updateFeature(physicsParamMap[key], value);
-                }
-            });
         }
 
         if (settings.bloom) {
@@ -379,7 +363,6 @@ export class WebXRVisualization {
 
         this.nodeManager.dispose();
         this.effectsManager.dispose();
-        this.layoutManager.stopSimulation();
         
         if (this.xrLabelManager) {
             this.xrLabelManager.dispose();
