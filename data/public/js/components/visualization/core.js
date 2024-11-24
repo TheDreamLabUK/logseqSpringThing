@@ -4,8 +4,8 @@ import { NodeManager } from './nodes.js';
 import { EffectsManager } from './effects.js';
 import { LayoutManager } from './layout.js';
 import { visualizationSettings } from '../../services/visualizationSettings.js';
-import { initXRSession, handleXRSession } from '../../xr/xrSetup.js';
-import { initXRInteraction, handleXRInput, XRLabelManager } from '../../xr/xrInteraction.js';
+import { initXRSession, addXRButton, handleXRSession } from '../../xr/xrSetup.js';
+import { initXRInteraction } from '../../xr/xrInteraction.js';
 
 // Constants for Spacemouse sensitivity
 const TRANSLATION_SPEED = 0.01;
@@ -34,33 +34,17 @@ export class WebXRVisualization {
         console.log('WebXRVisualization constructor called');
         this.graphDataManager = graphDataManager;
 
-        // Initialize the scene, camera, and renderer
+        // Initialize the scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x000000);
         
         // Create camera
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
         this.camera.matrixAutoUpdate = true;
-
-        // Create VR camera rig
-        this.cameraRig = new THREE.Group();
-        this.cameraRig.name = 'cameraRig';
-        this.scene.add(this.cameraRig);
-
-        // Create user movement group
-        this.userGroup = new THREE.Group();
-        this.userGroup.name = 'userGroup';
-        this.cameraRig.add(this.userGroup);
         
-        // Set initial camera position and add to user group
-        this.camera.position.set(0, 1.6, 3); // Set initial position at standing height
-        this.userGroup.add(this.camera);
-        
-        console.log('Camera hierarchy:', {
-            camera: this.camera.name || 'camera',
-            parent: this.camera.parent?.name || 'none',
-            grandparent: this.camera.parent?.parent?.name || 'none'
-        });
+        // Set initial camera position for desktop mode
+        // Note: Don't add to scene here, as it will be managed by XR session manager
+        this.camera.position.set(0, 1.6, 3);
 
         // Initialize renderer with XR support
         this.renderer = new THREE.WebGLRenderer({ 
@@ -72,7 +56,6 @@ export class WebXRVisualization {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-        this.renderer.xr.enabled = true;
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -87,6 +70,7 @@ export class WebXRVisualization {
         this.layoutManager = new LayoutManager(visualizationSettings.getLayoutSettings());
 
         this.controls = null;
+        this.xrSessionManager = null;
         this.xrControllers = [];
         this.xrHands = [];
         this.xrLabelManager = null;
@@ -181,7 +165,7 @@ export class WebXRVisualization {
     }
 
     async initThreeJS() {
-        console.log('Initializing Three.js with XR support');
+        console.log('Initializing Three.js');
         const container = document.getElementById('scene-container');
         if (!container) {
             console.error("Could not find 'scene-container' element");
@@ -227,8 +211,8 @@ export class WebXRVisualization {
         // Initialize click handling
         this.nodeManager.initClickHandling(this.renderer);
 
-        // Initialize XR
-        await this.initializeXR();
+        // Initialize basic XR support
+        this.xrSessionManager = await initXRSession(this.renderer, this.scene, this.camera, this.effectsManager);
 
         // Initialize effects after XR setup
         if (this.effectsManager) {
@@ -240,58 +224,11 @@ export class WebXRVisualization {
 
         // Start animation loop
         this.animate();
-    }
-
-    async initializeXR() {
-        // Initialize XR session with effects manager
-        await initXRSession(this.renderer, this.scene, this.camera, this.effectsManager);
-
-        // Initialize XR interaction
-        const { controllers, hands, xrLabelManager } = await initXRInteraction(
-            this.scene,
-            this.camera,
-            this.renderer,
-            (event) => {
-                if (event.detail?.intersection?.object) {
-                    this.nodeManager.handleClick(null, true, event.detail.intersection.object);
-                }
-            }
-        );
-
-        this.xrControllers = controllers;
-        this.xrHands = hands;
-        this.xrLabelManager = xrLabelManager;
-
-        // Setup XR event listeners
-        this.renderer.xr.addEventListener('sessionstart', () => {
-            console.log('XR session started - Disabling OrbitControls');
-            this.controls.enabled = false;
-            this.renderer.domElement.style.pointerEvents = 'none';
-            
-            // Reset positions
-            this.userGroup.position.set(0, 0, 0);
-            this.cameraRig.position.set(0, 0, 0);
-            
-            // Update effects manager for XR mode
-            if (this.effectsManager) {
-                this.effectsManager.handleXRSessionStart();
-            }
-        });
-
-        this.renderer.xr.addEventListener('sessionend', () => {
-            console.log('XR session ended - Enabling OrbitControls');
-            this.controls.enabled = true;
-            
-            // Reset positions
-            this.camera.position.set(0, 1.6, 3);
-            this.userGroup.position.set(0, 0, 0);
-            this.cameraRig.position.set(0, 0, 0);
-            
-            // Update effects manager for desktop mode
-            if (this.effectsManager) {
-                this.effectsManager.handleXRSessionEnd();
-            }
-        });
+        
+        // Add XR button if supported
+        if (this.xrSessionManager) {
+            await addXRButton(this.xrSessionManager);
+        }
     }
 
     animate() {
@@ -307,6 +244,8 @@ export class WebXRVisualization {
             // Render scene with effects in both desktop and XR modes
             if (this.effectsManager) {
                 this.effectsManager.render();
+            } else {
+                this.renderer.render(this.scene, this.camera);
             }
         };
 

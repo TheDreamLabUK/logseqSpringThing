@@ -8,440 +8,315 @@ const PINCH_STRENGTH_THRESHOLD = 0.7;
 const LABEL_SIZE = { width: 256, height: 128 };
 const LABEL_SCALE = { x: 0.5, y: 0.25, z: 1 };
 
-// Resource pools
-const materialPool = new Map();
-const geometryPool = new Map();
-const texturePool = new Map();
-
-// Hand tracking setup
-const handModelFactory = new XRHandModelFactory();
-const hands = { left: null, right: null };
-const grabStates = {
-    left: { grabbedObject: null, pinching: false },
-    right: { grabbedObject: null, pinching: false }
-};
-const pinchIndicators = { left: null, right: null };
-const interactableObjects = new Set();
-
-// XR Label Manager Class
-export class XRLabelManager {
-    constructor(scene, camera) {
+/**
+ * Enhanced XR Interaction Handler
+ */
+class EnhancedXRInteractionHandler {
+    constructor(scene, camera, renderer) {
         this.scene = scene;
         this.camera = camera;
-        this.labels = new Map();
-        this.labelCanvas = document.createElement('canvas');
-        this.labelContext = this.labelCanvas.getContext('2d', {
-            alpha: true,
-            desynchronized: true
-        });
+        this.renderer = renderer;
         
-        // Set canvas size to power of 2
-        this.labelCanvas.width = LABEL_SIZE.width;
-        this.labelCanvas.height = LABEL_SIZE.height;
+        // Hand tracking
+        this.handModelFactory = new XRHandModelFactory();
+        this.hands = { left: null, right: null };
+        this.handModels = { left: null, right: null };
+        
+        // Interaction states
+        this.grabStates = {
+            left: { grabbedObject: null, pinching: false },
+            right: { grabbedObject: null, pinching: false }
+        };
+        
+        // Visual feedback
+        this.pinchIndicators = { left: null, right: null };
+        
+        // Interactable objects
+        this.interactableObjects = new Set();
+        
+        // Resource pools
+        this.materialPool = new Map();
+        this.geometryPool = new Map();
+        
+        // Initialize resources
+        this.initResources();
     }
 
     /**
-     * Get or create a texture for label
-     * @param {string} text - Label text
-     * @returns {THREE.Texture} The texture
+     * Initialize shared resources
      */
-    getTexture(text) {
-        if (texturePool.has(text)) {
-            return texturePool.get(text);
-        }
+    initResources() {
+        // Create pinch indicator geometry
+        const geometry = new THREE.SphereGeometry(0.01, 8, 8);
+        this.geometryPool.set('pinchIndicator', geometry);
 
-        // Clear canvas
-        this.labelContext.clearRect(0, 0, LABEL_SIZE.width, LABEL_SIZE.height);
-        
-        // Draw background
-        this.labelContext.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        this.labelContext.fillRect(0, 0, LABEL_SIZE.width, LABEL_SIZE.height);
-        
-        // Draw text
-        this.labelContext.fillStyle = '#ffffff';
-        this.labelContext.font = '24px Arial';
-        this.labelContext.textBaseline = 'middle';
-        this.labelContext.fillText(text, 10, LABEL_SIZE.height / 2);
-
-        const texture = new THREE.CanvasTexture(this.labelCanvas);
-        texture.generateMipmaps = false;
-        texture.minFilter = THREE.LinearFilter;
-        texture.magFilter = THREE.LinearFilter;
-        
-        texturePool.set(text, texture);
-        return texture;
-    }
-
-    /**
-     * Get or create a material for label
-     * @param {THREE.Texture} texture - The label texture
-     * @returns {THREE.SpriteMaterial} The material
-     */
-    getMaterial(texture) {
-        const key = texture.uuid;
-        if (materialPool.has(key)) {
-            return materialPool.get(key);
-        }
-
-        const material = new THREE.SpriteMaterial({
-            map: texture,
+        // Create pinch indicator material
+        const material = new THREE.MeshPhongMaterial({
+            color: 0x00ff00,
             transparent: true,
-            depthWrite: false,
-            sizeAttenuation: true
+            opacity: 0.5,
+            depthWrite: false
         });
+        this.materialPool.set('pinchIndicator', material);
 
-        materialPool.set(key, material);
-        return material;
+        // Create pinch indicators
+        this.pinchIndicators.left = this.createPinchIndicator();
+        this.pinchIndicators.right = this.createPinchIndicator();
+        this.scene.add(this.pinchIndicators.left);
+        this.scene.add(this.pinchIndicators.right);
     }
 
-    createLabel(text, position) {
+    /**
+     * Initialize hand tracking
+     * @param {XRSession} session - The XR session
+     */
+    async initHandTracking(session) {
         try {
-            const texture = this.getTexture(text);
-            const material = this.getMaterial(texture);
-            const sprite = new THREE.Sprite(material);
-            
-            sprite.position.copy(position);
-            sprite.scale.set(LABEL_SCALE.x, LABEL_SCALE.y, LABEL_SCALE.z);
-            
-            this.scene.add(sprite);
-            this.labels.set(text, sprite);
-            
-            return sprite;
-        } catch (error) {
-            console.error('Error creating label:', error);
-            return null;
-        }
-    }
+            // Set up hand tracking
+            for (const handedness of ['left', 'right']) {
+                const hand = this.renderer.xr.getHand(handedness === 'left' ? 0 : 1);
+                const handModel = this.handModelFactory.createHandModel(hand, 'mesh');
+                
+                this.hands[handedness] = hand;
+                this.handModels[handedness] = handModel;
+                
+                hand.add(handModel);
+                this.scene.add(hand);
 
-    updateLabel(text, position) {
-        const label = this.labels.get(text);
-        if (label) {
-            label.position.copy(position);
-            label.lookAt(this.camera.position);
-        }
-    }
-
-    removeLabel(text) {
-        const label = this.labels.get(text);
-        if (label) {
-            this.scene.remove(label);
-            
-            // Return material and texture to pools
-            if (label.material) {
-                const texture = label.material.map;
-                if (texture) {
-                    texturePool.delete(text);
-                    texture.dispose();
-                }
-                materialPool.delete(label.material.uuid);
-                label.material.dispose();
+                // Add hand input event listeners
+                hand.addEventListener('pinchstart', () => this.onPinchStart(handedness));
+                hand.addEventListener('pinchend', () => this.onPinchEnd(handedness));
             }
+
+            // Set up hand tracking events
+            session.addEventListener('handtracking', (event) => {
+                const hand = event.hand;
+                const handedness = hand.handedness;
+                
+                // Update hand model visibility
+                if (this.handModels[handedness]) {
+                    this.handModels[handedness].visible = hand.visible;
+                }
+            });
+        } catch (error) {
+            console.error('Error initializing hand tracking:', error);
+        }
+    }
+
+    /**
+     * Create visual feedback for pinch state
+     * @returns {THREE.Mesh} Pinch indicator mesh
+     */
+    createPinchIndicator() {
+        const geometry = this.geometryPool.get('pinchIndicator');
+        const material = this.materialPool.get('pinchIndicator').clone();
+        return new THREE.Mesh(geometry, material);
+    }
+
+    /**
+     * Update pinch indicator position and appearance
+     * @param {XRHand} hand - The XR hand
+     * @param {THREE.Mesh} indicator - The pinch indicator mesh
+     */
+    updatePinchIndicator(hand, indicator) {
+        if (!hand?.joints || !indicator) return;
+
+        try {
+            const indexTip = hand.joints['index-finger-tip'];
+            const thumbTip = hand.joints['thumb-tip'];
             
-            this.labels.delete(text);
+            if (indexTip && thumbTip) {
+                // Position indicator between finger and thumb
+                indicator.position.copy(indexTip.position).lerp(thumbTip.position, 0.5);
+                
+                // Update appearance based on pinch strength
+                const { strength } = this.isPinching(hand);
+                indicator.material.opacity = strength * 0.8;
+                indicator.scale.setScalar(1 - (strength * 0.5));
+            }
+        } catch (error) {
+            console.error('Error updating pinch indicator:', error);
         }
     }
 
-    updateAll() {
-        const cameraPosition = this.camera.position;
-        this.labels.forEach(label => {
-            label.lookAt(cameraPosition);
-        });
-    }
+    /**
+     * Check if hand is performing pinch gesture
+     * @param {XRHand} hand - The XR hand
+     * @returns {object} Pinch state and strength
+     */
+    isPinching(hand) {
+        try {
+            const indexTip = hand.joints['index-finger-tip'];
+            const thumbTip = hand.joints['thumb-tip'];
 
-    dispose() {
-        // Dispose of all labels
-        this.labels.forEach((label, text) => {
-            this.removeLabel(text);
-        });
-
-        // Clear pools
-        texturePool.forEach(texture => texture.dispose());
-        materialPool.forEach(material => material.dispose());
-        
-        texturePool.clear();
-        materialPool.clear();
-        
-        // Clear canvas
-        this.labelContext.clearRect(0, 0, LABEL_SIZE.width, LABEL_SIZE.height);
-        this.labelCanvas.width = 1;
-        this.labelCanvas.height = 1;
-    }
-}
-
-// Detect pinch with strength
-function isPinching(hand) {
-    try {
-        const indexTip = hand.joints['index-finger-tip'];
-        const thumbTip = hand.joints['thumb-tip'];
-
-        if (indexTip && thumbTip) {
-            const distance = indexTip.position.distanceTo(thumbTip.position);
-            const strength = Math.max(0, 1 - (distance / PINCH_THRESHOLD));
-            return { isPinched: distance < PINCH_THRESHOLD, strength };
+            if (indexTip && thumbTip) {
+                const distance = indexTip.position.distanceTo(thumbTip.position);
+                const strength = Math.max(0, 1 - (distance / PINCH_THRESHOLD));
+                return { isPinched: distance < PINCH_THRESHOLD, strength };
+            }
+        } catch (error) {
+            console.error('Error detecting pinch:', error);
         }
-    } catch (error) {
-        console.error('Error detecting pinch:', error);
-    }
-    return { isPinched: false, strength: 0 };
-}
-
-// Get or create geometry for pinch indicator
-function getPinchIndicatorGeometry() {
-    const key = 'pinchIndicator';
-    if (geometryPool.has(key)) {
-        return geometryPool.get(key);
+        return { isPinched: false, strength: 0 };
     }
 
-    const geometry = new THREE.SphereGeometry(0.01, 8, 8);
-    geometryPool.set(key, geometry);
-    return geometry;
-}
+    /**
+     * Handle pinch start event
+     * @param {string} handedness - The hand that started pinching
+     */
+    onPinchStart(handedness) {
+        const hand = this.hands[handedness];
+        const grabState = this.grabStates[handedness];
 
-// Get or create material for pinch indicator
-function getPinchIndicatorMaterial() {
-    const key = 'pinchIndicator';
-    if (materialPool.has(key)) {
-        return materialPool.get(key);
-    }
+        if (!hand || grabState.pinching) return;
 
-    const material = new THREE.MeshPhongMaterial({
-        color: 0x00ff00,
-        transparent: true,
-        opacity: 0.5,
-        depthWrite: false
-    });
-    materialPool.set(key, material);
-    return material;
-}
+        try {
+            const indexTip = hand.joints['index-finger-tip'];
+            
+            // Find closest interactable object
+            let closestObject = null;
+            let closestDistance = GRAB_THRESHOLD;
 
-// Create visual feedback sphere for pinch state
-function createPinchIndicator() {
-    const geometry = getPinchIndicatorGeometry();
-    const material = getPinchIndicatorMaterial();
-    return new THREE.Mesh(geometry, material);
-}
+            for (const object of this.interactableObjects) {
+                if (!object.userData.isGrabbed) {
+                    const distance = indexTip.position.distanceTo(object.position);
+                    if (distance < closestDistance) {
+                        closestDistance = distance;
+                        closestObject = object;
+                    }
+                }
+            }
 
-// Update pinch indicator position and appearance
-function updatePinchIndicator(hand, indicator) {
-    if (!hand?.joints || !indicator) return;
+            if (closestObject) {
+                grabState.grabbedObject = closestObject;
+                closestObject.userData.isGrabbed = true;
+                
+                // Highlight grabbed object
+                if (closestObject.material?.emissive) {
+                    closestObject.material.emissive.setHex(0x222222);
+                }
+            }
 
-    try {
-        const indexTip = hand.joints['index-finger-tip'];
-        const thumbTip = hand.joints['thumb-tip'];
-        
-        if (indexTip && thumbTip) {
-            indicator.position.copy(indexTip.position).lerp(thumbTip.position, 0.5);
-            const { strength } = isPinching(hand);
-            indicator.material.opacity = strength * 0.8;
-            indicator.scale.setScalar(1 - (strength * 0.5));
+            grabState.pinching = true;
+        } catch (error) {
+            console.error('Error handling pinch start:', error);
         }
-    } catch (error) {
-        console.error('Error updating pinch indicator:', error);
     }
-}
 
-// Initialize XR interaction
-export function initXRInteraction(scene, camera, renderer, onSelect) {
-    const xrLabelManager = new XRLabelManager(scene, camera);
-    
-    // Create default interactable object geometry and material
-    const interactableGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-    geometryPool.set('interactable', interactableGeometry);
-    
-    const interactableMaterial = new THREE.MeshStandardMaterial({
-        color: 0xff0000,
-        roughness: 0.7,
-        metalness: 0.3
-    });
-    materialPool.set('interactable', interactableMaterial);
+    /**
+     * Handle pinch end event
+     * @param {string} handedness - The hand that ended pinching
+     */
+    onPinchEnd(handedness) {
+        const grabState = this.grabStates[handedness];
 
-    // Create interactable object function
-    const createInteractableObject = (position) => {
-        const geometry = geometryPool.get('interactable');
-        const material = materialPool.get('interactable').clone(); // Clone material for individual control
-        
-        const object = new THREE.Mesh(geometry, material);
-        object.position.copy(position);
+        if (!grabState.pinching) return;
+
+        try {
+            if (grabState.grabbedObject) {
+                grabState.grabbedObject.userData.isGrabbed = false;
+                if (grabState.grabbedObject.material?.emissive) {
+                    grabState.grabbedObject.material.emissive.setHex(0x000000);
+                }
+                grabState.grabbedObject = null;
+            }
+
+            grabState.pinching = false;
+        } catch (error) {
+            console.error('Error handling pinch end:', error);
+        }
+    }
+
+    /**
+     * Make an object interactable
+     * @param {THREE.Object3D} object - The object to make interactable
+     */
+    makeInteractable(object) {
         object.userData.interactable = true;
-        scene.add(object);
-        interactableObjects.add(object);
-        return object;
-    };
+        this.interactableObjects.add(object);
+    }
 
-    // Create default objects
-    createInteractableObject(new THREE.Vector3(0, 1.5, -1));
-    createInteractableObject(new THREE.Vector3(0.2, 1.5, -1));
-    createInteractableObject(new THREE.Vector3(-0.2, 1.5, -1));
+    /**
+     * Remove interactable status from object
+     * @param {THREE.Object3D} object - The object to remove
+     */
+    removeInteractable(object) {
+        object.userData.interactable = false;
+        this.interactableObjects.delete(object);
+    }
 
-    // Initialize pinch indicators
-    pinchIndicators.left = createPinchIndicator();
-    pinchIndicators.right = createPinchIndicator();
-    scene.add(pinchIndicators.left);
-    scene.add(pinchIndicators.right);
-
-    // Set up hand tracking
-    renderer.xr.addEventListener('sessionstart', () => {
-        try {
-            const session = renderer.xr.getSession();
-            
-            hands.left = renderer.xr.getHand(0);
-            hands.right = renderer.xr.getHand(1);
-            
-            // Add hand models
-            for (const [handedness, hand] of Object.entries(hands)) {
-                if (hand) {
-                    const handModel = handModelFactory.createHandModel(hand, 'mesh');
-                    hand.add(handModel);
-                    scene.add(hand);
-                }
-            }
-        } catch (error) {
-            console.error('Error setting up hand tracking:', error);
-        }
-    });
-
-    // Create update function
-    const update = () => {
+    /**
+     * Update interaction state
+     */
+    update() {
         try {
             // Update both hands
-            for (const [handedness, hand] of Object.entries(hands)) {
+            for (const [handedness, hand] of Object.entries(this.hands)) {
                 if (hand?.joints) {
-                    const grabState = grabStates[handedness];
-                    const { isPinched, strength } = isPinching(hand);
+                    const grabState = this.grabStates[handedness];
+                    const { isPinched, strength } = this.isPinching(hand);
                     
-                    updatePinchIndicator(hand, pinchIndicators[handedness]);
+                    this.updatePinchIndicator(hand, this.pinchIndicators[handedness]);
 
                     if (isPinched && strength > PINCH_STRENGTH_THRESHOLD) {
-                        if (!grabState.grabbedObject) {
-                            const indexTip = hand.joints['index-finger-tip'];
-                            
-                            for (const object of interactableObjects) {
-                                const distance = indexTip.position.distanceTo(object.position);
-                                if (distance < GRAB_THRESHOLD && !object.userData.isGrabbed) {
-                                    grabState.grabbedObject = object;
-                                    object.userData.isGrabbed = true;
-                                    object.material.emissive.setHex(0x222222);
-                                    break;
-                                }
-                            }
-                        } else if (grabState.grabbedObject) {
+                        if (grabState.grabbedObject) {
+                            // Update grabbed object position
                             const indexTip = hand.joints['index-finger-tip'];
                             grabState.grabbedObject.position.copy(indexTip.position);
                         }
-                        grabState.pinching = true;
-                    } else if (grabState.pinching) {
-                        if (grabState.grabbedObject) {
-                            grabState.grabbedObject.userData.isGrabbed = false;
-                            grabState.grabbedObject.material.emissive.setHex(0x000000);
-                            grabState.grabbedObject = null;
-                        }
-                        grabState.pinching = false;
                     }
                 }
             }
-
-            // Update labels if in XR
-            if (renderer.xr.isPresenting) {
-                xrLabelManager.updateAll();
-            }
         } catch (error) {
-            console.error('Error in XR update:', error);
+            console.error('Error in XR interaction update:', error);
         }
-    };
+    }
 
-    // Create cleanup function
-    const cleanup = () => {
+    /**
+     * Clean up resources
+     */
+    cleanup() {
         try {
-            // Dispose of all pooled resources
-            geometryPool.forEach(geometry => geometry.dispose());
-            materialPool.forEach(material => material.dispose());
-            
-            // Clear pools
-            geometryPool.clear();
-            materialPool.clear();
-            
-            // Dispose of pinch indicators
-            Object.values(pinchIndicators).forEach(indicator => {
+            // Dispose of geometries
+            this.geometryPool.forEach(geometry => geometry.dispose());
+            this.geometryPool.clear();
+
+            // Dispose of materials
+            this.materialPool.forEach(material => material.dispose());
+            this.materialPool.clear();
+
+            // Remove pinch indicators
+            Object.values(this.pinchIndicators).forEach(indicator => {
                 if (indicator) {
                     if (indicator.geometry) indicator.geometry.dispose();
                     if (indicator.material) indicator.material.dispose();
-                    scene.remove(indicator);
+                    this.scene.remove(indicator);
                 }
             });
-            
-            // Dispose of hand models
-            Object.values(hands).forEach(hand => {
-                if (hand) {
-                    scene.remove(hand);
-                }
-            });
-            
-            // Clear interactable objects
-            interactableObjects.clear();
-            
-            // Dispose of label manager
-            xrLabelManager.dispose();
-        } catch (error) {
-            console.error('Error cleaning up XR resources:', error);
-        }
-    };
 
-    return {
-        hands: Object.values(hands),
-        controllers: [],
-        xrLabelManager,
-        update,
-        cleanup,
-        addInteractableObject: (object) => {
-            object.userData.interactable = true;
-            interactableObjects.add(object);
-        },
-        removeInteractableObject: (object) => {
-            interactableObjects.delete(object);
+            // Remove hand models
+            Object.values(this.hands).forEach(hand => {
+                if (hand) {
+                    this.scene.remove(hand);
+                }
+            });
+
+            // Clear collections
+            this.interactableObjects.clear();
+            this.grabStates.left = { grabbedObject: null, pinching: false };
+            this.grabStates.right = { grabbedObject: null, pinching: false };
+        } catch (error) {
+            console.error('Error cleaning up XR interaction:', error);
         }
-    };
+    }
 }
 
-// Handle XR input
-export function handleXRInput(frame, referenceSpace) {
-    try {
-        // Update both hands
-        for (const [handedness, hand] of Object.entries(hands)) {
-            if (hand?.joints) {
-                const grabState = grabStates[handedness];
-                const { isPinched, strength } = isPinching(hand);
-                
-                updatePinchIndicator(hand, pinchIndicators[handedness]);
+// Export functions
+export function initXRInteraction(scene, camera, renderer) {
+    return new EnhancedXRInteractionHandler(scene, camera, renderer);
+}
 
-                if (isPinched && strength > PINCH_STRENGTH_THRESHOLD) {
-                    if (!grabState.grabbedObject) {
-                        const indexTip = hand.joints['index-finger-tip'];
-                        
-                        for (const object of interactableObjects) {
-                            const distance = indexTip.position.distanceTo(object.position);
-                            if (distance < GRAB_THRESHOLD && !object.userData.isGrabbed) {
-                                grabState.grabbedObject = object;
-                                object.userData.isGrabbed = true;
-                                object.material.emissive.setHex(0x222222);
-                                break;
-                            }
-                        }
-                    } else if (grabState.grabbedObject) {
-                        const indexTip = hand.joints['index-finger-tip'];
-                        grabState.grabbedObject.position.copy(indexTip.position);
-                    }
-                    grabState.pinching = true;
-                } else if (grabState.pinching) {
-                    if (grabState.grabbedObject) {
-                        grabState.grabbedObject.userData.isGrabbed = false;
-                        grabState.grabbedObject.material.emissive.setHex(0x000000);
-                        grabState.grabbedObject = null;
-                    }
-                    grabState.pinching = false;
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Error handling XR input:', error);
-    }
+export function handleXRInput(frame, referenceSpace) {
+    // This function is now handled internally by EnhancedXRInteractionHandler
+    // Left for backward compatibility
 }
