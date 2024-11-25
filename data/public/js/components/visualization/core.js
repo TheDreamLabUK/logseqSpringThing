@@ -24,8 +24,14 @@ export class WebXRVisualization {
         this.scene.background = new THREE.Color(0x111111);
         
         // Create camera with optimized initial position for graph viewing
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-        this.camera.position.set(0, 2, 5); // Positioned closer for better visibility
+        this.camera = new THREE.PerspectiveCamera(
+            50, // Narrower FOV for better depth perception
+            window.innerWidth / window.innerHeight,
+            0.1,
+            2000
+        );
+        // Position camera further back for better overview of large graphs
+        this.camera.position.set(0, 15, 50);
         this.camera.lookAt(0, 0, 0);
 
         // Create and initialize canvas
@@ -165,29 +171,38 @@ export class WebXRVisualization {
         console.log('Initializing settings');
         
         // Add a grid helper for spatial reference
-        const gridHelper = new THREE.GridHelper(20, 20, 0x555555, 0x282828);
+        const gridHelper = new THREE.GridHelper(100, 100, 0x555555, 0x282828);
+        gridHelper.position.y = -10; // Move grid down for better perspective
         this.scene.add(gridHelper);
 
-        // Add ambient light for base illumination (reduced intensity for better contrast)
-        const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
+        // Add ambient light for base illumination
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
         this.scene.add(ambientLight);
 
         // Add directional light for shadows and highlights
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 2.0);
-        directionalLight.position.set(5, 5, 5);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        directionalLight.position.set(10, 20, 10);
         directionalLight.castShadow = true;
+        
+        // Increase shadow map size for better quality
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        directionalLight.shadow.camera.near = 0.5;
+        directionalLight.shadow.camera.far = 200;
+        directionalLight.shadow.bias = -0.0001;
+        
         this.scene.add(directionalLight);
 
         // Add point lights for better illumination
-        const pointLight1 = new THREE.PointLight(0xffffff, 1.0, 50);
-        pointLight1.position.set(10, 10, 10);
+        const pointLight1 = new THREE.PointLight(0xffffff, 0.3, 200);
+        pointLight1.position.set(50, 50, 50);
         this.scene.add(pointLight1);
 
-        const pointLight2 = new THREE.PointLight(0xffffff, 1.0, 50);
-        pointLight2.position.set(-10, -10, -10);
+        const pointLight2 = new THREE.PointLight(0xffffff, 0.3, 200);
+        pointLight2.position.set(-50, -50, -50);
         this.scene.add(pointLight2);
 
-        // Add subtle fog for depth
+        // Add very subtle fog for depth
         const envSettings = visualizationSettings.getEnvironmentSettings();
         this.scene.fog = new THREE.FogExp2(0x111111, envSettings.fogDensity || 0.001);
     }
@@ -222,7 +237,7 @@ export class WebXRVisualization {
         
         if (this.xrSessionManager) {
             await addXRButton(this.xrSessionManager);
-        }
+    }
     }
 
     animate() {
@@ -476,7 +491,7 @@ export class WebXRVisualization {
                 this.nodeManager.updateNodePositions(positions);
             } else {
                 console.warn('Invalid position update format:', update);
-            }
+        }
         } catch (error) {
             console.error('Error applying position update:', error);
         }

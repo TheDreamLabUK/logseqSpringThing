@@ -15,14 +15,14 @@ export class VisualizationSettings {
             
             // Edge settings
             edgeColor: '#FFD700',             // Golden
-            edgeOpacity: 0.4,
+            edgeOpacity: 0.3,                 // Reduced from 0.4
             edgeWeightNormalization: 12.0,
-            edgeMinWidth: 1.5,
-            edgeMaxWidth: 6.0,
+            edgeMinWidth: 1.0,                // Reduced from 1.5
+            edgeMaxWidth: 4.0,                // Reduced from 6.0
             
             // Node sizes and dimensions (in meters)
-            minNodeSize: 0.15,                // 15cm minimum node size
-            maxNodeSize: 0.4,                 // 40cm maximum node size
+            minNodeSize: 0.3,                 // Increased from 0.15
+            maxNodeSize: 0.6,                 // Increased from 0.4
             nodeAgeMaxDays: 30,
             
             // Hologram settings
@@ -32,13 +32,13 @@ export class VisualizationSettings {
             
             // Material settings
             material: {
-                metalness: 0.3,
-                roughness: 0.5,
-                clearcoat: 0.8,
-                clearcoatRoughness: 0.1,
-                opacity: 0.95,
-                emissiveMinIntensity: 0.0,
-                emissiveMaxIntensity: 0.3
+                metalness: 0.2,               // Reduced from 0.3
+                roughness: 0.7,               // Increased from 0.5
+                clearcoat: 0.5,               // Reduced from 0.8
+                clearcoatRoughness: 0.2,      // Increased from 0.1
+                opacity: 0.9,                 // Reduced from 0.95
+                emissiveMinIntensity: 0.1,    // Increased from 0.0
+                emissiveMaxIntensity: 0.4     // Increased from 0.3
             },
             
             // Force-directed layout settings
@@ -49,18 +49,18 @@ export class VisualizationSettings {
             damping: 0.85,
             
             // Environment settings
-            fogDensity: 0.001,
+            fogDensity: 0.0005,              // Reduced from 0.001
             
             // Label settings
-            labelFontSize: 42,
+            labelFontSize: 32,                // Reduced from 42
             labelFontFamily: 'Arial',
-            labelPadding: 24,
-            labelVerticalOffset: 2.5,
-            labelCloseOffset: 0.25,
-            labelBackgroundColor: 'rgba(0, 0, 0, 0.85)',
+            labelPadding: 16,                 // Reduced from 24
+            labelVerticalOffset: 0.8,         // Reduced from 2.5
+            labelCloseOffset: 0.2,
+            labelBackgroundColor: 'rgba(0, 0, 0, 0.7)', // More transparent
             labelTextColor: 'white',
-            labelInfoTextColor: 'lightgray',
-            labelXRFontSize: 28,
+            labelInfoTextColor: '#cccccc',    // Slightly darker for better contrast
+            labelXRFontSize: 24,
             
             // Geometry settings
             geometryMinSegments: 24,
@@ -72,15 +72,15 @@ export class VisualizationSettings {
             clickFeedbackDuration: 250,
             
             // Bloom settings
-            nodeBloomStrength: 0.8,
-            nodeBloomRadius: 0.3,
-            nodeBloomThreshold: 0.2,
-            edgeBloomStrength: 0.6,
-            edgeBloomRadius: 0.4,
-            edgeBloomThreshold: 0.1,
-            environmentBloomStrength: 0.7,
+            nodeBloomStrength: 0.6,           // Reduced from 0.8
+            nodeBloomRadius: 0.4,             // Increased from 0.3
+            nodeBloomThreshold: 0.3,          // Increased from 0.2
+            edgeBloomStrength: 0.4,           // Reduced from 0.6
+            edgeBloomRadius: 0.3,             // Reduced from 0.4
+            edgeBloomThreshold: 0.2,          // Increased from 0.1
+            environmentBloomStrength: 0.5,     // Reduced from 0.7
             environmentBloomRadius: 0.3,
-            environmentBloomThreshold: 0.1,
+            environmentBloomThreshold: 0.2,    // Increased from 0.1
 
             // Fisheye settings
             fisheye: {
@@ -240,5 +240,5 @@ export class VisualizationSettings {
     }
 }
 
-// Create and export a singleton instance
+// Create and export singleton instance
 export const visualizationSettings = new VisualizationSettings();

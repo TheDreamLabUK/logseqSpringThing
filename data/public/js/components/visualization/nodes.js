@@ -47,6 +47,10 @@ export class NodeManager {
 
         this.xrEnabled = false;
         this.xrLabelManager = null;
+
+        // Create frustum for label visibility checks
+        this.frustum = new THREE.Frustum();
+        this.projScreenMatrix = new THREE.Matrix4();
     }
 
     handleSettingsUpdate(event) {
@@ -151,8 +155,8 @@ export class NodeManager {
     formatNodeNameToUrl(nodeName) {
         // Get base URL from environment or default to logseq
         const baseUrl = 'https://www.narrativegoldmine.com';
-        // Convert node name to lowercase and replace spaces with dashes
-        const formattedName = nodeName.toLowerCase().replace(/ /g, '-');
+        // Convert node name to lowercase and properly encode for URLs
+        const formattedName = encodeURIComponent(nodeName.toLowerCase());
         return `${baseUrl}/#/page/${formattedName}`;
     }
 
@@ -262,9 +266,10 @@ export class NodeManager {
         const infoMetrics = context.measureText(infoText);
         const textWidth = Math.max(nameMetrics.width, infoMetrics.width);
         
-        // Calculate power-of-2 dimensions
-        const canvasWidth = Math.pow(2, Math.ceil(Math.log2(textWidth + 20)));
-        const canvasHeight = Math.pow(2, Math.ceil(Math.log2(this.labelFontSize * 2 + 30)));
+        // Calculate power-of-2 dimensions with padding
+        const padding = 20;
+        const canvasWidth = Math.pow(2, Math.ceil(Math.log2(textWidth + padding * 2)));
+        const canvasHeight = Math.pow(2, Math.ceil(Math.log2(this.labelFontSize * 3)));
 
         // Set canvas size
         canvas.width = canvasWidth;
@@ -273,27 +278,38 @@ export class NodeManager {
         // Clear canvas with transparent background
         context.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw semi-transparent background
+        // Draw semi-transparent background with rounded corners
         context.fillStyle = visualizationSettings.getLabelSettings().backgroundColor;
-        context.fillRect(0, 0, canvas.width, canvas.height);
+        const cornerRadius = 8;
+        this.roundRect(context, 0, 0, canvas.width, canvas.height, cornerRadius);
 
         // Reset font after canvas resize
         context.font = `${this.labelFontSize}px ${visualizationSettings.getLabelSettings().fontFamily}`;
-        context.textBaseline = 'top';
+        context.textBaseline = 'middle';
         context.textAlign = 'left';
 
         // Enable text anti-aliasing
         context.imageSmoothingEnabled = true;
         context.imageSmoothingQuality = 'high';
 
-        // Draw main text
+        // Draw main text with shadow
+        context.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        context.shadowBlur = 4;
+        context.shadowOffsetX = 2;
+        context.shadowOffsetY = 2;
         context.fillStyle = visualizationSettings.getLabelSettings().textColor;
-        context.fillText(text, 10, this.labelFontSize / 2);
+        context.fillText(text, padding, canvas.height * 0.35);
+        
+        // Reset shadow for info text
+        context.shadowColor = 'transparent';
+        context.shadowBlur = 0;
+        context.shadowOffsetX = 0;
+        context.shadowOffsetY = 0;
         
         // Draw info text
-        context.font = `${this.labelFontSize / 2}px ${visualizationSettings.getLabelSettings().fontFamily}`;
+        context.font = `${this.labelFontSize * 0.6}px ${visualizationSettings.getLabelSettings().fontFamily}`;
         context.fillStyle = visualizationSettings.getLabelSettings().infoTextColor;
-        context.fillText(infoText, 10, this.labelFontSize * 1.5);
+        context.fillText(infoText, padding, canvas.height * 0.7);
 
         // Create optimized texture
         const texture = new THREE.CanvasTexture(canvas);
@@ -332,6 +348,22 @@ export class NodeManager {
         canvas.height = 1;
 
         return sprite;
+    }
+
+    // Helper function for rounded rectangles
+    roundRect(ctx, x, y, width, height, radius) {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+        ctx.fill();
     }
 
     handleClick(event, isXR = false, intersectedObject = null) {
@@ -574,19 +606,58 @@ export class NodeManager {
     }
 
     updateLabelOrientations(camera) {
+        // Update frustum for visibility checks
+        this.projScreenMatrix.multiplyMatrices(
+            camera.projectionMatrix,
+            camera.matrixWorldInverse
+        );
+        this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
+
         this.nodeLabels.forEach((label, nodeId) => {
             const mesh = this.nodeMeshes.get(nodeId);
             if (mesh) {
                 const size = mesh.geometry.parameters.radius || 
                            mesh.geometry.parameters.width || 
                            this.minNodeSize;
-                const labelOffset = size * 1.5; // Increased offset
+                
+                // Get label settings
+                const labelSettings = visualizationSettings.getLabelSettings();
+                const verticalOffset = labelSettings.verticalOffset || 0.8;
+                
+                // Calculate label position with proper offset
+                const labelOffset = size * 3.0 * verticalOffset; // Increased offset for better visibility
+                
+                // Position label above node
                 label.position.set(
                     mesh.position.x,
                     mesh.position.y + labelOffset,
                     mesh.position.z
                 );
+
+                // Make label face camera
                 label.lookAt(camera.position);
+
+                // Calculate distance to camera
+                const distance = camera.position.distanceTo(mesh.position);
+                
+                // Scale label based on distance with improved visibility
+                const baseScale = 0.8; // Base scale factor
+                const distanceScale = Math.max(0.8, Math.min(2.0, distance * 0.04));
+                const finalScale = baseScale * distanceScale;
+                
+                // Apply scale
+                label.scale.set(finalScale, finalScale, 1);
+
+                // Check if node is in view frustum and not too far
+                const inView = this.frustum.containsPoint(mesh.position);
+                const notTooFar = distance < 100;
+                label.visible = inView && notTooFar;
+
+                // Adjust opacity based on distance
+                if (label.material) {
+                    const opacity = Math.max(0.2, 1 - (distance / 100));
+                    label.material.opacity = opacity;
+                }
             }
         });
     }
@@ -652,37 +723,6 @@ export class NodeManager {
             emissiveMinIntensity: settings.emissiveMinIntensity ?? this.materialSettings.emissiveMinIntensity,
             emissiveMaxIntensity: settings.emissiveMaxIntensity ?? this.materialSettings.emissiveMaxIntensity
         };
-
-        // Update all existing node materials
-        this.nodeMeshes.forEach((mesh, nodeId) => {
-            const nodeData = this.nodeData.get(nodeId);
-            if (nodeData && mesh.material) {
-                // Create new material with updated settings
-                mesh.material.dispose(); // Dispose old material
-                mesh.material = this.createNodeMaterial(mesh.material.color, nodeData.metadata || {});
-            }
-        });
-    }
-
-    updateEdgesForNode(nodeId) {
-        this.edgeMeshes.forEach((line, edgeKey) => {
-            const [source, target] = edgeKey.split('-');
-            if (source === nodeId || target === nodeId) {
-                const positions = line.geometry.attributes.position.array;
-                const sourceMesh = this.nodeMeshes.get(source);
-                const targetMesh = this.nodeMeshes.get(target);
-
-                if (sourceMesh && targetMesh) {
-                    positions[0] = sourceMesh.position.x;
-                    positions[1] = sourceMesh.position.y;
-                    positions[2] = sourceMesh.position.z;
-                    positions[3] = targetMesh.position.x;
-                    positions[4] = targetMesh.position.y;
-                    positions[5] = targetMesh.position.z;
-                    line.geometry.attributes.position.needsUpdate = true;
-                }
-            }
-        });
     }
 
     getNodePositions() {

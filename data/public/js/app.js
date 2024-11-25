@@ -39,6 +39,7 @@ export class App {
     }
 
     async initializeApp() {
+        console.log('DOM ready state:', document.readyState);
         console.log('Initializing Application - Step 1: Services');
 
         // Initialize Services
@@ -136,9 +137,16 @@ export class App {
         try {
             console.log('Initializing Vue application');
             
-            const self = this; // Store reference to the App instance
+            // Verify app container exists
+            const appContainer = document.getElementById('app');
+            if (!appContainer) {
+                throw new Error("Could not find '#app' element");
+            }
+            console.log('Found app container:', appContainer);
+
+            const self = this;
             
-            // Create Vue app with explicit template and debug styling
+            // Create Vue app with debug styling
             const app = createApp({
                 components: {
                     ControlPanel
@@ -152,11 +160,20 @@ export class App {
                     </div>
                 `,
                 setup() {
+                    // Verify websocketService is available
+                    if (!self.websocketService) {
+                        console.error('WebsocketService not initialized');
+                    }
+                    
                     return {
                         websocketService: self.websocketService,
                         handleControlChange: (change) => {
                             console.log('Control changed:', change);
-                            self.visualization.updateSettings(change);
+                            if (self.visualization) {
+                                self.visualization.updateSettings(change);
+                            } else {
+                                console.error('Visualization not initialized');
+                            }
                         }
                     };
                 }
@@ -169,11 +186,6 @@ export class App {
             };
 
             // Mount with verification
-            const appContainer = document.getElementById('app');
-            if (!appContainer) {
-                throw new Error("Could not find '#app' element");
-            }
-
             app.mount('#app');
             this.vueApp = app;
 

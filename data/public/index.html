@@ -30,7 +30,7 @@
             z-index: 1000;
             pointer-events: none;
         }
-        #app * {
+        #app > * {
             pointer-events: auto;
         }
         #connection-status {
@@ -49,6 +49,13 @@
         #connection-status.disconnected {
             background-color: #dc3545;
             color: white;
+        }
+        /* Debug styles */
+        #app {
+            border: 1px solid blue;
+        }
+        #app > div {
+            border: 1px solid green;
         }
     </style>
 </head>
