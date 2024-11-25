@@ -71,41 +71,12 @@ export class EffectsManager {
             }
 
             // Configure renderer
-            this.renderer.autoClear = false;
+            this.renderer.autoClear = true; // Changed to true for direct rendering
             this.isXRActive = isXR;
             
-            // Initialize effects with mode-specific settings
-            const bloomSettings = visualizationSettings.getBloomSettings();
-            if (isXR) {
-                // Adjust settings for XR
-                bloomSettings.nodeBloomStrength *= 0.8;
-                bloomSettings.edgeBloomRadius *= 0.7;
-                bloomSettings.environmentBloomThreshold *= 1.2;
-            }
-            
-            // Initialize bloom first
-            console.log('Initializing bloom effect');
-            this.bloomEffect = new BloomEffect(this.renderer, this.scene, this.camera);
-            await this.bloomEffect.init(bloomSettings);
-            
-            // Get bloom render targets
-            const bloomRenderTargets = this.bloomEffect.getRenderTargets();
-            if (!bloomRenderTargets) {
-                throw new Error('Failed to get bloom render targets');
-            }
-            
-            // Store XR-specific render targets if needed
-            if (isXR) {
-                this.xrRenderTargets = bloomRenderTargets;
-            }
-            
-            // Initialize composition effect
-            console.log('Initializing composition effect');
-            this.compositionEffect = new CompositionEffect(this.renderer);
-            await this.compositionEffect.init(bloomRenderTargets);
-            
+            // Initialize with basic settings
             this.initialized = true;
-            console.log('Post-processing initialization complete');
+            console.log('Basic rendering initialization complete');
             return true;
         } catch (error) {
             console.error('Error in post-processing initialization:', error);
@@ -115,35 +86,14 @@ export class EffectsManager {
     }
     
     render() {
-        if (!this.initialized || !this.bloomEffect || !this.compositionEffect) {
-            throw new Error('Effects not properly initialized');
-        }
-
         try {
             const currentCamera = this.isXRActive ? this.renderer.xr.getCamera() : this.camera;
             
-            // Clear everything
-            this.renderer.clear(true, true, true);
-
-            // Render bloom layers
-            this.bloomEffect.render(currentCamera);
-            
-            // Get appropriate render targets
-            const renderTargets = this.isXRActive ? this.xrRenderTargets : this.bloomEffect.getRenderTargets();
-            if (!renderTargets) {
-                throw new Error('No render targets available');
-            }
-            
-            const baseTexture = renderTargets.get(LAYERS.BLOOM).texture;
-            if (!baseTexture) {
-                throw new Error('No base texture available');
-            }
-            
-            // Reset camera to normal layer and render final composition
-            currentCamera.layers.set(LAYERS.NORMAL_LAYER);
-            this.compositionEffect.render(baseTexture);
+            // Simple direct rendering without effects
+            this.renderer.render(this.scene, currentCamera);
         } catch (error) {
-            throw new Error(`Error during effect rendering: ${error.message}`);
+            console.error('Error during rendering:', error);
+            throw error;
         }
     }
     
@@ -153,12 +103,8 @@ export class EffectsManager {
         }
 
         try {
-            if (this.bloomEffect) {
-                this.bloomEffect.resize(width, height);
-            }
-            if (this.compositionEffect) {
-                this.compositionEffect.resize(width, height);
-            }
+            // Update renderer size
+            this.renderer.setSize(width, height);
         } catch (error) {
             console.error('Error handling resize:', error);
             throw error;
@@ -166,41 +112,13 @@ export class EffectsManager {
     }
     
     updateBloom(settings) {
-        if (!this.initialized || !this.bloomEffect) {
-            return;
-        }
-
-        try {
-            // Adjust settings for XR if needed
-            if (this.isXRActive) {
-                settings = {
-                    ...settings,
-                    nodeBloomStrength: settings.nodeBloomStrength * 0.8,
-                    edgeBloomRadius: settings.edgeBloomRadius * 0.7,
-                    environmentBloomThreshold: settings.environmentBloomThreshold * 1.2
-                };
-            }
-            
-            // Reinitialize bloom with new settings
-            this.bloomEffect.init(settings);
-            
-            // Reinitialize composition effect with updated bloom render targets
-            const bloomRenderTargets = this.bloomEffect.getRenderTargets();
-            if (bloomRenderTargets) {
-                if (this.isXRActive) {
-                    this.xrRenderTargets = bloomRenderTargets;
-                }
-                this.compositionEffect.init(bloomRenderTargets);
-            }
-        } catch (error) {
-            console.error('Error updating bloom settings:', error);
-            throw error;
-        }
+        // Disabled for now
+        console.log('Bloom effects temporarily disabled');
     }
     
     updateFisheye(settings) {
-        // Placeholder for future fisheye effect implementation
-        console.log('Fisheye effect not yet implemented');
+        // Disabled for now
+        console.log('Fisheye effect temporarily disabled');
     }
     
     dispose() {
@@ -212,16 +130,6 @@ export class EffectsManager {
             if (this.renderer) {
                 this.renderer.autoClear = this.originalAutoClear;
                 this.renderer.setClearColor(this.originalClearColor, this.originalClearAlpha);
-            }
-            
-            // Dispose effects
-            if (this.bloomEffect) {
-                this.bloomEffect.dispose();
-                this.bloomEffect = null;
-            }
-            if (this.compositionEffect) {
-                this.compositionEffect.dispose();
-                this.compositionEffect = null;
             }
             
             // Clear XR render targets

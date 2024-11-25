@@ -69,13 +69,7 @@ export class GraphDataManager {
         };
 
         // Notify visualization of position updates
-        window.dispatchEvent(new CustomEvent('graphDataUpdated', { 
-            detail: {
-                nodes: this.graphData.nodes,
-                edges: this.graphData.edges,
-                metadata: this.graphData.metadata
-            }
-        }));
+        this.dispatchGraphUpdate();
     }
 
     handleGraphUpdate(data) {
@@ -85,6 +79,30 @@ export class GraphDataManager {
             return;
         }
         this.updateGraphData(data.graphData);
+    }
+
+    // Helper function to generate initial positions in a sphere
+    generateInitialPositions(count) {
+        const positions = [];
+        const radius = 20; // Initial sphere radius
+        const phi = Math.PI * (3 - Math.sqrt(5)); // Golden angle
+
+        for (let i = 0; i < count; i++) {
+            const y = 1 - (i / (count - 1)) * 2; // y goes from 1 to -1
+            const radius_at_y = Math.sqrt(1 - y * y); // radius at y
+            const theta = phi * i; // Golden angle increment
+
+            const x = Math.cos(theta) * radius_at_y;
+            const z = Math.sin(theta) * radius_at_y;
+
+            positions.push({
+                x: x * radius,
+                y: y * radius,
+                z: z * radius
+            });
+        }
+
+        return positions;
     }
 
     updateGraphData(newData) {
@@ -99,10 +117,15 @@ export class GraphDataManager {
         const metadata = newData.metadata || {};
         console.log('Received metadata:', metadata);
 
+        let nodes = [];
+        let edges = [];
+
         // Handle the case where newData already has nodes and edges arrays
         if (Array.isArray(newData.nodes) && Array.isArray(newData.edges)) {
-            // Integrate new positions with existing velocities and metadata
-            const nodes = newData.nodes.map(node => {
+            console.log('Processing complete graph data with nodes and edges');
+            
+            // Process nodes with existing positions
+            nodes = newData.nodes.map(node => {
                 const existingNode = this.graphData?.nodes?.find(n => n.id === node.id);
                 const nodeMetadata = metadata[`${node.id}.md`] || {};
                 
@@ -115,52 +138,75 @@ export class GraphDataManager {
                 };
             });
 
-            this.graphData = {
-                nodes,
-                edges: newData.edges,
-                metadata
-            };
+            edges = newData.edges;
         }
         // Handle the case where we need to construct nodes from edges
         else if (Array.isArray(newData.edges)) {
+            console.log('Constructing nodes from edges');
+            
+            // Extract unique node IDs from edges
             const nodeSet = new Set();
             newData.edges.forEach(edge => {
                 nodeSet.add(edge.source);
                 nodeSet.add(edge.target);
             });
 
-            const nodes = Array.from(nodeSet).map(id => {
+            // Generate initial positions for nodes
+            const initialPositions = this.generateInitialPositions(nodeSet.size);
+            
+            // Create nodes with positions
+            nodes = Array.from(nodeSet).map((id, index) => {
                 const existingNode = this.graphData?.nodes?.find(n => n.id === id);
                 const nodeMetadata = metadata[`${id}.md`] || {};
+                const position = existingNode || initialPositions[index];
                 
                 return {
                     id,
                     label: id,
-                    x: existingNode?.x || 0,
-                    y: existingNode?.y || 0,
-                    z: existingNode?.z || 0,
+                    x: position.x,
+                    y: position.y,
+                    z: position.z,
                     metadata: nodeMetadata
                 };
             });
 
-            this.graphData = {
-                nodes,
-                edges: newData.edges.map(e => ({
-                    source: e.source,
-                    target: e.target,
-                    weight: e.weight,
-                    hyperlinks: e.hyperlinks
-                })),
-                metadata
-            };
+            edges = newData.edges;
         } else {
-            console.error('Received invalid graph data:', newData);
+            console.error('Invalid graph data format:', newData);
             return;
         }
 
-        console.log(`Graph data updated: ${this.graphData.nodes.length} nodes, ${this.graphData.edges.length} edges`);
+        // Process edges
+        const processedEdges = edges.map(edge => ({
+            source: edge.source,
+            target: edge.target,
+            weight: edge.weight || 1,
+            hyperlinks: edge.hyperlinks || []
+        }));
+
+        // Update graph data
+        this.graphData = {
+            nodes,
+            edges: processedEdges,
+            metadata
+        };
+
+        console.log(`Graph data updated: ${nodes.length} nodes, ${processedEdges.length} edges`);
         
+        // Log sample of node positions
+        console.log('Node positions sample:', 
+            nodes.slice(0, 3).map(n => 
+                `Node ${n.id}: (${n.x.toFixed(2)}, ${n.y.toFixed(2)}, ${n.z.toFixed(2)})`
+            )
+        );
+
         // Dispatch update event
+        this.dispatchGraphUpdate();
+    }
+
+    dispatchGraphUpdate() {
+        if (!this.graphData) return;
+
         window.dispatchEvent(new CustomEvent('graphDataUpdated', { 
             detail: {
                 nodes: this.graphData.nodes,

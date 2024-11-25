@@ -1,9 +1,9 @@
 // Manages visualization settings received from the server
 export class VisualizationSettings {
     constructor() {
-        // Default values matching settings.toml
+        // Default values optimized for basic rendering
         this.settings = {
-            // Node colors
+            // Node colors with increased visibility
             nodeColor: '#FFA500',             // Base orange
             nodeColorNew: '#FFD700',          // Bright gold for very recent files
             nodeColorRecent: '#FFA500',       // Orange for recent files
@@ -13,32 +13,25 @@ export class VisualizationSettings {
             nodeColorSecondary: '#FFC125',    // Golden yellow for secondary nodes
             nodeColorDefault: '#FFD700',      // Gold for default nodes
             
-            // Edge settings
+            // Edge settings optimized for visibility
             edgeColor: '#FFD700',             // Golden
-            edgeOpacity: 0.3,                 // Reduced from 0.4
+            edgeOpacity: 0.8,                 // Increased for better visibility
             edgeWeightNormalization: 12.0,
-            edgeMinWidth: 1.0,                // Reduced from 1.5
-            edgeMaxWidth: 4.0,                // Reduced from 6.0
+            edgeMinWidth: 2.0,                // Increased for better visibility
+            edgeMaxWidth: 6.0,                // Increased for better visibility
             
             // Node sizes and dimensions (in meters)
-            minNodeSize: 0.3,                 // Increased from 0.15
-            maxNodeSize: 0.6,                 // Increased from 0.4
+            minNodeSize: 0.5,                 // Increased for better visibility
+            maxNodeSize: 1.0,                 // Increased for better visibility
             nodeAgeMaxDays: 30,
             
-            // Hologram settings
-            hologramColor: '#FFC125',         // Deep golden yellow
-            hologramScale: 6.0,
-            hologramOpacity: 0.15,
-            
-            // Material settings
+            // Material settings optimized for basic rendering
             material: {
-                metalness: 0.2,               // Reduced from 0.3
-                roughness: 0.7,               // Increased from 0.5
-                clearcoat: 0.5,               // Reduced from 0.8
-                clearcoatRoughness: 0.2,      // Increased from 0.1
-                opacity: 0.9,                 // Reduced from 0.95
-                emissiveMinIntensity: 0.1,    // Increased from 0.0
-                emissiveMaxIntensity: 0.4     // Increased from 0.3
+                metalness: 0.1,               // Reduced for less reflection
+                roughness: 0.8,               // Increased for more diffuse look
+                opacity: 1.0,                 // Full opacity for better visibility
+                emissiveMinIntensity: 0.0,    // No emission in basic rendering
+                emissiveMaxIntensity: 0.0     // No emission in basic rendering
             },
             
             // Force-directed layout settings
@@ -49,55 +42,34 @@ export class VisualizationSettings {
             damping: 0.85,
             
             // Environment settings
-            fogDensity: 0.0005,              // Reduced from 0.001
+            fogDensity: 0.0002,              // Reduced for better visibility
             
-            // Label settings
-            labelFontSize: 32,                // Reduced from 42
+            // Label settings optimized for readability
+            labelFontSize: 36,                // Increased for better readability
             labelFontFamily: 'Arial',
-            labelPadding: 16,                 // Reduced from 24
-            labelVerticalOffset: 0.8,         // Reduced from 2.5
-            labelCloseOffset: 0.2,
-            labelBackgroundColor: 'rgba(0, 0, 0, 0.7)', // More transparent
+            labelPadding: 20,                 // Increased padding
+            labelVerticalOffset: 1.2,         // Adjusted for better positioning
+            labelCloseOffset: 0.3,
+            labelBackgroundColor: 'rgba(0, 0, 0, 0.85)', // More opaque for better contrast
             labelTextColor: 'white',
-            labelInfoTextColor: '#cccccc',    // Slightly darker for better contrast
-            labelXRFontSize: 24,
+            labelInfoTextColor: '#ffffff',    // Brighter for better visibility
+            labelXRFontSize: 28,
             
             // Geometry settings
-            geometryMinSegments: 24,
-            geometryMaxSegments: 48,
-            geometrySegmentPerHyperlink: 0.6,
+            geometryMinSegments: 16,          // Reduced for better performance
+            geometryMaxSegments: 32,          // Reduced for better performance
+            geometrySegmentPerHyperlink: 0.4, // Reduced for better performance
             
             // Interaction settings
-            clickEmissiveBoost: 2.5,
-            clickFeedbackDuration: 250,
-            
-            // Bloom settings
-            nodeBloomStrength: 0.6,           // Reduced from 0.8
-            nodeBloomRadius: 0.4,             // Increased from 0.3
-            nodeBloomThreshold: 0.3,          // Increased from 0.2
-            edgeBloomStrength: 0.4,           // Reduced from 0.6
-            edgeBloomRadius: 0.3,             // Reduced from 0.4
-            edgeBloomThreshold: 0.2,          // Increased from 0.1
-            environmentBloomStrength: 0.5,     // Reduced from 0.7
-            environmentBloomRadius: 0.3,
-            environmentBloomThreshold: 0.2,    // Increased from 0.1
-
-            // Fisheye settings
-            fisheye: {
-                enabled: false,
-                strength: 0.5,
-                radius: 100.0,
-                focusX: 0.0,
-                focusY: 0.0,
-                focusZ: 0.0
-            }
+            clickEmissiveBoost: 0.0,          // Disabled for basic rendering
+            clickFeedbackDuration: 250
         };
 
         // Bind the WebSocket message handler
         this.handleServerSettings = this.handleServerSettings.bind(this);
         window.addEventListener('serverSettings', this.handleServerSettings);
 
-        console.log('Visualization settings initialized with defaults from settings.toml');
+        console.log('Visualization settings initialized with optimized defaults');
     }
 
     handleServerSettings(event) {
@@ -107,9 +79,7 @@ export class VisualizationSettings {
         // Deep merge settings with server values
         this.settings = this.deepMerge(this.settings, {
             ...serverSettings.visualization,
-            material: serverSettings.visualization?.material,
-            fisheye: serverSettings.fisheye,
-            ...serverSettings.bloom
+            material: serverSettings.visualization?.material
         });
 
         console.log('Updated settings with server values');
@@ -173,10 +143,7 @@ export class VisualizationSettings {
             opacity: this.settings.edgeOpacity,
             weightNormalization: this.settings.edgeWeightNormalization,
             minWidth: this.settings.edgeMinWidth,
-            maxWidth: this.settings.edgeMaxWidth,
-            bloomStrength: this.settings.edgeBloomStrength,
-            bloomRadius: this.settings.edgeBloomRadius,
-            bloomThreshold: this.settings.edgeBloomThreshold
+            maxWidth: this.settings.edgeMaxWidth
         };
     }
 
@@ -194,14 +161,6 @@ export class VisualizationSettings {
         };
     }
 
-    getHologramSettings() {
-        return {
-            color: this.settings.hologramColor,
-            scale: this.settings.hologramScale,
-            opacity: this.settings.hologramOpacity
-        };
-    }
-
     getLayoutSettings() {
         return {
             iterations: this.settings.iterations,
@@ -214,28 +173,7 @@ export class VisualizationSettings {
 
     getEnvironmentSettings() {
         return {
-            fogDensity: this.settings.fogDensity,
-            bloomStrength: this.settings.environmentBloomStrength,
-            bloomRadius: this.settings.environmentBloomRadius,
-            bloomThreshold: this.settings.environmentBloomThreshold
-        };
-    }
-
-    getFisheyeSettings() {
-        return this.settings.fisheye;
-    }
-
-    getBloomSettings() {
-        return {
-            nodeBloomStrength: this.settings.nodeBloomStrength,
-            nodeBloomRadius: this.settings.nodeBloomRadius,
-            nodeBloomThreshold: this.settings.nodeBloomThreshold,
-            edgeBloomStrength: this.settings.edgeBloomStrength,
-            edgeBloomRadius: this.settings.edgeBloomRadius,
-            edgeBloomThreshold: this.settings.edgeBloomThreshold,
-            environmentBloomStrength: this.settings.environmentBloomStrength,
-            environmentBloomRadius: this.settings.environmentBloomRadius,
-            environmentBloomThreshold: this.settings.environmentBloomThreshold
+            fogDensity: this.settings.fogDensity
         };
     }
 }
