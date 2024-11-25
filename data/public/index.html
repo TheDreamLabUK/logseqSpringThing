@@ -11,7 +11,7 @@
             padding: 0;
             height: 100%;
             overflow: hidden;
-            background: #222222; /* Match renderer background color */
+            background: #000000; /* Match renderer black background */
         }
         #scene-container {
             width: 100%;
@@ -20,7 +20,8 @@
             top: 0;
             left: 0;
             z-index: 0;
-            background: #222222; /* Match renderer background color */
+            background: #000000; /* Match renderer black background */
+            touch-action: none; /* Prevent default touch actions for better control */
         }
         #app {
             position: fixed;
@@ -72,6 +73,12 @@
         .debug #app > div {
             border: 1px solid rgba(0, 255, 0, 0.3);
         }
+        /* WebGL canvas styles */
+        canvas {
+            display: block; /* Remove bottom margin/spacing */
+            outline: none; /* Remove focus outline */
+            touch-action: none; /* Prevent default touch actions */
+        }
     </style>
 </head>
 <body>
@@ -83,24 +90,78 @@
     <div id="connection-status" class="disconnected">Disconnected</div>
     <div id="debug-info"></div>
 
-    <script type="module" src="/js/index.js"></script>
     <script>
+        // Check for WebGL support before loading app
+        function checkWebGLSupport() {
+            const canvas = document.createElement('canvas');
+            let gl;
+            
+            try {
+                // Try WebGL 2 first
+                gl = canvas.getContext('webgl2');
+                if (gl) {
+                    console.log('WebGL 2 supported');
+                    return true;
+                }
+                
+                // Fall back to WebGL 1
+                gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                if (gl) {
+                    console.log('WebGL 1 supported');
+                    return true;
+                }
+                
+                throw new Error('WebGL not supported');
+            } catch (e) {
+                const debugInfo = document.getElementById('debug-info');
+                if (debugInfo) {
+                    debugInfo.innerHTML = `<div style="color: red;">Error: WebGL not supported - ${e.message}</div>`;
+                }
+                return false;
+            } finally {
+                if (gl) {
+                    gl.getExtension('WEBGL_lose_context')?.loseContext();
+                }
+            }
+        }
+
         // Enhanced error handler with timestamp
         window.onerror = function(msg, url, line, col, error) {
             console.error('Global error:', msg, 'at', url, 'line', line);
             const debugInfo = document.getElementById('debug-info');
             if (debugInfo) {
                 const time = new Date().toLocaleTimeString();
-                debugInfo.innerHTML += `<div>[${time}] Error: ${msg}</div>`;
+                const errorMsg = error?.stack || msg;
+                debugInfo.innerHTML += `<div>[${time}] Error: ${errorMsg}</div>`;
                 // Auto-scroll to bottom
                 debugInfo.scrollTop = debugInfo.scrollHeight;
             }
             return false;
         };
 
+        // Handle WebGL context lost
+        window.addEventListener('webglcontextlost', function(e) {
+            e.preventDefault();
+            console.error('WebGL context lost');
+            const debugInfo = document.getElementById('debug-info');
+            if (debugInfo) {
+                const time = new Date().toLocaleTimeString();
+                debugInfo.innerHTML += `<div>[${time}] WebGL context lost - reloading page in 3 seconds...</div>`;
+                setTimeout(() => window.location.reload(), 3000);
+            }
+        }, false);
+
         // Add debug class to body if needed
         if (window.location.search.includes('debug')) {
             document.body.classList.add('debug');
+        }
+
+        // Only load app if WebGL is supported
+        if (checkWebGLSupport()) {
+            const script = document.createElement('script');
+            script.type = 'module';
+            script.src = '/js/index.js';
+            document.body.appendChild(script);
         }
     </script>
 </body>

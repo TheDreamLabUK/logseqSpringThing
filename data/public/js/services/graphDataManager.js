@@ -84,7 +84,7 @@ export class GraphDataManager {
     // Helper function to generate initial positions in a sphere
     generateInitialPositions(count) {
         const positions = [];
-        const radius = 20; // Initial sphere radius
+        const radius = 100; // Increased sphere radius for better visibility
         const phi = Math.PI * (3 - Math.sqrt(5)); // Golden angle
 
         for (let i = 0; i < count; i++) {
@@ -95,10 +95,12 @@ export class GraphDataManager {
             const x = Math.cos(theta) * radius_at_y;
             const z = Math.sin(theta) * radius_at_y;
 
+            // Add some random offset to prevent perfect sphere
+            const randomOffset = 20; // Increased random offset
             positions.push({
-                x: x * radius,
-                y: y * radius,
-                z: z * radius
+                x: x * radius + (Math.random() - 0.5) * randomOffset,
+                y: y * radius + (Math.random() - 0.5) * randomOffset,
+                z: z * radius + (Math.random() - 0.5) * randomOffset
             });
         }
 
@@ -129,11 +131,18 @@ export class GraphDataManager {
                 const existingNode = this.graphData?.nodes?.find(n => n.id === node.id);
                 const nodeMetadata = metadata[`${node.id}.md`] || {};
                 
+                // If no position exists, generate a random position within view range
+                const randomPosition = {
+                    x: (Math.random() - 0.5) * 200, // Increased range
+                    y: (Math.random() - 0.5) * 200,
+                    z: (Math.random() - 0.5) * 200
+                };
+                
                 return {
                     ...node,
-                    x: (typeof node.x === 'number' && !isNaN(node.x)) ? node.x : (existingNode?.x || 0),
-                    y: (typeof node.y === 'number' && !isNaN(node.y)) ? node.y : (existingNode?.y || 0),
-                    z: (typeof node.z === 'number' && !isNaN(node.z)) ? node.z : (existingNode?.z || 0),
+                    x: (typeof node.x === 'number' && !isNaN(node.x)) ? node.x : (existingNode?.x || randomPosition.x),
+                    y: (typeof node.y === 'number' && !isNaN(node.y)) ? node.y : (existingNode?.y || randomPosition.y),
+                    z: (typeof node.z === 'number' && !isNaN(node.z)) ? node.z : (existingNode?.z || randomPosition.z),
                     metadata: nodeMetadata
                 };
             });

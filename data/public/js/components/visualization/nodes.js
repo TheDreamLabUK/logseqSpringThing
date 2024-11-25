@@ -11,14 +11,30 @@ export class NodeManager {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         
-        // Initialize settings
+        // Wait for settings before initializing
+        this.initialized = false;
+        this.pendingInitialization = true;
+
+        // Store references that will be initialized once settings are received
+        this.nodeInstancedMeshes = null;
+        this.edgeInstancedMesh = null;
+        this.instancedContainer = null;
+        this.labelPool = new Map();
+
+        // Initialize settings with defaults - will be updated from server
         const nodeSettings = visualizationSettings.getNodeSettings();
         const xrSettings = visualizationSettings.getXRSettings();
         
-        this.minNodeSize = settings.minNodeSize || nodeSettings.minNodeSize;
-        this.maxNodeSize = settings.maxNodeSize || nodeSettings.maxNodeSize;
-        this.labelFontSize = settings.labelFontSize || nodeSettings.labelFontSize;
-        this.nodeColor = new THREE.Color(settings.nodeColor || nodeSettings.color);
+        if (!nodeSettings) {
+            console.warn('Node settings not yet received from server');
+            return;
+        }
+
+        // Initialize with server settings
+        this.minNodeSize = nodeSettings.minNodeSize;
+        this.maxNodeSize = nodeSettings.maxNodeSize;
+        this.labelFontSize = nodeSettings.labelFontSize;
+        this.nodeColor = new THREE.Color(nodeSettings.color);
         this.materialSettings = nodeSettings.material;
         this.ageColors = {
             NEW: new THREE.Color(nodeSettings.colorNew),
@@ -29,19 +45,24 @@ export class NodeManager {
         this.maxAge = nodeSettings.ageMaxDays;
 
         const edgeSettings = visualizationSettings.getEdgeSettings();
-        this.edgeColor = new THREE.Color(settings.edgeColor || edgeSettings.color);
-        this.edgeOpacity = settings.edgeOpacity || edgeSettings.opacity;
+        if (!edgeSettings) {
+            console.warn('Edge settings not yet received from server');
+            return;
+        }
+
+        this.edgeColor = new THREE.Color(edgeSettings.color);
+        this.edgeOpacity = edgeSettings.opacity;
 
         // XR properties
         this.xrEnabled = false;
         this.xrController = null;
         this.xrHitTestSource = null;
-        this.xrInteractionRadius = xrSettings.interactionRadius;
-        this.xrHapticStrength = xrSettings.hapticStrength;
-        this.xrHapticDuration = xrSettings.hapticDuration;
-        this.xrMinDistance = xrSettings.minInteractionDistance;
-        this.xrMaxDistance = xrSettings.maxInteractionDistance;
-        this.xrScale = xrSettings.nodeScale;
+        this.xrInteractionRadius = xrSettings?.interactionRadius || 0.2;
+        this.xrHapticStrength = xrSettings?.hapticStrength || 0.5;
+        this.xrHapticDuration = xrSettings?.hapticDuration || 50;
+        this.xrMinDistance = xrSettings?.minInteractionDistance || 0.1;
+        this.xrMaxDistance = xrSettings?.maxInteractionDistance || 5.0;
+        this.xrScale = xrSettings?.nodeScale || 0.1;
 
         // Create container for instanced meshes
         this.instancedContainer = new THREE.Group();
@@ -52,7 +73,6 @@ export class NodeManager {
         this.initInstancedMeshes();
         
         // Label pooling
-        this.labelPool = new Map();
         this.labelCanvas = document.createElement('canvas');
         this.labelContext = this.labelCanvas.getContext('2d', {
             alpha: true,
@@ -78,10 +98,13 @@ export class NodeManager {
         this.projScreenMatrix = new THREE.Matrix4();
         this.frustum = new THREE.Frustum();
 
-        // Bind methods after all properties are initialized
+        // Bind methods
         this.handleSettingsUpdate = this.handleSettingsUpdate.bind(this);
         this.handleXRStateChange = this.handleXRStateChange.bind(this);
         this.handleXRSelect = this.handleXRSelect.bind(this);
+        this.updateLabelOrientations = this.updateLabelOrientations.bind(this);
+        this.updateNodes = this.updateNodes.bind(this);
+        this.updateEdges = this.updateEdges.bind(this);
         
         // Add event listeners
         window.addEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
@@ -89,6 +112,71 @@ export class NodeManager {
         window.addEventListener('xrsessionend', () => this.handleXRStateChange(false));
 
         console.log('NodeManager initialized with scene:', !!scene, 'camera:', !!camera);
+        this.initialized = true;
+    }
+
+    handleSettingsUpdate(event) {
+        console.log('Received settings update:', event.detail);
+        this.updateFromSettings(event.detail);
+    }
+
+    updateFromSettings(settings) {
+        if (!settings?.visualization) return;
+
+        const vis = settings.visualization;
+        
+        // Update colors
+        this.nodeColor = new THREE.Color(vis.node_color);
+        this.ageColors = {
+            NEW: new THREE.Color(vis.node_color_new),
+            RECENT: new THREE.Color(vis.node_color_recent),
+            MEDIUM: new THREE.Color(vis.node_color_medium),
+            OLD: new THREE.Color(vis.node_color_old)
+        };
+        this.edgeColor = new THREE.Color(vis.edge_color);
+
+        // Update sizes
+        this.minNodeSize = vis.min_node_size;
+        this.maxNodeSize = vis.max_node_size;
+        this.edgeOpacity = vis.edge_opacity;
+
+        // Update material settings
+        this.materialSettings = {
+            metalness: vis.node_material_metalness,
+            roughness: vis.node_material_roughness,
+            clearcoat: vis.node_material_clearcoat,
+            clearcoatRoughness: vis.node_material_clearcoat_roughness,
+            opacity: vis.node_material_opacity,
+            emissiveMinIntensity: vis.node_emissive_min_intensity,
+            emissiveMaxIntensity: vis.node_emissive_max_intensity
+        };
+
+        // Update materials
+        if (this.nodeInstancedMeshes) {
+            Object.values(this.nodeInstancedMeshes).forEach(mesh => {
+                if (mesh.material) {
+                    mesh.material.color.copy(this.nodeColor);
+                    mesh.material.emissive.copy(this.nodeColor);
+                    mesh.material.metalness = this.materialSettings.metalness;
+                    mesh.material.roughness = this.materialSettings.roughness;
+                    mesh.material.opacity = this.materialSettings.opacity;
+                    mesh.material.emissiveIntensity = this.materialSettings.emissiveMinIntensity;
+                    mesh.material.needsUpdate = true;
+                }
+            });
+        }
+
+        if (this.edgeInstancedMesh?.material) {
+            this.edgeInstancedMesh.material.color.copy(this.edgeColor);
+            this.edgeInstancedMesh.material.opacity = this.edgeOpacity;
+            this.edgeInstancedMesh.material.needsUpdate = true;
+        }
+
+        // Update existing nodes and edges
+        if (this.nodeData.size > 0) {
+            const nodes = Array.from(this.nodeData.values());
+            this.updateNodes(nodes);
+        }
     }
 
     initInstancedMeshes() {
@@ -100,12 +188,12 @@ export class NodeManager {
             const mediumDetailGeometry = new THREE.SphereGeometry(1, 16, 16);
             const lowDetailGeometry = new THREE.SphereGeometry(1, 8, 8);
 
-            // Create material with instance color support
+            // Create material with instance color support and increased emission
             const nodeMaterial = new THREE.MeshStandardMaterial({
                 metalness: this.materialSettings.metalness,
                 roughness: this.materialSettings.roughness,
                 transparent: false,
-                opacity: 1.0,
+                opacity: this.materialSettings.opacity,
                 emissive: this.nodeColor,
                 emissiveIntensity: this.materialSettings.emissiveMinIntensity
             });
@@ -124,26 +212,26 @@ export class NodeManager {
             Object.values(this.nodeInstancedMeshes).forEach(mesh => {
                 mesh.count = 0;
                 mesh.layers.enableAll();
-                mesh.frustumCulled = true; // Enable frustum culling for performance
+                mesh.frustumCulled = true;
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
                 this.instancedContainer.add(mesh);
             });
 
-            // Create edge instanced mesh
-            const edgeGeometry = new THREE.CylinderGeometry(0.02, 0.02, 1, 4);
+            // Create edge instanced mesh with thicker edges
+            const edgeGeometry = new THREE.CylinderGeometry(0.15, 0.15, 1, 8);
             edgeGeometry.rotateX(Math.PI / 2);
             const edgeMaterial = new THREE.MeshBasicMaterial({
                 color: this.edgeColor,
                 transparent: true,
                 opacity: this.edgeOpacity,
-                depthWrite: false // Prevent z-fighting with nodes
+                depthWrite: false
             });
 
             this.edgeInstancedMesh = new THREE.InstancedMesh(
                 edgeGeometry,
                 edgeMaterial,
-                maxInstances * 2 // Edges typically more numerous than nodes
+                maxInstances * 2
             );
             this.edgeInstancedMesh.count = 0;
             this.edgeInstancedMesh.layers.enableAll();
@@ -368,8 +456,8 @@ export class NodeManager {
             direction.normalize();
             this.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
 
-            // Set scale (length for Y axis, edge width for X/Z)
-            const edgeWidth = Math.max(0.02, Math.min(edge.weight || 1, 0.1));
+            // Set scale with thicker edges
+            const edgeWidth = Math.max(0.15, Math.min(edge.weight || 1, 0.4));
             this.scale.set(edgeWidth, length, edgeWidth);
 
             // Update instance transform
@@ -418,8 +506,11 @@ export class NodeManager {
             return null;
         }
 
-        const fontSize = this.xrEnabled ? 24 : 36;
-        context.font = `${fontSize}px Arial`;
+        const labelSettings = visualizationSettings.getLabelSettings();
+        if (!labelSettings) return null;
+
+        const fontSize = this.xrEnabled ? labelSettings.xrFontSize : labelSettings.fontSize;
+        context.font = `${fontSize}px ${labelSettings.fontFamily}`;
         
         const fileSize = parseInt(metadata.file_size) || 1;
         const lastModified = metadata.github_last_modified || metadata.last_modified || new Date().toISOString();
@@ -431,7 +522,7 @@ export class NodeManager {
         const infoMetrics = context.measureText(infoText);
         const textWidth = Math.max(nameMetrics.width, infoMetrics.width);
         
-        const padding = 20;
+        const padding = labelSettings.padding;
         const canvasWidth = Math.pow(2, Math.ceil(Math.log2(textWidth + padding * 2)));
         const canvasHeight = Math.pow(2, Math.ceil(Math.log2(fontSize * 3)));
 
@@ -440,18 +531,18 @@ export class NodeManager {
 
         context.clearRect(0, 0, canvas.width, canvas.height);
 
-        context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        context.fillStyle = labelSettings.backgroundColor;
         const cornerRadius = 8;
         this.roundRect(context, 0, 0, canvas.width, canvas.height, cornerRadius);
 
-        context.font = `${fontSize}px Arial`;
+        context.font = `${fontSize}px ${labelSettings.fontFamily}`;
         context.textBaseline = 'middle';
         context.textAlign = 'left';
-        context.fillStyle = '#ffffff';
+        context.fillStyle = labelSettings.textColor;
         context.fillText(text, padding, canvas.height * 0.35);
         
-        context.font = `${fontSize * 0.6}px Arial`;
-        context.fillStyle = '#cccccc';
+        context.font = `${fontSize * 0.6}px ${labelSettings.fontFamily}`;
+        context.fillStyle = labelSettings.infoTextColor;
         context.fillText(infoText, padding, canvas.height * 0.7);
 
         const texture = new THREE.CanvasTexture(canvas);
@@ -529,7 +620,7 @@ export class NodeManager {
     getNodeSize(metadata) {
         if (metadata.node_size) {
             const size = parseFloat(metadata.node_size);
-            return this.minNodeSize + (size * (this.maxNodeSize - this.minNodeSize));
+            return this.minNodeSize + (Math.pow(size, 1.5) * (this.maxNodeSize - this.minNodeSize));
         }
         return this.minNodeSize;
     }
@@ -544,115 +635,6 @@ export class NodeManager {
         if (age < 7 * dayInMs) return this.ageColors.RECENT;
         if (age < 30 * dayInMs) return this.ageColors.MEDIUM;
         return this.ageColors.OLD;
-    }
-
-    handleSettingsUpdate(event) {
-        const settings = event.detail;
-        if (!settings) return;
-
-        if (settings.visual) {
-            if (settings.visual.nodeColor !== undefined) {
-                this.updateFeature('nodeColor', settings.visual.nodeColor);
-            }
-            if (settings.visual.minNodeSize !== undefined) {
-                this.updateFeature('minNodeSize', settings.visual.minNodeSize);
-            }
-            if (settings.visual.maxNodeSize !== undefined) {
-                this.updateFeature('maxNodeSize', settings.visual.maxNodeSize);
-            }
-            if (settings.visual.labelFontSize !== undefined) {
-                this.updateFeature('labelFontSize', settings.visual.labelFontSize);
-            }
-            if (settings.visual.edgeColor !== undefined) {
-                this.updateFeature('edgeColor', settings.visual.edgeColor);
-            }
-            if (settings.visual.edgeOpacity !== undefined) {
-                this.updateFeature('edgeOpacity', settings.visual.edgeOpacity);
-            }
-        }
-
-        if (settings.material) {
-            this.updateMaterial(settings.material);
-        }
-
-        if (settings.ageColors) {
-            if (settings.ageColors.new) this.ageColors.NEW.set(settings.ageColors.new);
-            if (settings.ageColors.recent) this.ageColors.RECENT.set(settings.ageColors.recent);
-            if (settings.ageColors.medium) this.ageColors.MEDIUM.set(settings.ageColors.medium);
-            if (settings.ageColors.old) this.ageColors.OLD.set(settings.ageColors.old);
-            
-            this.updateNodeColors();
-        }
-    }
-
-    updateNodeColors() {
-        if (this.nodeData.size > 0) {
-            const nodes = Array.from(this.nodeData.values());
-            this.updateNodes(nodes);
-        }
-    }
-
-    updateFeature(control, value) {
-        console.log(`Updating feature: ${control} = ${value}`);
-        switch (control) {
-            case 'nodeColor':
-                if (typeof value === 'number' || typeof value === 'string') {
-                    this.nodeColor = new THREE.Color(value);
-                    Object.values(this.nodeInstancedMeshes).forEach(mesh => {
-                        if (mesh.material) {
-                            mesh.material.color.copy(this.nodeColor);
-                            mesh.material.emissive.copy(this.nodeColor);
-                        }
-                    });
-                }
-                break;
-            case 'minNodeSize':
-                this.minNodeSize = value;
-                break;
-            case 'maxNodeSize':
-                this.maxNodeSize = value;
-                break;
-            case 'labelFontSize':
-                this.labelFontSize = value;
-                break;
-            case 'edgeColor':
-                if (typeof value === 'number' || typeof value === 'string') {
-                    this.edgeColor = new THREE.Color(value);
-                    if (this.edgeInstancedMesh?.material) {
-                        this.edgeInstancedMesh.material.color.copy(this.edgeColor);
-                    }
-                }
-                break;
-            case 'edgeOpacity':
-                this.edgeOpacity = value;
-                if (this.edgeInstancedMesh?.material) {
-                    this.edgeInstancedMesh.material.opacity = value;
-                }
-                break;
-        }
-    }
-
-    updateMaterial(settings) {
-        console.log('Updating node material settings:', settings);
-
-        this.materialSettings = {
-            ...this.materialSettings,
-            metalness: settings.metalness ?? this.materialSettings.metalness,
-            roughness: settings.roughness ?? this.materialSettings.roughness,
-            opacity: settings.opacity ?? this.materialSettings.opacity,
-            emissiveMinIntensity: settings.emissiveMinIntensity ?? this.materialSettings.emissiveMinIntensity,
-            emissiveMaxIntensity: settings.emissiveMaxIntensity ?? this.materialSettings.emissiveMaxIntensity
-        };
-
-        Object.values(this.nodeInstancedMeshes).forEach(mesh => {
-            if (mesh.material) {
-                mesh.material.metalness = this.materialSettings.metalness;
-                mesh.material.roughness = this.materialSettings.roughness;
-                mesh.material.opacity = this.materialSettings.opacity;
-                mesh.material.emissiveIntensity = this.materialSettings.emissiveMinIntensity;
-                mesh.material.needsUpdate = true;
-            }
-        });
     }
 
     updateLabelOrientations(camera) {
