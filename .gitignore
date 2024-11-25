@@ -1,15 +1,88 @@
-target/
-node_modules/
-.env
-venv
-bin
-ssl
-data/public/assets
-data/public/dist
-data/public/node_modules
-dist
-data/markdown
-.pmpm-store
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-data/piper/en_GB-northern_english_male-medium.onnx
-config.yml
+# Dependencies
+node_modules
+.pnpm-store/
+.npm
+.yarn
+
+# Build output
+dist
+dist-ssr
+*.local
+build
+out
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+*.pem
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing
+coverage
+.nyc_output
+
+# Cache
+.cache
+.temp
+.eslintcache
+.stylelintcache
+
+# Rust/Cargo
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Platform-specific
+.vercel
+.netlify
+.cloudflare
+
+# Debug
+chrome-profiler-events*.json
+speed-measure-plugin*.json
+
+# Temporary files
+*.tmp
+*.temp
+.tmp
+.temp
+
+# Generated files
+generated
+auto-imports.d.ts
+components.d.ts
+
+# Assets
+*.mp4
+*.webm
+*.mov
+*.wav
+*.mp3
+*.glb
+*.gltf
+*.hdr
+*.exr

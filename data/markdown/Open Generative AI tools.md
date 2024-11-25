@@ -1,0 +1,31 @@
+public:: true
+
+	- # Open (ish) tooling
+	- ## Opensource vs Freeware in AI:
+		- This is a hot, and also seemingly endless debate that has been going on for years.
+		- Open-source AI allows users to access, modify, and distribute the source code **and training methods** for free, promoting collaboration and community-driven development. Popular AI frameworks like TensorFlow and PyTorch fall under this category.
+		- Free-to-use, on the other hand, is copyrighted software distributed without charge, but with limited rights to modify or distribute. Meta Llama 2 falls into that catagory.
+		- Feel free to get right into the weeds with the [Hannibal046/Awesome-LLM: Awesome-LLM: a curated list of Large Language Model (github.com)](https://github.com/Hannibal046/Awesome-LLM)
+	- ## Large Language models:
+		- ### **"AI is the high interest credit card of product development"**
+			- There's SO much activity. [Thousands and thousands](https://llm.extractum.io/) of merges and models and LoRAs oh my...
+				- Some of these are from legit labs are are fabulous.
+				- [[Deepseek]] (Chinese) [[Falcon]] (UAE) [[Mistral]] (France) [[Red Pyjama]] [[Microsoft Models]] [[Poro]] (Finland) and more.
+			- It's confusing because people are "gaming" the evaluation tools, so nobody really knows what's good.
+			- Best to ask people who know, and accept you're going to be changing the back end of your system a lot.
+			- You can pick a size and utility of model and get a long way, but do you need to?
+			- Low code [flowise](https://flowiseai.com/) demo which you probably saw earlier.
+				- It is multi-modal, can generate images like OpenAI, and use audio bi-driectionally, like OpenAI.
+				- It is a drop in replacement, so crucially it can serve as a BACKUP
+				- This is doable, but probably don't do it.
+	- this loads up my local LLM sandbox [<]iframe src="http://192.168.0.51:3000/canvas/b9738eeb-4fa2-41a0-9535-549638a958f5" style="width: 100%; height: 600px"></iframe>
+	- [[ComfyUI]] live demo (not here for now)
+	- #### Demo: Running UK Company [[Stable Diffusion]] (SDXL) with a cutting edge French language model creating the prompts in real-time, completely privately on local hardware
+	- this is a local demo [<]iframe src="http://192.168.0.51:8188" style="width: 100%; height: 600px"></iframe>
+	- {{video https://www.youtube.com/watch?v=kN8jdvRQvzA}}
+	- {{video https://www.youtube.com/watch?v=AF2VyqSApjA}}
+	- You can play with all of these on [Rundiffusion](https://app.rundiffusion.com/)
+	- ![image.png](../assets/image_1705158589247_0.png)
+	- [[Text to 3D and 4D]]
+	- {{embed ((65a5024d-11bb-4737-aef3-af73103fa218))}}
+-

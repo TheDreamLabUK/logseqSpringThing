@@ -1,0 +1,42 @@
+public:: true
+
+- #Public page
+	 - automatically published
+- # The Four Wars of the AI Stack (Dec 2023 Recap)
+	- Latent space newsletter has an excellent summary [The Four Wars of the AI Stack (Dec 2023 Recap) (latent.space)](https://www.latent.space/p/dec-2023)
+	- ## Section 1: Introduction
+		- There are four main "wars" or battlegrounds among AI companies and stakeholders: the Data War, GPU/Inference War, Multimodality War, and RAG/Ops War.
+	- ## Section 2: The Data War
+		- OpenAI partners with Axel Springer to provide news and citations to ChatGPT.
+		- NYT sues OpenAI to shut down all GPT models.
+		- Apple offers $50m for data contracts with publishers.
+		- Increased interest in synthetic data at NeurIPS and Deepmind.
+	- ## Section 3: The GPU/Inference War
+		- Release of Mixtral sparked price cuts, down to $0.27 per million tokens.
+		- Major inference providers like Anthropic, Fireworks, Perplexity slashed prices to undercut Mixtral.
+		- Analysis shows profitable lower bound is $0.51-$0.76 per million tokens.
+	- ## Section 4: The Multimodality War
+		- Midjourney launched v6 and a web UI.
+		- Assembly AI raised $50m for "Stripe for AI models".
+		- Replicate raised $40m to serve AI engineers.
+		- Suno AI launched for audio generation.
+		- OpenAI and Google continue work on "God Models".
+	- ## Section 5: The RAG/Ops War
+		- Debates on need for vector DBs vs new ones like Turbopuffer.
+		- LangChain vs LlamaIndex for chaining and execution.
+		- LLMOps developments like HumanLoop vs frameworks like LangSmith.
+	- ## Section 6: Open Models
+		- Release of Mixtral sparked GPU/inference price war. Up to 99.55% drop in cost.
+		- New model architectures like Mamba, RWKV announced.
+		- Apple released MLX framework with Mixtral.
+		- Microsoft released Phi-2 model.
+	- ## Section 7: Fundraising News
+		- Notable fundraises: Midjourney ($200m/yr), Anthropic ($750m), Mistral ($400m), Glean ($200m), Harvey ($80m).
+	- ## Section 8: Other Launches
+		- Midjourney launched v6 and web UI.
+		- OpenAI released logprobs for ChatGPT.
+		- LlamaIndex launched step-wise agent execution.
+		- New models like Suno AI (audio), Phi-2 (Microsoft), TextDiffuser 2 (images).
+	- ## Section 9: Conclusion
+		- Key themes were data, infrastructure, multimodal, and tooling.
+		- Progress made across models, verticals, tools, and infrastructure.

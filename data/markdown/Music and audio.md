@@ -1,0 +1,44 @@
+public:: true
+
+- #Public page automatically published
+- ## Audio as an essential intimate modality
+	- <iframe style="border-radius:12px" src="https://open.spotify.com/embed/episode/44yEyYZV2TJf4cvVumysC5?utm_source=generator&t=62107" width="100%" height="352" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+- ## Tools roundup [[Update Cycle]]
+	- [Generating audio for video - Google DeepMind](https://deepmind.google/discover/blog/generating-audio-for-video/)
+	- This needs a big overhaul update
+	- [Motion Array So Easy (youtube.com)](https://www.youtube.com/watch?v=Hd0KYxotzv8)
+	- [Suno AI](https://www.suno.ai/) is now integrated into Microsoft [[Microsoft CoPilot]] [[Music and audio]]
+		- {{tweet https://twitter.com/NickADobos/status/1737335846414770583}}
+- Remember Limewire? They have relaunched as a creative portal with digital sales. This is from Mark Farrell [Biomorphic Coalescence LimeWire](https://limewire.com/post/b9c58f0b-154e-484b-868c-9c6f5ec2e960)
+- ![1703054111335.mp4](../assets/1703054111335_1703357299299_0.mp4) [Post | Feed | LinkedIn](https://www.linkedin.com/feed/update/urn:li:activity:7143126665659826176/)
+- [declare-lab/tango · Hugging Face](https://huggingface.co/declare-lab/tango)
+- [cvssp/audioldm2 · Hugging Face](https://huggingface.co/cvssp/audioldm2)
+-
+- Other (many out of date links)
+	-
+	- [Stable diffusion MIDI](https://storage.googleapis.com/music-synthesis-with-spectrogram-diffusion/index.html)
+	- [Trainable github](https://github.com/teticio/audio-diffusion)
+	- [Propia instant jukebox](https://app.prodia.com/#/)
+	- [SD for music](https://www.riffusion.com/about)
+	- [word to midi](https://www.musicradar.com/news/audiocipher-word-midi-music-generator-creative-block)
+	- [HarmonAI](https://www.harmonai.org/)
+	- [Riffusion](https://github.com/riffusion/riffusion-app)
+	- [sounddraw.io](https://soundraw.io/)
+	- [Soundraw: Generates background music.](https://soundraw.io/)
+	- [beathoven.ai](https://www.beatoven.ai/)
+	- [Beatoven: Create unique royalty-free music.](https://www.beatoven.ai/)
+	- [Krise: Removes background voices, noises and echo during calls.](https://krisp.ai/)
+	- [Google MusicLM](https://google-research.github.io/seanet/musiclm/examples/)
+	- [techcruch explaining why it won't be released](https://techcrunch.com/2023/01/27/google-created-an-ai-that-can-generate-music-from-text-descriptions-but-wont-release-it/)
+	- [Text2audio](https://text-to-audio.github.io/)
+	- [The audioFlux library is a tool for audio and music analysis, featuring extraction capabilities. It is open source and released under the MIT license.](https://github.com/libAudioFlux/audioFlux)
+	- [Grimes invites royalty split with anyone using her voice](https://www-engadget-com.cdn.ampproject.org/c/s/www.engadget.com/amp/grimes-invites-ai-artists-to-use-her-voice-promising-50-percent-royalty-split-165659578.html)
+	- [Meta audiogen](https://github.com/facebookresearch/audiocraft)
+	- [meta musicgen](https://huggingface.co/facebook/musicgen-melody/)Ryan Hoover, founder of Product Hunt, tweeted an idea for an “AI Spotify” that could host AI-generated music by submitting music with the best tracks based on listens and likes earning a pro-rata share of subscription revenue, reserved for original artists. The tweet sparked interest, leading to someone building the platform called Beatly Music, while some artists expressed interest in the idea. However, industry insiders, including Scott Belsky, have questioned why Spotify might not just do this themselves since they already have the fan graph, the data set, and relationship with artists. But it may be too risky to navigate for a large company with record labels as a key stakeholder. While the idea has potential, there are many ethical and legal issues with this model, especially with labels. Nevertheless, Beatly Music carries a considerable risk as several legal concerns may arise regarding music rights and royalties, stating that some significant damages, including [[copyright]] infringement charges or compounding royalties to record labels and artists, might come up. https://twitter.com/rrhoover/status/1647735300511154176
+	- WavTool is an AI-powered music production tool that is free to use online. It offers features such as side-chain compression, flexible signal routing, and advanced synthesis to help users make high-quality music. For beginners, WavTool's Conductor AI can provide guidance through the music-making process, offer suggestions, and explain concepts in plain English. Users can start by creating beats, generating melodies, or suggesting chords. As users gain more experience, WavTool's signal routing and plugin editing features allow them to customize their music production even further. WavTool requires no installation or updates and can be used entirely online. http://WavTool.co
+	- Create Music is a platform that offers an API solution for businesses to easily integrate music creation and composition functionalities into their products and services. With this API, businesses can offer their customers the ability to create custom music tracks using various instrument sounds and styles within their own applications. [WavJourney compositional LLM](https://audio-agi.github.io/WavJourney_demopage/)
+		- The technology behind Create Music's API is a robust and intuitive program that offers fast and efficient audio rendering. This makes it possible for businesses to quickly and easily develop music creation applications that are responsive and fun to use. The API includes features like tempo control, key change, and instrument selection, giving users the ability to create virtually any kind of music they can think of.
+		- The platform offers a wide variety of instruments and styles to choose from, including classic and modern pianos, guitars, drums, and synthesizers. Users can also choose from different music genres, such as classical, rock, hip hop, and electronic music. Whether creating a jingle for an advertisement, a theme song for a podcast, or a ringtone for a mobile device, businesses can easily provide their customers with the tools they need to make their own custom music tracks.| 
+		  Furthermore, Create Music's API offers secure and reliable access to its backend systems and servers. This means that businesses can have peace of mind knowing that their customers' data and creations are protected. Additionally, the platform is constantly evolving, with frequent updates and improvements to help businesses offer their customers the best possible music creation experience.
+		- Overall, Create Music's API offers an exciting opportunity for businesses to provide unique and engaging music creation capabilities to their customers. Whether as a standalone app or as an integrated feature within larger products and services, businesses can use this API to offer users an endless variety of creative possibilities. https://soundraw.io/
+	- Podcastle is an all-encompassing platform for broadcast storytelling, offering studio-quality recording, AI-powered editing, and effortless exporting in a user-friendly web-based interface. With Podcastle, users can record remote interviews in job quality, transcribe audio files to text in seconds, make use of easy-to-use editing tools like royalty-free music and multi-track software, and use cutting-edge voice skins to generate realistic human voices. Podcastle's “Magic Dust” is an AI-powered noise cancellation tool that enhances audio files to professional studio standards with just a few clicks. Its “Revoice” feature allows users to create a digital version of their voice using an AI model so that they can generate audio just by typing. The platform is perfect for podcasters, bloggers, journalists, educators, and other content creators to begin their audio storytelling journey with ease. The company's goal is to democratize access to broadcast storytelling. Additionally, Podcastle offers a blog and supports a Discord Community where creators can get advice, ask questions, and interact with other passionate creators. https://podcastle.ai/|
