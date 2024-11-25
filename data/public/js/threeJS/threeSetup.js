@@ -21,25 +21,67 @@ export function initThreeScene() {
     );
     camera.position.set(0, 1.6, 3); // Default height ~1.6m (average human height)
 
-    // Create the renderer with optimized configuration
-    const renderer = new THREE.WebGLRenderer({ 
-        antialias: true,
-        alpha: true, // Enable alpha for AR passthrough
-        logarithmicDepthBuffer: true, // Better depth precision for XR
-        powerPreference: "high-performance",
-        premultipliedAlpha: false,
-        stencil: false,
-        depth: true,
-        preserveDrawingBuffer: false
-    });
+    // Try WebGL2 first, fall back to WebGL1
+    let renderer;
+    try {
+        const canvas = document.createElement('canvas');
+        const contextAttributes = {
+            alpha: true,
+            antialias: true,
+            powerPreference: "high-performance",
+            failIfMajorPerformanceCaveat: false,
+            preserveDrawingBuffer: false
+        };
 
-    // Configure renderer
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit pixel ratio for performance
-    renderer.outputColorSpace = THREE.SRGBColorSpace; // Modern color space handling
-    renderer.xr.enabled = true; // Enable WebXR
-    renderer.shadowMap.enabled = true; // Enable shadows for better visual quality
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows for realism
+        // Try WebGL2 first
+        let gl = canvas.getContext('webgl2', contextAttributes);
+        let isWebGL2 = !!gl;
+
+        if (!gl) {
+            console.warn('WebGL2 not available, falling back to WebGL1');
+            gl = canvas.getContext('webgl', contextAttributes) ||
+                 canvas.getContext('experimental-webgl', contextAttributes);
+            isWebGL2 = false;
+        }
+
+        if (!gl) {
+            throw new Error('WebGL not supported');
+        }
+
+        // Create renderer with detected context
+        renderer = new THREE.WebGLRenderer({
+            canvas: canvas,
+            context: gl,
+            antialias: true,
+            alpha: true,
+            powerPreference: "high-performance",
+            preserveDrawingBuffer: false
+        });
+
+        // Configure renderer based on WebGL version
+        if (isWebGL2) {
+            console.log('Using WebGL2 renderer');
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        } else {
+            console.log('Using WebGL1 renderer');
+            renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+            renderer.shadowMap.type = THREE.PCFShadowMap;
+        }
+
+        // Common renderer settings
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.xr.enabled = true;
+
+        // Store WebGL version for other components
+        renderer.capabilities.isWebGL2 = isWebGL2;
+
+    } catch (error) {
+        console.error('Error creating renderer:', error);
+        throw error;
+    }
 
     // Add WebGL context loss handling
     renderer.domElement.addEventListener('webglcontextlost', handleContextLost, false);
@@ -97,8 +139,8 @@ function setupLighting(scene) {
     directionalLight.castShadow = true;
     
     // Optimize shadow map settings
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
+    directionalLight.shadow.mapSize.width = 1024; // Reduced for WebGL1
+    directionalLight.shadow.mapSize.height = 1024;
     directionalLight.shadow.camera.near = 0.5;
     directionalLight.shadow.camera.far = 500;
     directionalLight.shadow.bias = -0.0001;
@@ -127,9 +169,9 @@ export function createOrbitControls(camera, renderer) {
     // Configure controls for XR compatibility
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.maxPolarAngle = Math.PI * 0.95; // Prevent camera from going below ground
-    controls.minDistance = 1; // Minimum zoom distance
-    controls.maxDistance = 50; // Maximum zoom distance
+    controls.maxPolarAngle = Math.PI * 0.95;
+    controls.minDistance = 1;
+    controls.maxDistance = 50;
     controls.enablePan = true;
     controls.panSpeed = 0.5;
     controls.rotateSpeed = 0.5;
@@ -191,7 +233,6 @@ export function createBasicEnvironment(scene) {
         ground,
         gridHelper,
         dispose: () => {
-            // Cleanup materials and geometries
             groundGeometry.dispose();
             groundMaterial.dispose();
             if (gridHelper.material) {
@@ -200,7 +241,6 @@ export function createBasicEnvironment(scene) {
             if (gridHelper.geometry) {
                 gridHelper.geometry.dispose();
             }
-            // Remove from scene
             scene.remove(ground);
             scene.remove(gridHelper);
         }
