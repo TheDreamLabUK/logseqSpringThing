@@ -1,30 +1,19 @@
 # Stage 1: Frontend Build
-FROM node:23.1.0-slim AS frontend-builder
+FROM node:20-slim AS frontend-builder
 
 WORKDIR /app
 
-# Configure npm
-ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
-ENV PATH=/home/node/.npm-global/bin:$PATH
-RUN mkdir -p /home/node/.npm-global && \
-    chown -R node:node /app /home/node/.npm-global && \
-    npm config set prefix /home/node/.npm-global
+# Install pnpm
+RUN npm install -g pnpm@8.15.1
 
-# Copy only necessary files for the build
-COPY --chown=node:node package.json pnpm-lock.yaml ./
-COPY --chown=node:node vite.config.js ./
-COPY --chown=node:node data ./data
+# Copy package files
+COPY package.json pnpm-lock.yaml ./
+COPY tsconfig.json tsconfig.node.json vite.config.ts ./
+COPY client ./client
 
-USER node
-RUN set -x && \
-    npm install -g pnpm && \
-    pnpm install --frozen-lockfile && \
-    pwd && \
-    ls -la && \
-    echo "Running build..." && \
-    pnpm run build && \
-    echo "Build complete" && \
-    ls -la data/public/dist
+# Install dependencies and build
+RUN pnpm install --frozen-lockfile && \
+    pnpm run build
 
 # Stage 2: Rust Dependencies Cache
 FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04 AS rust-deps-builder
@@ -97,7 +86,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     RUST_LOG=info \
     RUST_BACKTRACE=0 \
     PORT=4000 \
-    BIND_ADDRESS=0.0.0.0
+    BIND_ADDRESS=0.0.0.0 \
+    NODE_ENV=production
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -148,7 +138,6 @@ RUN mkdir -p /var/lib/nginx/client_temp \
           /var/log/nginx/access.log && \
     chown appuser:nginx /var/log/nginx/*.log && \
     chmod 660 /var/log/nginx/*.log && \
-    # Ensure nginx can write its pid file
     touch /var/run/nginx/nginx.pid && \
     chown appuser:nginx /var/run/nginx/nginx.pid && \
     chmod 660 /var/run/nginx/nginx.pid
@@ -157,7 +146,7 @@ RUN mkdir -p /var/lib/nginx/client_temp \
 WORKDIR /app
 
 # Create required directories with correct permissions
-RUN mkdir -p /app/data/public \
+RUN mkdir -p /app/data/public/dist \
              /app/data/markdown \
              /app/data/runtime \
              /app/src \
@@ -171,15 +160,14 @@ COPY --from=python-builder --chown=appuser:appuser /app/venv /app/venv
 # Copy built artifacts
 COPY --from=rust-builder --chown=appuser:appuser /usr/src/app/target/release/webxr /app/
 COPY --from=rust-builder --chown=appuser:appuser /usr/src/app/settings.toml /app/
-COPY --from=frontend-builder --chown=appuser:appuser /app/data/public/dist /app/data/public/dist
+COPY --from=frontend-builder --chown=appuser:appuser /app/dist /app/data/public/dist
 
 # Copy configuration and scripts
 COPY --chown=appuser:appuser src/generate_audio.py /app/src/
 COPY --chown=appuser:nginx nginx.conf /etc/nginx/nginx.conf
 COPY --chown=appuser:appuser start.sh /app/start.sh
 RUN chmod 755 /app/start.sh && \
-    chmod 644 /etc/nginx/nginx.conf && \
-    ls -la /app/data/public/dist
+    chmod 644 /etc/nginx/nginx.conf
 
 # Add security labels
 LABEL org.opencontainers.image.source="https://github.com/yourusername/logseq-xr" \
