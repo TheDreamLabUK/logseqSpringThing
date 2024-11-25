@@ -46,10 +46,10 @@ export class WebXRVisualization {
                 antialias: true,
                 powerPreference: "high-performance",
                 failIfMajorPerformanceCaveat: false,
-                preserveDrawingBuffer: true
+                preserveDrawingBuffer: true,
+                xrCompatible: true // Enable XR compatibility
             };
 
-            // Try WebGL 2 first for better performance
             let gl = this.canvas.getContext('webgl2', contextAttributes);
             let isWebGL2 = !!gl;
 
@@ -64,7 +64,6 @@ export class WebXRVisualization {
                 throw new Error('WebGL not supported');
             }
 
-            // Create renderer with optimized settings
             this.renderer = new THREE.WebGLRenderer({
                 canvas: this.canvas,
                 context: gl,
@@ -75,13 +74,12 @@ export class WebXRVisualization {
                 preserveDrawingBuffer: true
             });
 
-            // Configure renderer for HDR and optimal quality
             this.renderer.setSize(window.innerWidth, window.innerHeight);
             this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             this.renderer.outputColorSpace = THREE.SRGBColorSpace;
             this.renderer.shadowMap.enabled = true;
             this.renderer.shadowMap.type = isWebGL2 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
-            this.renderer.setClearColor(0x222222, 1); // Light gray background
+            this.renderer.setClearColor(0x222222, 1);
             this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
             this.renderer.toneMappingExposure = 1.2;
 
@@ -123,6 +121,10 @@ export class WebXRVisualization {
         this.controls.zoomSpeed = 0.8;
         this.controls.target.set(0, 0, 0);
 
+        // Initialize XR
+        this.xrSessionManager = null;
+        this.initializeXR();
+
         // Bind methods
         this.onWindowResize = this.onWindowResize.bind(this);
         this.animate = this.animate.bind(this);
@@ -135,6 +137,46 @@ export class WebXRVisualization {
         this.animate();
 
         console.log('WebXRVisualization constructor completed');
+    }
+
+    async initializeXR() {
+        try {
+            // Enable XR on renderer
+            this.renderer.xr.enabled = true;
+
+            // Initialize XR session manager
+            this.xrSessionManager = await initXRSession(this.renderer, this.scene, this.camera);
+            
+            if (this.xrSessionManager) {
+                // Add XR button to the scene
+                await addXRButton(this.xrSessionManager);
+                
+                // Set up XR animation loop
+                this.renderer.setAnimationLoop((timestamp, frame) => {
+                    // Update XR session
+                    if (this.xrSessionManager) {
+                        this.xrSessionManager.update(timestamp, frame);
+                    }
+
+                    // Update controls and labels
+                    if (this.controls && !this.renderer.xr.isPresenting) {
+                        this.controls.update();
+                    }
+                    if (this.nodeManager) {
+                        this.nodeManager.updateLabelOrientations(this.camera);
+                    }
+
+                    // Render scene
+                    this.renderer.render(this.scene, this.camera);
+                });
+
+                console.log('XR initialization complete');
+            } else {
+                console.warn('XR not supported or initialization failed');
+            }
+        } catch (error) {
+            console.error('Error initializing XR:', error);
+        }
     }
 
     initializeSettings() {
