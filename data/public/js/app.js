@@ -45,12 +45,18 @@ export class App {
         try {
             // Create WebsocketService and wait for connection
             this.websocketService = new WebsocketService();
+            
+            // Modified connection promise to handle both successful messages and connection event
             await new Promise((resolve, reject) => {
+                let messageReceived = false;
                 const timeout = setTimeout(() => {
-                    reject(new Error('WebSocket connection timeout'));
-                }, 5000); // 5 second timeout
+                    if (!messageReceived) {
+                        reject(new Error('WebSocket connection timeout'));
+                    }
+                }, 5000);
 
-                this.websocketService.on('connect', () => {
+                this.websocketService.on('message', () => {
+                    messageReceived = true;
                     clearTimeout(timeout);
                     resolve();
                 });
@@ -60,10 +66,11 @@ export class App {
                     reject(error);
                 });
             });
+            
             console.log('WebsocketService connected successfully');
         } catch (error) {
             console.error('Failed to initialize WebsocketService:', error);
-            throw error; // Propagate error since WebsocketService is critical
+            throw error;
         }
 
         // Initialize GraphDataManager after websocket is connected
@@ -129,56 +136,50 @@ export class App {
         try {
             console.log('Initializing Vue application');
             
-            // Store references for closure
-            const websocketService = this.websocketService;
-            const visualization = this.visualization;
+            const self = this; // Store reference to the App instance
             
-            // Create Vue app instance
+            // Create Vue app with explicit template and debug styling
             const app = createApp({
                 components: {
-                    ControlPanel,
-                    ChatManager
-                },
-                setup() {
-                    const handleControlChange = (change) => {
-                        console.log('Control changed:', change);
-                        visualization.updateSettings(change);
-                    };
-
-                    return {
-                        websocketService,
-                        enableSpacemouse,
-                        handleControlChange
-                    };
+                    ControlPanel
                 },
                 template: `
-                    <div>
-                        <ControlPanel 
+                    <div style="position: fixed; top: 0; right: 0; z-index: 1000; background: rgba(0,0,0,0.8); padding: 20px;">
+                        <control-panel 
                             :websocket-service="websocketService"
-                            :enable-spacemouse="enableSpacemouse"
                             @control-change="handleControlChange"
                         />
-                        <ChatManager 
-                            :websocket-service="websocketService"
-                        />
                     </div>
-                `
+                `,
+                setup() {
+                    return {
+                        websocketService: self.websocketService,
+                        handleControlChange: (change) => {
+                            console.log('Control changed:', change);
+                            self.visualization.updateSettings(change);
+                        }
+                    };
+                }
             });
 
-            // Mount the app
+            // Add error handler
+            app.config.errorHandler = (err, vm, info) => {
+                console.error('Vue Error:', err);
+                console.error('Error Info:', info);
+            };
+
+            // Mount with verification
             const appContainer = document.getElementById('app');
             if (!appContainer) {
-                console.error('App container not found, creating it');
-                const newContainer = document.createElement('div');
-                newContainer.id = 'app';
-                document.body.appendChild(newContainer);
+                throw new Error("Could not find '#app' element");
             }
 
-            this.vueApp = app.mount('#app');
-            console.log('Vue application initialized successfully');
+            app.mount('#app');
+            this.vueApp = app;
+
+            console.log('Vue application mounted successfully');
         } catch (error) {
             console.error('Failed to initialize Vue application:', error);
-            console.error('Error stack:', error.stack);
             throw error;
         }
     }

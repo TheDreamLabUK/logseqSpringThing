@@ -1,4 +1,3 @@
-// Previous imports remain the same...
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { NodeManager } from './nodes.js';
@@ -7,7 +6,7 @@ import { visualizationSettings } from '../../services/visualizationSettings.js';
 import { initXRSession, addXRButton } from '../../xr/xrSetup.js';
 import { initXRInteraction } from '../../xr/xrInteraction.js';
 
-// Constants remain the same...
+// Constants for input sensitivity
 const TRANSLATION_SPEED = 0.01;
 const ROTATION_SPEED = 0.01;
 const VR_MOVEMENT_SPEED = 0.05;
@@ -20,34 +19,38 @@ export class WebXRVisualization {
         }
         this.graphDataManager = graphDataManager;
 
-        // Initialize the scene
+        // Initialize the scene with a dark gray background for better contrast
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x000000);
+        this.scene.background = new THREE.Color(0x111111);
         
-        // Create camera
+        // Create camera with optimized initial position for graph viewing
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-        this.camera.matrixAutoUpdate = true;
-        this.camera.position.set(0, 1.6, 3);
+        this.camera.position.set(0, 2, 5); // Positioned closer for better visibility
+        this.camera.lookAt(0, 0, 0);
 
-        // Initialize renderer with WebGL2 check
+        // Create and initialize canvas
+        this.canvas = document.createElement('canvas');
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+
+        // Initialize renderer with WebGL2 and HDR support
         try {
-            const canvas = document.createElement('canvas');
             const contextAttributes = {
-                alpha: true,
+                alpha: false,
                 antialias: true,
                 powerPreference: "high-performance",
-                failIfMajorPerformanceCaveat: false
+                failIfMajorPerformanceCaveat: false,
+                preserveDrawingBuffer: true // Important for texture updates
             };
 
-            // Try WebGL 2 first
-            let gl = canvas.getContext('webgl2', contextAttributes);
+            // Try WebGL 2 first for better performance
+            let gl = this.canvas.getContext('webgl2', contextAttributes);
             let isWebGL2 = !!gl;
 
             if (!gl) {
-                // Fallback to WebGL 1
                 console.warn('WebGL 2 not available, falling back to WebGL 1');
-                gl = canvas.getContext('webgl', contextAttributes) ||
-                     canvas.getContext('experimental-webgl', contextAttributes);
+                gl = this.canvas.getContext('webgl', contextAttributes) ||
+                     this.canvas.getContext('experimental-webgl', contextAttributes);
                 isWebGL2 = false;
             }
 
@@ -55,21 +58,26 @@ export class WebXRVisualization {
                 throw new Error('WebGL not supported');
             }
 
+            // Create renderer with optimized settings
             this.renderer = new THREE.WebGLRenderer({
-                canvas: canvas,
+                canvas: this.canvas,
                 context: gl,
                 antialias: true,
-                alpha: true,
+                alpha: false,
                 logarithmicDepthBuffer: true,
-                powerPreference: "high-performance"
+                powerPreference: "high-performance",
+                preserveDrawingBuffer: true
             });
 
-            // Configure renderer based on capabilities
+            // Configure renderer for HDR and optimal quality
             this.renderer.setSize(window.innerWidth, window.innerHeight);
             this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             this.renderer.outputColorSpace = THREE.SRGBColorSpace;
             this.renderer.shadowMap.enabled = true;
             this.renderer.shadowMap.type = isWebGL2 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+            this.renderer.setClearColor(0x111111, 1);
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 1.2;
 
             // Enable XR if available
             if (navigator.xr) {
@@ -84,12 +92,34 @@ export class WebXRVisualization {
             throw error;
         }
 
-        // Rest of the constructor remains the same...
+        // Initialize scene container with proper styling
+        const container = document.getElementById('scene-container');
+        if (container) {
+            container.style.position = 'absolute';
+            container.style.top = '0';
+            container.style.left = '0';
+            container.style.width = '100%';
+            container.style.height = '100%';
+            container.style.overflow = 'hidden';
+            container.style.backgroundColor = '#111111';
+            
+            this.canvas.style.position = 'absolute';
+            this.canvas.style.top = '0';
+            this.canvas.style.left = '0';
+            this.canvas.style.width = '100%';
+            this.canvas.style.height = '100%';
+            container.appendChild(this.canvas);
+        }
+
+        // Initialize texture loader with proper settings
+        this.textureLoader = new THREE.TextureLoader();
+        this.textureLoader.crossOrigin = 'anonymous';
+
         // Initialize managers
         console.log('Initializing NodeManager');
         this.nodeManager = new NodeManager(this.scene, this.camera, visualizationSettings.getNodeSettings());
         
-        // Initialize effects manager
+        // Initialize effects manager with error handling
         console.log('Initializing EffectsManager');
         try {
             this.effectsManager = new EffectsManager(this.scene, this.camera, this.renderer);
@@ -100,7 +130,16 @@ export class WebXRVisualization {
             this.effectsEnabled = false;
         }
 
-        this.controls = null;
+        // Initialize controls with optimized settings
+        this.controls = new OrbitControls(this.camera, this.canvas);
+        this.controls.enableDamping = true;
+        this.controls.dampingFactor = 0.1;
+        this.controls.rotateSpeed = 0.8;
+        this.controls.panSpeed = 0.8;
+        this.controls.zoomSpeed = 0.8;
+        this.controls.target.set(0, 0, 0);
+
+        // XR-related properties
         this.xrSessionManager = null;
         this.xrControllers = [];
         this.xrHands = [];
@@ -114,172 +153,43 @@ export class WebXRVisualization {
         this.fallbackRender = this.fallbackRender.bind(this);
         this.handleSpacemouseInput = this.handleSpacemouseInput.bind(this);
 
-        // Initialize settings and add event listeners
+        // Initialize scene settings and start animation
         this.initializeSettings();
         this.setupEventListeners();
-
-        // Request initial graph data
-        console.log('Requesting initial graph data');
-        const initialData = this.graphDataManager.getGraphData();
-        if (initialData && Array.isArray(initialData.nodes)) {
-            console.log('Initial graph data available:', initialData);
-            this.updateVisualization(initialData);
-        } else {
-            console.log('No initial graph data, waiting for updates');
-            // Request data from websocket
-            if (this.graphDataManager.websocketService) {
-                console.log('Requesting data from websocket');
-                this.graphDataManager.websocketService.send({ type: 'getInitialData' });
-            }
-        }
+        this.animate();
 
         console.log('WebXRVisualization constructor completed');
     }
 
-    onWindowResize() {
-        if (this.camera && this.renderer) {
-            this.camera.aspect = window.innerWidth / window.innerHeight;
-            this.camera.updateProjectionMatrix();
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-            if (this.effectsManager && this.effectsEnabled) {
-                try {
-                    this.effectsManager.handleResize();
-                } catch (error) {
-                    console.error('Error handling effects resize:', error);
-                    this.effectsEnabled = false;
-                }
-            }
-        }
-    }
-
-    setupEventListeners() {
-        console.log('Setting up event listeners');
-        
-        window.addEventListener('graphDataUpdated', (event) => {
-            console.log('Received graphDataUpdated event:', event.detail);
-            if (event.detail && Array.isArray(event.detail.nodes)) {
-                this.updateVisualization(event.detail);
-            } else {
-                console.warn('Invalid graph data in event:', event.detail);
-            }
-        });
-
-        window.addEventListener('visualizationSettingsUpdated', (event) => {
-            console.log('Received settings update:', event.detail);
-            this.updateSettings(event.detail);
-        });
-
-        window.addEventListener('positionUpdate', (event) => {
-            if (this.graphDataManager.isGraphDataValid() && this.graphDataManager.websocketService) {
-                console.log('Sending position update to server');
-                this.graphDataManager.websocketService.send(event.detail);
-            }
-        });
-
-        window.addEventListener('binaryPositionUpdate', (event) => {
-            if (event.detail) {
-                console.log('Applying binary position update');
-                this.applyPositionUpdate(event.detail);
-            }
-        });
-
-        // XR session state listeners
-        if (this.renderer.xr) {
-            this.renderer.xr.addEventListener('sessionstart', () => {
-                console.log('XR session started');
-                this.isXRActive = true;
-                this.initializeXREffects();
-            });
-
-            this.renderer.xr.addEventListener('sessionend', () => {
-                console.log('XR session ended');
-                this.isXRActive = false;
-                this.initializeDesktopEffects();
-            });
-        }
-    }
-
-    async initializeDesktopEffects() {
-        if (this.effectsManager) {
-            try {
-                await this.effectsManager.initPostProcessing(false);
-                this.effectsEnabled = true;
-            } catch (error) {
-                console.error('Failed to initialize desktop effects:', error);
-                this.effectsEnabled = false;
-            }
-        }
-    }
-
-    async initializeXREffects() {
-        if (this.effectsManager) {
-            try {
-                await this.effectsManager.initPostProcessing(true);
-                this.effectsEnabled = true;
-            } catch (error) {
-                console.error('Failed to initialize XR effects:', error);
-                this.effectsEnabled = false;
-            }
-        }
-    }
-
-    fallbackRender() {
-        const currentCamera = this.isXRActive ? this.renderer.xr.getCamera() : this.camera;
-        this.renderer.render(this.scene, currentCamera);
-    }
-
-    applyPositionUpdate(buffer) {
-        try {
-            const dataView = new Float32Array(buffer);
-            const isInitialLayout = dataView[0] === 1.0;
-            
-            for (let i = 1; i < dataView.length; i += 6) {
-                const nodeId = Math.floor((i - 1) / 6);
-                const x = dataView[i];
-                const y = dataView[i + 1];
-                const z = dataView[i + 2];
-                
-                const mesh = this.nodeManager.nodeMeshes.get(nodeId);
-                if (mesh) {
-                    mesh.position.set(x, y, z);
-                    this.nodeManager.updateEdgesForNode(nodeId);
-                }
-            }
-        } catch (error) {
-            console.error('Error applying position update:', error);
-        }
-    }
-
     initializeSettings() {
         console.log('Initializing settings');
-        const envSettings = visualizationSettings.getEnvironmentSettings();
         
-        this.fogDensity = envSettings.fogDensity;
-        this.scene.fog = new THREE.FogExp2(0x000000, this.fogDensity);
-        
-        this.ambientLightIntensity = 50;
-        this.directionalLightIntensity = 5.0;
-        this.directionalLightColor = 0xffffff;
-        this.ambientLightColor = 0x404040;
-        
-        this.ambientLight = new THREE.AmbientLight(this.ambientLightColor, this.ambientLightIntensity);
-        this.scene.add(this.ambientLight);
+        // Add a grid helper for spatial reference
+        const gridHelper = new THREE.GridHelper(20, 20, 0x555555, 0x282828);
+        this.scene.add(gridHelper);
 
-        this.directionalLight = new THREE.DirectionalLight(
-            this.directionalLightColor,
-            this.directionalLightIntensity
-        );
-        this.directionalLight.position.set(5, 5, 5);
-        this.directionalLight.castShadow = true;
-        this.scene.add(this.directionalLight);
+        // Add ambient light for base illumination (reduced intensity for better contrast)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
+        this.scene.add(ambientLight);
 
-        const pointLight1 = new THREE.PointLight(0xffffff, 1, 100);
+        // Add directional light for shadows and highlights
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 2.0);
+        directionalLight.position.set(5, 5, 5);
+        directionalLight.castShadow = true;
+        this.scene.add(directionalLight);
+
+        // Add point lights for better illumination
+        const pointLight1 = new THREE.PointLight(0xffffff, 1.0, 50);
         pointLight1.position.set(10, 10, 10);
         this.scene.add(pointLight1);
 
-        const pointLight2 = new THREE.PointLight(0xffffff, 1, 100);
+        const pointLight2 = new THREE.PointLight(0xffffff, 1.0, 50);
         pointLight2.position.set(-10, -10, -10);
         this.scene.add(pointLight2);
+
+        // Add subtle fog for depth
+        const envSettings = visualizationSettings.getEnvironmentSettings();
+        this.scene.fog = new THREE.FogExp2(0x111111, envSettings.fogDensity || 0.001);
     }
 
     async initThreeJS() {
@@ -290,37 +200,15 @@ export class WebXRVisualization {
             return;
         }
 
-        this.renderer.domElement.style.position = 'absolute';
-        this.renderer.domElement.style.top = '0';
-        this.renderer.domElement.style.left = '0';
-        this.renderer.domElement.style.zIndex = '0';
-        container.appendChild(this.renderer.domElement);
-
-        const controlsContainer = document.createElement('div');
-        controlsContainer.style.position = 'absolute';
-        controlsContainer.style.top = '0';
-        controlsContainer.style.left = '0';
-        controlsContainer.style.width = '100%';
-        controlsContainer.style.height = '100%';
-        controlsContainer.style.zIndex = '1';
-        container.appendChild(controlsContainer);
-
-        this.controls = new OrbitControls(this.camera, controlsContainer);
-        this.controls.enableDamping = true;
-        this.controls.dampingFactor = 0.1;
-        this.controls.rotateSpeed = 0.8;
-        this.controls.panSpeed = 0.8;
-        this.controls.zoomSpeed = 0.8;
-
-        const updatePointerEvents = (isInteracting) => {
-            if (!this.renderer.xr.isPresenting) {
-                this.renderer.domElement.style.pointerEvents = isInteracting ? 'auto' : 'none';
-                controlsContainer.style.pointerEvents = isInteracting ? 'auto' : 'none';
-            }
-        };
-
-        container.addEventListener('mouseenter', () => updatePointerEvents(true));
-        container.addEventListener('mouseleave', () => updatePointerEvents(false));
+        // Initialize controls if not already initialized
+        if (!this.controls) {
+            this.controls = new OrbitControls(this.camera, this.canvas);
+            this.controls.enableDamping = true;
+            this.controls.dampingFactor = 0.1;
+            this.controls.rotateSpeed = 0.8;
+            this.controls.panSpeed = 0.8;
+            this.controls.zoomSpeed = 0.8;
+        }
         
         this.nodeManager.initClickHandling(this.renderer);
 
@@ -331,8 +219,6 @@ export class WebXRVisualization {
         this.xrSessionManager = await initXRSession(this.renderer, this.scene, this.camera);
 
         window.addEventListener('resize', this.onWindowResize);
-
-        this.animate();
         
         if (this.xrSessionManager) {
             await addXRButton(this.xrSessionManager);
@@ -473,11 +359,139 @@ export class WebXRVisualization {
         }
     }
 
+    onWindowResize() {
+        if (this.camera && this.renderer && this.canvas) {
+            // Update canvas size
+            this.canvas.width = window.innerWidth;
+            this.canvas.height = window.innerHeight;
+            
+            // Update camera
+            this.camera.aspect = window.innerWidth / window.innerHeight;
+            this.camera.updateProjectionMatrix();
+            
+            // Update renderer
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            
+            // Update effects if enabled
+            if (this.effectsManager && this.effectsEnabled) {
+                try {
+                    this.effectsManager.handleResize();
+                } catch (error) {
+                    console.error('Error handling effects resize:', error);
+                    this.effectsEnabled = false;
+                }
+            }
+        }
+    }
+
+    setupEventListeners() {
+        console.log('Setting up event listeners');
+        
+        window.addEventListener('graphDataUpdated', (event) => {
+            console.log('Received graphDataUpdated event:', event.detail);
+            if (event.detail && Array.isArray(event.detail.nodes)) {
+                this.updateVisualization(event.detail);
+            } else {
+                console.warn('Invalid graph data in event:', event.detail);
+            }
+        });
+
+        window.addEventListener('visualizationSettingsUpdated', (event) => {
+            console.log('Received settings update:', event.detail);
+            this.updateSettings(event.detail);
+        });
+
+        window.addEventListener('positionUpdate', (event) => {
+            if (this.graphDataManager.isGraphDataValid() && this.graphDataManager.websocketService) {
+                console.log('Sending position update to server');
+                this.graphDataManager.websocketService.send(event.detail);
+            }
+        });
+
+        window.addEventListener('binaryPositionUpdate', (event) => {
+            if (event.detail) {
+                console.log('Applying binary position update');
+                this.applyPositionUpdate(event.detail);
+            }
+        });
+
+        // XR session state listeners
+        if (this.renderer.xr) {
+            this.renderer.xr.addEventListener('sessionstart', () => {
+                console.log('XR session started');
+                this.isXRActive = true;
+                this.initializeXREffects();
+            });
+
+            this.renderer.xr.addEventListener('sessionend', () => {
+                console.log('XR session ended');
+                this.isXRActive = false;
+                this.initializeDesktopEffects();
+            });
+        }
+    }
+
+    fallbackRender() {
+        const currentCamera = this.isXRActive ? this.renderer.xr.getCamera() : this.camera;
+        // Clear the scene before rendering
+        this.renderer.clear(true, true, true);
+        // Render the scene directly without effects
+        this.renderer.render(this.scene, currentCamera);
+    }
+
+    async initializeDesktopEffects() {
+        if (this.effectsManager) {
+            try {
+                await this.effectsManager.initPostProcessing(false);
+                this.effectsEnabled = true;
+            } catch (error) {
+                console.error('Failed to initialize desktop effects:', error);
+                this.effectsEnabled = false;
+            }
+        }
+    }
+
+    async initializeXREffects() {
+        if (this.effectsManager) {
+            try {
+                await this.effectsManager.initPostProcessing(true);
+                this.effectsEnabled = true;
+            } catch (error) {
+                console.error('Failed to initialize XR effects:', error);
+                this.effectsEnabled = false;
+            }
+        }
+    }
+
+    applyPositionUpdate(update) {
+        if (!this.nodeManager) {
+            console.warn('Cannot apply position update: NodeManager not initialized');
+            return;
+        }
+
+        try {
+            // Assuming update is a binary buffer containing node positions
+            if (update instanceof ArrayBuffer) {
+                const positions = new Float32Array(update);
+                this.nodeManager.updateNodePositions(positions);
+            } else {
+                console.warn('Invalid position update format:', update);
+            }
+        } catch (error) {
+            console.error('Error applying position update:', error);
+        }
+    }
+
     dispose() {
         console.log('Disposing WebXRVisualization');
         this.renderer.setAnimationLoop(null);
 
         window.removeEventListener('resize', this.onWindowResize);
+
+        // Dispose of textures
+        if (this.textureLoader) {
+            THREE.Cache.clear(); // Clear texture cache
+        }
 
         this.nodeManager.dispose();
         if (this.effectsManager) {
@@ -502,6 +516,11 @@ export class WebXRVisualization {
                     this.scene.remove(hand);
                 }
             });
+        }
+
+        // Clean up canvas
+        if (this.canvas && this.canvas.parentNode) {
+            this.canvas.parentNode.removeChild(this.canvas);
         }
 
         this.renderer.dispose();
