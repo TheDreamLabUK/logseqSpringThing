@@ -14,14 +14,10 @@ export class NodeManager {
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         
-        // Get settings from visualization settings service
         const nodeSettings = visualizationSettings.getNodeSettings();
         
-        // Physical dimensions in meters
         this.minNodeSize = settings.minNodeSize || nodeSettings.minNodeSize;
         this.maxNodeSize = settings.maxNodeSize || nodeSettings.maxNodeSize;
-        
-        // Visual settings
         this.labelFontSize = settings.labelFontSize || nodeSettings.labelFontSize;
         this.nodeColor = new THREE.Color(settings.nodeColor || nodeSettings.color);
         this.materialSettings = nodeSettings.material;
@@ -33,22 +29,16 @@ export class NodeManager {
         };
         this.maxAge = nodeSettings.ageMaxDays;
 
-        // Edge settings
         const edgeSettings = visualizationSettings.getEdgeSettings();
         this.edgeColor = new THREE.Color(settings.edgeColor || edgeSettings.color);
         this.edgeOpacity = settings.edgeOpacity || edgeSettings.opacity;
 
-        // Bind event handlers
         this.handleClick = this.handleClick.bind(this);
         this.handleSettingsUpdate = this.handleSettingsUpdate.bind(this);
-        
-        // Add settings update listener
         window.addEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
 
         this.xrEnabled = false;
         this.xrLabelManager = null;
-
-        // Create frustum for label visibility checks
         this.frustum = new THREE.Frustum();
         this.projScreenMatrix = new THREE.Matrix4();
     }
@@ -58,7 +48,6 @@ export class NodeManager {
         if (!settings) return;
 
         if (settings.visual) {
-            // Update visual settings
             if (settings.visual.nodeColor !== undefined) {
                 this.updateFeature('nodeColor', settings.visual.nodeColor);
             }
@@ -83,14 +72,12 @@ export class NodeManager {
             this.updateMaterial(settings.material);
         }
 
-        // Update node colors if age-based colors are changed
         if (settings.ageColors) {
             if (settings.ageColors.new) this.ageColors.NEW.set(settings.ageColors.new);
             if (settings.ageColors.recent) this.ageColors.RECENT.set(settings.ageColors.recent);
             if (settings.ageColors.medium) this.ageColors.MEDIUM.set(settings.ageColors.medium);
             if (settings.ageColors.old) this.ageColors.OLD.set(settings.ageColors.old);
             
-            // Update all nodes to reflect new colors
             this.nodeMeshes.forEach((mesh, nodeId) => {
                 const nodeData = this.nodeData.get(nodeId);
                 if (nodeData) {
@@ -109,7 +96,6 @@ export class NodeManager {
             return nodes;
         }
 
-        // Calculate center of mass
         let centerX = 0, centerY = 0, centerZ = 0;
         nodes.forEach(node => {
             centerX += node.x || 0;
@@ -120,7 +106,6 @@ export class NodeManager {
         centerY /= nodes.length;
         centerZ /= nodes.length;
 
-        // Center nodes around origin
         return nodes.map(node => ({
             ...node,
             x: (node.x || 0) - centerX,
@@ -153,39 +138,32 @@ export class NodeManager {
     }
 
     formatNodeNameToUrl(nodeName) {
-        // Get base URL from environment or default to logseq
         const baseUrl = 'https://www.narrativegoldmine.com';
-        // Convert node name to lowercase and properly encode for URLs
         const formattedName = encodeURIComponent(nodeName.toLowerCase());
         return `${baseUrl}/#/page/${formattedName}`;
     }
 
     getNodeSize(metadata) {
-        // Calculate node size in meters based on metadata
         if (metadata.node_size) {
             const size = parseFloat(metadata.node_size);
-            // Normalize size between minNodeSize (0.1m) and maxNodeSize (0.3m)
             return this.minNodeSize + (size * (this.maxNodeSize - this.minNodeSize));
         }
-        return this.minNodeSize; // Default to minimum size (10cm)
+        return this.minNodeSize;
     }
 
     calculateNodeColor(metadata) {
-        // Use github_last_modified if available, otherwise fall back to last_modified
         const lastModified = metadata.github_last_modified || metadata.last_modified || new Date().toISOString();
         const now = Date.now();
         const age = now - new Date(lastModified).getTime();
         const dayInMs = 24 * 60 * 60 * 1000;
         
-        if (age < 3 * dayInMs) return this.ageColors.NEW;        // Less than 3 days old
-        if (age < 7 * dayInMs) return this.ageColors.RECENT;     // Less than 7 days old
-        if (age < 30 * dayInMs) return this.ageColors.MEDIUM;    // Less than 30 days old
-        return this.ageColors.OLD;                               // 30 days or older
+        if (age < 3 * dayInMs) return this.ageColors.NEW;
+        if (age < 7 * dayInMs) return this.ageColors.RECENT;
+        if (age < 30 * dayInMs) return this.ageColors.MEDIUM;
+        return this.ageColors.OLD;
     }
 
     createNodeGeometry(size, hyperlinkCount) {
-        // Create a sphere with radius in meters
-        // Scale segments based on hyperlink count for performance vs. quality
         const minSegments = visualizationSettings.getNodeSettings().geometryMinSegments;
         const maxSegments = visualizationSettings.getNodeSettings().geometryMaxSegments;
         const segmentPerLink = visualizationSettings.getNodeSettings().geometrySegmentPerHyperlink;
@@ -199,38 +177,36 @@ export class NodeManager {
     }
 
     createNodeMaterial(color, metadata) {
-        const lastModified = metadata.github_last_modified || metadata.last_modified || new Date().toISOString();
-        const now = Date.now();
-        const ageInDays = (now - new Date(lastModified).getTime()) / (24 * 60 * 60 * 1000);
-        
-        const normalizedAge = Math.min(ageInDays / this.maxAge, 1);
-        const emissiveIntensity = this.materialSettings.emissiveMaxIntensity - 
-            (normalizedAge * (this.materialSettings.emissiveMaxIntensity - this.materialSettings.emissiveMinIntensity));
-
-        return new THREE.MeshPhysicalMaterial({
+        const material = new THREE.MeshStandardMaterial({
             color: color,
+            metalness: 0.1,
+            roughness: 0.7,
+            transparent: false,
+            opacity: 1.0,
             emissive: color,
-            emissiveIntensity: emissiveIntensity,
-            metalness: this.materialSettings.metalness,
-            roughness: this.materialSettings.roughness,
-            transparent: true,
-            opacity: this.materialSettings.opacity,
-            envMapIntensity: 1.0,
-            clearcoat: this.materialSettings.clearcoat,
-            clearcoatRoughness: this.materialSettings.clearcoatRoughness,
-            toneMapped: false
+            emissiveIntensity: 0.5,
+            side: THREE.FrontSide,
+            depthWrite: true,
+            depthTest: true
         });
+
+        console.log('Created node material:', {
+            color: color.getHexString(),
+            metalness: material.metalness,
+            roughness: material.roughness,
+            emissiveIntensity: material.emissiveIntensity
+        });
+
+        return material;
     }
 
     createNodeLabel(text, metadata) {
-        // Dispose existing texture if any
         const existingLabel = this.nodeLabels.get(text);
         if (existingLabel && existingLabel.material.map) {
             existingLabel.material.map.dispose();
             existingLabel.material.dispose();
         }
 
-        // Create canvas with alpha support
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d', {
             alpha: true,
@@ -243,16 +219,13 @@ export class NodeManager {
             return null;
         }
 
-        // Set initial font to measure text
         context.font = `${this.labelFontSize}px Arial`;
         
-        // Get metadata values
         const fileSize = parseInt(metadata.file_size) || 1;
         const lastModified = metadata.github_last_modified || metadata.last_modified || new Date().toISOString();
         const hyperlinkCount = parseInt(metadata.hyperlink_count) || 0;
         const githubInfo = metadata.github_info || {};
         
-        // Measure text dimensions
         const nameMetrics = context.measureText(text);
         let infoText = `${this.formatFileSize(fileSize)} | ${this.formatAge(lastModified)} | ${hyperlinkCount} links`;
         if (githubInfo.author) {
@@ -266,91 +239,57 @@ export class NodeManager {
         const infoMetrics = context.measureText(infoText);
         const textWidth = Math.max(nameMetrics.width, infoMetrics.width);
         
-        // Calculate power-of-2 dimensions with padding
         const padding = 20;
         const canvasWidth = Math.pow(2, Math.ceil(Math.log2(textWidth + padding * 2)));
         const canvasHeight = Math.pow(2, Math.ceil(Math.log2(this.labelFontSize * 3)));
 
-        // Set canvas size
         canvas.width = canvasWidth;
         canvas.height = canvasHeight;
 
-        // Clear canvas with transparent background
         context.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw semi-transparent background with rounded corners
-        context.fillStyle = visualizationSettings.getLabelSettings().backgroundColor;
+        context.fillStyle = 'rgba(0, 0, 0, 0.8)';
         const cornerRadius = 8;
         this.roundRect(context, 0, 0, canvas.width, canvas.height, cornerRadius);
 
-        // Reset font after canvas resize
-        context.font = `${this.labelFontSize}px ${visualizationSettings.getLabelSettings().fontFamily}`;
+        context.font = `${this.labelFontSize}px Arial`;
         context.textBaseline = 'middle';
         context.textAlign = 'left';
-
-        // Enable text anti-aliasing
-        context.imageSmoothingEnabled = true;
-        context.imageSmoothingQuality = 'high';
-
-        // Draw main text with shadow
-        context.shadowColor = 'rgba(0, 0, 0, 0.5)';
-        context.shadowBlur = 4;
-        context.shadowOffsetX = 2;
-        context.shadowOffsetY = 2;
-        context.fillStyle = visualizationSettings.getLabelSettings().textColor;
+        context.fillStyle = '#ffffff';
         context.fillText(text, padding, canvas.height * 0.35);
         
-        // Reset shadow for info text
-        context.shadowColor = 'transparent';
-        context.shadowBlur = 0;
-        context.shadowOffsetX = 0;
-        context.shadowOffsetY = 0;
-        
-        // Draw info text
-        context.font = `${this.labelFontSize * 0.6}px ${visualizationSettings.getLabelSettings().fontFamily}`;
-        context.fillStyle = visualizationSettings.getLabelSettings().infoTextColor;
+        context.font = `${this.labelFontSize * 0.6}px Arial`;
+        context.fillStyle = '#cccccc';
         context.fillText(infoText, padding, canvas.height * 0.7);
 
-        // Create optimized texture
         const texture = new THREE.CanvasTexture(canvas);
-        texture.generateMipmaps = false;
         texture.minFilter = THREE.LinearFilter;
         texture.magFilter = THREE.LinearFilter;
-        texture.format = THREE.RGBAFormat;
-        texture.needsUpdate = true;
         
-        // Create sprite material with proper blending
         const spriteMaterial = new THREE.SpriteMaterial({
             map: texture,
             transparent: true,
-            depthWrite: false,
+            opacity: 0.9,
+            depthWrite: true,
             depthTest: true,
-            blending: THREE.NormalBlending,
-            sizeAttenuation: true,
-            toneMapped: false
+            sizeAttenuation: true
         });
 
         const sprite = new THREE.Sprite(spriteMaterial);
         
-        // Scale sprite based on canvas dimensions
-        const labelScale = visualizationSettings.getLabelSettings().verticalOffset;
+        const labelScale = 0.8;
         sprite.scale.set(
-            (canvas.width / this.labelFontSize) * labelScale * 1.5,
-            (canvas.height / this.labelFontSize) * labelScale * 1.5,
+            (canvas.width / this.labelFontSize) * labelScale,
+            (canvas.height / this.labelFontSize) * labelScale,
             1
         );
-        
-        // Set proper layer for rendering
-        LayerManager.setLayerGroup(sprite, 'LABEL');
 
-        // Clean up canvas
         canvas.width = 1;
         canvas.height = 1;
 
         return sprite;
     }
 
-    // Helper function for rounded rectangles
     roundRect(ctx, x, y, width, height, radius) {
         ctx.beginPath();
         ctx.moveTo(x + radius, y);
@@ -370,10 +309,8 @@ export class NodeManager {
         let clickedMesh;
 
         if (isXR && intersectedObject) {
-            // In XR mode, use the passed intersected object directly
             clickedMesh = intersectedObject;
         } else if (!isXR && event) {
-            // Regular mouse click handling
             const rect = event.target.getBoundingClientRect();
             this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -387,25 +324,21 @@ export class NodeManager {
         }
 
         if (clickedMesh) {
-            // Find the clicked node
             const nodeId = Array.from(this.nodeMeshes.entries())
                 .find(([_, mesh]) => mesh === clickedMesh)?.[0];
 
             if (nodeId) {
                 const nodeData = this.nodeData.get(nodeId);
                 if (nodeData) {
-                    // Open URL in new tab
                     const url = this.formatNodeNameToUrl(nodeData.label || nodeId);
                     window.open(url, '_blank');
 
-                    // Visual feedback
                     const originalEmissive = clickedMesh.material.emissiveIntensity;
                     clickedMesh.material.emissiveIntensity = 2.0;
                     setTimeout(() => {
                         clickedMesh.material.emissiveIntensity = originalEmissive;
                     }, 200);
 
-                    // Show XR label if in XR mode
                     if (isXR && this.xrLabelManager) {
                         this.xrLabelManager.showLabel(
                             nodeData.label || nodeId,
@@ -418,7 +351,6 @@ export class NodeManager {
                         );
                     }
 
-                    // Trigger haptic feedback in XR mode
                     if (isXR && window.xrSession) {
                         const inputSource = Array.from(window.xrSession.inputSources).find(source => 
                             source.handedness === 'right' || source.handedness === 'left'
@@ -448,49 +380,37 @@ export class NodeManager {
 
         console.log(`Updating nodes: ${nodes.length}`);
         
-        // Center and scale nodes
         const centeredNodes = this.centerNodes(nodes);
         if (!centeredNodes) return;
         
         const existingNodeIds = new Set(centeredNodes.map(node => node.id));
 
-        // Remove non-existent nodes and properly dispose resources
         this.nodeMeshes.forEach((mesh, nodeId) => {
             if (!existingNodeIds.has(nodeId)) {
-                if (mesh.geometry) {
-                    mesh.geometry.dispose();
-                }
-                if (mesh.material) {
-                    if (Array.isArray(mesh.material)) {
-                        mesh.material.forEach(mat => mat.dispose());
-                    } else {
-                        mesh.material.dispose();
-                    }
-                }
                 this.scene.remove(mesh);
+                if (mesh.geometry) mesh.geometry.dispose();
+                if (mesh.material) mesh.material.dispose();
                 this.nodeMeshes.delete(nodeId);
                 this.nodeData.delete(nodeId);
 
                 const label = this.nodeLabels.get(nodeId);
                 if (label) {
-                    if (label.material.map) {
-                        label.material.map.dispose();
-                    }
-                    label.material.dispose();
                     this.scene.remove(label);
+                    if (label.material) {
+                        if (label.material.map) label.material.map.dispose();
+                        label.material.dispose();
+                    }
                     this.nodeLabels.delete(nodeId);
                 }
             }
         });
 
-        // Update or create nodes
         centeredNodes.forEach(node => {
             if (!node.id || typeof node.x !== 'number' || typeof node.y !== 'number' || typeof node.z !== 'number') {
                 console.warn('Invalid node data:', node);
                 return;
             }
 
-            // Store node data for click handling
             this.nodeData.set(node.id, node);
 
             const metadata = node.metadata || {};
@@ -504,90 +424,95 @@ export class NodeManager {
                 const material = this.createNodeMaterial(color, metadata);
 
                 mesh = new THREE.Mesh(geometry, material);
-                LayerManager.setLayerGroup(mesh, 'BLOOM');
+                mesh.position.set(node.x, node.y, node.z);
+                mesh.layers.set(LAYERS.NORMAL_LAYER);
+                
                 this.scene.add(mesh);
                 this.nodeMeshes.set(node.id, mesh);
 
-                const label = this.createNodeLabel(node.label || node.id, metadata);
-                this.scene.add(label);
-                this.nodeLabels.set(node.id, label);
-            } else {
-                // Update existing mesh
-                if (mesh.geometry) mesh.geometry.dispose();
-                if (mesh.material) mesh.material.dispose();
-                
-                mesh.geometry = this.createNodeGeometry(size, metadata.hyperlink_count || 0);
-                mesh.material = this.createNodeMaterial(color, metadata);
-                LayerManager.setLayerGroup(mesh, 'BLOOM');
-            }
+                console.log(`Created node ${node.id} at position:`, {
+                    x: node.x.toFixed(2),
+                    y: node.y.toFixed(2),
+                    z: node.z.toFixed(2),
+                    size: size.toFixed(2)
+                });
 
-            mesh.position.set(node.x, node.y, node.z);
-            const label = this.nodeLabels.get(node.id);
-            if (label) {
-                const labelOffset = size * 1.5;
-                label.position.set(node.x, node.y + labelOffset, node.z);
+                setTimeout(() => {
+                    const label = this.createNodeLabel(node.label || node.id, metadata);
+                    if (label) {
+                        label.position.set(node.x, node.y + size * 1.5, node.z);
+                        label.layers.set(LAYERS.NORMAL_LAYER);
+                        this.scene.add(label);
+                        this.nodeLabels.set(node.id, label);
+                    }
+                }, 1000);
+            } else {
+                mesh.position.set(node.x, node.y, node.z);
+
+                if (!mesh.material.color.equals(color)) {
+                    mesh.material.color.copy(color);
+                    mesh.material.emissive.copy(color);
+                }
+
+                const label = this.nodeLabels.get(node.id);
+                if (label) {
+                    label.position.set(node.x, node.y + size * 1.5, node.z);
+                }
             }
         });
+
+        console.log(`Updated ${centeredNodes.length} nodes`);
     }
 
     updateEdges(edges) {
         console.log(`Updating edges: ${edges.length}`);
         
-        // Create a map of edges with their weights from topic counts
         const edgeWeights = new Map();
         edges.forEach(edge => {
             if (!edge.source || !edge.target_node) {
                 console.warn('Invalid edge data:', edge);
                 return;
             }
-
             const edgeKey = `${edge.source}-${edge.target_node}`;
-            const weight = edge.weight || 1; // Use provided weight or default to 1
+            const weight = edge.weight || 1;
             edgeWeights.set(edgeKey, weight);
         });
 
-        // Remove non-existent edges
         this.edgeMeshes.forEach((line, edgeKey) => {
             if (!edgeWeights.has(edgeKey)) {
-                if (line.geometry) {
-                    line.geometry.dispose();
-                }
-                if (line.material) {
-                    line.material.dispose();
-                }
                 this.scene.remove(line);
+                if (line.geometry) line.geometry.dispose();
+                if (line.material) line.material.dispose();
                 this.edgeMeshes.delete(edgeKey);
             }
         });
 
-        // Update or create edges
         edgeWeights.forEach((weight, edgeKey) => {
             const [source, target] = edgeKey.split('-');
-            let line = this.edgeMeshes.get(edgeKey);
             const sourceMesh = this.nodeMeshes.get(source);
             const targetMesh = this.nodeMeshes.get(target);
 
-            if (!line && sourceMesh && targetMesh) {
-                const geometry = new THREE.BufferGeometry();
-                const positions = new Float32Array(6);
-                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            if (sourceMesh && targetMesh) {
+                let line = this.edgeMeshes.get(edgeKey);
 
-                const normalizedWeight = Math.min(weight / 10, 1);
-                const material = new THREE.LineBasicMaterial({
-                    color: this.edgeColor,
-                    transparent: true,
-                    opacity: this.edgeOpacity * normalizedWeight,
-                    linewidth: Math.max(1, Math.min(weight, 5)),
-                    toneMapped: false
-                });
+                if (!line) {
+                    const geometry = new THREE.BufferGeometry();
+                    const positions = new Float32Array(6);
+                    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
-                line = new THREE.Line(geometry, material);
-                LayerManager.setLayerGroup(line, 'EDGE');
-                this.scene.add(line);
-                this.edgeMeshes.set(edgeKey, line);
-            }
+                    const material = new THREE.LineBasicMaterial({
+                        color: this.edgeColor,
+                        transparent: true,
+                        opacity: Math.min(1.0, this.edgeOpacity * 2),
+                        linewidth: Math.max(1, Math.min(weight, 5))
+                    });
 
-            if (line && sourceMesh && targetMesh) {
+                    line = new THREE.Line(geometry, material);
+                    line.layers.set(LAYERS.NORMAL_LAYER);
+                    this.scene.add(line);
+                    this.edgeMeshes.set(edgeKey, line);
+                }
+
                 const positions = line.geometry.attributes.position.array;
                 positions[0] = sourceMesh.position.x;
                 positions[1] = sourceMesh.position.y;
@@ -596,17 +521,11 @@ export class NodeManager {
                 positions[4] = targetMesh.position.y;
                 positions[5] = targetMesh.position.z;
                 line.geometry.attributes.position.needsUpdate = true;
-
-                // Update edge appearance based on weight
-                const normalizedWeight = Math.min(weight / 10, 1);
-                line.material.opacity = this.edgeOpacity * normalizedWeight;
-                line.material.linewidth = Math.max(1, Math.min(weight, 5));
             }
         });
     }
 
     updateLabelOrientations(camera) {
-        // Update frustum for visibility checks
         this.projScreenMatrix.multiplyMatrices(
             camera.projectionMatrix,
             camera.matrixWorldInverse
@@ -619,41 +538,30 @@ export class NodeManager {
                 const size = mesh.geometry.parameters.radius || 
                            mesh.geometry.parameters.width || 
                            this.minNodeSize;
-                
-                // Get label settings
+
                 const labelSettings = visualizationSettings.getLabelSettings();
                 const verticalOffset = labelSettings.verticalOffset || 0.8;
+                const labelOffset = size * 3.0 * verticalOffset;
                 
-                // Calculate label position with proper offset
-                const labelOffset = size * 3.0 * verticalOffset; // Increased offset for better visibility
-                
-                // Position label above node
                 label.position.set(
                     mesh.position.x,
                     mesh.position.y + labelOffset,
                     mesh.position.z
                 );
 
-                // Make label face camera
                 label.lookAt(camera.position);
 
-                // Calculate distance to camera
                 const distance = camera.position.distanceTo(mesh.position);
-                
-                // Scale label based on distance with improved visibility
-                const baseScale = 0.8; // Base scale factor
+                const baseScale = 0.8;
                 const distanceScale = Math.max(0.8, Math.min(2.0, distance * 0.04));
                 const finalScale = baseScale * distanceScale;
                 
-                // Apply scale
                 label.scale.set(finalScale, finalScale, 1);
 
-                // Check if node is in view frustum and not too far
                 const inView = this.frustum.containsPoint(mesh.position);
                 const notTooFar = distance < 100;
                 label.visible = inView && notTooFar;
 
-                // Adjust opacity based on distance
                 if (label.material) {
                     const opacity = Math.max(0.2, 1 - (distance / 100));
                     label.material.opacity = opacity;
@@ -665,7 +573,6 @@ export class NodeManager {
     updateFeature(control, value) {
         console.log(`Updating feature: ${control} = ${value}`);
         switch (control) {
-            // Node features
             case 'nodeColor':
                 if (typeof value === 'number' || typeof value === 'string') {
                     this.nodeColor = new THREE.Color(value);
@@ -678,16 +585,14 @@ export class NodeManager {
                 }
                 break;
             case 'minNodeSize':
-                this.minNodeSize = value; // Value in meters
+                this.minNodeSize = value;
                 break;
             case 'maxNodeSize':
-                this.maxNodeSize = value; // Value in meters
+                this.maxNodeSize = value;
                 break;
             case 'labelFontSize':
                 this.labelFontSize = value;
                 break;
-
-            // Edge features
             case 'edgeColor':
                 if (typeof value === 'number' || typeof value === 'string') {
                     this.edgeColor = new THREE.Color(value);
@@ -711,8 +616,7 @@ export class NodeManager {
 
     updateMaterial(settings) {
         console.log('Updating node material settings:', settings);
-        
-        // Update material settings
+
         this.materialSettings = {
             ...this.materialSettings,
             metalness: settings.metalness ?? this.materialSettings.metalness,
@@ -734,14 +638,12 @@ export class NodeManager {
     }
 
     dispose() {
-        // Remove event listeners
         window.removeEventListener('visualizationSettingsUpdated', this.handleSettingsUpdate);
         
         if (this.renderer) {
             this.removeClickHandling(this.renderer);
         }
 
-        // Dispose node resources
         this.nodeMeshes.forEach(mesh => {
             if (mesh.geometry) {
                 mesh.geometry.dispose();
@@ -762,12 +664,9 @@ export class NodeManager {
             }
         });
 
-        // Dispose label resources
         this.nodeLabels.forEach(label => {
             if (label.material) {
-                if (label.material.map) {
-                    label.material.map.dispose();
-                }
+                if (label.material.map) label.material.map.dispose();
                 label.material.dispose();
             }
             if (label.parent) {
@@ -775,7 +674,6 @@ export class NodeManager {
             }
         });
 
-        // Dispose edge resources
         this.edgeMeshes.forEach(line => {
             if (line.geometry) {
                 line.geometry.dispose();
@@ -789,7 +687,6 @@ export class NodeManager {
             }
         });
 
-        // Clear data maps
         this.nodeMeshes.clear();
         this.nodeLabels.clear();
         this.edgeMeshes.clear();
@@ -799,9 +696,8 @@ export class NodeManager {
     initInstancedMeshes() {
         console.log('Initializing instanced meshes');
         try {
-            // ... existing initialization code ...
+            // Existing initialization code...
             
-            // Verify initialization
             console.log('Instanced meshes created:', {
                 nodeCount: this.nodeInstanceCount,
                 linkCount: this.linkInstanceCount,
