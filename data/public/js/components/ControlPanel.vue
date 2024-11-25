@@ -1,5 +1,5 @@
 <template>
-    <div id="control-panel" :class="{ hidden: isHidden }">
+    <div id="control-panel" :class="{ hidden: isHidden }" @mounted="logMount">
         <button class="toggle-button" @click="togglePanel">
             {{ isHidden ? 'Show Controls' : 'Hide Controls' }}
         </button>
@@ -503,6 +503,19 @@ export default defineComponent({
             }
         });
 
+        // Add mounted hook
+        onMounted(() => {
+            console.log('ControlPanel mounted');
+            console.log('WebsocketService available:', !!props.websocketService);
+            // Check visibility
+            const panel = document.getElementById('control-panel');
+            if (panel) {
+                console.log('Panel styles:', window.getComputedStyle(panel));
+            } else {
+                console.error('Control panel element not found');
+            }
+        });
+
         return {
             isHidden,
             audioInitialized,
@@ -543,6 +556,8 @@ export default defineComponent({
     z-index: 1000;
     transition: transform 0.3s ease-in-out;
     box-shadow: -2px 0 10px rgba(0, 0, 0, 0.5);
+    /* Add debug outline */
+    border: 1px solid red;
 }
 
 #control-panel.hidden {
@@ -563,6 +578,7 @@ export default defineComponent({
     border-radius: 5px 5px 0 0;
     font-size: 0.9em;
     white-space: nowrap;
+    z-index: 1001; /* Ensure it's above the panel */
 }
 
 .panel-content {
