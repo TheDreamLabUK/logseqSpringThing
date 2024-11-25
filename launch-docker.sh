@@ -32,6 +32,17 @@ check_pnpm_security() {
     return 0
 }
 
+# Function to check TypeScript compilation
+check_typescript() {
+    echo -e "${YELLOW}Running TypeScript type check...${NC}"
+    if ! pnpm run type-check; then
+        echo -e "${RED}TypeScript check failed${NC}"
+        return 1
+    fi
+    echo -e "${GREEN}TypeScript check passed${NC}"
+    return 0
+}
+
 # Function to check Rust security
 check_rust_security() {
     echo -e "${YELLOW}Running cargo audit...${NC}"
@@ -93,6 +104,31 @@ check_docker() {
         echo -e "${RED}Error: Docker Compose not found${NC}"
         exit 1
     fi
+}
+
+# Function to verify client directory structure
+verify_client_structure() {
+    echo -e "${YELLOW}Verifying client directory structure...${NC}"
+    
+    local required_files=(
+        "client/index.ts"
+        "client/components/App.vue"
+        "client/stores/visualization.ts"
+        "client/types/core.ts"
+        "client/composables/useVisualization.ts"
+        "tsconfig.json"
+        "vite.config.ts"
+    )
+    
+    for file in "${required_files[@]}"; do
+        if [ ! -f "$file" ]; then
+            echo -e "${RED}Error: Required file $file not found${NC}"
+            return 1
+        fi
+    done
+    
+    echo -e "${GREEN}Client directory structure verified${NC}"
+    return 0
 }
 
 # Function to clean up existing processes
@@ -178,23 +214,6 @@ check_application_readiness() {
     return 1
 }
 
-# Function to test endpoints
-test_endpoints() {
-    echo -e "\n${YELLOW}Testing endpoints...${NC}"
-    
-    # Test local index endpoint
-    echo -e "\nTesting local index endpoint..."
-    local_index_response=$(curl -s -w "\nHTTP Status: %{http_code}\n" http://localhost:4000/)
-    if [ $? -eq 0 ] && [ ! -z "$local_index_response" ]; then
-        http_status_local=$(echo "$local_index_response" | grep "HTTP Status" | awk '{print $3}')
-        echo "$local_index_response" | sed '/HTTP Status/d'
-        echo -e "${GREEN}Local index endpoint: OK${NC} (HTTP Status: $http_status_local)"
-    else
-        echo -e "${RED}Local index endpoint: Failed${NC}"
-        return 1
-    fi
-}
-
 # Function to ensure cloudflared is running and healthy
 ensure_cloudflared() {
     local max_attempts=3
@@ -235,51 +254,6 @@ ensure_cloudflared() {
             fi
         fi
 
-        # Check connectivity
-        echo -e "${YELLOW}Checking cloudflared tunnel connectivity...${NC}"
-        local conn_attempts=30
-        local conn_attempt=1
-        
-        while [ $conn_attempt -le $conn_attempts ]; do
-            # Check for active tunnel connections and errors
-            local connection_count=$(docker logs cloudflared-tunnel 2>&1 | grep -c "Registered tunnel connection")
-            local error_count=$(docker logs cloudflared-tunnel 2>&1 | grep -c "no more connections active and exiting")
-            local conn_error_count=$(docker logs cloudflared-tunnel 2>&1 | grep -c "Unable to reach the origin service")
-            
-            if [ $connection_count -gt 0 ] && [ $error_count -eq 0 ] && [ $conn_error_count -eq 0 ]; then
-                echo -e "${GREEN}Cloudflared tunnel is connected${NC}"
-                success=true
-                break
-            fi
-            
-            if [ $conn_error_count -gt 0 ]; then
-                echo -e "${RED}Connection errors detected${NC}"
-                if [ $attempt -lt $max_attempts ]; then
-                    echo -e "${YELLOW}Restarting cloudflared...${NC}"
-                    $DOCKER_COMPOSE restart cloudflared
-                    sleep 10
-                    break
-                fi
-            fi
-            
-            echo "Connection attempt $conn_attempt/$conn_attempts..."
-            sleep 2
-            conn_attempt=$((conn_attempt + 1))
-        done
-
-        if [ "$success" = false ]; then
-            if [ $attempt -lt $max_attempts ]; then
-                echo -e "${YELLOW}Retrying cloudflared setup...${NC}"
-                $DOCKER_COMPOSE restart cloudflared
-                sleep 10
-            else
-                echo -e "${RED}Failed to establish cloudflared tunnel after $max_attempts attempts${NC}"
-                echo -e "${YELLOW}Recent cloudflared logs:${NC}"
-                docker logs --tail 50 cloudflared-tunnel
-                return 1
-            fi
-        fi
-
         attempt=$((attempt + 1))
     done
 
@@ -308,10 +282,17 @@ read_settings
 check_docker
 check_system_resources
 
+# Verify client structure
+if ! verify_client_structure; then
+    echo -e "${RED}Client structure verification failed${NC}"
+    exit 1
+fi
+
 # Run security checks
 echo -e "\n${YELLOW}Running security checks...${NC}"
-check_pnpm_security || true  # Continue even if check fails
-check_rust_security || true  # Continue even if check fails
+check_pnpm_security || true
+check_typescript || exit 1
+check_rust_security || true
 
 cleanup_existing_processes
 
@@ -319,18 +300,6 @@ cleanup_existing_processes
 echo -e "${YELLOW}Cleaning up old resources...${NC}"
 docker volume ls -q | grep "logseqXR" | xargs -r docker volume rm
 docker image prune -f
-
-# Ensure data directory exists
-mkdir -p data/markdown
-
-# Build frontend assets
-echo -e "${YELLOW}Building frontend assets...${NC}"
-if ! command -v pnpm &> /dev/null; then
-    echo -e "${YELLOW}Installing pnpm...${NC}"
-    npm install -g pnpm
-fi
-pnpm install
-pnpm run build
 
 # Build and start services
 echo -e "${YELLOW}Building and starting services...${NC}"
@@ -348,9 +317,6 @@ if ! check_application_readiness; then
     $DOCKER_COMPOSE logs --tail=50 webxr
     exit 1
 fi
-
-# Test endpoints
-test_endpoints
 
 # Ensure cloudflared is running and healthy
 if ! ensure_cloudflared; then

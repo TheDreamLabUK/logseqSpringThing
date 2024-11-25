@@ -1,7 +1,7 @@
 name: logseq-xr
 
 services:
-  webxr:  # Changed from webxr-graph to match health check expectations
+  webxr:
     build: .
     image: logseq-xr-image:latest
     container_name: logseq-xr-webxr
@@ -9,7 +9,7 @@ services:
     networks:
       logseq_net:
         aliases:
-          - logseq-xr-webxr  # Explicit alias to match the service name in config.yml
+          - logseq-xr-webxr
       docker_ragflow:
         aliases:
           - webxr-client
@@ -32,14 +32,13 @@ services:
       - NVIDIA_VISIBLE_DEVICES=0
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - RAGFLOW_BASE_URL=http://ragflow-server/v1/
+      - NODE_ENV=production
     env_file:
       - .env
     volumes:
       - ./data/markdown:/app/data/markdown
       - ./data/piper:/app/data/piper
-      - ./data/public/js:/app/data/public/js
-      - ./data/public/favicon.ico:/app/data/public/favicon.ico
-      - ./data/public/index.html:/app/data/public/index.html
+      - ./client:/app/client
       - ./settings.toml:/app/settings.toml:ro
       - type: tmpfs
         target: /tmp
@@ -74,7 +73,7 @@ services:
     networks:
       logseq_net:
         aliases:
-          - cloudflared  # Explicit alias for cloudflared
+          - cloudflared
     healthcheck:
       test: ["CMD", "cloudflared", "tunnel", "info"]
       interval: 10s
@@ -87,4 +86,4 @@ networks:
     name: logseq-xr_logseq_net
     driver: bridge
   docker_ragflow:
-    external: true  # Use existing RAGFlow network with correct name
+    external: true
