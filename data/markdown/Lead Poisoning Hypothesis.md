@@ -1,0 +1,41 @@
+public:: true
+
+- #Public page
+	 - automatically published
+- **The Generations Poisoned by Lead: A Global Legacy**
+	- For decades, the insidious spread of lead poisoned populations across the globe, leaving a lasting impact – particularly on those born between the 1950s and 1980s. From leaded petrol in vehicles to lead-based paint in homes, this toxic metal has left its mark on entire generations worldwide.
+- **The Rise and Fall of Leaded Petrol**
+	- In 1921, automakers discovered that adding lead to petrol prevented engine knocking, boosting performance. However, even early on, the toxicity of lead was recognised.
+	- Despite health concerns, leaded petrol became the standard in the decades following World War II, as car ownership boomed globally.
+	- Lead, expelled through exhaust, settled in soil and dust, poisoning the environment and those who inhaled it.
+- **The Lead-Crime Hypothesis**
+	- A compelling correlation exists between environmental lead and violent crime trends. Both charts show a similar peak and decline – with lead exposure preceding the crime spike by roughly 23 years.
+	- Economists like Rick Nevin and Jessica Reyes have studied this relationship extensively, finding convincing links across numerous countries.
+	- A 2022 meta-analysis further strengthens the lead-crime hypothesis ([https://ideas.repec.org/a/eee/regeco/v97y2022ics0166046222000667.html](https://ideas.repec.org/a/eee/regeco/v97y2022ics0166046222000667.html)).
+- **How Lead Ravages the Body and Mind**
+	- Lead mimics calcium, disrupting essential processes in bones, muscles, and crucially, the brain.
+	- **Lead damages the development of myelin, which insulates nerves in the brain.** This leads to slower communication, impaired brain growth, and reduced function in areas like the prefrontal cortex.
+	- Effects of childhood lead exposure can include:
+		- Lower IQ (loss of 5-8 points)
+		- Increased aggression and impulsiveness
+		- Difficulties with emotional regulation
+		- ADHD, challenges with focus and planning
+- **Lead's Global Consequences**
+	- While violent crime is the most extreme outcome, lead poisoning likely had widespread impacts on generations around the world.
+	- Learning difficulties, challenges in the workplace, strained relationships, and even susceptibility to scams could arise from lead exposure.
+	- Though many nations phased out leaded petrol in the 1970s and onward, the societal effects remain, particularly within ageing populations.
+- **Lead's Persistence and Ongoing Challenges**
+	- Lead contamination remains a global issue:
+		- Old lead paint in pre-1978 homes
+		- Soil near former industrial areas, busy roadways
+		- Water from aging lead pipes (seen in crises like Flint, Michigan)
+	- Developing nations and marginalized communities shoulder a greater burden of lead exposure, highlighting environmental injustice.
+	- There is no safe level of lead exposure.
+- **The Global Fight Against Lead**
+	- While many nations have reduced leaded petrol use, it remains a problem in some regions.
+	- Efforts to remediate contaminated soil and replace aging infrastructure are crucial.
+- Continued research into the long-term health effects of lead is vital, especially in developing countries.
+	- **Environmental Injustice:** Lead poisoning exemplifies how marginalized communities suffer the worst effects of pollution, driven by those prioritising immediate profit.
+	- **Corporate Responsibility:** Industries must be held accountable for the long-term health consequences of the substances they use, beyond the initial production phase.
+	- **Chemicals in Our World:** Lead serves as a stark reminder; we must be vigilant about the potential dangers of chemicals widely used today, especially those impacting children's development.
+- **While the peak of lead exposure may be ending, its legacy demands attention on both an individual and societal level. This issue underscores the vital connection between our environment and our health across the globe.**

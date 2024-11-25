@@ -1,0 +1,123 @@
+public:: true
+
+- #Public page
+	 - automatically published
+- [Samuel Hammond
+	 - Second Best](https://www.secondbest.ca/)
+- ## AI and Techno-Feudalism Overview
+  id:: 65929cb3-b201-48f1-b807-d616d7f92687
+	- ### Author Background: Sam Hammond
+		- **Background:** Senior economist at the Foundation for American Innovation with previous tenures at the Niskanen Institute and Mercatus Center. His expertise is in the intersection of policy and transformative technologies, particularly AI, and how they shape economic and societal structures. Be warned he has strong libertarian leanings and this does colour his thinking.
+		- **Contributions:** Hammond's work involves deep dives into how evolving technologies necessitate changes in government and societal frameworks, looking beyond immediate implications to long-term structural shifts. I am fascinated by this so I have added his work into my knowledge graph here.
+		- **Future Predictions:** Discusses the looming possibility of AI systems emulating complex human tasks, leading to potential societal and economic upheavals as they integrate deeper into various sectors. This is the concept of the "drop in replacement" for humans in the loop.
+	- ## AI Safety and Concerns
+		- ### Ethical Considerations
+	 - **Bias and Discrimination:** Discusses how AI can inherit and amplify human biases, leading to discriminatory outcomes in areas like hiring, law enforcement, and lending. Explores the ethical implications and the need for fair and transparent algorithms. He's more cautious about opensource AI than I am.
+	 - **First-Order Effects:** Details the direct impacts of AI, such as job displacement and privacy concerns, emphasizing the immediate ethical and societal challenges they present.
+	 - **Second-Order Effects:** Societal and institutional changes. Explores how AI's integration into every facet of life might alter human relationships, governance, and cultural values. Discusses the potential for AI to reshape societal hierarchies, influence global power dynamics, and challenge our notions of autonomy and agency.
+		- ### Mastering AI for Safety
+	 - **Accelerating Defensive AI:** Discusses the need to develop defensive AI modalities to counteract malicious use and unintended consequences. Explores strategies for safe AI deployment and the importance of international collaboration on AI safety standards.
+	 - **Ethical Frameworks:** Emphasizes the importance of establishing robust ethical frameworks and guidelines for AI development and use, considering diverse perspectives and the need for adaptability as AI technologies evolve.
+	 - **Government Involvement:** This may be the best path forward. Once companies like OpenAI or Anthropic reach the tipping point of superintelligence it makes sense to work closely with national governments. This is already happening in Gulf States with projects like Falcon. This is the "gain of function" moment for AI where the dangers become acute enough to compartmentalise.
+	- ## Three Possible Futures id:: 65929cb3-95b4-454b-8c9e-7ae231aec377
+		- ### AI Leviathan
+	 - **State Surveillance and Control:** Explores the potential for states to extend their surveillance capabilities and tighten control over citizens using advanced AI, leading to an Orwellian future where privacy is virtually nonexistent.
+	 - **Implications for Democracy:** Discusses the challenges this scenario poses to democratic norms and individual freedoms, with a focus on the trade-offs between security and liberty.
+		- ### Techno-Feudalism
+	 - **Fragmented Society:** Describes a future where societal fragmentation occurs due to the rise of powerful AI platforms that take over traditional state roles. Envisions a world where loyalty shifts from states to platform-centric communities.
+	 - **Private Governance:** Explores the potential trajectory of AI leading to a future where traditional state functions are increasingly replaced or supplemented by private, AI-driven platforms. This rise of corporate entities or conglomerates that provide governance, security, and social services, side-lining traditional state functions and leading to a complex web of interdependencies and power dynamics. This shift in societal organisation resembles medieval structures, and he terms it 'techno-feudalism'. I had been calling this the fracturing of society in my writing, but I might start to adopt this phase.
+	 - **Implications for Society:** Discusses how the decentralization of authority and the rise of powerful private entities could shape societal norms, governance, and daily life, leading to a redefinition of citizenship, rights, and [[Social contract and jobs]]. He identifies Uber as a social credit system which we blithely accept. Over time this trends to separation like that seen in the insurance markets, where "all the 1 star Uber drivers drive the 1 star passenger", but writ large across society. This is also "gated communities" and the micro-states defended by AI as posited by authors like Neal Stephenson in Diamond Age.
+	 - **Adversarial Renaissance:** This might well be dystopian, but equally it could be a renaissance moment, with national governments losing their hegemonic control to exascale compute powered conglomerates, city states, micro countries etc. This is for sure more adversarial, but not **necessarily** bad. This is a libertarian viewpoint, but also perhaps a classic liberal one.
+		- ### Middle Path
+	 - **Co-evolution of State and AI:** Envisions a scenario where AI and state structures co-evolve, balancing the benefits of technological advancements with the need for governance and societal stability.
+	 - **Navigating Challenges:** Discusses the potential paths to achieving this balance, including regulatory frameworks, ethical AI development, and international cooperation to manage the impacts of AI on global stability and human welfare.
+	- ## Technological Disruptions and Society's Response
+		- ### Intelligence Explosion and Societal Shift
+	 - **Hypothetical Breakthroughs:** Details scenarios where AI breakthroughs, akin to everyone having x-ray style glasses, could radically challenge existing norms around privacy, security, and human interaction.
+	 - **Radical Transparency Challenges:** Discusses the implications of such breakthroughs on societal norms, legal frameworks, and individual behaviors, stressing the need for society to anticipate and adapt to these transformative changes.
+		- ### Societal Responses
+	 - **Cultural Evolution:** Explores how societies might culturally evolve to accommodate the pervasive and invasive nature of AI, including shifts in social norms, ethics, and values.
+	 - **Mitigation and Adaptation:** Discusses strategies for mitigating the negative impacts of AI and ways in which individuals, organizations, and governments might adapt to a rapidly changing technological landscape.
+	 - **Regulation and Enforcement:** Details the potential for regulation and enforcement to manage the risks and ensure responsible development and use of AI technologies, considering the balance between innovation and control.
+		- ### AI as an Informational Tool
+	 - **Increasing Information Resolution:** Describes AI's ability to significantly enhance our understanding of the world, from refactoring legacy code to restoring ancient scrolls, and detecting galaxies in old surveys.
+	 - **Privacy Risks:** Discusses the significant privacy risks posed by AI's ability to turn everyday signals into identifiable data, stressing the need for robust privacy protections and ethical considerations.
+	- ## Scaling and Accessibility of AI
+		- ### Technological Advancements
+	 - **Cheaper and More Accessible AI:** Details how advancements in AI technology are making it exponentially cheaper and more accessible, leading to widespread adoption across sectors and society.
+	 - **Amplified Effects:** Discusses the dual nature of AI's amplified effects, enhancing both beneficial outcomes like increased efficiency and productivity, as well as detrimental ones like enhanced surveillance and social manipulation.
+		- ### AI in Daily Life
+	 - **Prediction of Everyday AI Assistants:** Envisions a future where AI assistants become commonplace in homes and workplaces, aiding in tasks ranging from mundane chores to complex decision-making.
+	 - **Complex Model Access:** Discusses how individuals and organizations might pull complex AI models on demand for various tasks, radically transforming work, creativity, and leisure.
+	- ## AI's Impact on Freedom and Oppression
+		- ### Liberating Capabilities
+	 - **Enhancing Human Capabilities:** Details how AI has the potential to significantly enhance human intellectual and physical capabilities, leading to new forms of creativity, problem-solving, and productivity.
+	 - **Freedom Expansion:** Discusses the potential for AI to expand human freedoms by alleviating burdensome tasks, enhancing decision-making, and creating new opportunities for personal and societal growth.
+		- ### Oppression Risks
+	 - **Surveillance Capabilities:** Explores the risks of AI-enhanced surveillance, detailing how pervasive monitoring could lead to oppressive societal structures and a significant loss of privacy and autonomy.
+	 - **Privacy Invasions:** Details the ways in which AI's ability to analyze and interpret personal data can lead to invasions of privacy, emphasizing the need for robust legal protections and ethical constraints.
+	- ## Historical Context and Future Trajectory
+		- ### State of Nature and Leviathan
+	 - **AI as a Disruptive Force:** Discusses how AI, like historical technological advancements, has the potential to be a disruptive force, reshaping societal structures, power dynamics, and individual lives.
+	 - **Historical Analogies:** Draws parallels between AI's potential impacts and historical events like the English Civil War, emphasizing the transformative role of technology in societal upheaval.
+		- ### Accelerating Toward Divergent Futures
+	 - **Democratization of AI:** Explores the potential for rapid democratization of AI technology, leading to widespread access and use, and the societal implications of such a scenario.
+	 - **Technological Evangelism:** Discusses the role of technological evangelists in accelerating AI development and adoption, comparing their efforts to historical figures who sought to democratize knowledge and power.
+	- ## Technological Base vs. Institutional Superstructure
+		- ### Mismatch and Adaptation
+	 - **Rapid Technological Evolution:** Details the rapid pace of technological evolution, particularly in AI, and the challenges it poses to existing societal and institutional structures.
+	 - **Slower Institutional Adaptation:** Discusses the slower pace of adaptation in institutions, leading to a mismatch between the capabilities and impacts of AI and the ability of governance structures to effectively manage them.
+		- ### Governance and Relevance
+	 - **Loss of Direction of Fit:** Explores the potential for traditional governance structures to lose their relevance or "direction of f* as society and technology evolve, leading to political instability and societal unrest.
+	 - **Adaptation Challenges:** Discusses the challenges and potential paths for institutions to adapt to a rapidly changing technological landscape, ensuring stability, fairness, and societal welfare.
+	- ## AI and Future Governance
+		- ### 2040 Vision of U.S. Government
+	 - **Projected Drastic Changes:** Envisions how the U.S. government of 2040 might look drastically different due to the transformative effects of AI, drawing comparisons to the mid-20th-century government and pre-industrial era.
+	 - **Transformational Impacts:** Discusses the specific ways in which AI might transform governance, including decision-making processes, service delivery, and citizen engagement.
+		- ### Impact on Institutions
+	 - **Democratization of AI:** Explores the potential for the democratization of powerful AI capabilities to be as destabilizing as historical technologies like the printing press, reshaping institutions and societal structures.
+	 - **Reshaping 20th-Century Institutions:** Discusses the specific ways in which AI might reshape institutions inherited from the early 20th century, including governance, education, healthcare, and labor markets.
+		- ### Default Path of Government Adaptation
+	 - **Slow Adaptation:** Details the potential consequences of governments moving slowly and incompetently in adapting to AI shocks, leading to fragmentation or a reduced role in societal governance.
+	 - **Techno-Feudalist Timeline:** Discusses the potential for a *techno-feudalist" timeline, where the provision of various public goods, including security against AI misuse, shifts into private hands.
+	- ## Milestones and Predictions
+		- ### Timeline (2024-2040 and beyond)
+	 - **Key Milestones:** Details specific milestones and significant impacts on various sectors from 2024 to 2040 and beyond, including the rise of synthetic content, job restructuring, and privatized services.
+	 - **Acceleration of AI Integration:** Discusses the acceleration of AI integration across sectors, including government, leading to an overhaul in regulatory, legal, and enforcement agencies.
+	 - **Verbatim Timeline**:
+				- 2024
+	 - 2027: Majority of internet content becomes synthetic, traditional media and Hollywood face existential threats, and the enterprise sector integrates AI for automation and compliance.
+				- 2028
+	 - 2031: Emergence of AGI capable of emulating human tasks, leading to significant job losses in cognitive sectors and a restructuring of labor markets.
+				- 2032
+	 - 2035: Acceleration of AI integration across various sectors, including government, causing an overhaul in regulatory, legal, and enforcement agencies.
+				- 2036
+	 - 2039: General-purpose robots disrupt goods production and manual labor, leading to a re-localization of supply chains and a rise in privatized services.
+				- 2040 and beyond: Divergence into three broad categories of countries: Chinese-style police states, anarchic failed states, and high-tech open societies. An increase in micro-jurisdictions with varying degrees of flourishing and an intense focus on internal security.
+		- ### The Final Test and Order of AI Risks
+	 - **Hypothetical Scenarios:** Details a hypothetical scenario set in 2045, where a city home to AI trillionaires tests a superintelligent model, emphasizing the importance of addressing AI risks in stages.
+	 - **Order of Risks:** Discusses the importance of considering the order of AI risks, noting that intermediate stages of AI development may indirectly affect the very institutions needed to address existential risks from superintelligence.
+	- ## AGI and Human Intelligence
+		- ### Approaching AGI
+	 - **Viability and Principles:** Discusses the viability of AGI based on current trends in deep learning and neural networks, detailing the principles and evidence supporting its near-term development.
+	 - **Evidence of Universality:** Details the evidence for the universality observed in artificial neural networks learning similar circuits to the human brain, suggesting that current methods are sufficient for modeling human cognition.
+		- ### Misconceptions and Realities
+	 - **Human Intelligence Overestimation:** Challenges the tendency to overestimate human intelligence, suggesting that as humans, we have limited capabilities in fully understanding or modeling other humans.
+	 - **Statistical Processes in Intelligence:** Explores the statistical processes guiding the creation of intelligent life, drawing on the analogy of Earth's evolutionary "hard steps" and the scaling laws seen in neural networks and other physical systems.
+	- ## Economic Perspectives and Growth Theory
+		- ### Endogenous Growth Theory
+	 - **AK Model:** Introduces the AK model from endogenous growth theory, which posits that economies can grow indefinitely as they accumulate more capital, potentially allowing for explosive growth under certain conditions.
+	 - **Theoretical vs. Real-World Limitations:** Discusses the theoretical possibilities of indefinite growth while acknowledging the real-world diminishing returns and other economic principles that limit such expansion.
+		- ### Diminishing Returns in Research Productivity
+	 - **Falling Research Productivity:** Details the empirical finding that research productivity is falling, meaning ideas are becoming harder to find and suggesting a natural limit to growth driven by idea generation and innovation.
+	 - **Implications for AI-Driven Growth:** Discusses the implications of diminishing returns for the notion of perpetually increasing returns from AI-augmented research and development.
+		- ### Aggregation and Scale Effects
+	 - **Increasing Returns in One Sector:** Explores the assumption of increasing returns to scale in one sector or firm and its limitations when aggregating to the economy as a whole, considering factors like urban congestion and competition.
+	 - **Consumption Bottlenecks:** Details the potential economic disruptions created by AI assuming the role of both producer and consumer, leading to overproduction or underconsumption crises and the importance of maintaining the circular flow of spending.
+	- ## Conclusion and Forward Path
+		- ### Navigating the AI Landscape
+	 - **Embracing Change:** Discusses the need for individuals, institutions, and societies to embrace the rapid changes brought about by AI, encouraging innovation while addressing the impacts.
+	 - **Ethical and Safe Deployment:** Emphasizes the importance of ethical guidelines and safe deployment strategies to navigate the complex landscape of AI development and use.
+		- ### The Future of AI and Society
+	 - **Potential Paths:** Explores the potential paths society might take in response to AI's proliferation, considering the balance between freedom and control, innovation and stability.
+	 - **Soci

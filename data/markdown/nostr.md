@@ -1,0 +1,210 @@
+public:: true
+
+- #Public page automatically published
+- [Decentralized publishing for the web (nostr.how)](https://nostr.how/en/what-is-nostr)
+- # Notes and Other Stuff by Relays
+	- Nostr [pronounced no-star] is a decentralized open protocol that aims to improve the social media experience by addressing issues of censorship and data collection. The protocol operates by allowing users to post and view notes on servers called relays, and view and post these notes through apps called clients. The open nature of the protocol allows for competition and a free flow of information, as users can choose to use different relays or clients if they are censored. This is because the protocol is decentralized and controlled by no one.
+	- The decentralized nature of Nostr means that there is no central authority that can control the flow of information. This is achieved through the use of relays and clients, which are run by different individuals or entities. Users have the freedom to choose which relays and clients they want to use, and as a result, their feeds are populated with content from the people they choose to follow. If a relay or client tries to censor a user, they can simply switch to a different one. This is a major advantage over traditional centralized social media platforms where one entity holds all the control over the flow of information and can censor or manipulate the content that users see.
+	- Nostr is also not beholden to shareholders or investors. This means that the protocol can make decisions that prioritize the well-being and quality of discourse for users, rather than solely focusing on profit. This is in contrast to traditional social media networks like Twitter, Facebook, and TikTok, which are driven by the need to collect data on users and sell ads to generate revenue. In these centralized platforms, users’ data is collected, analyzed and sold to the highest bidder, often without the user’s knowledge or consent. Nostr, on the other hand, allows users to have more control over their data and the ability to monetize their content.
+	- Nostr also tightly integrates Bitcoin Lightning to support the protocol. This will hopefully enable secure transmission of value alongside the information and interactions on the platform. It also gives users the ability to monetise their content.
+	- This potential step-change improvement to the social media experience for everyday people addresses issues of censorship and data collection.
+	- Nostr is “The simplest open protocol that is able to create a censorship-resistant global "social" network once and for all.” according to it’s github page. More than that it’s a client side validated proof of who a user is interacting with, hence being in this identity section. To be clear, it’s not a completely peer to peer system in that it uses (very dumb) relay servers, but this gives it some of the best characteristics of both paradigms. This has the following advantages for our metaverse application;
+		- It’s lightweight, with minimal network overhead and complexity
+		- It’s real-time using websockets
+		- Anyone can run a relay server, so one can be run in the deployment in the final section of the book.
+		- Each of the client peers connecting to the metaverse can be a relay and able to pass messages and proofs to the other clients without the metaverse server seeing the data or being online
+		- It is itself Turing Complete and therefore able to execute any code within it’s message protocol
+		- There are multiple usable libraries and tools
+		- It’s under active development with a diverse and experienced community
+		- It’s based on the same underlying cryptographic technology we are using elsewhere, indeed with it’s use of Taproot keys the identity system is global
+		- It provides the identity proof that we need to validate users and objects into a virtual space
+		- It enables message passing
+		- It scales to be a social network as required
+		- It need not rely on anything outside of a relay hosted on the metaverse server
+		- It can be scaled to provide one to many bulletin board style applications within the metaverse
+		- We can use it in private, group, and public modes as required
+		- It integrates with the torrent network allowing storage and external referencing of arbitrary data
+		- It can easily operate outside of the walled garden of the metaverse, extending the reach of the messages
+	- Nostr is incredibly promising, and integrating these relays in the metaverse servers and clients of the proposed technology stack in this book might allow us globally provable identity, with privacy by design. It can provide message passing. If all entities in the collaborative mixed reality scenegraphs are also Nostr key pairs then schema can be applied consistently with the economic layer using the same key system as Bitcoin. Nostr has just received a substantial grant from Dorsey. It is core to the design later in the book. A curated list of projects and libraries is available on github.
+	- Luke Childs says:
+		- “Nostr makes a good candidate to be used as a very simple DID layer. Having "Login with Nostr" auth on websites solves a lot of problems in a very elegant way, and Nostr’s main use case as a social network protocol makes it highly suited to be used as your main identity proving key. Compare "Login with Nostr" to similar "Login with Lightning" (LNURL-auth) specs to see some easy and obvious advantages:
+		  Remote signer vs local signer
+		  Login with Lightning requires access to remote keys, login with Nostr requires access to local keys ideally stored in a browser extension. Due to the way Lightning works you can only really have one instance. You need all your client devices linked to a single Lightning node, this means most clients will be connecting to the signer remotely. Now if your Lightning node goes down or you lose your connection you also can’t auth with any service. This could cause circular dependencies where you lose the connection to your Lightning node so you can’t auth with the services you need to access to debug the issue with your Lightning node like your hosting provider or VPN account. You could technically solve this by replicating your LN keys to other client devices only to be used for local auth signing but that introduces other risks.
+		  Unique identifier vs identity
+		  A Lightning node is not really an identity but a unique identifier. It just tells you the person that auths is the same random person that authed last time, it doesn’t tell you who they are. A nostr pubkey is an identity. It tells you who they are, what their name is, what they look like, who they know, how you can pay them, how you can message them.
+		  This is much more useful as an identity layer for an application. The application can show their profile picture, username, send secure cross platform push notifications via NIP-04 encrypted Nostr DMs, etc.
+		  Consistent identity across services
+		  Lightning pubkeys are sensitive private information and can leak confidential financial information, Nostr pubkeys are safe to share with anyone. LNURL-auth adds extra steps to solve this by creating derived subkeys for identities that are unique to each service you auth with. This does not seem ideal, it seems the default case is that an identity is something that you do want to follow you across all your accounts. Nostr based auth behaves more appropriate in this regard. In the rare case you need to achieve privacy and separation between certain services you can still do that by using use a throwaway Nostr key for those services.
+		  User relationships across services Since authing with Nostr shares a real social identity with the service, they can also see your Nostr social graph. This could be useful for connecting you to people you already know on the new service.
+		  Low cost identity
+		  Ideally identities should be easy to create but hard to build up reputation to limit spam while avoiding excluding people from the network. It’s not clear that it will be cost effective / scalable for everyone to run their own Lightning node so tying individual identity to a single Lightning node pubkey is problematic. Nostr keys are easy to create and hard reputation can be earned via PoW/DNS or building a strong social graph.”
+	- ## nostr, bluesky, twitter
+		- [An Interview With Jack Dorsey (creator of Twitter)](https://www.piratewires.com/p/interview-with-jack-dorsey-mike-solana)
+			- Dorsey left Bluesky, a project aimed at creating an open-source protocol layer for social media platforms, because it deviated from its original decentralized vision and started repeating the same mistakes as Twitter.
+			- Dorsey believes Twitter's core problem was choosing an advertising-based business model, which made the platform vulnerable to pressure from advertisers and governments, leading to censorship.
+			- Taking Twitter private was the only way to implement the changes needed to make it a true internet company with a focus on protocol, service, and business.
+			- Dorsey argues that social media companies cannot remain censorship-resistant without moving to open protocols, as centralized platforms will always be vulnerable to pressure from advertisers and governments.
+			- He believes that truly decentralized protocols like Nostr, which have no central point of control, are the future of free speech on the internet.
+			- **Open Source Development Philosophy**: The foundational principles of early internet development were rooted in open-source philosophy, where transparency of code and open APIs facilitated widespread innovation. This approach, akin to a "bazaar" rather than a "cathedral," advocates for a decentralised system to operate alongside existing centralised models. This ensures resilience and the availability of alternatives when centralised systems encounter failures.
+			- **Censorship Resistance and Bitcoin**: Censorship resistance is a critical aspect, particularly within the context of Bitcoin and open platforms like Nostr. Despite the widespread discussion on this topic, there is an observed gap between rhetoric and daily usage. The infrastructure must be robust and prepared to support billions of users when the demand for censorship-resistant platforms increases.
+			- **Nostr vs. Twitter (X)**: Nostr is positioned as a superior platform to Twitter (now X) due to its open and permissionless nature. The focus shifts from merely counting user numbers to assessing the quantity and quality of information on the platform. The role of algorithms in organising this vast information corpus is recognised as a critical factor in enhancing user experience and platform utility.
+			- **Bots and Automated Systems**: Automated systems, including bots, are expected to play a significant role in the future digital landscape. Nostr's open architecture makes it an ideal environment for developing transparent, user-controlled bots, where users retain agency over their deployment and interaction.
+			- **Twitter's Transformation and Blue Sky**: The evolution of Twitter, especially under new ownership, reflects the challenges of maintaining a platform as a public company dependent on an advertising model. An earlier initiative, Blue Sky, aimed to create a protocol-based network but ultimately diverged from the optimal direction that Nostr represents today.
+			- **Identity Verification and Privacy**: The practice of mass identity verification on platforms like X is criticised for its potential to be exploited by governments to suppress free speech. Although users currently prioritise convenience over privacy, the risks associated with extensive identity verification are significant, particularly in repressive environments.
+			- **Security Concerns on Nostr**: While Nostr offers substantial privacy benefits, it faces security challenges, such as the leakage of IP addresses. Addressing these vulnerabilities is crucial to safeguarding activists and other high-risk users, ensuring that Nostr can serve as a secure platform for all.
+			- **Public vs. Private Markets for Companies**: The brief considers whether companies should enter public markets, noting that public status imposes challenging incentives that can lead to short-term decision-making at the expense of long-term viability. Staying private may allow companies to maintain focus on core principles and sustainable growth.
+			- **Open Protocols vs. Closed Platforms**: There is a strong preference for open protocols over closed platforms. Open protocols like Bitcoin level the playing field for all participants, allowing companies to build successful business models without the constraints imposed by closed, centralised systems.
+			- **Nostr's Unique Position**: Nostr is positioned as the most resilient, durable, and stable platform for public conversation. Its decentralised nature ensures that no single entity can remove content, making it a robust alternative to current social media platforms. The platform's openness provides an enduring space for information sharing, immune to external censorship.
+			- **Onboarding and User Retention Challenges**: A smooth onboarding experience is crucial for the widespread adoption of Nostr. While the current applications have not fully perfected this process, the diversity within the Nostr ecosystem offers multiple entry points that can attract and retain users. Each app contributes to the overall network, reinforcing the value of the ecosystem as a whole.
+			- **Community and Development**: The dedication of the open-source community is pivotal to the development and promotion of technologies like Nostr. The ongoing collaboration and sacrifice by developers and users alike are essential to the success of these decentralised tools. The continued growth and improvement of Nostr and similar platforms depend on the sustained efforts and support of this community.
+			- {{video https://www.youtube.com/watch?v=qUwXRDrfJU0}}
+	- ## Key Management
+		- nostr implicitly enables all of the features and functionality of PKI infrastructure. Nostr keys can be used for many purposes
+		- [kind-0/nsecbunkerd: nsecbunker daemon (github.com)](https://github.com/kind-0/nsecbunkerd)
+		- ### TODO nostr IoT
+			- [[MUST]]
+			-
+- # Case Studies
+	- ## DAO style structures on Nostr
+	- ### Digital Objects and Decentralised Governance on Nostr
+		- Nostr's design centres around the concept of digital objects – encompassing social media posts, maps, and other data structures – owned and controlled by users. These objects are governed not by a central authority but are distributed across the network, ensuring user autonomy and resilience. Nostr maintains the integrity of interactions without central oversight, enabling permissionless and self-sovereign participation. This model ensures that digital objects remain uncapturable and resistant to external coercion. In extreme cases, this decentralised governance is further reinforced by the Bitcoin ledger, providing an immutable record and a final layer of defence against any attempts to undermine the system's integrity.
+		- #### NostrRocket: A Practical Example of DAO Structures on Nostr
+			- NostrRocket, a project built on Nostr, showcases the practical application of these principles. It facilitates decentralised, non-custodial coordination, allowing contributors to collaborate on creating and managing digital objects – including software, merchandise, or content – without centralised control.
+			- The project's governance is maintained through a system of "merits," which quantify and reward contributions based on predefined rules. Operating without servers or traditional centralisation, NostrRocket relies solely on Nostr relays. Contributors propose and approve merits based on their work, ensuring the project's direction and outcomes are shaped directly by those involved. This approach upholds decentralised governance principles and streamlines operations by eliminating the need for conventional accounting and oversight.
+		- #### Merits as a Quantifiable Measure of Contribution
+		- Merits are a fundamental component of the NostrRocket project, serving as a quantifiable measure of individual contribution. They represent the proportion of work undertaken by each contributor and determine the distribution of revenue or rewards.
+		-
+			- Earning Merits:
+				- Contributors identify problems needing solutions, often outlined in a public problem tracker.
+				- Solutions are proposed, typically in the form of code contributions or other tangible outputs.
+				- Upon completion, contributors submit a merit request outlining the problem solved and the proposed number of merits earned.
+				- Existing merit holders review the request and vote to approve or reject it based on predefined rules and criteria.
+			- Merit Allocation Rules:
+				- Rules for merit allocation are designed to be transparent and objective, ensuring fairness and preventing manipulation.
+				- Factors considered include:
+					- Impact of the contribution: Significance of the problem solved and its overall impact on the project.
+					- Complexity of the work: Technical difficulty and effort involved in implementing the solution.
+					- Quality of the solution: Effectiveness, efficiency, and maintainability of the solution provided.
+			- Merits and Revenue Distribution:
+				- Merits are directly tied to the distribution of revenue generated by the project.
+				- Proceeds from sales are distributed to contributors in proportion to their accumulated merits.
+			- Benefits of the Merit System:
+				- Decentralised decision-making: Empowers contributors to shape the project's direction through their contributions and voting power.
+				- Fair and transparent reward system: Ensures contributions are recognised and rewarded fairly based on merit.
+				- Incentivises meaningful contributions: Encourages contributors to focus on solving problems critical to the project's success.
+				- Eliminates the need for central authority: Allows the project to operate autonomously without relying on a central authority for decision-making or resource allocation.
+	- ## Yonder: Decentralised Digital Mapping on Nostr
+	- Yonder provides another example of applying Nostr's governance principles to create and manage digital objects. As a decentralised mapping platform, Yonder allows users to create, share, and interact with location-based data without relying on centralised services like Google Maps. It incorporates features such as geochat and encrypted location sharing, ensuring users retain full control over their data and interactions.
+	- Yonder supports decentralised governance by allowing users to directly influence the map's content and structure without needing approval from a central authority. Disputes and verification issues are handled through decentralised mechanisms, such as proof-of-work or social trust systems, maintaining the platform's integrity while preserving its openness.
+		- Decentralised Map Creation: Users contribute to the map without needing permission.
+		- Geochat: Enables location-based communication within specific geographic areas.
+		- Encrypted Location Sharing: Allows secure and private location sharing.
+		- Social Trust and Verification: Leverages social trust mechanisms and potentially proof-of-work systems to ensure data accuracy and reliability.
+		- Community Ownership: The map is collectively owned and maintained by the user community.
+		- Decentralised Governance: Decisions regarding the platform's development and direction are made through decentralised consensus mechanisms.
+		- Transparency and Accountability: All interactions and contributions are recorded on the Nostr network.
+		- Resilience and Censorship Resistance: The decentralised nature of the platform provides resistance to censorship and single points of failure.
+	- ## Metaverse use of nostr
+		- This provides a web interface into the metaverse providing:
+			- simple cryptographic identity assurance
+			- private peer to peer chat
+			- group chats and channels
+			- email to private message relay
+			- links into media on web hosts
+		- The pace of development on Nostr is dizzying. Peer to peer video andaudio will allow us to link metaverse instances, between peers, throughapplications such as [Monstr](https://monstr.app/).
+		- It’s notable that Nostr has it’s own inexpensive [hardware signingdevice](https://github.com/lnbits/nostr-signing-device) to protectidentity in situations where this might be necessary.  bfThe proposed integration of Nostr social media and messaging, alightning layer with digital objects such as Fedimint, Zerosync or RGB,AI agents, Vircadia, and federated Bitcoin is the core value propositionof this book. This work pre-dates [Meta andZuckerbergs](https://www.theverge.com/2023/4/26/23699633/mark-zuckerberg-meta-generative-ai-chatbots-instagram-facebook-whatsapp)stated intent in this regard by 18 months, and is differentiated stillby our focus on emerging markets and decentralisation.
+		- ##### NIP-05
+			- At this time, the nascent identity layer in nostr leans on NIP-05. Thisis a distributed identity management system that maps Nostr keys toDNS-based internet identifiers. In events of kind 0 (setmetadata), the“nip05” key can have an internet identifier as its value. Clients splitthe identifier into the local part and domain and make a GET request tothe specified URL. The response should be a JSON document with a “names”key containing a mapping of names to hex-formatted public keys. If thepublic key matches the one from the setmetadata event, the clientaccepts the association and considers the “nip05” identifier valid.
+			- Clients may find users’ public keys from internet identifiers by firstfetching the well-known URL and then checking for a matching “nip05”.When following public keys, clients must prioritize the keys over NIP-05addresses. Public keys must be in hex format. Clients can enable userdiscovery through search boxes, allowing users to find profiles byentering internet identifiers. The identifier can be used as the “root”identifier, displayed as just the domain. The protocol supports bothdynamic and static servers by using the local part as a query string.
+	- All this potentially provides a simply interface to the Metaverse, including:
+		- simple cryptographic identity assurance
+		- private peer to peer chat
+		- email to private message relay
+		- links into media on web hosts and [[NosDav]]
+	- The pace of development on Nostr is dizzying. Peer to peer video and audio will allow us to link metaverse instances, between peers, through applications such as Monstr.
+	- It’s notable that Nostr has it’s own inexpensive hardware signing device to protect identity in situations where this might be necessary.
+	- The proposed integration of Nostr social media and messaging, a lightning layer with digital objects such as Fedimint, Zerosync or RGB, AI agents, Vircadia, and federated Bitcoin is the core value proposition of this book. This work pre-dates Meta and Zuckerbergs stated intent in this regard by 18 months, and is differentiated still by our focus on emerging markets and decentralisation.
+	- NIP-05
+		- At this time, the nascent identity layer in nostr leans on NIP-05. This is a distributed identity management system that maps Nostr keys to DNS-based internet identifiers. In events of kind 0 (setmetadata), the “nip05” key can have an internet identifier as its value. Clients split the identifier into the local part and domain and make a GET request to the specified URL. The response should be a JSON document with a “names” key containing a mapping of names to hex-formatted public keys. If the public key matches the one from the setmetadata event, the client accepts the association and considers the “nip05” identifier valid.
+	- Clients may find users’ public keys from internet identifiers by first fetching the well-known URL and then checking for a matching “nip05”. When following public keys, clients must prioritize the keys over NIP-05 addresses. Public keys must be in hex format. Clients can enable user discovery through search boxes, allowing users to find profiles by entering internet identifiers. The identifier can be used as the “root” identifier, displayed as just the domain. The protocol supports both dynamic and static servers by using the local part as a query string.
+	- Nostr Protocol as the keystone
+		- The Nostr protocol can be used to store and share valuable content across the network. This is ably demonstrated by the ‘Highlighter’ project which allows users to store important notes from around the web using nostr. In the context of our federated social media trust model, the Nostr protocol can serve as the underlying layer that connects various instances of virtual spaces, thus enabling seamless data exchange and interoperability among them. Highlighter demonstrates that nostr events can be leveraged to create, store, and interact with valuable across networks. By utilizing this concept, we can extend the functionality to support federated social media trust, allowing users to carry their reputation, identity, and cryptographic proofs across different virtual spaces and social media platforms.
+	- Nostr marketplace in LnBits
+		- The nostr markets plugin for LnBits allows virtual ‘stalls’ to be setup and payment to be mediated through nostr. This is obviously a great expansion to the usefulness of our integration
+	- Integrating Cryptographic Proofs and Reputation
+		- To create a trusted environment within the federated network, we must establish a mechanism for importing and verifying cryptographic proofs from various sources, such as social media sites and other digital platforms. By doing so, we enable users to bring their existing reputation and trust from these platforms into the new ecosystem, thus facilitating trust-based interactions and collaboration within the network. We can leverage the Nostr protocol and the NIP05 specification to import these cryptographic proofs, creating a secure and verifiable system for identity management and trust propagation. The NIP05 specification allows for the creation and verification of identity proofs within the Nostr protocol, thus enabling the seamless integration of trust and reputation data from external sources.
+	- By utilizing the Nostr protocol as the underlying layer, we can establish connections between objects, people, and AI actors within the federated network. This interconnected ecosystem allows for seamless collaboration, information sharing, and trust-based interactions among all participants. The open-source collaboration infrastructure we propose can facilitate the development of various applications and services that leverage the federated network, such as virtual workspaces, AI-assisted creativity tools, and more. The uncensorable nature of this protocol further supports the inclusivity and accessibility we feel so important, ensuring that participants from different regions and backgrounds can take part in the digital society and contribute to its growth.
+	- This federated social media trust model, built on the Nostr protocol, allows for the establishment of a robust, inclusive, and trust-based network that connects various virtual spaces, social media platforms, and AI systems. By leveraging the lessons learned from the other attempts in the space, and by maximising the inclusion of external cryptographic proofs from multiple sources, we can create a comprehensive trust system that fosters collaboration, innovation, and shared growth within the digital society.
+	- The Nostr protocol, with its decentralized and open-source nature, provides a solid foundation for linking and federating objects, people, and AI actors across collaborative spaces in digital society. By leveraging the Nostr protocol, we can build a robust and trust-based network that interconnects various virtual spaces, social media platforms, and AI systems. One of the key aspects of this trust-based network is the ability to import cryptographic proofs from different sources, similar to Keybase’s approach to importing proofs from various social media sites (Keybase Proofs).
+	- StrFry relays
+		- The Stirfry relay software provides high-performance infrastructure for building decentralized social media applications on top of the Noster protocol. As an open source project written in C++, Stirfry emphasizes efficiency, flexibility, and community-driven governance.
+		  At the core of Stirfry is its high-speed database engine. Rather than using a traditional SQL database, Stirfry implements the Lightning Memory-Mapped Database (LMDB)
+		- an embedded key-value store optimized for performance. Reads are lock-free, enabling unlimited parallel query throughput. Writes require only a short-held lock, ensuring minimal interference. LMDB’s "shadow paging" design allows isolated read-only transactions via multi-version concurrency control (MVCC). This prevents reads from blocking writes and vice versa.
+		  To maximize database performance, Stirfry stores Noster events directly in FlatBuffers
+		- an efficient binary format allowing direct access without serialization. The original JSON payloads are preserved to facilitate transmission back to clients. Additional database files index events on fields like timestamps and authors, accelerating filter queries. Periodic compaction optimizes the layout for faster operations.
+		- Stirfry adopts a multi-threaded, modular architecture. A websocket thread accepts new client connections and routes incoming requests. An ingester thread validates and pre-processes each request before passing to appropriate handlers. Doing signature checks and filter compilation upfront avoids repeating work. A single writer thread batches database writes to amortize transaction overhead. Multiple worker threads handle read queries, fairly scheduling between long and short requests. Dedicated monitor threads track active filters and stream matching events to subscribed clients. Passing messages between threads instead of sharing data structures improves efficiency.
+		- Additional features further enhance Stirfry’s capabilities. Graceful shutdown support allows stopping new connections while existing ones complete. Hot configuration reloading provides runtime updates without restarting. Flexible write policy plugins enable custom content moderation. Streaming websocket compression and Zstandard dictionaries compress traffic. Syncing protocols like Negentropy facilitate efficient relay replication, powering mesh network topologies. Geo-replication by the relay.org community offers low latency worldwide access. The custom Templar HTML templating library assists crafting simple, fast decentralized frontends.
+	- ## End to end private messages
+		- The current state of direct messages (DMs) on Nostr presents significant privacy concerns. Messages are encrypted using a single public key, exposing metadata and leaving past conversations vulnerable if a private key gets compromised.
+		- To address these issues, a new [DM specification](https://github.com/nostrworld/nostriga/issues/10) (nip104) proposes a double ratchet encryption scheme with ephemeral keys. This approach aims to provide:
+			- **Metadata privacy:** Hiding information about who is communicating with whom and how often.
+			- **Forward secrecy:** Protecting past messages even if a current private key is compromised.
+			- **Post-compromise secrecy:** Ensuring future messages remain secure even if a past private key is compromised.
+		- The new DM spec utilises two key features of Nostr to achieve its privacy goals:
+			- **Abundant key space:** Nostr offers an almost infinite number of public-private key pairs, allowing for the generation and disposal of keys without exhaustion.
+			- **Decentralized identity:** Nostr's inherent identity system eliminates the need for a central server to verify user identities, a requirement in traditional end-to-end encrypted messaging protocols like Signal.
+		- ### Double Ratchet Encryption and Ephemeral Keys:
+		- The core of the new DM spec lies in the double ratchet algorithm, which employs three chains of keys:
+			- **Root chain:** Established through an initial Diffie-Hellman key exchange using the participants' Nostr public keys. This creates a shared secret key that serves as the starting point for the ratchet.
+			- **Sending chain:** Used for deriving ephemeral keys for encrypting outgoing messages. Each message uses a new ephemeral key, ensuring forward secrecy.
+			- **Receiving chain:** Used for deriving ephemeral keys for decrypting incoming messages. The receiving chain ratchets forward upon receiving a message with a new ephemeral key, guaranteeing post-compromise secrecy.
+		- ### Message Exchange and Session Management:
+			- **Session establishment:** When initiating a DM, the sender and receiver perform a Diffie-Hellman key exchange to establish the root chain and initialise their respective ratchet states.
+			- **Message encryption:** The sender uses the sending chain to derive a new ephemeral key, encrypts the message, and sends it as a Nostr event.
+			- **Message decryption:** The receiver uses the receiving chain to derive the corresponding ephemeral key and decrypt the message. The receiving chain ratchets forward, updating its state for future messages.
+		- ### Challenges and Future Considerations:
+			- **Client adoption:** The success of the new DM spec hinges on its implementation across various Nostr clients. Developers need to integrate the necessary cryptographic functions and session management logic.
+			- **Device syncing:** Syncing conversations across multiple devices and clients poses a significant challenge due to the lack of a central server. Potential solutions involve broadcasting messages to multiple sessions and managing separate inboxes for each session.
+			- **User experience:** The complexity of the double ratchet system and the potential for out-of-order messages may require careful design considerations to ensure a seamless user experience.
+	- ## Ditto
+		- ### Technical Brief: Ditto and Nostr Integration
+			- **Addressing Nostr’s Community Diversity**: One of the primary criticisms of Nostr is that new users predominantly encounter discussions about Bitcoin, which may not appeal to everyone. While Bitcoin is crucial to Nostr’s success, for social media to thrive, it needs diverse communities like those found on mainstream platforms (e.g., Black Twitter, BookTok). Despite Nostr's potential, it is not effectively marketed to these varied communities, which could benefit from integrating with Bitcoin for monetisation.
+			- **Past Experience with Spinster and Soapbox**: The success of Spinster, a feminist platform on the Fediverse, demonstrated the viability of niche social media communities. This success led to the development of Soapbox, a configurable platform that allows anyone to create a social media site tailored to specific communities. Soapbox has been used by a wide range of groups, from Christians to furries, and even by Truth Social. The goal is to attract every niche until the platform includes everyone.
+			- **Introduction of Ditto**: Ditto is a new Nostr-based community server designed to expand the Nostr network by attracting users through specific communities rather than through Nostr itself. Unlike traditional Nostr apps, where users discover Nostr first, Ditto draws users to communities, with Nostr as a secondary discovery. This approach mirrors the Fediverse's structure, with the advantage that Nostr users are not locked into a single server and can move freely between clients.
+			- **Domain and Community Focus**: Ditto servers emphasise independent websites and domain names. Each Ditto server starts with its domain, and users can request a NIP-05 identifier on that domain. The server has a local feed for users, creating a community-specific environment within the broader Nostr network. This model combines the benefits of community-specific engagement with the freedom and decentralisation of Nostr.
+			- **Enhancing Community Discovery and Moderation**: Ditto improves user discovery by allowing admins to curate suggested users, helping new users find relevant content and community members. It also features a trending algorithm that tracks popular content, which can be utilised by other Nostr clients to create custom feeds. Each Ditto server has a team of moderators responsible for curating content and maintaining community standards, with users able to move to other servers if they disagree with moderation policies.
+			- **Performance and Scalability**: Ditto has been optimised for performance, with detailed monitoring tools to track server activity and troubleshoot issues. This performance focus is crucial for supporting thousands of users and ensuring a smooth experience on the platform.
+			- **Bitcoin Integration and Zaps**: Ditto integrates with Bitcoin to support lightning zaps, enhancing monetisation opportunities within communities. Zap splits are being developed to provide financial sustainability for server operators, ensuring that community servers remain viable over the long term.
+			- **Technology Stack**: Ditto is built as a TypeScript server running in Deno, with a PostgreSQL database. It functions as both a NIP-01 client and a relay, making it a full-fledged Nostr server. The server's design leverages NIP-46 for secure event signing, enabling compatibility with existing Mastodon apps while maintaining the decentralised ethos of Nostr.
+			- **Expanding Nostr’s Reach**: The goal of Ditto is to make Nostr more accessible and appealing by leveraging existing social media app ecosystems like Mastodon. Users can use their favourite Mastodon apps on Ditto, providing a familiar experience while accessing Nostr’s decentralised network.
+			- **Future Developments**: Upcoming features include zap splits to enhance server sustainability and a creator programme to support those who wish to start Ditto servers. A mentorship programme has also been launched to help new developers contribute to Nostr and Bitcoin projects.
+		-
+- {{renderer :linkpreview,https://nate.mecca1.net/posts/2024-01-30_microblogging-protocols/}}
+- [Post Details | Ditto](https://ditto.pub/@hzrd149.com/posts/1299e04c56891c12a800e234ee7ee02067152e2cf29f9e17b7b4f979f5f8c075) [[nostr]]
+	- [noStrudel hosted on nostr + blossom servers and served over tor ...](https://nostr.at/nevent1qqsp9x0qf3tgj8qj4qqwyd8w0mszqec49ck098u7z7mmf7te7huvqagpp4mhxue69uhkummn9ekx7mqpz3mhxue69uhhyetvv9ujuerpd46hxtnfduq3zamnwvaz7tmwdaehgun4v5hxxmmdqgszv6q4uryjzr06xfxxew34wwc5hmjfmfpqn229d72gfegsdn2q3fgxvc346)
+- [Get A Nostr Signing Device To Keep Your Nostr Identity Secure!](https://nostrsigningdevice.com/)
+- [Python nostr client](https://www.youtube.com/watch?v=vw5SZyYBuPk&t=1471s)
+- [Python nostr repo, months old](https://github.com/jeffthibault/python-nostr)
+- [nostrpy](https://github.com/monty888/nostrpy)
+- [lnbits enable extensions mode for nostr](https://github.com/raspiblitz/raspiblitz/issues/3799)
+- [tailscale forum posts](https://community.umbrel.com/t/introducing-the-official-nostr-relay-app/11339/17)
+- [Relay list](https://nostr.info/relays/)
+- [WSS check](https://websocketking.com/)
+- [nostr market guide](https://darthcoin.substack.com/p/lnbits-nostr-market)
+- [Nostr coinjoin github](https://gitlab.com/1440000bytes/joinstr)
+- [nostr blinded assets](https://thebitcoinmanual.com/articles/blinded-nostr-assets/)
+- [NIP-112 encrypted private chats](https://github.com/ArcadeLabsInc/arcade/wiki/NIP-112:-Encrypted-Group-Chat)
+- Nostr Data Layer
+	- [NIP90
+		- NIP-90
+		- Data Vending Machine (nostr.com)](https://nips.nostr.com/90)
+	- [Nooooooooogle (noogle.lol)](https://noogle.lol/)
+	- [DVM data inferencing](https://github.com/pablof7z/nostr-data-vending-machine)
+	- [NIP 90 data markets](https://github.com/nostr-protocol/nips/pull/682)
+	- [DVM data inferencing](https://github.com/pablof7z/nostr-data-vending-machine)
+- [noskey, convert between things](https://github.com/melvincarvalho/noskey)
+- [nostr smart contracts stuff (melvin)](https://dev.to/melvincarvalho/smart-events-contracts-over-nostr-a-consensus-based-approach-1l9n)
+- [3d space thing](https://github.com/bongatores/nostrSpace)
+- Key generation and management
+- [BIP85 master key javascript](https://github.com/AndreasGassmann/bip85#readme)
+- [supertestnet/nostr-image-host: Upload and view images on the web without an api key (github.com)](https://github.com/supertestnet/nostr-image-host)

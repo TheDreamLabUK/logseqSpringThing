@@ -1,0 +1,48 @@
+public:: true
+
+- #Public page automatically published
+- # Partnership with OpenAI, and Siri
+	- Apple is focusing on "AI for the rest of us" - making AI capabilities accessible and useful for everyday tasks rather than flashy frontier use cases. The emphasis is on small but significant time-saving wins.
+	- Siri is the centerpiece, with expanded natural language understanding, ability to maintain context, and both voice and text input. Siri can now take actions across Apple and third-party apps.
+	- Apple has partnered with OpenAI to integrate ChatGPT into Siri and other Apple experiences later this year. Siri can tap into ChatGPT when needed to expand its capabilities.
+	- Apple argues that great product experience matters more than just having state-of-the-art AI models. They are willing to reduce user choice to create a simpler experience, as seen with the limited options in their Image Playground feature.
+	- Apple is trying to balance leveraging personal context and data with strong privacy protections through on-device processing and a new "private cloud compute" capability.
+	- Apple is taking an approach of deeply integrating AI assistants and capabilities across the OS in a frictionless way to help users with everyday tasks, while maintaining their emphasis on privacy and a carefully designed user experience over flashy demos. The partnership with OpenAI expands what's possible while keeping the Apple experience at the forefront.
+	- ### IOS18 Security and Privacy
+		- [Thread by Matthew Green](https://threadreaderapp.com/thread/1800291897245835616.html?)
+			- Apple, unlike most other mobile providers, has traditionally done a lot of processing on-device. For example, all of the machine learning and OCR text recognition on Photos is done right on your device. 
+			  The problem is that while modern phone “neural” hardware is improving, it’s not improving fast enough to take advantage of all the crazy features Silicon Valley wants from modern AI, including generative AI and its ilk. This fundamentally requires servers.
+			- But if you send your tasks out to servers in “the cloud” (god using quotes makes me feel 80), this means sending incredibly private data off your phone and out over the Internet. That exposes you to spying, hacking, and the data hungry business model of Silicon Valley.
+			- The solution Apple has come up with is to try to build secure and trustworthy hardware in their own data centers. Your phone can then “outsource” heavy tasks to this hardware. Seems easy, right? Well: here’s the blog post.
+			- [**Blog**](https://security.apple.com/blog/private-cloud-compute/) Private Cloud Compute: A new frontier for AI privacy in the cloud - Apple Security Research**Secure and private AI processing in the cloud poses a formidable new challenge. To support advanced features of Apple Intelligence with larger foundation models, we created Private Cloud Compute (PCC)
+			- TL;DR: it is not easy. Building trustworthy computers is literally the hardest problem in computer security. Honestly it’s almost the only problem in computer security. But while it remains a challenging problem, we’ve made a lot of advances. Apple is using almost all of them.
+			- The first thing Apple is doing is using all the advances they’ve made in building secure phones and PCs in their new servers. This involves using Secure Boot and a Secure Enclave Processor (SEP) to hold keys. They’ve presumably turned on all the processor security features.
+			- Then they’re throwing all kinds of processes at the server hardware to make sure the hardware isn’t tampered with. I can’t tell if this prevents hardware attacks, but it seems like a start.
+			- They also use a bunch of protections to ensure that software is legitimate. One is that the software is “stateless” and allegedly doesn’t keep information between user requests. To help ensure this, each server/node reboot re-keys and wipes all storage.
+			- A second protection is that the operating system can “attest” to the software image it’s running. Specifically, it signs a hash of the software and shares this with every phone/client. If you trust this infrastructure, you’ll know it’s running a specific piece of software.
+			- Of course, knowing that the phone is running a specific piece of software doesn’t help you if you don’t trust the software. So Apple plans to put each binary image into a “transparency log” and publish the software.
+			- Security researchers will get *some code* and a VM they can use to run the software. They’ll then have to reverse-engineer the binaries to see if they’re doing unexpected things. It’s a little suboptimal.
+			- When your phone wants to outsource a task, it will contact Apple and obtain a list of servers/nodes and their keys. It will then encrypt its request to all servers, and one will process it. They’re even using fancy anonymous credentials and a third part relay to hide your IP.
+			- Ok there are probably half a dozen more technical details in the blog post. It’s a very thoughtful design. Indeed, if you gave an excellent team a huge pile of money and told them to build the best “private” cloud in the world, it would probably look like this.
+			- But now the tough questions. Is it a good idea? And is it as secure as what Apple does today? And most importantly:
+			- I admit that as I learned about this feature, it made me kind of sad. The thought that was going through my head was: this is going to be too much of a temptation. Once you can “safely” outsource tasks to the cloud, why bother doing them locally. Outsource everything!
+			- As best I can tell, Apple does not have explicit plans to announce when your data is going off-device for to Private Compute. You won’t opt into this, you won’t necessarily even be told it’s happening. It will just happen. Magically. I don’t love that part.
+			- Finally, there are so many invisible sharp edges that could exist in a system like this. Hardware flaws. Issues with the cryptographic attestation framework. Clever software exploits. Many of these will be hard for security researchers to detect. That worries me too. 18/
+			- Wrapping up on a more positive note: it’s worth keeping in mind that sometimes the perfect is the enemy of the really good.
+			- In practice the alternative to on-device is: ship private data to OpenAI or someplace sketchier, where who knows what might happen to it.
+			- And of course, keep in mind that super-spies aren’t your biggest adversary. For many people your biggest adversary is the company who sold you your device/software. This PCC system represents a real commitment by Apple not to “peek” at your data. That’s a big deal.
+			- In any case, this is the world we’re moving to. Your phone might seem to be in your pocket, but a part of it lives 2,000 miles away in a data center. As security folks we probably need to get used to that fact, and do the best we can to make sure all parts are secure.
+- They are sitting on a huge cash war chest and can effectively buy their way through and out of the coming battles around ip like the NYT court case.
+- Biding their time waiting for local inferencing that leverages strong legacy media buy in might be a great play. Only the cost to their mind share of talent might be an issue.
+- Apple are innovating in core ML research to support large language models.
+- They are developing new techniques for data management between flash memory and DRAM, crucial for running larger models on devices with limited memory.
+- The research also reveals significant speed improvements, with 4-5 times faster processing on CPUs and 20-25 times on GPUs for models up to twice the size of the available DRAM. These advancements could lead to a wider adoption of these technologies,
+	- [Paper page
+		- LLM in a flash: Efficient Large Language Model Inference with Limited Memory (huggingface.co)](https://huggingface.co/papers/2312.11514) [[Hardware and Edge]]
+- [Apple wants AI to run directly on its hardware instead of in the cloud | Ars Technica](https://arstechnica.com/apple/2023/12/apple-wants-ai-to-run-directly-on-its-hardware-instead-of-in-the-cloud/) [[Hardware and Edge]]
+- HUGS: Human [[Gaussian splatting and Similar]]
+	- [Apple Machine Learning Research](https://machinelearning.apple.com/research/hugs)
+- Apple presents [Paper page
+	- Speculative Streaming: Fast LLM Inference without Auxiliary Models (huggingface.co)](https://huggingface.co/papers/2402.11131):
+	- Speculative decoding is a prominent technique to speed up the inference of a large target language model based on predictions of an auxiliary draft model. While effective, in application-specific settings, it often involves fine-tuning both draft and target models to achieve high acceptance rates. As the number of downstream tasks grows, these draft models add significant complexity to inference systems. We propose Speculative Streaming, a single-model speculative decoding method that fuses drafting into the target model by changing the fine-tuning objective from next token prediction to future n-gram prediction. Speculative Streaming speeds up decoding by 1.8
+	- 3.1X in a diverse set of tasks, such as Summarization, Structured Queries, and Meaning Representation, without sacrificing generation quality. Additionally, Speculative Streaming is parameter-efficient. It achieves on-par/higher speed-ups than Medusa-style architectures while using ~10000X fewer extra parameters, making it well-suited for resource-constrained devices.

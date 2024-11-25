@@ -1,0 +1,305 @@
+public:: true
+
+- #Public page automatically published
+- # Artificial Intelligence
+	- Some people LIKE clear repetitive tasks as their employment, and these are the jobs at risk. Who decides what is a worthwhile job?
+	- ## Explicitly develop under a "for profit" model.
+	  id:: 659a9229-e9c0-485f-b58a-601b68b7edd0
+		- The primary use case emerging for all this incredibly expensive technology (exempting the AGI narrative) is targeted advertising, pairing very specific user data with very specific products. The platform providers are explicitly interested in [[Hyper personalisation]] of [[AI Video]]
+		- In the case of Microsoft, Meta's Llama "open" models and Google's capable "free to use" models this means a *scorched earth* policy where they push AI into all of their apps and ecosystems, ensuring continuity of the user eyeballs that allow them profit. For a while it looked like OpenAI were going to capture so many users that downstream search products built on their system, like Perplexity, would challenge the primacy of the incumbent centralised web providers.
+		- This also increasingly means automation, and robotics efficiency; profit though reduction of human workforce which is tax incentivised in the USA.
+		- At the very least all of these companies are predicted on an advertising business model, and if the soft power of GenAI is used for advertising then it could be pretty dystopian.
+		- All the current law pertaining to this is voluntary, to be clear, business isn't going to stop pursuing this plan because they (not China) signed a form.
+		- Post Cambridge Analytica abuse of Social Media there has been NO binding legislation in the half decade after.
+		- Governments are far too slow to respond. This will most likely be engaged with through bottom up labour movements like the screen writers guild strike.
+		- [Bill Gurley on X: "What’s really happening in the background around AI regulation. https://t.co/2xrdqvdpkE" / X (twitter.com)](https://twitter.com/bgurley/status/1786073617316360670)
+			- ![GMlofTGaYAMjN0v.jpeg](../assets/GMlofTGaYAMjN0v_1714807755332_0.jpeg){:height 907, :width 1097}
+		- ### IMF report is tough reading
+			- #### 2024 top up report
+				- (I agree with lots of this one, but it's pretty much the IMF fishing for power, hence distancing themselves from it in the actual text, while also pushing it out on all channels)
+				- [Broadening the Gains from Generative AI: The Role of Fiscal Policies (imf.org)](https://www.imf.org/en/Publications/Staff-Discussion-Notes/Issues/2024/06/11/Broadening-the-Gains-from-Generative-AI-The-Role-of-Fiscal-Policies-549639)
+					- [Fiscal Policy Can Help Broaden the Gains blog post based on it](https://www.imf.org/en/Blogs/Articles/2024/06/17/fiscal-policy-can-help-broaden-the-gains-of-ai-to-humanity)
+				- **Increased Poverty Due to Robotization**:
+					- Robotization may lead to increasing poverty, especially affecting workers at the bottom of the wage distribution. The analysis shows that robotization resulted in a small long-term increase in poverty, with one additional robot per thousand workers increasing the poverty rate by 0.3 percentage points, a 3 percent increase. This is particularly concerning because it highlights the risk of low-wage workers falling into poverty due to technological advancements​​.
+				- **Costly Transitions from AI**:
+					- The transition to AI could be very costly due to labour market mismatches and prolonged periods of unemployment. Workers might face barriers to mobility and endure long unemployment or retraining periods before securing new jobs. This technological displacement often affects older workers more severely, leading to a generation-long adjustment period​​.
+				- **Rapid and Unfair Disruption**:
+					- The document cites that the advent of AI is progressing "inhumanely fast" and may seem "unbelievably unfair," indicating a rapid pace of technological change that could disrupt labor markets and exacerbate inequalities before society can adequately adjust​​.
+				- **Displacement Across All Skill Levels**:
+					- AI adoption is likely to unevenly affect labour markets, risking disruptions that could displace both low-skill and high-skill jobs. Unlike past waves of automation that primarily displaced blue-collar workers, AI threatens to displace white-collar jobs, further polarizing wages and employment and amplifying income and wealth inequality​​.
+				- **Challenges for Emerging Markets**:
+					- In emerging markets and developing economies, the adoption of AI solutions is constrained by weak digital infrastructure, a lack of a developed digital economy, and insufficient local AI expertise. This suggests that these regions might struggle significantly to keep pace with AI advancements, potentially widening the global digital divide​​.
+				- **Need for Overhauled Governance and Social Systems**:
+					- Governments must upgrade their administrative and governance capacities to effectively manage AI innovation and its impacts. This includes investing in talent, data, and resources and potentially establishing dedicated agencies to track AI developments. The document stresses the need for international cooperation and robust regulatory frameworks to manage the rapid evolution and broad implications of AI​​.
+			- #### 2023 Major findings report
+				- (I disagree with this one)
+				- <iframe src="https://www.imf.org/en/Blogs/Articles/2024/01/14/ai-will-transform-the-global-economy-lets-make-sure-it-benefits-humanity" style="width: 800px; height: 400px"></iframe>
+		- ### Early signs of job losses
+			- [Opinion | Ro Khanna: The Advent of A.I. Doesn’t Have to Mean the Death of Labor The New York Times (nytimes.com)](https://www.nytimes.com/2024/01/04/opinion/artificial-intelligence-truckers-writers.html)
+			- Around 1/4 million tech layoffs in 2023, while the top 7 companies doubled their share prices on the back of the AI hype boom. This isn't directly causal, but it is concerning.
+			- Nothing is certain, when S4 capital fired half their global workforce, explicitly to replace them with AI, their share price continued to slide.
+			- Goldman march replace 300M jobs worldwide 1/4 of work tasks in USA and Europe
+			- [1 in 3 Companies Will Replace Employees With AI in 2024 [ResumeBuilder.com](https://www.resumebuilder.com/1-in-3-companies-will-replace-employees-with-ai-in-2024/)
+			- 37% of 750 business leaders surveyed said AI has already replaces jobs, and 44% think there will be more in 2024.
+			- [The state of AI at work, The Work Innovation Lab (asana.com)](https://asana.com/work-innovation-lab/the-state-of-ai-at-work/)
+			- Employees think 29% of their tasks are replaceable by AI. Note this is **task** that sit within roles.
+			- 49% of skills won't be relevant within 2 years ed x survey 800 execs. 5 years 56% of entry level roles, 79% said those roles will cease to exist, and 56% of their own roles. 47% said c-suite should be replaced.
+			- [Google cuts 12,000 jobs in latest round of big tech layoffs The Verge](https://www.theverge.com/2023/1/20/23563706/google-layoffs-12000-jobs-cut-sundar-pichai) — the latest technology firm to initiate significant layoffs as inflation rises and global markets brace for a downturn. The job losses constitute around 6 percent of Google’s global workforce
+				- ![1709138890785.jpeg](../assets/1709138890785_1709139885023_0.jpeg){:width 300}
+		- ### Perceptions
+			- There are signs of a growing backlash in the public.
+				- ![image.png](../assets/image_1717159768482_0.png)
+				- ![Screenshot 2024-05-12 201440.png](../assets/Screenshot_2024-05-12_201440_1715541399470_0.png){:width 400}
+				- ![Screenshot 2024-05-12 201210.png](../assets/Screenshot_2024-05-12_201210_1715541467566_0.png){:width 300}
+				- [The bad and the ugly: AI is harmful, unreliable and running out of data (newatlas.com)](https://newatlas.com/technology/ai-index-report-negatives/)
+				- [AI really is smoke and mirrors - by Brian Merchant (bloodinthemachine.com)](https://www.bloodinthemachine.com/p/ai-really-is-smoke-and-mirrors)
+				- [The AI Revolution Is Already Losing Steam - WSJ](https://www.wsj.com/tech/ai/the-ai-revolution-is-already-losing-steam-a93478b1)
+			- {{twitter https://twitter.com/AISafetyMemes/status/1759231062646104165)}}
+			- ## Polls roundup from [The AI Breakdown Podcast](https://www.youtube.com/@TheAIBreakdown)
+				- ### CNBC poll
+					- 72% said it made them more productive.
+					- Among those that don't use it 35% are not worried.
+					- 60% of people who use it are concerned.
+					- The more employees used AI, the more worried they were that it could replace them
+				- ### [Beamery found](https://beamery.com/resources/news/the-ai-employment-revolution-over-half-of-job-seekers-in-uk-have-noticed-ai-used-during-recruitment-process)
+					- over half **(51%**) of job seekers in the UK said they had noticed AI being used during the recruitment process, with a further 46% using AI applying for jobs, according to Beamery, the global leader in Talent Lifecycle Management.
+				- ### EDX survey of 800 executives
+					- 49% of skills in their workforce would not be relevant by 2025
+					- 56% of entry-level knowledge worker jobs would be eliminated due to AI
+					- 79% thought AI would transform entry-level roles
+					- 56% said their own roles would be partially or completely replaced by AI
+					- 47% believed their workforces were not prepared for the future workplace
+				- ### IMF report
+					- AI would impact 40% of jobs in developing nations
+					- AI would impact 60% of jobs in developed markets like the US
+						- Half (30%) would see productivity gains and transformations
+						- Half (30%) might be wiped off the face of the planet
+				- ### McKinsey report "Generative AI in the future of work in America"
+					- Automation could take over tasks accounting for 29.5% of hours worked in the US economy by 2030
+						- Some sectors, like office support, nearing 40% automation
+						- Others, like health professionals and property maintenance, seeing nearly 20% automation
+					- Could lead to 12 million fewer jobs
+				- ### Beautiful.ai survey of 3,000 managers
+					- 41% hoped to replace employees with AI tools in 2024
+					- 48% said their businesses would benefit financially if they could replace a large number of employees
+					- 40% said multiple employees could be replaced by AI tools and the team would operate well without them
+					- 45% viewed AI as an opportunity to lower employee salaries
+					- 12% hoped to use AI to downsize and save money on worker salaries
+					- 50% were worried AI tools would result in lower pay for themselves
+					- 64% believed AI's output and productivity were equal or better to experienced human managers
+					- 90% were already using AI to increase productivity
+				- ### Adco survey of 2,000 executives
+					- 41% expected to employ fewer people because of AI
+					- 46% would redeploy employees internally if their jobs were impacted by AI
+					- 2/3 planned on recruiting people skilled in AI
+					- 1/3 would train their existing workforce in AI
+				- ### Goldman Sachs report
+					- Automation could replace a quarter of work tasks in the US and Europe, disrupting the equivalent of 300 million jobs
+					- Productivity gains from generative AI would raise annual global GDP by 7% over a 10-year period
+				- ### European Central Bank paper
+					- During the deep learning boom of the 2010s, opportunities for younger and high-skilled workers increased
+					- Fears of AI ending human labor may "be greatly exaggerated"
+				- ### Asana study
+					- Employees said 29% of their work tasks were replaceable by AI
+				- ### Zappo poll of over 10,000 respondents
+					- 66.6% said AI could carry out their workplace duties
+					- Nearly 75% were concerned about AI's impact on their industry
+					- 78.1% believed AI could reduce some stress on the job
+					- 76.7% believed AI will reduce the number of working days for the average American
+				- ### Deloitte survey of 2,800 director to C-suite executives
+					- Only 1 in 5 believed their organization was highly or very highly prepared to address AI skills needs
+					- Only 47% said they are sufficiently educating employees about AI
+				- ### Microsoft research
+					- 65% of Gen Z employees said they don't have the right skills for the AI era
+				- ### Censuswide survey
+					- 68% said they don't have enough understanding of generative AI for their current roles
+					- 53% want more training and guidance
+				- ### LinkedIn survey of UK workers
+					- 2 in 5 predicted a significant change in their jobs in the next year due to AI
+					- Over 1/3 admitted to feeling overwhelmed by the amount there is to learn
+				- ### ServiceNow report
+					- 41% of office workers admit to currently lacking the technical abilities needed to work alongside and use AI systems
+		- ## Tech Cultists?
+			- Silicon valley is already showing signs of fetishising AI and this explored in it's own section [[Singularity]].
+			- ![Screenshot 2024-05-09 082635.png](../assets/Screenshot_2024-05-09_082635_1715239685308_0.png){:width 500}
+		- ## AI and Universal Basic Income
+			- Sam Alman talking UBI at 50 minutes
+			- {{video https://youtu.be/nSM0xd8xHUM?t=3002}}
+		- ## Academic View
+			- The impact of AI automation on the economy and society is a complex and multifaceted issue that requires careful consideration and proactive planning. While there are certainly risks and challenges to be addressed, such as job displacement and increased inequality, there is also great potential for AI to improve productivity, solve global problems, and create human flourishing.
+			- #### The Case for Concern
+				- AI automation is likely to lead to significant job losses in the short to medium term, particularly in sectors such as manufacturing, transportation, and customer service. Frey and Osborne (2017) estimate that 47% of US jobs are at risk of automation in the next two decades.
+				- As more people lose their jobs to AI, there is a risk of reduced consumer spending and economic instability, potentially leading to a recession. Korinek and Stiglitz (2017) warn that the displacement of workers by AI could lead to a "death spiral" of falling demand and further job losses.
+				- The impact of job losses will be uneven, with some industries and regions hit harder than others, exacerbating existing inequalities. Low-skill and routine jobs are most at risk of automation, which could widen the gap between high- and low-income earners (Acemoglu & Restrepo, 2018).
+				- Without proper ethical considerations, AI could exacerbate existing inequalities and perpetuate harmful stereotypes [Dignum, 2019](https://www.itu.int/en/journal/001/Documents/itu2017-1.pdf).
+				- Without adequate social safety nets and support for displaced workers, there is a risk of social unrest and political backlash against AI and automation. Korinek and Stiglitz (2017) argue that the social and political consequences of AI-driven job losses could be severe if not addressed proactively.
+			- #### The Case for Optimism
+				- In the long run, AI automation has the potential to greatly increase productivity and economic growth, creating new jobs and opportunities. Acemoglu and Restrepo (2018) find that while automation does displace some jobs, it also creates new ones in more complex and higher-paying fields.
+				- AI can also help to solve complex social and environmental problems, such as climate change and disease prevention, improving quality of life for all. AI-powered technologies such as precision agriculture and personalized medicine have the potential to address global challenges and improve human well-being (Vinuesa et al., 2020).
+				- With the right policies and investments in education and retraining, the workforce can adapt to the new demands of an AI-driven economy. Acemoglu and Restrepo (2018) emphasize the importance of investing in human capital and promoting the creation of new tasks that complement AI technologies.
+				- The benefits of AI, such as increased leisure time and reduced costs of goods and services, can be widely shared if there is a concerted effort to promote inclusive growth and equitable distribution of wealth. Korinek and Stiglitz (2017) propose policies such as progressive taxation and universal basic income to ensure that the gains from AI are broadly shared.
+				- Economist David Autor from MIT presents a compelling counterargument. In his article "[AI Could Actually Help Rebuild The Middle Class,](https://www.noemamag.com/how-ai-could-help-rebuild-the-middle-class/)". Autor posits that AI has the potential to democratise expertise and create new opportunities for workers without advanced degrees, ultimately leading to greater equity and a stronger middle class.
+					- Autor argues that unlike past automation technologies, AI can learn from unstructured data and tacit knowledge, enabling it to augment human capabilities in complex decision-making domains. By providing real-time guidance and guardrails, AI can expand access to expertise and allow people with less formal training to perform higher-skilled work.
+					  Central to Autor's thesis is the concept of "a worker of one"
+		- in a free society, every individual owns their own labor, creating an intrinsic force for greater equality when human expertise is valuable. AI could generate a variety of new middle-class jobs, counteracting the tendency for returns to accrue primarily to capital owners.
+			- However, realizing these benefits will require proactive efforts to steer AI development in a direction that benefits workers. This includes investing in AI tools for education and healthcare, reforming institutions to ensure productivity gains flow to workers, and countering resistance from professional guilds.
+			  Autor emphasizes that the goal is not to render human expertise obsolete, but rather to extend its reach and efficacy. He draws an analogy to YouTube tutorials
+		- while an untrained amateur cannot safely replace a circuit breaker by watching a video, an electrician can use that same video to expand their skills and take on new tasks. Similarly, AI will be most effective when building upon a foundation of human knowledge.
+			- Autor also notes that demand for many forms of expertise, such as in healthcare and education, is effectively limitless. So if AI can boost productivity in these domains, it may actually increase employment by making these services more affordable and accessible.
+			- While AI will automate some tasks and eliminate certain jobs, Autor argues this is not the whole story. Historically, the most important innovations have been those that expanded human capabilities and opened up entirely new domains
+		- from air travel to gene editing. In the process, they created demands for new forms of expertise that didn't previously exist.
+			- #### Reference to integrate
+				- Acemoglu, D., & Restrepo, P. (2018). The race between man and machine: Implications of technology for growth, factor shares, and employment. American Economic Review, 108(6), 1488-1542.
+				- Dignum, V. (2019). Responsible artificial intelligence: Designing AI for human values. ITU Journal: ICT Discoveries, 1(1), 1-8.
+				- Frey, C. B., & Osborne, M. A. (2017). The future of employment: How susceptible are jobs to computerisation?. Technological forecasting and social change, 114, 254-280.
+				- Korinek, A., & Stiglitz, J. E. (2017). Artificial intelligence and its implications for income distribution and unemployment (No. w24174). National Bureau of Economic Research.
+				- Vinuesa, R., Azizpour, H., Leite, I., Balaam, M., Dignum, V., Domisch, S., ... & Nerini, F. F. (2020). The role of artificial intelligence in achieving the Sustainable Development Goals. Nature Communications, 11(1), 1-10.
+		- ### Roles under most threat
+			- UK dept of education [10-30% can be automated away.](https://assets.publishing.service.gov.uk/media/656856b8cc1ec500138eef49/Gov.UK_Impact_of_AI_on_UK_Jobs_and_Training.pdf#:~:text=It%20has%20been%20estimated%20that%2010-30%25%20of%20jobs,the%20potential%20benefits%20advances%20in%20AI%20will%20bring.)  [[Layoff tracker and threatened roles]]
+			- Knowledge worker, admin, law, etc. This will lower wages, NOT give more time back.
+			- [Generative AI at Work Stanford research in the Philippines](https://www.nber.org/papers/w31161) found AI gave a 14% productivity boost overall, but importantly 34% improvement for novice workers, and actual hindrance for experts.
+				- This suggests a flattening of skill levels, with likely impact on wages.
+				- [Wanted: ‘New Collar’ Workers The New York Times](https://www.nytimes.com/interactive/2023/12/29/business/what-are-new-collar-jobs.html)
+		- ### Who's safe?
+			- [Hottest Job in Corporate America? The Executive in Charge of A.I.
+		- The New York Times (nytimes.com)](https://www.nytimes.com/2024/01/29/technology/us-jobs-ai-chatgpt-tech.html)
+			- Martin Ford, Rule of the Robots:
+				- Genuine Creatives, making new ideas. Science, medicine, law.
+				- Sophisticated interpersonal relationships
+				- Physically demanding and complex work
+		- [twitter link to the render loading below](https://twitter.com/tsarnick/status/1758052810166513995)
+		  {{twitter https://twitter.com/tsarnick/status/1758052810166513995}}
+	- # Renegotiating the Social Contract in the AI Era
+		- ## Social Contract Theories and Modern Implications
+			- The concept of a social contract, shaped by theorists like Hobbes, Locke, and Rousseau, underpins societal norms. Today's digital and AI advancements prompt a reevaluation of these contracts to ensure equitable technology access and protect digital rights ([AI and the Social Contract](https://medium.com/mlearning-ai/ai-and-the-social-contract-c3f063cdae18), [Definition of Social Contract](https://www.techtarget.com/whatis/definition/social-contract), [Critiques of Social Contract](https://iep.utm.edu/soc-cont/)).
+			- The renegotiation of the social contract due to AI, automation, and copyright involves significant shifts in societal norms, driven by rapid technological advancements. This transformation challenges traditional frameworks governing work, creativity, and resource distribution, necessitating updated agreements that ensure fairness and relevance.
+			- Technological progress has historically displaced jobs while creating new ones. The rise of AI-driven automation intensifies this dynamic, reshaping the job market and sparking debates about the future of work and employment nature ([Impact of AI-driven Automation](https://www.linkedin.com/pulse/impact-ai-driven-automation-business-efficiency-job-parker-wilson), [Social Unrest and Safety Nets](https://www.thesocialcontract.com/artman2/publish/tsc_27_2/tsc-27-2-walker_printer.shtml), [Technological Progress and Societal Adaptation](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6452673/)).
+		- ## The Evolution of Copyright Law
+			- Copyright law must evolve to balance creators' rights with public access, especially as AI complicates authorship and ownership ([UK Copyright Legislation](https://www.gov.uk/government/consultations/artificial-intelligence-and-intellectual-property-call-for-views/artificial-intelligence-call-for-views-copyright-and-related-rights), [US Copyright Act](https://www.copyright.gov/title17/)).
+	- ## Calls for a New Social Contract
+		- The new challenges of AI and digital technologies lead to calls for a new social contract, focusing on digital citizenship, privacy, and fair technology distribution ([Defend Democracy on AI](https://defenddemocracy.eu/a-new-social-contract-for-the-age-of-artificial-intelligence), [OECD Digital Rights](https://www.oecd.org/digital/rights/)).
+	- ## The Changing Nature of Work
+		- Historical technological shifts have reshaped labor markets and societal structures, now accelerated by AI and automation ([Impact of AI and Automation](https://news.stthomas.edu/artificial-intelligence-and-its-impact-on-jobs/)).
+		- AI and automation are transforming work, necessitating adjustments in the social contract to address job displacement and create new opportunities ([AI's Impact on Jobs](https://news.stthomas.edu/artificial-intelligence-and-its-impact-on-jobs/), [Automation's Broader Impact](https://www.mckinsey.com/featured-insights/future-of-work/how-will-automation-affect-jobs-skills-and-wages)).
+	- ## Proposing Frameworks for Policy and Adaptation
+		- Susskind (2021) argues that the rise of AI and automation will lead to a future with less work for humans, necessitating a reevaluation of the concept of work. He suggests that a more nuanced approach to the social contract is needed to address the potential impact on employment and inequality. Merola (2022) and Chand (2020, 2021) both explore the role of taxation in addressing the challenges of automation and AI. Merola emphasizes the need for a comprehensive approach that includes employment creation strategies, redistributive policies, skill development, and social protection systems. Chand, on the other hand, suggests that targeted taxes on AI and robots may not be effective, and instead proposes a global fiscal redistribution mechanism and an education tax to fund worker reskilling programs.
+		- Policymakers and governments play crucial roles in adapting policies to mitigate AI's impact on society, focusing on privacy, expression, and workforce transitions ([Government and Digital Policy](https://www.oecd.org/digital/rights/)).
+		- To accommodate AI and digital transformations, new frameworks are proposed, emphasizing worker rights, digital citizenship, and the ethical use of technology ([Work in the Era of AI](https://epthinktank.eu/2021/02/10/work-in-the-era-of-ai-time-for-a-digital-social-contract/)).
+	- ## The Art of the Desirable vs. Imposed Futures: Protecting Choice
+		- [Helen Wilding](https://www.linkedin.com/in/helen-wilding-griffiths-8885ba45/)'highlights a crucial aspect of the AI revolution often overlooked by the "tech bros exploring the art of the possible": the fact that some people genuinely prefer clearly defined, repetitive roles. It's not for a privileged minority to dictate what constitutes "worthwhile" work and unilaterally reshape the employment landscape, removing options that many find fulfilling. The transition to an AI-driven future must be guided by "[the art of the desirable,](https://tomcheesewright.com/the-art-of-the-probable-the-possible-and-the-desirable)" fostering social consensus and prioritising individual choice, rather than imposing a singular vision of progress.
+		- While some reports predict widespread displacement across various skill levels, others like David Autor's work suggest AI could empower workers and create new opportunities. However, even in optimistic scenarios, the *nature* of work will undoubtedly change. This shift necessitates a focus on transitions and training, ensuring that those who prefer repetitive roles aren't simply discarded but are provided with pathways to new forms of employment that align with their preferences and evolving skill sets.
+		- The "scorched earth" tactics of major tech companies, prioritising profit through automation and workforce reduction, further complicate this transition. Their pursuit of the "art of the possible" within a for-profit model, as highlighted in our notes on Microsoft, Meta, and Google, risks exacerbating existing inequalities and leaving vulnerable workers behind. The lack of binding legislation, despite the Cambridge Analytica scandal and growing public backlash against AI, underscores the urgency of bottom-up movements like the screen writers guild strike to protect worker rights.
+		- The "art of the desirable" framework demands that we consider the needs and desires of *all* workers, not just those who thrive in dynamic, creative environments. This means:
+			- **Protecting choice:** Individuals should have the option to pursue roles that suit their preferences, whether those roles involve repetitive tasks or complex problem-solving. The "worker of one" concept championed by Autor should extend to encompass the diversity of human preferences and working styles.
+			- **Investing in human-centred training:** Reskilling programmes should not solely focus on technical AI skills but should also cultivate essential human capabilities like communication, empathy, and critical thinking, which remain crucial even in an AI-driven world. This aligns with the re-evaluation of human capital discussed in our notes.
+			- **Fostering social dialogue and consensus:** The future of work must be determined through open discussions involving workers, policymakers, and technologists. The "art of the desirable" requires a democratic approach, prioritising social consensus over top-down dictates from Silicon Valley.
+			- **Prioritising well-being and fulfilment:** Beyond economic considerations, the new social contract must value the well-being and fulfilment of all workers. This includes ensuring fair wages, reasonable working hours, and access to resources that support mental and emotional health, especially for those navigating challenging transitions.
+		-
+	- # AI's Impact on Power, Privacy, and Personal Sovereignty
+		- **Concentration of Power in AI:**
+			- **Corporate Dominance:**
+				- Major tech companies are not just developing AI but are shaping its very direction and application.
+				- These companies' influence leads to potential monopolistic control, affecting competition and innovation.
+				- **Deeper Insight:** The consolidation of power in the AI sector creates barriers for smaller players, leading to a lack of diversity in AI development and potential biases in AI systems.
+			- **Economic and Resource Inequality:**
+				- AI's development requires substantial resources, creating a disparity between entities that can afford these resources and those that cannot.
+				- This disparity widens the gap between large corporations and smaller entities, including academic institutions and startups.
+				- **Deeper Insight:** The economic divide in AI reinforces existing power structures, where the entities with the most data and computational power dictate AI's evolution and application.
+		- **Gating of Information:**
+			- **Access Control by AI:**
+				- AI systems, often proprietary, control the flow and accessibility of information.
+				- This control can lead to information gatekeeping, where only certain narratives or perspectives are amplified.
+				- **Deeper Insight:** AI's role in content recommendation and news dissemination can skew public perception and understanding, potentially leading to echo chambers.
+			- **Transparency and Accountability:**
+				- There is a lack of transparency in how AI algorithms function and make decisions.
+				- This opaqueness makes it difficult for the public to understand or challenge AI-driven decisions.
+				- **Deeper Insight:** Without transparency, AI systems can perpetuate biases and errors unchecked, leading to harmful societal impacts.
+		- **Privacy and Personal Sovereignty:**
+			- **AI as a Surveillance Tool:**
+				- AI technologies, particularly in facial recognition and behavior prediction, are increasingly used for surveillance, infringing on individual privacy.
+				- These technologies can track and analyze personal data without explicit consent, raising ethical concerns.
+				- **Deeper Insight:** The widespread use of AI in surveillance erodes personal freedoms and privacy, leading to a society where every action can be monitored and analyzed.
+			- **Data Exploitation and Consent:**
+				- The collection and use of personal data for AI training often occur without clear consent from individuals.
+				- Data subjects rarely have control over how their data is used, contributing to the erosion of personal sovereignty.
+				- **Deeper Insight:** The lack of control over personal data signifies a shift in power dynamics, where individuals have little say in how their information is utilized and monetized.
+		- **Erosion of Rights and Labor Exploitation:**
+			- **Impact on Workers' Rights:**
+				- Automation and AI threaten traditional jobs, leading to job insecurity and changes in labor dynamics.
+				- Workers are often required to train AI systems that may eventually replace them, raising ethical questions about labor rights.
+				- **Deeper Insight:** The transition towards an AI-driven economy necessitates a reevaluation of labor laws and protections to safeguard workers' rights in a changing landscape.
+			- **Ethical Concerns in AI Training:**
+				- The human labor involved in AI training, especially in content moderation, is often underappreciated and underpaid.
+				- Workers are exposed to harmful content, impacting their mental health, with little support or recognition.
+				- **Deeper Insight:** The reliance on human labor for AI's 'intelligence' contrasts with the narrative of AI as an autonomous, advanced technology, highlighting the need for better working conditions and ethical standards in AI development.
+		- **Future Outlook and Regulations:**
+			- **Regulatory Challenges:**
+				- The pace of AI development outstrips the current regulatory framework, leading to gaps in governance and oversight.
+				- There is a need for comprehensive laws that address privacy, transparency, and the equitable use of AI.
+				- **Deeper Insight:** Effective regulation of AI requires a multidisciplinary approach, involving lawmakers, technologists, ethicists, and the public to ensure that AI serves the common good without infringing on individual rights.
+			- **Personal Sovereignty in the Digital Age:**
+				- As AI becomes more integrated into daily life, maintaining personal sovereignty over data and privacy becomes increasingly challenging.
+				- Individuals must be empowered with knowledge and tools to navigate this landscape and protect their digital rights.
+				- **Deeper Insight:** Fostering a culture of digital literacy and advocating for stronger privacy protections are essential steps in ensuring that individuals retain control over their personal data in an AI-driven world.
+- # Immersive Technologies and Mixed Reality
+	- ## Elder Care
+		- [Where and who you are in VR has a real impact, study finds | Stanford News](https://news.stanford.edu/2022/12/14/vr-real-impact-study-finds/)
+		- [New Stanford University study reveals almost 60% of seniors felt less isolated socially after their #VirtualReality experience
+		- the opposite of the stereotype that #VR is an isolating technology! Additionally, 80% of them had a more positive attitude after the experience. The study involved interviewing residents of 17 senior communities who who could choose from virtual experiences such as parachuting, watching stage performances, or visiting places like Paris and Egypt. They used both HTC VIVE Flow and PICO XR headsets. The study was conducted in collaboration with Chris B., CEO of Mynd Immersive, and is part of a wider study to help lessen the impact of #dementia. I particularly enjoyed the final comment by senior resident Pete Audet at the end of this video who shared our wonder about how exciting the next 10 years of this technology is going to be 𣰊	 - Search (bing.com)](https://www.bing.com/search?q=New+Stanford+University+study+reveals+almost+60%25+of+seniors+felt+less+isolated+socially+after+their+%23VirtualReality+experience+-+the+opposite+of+the+stereotype+that+%23VR+is+an+isolating+technology!+Additionally%2C+80%25+of+them+had+a+more+positive+attitude+after+the+experience.+The+study+involved+interviewing+residents+of+17+senior+communities+who+who+could+choose+from+virtual+experiences+such+as+parachuting%2C+watching+stage+performances%2C+or+visiting+places+like+Paris+and+Egypt.+They+used+both+HTC+VIVE+Flow+and+PICO+XR+headsets.+The+study+was+conducted+in+collaboration+with+Chris+B.%2C+CEO+of+Mynd+Immersive%2C+and+is+part+of+a+wider+study+to+help+lessen+the+impact+of+%23dementia.+I+particularly+enjoyed+the+final+comment+by+senior+resident+Pete+Audet+at+the+end+of+this+video+who+shared+our+wonder+about+how+exciting+the+next+10+years+of+this+technology+is+going+to+be+%F0%9F%91%8F&cvid=3fc42482a4bb482d8ea881dc2efc2960&gs_lcrp=EgZjaHJvbWUyBggAEEUYOTIGCAEQRRhA0gEHNTcxajBqNKgCALACAA&FORM=ANAB01&PC=U531)
+		- [moore-et-al-2023-from-65-to-103-older-adults-experience-virtual-reality-differently-depending-on-their-age-evidence.pdf (stanford.edu)](https://vhil.stanford.edu/sites/g/files/sbiybj29011/files/media/file/moore-et-al-2023-from-65-to-103-older-adults-experience-virtual-reality-differently-depending-on-their-age-evidence.pdf) -
+- # A new valuation for human capital
+	- These convergent impulses may lead to a reconnection and re-evaluation of the importance of human interpersonal (physically present) skills as posited by [Opinion | The A.I. Economy Will Make Jobs More Human
+		- The New York Times (nytimes.com)](https://www.nytimes.com/2024/02/14/opinion/ai-economy-jobs-colleges.html).
+		- **Education and Training Reevaluation**:
+			- There's a critical need to shift focus from technical skills like coding to fostering inherently human skills: communication, empathy, and critical thinking.
+			- The trend of increasing enrollment in computer science and declining humanities majors reflects an overemphasis on technical skills, despite AI advancements.
+		- **Valuing Human Capabilities**:
+			- This era prompts a reassessment of what constitutes core human capabilities, placing a premium on soft skills necessary for effective AI collaboration.
+			- Communication is identified as a key skill across professions, underscoring the critical role of interpersonal skills in the AI-dominated landscape.
+		- **Workforce Preferences and Predictions**:
+			- Surveys show a strong preference for soft skills over technical AI skills among executives, recognizing the importance of interpersonal abilities.
+			- The transition towards a "relationship economy" emphasizes social abilities and people skills as central to future success.
+		- **Opportunities for Equity and Revaluation**:
+			- The evolving economy offers a chance to address gender disparities by valuing skills traditionally considered feminine.
+			- This shift invites a broader vision for human potential, advocating for a workforce that values emotional intelligence and the heart alongside the intellect.
+			- People who can act within the context of a "bubble of one" with their AI agents will likely prosper, even within the context of employment contracts in larger corporate structures.
+- # Misc
+- [twitter link to the render loading below](https://twitter.com/generalising/status/1772744143476842732)
+  {{twitter https://twitter.com/generalising/status/1772744143476842732}} -
+- [Generative AI Could Raise Global GDP by 7% (goldmansachs.com)](https://www.goldmansachs.com/intelligence/pages/generative-ai-could-raise-global-gdp-by-7-percent.html)
+- [Nobel Prize laureate Chris Pissarides on ChatGPT, AI and the four-day workweek | Fortune Europe](https://fortune.com/europe/2023/12/02/nobel-prize-economist-christopher-pissarides-chatgpt-workplace-automation-one-year-launch/)
+- [The Shorter Working Week: a report from Autonomy
+	- Autonomy](https://autonomy.work/portfolio/the-shorter-working-week-a-report-from-autonomy-in-collaboration-with-members-of-the-4-day-week-campaign/)
+- [Ray Dalio says AI could create a 3-day workweek | Fortune](https://fortune.com/2023/09/18/ray-dalio-ai-3-day-work-week-investing-advice-portfolio-cash-bonds-tech-bridgewater-associates/)
+- [JPMorgan CEO Jamie Dimon: AI will lead to 3.5-day workweek | Fortune](https://fortune.com/2023/10/03/jamie-dimon-jpmorgan-chase-ceo-ai-impact-working-week/)
+- [IBM CEO: ‘Today’s workforce should prepare to work hand in hand with A.I.' | Fortune](https://fortune.com/2023/04/20/ibm-ceo-work-ai-artificial-intelligence-careers-tech-arvind-krishna/)
+- https://slack.com/intl/en-gb/blog/news/the-surprising-connection-between-after-hours-work-and-decreased-productivity
+- [CEO effect on firm performance mostly due to chance | ScienceDaily](https://www.sciencedaily.com/releases/2015/10/151022192337.htm)
+- [[Layoff tracker and threatened roles]]
+-
+- # Links for developing
+	- Microsoft working trends, technical debt through loss to communication systems [[Social contract and jobs]]
+	- [AI Can (Mostly) Outperform Human CEOs (hbr.org)](https://hbr.org/2024/09/ai-can-mostly-outperform-human-ceos) [[Social contract and jobs]]
+	- https://arstechnica.com/information-technology/2024/09/omnipresent-ai-cameras-will-ensure-good-behavior-says-larry-ellison/ [[Privacy, Trust and Safety]] [[Social contract and jobs]]
+	- https://pluralistic.net/2024/09/09/low-wage-100/ [[Money]] [[Social contract and jobs]] [[Equity]]
+	- [AI May Not Steal Many Jobs After All | TIME](https://time.com/7016801/ai-jobs/) [[Social contract and jobs]]
+		- [The impact of artificial intelligence on employment: the role of virtual agglomeration | Humanities and Social Sciences Communications (nature.com)](https://www.nature.com/articles/s41599-024-02647-9)
+		- [The Impact of AI on Job Roles, Workforce, and Employment: What You Need to Know (innopharmaeducation.com)](https://www.innopharmaeducation.com/our-blog/the-impact-of-ai-on-job-roles-workforce-and-employment-what-you-need-to-know)
+		- [The Impact of Artificial Intelligence on Jobs: A Dual Perspective - SSLPost](https://www.sslpost.com/the-impact-of-artificial-intelligence-on-jobs-a-dual-perspective/)
+		- [AI Jobs Barometer | PwC](https://www.pwc.com/gx/en/issues/artificial-intelligence/ai-jobs-barometer.html)
+	- In a leaked recording, Amazon cloud chief tells employees that most developers could stop coding soon as AI takes over
+	  Eugene Kim Aug 20, 2024, 8:38 PM BST [[Social contract and jobs]]
+		- That's according to Amazon Web Services' CEO, Matt Garman, who shared his thoughts on the topic during an internal fireside chat held in June, according to a recording of the meeting obtained by Business Insider.
+		- "If you go forward 24 months from now, or some amount of time — I can't exactly predict where it is — it's possible that most developers are not coding," said Garman, who became AWS's CEO in June.
+		- "Coding is just kind of like the language that we talk to computers. It's not necessarily the skill in and of itself," the executive said. "The skill in and of itself is like, how do I innovate? How do I go build something that's interesting for my end users to use?"
+		- This means the job of a software developer will change, Garman said.
+		- "It just means that each of us has to get more in tune with what our customers need and what the actual end thing is that we're going to try to go build, because that's going to be more and more of what the work is as opposed to sitting down and actually writing code," he said.
+	- [OSF Preprints | The Uneven Impact of Generative AI on Entrepreneurial Performance](https://osf.io/preprints/osf/hdjpk) [[Social contract and jobs]]
+	- [Opinion | A.I. and the Silicon Valley Hype Machine - The New York Times (nytimes.com)](https://www.nytimes.com/2024/05/15/opinion/artificial-intelligence-ai-openai-chatgpt-overrated-hype.html) backlash [[Social contract and jobs]] [[Artificial Intelligence]]
+	- [The Scarlett Johansson Incident Makes OpenAI Look Desperate (nymag.com)](https://nymag.com/intelligencer/article/the-scarlet-johansson-incident-makes-open-ai-look-desperate.html) [[Social contract and jobs]] [[OpenAI]]
+	- [AI is already changing management — companies must decide how (ft.com)](https://www.ft.com/content/389e505c-a1cc-4176-a592-dd1d0fa171b8) [[Social contract and jobs]]
+	- [So, there's now an AI modelling agency – would you hire Aileen?](https://www.creativebloq.com/news/ai-model-agency) [[Humans, Avatars , Character]] [[Social contract and jobs]]
+	- [Please stop using AI to make Wes Anderson parodies | Stuart Heritage](https://www.theguardian.com/film/2023/may/11/wes-anderson-parodies-ai) [[Social contract and jobs]]
+	- [The creepiness of conversational AI has been put on full display](https://bigthink.com/the-present/danger-conversational-ai/%7D%7B%60The) [[Social contract and jobs]]
+	- [Taser Company Axon Is Selling AI That Turns Body Cam Audio Into Police Reports (forbes.com)](https://www.forbes.com/sites/thomasbrewster/2024/04/23/axon-ai-police-reports-/) [[Social contract and jobs]]
+	- [AI key to future national security decision making, but brings its own risks | The Alan Turing Institute](https://www.turing.ac.uk/news/ai-key-future-national-security-decision-making-brings-its-own-risks) [[Cyber Security and Military]] [[Social contract and jobs]] [[Politics, Law, Privacy]]
