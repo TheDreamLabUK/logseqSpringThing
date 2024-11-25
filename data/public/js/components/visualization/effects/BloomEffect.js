@@ -26,7 +26,8 @@ export class BloomEffect {
         const width = Math.floor(window.innerWidth * pixelRatio);
         const height = Math.floor(window.innerHeight * pixelRatio);
 
-        // Use HalfFloatType for HDR rendering
+        // Use FloatType for WebGL2, UnsignedByteType for WebGL1
+        const isWebGL2 = this.renderer.capabilities.isWebGL2;
         return new THREE.WebGLRenderTarget(
             width,
             height,
@@ -34,11 +35,11 @@ export class BloomEffect {
                 minFilter: THREE.LinearFilter,
                 magFilter: THREE.LinearFilter,
                 format: THREE.RGBAFormat,
-                type: THREE.HalfFloatType,
-                colorSpace: THREE.LinearSRGBColorSpace,
+                type: isWebGL2 ? THREE.HalfFloatType : THREE.UnsignedByteType,
+                colorSpace: isWebGL2 ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace,
                 stencilBuffer: false,
                 depthBuffer: true,
-                samples: this.renderer.capabilities.isWebGL2 ? 4 : 0
+                samples: isWebGL2 ? 4 : 0
             }
         );
     }
@@ -56,6 +57,21 @@ export class BloomEffect {
         // Create base render target for scene
         const baseTarget = this.createRenderTarget();
         this.renderTargets.set('base', baseTarget);
+
+        // Adjust settings based on WebGL version
+        const isWebGL2 = this.renderer.capabilities.isWebGL2;
+        if (!isWebGL2) {
+            // Reduce quality for WebGL1
+            settings = {
+                ...settings,
+                nodeBloomStrength: settings.nodeBloomStrength * 0.8,
+                nodeBloomRadius: settings.nodeBloomRadius * 0.7,
+                edgeBloomStrength: settings.edgeBloomStrength * 0.8,
+                edgeBloomRadius: settings.edgeBloomRadius * 0.7,
+                environmentBloomStrength: settings.environmentBloomStrength * 0.8,
+                environmentBloomRadius: settings.environmentBloomRadius * 0.7
+            };
+        }
 
         const layers = [
             {
@@ -85,8 +101,10 @@ export class BloomEffect {
         ];
 
         try {
-            // Set renderer to linear color space for HDR
-            this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+            // Set renderer color space based on WebGL version
+            this.renderer.outputColorSpace = isWebGL2 ? 
+                THREE.LinearSRGBColorSpace : 
+                THREE.SRGBColorSpace;
 
             // Create base composer for main scene
             const baseComposer = new EffectComposer(this.renderer, baseTarget);
@@ -113,8 +131,9 @@ export class BloomEffect {
                     settings.threshold
                 );
                 
-                bloomPass.highQualityBloom = true;
-                bloomPass.gammaCorrectionInShader = true;
+                // Adjust bloom quality based on WebGL version
+                bloomPass.highQualityBloom = isWebGL2;
+                bloomPass.gammaCorrectionInShader = isWebGL2;
                 
                 composer.addPass(renderPass);
                 composer.addPass(bloomPass);
