@@ -150,7 +150,7 @@ export class NodeManager {
 
     formatNodeNameToUrl(nodeName) {
         // Get base URL from environment or default to logseq
-        const baseUrl = window.location.origin;
+        const baseUrl = 'https://www.narrativegoldmine.com';
         // Convert node name to lowercase and replace spaces with dashes
         const formattedName = nodeName.toLowerCase().replace(/ /g, '-');
         return `${baseUrl}/#/page/${formattedName}`;
@@ -226,11 +226,20 @@ export class NodeManager {
             existingLabel.material.dispose();
         }
 
+        // Create canvas with alpha support
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d', {
             alpha: true,
-            desynchronized: true // Optimize for performance
+            desynchronized: true,
+            willReadFrequently: false
         });
+
+        if (!context) {
+            console.error('Failed to get 2D context for label');
+            return null;
+        }
+
+        // Set initial font to measure text
         context.font = `${this.labelFontSize}px Arial`;
         
         // Get metadata values
@@ -239,7 +248,7 @@ export class NodeManager {
         const hyperlinkCount = parseInt(metadata.hyperlink_count) || 0;
         const githubInfo = metadata.github_info || {};
         
-        // Measure and create text
+        // Measure text dimensions
         const nameMetrics = context.measureText(text);
         let infoText = `${this.formatFileSize(fileSize)} | ${this.formatAge(lastModified)} | ${hyperlinkCount} links`;
         if (githubInfo.author) {
@@ -253,41 +262,61 @@ export class NodeManager {
         const infoMetrics = context.measureText(infoText);
         const textWidth = Math.max(nameMetrics.width, infoMetrics.width);
         
-        // Set canvas size to power of 2 for better texture performance
+        // Calculate power-of-2 dimensions
         const canvasWidth = Math.pow(2, Math.ceil(Math.log2(textWidth + 20)));
         const canvasHeight = Math.pow(2, Math.ceil(Math.log2(this.labelFontSize * 2 + 30)));
+
+        // Set canvas size
         canvas.width = canvasWidth;
         canvas.height = canvasHeight;
 
-        // Draw background and text
+        // Clear canvas with transparent background
+        context.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw semi-transparent background
         context.fillStyle = visualizationSettings.getLabelSettings().backgroundColor;
         context.fillRect(0, 0, canvas.width, canvas.height);
 
+        // Reset font after canvas resize
         context.font = `${this.labelFontSize}px ${visualizationSettings.getLabelSettings().fontFamily}`;
+        context.textBaseline = 'top';
+        context.textAlign = 'left';
+
+        // Enable text anti-aliasing
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+
+        // Draw main text
         context.fillStyle = visualizationSettings.getLabelSettings().textColor;
-        context.fillText(text, 10, this.labelFontSize);
+        context.fillText(text, 10, this.labelFontSize / 2);
         
+        // Draw info text
         context.font = `${this.labelFontSize / 2}px ${visualizationSettings.getLabelSettings().fontFamily}`;
         context.fillStyle = visualizationSettings.getLabelSettings().infoTextColor;
-        context.fillText(infoText, 10, this.labelFontSize + 20);
+        context.fillText(infoText, 10, this.labelFontSize * 1.5);
 
-        // Create sprite with optimized texture settings
+        // Create optimized texture
         const texture = new THREE.CanvasTexture(canvas);
         texture.generateMipmaps = false;
         texture.minFilter = THREE.LinearFilter;
         texture.magFilter = THREE.LinearFilter;
         texture.format = THREE.RGBAFormat;
+        texture.needsUpdate = true;
         
+        // Create sprite material with proper blending
         const spriteMaterial = new THREE.SpriteMaterial({
             map: texture,
             transparent: true,
             depthWrite: false,
+            depthTest: true,
+            blending: THREE.NormalBlending,
             sizeAttenuation: true,
-            toneMapped: false // Important for proper visibility
+            toneMapped: false
         });
+
         const sprite = new THREE.Sprite(spriteMaterial);
         
-        // Scale sprite to maintain readable text size in meters
+        // Scale sprite based on canvas dimensions
         const labelScale = visualizationSettings.getLabelSettings().verticalOffset;
         sprite.scale.set(
             (canvas.width / this.labelFontSize) * labelScale * 1.5,
@@ -295,8 +324,12 @@ export class NodeManager {
             1
         );
         
-        // Set label to be visible in all necessary layers
+        // Set proper layer for rendering
         LayerManager.setLayerGroup(sprite, 'LABEL');
+
+        // Clean up canvas
+        canvas.width = 1;
+        canvas.height = 1;
 
         return sprite;
     }
