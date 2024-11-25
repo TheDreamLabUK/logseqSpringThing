@@ -27,6 +27,7 @@ export class EffectsManager {
         this.bloomEffect = null;
         this.compositionEffect = null;
         this.initialized = false;
+        this.pendingInitialization = true;
         
         // XR properties
         this.isXRActive = false;
@@ -52,6 +53,12 @@ export class EffectsManager {
                 throw new Error('Renderer not ready for post-processing initialization');
             }
 
+            // Wait for settings if needed
+            if (this.pendingInitialization) {
+                console.log('Waiting for settings before initializing effects...');
+                return false;
+            }
+
             // Clean up existing effects if reinitializing
             if (this.initialized) {
                 this.dispose();
@@ -61,27 +68,23 @@ export class EffectsManager {
             this.renderer.autoClear = true;
             this.isXRActive = isXR;
 
-            // Initialize bloom effect
+            // Get settings from server
+            const settings = visualizationSettings.getSettings();
+            if (!settings?.bloom) {
+                console.error('Bloom settings not available from server');
+                return false;
+            }
+
+            // Initialize bloom effect with server settings
             this.bloomEffect = new BloomEffect(this.renderer, this.scene, this.camera);
-            const bloomSettings = visualizationSettings.getSettings().bloom || {
-                nodeBloomStrength: 1.5,
-                nodeBloomRadius: 0.5,
-                nodeBloomThreshold: 0.3,
-                edgeBloomStrength: 1.2,
-                edgeBloomRadius: 0.4,
-                edgeBloomThreshold: 0.2,
-                environmentBloomStrength: 1.0,
-                environmentBloomRadius: 0.6,
-                environmentBloomThreshold: 0.4
-            };
-            this.bloomEffect.init(bloomSettings);
+            await this.bloomEffect.init(settings.bloom);
 
             // Initialize composition effect
             this.compositionEffect = new CompositionEffect(this.renderer);
-            this.compositionEffect.init(this.bloomEffect.getRenderTargets());
+            await this.compositionEffect.init(this.bloomEffect.getRenderTargets());
             
             this.initialized = true;
-            console.log('Post-processing initialization complete');
+            console.log('Post-processing initialization complete with server settings');
             return true;
         } catch (error) {
             console.error('Error in post-processing initialization:', error);
@@ -131,7 +134,7 @@ export class EffectsManager {
         } catch (error) {
             console.error('Error during rendering:', error);
             // Fallback to direct rendering on error
-            this.renderer.render(this.scene, currentCamera);
+            this.renderer.render(this.scene, this.camera);
         }
     }
     
@@ -155,24 +158,30 @@ export class EffectsManager {
     }
     
     handleSettingsUpdate(event) {
+        console.log('Received settings update:', event.detail);
+
+        // If waiting for initial settings, initialize
+        if (this.pendingInitialization) {
+            this.pendingInitialization = false;
+            this.initPostProcessing(this.isXRActive);
+            return;
+        }
+
+        // Update existing effects with new settings
         if (!this.initialized) return;
 
         try {
             const settings = event.detail;
             
             if (settings.bloom && this.bloomEffect) {
-                this.bloomEffect.init(settings.bloom);
+                this.bloomEffect.updateSettings(settings.bloom);
                 if (this.compositionEffect) {
-                    this.compositionEffect.init(this.bloomEffect.getRenderTargets());
+                    this.compositionEffect.updateSettings(this.bloomEffect.getRenderTargets());
                 }
             }
 
-            if (settings.material) {
-                // Update material settings if needed
-                const materialSettings = settings.material;
-                if (this.bloomEffect) {
-                    this.bloomEffect.updateMaterialSettings(materialSettings);
-                }
+            if (settings.visualization?.material && this.bloomEffect) {
+                this.bloomEffect.updateMaterialSettings(settings.visualization.material);
             }
         } catch (error) {
             console.error('Error handling settings update:', error);

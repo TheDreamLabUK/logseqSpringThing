@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { LAYERS } from '../layerManager.js';
+import { visualizationSettings } from '../../../services/visualizationSettings.js';
 
 export class CompositionEffect {
     constructor(renderer) {
@@ -75,18 +76,24 @@ export class CompositionEffect {
     }
 
     createCompositionShader(isXR = false) {
+        // Get bloom settings from server
+        const settings = visualizationSettings.getBloomSettings();
+        if (!settings) {
+            console.warn('No bloom settings available, using defaults');
+        }
+
         return {
             uniforms: {
                 baseTexture: { value: null },
                 bloomTexture0: { value: null },
                 bloomTexture1: { value: null },
                 bloomTexture2: { value: null },
-                bloomStrength0: { value: 1.5 },
-                bloomStrength1: { value: 1.2 },
-                bloomStrength2: { value: 0.8 },
-                exposure: { value: isXR ? 1.0 : 1.2 }, // Reduced exposure for XR
+                bloomStrength0: { value: settings?.node_bloom_strength || 1.5 },
+                bloomStrength1: { value: settings?.environment_bloom_strength || 1.2 },
+                bloomStrength2: { value: settings?.edge_bloom_strength || 0.8 },
+                exposure: { value: isXR ? 1.0 : 1.2 },
                 gamma: { value: 2.2 },
-                saturation: { value: isXR ? 1.1 : 1.2 }, // Reduced saturation for XR
+                saturation: { value: isXR ? 1.1 : 1.2 },
                 isXR: { value: isXR ? 1.0 : 0.0 }
             },
             vertexShader: `
@@ -216,6 +223,37 @@ export class CompositionEffect {
         } catch (error) {
             console.error('Error initializing composition effect:', error);
             this.dispose();
+        }
+    }
+
+    updateSettings(bloomRenderTargets) {
+        if (!this.initialized) return;
+
+        try {
+            const settings = visualizationSettings.getBloomSettings();
+            if (!settings) return;
+
+            // Update regular composer
+            if (this.composer) {
+                const finalPass = this.composer.passes[0];
+                if (finalPass && finalPass.uniforms) {
+                    finalPass.uniforms.bloomStrength0.value = settings.node_bloom_strength;
+                    finalPass.uniforms.bloomStrength1.value = settings.environment_bloom_strength;
+                    finalPass.uniforms.bloomStrength2.value = settings.edge_bloom_strength;
+                }
+            }
+
+            // Update XR composer
+            if (this.xrComposer) {
+                const finalPass = this.xrComposer.passes[0];
+                if (finalPass && finalPass.uniforms) {
+                    finalPass.uniforms.bloomStrength0.value = settings.node_bloom_strength * 1.2;
+                    finalPass.uniforms.bloomStrength1.value = settings.environment_bloom_strength * 1.2;
+                    finalPass.uniforms.bloomStrength2.value = settings.edge_bloom_strength * 1.2;
+                }
+            }
+        } catch (error) {
+            console.error('Error updating composition settings:', error);
         }
     }
 

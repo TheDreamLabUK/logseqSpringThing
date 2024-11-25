@@ -5,6 +5,7 @@ import ControlPanel from './components/ControlPanel.vue';
 import { WebXRVisualization } from './components/visualization/core.js';
 import WebsocketService from './services/websocketService.js';
 import { GraphDataManager } from './services/graphDataManager.js';
+import { visualizationSettings } from './services/visualizationSettings.js';
 import { isGPUAvailable, initGPU } from './gpuUtils.js';
 
 export class App {
@@ -16,57 +17,36 @@ export class App {
         this.gpuAvailable = false;
         this.gpuUtils = null;
         this.vueApp = null;
-        
-        // Add debug info to DOM
-        const debugInfo = document.getElementById('debug-info');
-        if (debugInfo) {
-            debugInfo.innerHTML = '<div>App constructor called</div>';
-        }
     }
 
     async start() {
         console.log('Starting application');
-        const debugInfo = document.getElementById('debug-info');
         try {
             await this.initializeApp();
             console.log('Application started successfully');
-            if (debugInfo) {
-                debugInfo.innerHTML += '<div style="color: #28a745">Application started successfully</div>';
-            }
         } catch (error) {
             console.error('Failed to start application:', error);
-            if (debugInfo) {
-                debugInfo.innerHTML += `<div style="color: #dc3545">Error: ${error.message}</div>`;
-            }
             throw error;
         }
     }
 
     async initializeApp() {
-        const debugInfo = document.getElementById('debug-info');
-        
-        // Step 1: Initialize WebSocket and wait for initial data
+        // Step 1: Initialize WebSocket and wait for initial data and settings
         try {
-            if (debugInfo) debugInfo.innerHTML += '<div>Initializing WebSocket...</div>';
             this.websocketService = new WebsocketService();
             
-            // Wait for connection and initial data
+            // Wait for connection, initial data, and settings
             await new Promise((resolve, reject) => {
                 let isConnected = false;
                 let hasData = false;
+                let hasSettings = false;
                 
                 const timeout = setTimeout(() => {
-                    if (isConnected) {
-                        // If connected but no data, continue anyway
-                        console.warn('Connected but waiting for initial data - continuing initialization');
-                        resolve();
-                    } else {
-                        reject(new Error('WebSocket initialization timeout'));
-                    }
+                    reject(new Error('Initialization timeout'));
                 }, 10000);
 
                 const checkComplete = () => {
-                    if (isConnected && hasData) {
+                    if (isConnected && hasData && hasSettings) {
                         clearTimeout(timeout);
                         resolve();
                     }
@@ -74,7 +54,6 @@ export class App {
 
                 this.websocketService.on('open', () => {
                     console.log('WebSocket connected');
-                    if (debugInfo) debugInfo.innerHTML += '<div style="color: #28a745">WebSocket connected</div>';
                     isConnected = true;
                     checkComplete();
                 });
@@ -82,8 +61,15 @@ export class App {
                 this.websocketService.on('message', (data) => {
                     console.log('Received message:', data);
                     if (data.type === 'graphData' || data.type === 'graphUpdate') {
-                        if (debugInfo) debugInfo.innerHTML += '<div>Initial graph data received</div>';
                         hasData = true;
+                        checkComplete();
+                    }
+                });
+
+                this.websocketService.on('serverSettings', (settings) => {
+                    console.log('Received server settings:', settings);
+                    if (settings?.visualization) {
+                        hasSettings = true;
                         checkComplete();
                     }
                 });
@@ -97,93 +83,80 @@ export class App {
                     }
                 });
             });
-            
-            if (debugInfo) debugInfo.innerHTML += '<div style="color: #28a745">WebSocket initialized successfully</div>';
         } catch (error) {
             console.error('Failed to initialize WebSocket:', error);
-            if (debugInfo) debugInfo.innerHTML += `<div style="color: #dc3545">WebSocket Error: ${error.message}</div>`;
             throw error;
         }
 
         // Step 2: Initialize GraphDataManager
         try {
-            if (debugInfo) debugInfo.innerHTML += '<div>Initializing GraphDataManager...</div>';
             this.graphDataManager = new GraphDataManager(this.websocketService);
-            if (debugInfo) debugInfo.innerHTML += '<div style="color: #28a745">GraphDataManager initialized</div>';
         } catch (error) {
             console.error('Failed to initialize GraphDataManager:', error);
-            if (debugInfo) debugInfo.innerHTML += `<div style="color: #dc3545">GraphDataManager Error: ${error.message}</div>`;
             throw error;
         }
 
         // Step 3: Initialize Scene Container
         try {
-            if (debugInfo) debugInfo.innerHTML += '<div>Setting up scene container...</div>';
             const container = document.getElementById('scene-container');
             if (!container) {
-                throw new Error('Scene container not found in DOM');
+                const sceneContainer = document.createElement('div');
+                sceneContainer.id = 'scene-container';
+                document.body.appendChild(sceneContainer);
+                console.log('Created scene container');
             }
-            if (debugInfo) debugInfo.innerHTML += '<div style="color: #28a745">Scene container ready</div>';
         } catch (error) {
             console.error('Scene container error:', error);
-            if (debugInfo) debugInfo.innerHTML += `<div style="color: #dc3545">Scene Container Error: ${error.message}</div>`;
             throw error;
         }
 
-        // Step 4: Initialize Visualization
+        // Step 4: Verify Settings
+        const settings = visualizationSettings.getSettings();
+        if (!settings?.visualization) {
+            throw new Error('Visualization settings not available');
+        }
+
+        // Step 5: Initialize Visualization
         try {
-            if (debugInfo) debugInfo.innerHTML += '<div>Initializing visualization...</div>';
+            // Wait for initial graph data to be processed
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
             this.visualization = new WebXRVisualization(this.graphDataManager);
-            
-            // Set up visualization event listener for graph updates
-            window.addEventListener('graphDataUpdated', (event) => {
-                if (event.detail && this.visualization) {
-                    this.visualization.updateVisualization(event.detail);
-                }
-            });
-            
-            if (debugInfo) debugInfo.innerHTML += '<div style="color: #28a745">Visualization initialized</div>';
         } catch (error) {
             console.error('Failed to initialize visualization:', error);
-            if (debugInfo) debugInfo.innerHTML += `<div style="color: #dc3545">Visualization Error: ${error.message}</div>`;
             throw error;
         }
 
-        // Step 5: Initialize GPU (if available)
+        // Step 6: Initialize GPU (if available)
         try {
-            if (debugInfo) debugInfo.innerHTML += '<div>Checking GPU availability...</div>';
             this.gpuAvailable = await isGPUAvailable();
             if (this.gpuAvailable) {
                 this.gpuUtils = await initGPU();
-                if (debugInfo) debugInfo.innerHTML += '<div style="color: #28a745">GPU acceleration enabled</div>';
-            } else {
-                if (debugInfo) debugInfo.innerHTML += '<div style="color: #ffc107">GPU not available, using CPU</div>';
             }
         } catch (error) {
             console.warn('GPU initialization failed:', error);
-            if (debugInfo) debugInfo.innerHTML += `<div style="color: #ffc107">GPU Error: ${error.message}</div>`;
             // Don't throw error for GPU initialization failure
         }
 
-        // Step 6: Initialize Vue App
+        // Step 7: Initialize Vue App
         try {
-            if (debugInfo) debugInfo.innerHTML += '<div>Initializing Vue app...</div>';
             await this.initVueApp();
-            if (debugInfo) debugInfo.innerHTML += '<div style="color: #28a745">Vue app initialized</div>';
         } catch (error) {
             console.error('Failed to initialize Vue app:', error);
-            if (debugInfo) debugInfo.innerHTML += `<div style="color: #dc3545">Vue App Error: ${error.message}</div>`;
             throw error;
         }
 
-        // Step 7: Setup Event Listeners
+        // Step 8: Setup Event Listeners
         this.setupEventListeners();
     }
 
     async initVueApp() {
         const appContainer = document.getElementById('app');
         if (!appContainer) {
-            throw new Error("Could not find '#app' element");
+            const app = document.createElement('div');
+            app.id = 'app';
+            document.body.appendChild(app);
+            console.log('Created app container');
         }
 
         const self = this;
@@ -209,8 +182,9 @@ export class App {
                     websocketService: self.websocketService,
                     handleControlChange: (change) => {
                         console.log('Control changed:', change);
-                        if (self.visualization) {
-                            self.visualization.updateSettings(change);
+                        // Send settings update to server
+                        if (self.websocketService) {
+                            self.websocketService.updateSettings(change);
                         }
                     }
                 };
@@ -235,10 +209,6 @@ export class App {
         app.config.errorHandler = (err, vm, info) => {
             console.error('Vue Error:', err);
             console.error('Error Info:', info);
-            const debugInfo = document.getElementById('debug-info');
-            if (debugInfo) {
-                debugInfo.innerHTML += `<div style="color: #dc3545">Vue Error: ${err.message}</div>`;
-            }
         };
 
         app.mount('#app');
@@ -249,27 +219,16 @@ export class App {
         if (this.websocketService) {
             this.websocketService.on('open', () => {
                 console.log('WebSocket connected');
-                const status = document.getElementById('connection-status');
-                if (status) {
-                    status.textContent = 'Connected';
-                    status.className = 'connected';
-                }
             });
 
             this.websocketService.on('close', () => {
                 console.log('WebSocket disconnected');
-                const status = document.getElementById('connection-status');
-                if (status) {
-                    status.textContent = 'Disconnected';
-                    status.className = 'disconnected';
-                }
             });
 
-            // Handle initial graph data
-            this.websocketService.on('message', (data) => {
-                if (data.type === 'graphData' && this.graphDataManager) {
-                    this.graphDataManager.updateGraphData(data);
-                }
+            // Listen for settings updates
+            this.websocketService.on('serverSettings', (settings) => {
+                console.log('Received settings update:', settings);
+                // Settings will be automatically propagated through visualizationSettings service
             });
         }
     }

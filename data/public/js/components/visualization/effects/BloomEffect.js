@@ -96,6 +96,11 @@ export class BloomEffect {
     }
 
     init(settings) {
+        if (!settings) {
+            console.error('No bloom settings provided');
+            return;
+        }
+
         if (this.initialized) {
             this.dispose();
         }
@@ -122,12 +127,12 @@ export class BloomEffect {
             // Reduce quality for WebGL1
             adjustedSettings = {
                 ...adjustedSettings,
-                nodeBloomStrength: settings.nodeBloomStrength * 0.8,
-                nodeBloomRadius: settings.nodeBloomRadius * 0.7,
-                edgeBloomStrength: settings.edgeBloomStrength * 0.8,
-                edgeBloomRadius: settings.edgeBloomRadius * 0.7,
-                environmentBloomStrength: settings.environmentBloomStrength * 0.8,
-                environmentBloomRadius: settings.environmentBloomRadius * 0.7
+                node_bloom_strength: settings.node_bloom_strength * 0.8,
+                node_bloom_radius: settings.node_bloom_radius * 0.7,
+                edge_bloom_strength: settings.edge_bloom_strength * 0.8,
+                edge_bloom_radius: settings.edge_bloom_radius * 0.7,
+                environment_bloom_strength: settings.environment_bloom_strength * 0.8,
+                environment_bloom_radius: settings.environment_bloom_radius * 0.7
             };
         }
 
@@ -135,10 +140,10 @@ export class BloomEffect {
             // Adjust bloom for XR
             adjustedSettings = {
                 ...adjustedSettings,
-                nodeBloomStrength: adjustedSettings.nodeBloomStrength * 1.2,
-                nodeBloomRadius: adjustedSettings.nodeBloomRadius * 0.8,
-                edgeBloomStrength: adjustedSettings.edgeBloomStrength * 1.2,
-                edgeBloomRadius: adjustedSettings.edgeBloomRadius * 0.8
+                node_bloom_strength: adjustedSettings.node_bloom_strength * 1.2,
+                node_bloom_radius: adjustedSettings.node_bloom_radius * 0.8,
+                edge_bloom_strength: adjustedSettings.edge_bloom_strength * 1.2,
+                edge_bloom_radius: adjustedSettings.edge_bloom_radius * 0.8
             };
         }
 
@@ -146,25 +151,25 @@ export class BloomEffect {
             {
                 layer: LAYERS.BLOOM,
                 settings: {
-                    strength: adjustedSettings.nodeBloomStrength * 2.0,
-                    radius: adjustedSettings.nodeBloomRadius * 0.5,
-                    threshold: adjustedSettings.nodeBloomThreshold * 0.5
+                    strength: adjustedSettings.node_bloom_strength,
+                    radius: adjustedSettings.node_bloom_radius,
+                    threshold: adjustedSettings.node_bloom_threshold
                 }
             },
             {
                 layer: LAYERS.HOLOGRAM,
                 settings: {
-                    strength: adjustedSettings.environmentBloomStrength * 2.5,
-                    radius: adjustedSettings.environmentBloomRadius * 0.8,
-                    threshold: adjustedSettings.environmentBloomThreshold * 0.4
+                    strength: adjustedSettings.environment_bloom_strength,
+                    radius: adjustedSettings.environment_bloom_radius,
+                    threshold: adjustedSettings.environment_bloom_threshold
                 }
             },
             {
                 layer: LAYERS.EDGE,
                 settings: {
-                    strength: adjustedSettings.edgeBloomStrength * 1.5,
-                    radius: adjustedSettings.edgeBloomRadius * 0.7,
-                    threshold: adjustedSettings.edgeBloomThreshold * 0.6
+                    strength: adjustedSettings.edge_bloom_strength,
+                    radius: adjustedSettings.edge_bloom_radius,
+                    threshold: adjustedSettings.edge_bloom_threshold
                 }
             }
         ];
@@ -185,6 +190,67 @@ export class BloomEffect {
         } catch (error) {
             console.error('Error initializing bloom effect:', error);
             this.dispose();
+        }
+    }
+
+    updateSettings(settings) {
+        if (!this.initialized || !settings) return;
+
+        try {
+            const layers = [
+                {
+                    layer: LAYERS.BLOOM,
+                    settings: {
+                        strength: settings.node_bloom_strength,
+                        radius: settings.node_bloom_radius,
+                        threshold: settings.node_bloom_threshold
+                    }
+                },
+                {
+                    layer: LAYERS.HOLOGRAM,
+                    settings: {
+                        strength: settings.environment_bloom_strength,
+                        radius: settings.environment_bloom_radius,
+                        threshold: settings.environment_bloom_threshold
+                    }
+                },
+                {
+                    layer: LAYERS.EDGE,
+                    settings: {
+                        strength: settings.edge_bloom_strength,
+                        radius: settings.edge_bloom_radius,
+                        threshold: settings.edge_bloom_threshold
+                    }
+                }
+            ];
+
+            // Update bloom passes in composers
+            layers.forEach(({ layer, settings }) => {
+                const composer = this.composers.get(layer.toString());
+                if (composer) {
+                    const bloomPass = composer.passes.find(pass => pass instanceof UnrealBloomPass);
+                    if (bloomPass) {
+                        bloomPass.strength = settings.strength;
+                        bloomPass.radius = settings.radius;
+                        bloomPass.threshold = settings.threshold;
+                    }
+                }
+
+                // Update XR composers if active
+                if (this.isXRActive) {
+                    const xrComposer = this.composers.get(`xr_${layer}`);
+                    if (xrComposer) {
+                        const bloomPass = xrComposer.passes.find(pass => pass instanceof UnrealBloomPass);
+                        if (bloomPass) {
+                            bloomPass.strength = settings.strength * 1.2; // Adjust for XR
+                            bloomPass.radius = settings.radius * 0.8; // Adjust for XR
+                            bloomPass.threshold = settings.threshold;
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error updating bloom settings:', error);
         }
     }
 
