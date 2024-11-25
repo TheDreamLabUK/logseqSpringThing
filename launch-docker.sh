@@ -112,7 +112,7 @@ cleanup_existing_processes() {
 
     # Clean up port if in use
     if netstat -tuln | grep -q ":$PORT "; then
-        local pid=$(lsof -t -i:"$PORT")
+        local pid=$(lsof -ti ":$PORT")
         if [ ! -z "$pid" ]; then
             kill -9 $pid
         fi

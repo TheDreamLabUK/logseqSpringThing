@@ -15,17 +15,18 @@ export class BloomEffect {
         this.composers = new Map();
         this.renderTargets = new Map();
         this.initialized = false;
+
+        // Store original renderer state
+        this.originalClearColor = this.renderer.getClearColor(new THREE.Color());
+        this.originalClearAlpha = this.renderer.getClearAlpha();
     }
 
     createRenderTarget() {
-        if (!this.renderer.capabilities.isWebGL2) {
-            console.warn('WebGL 2 not available, some features may be limited');
-        }
-
         const pixelRatio = this.renderer.getPixelRatio();
         const width = Math.floor(window.innerWidth * pixelRatio);
         const height = Math.floor(window.innerHeight * pixelRatio);
 
+        // Use HalfFloatType for HDR rendering
         return new THREE.WebGLRenderTarget(
             width,
             height,
@@ -33,17 +34,16 @@ export class BloomEffect {
                 minFilter: THREE.LinearFilter,
                 magFilter: THREE.LinearFilter,
                 format: THREE.RGBAFormat,
-                type: THREE.UnsignedByteType,
-                colorSpace: THREE.SRGBColorSpace,
+                type: THREE.HalfFloatType,
+                colorSpace: THREE.LinearSRGBColorSpace,
                 stencilBuffer: false,
                 depthBuffer: true,
-                samples: 4 // Enable MSAA
+                samples: this.renderer.capabilities.isWebGL2 ? 4 : 0
             }
         );
     }
 
     init(settings) {
-        // Clean up existing resources if reinitializing
         if (this.initialized) {
             this.dispose();
         }
@@ -53,39 +53,51 @@ export class BloomEffect {
             return;
         }
 
+        // Create base render target for scene
+        const baseTarget = this.createRenderTarget();
+        this.renderTargets.set('base', baseTarget);
+
         const layers = [
             {
                 layer: LAYERS.BLOOM,
                 settings: {
-                    strength: settings.nodeBloomStrength * 1.2,
-                    radius: settings.nodeBloomRadius,
-                    threshold: settings.nodeBloomThreshold * 0.8
+                    strength: settings.nodeBloomStrength * 2.0,
+                    radius: settings.nodeBloomRadius * 0.5,
+                    threshold: settings.nodeBloomThreshold * 0.5
                 }
             },
             {
                 layer: LAYERS.HOLOGRAM,
                 settings: {
-                    strength: settings.environmentBloomStrength * 1.5,
-                    radius: settings.environmentBloomRadius * 1.2,
-                    threshold: settings.environmentBloomThreshold * 0.7
+                    strength: settings.environmentBloomStrength * 2.5,
+                    radius: settings.environmentBloomRadius * 0.8,
+                    threshold: settings.environmentBloomThreshold * 0.4
                 }
             },
             {
                 layer: LAYERS.EDGE,
                 settings: {
-                    strength: settings.edgeBloomStrength * 1.3,
-                    radius: settings.edgeBloomRadius,
-                    threshold: settings.edgeBloomThreshold * 0.9
+                    strength: settings.edgeBloomStrength * 1.5,
+                    radius: settings.edgeBloomRadius * 0.7,
+                    threshold: settings.edgeBloomThreshold * 0.6
                 }
             }
         ];
 
         try {
+            // Set renderer to linear color space for HDR
+            this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+
+            // Create base composer for main scene
+            const baseComposer = new EffectComposer(this.renderer, baseTarget);
+            const baseRenderPass = new RenderPass(this.scene, this.camera);
+            baseRenderPass.clear = true;
+            baseComposer.addPass(baseRenderPass);
+            this.composers.set('base', baseComposer);
+
+            // Create bloom composers for each layer
             layers.forEach(({ layer, settings }) => {
                 const renderTarget = this.createRenderTarget();
-                if (!renderTarget) {
-                    throw new Error('Failed to create render target');
-                }
                 this.renderTargets.set(layer, renderTarget);
                 
                 const composer = new EffectComposer(this.renderer, renderTarget);
@@ -101,6 +113,9 @@ export class BloomEffect {
                     settings.threshold
                 );
                 
+                bloomPass.highQualityBloom = true;
+                bloomPass.gammaCorrectionInShader = true;
+                
                 composer.addPass(renderPass);
                 composer.addPass(bloomPass);
                 
@@ -115,30 +130,33 @@ export class BloomEffect {
     }
 
     render(currentCamera) {
-        if (!this.initialized || !currentCamera) {
-            return;
-        }
+        if (!this.initialized || !currentCamera) return;
 
         try {
+            // Store original camera layers
+            const originalLayerMask = currentCamera.layers.mask;
+
+            // Render base scene first
+            currentCamera.layers.set(LAYERS.NORMAL_LAYER);
+            this.composers.get('base').render();
+
+            // Render bloom layers
             this.composers.forEach((composer, layer) => {
-                const originalLayerMask = currentCamera.layers.mask;
-                currentCamera.layers.set(layer);
-                
-                if (composer.outputBuffer) {
+                if (layer !== 'base') {
+                    currentCamera.layers.set(layer);
                     composer.render();
                 }
-                
-                currentCamera.layers.mask = originalLayerMask;
             });
+
+            // Restore camera layers
+            currentCamera.layers.mask = originalLayerMask;
         } catch (error) {
             console.error('Error rendering bloom effect:', error);
         }
     }
 
     resize(width, height) {
-        if (!this.initialized) {
-            return;
-        }
+        if (!this.initialized) return;
 
         const pixelRatio = this.renderer.getPixelRatio();
         const actualWidth = Math.floor(width * pixelRatio);
@@ -170,15 +188,17 @@ export class BloomEffect {
             }
         });
         
+        if (this.renderer) {
+            this.renderer.setClearColor(this.originalClearColor, this.originalClearAlpha);
+        }
+        
         this.renderTargets.clear();
         this.composers.clear();
         this.initialized = false;
     }
 
     getRenderTargets() {
-        if (!this.initialized) {
-            return null;
-        }
+        if (!this.initialized) return null;
         return this.renderTargets;
     }
 }

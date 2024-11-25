@@ -60,6 +60,7 @@ export class EffectsManager {
     
     async initPostProcessing(isXR = false) {
         try {
+            console.log('Starting post-processing initialization');
             if (!this.renderer || !this.renderer.domElement) {
                 throw new Error('Renderer not ready for post-processing initialization');
             }
@@ -83,6 +84,7 @@ export class EffectsManager {
             }
             
             // Initialize bloom first
+            console.log('Initializing bloom effect');
             this.bloomEffect = new BloomEffect(this.renderer, this.scene, this.camera);
             await this.bloomEffect.init(bloomSettings);
             
@@ -98,14 +100,15 @@ export class EffectsManager {
             }
             
             // Initialize composition effect
+            console.log('Initializing composition effect');
             this.compositionEffect = new CompositionEffect(this.renderer);
             await this.compositionEffect.init(bloomRenderTargets);
             
             this.initialized = true;
-            console.log(`Post-processing initialized successfully for ${isXR ? 'XR' : 'desktop'} mode`);
+            console.log('Post-processing initialization complete');
             return true;
         } catch (error) {
-            console.error('Error initializing post-processing:', error);
+            console.error('Error in post-processing initialization:', error);
             this.dispose();
             return false;
         }

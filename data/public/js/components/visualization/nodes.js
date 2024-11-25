@@ -722,4 +722,24 @@ export class NodeManager {
         this.edgeMeshes.clear();
         this.nodeData.clear();
     }
+
+    initInstancedMeshes() {
+        console.log('Initializing instanced meshes');
+        try {
+            // ... existing initialization code ...
+            
+            // Verify initialization
+            console.log('Instanced meshes created:', {
+                nodeCount: this.nodeInstanceCount,
+                linkCount: this.linkInstanceCount,
+                highDetailMesh: !!this.nodeInstancedMeshes.high,
+                mediumDetailMesh: !!this.nodeInstancedMeshes.medium,
+                lowDetailMesh: !!this.nodeInstancedMeshes.low,
+                linkMesh: !!this.linkInstancedMesh
+            });
+        } catch (error) {
+            console.error('Error initializing instanced meshes:', error);
+            throw error;
+        }
+    }
 }

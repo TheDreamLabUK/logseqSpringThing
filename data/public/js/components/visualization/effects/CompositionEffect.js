@@ -11,6 +11,10 @@ export class CompositionEffect {
         this.renderer = renderer;
         this.composer = null;
         this.initialized = false;
+
+        // Store original renderer state
+        this.originalClearColor = this.renderer.getClearColor(new THREE.Color());
+        this.originalClearAlpha = this.renderer.getClearAlpha();
     }
 
     createRenderTarget() {
@@ -25,18 +29,17 @@ export class CompositionEffect {
                 minFilter: THREE.LinearFilter,
                 magFilter: THREE.LinearFilter,
                 format: THREE.RGBAFormat,
-                type: THREE.UnsignedByteType,
-                colorSpace: THREE.SRGBColorSpace,
+                type: THREE.HalfFloatType,
+                colorSpace: THREE.LinearSRGBColorSpace,
                 stencilBuffer: false,
                 depthBuffer: true,
-                samples: 4 // Enable MSAA
+                samples: this.renderer.capabilities.isWebGL2 ? 4 : 0
             }
         );
     }
 
     init(bloomRenderTargets) {
         try {
-            // Clean up existing resources if reinitializing
             if (this.initialized) {
                 this.dispose();
             }
@@ -54,15 +57,26 @@ export class CompositionEffect {
                 }
             });
 
+            const baseTexture = bloomRenderTargets.get('base')?.texture;
+            if (!baseTexture) {
+                throw new Error('Missing base render target');
+            }
+
             const renderTarget = this.createRenderTarget();
             this.composer = new EffectComposer(this.renderer, renderTarget);
 
             const shader = {
                 uniforms: {
-                    baseTexture: { value: null },
+                    baseTexture: { value: baseTexture },
                     bloomTexture0: { value: bloomRenderTargets.get(LAYERS.BLOOM).texture },
                     bloomTexture1: { value: bloomRenderTargets.get(LAYERS.HOLOGRAM).texture },
-                    bloomTexture2: { value: bloomRenderTargets.get(LAYERS.EDGE).texture }
+                    bloomTexture2: { value: bloomRenderTargets.get(LAYERS.EDGE).texture },
+                    bloomStrength0: { value: 1.5 },
+                    bloomStrength1: { value: 1.2 },
+                    bloomStrength2: { value: 0.8 },
+                    exposure: { value: 1.2 },
+                    gamma: { value: 2.2 },
+                    saturation: { value: 1.2 }
                 },
                 vertexShader: `
                     varying vec2 vUv;
@@ -76,31 +90,63 @@ export class CompositionEffect {
                     uniform sampler2D bloomTexture0;
                     uniform sampler2D bloomTexture1;
                     uniform sampler2D bloomTexture2;
+                    uniform float bloomStrength0;
+                    uniform float bloomStrength1;
+                    uniform float bloomStrength2;
+                    uniform float exposure;
+                    uniform float gamma;
+                    uniform float saturation;
+                    
                     varying vec2 vUv;
 
+                    vec3 adjustSaturation(vec3 color, float saturation) {
+                        float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
+                        return mix(vec3(luminance), color, saturation);
+                    }
+
+                    vec3 toneMap(vec3 color) {
+                        // ACES filmic tone mapping
+                        float a = 2.51;
+                        float b = 0.03;
+                        float c = 2.43;
+                        float d = 0.59;
+                        float e = 0.14;
+                        return clamp((color * (a * color + b)) / (color * (c * color + d) + e), 0.0, 1.0);
+                    }
+
                     void main() {
-                        vec4 baseColor = texture2D(baseTexture, vUv);
-                        vec3 bloomColor0 = texture2D(bloomTexture0, vUv).rgb;
-                        vec3 bloomColor1 = texture2D(bloomTexture1, vUv).rgb;
-                        vec3 bloomColor2 = texture2D(bloomTexture2, vUv).rgb;
+                        // Sample all textures in linear space
+                        vec3 baseColor = texture2D(baseTexture, vUv).rgb;
+                        vec3 bloom0 = texture2D(bloomTexture0, vUv).rgb * bloomStrength0;
+                        vec3 bloom1 = texture2D(bloomTexture1, vUv).rgb * bloomStrength1;
+                        vec3 bloom2 = texture2D(bloomTexture2, vUv).rgb * bloomStrength2;
                         
-                        // Combine bloom layers with proper HDR handling
-                        vec3 bloomSum = bloomColor0 + bloomColor1 + bloomColor2;
-                        vec3 color = baseColor.rgb + bloomSum;
+                        // Combine bloom layers
+                        vec3 bloomSum = bloom0 + bloom1 + bloom2;
                         
-                        // Apply tone mapping in shader for better control
-                        color = color / (vec3(1.0) + color); // Simple Reinhard tone mapping
+                        // Add bloom to base color
+                        vec3 hdrColor = baseColor + bloomSum;
+                        
+                        // Apply exposure
+                        hdrColor *= exposure;
+                        
+                        // Tone mapping
+                        vec3 color = toneMap(hdrColor);
+                        
+                        // Adjust saturation
+                        color = adjustSaturation(color, saturation);
                         
                         // Gamma correction
-                        color = pow(color, vec3(1.0 / 2.2));
+                        color = pow(color, vec3(1.0 / gamma));
                         
-                        gl_FragColor = vec4(color, baseColor.a);
+                        gl_FragColor = vec4(color, 1.0);
                     }
                 `
             };
 
             const finalPass = new ShaderPass(new THREE.ShaderMaterial(shader));
             finalPass.renderToScreen = true;
+            finalPass.clear = false;
             this.composer.addPass(finalPass);
 
             this.initialized = true;
@@ -111,16 +157,9 @@ export class CompositionEffect {
     }
 
     render(baseTexture) {
-        if (!this.initialized || !this.composer) {
-            return;
-        }
+        if (!this.initialized || !this.composer) return;
 
         try {
-            if (!baseTexture) {
-                console.warn('No base texture provided for composition render');
-                return;
-            }
-
             const finalPass = this.composer.passes[0];
             if (finalPass && finalPass.uniforms) {
                 finalPass.uniforms.baseTexture.value = baseTexture;
@@ -132,9 +171,7 @@ export class CompositionEffect {
     }
 
     resize(width, height) {
-        if (!this.initialized || !this.composer) {
-            return;
-        }
+        if (!this.initialized || !this.composer) return;
 
         try {
             const pixelRatio = this.renderer.getPixelRatio();
@@ -155,6 +192,11 @@ export class CompositionEffect {
                 console.error('Error disposing composition effect:', error);
             }
         }
+        
+        if (this.renderer) {
+            this.renderer.setClearColor(this.originalClearColor, this.originalClearAlpha);
+        }
+        
         this.composer = null;
         this.initialized = false;
     }
