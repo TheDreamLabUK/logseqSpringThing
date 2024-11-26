@@ -1,218 +1,86 @@
-import { defineStore } from 'pinia';
-import type { WebSocketState } from '../types/stores';
-import type { 
-  BaseMessage, 
-  GraphUpdateMessage, 
-  ErrorMessage,
-  MessageType,
-  Node as WebSocketNode,
-  Edge as WebSocketEdge,
-  PositionUpdate,
-  BinaryMessage
-} from '../types/websocket';
-import type {
-  VisualizationConfig,
-  BloomConfig,
-  FisheyeConfig
-} from '../types/components';
-import type { Node, Edge } from '../types/core';
-import { useVisualizationStore } from './visualization';
-import { useSettingsStore } from './settings';
+import { defineStore } from 'pinia'
+import WebsocketService from '../services/websocketService'
+import type { BaseMessage, ErrorMessage } from '../types/websocket'
+
+interface WebSocketState {
+  connected: boolean
+  error: string | null
+  service: WebsocketService | null
+}
 
 export const useWebSocketStore = defineStore('websocket', {
   state: (): WebSocketState => ({
-    isConnected: false,
-    reconnectAttempts: 0,
-    messageQueue: [],
-    lastError: null,
-    graphData: null
+    connected: false,
+    error: null,
+    service: null
   }),
 
-  getters: {
-    connected: (state) => state.isConnected,
-    hasError: (state) => state.lastError !== null,
-    queueLength: (state) => state.messageQueue.length
-  },
-
   actions: {
-    setConnected(connected: boolean) {
-      this.isConnected = connected;
-      if (connected) {
-        this.reconnectAttempts = 0;
-        this.processMessageQueue();
+    async initialize() {
+      if (this.service) {
+        console.log('WebSocket service already initialized')
+        return
       }
-    },
 
-    incrementReconnectAttempts() {
-      this.reconnectAttempts++;
-    },
-
-    setError(error: string | null) {
-      this.lastError = error;
-    },
-
-    queueMessage(message: BaseMessage | ArrayBuffer) {
-      this.messageQueue.push(message);
-    },
-
-    processMessageQueue() {
-      if (!this.isConnected) return;
+      this.service = new WebsocketService()
       
-      while (this.messageQueue.length > 0) {
-        const message = this.messageQueue.shift();
-        if (message) {
-          window.dispatchEvent(new CustomEvent('websocket:send', {
-            detail: message
-          }));
-        }
-      }
-    },
+      // Set up event handlers
+      this.service.on('open', () => {
+        this.connected = true
+        this.error = null
+      })
 
-    transformNode(wsNode: WebSocketNode): Node {
-      return {
-        id: wsNode.id,
-        label: wsNode.label || wsNode.id,
-        position: wsNode.position,
-        velocity: wsNode.velocity,
-        size: wsNode.size,
-        color: wsNode.color,
-        type: wsNode.type,
-        metadata: wsNode.metadata || {},
-        userData: wsNode.userData
-      };
-    },
+      this.service.on('close', () => {
+        this.connected = false
+      })
 
-    transformEdge(wsEdge: WebSocketEdge): Edge {
-      return {
-        id: wsEdge.id || `${wsEdge.source}-${wsEdge.target}`,
-        source: wsEdge.source,
-        target: wsEdge.target,
-        weight: wsEdge.weight,
-        width: wsEdge.width,
-        color: wsEdge.color,
-        type: wsEdge.type,
-        metadata: wsEdge.metadata || {},
-        userData: wsEdge.userData
-      };
-    },
+      this.service.on('error', (error: ErrorMessage) => {
+        this.error = error.message || 'Unknown error'
+      })
 
-    handleBinaryMessage(message: BinaryMessage) {
-      const visualizationStore = useVisualizationStore();
-      
-      // Update node positions in visualization store
-      if (this.graphData?.nodes) {
-        // Transform positions into [id, position] tuples
-        const positionUpdates: Array<[string, [number, number, number]]> = 
-          this.graphData.nodes.map((node, index) => {
-            const update = message.positions[index];
-            if (update) {
-              return [
-                node.id,
-                [update.x, update.y, update.z]
-              ];
-            }
-            return [node.id, node.position || [0, 0, 0]];
-          });
-
-        visualizationStore.updateNodePositions(positionUpdates);
-      }
-    },
-
-    async handleMessage(message: BaseMessage) {
-      const visualizationStore = useVisualizationStore();
-      const settingsStore = useSettingsStore();
-
+      // Connect to server
       try {
-        switch (message.type as MessageType) {
-          case 'graphUpdate':
-          case 'graphData': {
-            const graphMessage = message as GraphUpdateMessage;
-            const transformedNodes = graphMessage.graphData.nodes.map(node => this.transformNode(node));
-            const transformedEdges = graphMessage.graphData.edges.map(edge => this.transformEdge(edge));
-            
-            visualizationStore.setGraphData(
-              transformedNodes,
-              transformedEdges,
-              graphMessage.graphData.metadata || {}
-            );
-            this.graphData = {
-              nodes: transformedNodes,
-              edges: transformedEdges,
-              metadata: graphMessage.graphData.metadata || {}
-            };
-            break;
-          }
-
-          case 'error': {
-            const errorMessage = message as ErrorMessage;
-            this.setError(errorMessage.message);
-            console.error('WebSocket error:', errorMessage.message);
-            break;
-          }
-
-          case 'settings_updated': {
-            const settings = message.settings as {
-              visualization?: Partial<VisualizationConfig>;
-              bloom?: Partial<BloomConfig>;
-              fisheye?: Partial<FisheyeConfig>;
-            };
-            
-            if (settings) {
-              settingsStore.applyServerSettings(settings);
-            }
-            break;
-          }
-
-          default:
-            console.warn('Unhandled message type:', message.type);
-        }
+        await this.service.connect()
       } catch (error) {
-        console.error('Error handling message:', error);
-        this.setError(error instanceof Error ? error.message : 'Unknown error');
+        this.error = error instanceof Error ? error.message : 'Unknown error'
+        throw error
       }
     },
 
-    sendMessage(message: BaseMessage | ArrayBuffer) {
-      if (!this.isConnected) {
-        this.queueMessage(message);
-        return;
-      }
+    setConnected(value: boolean) {
+      this.connected = value
+    },
 
-      try {
-        window.dispatchEvent(new CustomEvent('websocket:send', {
-          detail: message
-        }));
-      } catch (error) {
-        console.error('Error sending message:', error);
-        this.setError(error instanceof Error ? error.message : 'Failed to send message');
-        this.queueMessage(message);
+    setError(message: string) {
+      this.error = message
+    },
+
+    handleMessage(message: BaseMessage) {
+      // Handle incoming messages
+      if (message.type === 'error') {
+        this.error = (message as ErrorMessage).message
       }
     },
 
-    updateSettings(settings: {
-      visualization?: Partial<VisualizationConfig>;
-      bloom?: Partial<BloomConfig>;
-      fisheye?: Partial<FisheyeConfig>;
-    }) {
-      const updateMessage: BaseMessage = {
-        type: 'updateSettings',
-        settings
-      };
-      this.sendMessage(updateMessage);
+    send(data: any) {
+      if (!this.service) {
+        console.error('Cannot send message: WebSocket service not initialized')
+        return
+      }
+      this.service.send(data)
     },
 
     requestInitialData() {
-      this.sendMessage({
-        type: 'getInitialData'
-      });
+      this.send({ type: 'getInitialData' })
     },
 
-    reset() {
-      this.isConnected = false;
-      this.reconnectAttempts = 0;
-      this.messageQueue = [];
-      this.lastError = null;
-      this.graphData = null;
+    cleanup() {
+      if (this.service) {
+        this.service.cleanup()
+        this.service = null
+      }
+      this.connected = false
+      this.error = null
     }
   }
-});
+})

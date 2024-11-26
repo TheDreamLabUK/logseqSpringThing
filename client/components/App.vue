@@ -4,7 +4,7 @@
       <div id="scene-container" ref="sceneContainer"></div>
       <ControlPanel />
       <DebugPanel v-if="showDebugPanel" />
-      <div v-if="showDebugPanel" class="connection-status" :class="{ connected: isConnected }">
+      <div class="connection-status" :class="{ connected: isConnected }">
         WebSocket: {{ isConnected ? 'Connected' : 'Disconnected' }}
       </div>
     </div>
@@ -21,7 +21,6 @@ import ControlPanel from '@components/ControlPanel.vue'
 import ErrorBoundary from '@components/ErrorBoundary.vue'
 import DebugPanel from '@components/DebugPanel.vue'
 import { errorTracking } from '../services/errorTracking'
-import WebsocketService from '../services/websocketService'
 import { useVisualization } from '../composables/useVisualization'
 import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge } from '../types/websocket'
 import type { Node as CoreNode, Edge as CoreEdge } from '../types/core'
@@ -29,7 +28,7 @@ import type { Node as CoreNode, Edge as CoreEdge } from '../types/core'
 // Transform websocket node to core node
 const transformNode = (wsNode: WSNode): CoreNode => ({
   id: wsNode.id,
-  label: wsNode.label || wsNode.id, // Use id as fallback for label
+  label: wsNode.label || wsNode.id,
   position: wsNode.position,
   velocity: wsNode.velocity,
   size: wsNode.size,
@@ -41,7 +40,7 @@ const transformNode = (wsNode: WSNode): CoreNode => ({
 
 // Transform websocket edge to core edge
 const transformEdge = (wsEdge: WSEdge): CoreEdge => ({
-  id: `${wsEdge.source}-${wsEdge.target}`, // Generate id from source and target
+  id: `${wsEdge.source}-${wsEdge.target}`,
   source: wsEdge.source,
   target: wsEdge.target,
   weight: wsEdge.weight,
@@ -60,7 +59,7 @@ export default defineComponent({
     DebugPanel
   },
   setup() {
-    // Initialize stores first
+    // Initialize stores
     const settingsStore = useSettingsStore()
     const visualizationStore = useVisualizationStore()
     const websocketStore = useWebSocketStore()
@@ -68,7 +67,6 @@ export default defineComponent({
     // Get reactive refs from stores
     const { connected: isConnected } = storeToRefs(websocketStore)
     
-    const websocketService = ref<WebsocketService | null>(null)
     const sceneContainer = ref<HTMLElement | null>(null)
     const isDebugMode = ref(
       window.location.search.includes('debug') || 
@@ -89,74 +87,29 @@ export default defineComponent({
       }
     }, { deep: true })
 
-    // Initialize WebSocket with proper store handling
-    const initializeWebSocket = async () => {
-      try {
-        // Reset store states
-        websocketStore.$reset()
-        settingsStore.$reset()
-        visualizationStore.reset() // Use store's custom reset method
+    // Set up graph update handler
+    if (websocketStore.service) {
+      websocketStore.service.on('graphUpdate', ({ graphData }: GraphUpdateMessage) => {
+        if (!graphData) {
+          console.warn('Received graph update with no data')
+          return
+        }
 
-        // Initialize WebSocket service
-        console.log('Initializing WebSocket service...')
-        websocketService.value = new WebsocketService()
-
-        // Set up WebSocket event handlers
-        websocketService.value.on('open', () => {
-          console.log('WebSocket connected')
-          websocketStore.setConnected(true)
-          // Request initial data when connected
-          websocketStore.requestInitialData()
+        console.log('Received graph update:', {
+          nodes: graphData.nodes?.length || 0,
+          edges: graphData.edges?.length || 0,
+          metadata: graphData.metadata ? Object.keys(graphData.metadata).length : 0
         })
 
-        websocketService.value.on('close', () => {
-          console.log('WebSocket disconnected')
-          websocketStore.setConnected(false)
-        })
-
-        websocketService.value.on('message', (data: BaseMessage) => {
-          console.log('Received WebSocket message:', data)
-          websocketStore.handleMessage(data)
-        })
-
-        websocketService.value.on('graphUpdate', ({ graphData }: GraphUpdateMessage) => {
-          console.log('Received graph update:', {
-            nodes: graphData.nodes.length,
-            edges: graphData.edges.length,
-            metadata: graphData.metadata
-          })
-          // Transform nodes and edges before setting graph data
-          const transformedNodes = graphData.nodes.map(transformNode)
-          const transformedEdges = graphData.edges.map(transformEdge)
-          visualizationStore.setGraphData(
-            transformedNodes,
-            transformedEdges,
-            graphData.metadata
-          )
-        })
-
-        websocketService.value.on('error', (error: ErrorMessage) => {
-          console.error('WebSocket error:', error)
-          websocketStore.setError(error.message || 'Unknown error')
-          errorTracking.trackError(error, {
-            context: 'WebSocket Error',
-            component: 'App'
-          })
-        })
-
-        // Connect to WebSocket server
-        console.log('Connecting to WebSocket server...')
-        await websocketService.value.connect()
-        console.log('WebSocket connection established')
-
-      } catch (error) {
-        console.error('Error initializing WebSocket:', error)
-        websocketStore.setError(error instanceof Error ? error.message : 'Unknown error')
-        errorTracking.trackError(error, {
-          context: 'WebSocket Initialization',
-          component: 'App'
-        })
-      }
+        // Transform nodes and edges before setting graph data
+        const transformedNodes = (graphData.nodes || []).map(transformNode)
+        const transformedEdges = (graphData.edges || []).map(transformEdge)
+        visualizationStore.setGraphData(
+          transformedNodes,
+          transformedEdges,
+          graphData.metadata || {}
+        )
+      })
     }
 
     onMounted(async () => {
@@ -182,8 +135,8 @@ export default defineComponent({
           })
         }
 
-        // Initialize WebSocket after stores and visualization
-        await initializeWebSocket()
+        // Initialize WebSocket through store
+        await websocketStore.initialize()
 
         // Log environment info
         console.info('Application initialized', {
@@ -194,9 +147,7 @@ export default defineComponent({
 
         // Set up window event listener for websocket messages
         window.addEventListener('websocket:send', ((event: CustomEvent) => {
-          if (websocketService.value) {
-            websocketService.value.send(event.detail)
-          }
+          websocketStore.send(event.detail)
         }) as EventListener)
 
       } catch (error) {
@@ -209,10 +160,13 @@ export default defineComponent({
     })
 
     onBeforeUnmount(() => {
-      // Clean up WebSocket service
-      if (websocketService.value) {
-        websocketService.value.cleanup()
-      }
+      // Clean up WebSocket through store
+      websocketStore.cleanup()
+
+      // Remove event listeners
+      window.removeEventListener('websocket:send', ((event: CustomEvent) => {
+        websocketStore.send(event.detail)
+      }) as EventListener)
     })
 
     // Additional error handling at app level
@@ -244,6 +198,10 @@ export default defineComponent({
 
     onMounted(() => {
       window.addEventListener('keydown', handleKeyPress)
+    })
+
+    onBeforeUnmount(() => {
+      window.removeEventListener('keydown', handleKeyPress)
     })
 
     return {
