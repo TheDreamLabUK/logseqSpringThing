@@ -4,11 +4,12 @@ FROM node:20-slim AS frontend-builder
 WORKDIR /app
 
 # Install pnpm
-RUN npm install -g pnpm@8.15.1
+RUN npm install -g pnpm@9.14.2
 
-# Copy package files
+# Copy package files and configuration
 COPY package.json pnpm-lock.yaml ./
 COPY tsconfig.json tsconfig.node.json vite.config.ts ./
+COPY index.html ./
 COPY client ./client
 
 # Install dependencies and build

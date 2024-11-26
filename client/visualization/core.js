@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { NodeManager } from './nodes.js';
 import { EffectsManager } from './effects.js';
-import { visualizationSettings } from '../../services/visualizationSettings.js';
-import { initXRSession, addXRButton, handleXRSession } from '../../xr/xrSetup.js';
-import { initXRInteraction } from '../../xr/xrInteraction.js';
+import { visualizationSettings } from '../services/visualizationSettings.js';
+import { initXRSession, addXRButton, handleXRSession } from '../xr/xrSetup.js';
+import { initXRInteraction } from '../xr/xrInteraction.js';
 
 // Constants for input sensitivity
 const TRANSLATION_SPEED = 0.01;

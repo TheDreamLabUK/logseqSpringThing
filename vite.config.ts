@@ -19,6 +19,12 @@ export default defineConfig(({ command, mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './client'),
+        '@components': path.resolve(__dirname, './client/components'),
+        '@types': path.resolve(__dirname, './client/types'),
+        '@stores': path.resolve(__dirname, './client/stores'),
+        '@composables': path.resolve(__dirname, './client/composables'),
+        '@platform': path.resolve(__dirname, './client/platform'),
+        '@visualization': path.resolve(__dirname, './client/visualization'),
         'three/examples': path.resolve(__dirname, 'node_modules/three/examples'),
         'three': path.resolve(__dirname, 'node_modules/three')
       }
@@ -42,18 +48,13 @@ export default defineConfig(({ command, mode }) => {
             ],
             vue: ['vue', 'pinia'],
             platform: mode === 'quest' ? [
-              'platform/quest',
-              'xr/handTracking',
-              'xr/spatialAudio'
+              './client/platform/quest',
+              './client/xr/handTracking',
+              './client/xr/spatialAudio'
             ] : [
-              'platform/browser',
-              'visualization/effects'
+              './client/platform/platformManager',
+              './client/visualization/effects'
             ]
-          },
-          chunkSizeWarningLimit: 1000,
-          dynamicImportVarsOptions: {
-            warnOnError: true,
-            exclude: []
           }
         }
       },

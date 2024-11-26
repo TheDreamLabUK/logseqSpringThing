@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { LAYERS } from '../layerManager.js';
-import { visualizationSettings } from '../../../services/visualizationSettings.js';
+import { visualizationSettings } from '../../services/visualizationSettings.js';
 
 export class CompositionEffect {
     constructor(renderer) {

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { BloomEffect } from './effects/BloomEffect.js';
 import { CompositionEffect } from './effects/CompositionEffect.js';
 import { LAYERS } from './layerManager.js';
-import { visualizationSettings } from '../../services/visualizationSettings.js';
+import { visualizationSettings } from '../services/visualizationSettings.js';
 
 export class EffectsManager {
     constructor(scene, camera, renderer) {
