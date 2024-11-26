@@ -47,7 +47,7 @@ verify_build() {
     if [ ! -f "/app/data/public/dist/index.html" ]; then
         log "Error: Production build index.html not found"
         return 1
-    }
+    fi
     
     log "Production build verified"
     return 0
@@ -75,7 +75,7 @@ fi
 
 # Update nginx configuration with environment variables
 log "Configuring nginx..."
-cat > /etc/nginx/nginx.conf << EOF
+cat > /etc/nginx/nginx.conf << 'EOF'
 user appuser nginx;
 worker_processes auto;
 error_log /var/log/nginx/error.log warn;
@@ -89,9 +89,9 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
     
-    log_format main '\$remote_addr - \$remote_user [\$time_local] "\$request" '
-                    '\$status \$body_bytes_sent "\$http_referer" '
-                    '"\$http_user_agent" "\$http_x_forwarded_for"';
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
     
     access_log /var/log/nginx/access.log main;
     
@@ -126,7 +126,7 @@ http {
         
         # SPA configuration
         location / {
-            try_files \$uri \$uri/ /index.html;
+            try_files $uri $uri/ /index.html;
             expires -1;
             add_header Cache-Control 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0';
         }
@@ -141,19 +141,19 @@ http {
         location /api {
             proxy_pass http://localhost:4000;
             proxy_http_version 1.1;
-            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection 'upgrade';
-            proxy_set_header Host \$host;
-            proxy_cache_bypass \$http_upgrade;
+            proxy_set_header Host $host;
+            proxy_cache_bypass $http_upgrade;
         }
         
         # WebSocket proxy
         location /ws {
             proxy_pass http://localhost:4000;
             proxy_http_version 1.1;
-            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "Upgrade";
-            proxy_set_header Host \$host;
+            proxy_set_header Host $host;
         }
     }
 }
