@@ -68,7 +68,7 @@ export function useForceGraph(scene: Scene) {
     OLD: new THREE.Color(settingsStore.getVisualizationSettings.node_color_old),
     CORE: new THREE.Color(settingsStore.getVisualizationSettings.node_color_core),
     SECONDARY: new THREE.Color(settingsStore.getVisualizationSettings.node_color_secondary),
-    DEFAULT: new THREE.Color(settingsStore.getVisualizationSettings.node_color_default)
+    DEFAULT: new THREE.Color(settingsStore.getVisualizationSettings.node_color)
   };
 
   const initInstancedMeshes = () => {
@@ -157,16 +157,17 @@ export function useForceGraph(scene: Scene) {
     const ageInDays = (now - new Date(lastModified).getTime()) / (24 * 60 * 60 * 1000);
     
     const normalizedAge = Math.min(ageInDays / 30, 1);
-    return settings.material.node_material_emissive_max_intensity - 
-           (normalizedAge * (settings.material.node_material_emissive_max_intensity - 
-                           settings.material.node_material_emissive_min_intensity));
+    return settings.material.node_emissive_max_intensity - 
+           (normalizedAge * (settings.material.node_emissive_max_intensity - 
+                           settings.material.node_emissive_min_intensity));
   };
 
   const updateNodes = () => {
-    if (!resources.value) return;
+    const res = resources.value;
+    if (!res) return;
 
     // Reset instance count
-    resources.value.nodeInstanceCount = 0;
+    res.nodeInstanceCount = 0;
 
     // Update node instances
     nodes.value.forEach((node: NodeInstance, index: number) => {
@@ -182,34 +183,35 @@ export function useForceGraph(scene: Scene) {
       );
 
       // Update instances for each LOD level
-      (Object.values(resources.value!.nodeInstancedMeshes) as THREE.InstancedMesh[]).forEach(instancedMesh => {
+      (Object.values(res.nodeInstancedMeshes) as THREE.InstancedMesh[]).forEach(instancedMesh => {
         instancedMesh.setMatrixAt(index, tempMatrix);
         instancedMesh.setColorAt(index, color);
         (instancedMesh.material as THREE.MeshPhysicalMaterial).emissiveIntensity = emissiveIntensity;
       });
 
-      resources.value.nodeInstances.set(node.id, index);
-      resources.value.nodeInstanceCount = Math.max(resources.value.nodeInstanceCount, index + 1);
+      res.nodeInstances.set(node.id, index);
+      res.nodeInstanceCount = Math.max(res.nodeInstanceCount, index + 1);
     });
 
     // Update instance meshes
-    (Object.values(resources.value.nodeInstancedMeshes) as THREE.InstancedMesh[]).forEach(instancedMesh => {
-      instancedMesh.count = resources.value!.nodeInstanceCount;
+    (Object.values(res.nodeInstancedMeshes) as THREE.InstancedMesh[]).forEach(instancedMesh => {
+      instancedMesh.count = res.nodeInstanceCount;
       instancedMesh.instanceMatrix.needsUpdate = true;
       if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
     });
   };
 
   const updateLinks = () => {
-    if (!resources.value) return;
+    const res = resources.value;
+    if (!res) return;
 
     // Reset instance count
-    resources.value.linkInstanceCount = 0;
+    res.linkInstanceCount = 0;
 
     // Update link instances
     links.value.forEach((link: LinkInstance, index: number) => {
-      const sourceIndex = resources.value!.nodeInstances.get(link.source);
-      const targetIndex = resources.value!.nodeInstances.get(link.target);
+      const sourceIndex = res.nodeInstances.get(link.source);
+      const targetIndex = res.nodeInstances.get(link.target);
 
       if (sourceIndex === undefined || targetIndex === undefined) return;
 
@@ -234,23 +236,23 @@ export function useForceGraph(scene: Scene) {
       );
 
       // Update link instance
-      resources.value.linkInstancedMesh.setMatrixAt(index, tempMatrix);
+      res.linkInstancedMesh.setMatrixAt(index, tempMatrix);
       
       const weight = link.weight || 1;
       const normalizedWeight = Math.min(weight / 10, 1);
       const settings = settingsStore.getVisualizationSettings;
       tempColor.set(settings.edge_color).multiplyScalar(normalizedWeight);
-      resources.value.linkInstancedMesh.setColorAt(index, tempColor);
+      res.linkInstancedMesh.setColorAt(index, tempColor);
 
-      resources.value.linkInstances.set(`${link.source}-${link.target}`, index);
-      resources.value.linkInstanceCount = Math.max(resources.value.linkInstanceCount, index + 1);
+      res.linkInstances.set(`${link.source}-${link.target}`, index);
+      res.linkInstanceCount = Math.max(res.linkInstanceCount, index + 1);
     });
 
     // Update link instance mesh
-    resources.value.linkInstancedMesh.count = resources.value.linkInstanceCount;
-    resources.value.linkInstancedMesh.instanceMatrix.needsUpdate = true;
-    if (resources.value.linkInstancedMesh.instanceColor) {
-      resources.value.linkInstancedMesh.instanceColor.needsUpdate = true;
+    res.linkInstancedMesh.count = res.linkInstanceCount;
+    res.linkInstancedMesh.instanceMatrix.needsUpdate = true;
+    if (res.linkInstancedMesh.instanceColor) {
+      res.linkInstancedMesh.instanceColor.needsUpdate = true;
     }
   };
 
@@ -277,10 +279,11 @@ export function useForceGraph(scene: Scene) {
   };
 
   const dispose = () => {
-    if (!resources.value) return;
+    const res = resources.value;
+    if (!res) return;
 
     // Dispose of node resources
-    (Object.values(resources.value.nodeInstancedMeshes) as THREE.InstancedMesh[]).forEach(instancedMesh => {
+    (Object.values(res.nodeInstancedMeshes) as THREE.InstancedMesh[]).forEach(instancedMesh => {
       instancedMesh.geometry.dispose();
       if (instancedMesh.material instanceof THREE.Material) {
         instancedMesh.material.dispose();
@@ -290,20 +293,20 @@ export function useForceGraph(scene: Scene) {
     });
 
     // Dispose of link resources
-    resources.value.linkInstancedMesh.geometry.dispose();
-    if (resources.value.linkInstancedMesh.material instanceof THREE.Material) {
-      resources.value.linkInstancedMesh.material.dispose();
-    } else if (Array.isArray(resources.value.linkInstancedMesh.material)) {
-      resources.value.linkInstancedMesh.material.forEach((mat: Material) => mat.dispose());
+    res.linkInstancedMesh.geometry.dispose();
+    if (res.linkInstancedMesh.material instanceof THREE.Material) {
+      res.linkInstancedMesh.material.dispose();
+    } else if (Array.isArray(res.linkInstancedMesh.material)) {
+      res.linkInstancedMesh.material.forEach((mat: Material) => mat.dispose());
     }
 
     // Remove from scene
-    scene.remove(resources.value.lod);
-    scene.remove(resources.value.linkInstancedMesh);
+    scene.remove(res.lod);
+    scene.remove(res.linkInstancedMesh);
 
     // Clear collections
-    resources.value.nodeInstances.clear();
-    resources.value.linkInstances.clear();
+    res.nodeInstances.clear();
+    res.linkInstances.clear();
     nodes.value = [];
     links.value = [];
     resources.value = null;

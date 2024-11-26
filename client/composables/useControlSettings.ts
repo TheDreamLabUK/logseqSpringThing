@@ -5,9 +5,9 @@ import type {
   FisheyeConfig,
   ControlGroup,
   ControlItem 
-} from '@/types/components';
+} from '../types/components';
 import { useControlGroups } from './useControlGroups';
-import { useSettingsStore } from '@/stores/settings';
+import { useSettingsStore } from '../stores/settings';
 import { storeToRefs } from 'pinia';
 
 export function useControlSettings() {
@@ -39,13 +39,13 @@ export function useControlSettings() {
   // Create material controls
   const createMaterialGroup = (config: VisualizationConfig): ControlGroup => {
     const controls: ControlItem[] = [
-      createRangeControl('node_material_metalness', 'Metalness', config.node_material_metalness, 0, 1, 0.1),
-      createRangeControl('node_material_roughness', 'Roughness', config.node_material_roughness, 0, 1, 0.1),
-      createRangeControl('node_material_clearcoat', 'Clearcoat', config.node_material_clearcoat, 0, 1, 0.1),
-      createRangeControl('node_material_clearcoat_roughness', 'Clearcoat Roughness', config.node_material_clearcoat_roughness, 0, 1, 0.1),
-      createRangeControl('node_material_opacity', 'Opacity', config.node_material_opacity, 0, 1, 0.1),
-      createRangeControl('node_emissive_min_intensity', 'Min Emissive', config.node_emissive_min_intensity, 0, 1, 0.1),
-      createRangeControl('node_emissive_max_intensity', 'Max Emissive', config.node_emissive_max_intensity, 0, 2, 0.1)
+      createRangeControl('node_material_metalness', 'Metalness', config.material.node_material_metalness, 0, 1, 0.1),
+      createRangeControl('node_material_roughness', 'Roughness', config.material.node_material_roughness, 0, 1, 0.1),
+      createRangeControl('node_material_clearcoat', 'Clearcoat', config.material.node_material_clearcoat, 0, 1, 0.1),
+      createRangeControl('node_material_clearcoat_roughness', 'Clearcoat Roughness', config.material.node_material_clearcoat_roughness, 0, 1, 0.1),
+      createRangeControl('node_material_opacity', 'Opacity', config.material.node_material_opacity, 0, 1, 0.1),
+      createRangeControl('node_emissive_min_intensity', 'Min Emissive', config.material.node_emissive_min_intensity, 0, 1, 0.1),
+      createRangeControl('node_emissive_max_intensity', 'Max Emissive', config.material.node_emissive_max_intensity, 0, 2, 0.1)
     ];
 
     return createControlGroup('material', 'Material Properties', controls);
@@ -54,11 +54,11 @@ export function useControlSettings() {
   // Create physics controls
   const createPhysicsGroup = (config: VisualizationConfig): ControlGroup => {
     const controls: ControlItem[] = [
-      createRangeControl('force_directed_iterations', 'Iterations', config.force_directed_iterations, 100, 500, 10),
-      createRangeControl('force_directed_spring', 'Spring Strength', config.force_directed_spring, 0.001, 0.1, 0.001),
-      createRangeControl('force_directed_repulsion', 'Repulsion', config.force_directed_repulsion, 100, 2000, 100),
-      createRangeControl('force_directed_attraction', 'Attraction', config.force_directed_attraction, 0.001, 0.1, 0.001),
-      createRangeControl('force_directed_damping', 'Damping', config.force_directed_damping, 0.1, 1.0, 0.1)
+      createRangeControl('force_directed_iterations', 'Iterations', config.physics.force_directed_iterations, 100, 500, 10),
+      createRangeControl('force_directed_spring', 'Spring Strength', config.physics.force_directed_spring, 0.001, 0.1, 0.001),
+      createRangeControl('force_directed_repulsion', 'Repulsion', config.physics.force_directed_repulsion, 100, 2000, 100),
+      createRangeControl('force_directed_attraction', 'Attraction', config.physics.force_directed_attraction, 0.001, 0.1, 0.001),
+      createRangeControl('force_directed_damping', 'Damping', config.physics.force_directed_damping, 0.1, 1.0, 0.1)
     ];
 
     return createControlGroup('physics', 'Physics Simulation', controls);
@@ -109,12 +109,29 @@ export function useControlSettings() {
 
   // Handle control changes
   const handleControlChange = (groupName: string, controlName: string, value: any) => {
+    const { getVisualizationSettings } = storeToRefs(settingsStore);
+    const currentSettings = getVisualizationSettings.value;
+
     switch (groupName) {
       case 'appearance':
-      case 'material':
-      case 'physics':
       case 'environment':
         settingsStore.updateVisualizationSettings({ [controlName]: value });
+        break;
+      case 'material':
+        settingsStore.updateVisualizationSettings({
+          material: {
+            ...currentSettings.material,
+            [controlName]: value
+          }
+        });
+        break;
+      case 'physics':
+        settingsStore.updateVisualizationSettings({
+          physics: {
+            ...currentSettings.physics,
+            [controlName]: value
+          }
+        });
         break;
       case 'bloom':
         settingsStore.updateBloomSettings({ [controlName]: value });

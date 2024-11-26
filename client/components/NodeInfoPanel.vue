@@ -1,13 +1,13 @@
 <template>
   <div 
-    v-if="selectedNode"
+    v-if="nodeData"
     class="node-info-panel"
   >
     <h3>Node Information</h3>
-    <p><strong>ID:</strong> {{ selectedNode.id }}</p>
-    <p><strong>Name:</strong> {{ selectedNode.name }}</p>
-    <template v-if="selectedNode.metadata">
-      <div v-for="(value, key) in selectedNode.metadata" :key="key" class="metadata-item">
+    <p><strong>ID:</strong> {{ nodeData.id }}</p>
+    <p v-if="nodeData.label"><strong>Name:</strong> {{ nodeData.label }}</p>
+    <template v-if="nodeData.metadata">
+      <div v-for="(value, key) in nodeData.metadata" :key="key" class="metadata-item">
         <strong>{{ formatKey(key) }}:</strong> {{ formatValue(value) }}
       </div>
     </template>
@@ -17,13 +17,18 @@
 <script lang="ts">
 import { defineComponent, computed } from 'vue';
 import { useVisualizationStore } from '../stores/visualization';
+import type { Node } from '../types/core';
 
 export default defineComponent({
   name: 'NodeInfoPanel',
   
   setup() {
     const store = useVisualizationStore();
-    const selectedNode = computed(() => store.selectedNode);
+    
+    const nodeData = computed(() => {
+      if (!store.selectedNode) return null;
+      return store.getNodeById(store.selectedNode);
+    });
 
     const formatKey = (key: string) => {
       return key
@@ -40,7 +45,7 @@ export default defineComponent({
     };
 
     return {
-      selectedNode,
+      nodeData,
       formatKey,
       formatValue
     };

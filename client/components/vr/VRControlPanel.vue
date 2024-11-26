@@ -7,6 +7,7 @@ import { defineComponent, onMounted, onBeforeUnmount, ref } from 'vue';
 import * as THREE from 'three';
 import { useVisualizationStore } from '../../stores/visualization';
 import { useSettingsStore } from '../../stores/settings';
+import type { VisualizationConfig } from '../../types/components';
 
 interface Props {
   scene: THREE.Scene;
@@ -156,8 +157,10 @@ export default defineComponent({
         handle.position.x = mapValue(value, control.min!, control.max!, -0.4, 0.4);
       } else if (typeof value === 'string') {
         // Color picker
-        const swatch = control.group.children[0];
-        (swatch.material as THREE.MeshBasicMaterial).color.set(value);
+        const swatch = control.group.children[0] as THREE.Mesh;
+        if (swatch.material instanceof THREE.MeshBasicMaterial) {
+          swatch.material.color.set(value);
+        }
       }
       control.value = value;
     };
@@ -195,15 +198,15 @@ export default defineComponent({
       let yPosition = 0.6;
 
       // Add sliders
-      createSlider('Scale', 0.1, 2.0, settings.nodeScale || 1.0, yPosition);
+      createSlider('Scale', 0.1, 2.0, settings.min_node_size, yPosition);
       yPosition -= 0.2;
-      createSlider('Opacity', 0, 1, settings.nodeOpacity || 1.0, yPosition);
+      createSlider('Opacity', 0, 1, settings.material.node_material_opacity, yPosition);
       yPosition -= 0.2;
 
       // Add color pickers
-      createColorPicker('Node Color', settings.nodeColor || '#ffffff', yPosition);
+      createColorPicker('Node Color', settings.node_color, yPosition);
       yPosition -= 0.2;
-      createColorPicker('Edge Color', settings.edgeColor || '#ffffff', yPosition);
+      createColorPicker('Edge Color', settings.edge_color, yPosition);
     });
 
     onBeforeUnmount(() => {
