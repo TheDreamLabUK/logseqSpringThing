@@ -60,12 +60,14 @@
             left: 10px;
             color: white;
             z-index: 2;
-            background-color: rgba(0, 0, 0, 0.7);
+            background-color: rgba(0, 0, 0, 0.85);
             padding: 10px;
             border-radius: 4px;
             font-family: monospace;
             max-height: 200px;
             overflow-y: auto;
+            width: 80%;
+            max-width: 800px;
         }
         .debug #app {
             border: 1px solid rgba(0, 0, 255, 0.3);
@@ -78,6 +80,41 @@
             outline: none;
             touch-action: none;
         }
+        .error-stack {
+            color: #ff6b6b;
+            margin-top: 4px;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            padding-left: 20px;
+        }
+        .error-source {
+            color: #4ecdc4;
+            margin-top: 2px;
+            font-size: 12px;
+        }
+        .error-context {
+            color: #ffd93d;
+            margin-top: 4px;
+            font-size: 12px;
+            font-style: italic;
+        }
+        .debug-timestamp {
+            color: #95a5a6;
+            font-size: 11px;
+            margin-right: 8px;
+        }
+        .debug-type {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-right: 8px;
+            font-size: 11px;
+        }
+        .debug-type.error { background-color: #e74c3c; }
+        .debug-type.warn { background-color: #f39c12; }
+        .debug-type.info { background-color: #3498db; }
+        .debug-type.debug { background-color: #2ecc71; }
     </style>
 </head>
 <body>
@@ -87,37 +124,123 @@
     <div id="debug-info"></div>
 
     <script type="module">
-        // Enhanced error handler with timestamp
-        window.onerror = function(msg, url, line, col, error) {
-            console.error('Global error:', msg, 'at', url, 'line', line);
-            const debugInfo = document.getElementById('debug-info');
-            if (debugInfo) {
-                const time = new Date().toLocaleTimeString();
-                const errorMsg = error?.stack || msg;
-                debugInfo.innerHTML += `<div>[${time}] Error: ${errorMsg}</div>`;
-                debugInfo.scrollTop = debugInfo.scrollHeight;
+        // Enhanced debug logging
+        const debugInfo = document.getElementById('debug-info');
+        const maxLogEntries = 100;
+        let logEntries = [];
+
+        function addLogEntry(type, message, details = {}) {
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'debug-entry';
+            
+            let content = `
+                <span class="debug-timestamp">${time}</span>
+                <span class="debug-type ${type}">${type.toUpperCase()}</span>
+                <span class="debug-message">${message}</span>
+            `;
+
+            if (details.source) {
+                content += `<div class="error-source">${details.source}</div>`;
             }
+
+            if (details.context) {
+                content += `<div class="error-context">${details.context}</div>`;
+            }
+
+            if (details.stack) {
+                content += `<div class="error-stack">${details.stack}</div>`;
+            }
+
+            entry.innerHTML = content;
+            logEntries.push(entry);
+
+            // Maintain max entries
+            if (logEntries.length > maxLogEntries) {
+                logEntries.shift();
+                if (debugInfo.firstChild) {
+                    debugInfo.removeChild(debugInfo.firstChild);
+                }
+            }
+
+            debugInfo.appendChild(entry);
+            debugInfo.scrollTop = debugInfo.scrollHeight;
+        }
+
+        // Override console methods
+        const originalConsole = {
+            log: console.log,
+            info: console.info,
+            warn: console.warn,
+            error: console.error,
+            debug: console.debug
+        };
+
+        console.log = (...args) => {
+            originalConsole.log(...args);
+            addLogEntry('debug', args.join(' '));
+        };
+
+        console.info = (...args) => {
+            originalConsole.info(...args);
+            addLogEntry('info', args.join(' '));
+        };
+
+        console.warn = (...args) => {
+            originalConsole.warn(...args);
+            addLogEntry('warn', args.join(' '));
+        };
+
+        console.error = (...args) => {
+            originalConsole.error(...args);
+            const error = args.find(arg => arg instanceof Error) || args[0];
+            addLogEntry('error', error.message || args.join(' '), {
+                stack: error.stack,
+                context: error.context
+            });
+        };
+
+        console.debug = (...args) => {
+            originalConsole.debug(...args);
+            addLogEntry('debug', args.join(' '));
+        };
+
+        // Enhanced error handler
+        window.onerror = function(msg, url, line, col, error) {
+            console.error('Global error:', {
+                message: msg,
+                source: `${url}:${line}:${col}`,
+                error
+            });
             return false;
         };
+
+        // Handle unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Unhandled promise rejection:', {
+                message: event.reason?.message || event.reason,
+                stack: event.reason?.stack,
+                context: 'Promise rejection'
+            });
+        });
 
         // Handle WebGL context lost
         window.addEventListener('webglcontextlost', function(e) {
             e.preventDefault();
-            console.error('WebGL context lost');
-            const debugInfo = document.getElementById('debug-info');
-            if (debugInfo) {
-                const time = new Date().toLocaleTimeString();
-                debugInfo.innerHTML += `<div>[${time}] WebGL context lost - reloading page in 3 seconds...</div>`;
-                setTimeout(() => window.location.reload(), 3000);
-            }
+            console.error('WebGL context lost', {
+                context: 'WebGL',
+                message: 'Context lost - reloading in 3 seconds'
+            });
+            setTimeout(() => window.location.reload(), 3000);
         }, false);
 
         // Add debug class to body if needed
-        if (window.location.search.includes('debug')) {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('debug') || process.env.NODE_ENV === 'development') {
             document.body.classList.add('debug');
         }
 
-        // Check WebGL support
+        // Check WebGL support with enhanced error reporting
         function checkWebGLSupport() {
             const canvas = document.createElement('canvas');
             let gl;
@@ -125,22 +248,23 @@
             try {
                 gl = canvas.getContext('webgl2');
                 if (gl) {
-                    console.log('WebGL 2 supported');
+                    console.info('WebGL 2 supported');
                     return true;
                 }
                 
                 gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
                 if (gl) {
-                    console.log('WebGL 1 supported');
+                    console.info('WebGL 1 supported');
                     return true;
                 }
                 
                 throw new Error('WebGL not supported');
             } catch (e) {
-                const debugInfo = document.getElementById('debug-info');
-                if (debugInfo) {
-                    debugInfo.innerHTML = `<div style="color: red;">Error: WebGL not supported - ${e.message}</div>`;
-                }
+                console.error('WebGL initialization failed', {
+                    message: e.message,
+                    stack: e.stack,
+                    context: 'WebGL Support Check'
+                });
                 return false;
             } finally {
                 if (gl) {
@@ -151,14 +275,17 @@
 
         // Only import app if WebGL is supported
         if (checkWebGLSupport()) {
-            import('/client/index.ts').catch(error => {
-                console.error('Failed to load application:', error);
-                const debugInfo = document.getElementById('debug-info');
-                if (debugInfo) {
-                    const time = new Date().toLocaleTimeString();
-                    debugInfo.innerHTML += `<div>[${time}] Failed to load application: ${error.message}</div>`;
-                }
-            });
+            import('./index.ts')
+                .then(() => {
+                    console.info('Application loaded successfully');
+                })
+                .catch(error => {
+                    console.error('Failed to load application', {
+                        message: error.message,
+                        stack: error.stack,
+                        context: 'Application Load'
+                    });
+                });
         }
     </script>
 </body>

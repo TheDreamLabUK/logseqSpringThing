@@ -1,5 +1,5 @@
 import { ref, reactive } from 'vue';
-import type { ControlGroup, ControlItem } from '@/types/components';
+import type { ControlGroup, ControlItem } from '../types/components';
 
 export function useControlGroups() {
   const collapsedGroups = reactive<Record<string, boolean>>({
@@ -22,8 +22,8 @@ export function useControlGroups() {
   ): ControlGroup => ({
     name,
     label,
-    collapsed: collapsedGroups[name],
-    controls
+    controls,
+    collapsed: collapsedGroups[name]
   });
 
   const createRangeControl = (

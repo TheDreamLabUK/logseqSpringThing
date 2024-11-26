@@ -1,14 +1,16 @@
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import * as THREE from 'three';
+import { ref, computed, onBeforeUnmount } from 'vue';
+import THREE from '../utils/three';
 import { useSettingsStore } from '../stores/settings';
 import { useGraphSystem } from './useGraphSystem';
 import { useEffectsSystem } from './useEffectsSystem';
 import { usePlatform } from './usePlatform';
+import { useThreeScene } from './useThreeScene';
 import type { Node, Edge, Transform, CoreState, InitializationOptions } from '../types/core';
 
 export function useVisualization() {
   const settingsStore = useSettingsStore();
   const { getPlatformInfo, initializePlatform, getState } = usePlatform();
+  const { resources: threeResources, initScene } = useThreeScene();
   
   // Core state
   const state = ref<CoreState>({
@@ -20,6 +22,9 @@ export function useVisualization() {
     isXRSupported: false,
     isWebGL2: false
   });
+
+  // Animation frame ID
+  let animationFrameId: number | null = null;
 
   // Systems
   const { 
@@ -45,63 +50,40 @@ export function useVisualization() {
   const settings = computed(() => settingsStore.getVisualizationSettings);
   const platformInfo = computed(() => getPlatformInfo());
 
-  // Scene setup
-  const initializeScene = async () => {
-    // Create scene
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000);
-    
-    // Add lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
-    scene.add(ambientLight);
+  // Animation loop
+  const animate = () => {
+    if (!state.value.isInitialized || !threeResources.value) return;
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 2.0);
-    directionalLight.position.set(10, 20, 10);
-    scene.add(directionalLight);
+    if (threeResources.value.controls) {
+      threeResources.value.controls.update();
+    }
 
-    const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
-    scene.add(hemisphereLight);
+    // Render effects if available, otherwise render normally
+    if (composer.value) {
+      renderEffects();
+    } else if (threeResources.value.renderer && threeResources.value.scene && threeResources.value.camera) {
+      threeResources.value.renderer.render(threeResources.value.scene, threeResources.value.camera);
+    }
 
-    const pointLight1 = new THREE.PointLight(0xffffff, 1.0, 300);
-    pointLight1.position.set(100, 100, 100);
-    scene.add(pointLight1);
-
-    const pointLight2 = new THREE.PointLight(0xffffff, 1.0, 300);
-    pointLight2.position.set(-100, -100, -100);
-    scene.add(pointLight2);
-
-    // Set fog
-    scene.fog = new THREE.FogExp2(0x000000, settings.value.fog_density);
-
-    state.value.scene = scene;
+    animationFrameId = requestAnimationFrame(animate);
   };
 
   // Platform initialization
-  const initialize = async () => {
+  const initialize = async (options: InitializationOptions) => {
     if (state.value.isInitialized) return;
 
     try {
-      // Create canvas
-      const canvas = document.createElement('canvas');
-      document.body.appendChild(canvas);
+      console.log('Initializing Three.js scene...');
+      // Initialize Three.js scene and wait for it to complete
+      const resources = await initScene();
+      
+      if (!resources) {
+        throw new Error('Failed to initialize Three.js scene');
+      }
 
-      // Initialize platform (browser or quest)
-      const initOptions: InitializationOptions = {
-        canvas,
-        scene: {
-          antialias: true,
-          alpha: true,
-          preserveDrawingBuffer: true,
-          powerPreference: 'high-performance'
-        },
-        performance: {
-          maxFPS: 60,
-          enableAdaptiveQuality: true,
-          enableFrustumCulling: true
-        }
-      };
-
-      await initializePlatform(initOptions);
+      console.log('Initializing platform...');
+      // Initialize platform
+      await initializePlatform(options);
       
       // Get platform state
       const platformState = getState();
@@ -109,22 +91,26 @@ export function useVisualization() {
         throw new Error('Failed to initialize platform state');
       }
 
-      // Update state with platform-specific components
+      // Update state with scene resources
       state.value = {
-        renderer: platformState.renderer,
-        camera: platformState.camera,
-        scene: platformState.scene,
-        canvas: platformState.canvas,
+        renderer: resources.renderer,
+        camera: resources.camera,
+        scene: resources.scene,
+        canvas: resources.renderer.domElement,
         isInitialized: true,
         isXRSupported: platformState.isXRSupported,
         isWebGL2: platformState.isWebGL2
       };
 
-      // Initialize scene
-      await initializeScene();
-
+      console.log('Updating settings...');
       // Update settings
       updateFromSettings(settings.value);
+
+      console.log('Starting animation loop...');
+      // Start animation loop
+      animate();
+
+      console.log('Visualization system initialized successfully');
 
     } catch (error) {
       console.error('Failed to initialize visualization:', error);
@@ -145,16 +131,23 @@ export function useVisualization() {
     updateBloomSettings();
   };
 
-  // Render loop
-  const render = () => {
-    if (!state.value.isInitialized) return;
-    
-    // Render effects
-    renderEffects();
+  // Update graph data
+  const updateGraph = (graphData: { nodes: Node[], edges: Edge[] }) => {
+    console.log('Updating graph data:', {
+      nodes: graphData.nodes.length,
+      edges: graphData.edges.length
+    });
+    updateGraphData(graphData);
   };
 
   // Cleanup
   const dispose = () => {
+    console.log('Disposing visualization system...');
+    if (animationFrameId !== null) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+
     if (!state.value.isInitialized) return;
 
     state.value.scene?.traverse((object: THREE.Object3D) => {
@@ -179,13 +172,10 @@ export function useVisualization() {
 
     // Remove canvas
     state.value.canvas?.remove();
+    console.log('Visualization system disposed');
   };
 
   // Lifecycle
-  onMounted(async () => {
-    await initialize();
-  });
-
   onBeforeUnmount(() => {
     dispose();
   });
@@ -194,8 +184,7 @@ export function useVisualization() {
     state,
     initialize,
     updateFromSettings,
-    updateGraphData,
-    render,
+    updateGraphData: updateGraph,
     dispose
   };
 }

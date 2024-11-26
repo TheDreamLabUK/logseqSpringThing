@@ -3,12 +3,12 @@ import type {
   VisualizationConfig, 
   BloomConfig, 
   FisheyeConfig 
-} from '@/types/components';
+} from '../types/components';
 import { 
   DEFAULT_VISUALIZATION_CONFIG,
   DEFAULT_BLOOM_CONFIG,
   DEFAULT_FISHEYE_CONFIG
-} from '@/types/components';
+} from '../types/components';
 
 interface SettingsState {
   visualization: VisualizationConfig;

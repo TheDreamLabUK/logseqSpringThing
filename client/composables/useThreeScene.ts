@@ -1,6 +1,5 @@
-import { ref, onMounted, onBeforeUnmount } from 'vue';
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { ref, onBeforeUnmount } from 'vue';
+import THREE, { OrbitControls } from '../utils/three';
 import type { Scene, PerspectiveCamera, WebGLRenderer, Object3D, Material, Texture } from 'three';
 
 interface ThreeResources {
@@ -141,8 +140,8 @@ export function useThreeScene() {
         document.body.appendChild(renderer.domElement);
       }
 
-      // Create orbit controls with type assertion
-      const controls = new OrbitControls(camera as any, renderer.domElement);
+      // Create orbit controls
+      const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
       controls.maxPolarAngle = Math.PI * 0.95;
@@ -165,6 +164,7 @@ export function useThreeScene() {
       // Create basic environment
       const environment = createBasicEnvironment(scene);
 
+      // Store resources
       resources.value = {
         scene,
         camera,
@@ -175,6 +175,8 @@ export function useThreeScene() {
 
       // Handle window resize
       window.addEventListener('resize', handleResize);
+
+      return resources.value;
 
     } catch (error) {
       console.error('Error initializing Three.js scene:', error);
@@ -281,10 +283,6 @@ export function useThreeScene() {
 
     resources.value = null;
   };
-
-  onMounted(async () => {
-    await initScene();
-  });
 
   onBeforeUnmount(() => {
     dispose();
