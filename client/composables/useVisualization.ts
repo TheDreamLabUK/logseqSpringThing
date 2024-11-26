@@ -1,16 +1,11 @@
 import { ref, computed, onBeforeUnmount } from 'vue';
-import THREE from '../utils/three';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { useSettingsStore } from '../stores/settings';
-import { useGraphSystem } from './useGraphSystem';
-import { useEffectsSystem } from './useEffectsSystem';
-import { usePlatform } from './usePlatform';
-import { useThreeScene } from './useThreeScene';
-import type { Node, Edge, Transform, CoreState, InitializationOptions } from '../types/core';
+import type { Node, Edge, CoreState, InitializationOptions } from '../types/core';
 
 export function useVisualization() {
   const settingsStore = useSettingsStore();
-  const { getPlatformInfo, initializePlatform, getState } = usePlatform();
-  const { resources: threeResources, initScene } = useThreeScene();
   
   // Core state
   const state = ref<CoreState>({
@@ -23,49 +18,78 @@ export function useVisualization() {
     isWebGL2: false
   });
 
+  // Node meshes map
+  const nodeMeshes = new Map<string, THREE.Mesh>();
+  
   // Animation frame ID
   let animationFrameId: number | null = null;
 
-  // Systems
-  const { 
-    nodes, 
-    edges,
-    updateGraphData,
-    getNodePosition,
-    getNodeScale,
-    getNodeColor 
-  } = useGraphSystem();
-
-  const {
-    composer,
-    render: renderEffects,
-    updateBloomSettings
-  } = useEffectsSystem(
-    state.value.renderer as THREE.WebGLRenderer,
-    state.value.scene as THREE.Scene,
-    state.value.camera as THREE.PerspectiveCamera
-  );
-
   // Settings
   const settings = computed(() => settingsStore.getVisualizationSettings);
-  const platformInfo = computed(() => getPlatformInfo());
 
   // Animation loop
   const animate = () => {
-    if (!state.value.isInitialized || !threeResources.value) return;
+    if (!state.value.isInitialized) return;
 
-    if (threeResources.value.controls) {
-      threeResources.value.controls.update();
-    }
-
-    // Render effects if available, otherwise render normally
-    if (composer.value) {
-      renderEffects();
-    } else if (threeResources.value.renderer && threeResources.value.scene && threeResources.value.camera) {
-      threeResources.value.renderer.render(threeResources.value.scene, threeResources.value.camera);
+    const { renderer, scene, camera } = state.value;
+    if (renderer && scene && camera) {
+      renderer.render(scene, camera);
     }
 
     animationFrameId = requestAnimationFrame(animate);
+  };
+
+  // Initialize Three.js scene
+  const initScene = () => {
+    // Create scene
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+
+    // Create camera
+    const camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+    camera.position.set(0, 0, 50);
+
+    // Create renderer
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // Create lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(10, 10, 10);
+    scene.add(directionalLight);
+
+    // Create controls
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // Store state
+    state.value = {
+      renderer,
+      camera,
+      scene,
+      canvas: renderer.domElement,
+      isInitialized: true,
+      isXRSupported: false,
+      isWebGL2: renderer.capabilities.isWebGL2
+    };
+
+    // Start animation loop
+    animate();
+
+    return { renderer, scene, camera, controls };
   };
 
   // Platform initialization
@@ -74,41 +98,23 @@ export function useVisualization() {
 
     try {
       console.log('Initializing Three.js scene...');
-      // Initialize Three.js scene and wait for it to complete
-      const resources = await initScene();
-      
-      if (!resources) {
-        throw new Error('Failed to initialize Three.js scene');
+      const { renderer, scene, camera } = initScene();
+
+      // Add canvas to container
+      const container = document.getElementById('scene-container');
+      if (container && renderer.domElement) {
+        container.appendChild(renderer.domElement);
       }
 
-      console.log('Initializing platform...');
-      // Initialize platform
-      await initializePlatform(options);
-      
-      // Get platform state
-      const platformState = getState();
-      if (!platformState) {
-        throw new Error('Failed to initialize platform state');
-      }
-
-      // Update state with scene resources
-      state.value = {
-        renderer: resources.renderer,
-        camera: resources.camera,
-        scene: resources.scene,
-        canvas: resources.renderer.domElement,
-        isInitialized: true,
-        isXRSupported: platformState.isXRSupported,
-        isWebGL2: platformState.isWebGL2
+      // Handle window resize
+      const handleResize = () => {
+        if (!camera || !renderer) return;
+        
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
       };
-
-      console.log('Updating settings...');
-      // Update settings
-      updateFromSettings(settings.value);
-
-      console.log('Starting animation loop...');
-      // Start animation loop
-      animate();
+      window.addEventListener('resize', handleResize);
 
       console.log('Visualization system initialized successfully');
 
@@ -118,26 +124,54 @@ export function useVisualization() {
     }
   };
 
-  // Update from settings
-  const updateFromSettings = (newSettings: any) => {
-    if (!state.value.isInitialized) return;
+  // Update node positions
+  const updateNodes = (nodes: Node[]) => {
+    if (!state.value.scene) return;
 
-    // Update scene properties
-    if (state.value.scene?.fog && 'fog_density' in newSettings) {
-      (state.value.scene.fog as THREE.FogExp2).density = newSettings.fog_density;
-    }
-
-    // Update effects
-    updateBloomSettings();
-  };
-
-  // Update graph data
-  const updateGraph = (graphData: { nodes: Node[], edges: Edge[] }) => {
-    console.log('Updating graph data:', {
-      nodes: graphData.nodes.length,
-      edges: graphData.edges.length
+    const nodeGeometry = new THREE.SphereGeometry(1, 16, 16);
+    const nodeMaterial = new THREE.MeshStandardMaterial({
+      color: 0x00ff00,
+      metalness: 0.3,
+      roughness: 0.7
     });
-    updateGraphData(graphData);
+
+    // Update or create meshes for each node
+    nodes.forEach(node => {
+      let mesh = nodeMeshes.get(node.id);
+      
+      if (!mesh) {
+        // Create new mesh if it doesn't exist
+        mesh = new THREE.Mesh(nodeGeometry, nodeMaterial.clone());
+        nodeMeshes.set(node.id, mesh);
+        state.value.scene?.add(mesh);
+      }
+
+      // Update position
+      if (node.position) {
+        mesh.position.set(node.position[0], node.position[1], node.position[2]);
+      }
+
+      // Update color if specified
+      if (node.color && mesh.material instanceof THREE.MeshStandardMaterial) {
+        mesh.material.color.setStyle(node.color);
+      }
+
+      // Update size if specified
+      const scale = node.size || 1;
+      mesh.scale.set(scale, scale, scale);
+    });
+
+    // Remove meshes for nodes that no longer exist
+    nodeMeshes.forEach((mesh, id) => {
+      if (!nodes.find(node => node.id === id)) {
+        state.value.scene?.remove(mesh);
+        mesh.geometry.dispose();
+        if (mesh.material instanceof THREE.Material) {
+          mesh.material.dispose();
+        }
+        nodeMeshes.delete(id);
+      }
+    });
   };
 
   // Cleanup
@@ -150,16 +184,22 @@ export function useVisualization() {
 
     if (!state.value.isInitialized) return;
 
-    state.value.scene?.traverse((object: THREE.Object3D) => {
-      if (object instanceof THREE.Mesh) {
-        object.geometry?.dispose();
-        if (object.material instanceof THREE.Material) {
-          object.material.dispose();
-        }
+    // Dispose of node meshes
+    nodeMeshes.forEach((mesh) => {
+      mesh.geometry.dispose();
+      if (mesh.material instanceof THREE.Material) {
+        mesh.material.dispose();
       }
     });
+    nodeMeshes.clear();
 
+    // Dispose of renderer
     state.value.renderer?.dispose();
+    
+    // Remove canvas
+    state.value.canvas?.remove();
+
+    // Reset state
     state.value = {
       renderer: null,
       camera: null,
@@ -170,12 +210,9 @@ export function useVisualization() {
       isWebGL2: false
     };
 
-    // Remove canvas
-    state.value.canvas?.remove();
     console.log('Visualization system disposed');
   };
 
-  // Lifecycle
   onBeforeUnmount(() => {
     dispose();
   });
@@ -183,8 +220,7 @@ export function useVisualization() {
   return {
     state,
     initialize,
-    updateFromSettings,
-    updateGraphData: updateGraph,
+    updateNodes,
     dispose
   };
 }

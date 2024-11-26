@@ -86,10 +86,10 @@ export default class WebsocketService {
 
     // Secure WebSocket URL generation
     getWebSocketUrl = () => {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.hostname;
-        const port = window.location.port ? `:${window.location.port}` : '';
-        const url = `${protocol}//${host}${port}/ws`;
+        // Always use wss:// for production since we're using Cloudflare tunnel
+        const protocol = 'wss:';
+        const host = 'www.visionflow.info';
+        const url = `${protocol}//${host}/ws`;
         console.log('Generated WebSocket URL:', url);
         return url;
     }
