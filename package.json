@@ -5,28 +5,29 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc && vite build --mode production",
-    "build:quest": "vue-tsc && vite build --mode production --config vite.config.ts --platform quest",
+    "build": "vue-tsc --noEmit && vite build --mode production",
+    "build:quest": "vue-tsc --noEmit && vite build --mode production --config vite.config.ts --platform quest",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "pinia": "2.2.2",
     "three": "0.170.0",
     "vue": "3.3.4",
-    "pinia": "2.2.2",
     "vue-threejs": "0.2.0-alpha.1"
   },
   "devDependencies": {
     "@types/node": "20.10.0",
     "@types/three": "0.170.0",
-    "@vitejs/plugin-vue": "4.3.4",
     "@typescript-eslint/eslint-plugin": "8.5.0",
     "@typescript-eslint/parser": "8.5.0",
+    "@vitejs/plugin-vue": "4.3.4",
     "eslint": "8.56.0",
     "eslint-plugin-vue": "9.22.0",
     "prettier": "3.3.0",
+    "terser": "^5.36.0",
     "typescript": "5.2.2",
     "vite": "4.4.9",
     "vue-tsc": "1.8.8"

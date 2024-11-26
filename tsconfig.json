@@ -12,7 +12,14 @@
     "lib": ["esnext", "dom"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./client/*"]
+      "@/*": ["./client/*"],
+      "@components/*": ["./client/components/*"],
+      "@types/*": ["./client/types/*"],
+      "@stores/*": ["./client/stores/*"],
+      "@composables/*": ["./client/composables/*"],
+      "@platform/*": ["./client/platform/*"],
+      "@visualization/*": ["./client/visualization/*"],
+      "@xr/*": ["./client/xr/*"]
     },
     "types": ["node"],
     "allowJs": true

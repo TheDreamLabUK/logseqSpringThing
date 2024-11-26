@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { visualizationSettings } from '../../services/visualizationSettings.js';
+import { visualizationSettings } from '../services/visualizationSettings.js';
 import { LAYERS, LAYER_GROUPS, LayerManager } from './layerManager.js';
 
 export class NodeManager {
