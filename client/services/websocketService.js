@@ -1,4 +1,4 @@
-// Secure WebSocket service with unified message handling
+// Secure WebSocket service with improved error handling and security measures
 export default class WebsocketService {
     // Event emitter implementation
     _events = new Map();
@@ -43,11 +43,6 @@ export default class WebsocketService {
 
     constructor() {
         window.addEventListener('beforeunload', () => this.cleanup());
-        window.addEventListener('positionUpdate', (event) => {
-            if (this.socket?.readyState === WebSocket.OPEN) {
-                this.socket.send(event.detail);
-            }
-        });
     }
 
     // Event emitter methods
@@ -56,7 +51,7 @@ export default class WebsocketService {
             this._events.set(event, []);
         }
         this._events.get(event).push(callback);
-    }
+    };
 
     off = (event, callback) => {
         if (!this._events.has(event)) return;
@@ -65,7 +60,7 @@ export default class WebsocketService {
         if (index !== -1) {
             callbacks.splice(index, 1);
         }
-    }
+    };
 
     emit = (event, ...args) => {
         if (!this._events.has(event)) return;
@@ -77,19 +72,25 @@ export default class WebsocketService {
                 console.error(`Error in event listener for ${event}:`, error);
             }
         });
-    }
+    };
 
-    // Secure WebSocket URL generation
+    // WebSocket URL generation
     getWebSocketUrl = () => {
+        const isProduction = process.env.NODE_ENV === 'production';
+        
+        if (isProduction) {
+            // In production, always use wss:// and fixed hostname
+            // Port 4000 is handled by cloudflared tunnel
+            return 'wss://www.visionflow.info/ws';
+        }
+        
+        // In development, use current page's protocol and host
+        // Port is handled by nginx in development
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.hostname;
-        const port = window.location.port ? `:${window.location.port}` : '';
-        const url = `${protocol}//${host}${port}/ws`;
-        console.log('Generated WebSocket URL:', url);
-        return url;
-    }
+        return `${protocol}//${window.location.host}/ws`;
+    };
 
-    // Establish secure WebSocket connection
+    // Establish WebSocket connection
     connect = async () => {
         if (this.isConnecting || this.socket?.readyState === WebSocket.CONNECTING) {
             console.log('Connection attempt already in progress');
@@ -101,60 +102,66 @@ export default class WebsocketService {
             return;
         }
 
-        if (this.reconnectAttempts >= this.maxRetries) {
-            const error = new Error('Max reconnection attempts reached');
-            this.emit('error', error);
-            throw error;
-        }
-
-        this.isConnecting = true;
+        this.reconnectAttempts++;
         const url = this.getWebSocketUrl();
-        console.log('Attempting to connect to WebSocket at:', url);
+        console.log(`Attempting WebSocket connection (attempt ${this.reconnectAttempts}/${this.maxRetries})...`, {
+            url,
+            protocol: window.location.protocol,
+            host: window.location.hostname,
+            port: window.location.port || '(default)'
+        });
+        
+        this.isConnecting = true;
         
         try {
             this.socket = new WebSocket(url);
             this.socket.binaryType = 'arraybuffer';
 
             await new Promise((resolve, reject) => {
-                let hasErrored = false;
-
-                const cleanup = () => {
-                    this.socket.onopen = null;
-                    this.socket.onclose = null;
-                    this.socket.onerror = null;
-                };
+                const timeout = setTimeout(() => {
+                    reject(new Error('Connection timeout'));
+                }, 10000); // 10 second timeout
 
                 this.socket.onopen = () => {
+                    clearTimeout(timeout);
                     console.log('WebSocket connection established');
                     this.reconnectAttempts = 0;
                     this.isConnecting = false;
                     this.emit('open');
                     this.processQueuedMessages();
-                    cleanup();
                     resolve();
                 };
 
                 this.socket.onerror = (error) => {
-                    if (!hasErrored) {
-                        hasErrored = true;
-                        console.error('WebSocket error:', error);
-                        this.emit('error', error);
-                        cleanup();
-                        reject(error);
-                    }
+                    console.error('WebSocket connection error:', {
+                        message: error.message || 'Connection failed',
+                        readyState: this.socket.readyState,
+                        attempt: this.reconnectAttempts,
+                        url
+                    });
+                    this.emit('error', error);
                 };
 
                 this.socket.onclose = (event) => {
+                    clearTimeout(timeout);
                     console.log('WebSocket connection closed:', event);
                     this.emit('close');
                     this.isConnecting = false;
-                    cleanup();
 
-                    if (!event.wasClean && !hasErrored) {
-                        hasErrored = true;
-                        const error = new Error('WebSocket closed during connection');
-                        this.emit('error', error);
-                        reject(error);
+                    if (!event.wasClean && this.reconnectAttempts < this.maxRetries) {
+                        console.log(`Connection failed. Retrying in ${this.retryDelay}ms...`, {
+                            error: 'WebSocket error: Connection failed',
+                            attempt: this.reconnectAttempts,
+                            nextDelay: this.retryDelay
+                        });
+                        setTimeout(() => this.connect(), this.retryDelay);
+                    } else if (this.reconnectAttempts >= this.maxRetries) {
+                        console.error('Max reconnection attempts reached:', {
+                            error: 'WebSocket error: Connection failed',
+                            attempts: this.reconnectAttempts,
+                            maxRetries: this.maxRetries
+                        });
+                        reject(new Error('Max reconnection attempts reached'));
                     }
                 };
             });
@@ -164,9 +171,10 @@ export default class WebsocketService {
 
         } catch (error) {
             this.isConnecting = false;
+            console.error('Error initializing WebSocket:', error);
             throw error;
         }
-    }
+    };
 
     handleMessage = async (event) => {
         try {
@@ -182,9 +190,9 @@ export default class WebsocketService {
                 message: error.message
             });
         }
-    }
+    };
 
-    handleBinaryMessage(data) {
+    handleBinaryMessage = (data) => {
         const view = new Float32Array(data);
         const header = view[0];
         const isInitialLayout = header >= 1.0;
@@ -220,9 +228,9 @@ export default class WebsocketService {
                 positions
             }
         }));
-    }
+    };
 
-    async handleJsonMessage(data) {
+    handleJsonMessage = async (data) => {
         let parsed;
         try {
             parsed = JSON.parse(data);
@@ -259,12 +267,13 @@ export default class WebsocketService {
         switch (parsed.type) {
             case 'graphData':
             case 'graphUpdate':
-                this.emit('graphUpdate', { 
-                    graphData: parsed.graph_data || parsed 
-                });
+                if (parsed.graph_data) {
+                    this.emit('graphUpdate', { graphData: parsed.graph_data });
+                }
                 break;
 
             case 'error':
+                console.error('Server error:', parsed.message);
                 this.emit('error', { 
                     type: 'server_error', 
                     message: parsed.message 
@@ -272,7 +281,6 @@ export default class WebsocketService {
                 break;
 
             case 'settings_updated':
-                this.emit('serverSettings', parsed.settings);
                 window.dispatchEvent(new CustomEvent('settingsUpdated', {
                     detail: parsed.settings
                 }));
@@ -282,7 +290,7 @@ export default class WebsocketService {
                 this.emit(parsed.type, parsed);
                 break;
         }
-    }
+    };
 
     send = (data) => {
         if (this.socket?.readyState === WebSocket.OPEN) {
@@ -303,7 +311,7 @@ export default class WebsocketService {
         } else {
             this.queueMessage(data);
         }
-    }
+    };
 
     queueMessage = (data) => {
         if (this.messageQueue.length >= this.maxQueueSize) {
@@ -311,7 +319,7 @@ export default class WebsocketService {
             return;
         }
         this.messageQueue.push(data);
-    }
+    };
 
     processQueuedMessages = () => {
         if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
@@ -329,7 +337,7 @@ export default class WebsocketService {
         }
 
         messagesToSend.forEach(message => this.send(message));
-    }
+    };
 
     cleanup = () => {
         if (this.socket) {
@@ -340,5 +348,5 @@ export default class WebsocketService {
         this.isConnecting = false;
         this.messageQueue = [];
         this._events.clear();
-    }
+    };
 }
