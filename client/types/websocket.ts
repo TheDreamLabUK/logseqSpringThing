@@ -31,10 +31,8 @@ export interface PositionUpdate {
 }
 
 export interface BinaryMessage {
-  header: {
-    isInitialLayout: boolean;
-    timeStep: number;
-  };
+  isInitialLayout: boolean;
+  timeStep: number;
   positions: PositionUpdate[];
 }
 
@@ -54,6 +52,7 @@ export interface Node {
   id: string;
   label?: string;
   position?: [number, number, number];
+  velocity?: [number, number, number];
   [key: string]: any;
 }
 
@@ -176,7 +175,7 @@ export type WebSocketEventMap = {
   simulationModeSet: string;
   completion: string;
   positionUpdateComplete: string;
-  gpuPositions: { positions: PositionUpdate[] };
+  gpuPositions: BinaryMessage;
   maxReconnectAttemptsReached: void;
 };
 

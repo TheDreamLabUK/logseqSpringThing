@@ -6,7 +6,9 @@ import type {
   ErrorMessage,
   MessageType,
   Node as WebSocketNode,
-  Edge as WebSocketEdge
+  Edge as WebSocketEdge,
+  PositionUpdate,
+  BinaryMessage
 } from '../types/websocket';
 import type {
   VisualizationConfig,
@@ -49,7 +51,7 @@ export const useWebSocketStore = defineStore('websocket', {
       this.lastError = error;
     },
 
-    queueMessage(message: BaseMessage) {
+    queueMessage(message: BaseMessage | ArrayBuffer) {
       this.messageQueue.push(message);
     },
 
@@ -59,7 +61,9 @@ export const useWebSocketStore = defineStore('websocket', {
       while (this.messageQueue.length > 0) {
         const message = this.messageQueue.shift();
         if (message) {
-          this.sendMessage(message);
+          window.dispatchEvent(new CustomEvent('websocket:send', {
+            detail: message
+          }));
         }
       }
     },
@@ -67,7 +71,7 @@ export const useWebSocketStore = defineStore('websocket', {
     transformNode(wsNode: WebSocketNode): Node {
       return {
         id: wsNode.id,
-        label: wsNode.label || wsNode.id, // Use id as fallback if label is missing
+        label: wsNode.label || wsNode.id,
         position: wsNode.position,
         velocity: wsNode.velocity,
         size: wsNode.size,
@@ -80,7 +84,7 @@ export const useWebSocketStore = defineStore('websocket', {
 
     transformEdge(wsEdge: WebSocketEdge): Edge {
       return {
-        id: wsEdge.id || `${wsEdge.source}-${wsEdge.target}`, // Generate id if missing
+        id: wsEdge.id || `${wsEdge.source}-${wsEdge.target}`,
         source: wsEdge.source,
         target: wsEdge.target,
         weight: wsEdge.weight,
@@ -90,6 +94,28 @@ export const useWebSocketStore = defineStore('websocket', {
         metadata: wsEdge.metadata || {},
         userData: wsEdge.userData
       };
+    },
+
+    handleBinaryMessage(message: BinaryMessage) {
+      const visualizationStore = useVisualizationStore();
+      
+      // Update node positions in visualization store
+      if (this.graphData?.nodes) {
+        // Transform positions into [id, position] tuples
+        const positionUpdates: Array<[string, [number, number, number]]> = 
+          this.graphData.nodes.map((node, index) => {
+            const update = message.positions[index];
+            if (update) {
+              return [
+                node.id,
+                [update.x, update.y, update.z]
+              ];
+            }
+            return [node.id, node.position || [0, 0, 0]];
+          });
+
+        visualizationStore.updateNodePositions(positionUpdates);
+      }
     },
 
     async handleMessage(message: BaseMessage) {
@@ -146,7 +172,7 @@ export const useWebSocketStore = defineStore('websocket', {
       }
     },
 
-    sendMessage(message: BaseMessage) {
+    sendMessage(message: BaseMessage | ArrayBuffer) {
       if (!this.isConnected) {
         this.queueMessage(message);
         return;
