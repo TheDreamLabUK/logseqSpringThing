@@ -1,6 +1,5 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import VueThreejs from 'vue-threejs'
 import App from './components/App.vue'
 import { errorTracking } from './services/errorTracking'
 
@@ -32,9 +31,6 @@ if (process.env.NODE_ENV === 'development') {
 // Create and use Pinia
 const pinia = createPinia()
 app.use(pinia)
-
-// Use VueThreejs
-app.use(VueThreejs)
 
 // Add error tracking to Pinia
 pinia.use(() => {

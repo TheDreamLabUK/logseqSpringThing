@@ -7,14 +7,6 @@
       <div v-if="showDebugPanel" class="connection-status" :class="{ connected: isConnected }">
         WebSocket: {{ isConnected ? 'Connected' : 'Disconnected' }}
       </div>
-      <button 
-        v-if="isQuest3WithPassthrough" 
-        @click="toggleAR"
-        class="ar-toggle-button"
-        :class="{ active: isARActive }"
-      >
-        {{ isARActive ? 'Exit Mixed Reality' : 'Enter Mixed Reality' }}
-      </button>
     </div>
   </ErrorBoundary>
 </template>
@@ -24,39 +16,37 @@ import { defineComponent, onMounted, onErrorCaptured, ref, computed, onBeforeUnm
 import { useSettingsStore } from '../stores/settings'
 import { useVisualizationStore } from '../stores/visualization'
 import { useWebSocketStore } from '../stores/websocket'
-import { usePlatform } from '../composables/usePlatform'
 import ControlPanel from '@components/ControlPanel.vue'
 import ErrorBoundary from '@components/ErrorBoundary.vue'
 import DebugPanel from '@components/DebugPanel.vue'
 import { errorTracking } from '../services/errorTracking'
 import WebsocketService from '../services/websocketService'
 import { useVisualization } from '../composables/useVisualization'
-import { useForceGraph } from '../composables/useForceGraph'
-import type { BaseMessage, GraphUpdateMessage, ErrorMessage, WebSocketEventMap, Node as WSNode, Edge as WSEdge } from '../types/websocket'
+import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge } from '../types/websocket'
 import type { Node as CoreNode, Edge as CoreEdge } from '../types/core'
-import type { XRSession, XRSessionMode, QuestInitOptions } from '../types/platform/quest'
 
-// Transform functions remain exactly the same
+// Transform websocket node to core node
 const transformNode = (wsNode: WSNode): CoreNode => ({
   id: wsNode.id,
-  label: wsNode.label || wsNode.id,
-  position: wsNode.position || [0, 0, 0],
-  velocity: [0, 0, 0],
-  size: wsNode.size || 1,
+  label: wsNode.label || wsNode.id, // Use id as fallback for label
+  position: wsNode.position,
+  velocity: wsNode.velocity,
+  size: wsNode.size,
   color: wsNode.color,
-  type: wsNode.type || 'default',
+  type: wsNode.type,
   metadata: wsNode.metadata || {},
   userData: wsNode.userData || {}
 })
 
+// Transform websocket edge to core edge
 const transformEdge = (wsEdge: WSEdge): CoreEdge => ({
-  id: `${wsEdge.source}-${wsEdge.target}`,
+  id: `${wsEdge.source}-${wsEdge.target}`, // Generate id from source and target
   source: wsEdge.source,
   target: wsEdge.target,
-  weight: wsEdge.weight || 1,
-  width: wsEdge.width || 1,
+  weight: wsEdge.weight,
+  width: wsEdge.width,
   color: wsEdge.color,
-  type: wsEdge.type || 'default',
+  type: wsEdge.type,
   metadata: wsEdge.metadata || {},
   userData: wsEdge.userData || {}
 })
@@ -72,83 +62,25 @@ export default defineComponent({
     const settingsStore = useSettingsStore()
     const visualizationStore = useVisualizationStore()
     const websocketStore = useWebSocketStore()
-    const { getPlatformInfo, hasXRSupport } = usePlatform()
     const websocketService = ref<WebsocketService | null>(null)
     const sceneContainer = ref<HTMLElement | null>(null)
-    const forceGraph = ref<ReturnType<typeof useForceGraph> | null>(null)
     const isDebugMode = ref(
       window.location.search.includes('debug') || 
       process.env.NODE_ENV === 'development'
     )
     const isConnected = computed(() => websocketStore.connected)
-    const isARActive = ref(false)
-
-    // Enhanced Quest 3 detection with passthrough capability
-    const isQuest3WithPassthrough = computed(() => {
-      const ua = navigator.userAgent
-      const isQuest3 = /Quest 3/i.test(ua)
-      if (!isQuest3) return false
-
-      // Check for color passthrough support
-      return 'xr' in navigator && hasXRSupport() && (navigator as any).xr?.isSessionSupported('immersive-ar' as XRSessionMode)
-    })
 
     // Initialize visualization system
-    const { state: visualizationState, initialize: initVisualization } = useVisualization()
+    const { initialize: initVisualization, updateNodes } = useVisualization()
 
     // Show debug panel in development or when debug mode is enabled
     const showDebugPanel = computed(() => isDebugMode.value)
 
-    // Toggle AR mode
-    const toggleAR = async () => {
-      try {
-        if (!isARActive.value) {
-          // Request AR session with passthrough
-          const sessionInit: QuestInitOptions['xr'] = {
-            optionalFeatures: ['local-floor', 'plane-detection', 'hand-tracking', 'layers', 'color-passthrough'],
-            requiredFeatures: ['local-floor'],
-            sessionMode: 'immersive-ar'
-          }
-
-          const session = await (navigator as any).xr?.requestSession('immersive-ar' as XRSessionMode, {
-            ...sessionInit,
-            domOverlay: { root: document.getElementById('app') }
-          }) as XRSession
-
-          if (session && visualizationState.value.renderer) {
-            console.log('AR session started')
-            isARActive.value = true
-            
-            // Set up session end handler
-            session.addEventListener('end', () => {
-              console.log('AR session ended')
-              isARActive.value = false
-            })
-
-            // Bind session to renderer
-            await visualizationState.value.renderer.xr.setSession(session)
-          }
-        } else {
-          // End current AR session
-          const session = visualizationState.value.renderer?.xr.getSession()
-          if (session) {
-            await session.end()
-          }
-        }
-      } catch (error) {
-        console.error('Error toggling AR mode:', error)
-        errorTracking.trackError(error, {
-          context: 'AR Toggle',
-          component: 'App'
-        })
-      }
-    }
-
     // Watch for graph data updates from the store
     watch(() => visualizationStore.nodes, (newNodes) => {
-      if (forceGraph.value && newNodes.length > 0) {
-        console.log('Updating force graph with nodes:', newNodes.length)
-        forceGraph.value.updateGraph(newNodes, visualizationStore.edges)
+      if (newNodes.length > 0) {
+        console.log('Updating visualization with nodes:', newNodes.length)
+        updateNodes(newNodes)
       }
     }, { deep: true })
 
@@ -173,12 +105,6 @@ export default defineComponent({
               powerPreference: 'high-performance'
             }
           })
-
-          // Initialize force graph after scene is ready
-          if (visualizationState.value.scene) {
-            console.log('Initializing force graph...')
-            forceGraph.value = useForceGraph(visualizationState.value.scene)
-          }
         }
 
         // Initialize WebSocket service
@@ -203,15 +129,18 @@ export default defineComponent({
           websocketStore.handleMessage(data)
         })
 
-        websocketService.value.on('graphUpdate', ({ graphData }: WebSocketEventMap['graphUpdate']) => {
+        websocketService.value.on('graphUpdate', ({ graphData }: GraphUpdateMessage) => {
           console.log('Received graph update:', {
             nodes: graphData.nodes.length,
             edges: graphData.edges.length,
             metadata: graphData.metadata
           })
+          // Transform nodes and edges before setting graph data
+          const transformedNodes = graphData.nodes.map(transformNode)
+          const transformedEdges = graphData.edges.map(transformEdge)
           visualizationStore.setGraphData(
-            graphData.nodes.map(transformNode),
-            graphData.edges.map(transformEdge),
+            transformedNodes,
+            transformedEdges,
             graphData.metadata
           )
         })
@@ -226,19 +155,10 @@ export default defineComponent({
         })
 
         // Log environment info
-        console.info('Environment', {
-          context: 'App Setup',
-          nodeEnv: process.env.NODE_ENV,
-          debug: isDebugMode.value,
-          userAgent: navigator.userAgent,
-          webGL: {
-            renderer: document.createElement('canvas')
-              .getContext('webgl2')
-              ?.getParameter(WebGL2RenderingContext.RENDERER),
-            vendor: document.createElement('canvas')
-              .getContext('webgl2')
-              ?.getParameter(WebGL2RenderingContext.VENDOR)
-          }
+        console.info('Application initialized', {
+          context: 'App Initialization',
+          environment: process.env.NODE_ENV,
+          debug: isDebugMode.value
         })
 
         // Set up window event listener for websocket messages
@@ -261,10 +181,6 @@ export default defineComponent({
       // Clean up WebSocket service
       if (websocketService.value) {
         websocketService.value.cleanup()
-      }
-      // Clean up force graph
-      if (forceGraph.value) {
-        forceGraph.value.dispose()
       }
     })
 
@@ -302,10 +218,7 @@ export default defineComponent({
     return {
       showDebugPanel,
       sceneContainer,
-      isConnected,
-      isQuest3WithPassthrough,
-      isARActive,
-      toggleAR
+      isConnected
     }
   }
 })
@@ -359,32 +272,6 @@ body, html {
 
 .connection-status.connected {
   color: #44ff44;
-}
-
-.ar-toggle-button {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 12px 24px;
-  background-color: rgba(0, 0, 0, 0.8);
-  color: #ffffff;
-  border: 2px solid #ffffff;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  z-index: 1000;
-}
-
-.ar-toggle-button:hover {
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
-.ar-toggle-button.active {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-color: #44ff44;
 }
 
 /* Debug styles */

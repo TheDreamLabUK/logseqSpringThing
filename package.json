@@ -17,8 +17,7 @@
     "pako": "^2.1.0",
     "pinia": "2.2.2",
     "three": "0.170.0",
-    "vue": "3.3.4",
-    "vue-threejs": "0.2.0-alpha.1"
+    "vue": "3.3.4"
   },
   "devDependencies": {
     "@types/dat.gui": "^0.7.13",
