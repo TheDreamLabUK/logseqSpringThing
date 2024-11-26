@@ -1,16 +1,19 @@
 import { defineStore } from 'pinia';
-import type { WebSocketState } from '@/types/stores';
+import type { WebSocketState } from '../types/stores';
 import type { 
   BaseMessage, 
   GraphUpdateMessage, 
   ErrorMessage,
-  MessageType
-} from '@/types/websocket';
+  MessageType,
+  Node as WebSocketNode,
+  Edge as WebSocketEdge
+} from '../types/websocket';
 import type {
   VisualizationConfig,
   BloomConfig,
   FisheyeConfig
-} from '@/types/components';
+} from '../types/components';
+import type { Node, Edge } from '../types/core';
 import { useVisualizationStore } from './visualization';
 import { useSettingsStore } from './settings';
 
@@ -61,6 +64,34 @@ export const useWebSocketStore = defineStore('websocket', {
       }
     },
 
+    transformNode(wsNode: WebSocketNode): Node {
+      return {
+        id: wsNode.id,
+        label: wsNode.label || wsNode.id, // Use id as fallback if label is missing
+        position: wsNode.position,
+        velocity: wsNode.velocity,
+        size: wsNode.size,
+        color: wsNode.color,
+        type: wsNode.type,
+        metadata: wsNode.metadata || {},
+        userData: wsNode.userData
+      };
+    },
+
+    transformEdge(wsEdge: WebSocketEdge): Edge {
+      return {
+        id: wsEdge.id || `${wsEdge.source}-${wsEdge.target}`, // Generate id if missing
+        source: wsEdge.source,
+        target: wsEdge.target,
+        weight: wsEdge.weight,
+        width: wsEdge.width,
+        color: wsEdge.color,
+        type: wsEdge.type,
+        metadata: wsEdge.metadata || {},
+        userData: wsEdge.userData
+      };
+    },
+
     async handleMessage(message: BaseMessage) {
       const visualizationStore = useVisualizationStore();
       const settingsStore = useSettingsStore();
@@ -70,12 +101,19 @@ export const useWebSocketStore = defineStore('websocket', {
           case 'graphUpdate':
           case 'graphData': {
             const graphMessage = message as GraphUpdateMessage;
+            const transformedNodes = graphMessage.graphData.nodes.map(node => this.transformNode(node));
+            const transformedEdges = graphMessage.graphData.edges.map(edge => this.transformEdge(edge));
+            
             visualizationStore.setGraphData(
-              graphMessage.graphData.nodes,
-              graphMessage.graphData.edges,
-              graphMessage.graphData.metadata
+              transformedNodes,
+              transformedEdges,
+              graphMessage.graphData.metadata || {}
             );
-            this.graphData = graphMessage.graphData;
+            this.graphData = {
+              nodes: transformedNodes,
+              edges: transformedEdges,
+              metadata: graphMessage.graphData.metadata || {}
+            };
             break;
           }
 

@@ -1,5 +1,6 @@
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import type { BrowserCoreState, Transform, Viewport, SceneConfig, PerformanceConfig } from '../core';
+import type { Vector2 } from 'three';
 
 export interface BrowserInitOptions {
   canvas: HTMLCanvasElement;
@@ -24,6 +25,9 @@ export interface BrowserState extends BrowserCoreState {
   controls: OrbitControls | null;
   viewport: Viewport;
   transform: Transform;
+  mousePosition: Vector2;
+  touchActive: boolean;
+  pointerLocked: boolean;
   config: {
     scene: SceneConfig;
     performance: PerformanceConfig;

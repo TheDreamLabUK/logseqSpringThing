@@ -2,6 +2,9 @@ import type { Node, Edge } from './core';
 import type { VisualizationConfig, BloomConfig, FisheyeConfig } from './components';
 import type { BaseMessage } from './websocket';
 
+// Re-export core types
+export type { Node, Edge };
+
 // Visualization Store Types
 export interface VisualizationState {
   nodes: Node[];

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import type { VisualizationState, Node, Edge } from '@/types/stores';
+import type { VisualizationState, Node, Edge } from '../types/stores';
 
 export const useVisualizationStore = defineStore('visualization', {
   state: (): VisualizationState => ({

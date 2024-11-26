@@ -1,14 +1,21 @@
-import { defineConfig, loadEnv } from 'vite';
-import vue from '@vitejs/plugin-vue';
-import path from 'path';
+import { defineConfig, loadEnv } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
   // Load env file based on `mode` in the current working directory.
-  const env = loadEnv(mode, process.cwd(), '');
+  const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [vue()],
+    plugins: [
+      vue({
+        script: {
+          defineModel: true,
+          propsDestructure: true
+        }
+      })
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './client'),
@@ -35,27 +42,23 @@ export default defineConfig(({ command, mode }) => {
             ],
             vue: ['vue', 'pinia'],
             platform: mode === 'quest' ? [
-              '@/platform/quest',
-              '@/xr/handTracking',
-              '@/xr/spatialAudio'
+              'platform/quest',
+              'xr/handTracking',
+              'xr/spatialAudio'
             ] : [
-              '@/platform/browser',
-              '@/visualization/effects'
+              'platform/browser',
+              'visualization/effects'
             ]
           },
-          // Optimize chunk size
           chunkSizeWarningLimit: 1000,
-          // Dynamic imports for large modules
           dynamicImportVarsOptions: {
             warnOnError: true,
             exclude: []
           }
         }
       },
-      // Platform-specific optimizations
       terserOptions: {
         compress: {
-          // Production optimizations
           drop_console: mode === 'production',
           drop_debugger: mode === 'production',
           pure_funcs: mode === 'production' ? ['console.log', 'console.info'] : []
@@ -75,7 +78,6 @@ export default defineConfig(({ command, mode }) => {
       ],
       exclude: mode === 'quest' ? ['@oculus-native'] : []
     },
-    // Development server configuration
     server: {
       port: 3000,
       host: true,
@@ -86,11 +88,10 @@ export default defineConfig(({ command, mode }) => {
         ignored: ['**/dist/**']
       }
     },
-    // Environment variables
     define: {
       __VUE_OPTIONS_API__: false,
       __VUE_PROD_DEVTOOLS__: mode !== 'production',
       __PLATFORM__: JSON.stringify(mode === 'quest' ? 'quest' : 'browser')
     }
-  };
-});
+  }
+})

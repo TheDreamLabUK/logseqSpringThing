@@ -1,27 +1,27 @@
 <template>
-  <group ref="graphGroup">
+  <Group ref="graphGroup">
     <!-- Nodes -->
-    <group ref="nodesGroup">
+    <Group ref="nodesGroup">
       <template v-for="node in nodes" :key="node.id">
-        <mesh
+        <Mesh
           :position="nodePosition(node)"
           :scale="nodeScale(node)"
           @click="handleNodeClick(node)"
           @pointerenter="handleNodeHover(node, true)"
           @pointerleave="handleNodeHover(node, false)"
         >
-          <sphere-geometry :args="[1, 32, 32]" />
-          <mesh-standard-material
+          <SphereGeometry :args="[1, 32, 32]" />
+          <MeshStandardMaterial
             :color="nodeColor(node)"
             :metalness="visualSettings.material.node_material_metalness"
             :roughness="visualSettings.material.node_material_roughness"
             :opacity="visualSettings.material.node_material_opacity"
             :transparent="true"
           />
-        </mesh>
+        </Mesh>
         
         <!-- Node Label -->
-        <html
+        <Html
           v-if="node.label"
           :position="nodeLabelPosition(node)"
           :occlude="true"
@@ -31,14 +31,14 @@
           <div class="node-label" :class="{ 'is-hovered': hoveredNode === node.id }">
             {{ node.label }}
           </div>
-        </html>
+        </Html>
       </template>
-    </group>
+    </Group>
 
     <!-- Edges -->
-    <group ref="edgesGroup">
+    <Group ref="edgesGroup">
       <template v-for="edge in edges" :key="`${edge.source}-${edge.target}`">
-        <line
+        <Line
           :points="edgePoints(edge)"
           :color="edgeColor(edge)"
           :linewidth="edgeWidth(edge)"
@@ -46,7 +46,7 @@
           :transparent="true"
         />
       </template>
-    </group>
+    </Group>
 
     <!-- Force Simulation -->
     <movement-system
@@ -63,17 +63,34 @@
         :mass="1"
       />
     </movement-system>
-  </group>
+  </Group>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, watch } from 'vue';
+import { defineComponent, ref, computed } from 'vue';
 import { Vector3 } from 'three';
-import type { GraphNode, GraphEdge } from '@/types/core';
-import type { VisualizationConfig } from '@/types/components';
+import {
+  Group,
+  Mesh,
+  SphereGeometry,
+  MeshStandardMaterial,
+  Line,
+  Html
+} from 'vue-threejs';
+import type { Node as GraphNode, Edge as GraphEdge } from '../../types/core';
+import type { VisualizationConfig } from '../../types/components';
 
 export default defineComponent({
   name: 'GraphSystem',
+
+  components: {
+    Group,
+    Mesh,
+    SphereGeometry,
+    MeshStandardMaterial,
+    Line,
+    Html
+  },
 
   props: {
     nodes: {
@@ -130,7 +147,7 @@ export default defineComponent({
     };
 
     // Edge points helper
-    const edgePoints = (edge: GraphEdge) => {
+    const edgePoints = computed(() => (edge: GraphEdge) => {
       const sourceNode = props.nodes.find(n => n.id === edge.source);
       const targetNode = props.nodes.find(n => n.id === edge.target);
       
@@ -143,7 +160,7 @@ export default defineComponent({
         new Vector3(source.x, source.y, source.z),
         new Vector3(target.x, target.y, target.z)
       ];
-    };
+    });
 
     // Edge color helper
     const edgeColor = (edge: GraphEdge) => {

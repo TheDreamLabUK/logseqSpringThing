@@ -18,7 +18,7 @@
             <template v-if="control.type === 'color'">
               <input type="color"
                      :value="control.value"
-                     @input="(e) => handleColorInput(e, group.name, control.name)">
+                     @input="($event: Event) => handleColorInput($event, group.name, control.name)">
             </template>
             
             <!-- Range Input -->
@@ -28,15 +28,16 @@
                      :max="control.max"
                      :step="control.step"
                      :value="control.value"
-                     @input="(e) => handleRangeInput(e, group.name, control.name)">
+                     @input="($event: Event) => handleRangeInput($event, group.name, control.name)">
               <span class="range-value">{{ typeof control.value === 'number' ? control.value.toFixed(2) : control.value }}</span>
             </template>
             
             <!-- Checkbox Input -->
             <template v-if="control.type === 'checkbox'">
               <input type="checkbox"
-                     :checked="control.value"
-                     @change="(e) => handleCheckboxChange(e, group.name, control.name)">
+                     :value="control.value"
+                     :checked="Boolean(control.value)"
+                     @change="($event: Event) => handleCheckboxChange($event, group.name, control.name)">
             </template>
           </div>
         </div>
@@ -55,10 +56,10 @@
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useSettingsStore } from '@/stores/settings';
-import { useControlGroups } from '@/composables/useControlGroups';
-import { useControlSettings } from '@/composables/useControlSettings';
-import type { ControlGroup } from '@/types/components';
+import { useSettingsStore } from '../stores/settings';
+import { useControlGroups } from '../composables/useControlGroups';
+import { useControlSettings } from '../composables/useControlSettings';
+import type { ControlGroup } from '../types/components';
 
 export default defineComponent({
   name: 'ControlPanel',

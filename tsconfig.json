@@ -1,24 +1,21 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
-    "useDefineForClassFields": true,
-    "module": "ESNext",
-    "moduleResolution": "Node",
+    "target": "es2020",
+    "module": "esnext",
+    "moduleResolution": "node",
     "strict": true,
     "jsx": "preserve",
+    "sourceMap": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
     "esModuleInterop": true,
-    "lib": ["ESNext", "DOM", "WebGL2"],
     "skipLibCheck": true,
-    "noEmit": true,
+    "lib": ["esnext", "dom"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["client/*"]
+      "@/*": ["./client/*"]
     },
-    "types": ["vite/client", "node", "three"],
-    "allowJs": true,
-    "checkJs": true
+    "types": ["node"],
+    "allowJs": true
   },
   "include": [
     "client/**/*.ts",
@@ -27,5 +24,5 @@
     "client/**/*.vue",
     "vite.config.ts"
   ],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "exclude": ["node_modules"]
 }

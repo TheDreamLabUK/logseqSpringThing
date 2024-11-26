@@ -3,7 +3,7 @@ import type { CoreState, PlatformCapabilities } from '../types/core';
 import type { BrowserState, BrowserInitOptions } from '../types/platform/browser';
 import type { QuestState, QuestInitOptions, XRController, XRHand, XRHandedness, XRSession } from '../types/platform/quest';
 import * as THREE from 'three';
-import type { Object3D, Material, BufferGeometry, Camera, Group, WebGLRenderer } from 'three';
+import type { Object3D, Material, BufferGeometry, PerspectiveCamera, OrthographicCamera, Group, WebGLRenderer, Camera } from 'three';
 
 // Import OrbitControls dynamically to avoid type conflicts
 let OrbitControls: any;
@@ -133,7 +133,7 @@ export class PlatformManager {
     }
   }
 
-  private async initializeQuest(options: QuestInitOptions) {
+private async initializeQuest(options: QuestInitOptions) {
     const renderer = new THREE.WebGLRenderer({
       canvas: options.canvas,
       antialias: options.scene?.antialias ?? true,
@@ -189,7 +189,7 @@ export class PlatformManager {
 
     this.state.value = {
       renderer,
-      camera: camera as Camera,
+      camera,
       scene,
       canvas: options.canvas,
       isInitialized: true,
@@ -249,7 +249,7 @@ export class PlatformManager {
 
     this.state.value = {
       renderer,
-      camera: camera as Camera,
+      camera,
       scene,
       canvas: options.canvas,
       controls,

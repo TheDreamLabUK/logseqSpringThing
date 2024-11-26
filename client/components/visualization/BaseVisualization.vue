@@ -1,13 +1,13 @@
 <template>
-  <renderer
+  <Renderer
     :antialias="true"
     :xr="platformInfo.hasXRSupport"
     :size="{ w: windowSize.width, h: windowSize.height }"
     ref="renderer"
   >
-    <scene ref="scene">
+    <Scene ref="scene">
       <!-- Camera System -->
-      <camera
+      <Camera
         :position="cameraPosition"
         :fov="75"
         :aspect="aspect"
@@ -17,13 +17,13 @@
       />
 
       <!-- Lighting -->
-      <ambient-light :intensity="1.5" />
-      <directional-light
+      <AmbientLight :intensity="1.5" />
+      <DirectionalLight
         :position="{ x: 10, y: 20, z: 10 }"
         :intensity="2.0"
         :cast-shadow="true"
       />
-      <hemisphere-light
+      <HemisphereLight
         :sky-color="0xffffff"
         :ground-color="0x444444"
         :intensity="1.5"
@@ -48,24 +48,42 @@
         <bloom v-if="effectsSettings.bloom.enabled" v-bind="effectsSettings.bloom" />
         <ssao v-if="effectsSettings.ssao.enabled" v-bind="effectsSettings.ssao" />
       </effects-system>
-    </scene>
-  </renderer>
+    </Scene>
+  </Renderer>
 </template>
 
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { useSettingsStore } from '@/stores/settings';
-import { usePlatform } from '@/composables/usePlatform';
-import type { GraphData } from '@/types/core';
+import { useSettingsStore } from '../../stores/settings';
+import { usePlatform } from '../../composables/usePlatform';
+import type { GraphData } from '../../types/core';
+import { WebGLRenderer, Scene as ThreeScene, PerspectiveCamera } from 'three';
+import {
+  Renderer,
+  Scene,
+  Camera,
+  AmbientLight,
+  DirectionalLight,
+  HemisphereLight
+} from 'vue-threejs';
 
 export default defineComponent({
   name: 'BaseVisualization',
 
+  components: {
+    Renderer,
+    Scene,
+    Camera,
+    AmbientLight,
+    DirectionalLight,
+    HemisphereLight
+  },
+
   setup() {
     // Refs for Three.js components
-    const renderer = ref(null);
-    const scene = ref(null);
-    const camera = ref(null);
+    const renderer = ref<WebGLRenderer | null>(null);
+    const scene = ref<ThreeScene | null>(null);
+    const camera = ref<PerspectiveCamera | null>(null);
 
     // Platform and settings
     const { getPlatformInfo } = usePlatform();
@@ -90,7 +108,7 @@ export default defineComponent({
     const effectsSettings = computed(() => ({
       bloom: settingsStore.getBloomSettings,
       ssao: {
-        enabled: false, // Add SSAO settings to store if needed
+        enabled: false,
         radius: 0.5,
         intensity: 1.0,
         bias: 0.5
@@ -129,7 +147,7 @@ export default defineComponent({
           optionalFeatures: ['hand-tracking']
         });
 
-        if (session) {
+        if (session && renderer.value.xr) {
           await renderer.value.xr.setSession(session);
         }
       } catch (error) {

@@ -15,8 +15,8 @@ import { defineComponent, ref, onMounted, onBeforeUnmount } from 'vue';
 
 interface Props {
   message: string;
-  duration: number; // No longer optional since we provide a default
-  dismissible: boolean; // No longer optional since we provide a default
+  duration: number;
+  dismissible: boolean;
 }
 
 export default defineComponent({
@@ -40,7 +40,7 @@ export default defineComponent({
   emits: ['dismiss'],
 
   setup(props: Props, { emit }: { emit: (event: 'dismiss') => void }) {
-    const error = ref(props.message);
+    const error = ref<string | null>(props.message);
     let timeout: number | null = null;
 
     const dismiss = () => {
@@ -51,7 +51,6 @@ export default defineComponent({
     };
 
     onMounted(() => {
-      // Since duration has a default value, it will always be defined
       if (props.duration > 0) {
         timeout = window.setTimeout(() => {
           error.value = null;
