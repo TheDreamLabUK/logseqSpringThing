@@ -13,6 +13,7 @@
 
 <script lang="ts">
 import { defineComponent, onMounted, onErrorCaptured, ref, computed, onBeforeUnmount, ComponentPublicInstance, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '../stores/settings'
 import { useVisualizationStore } from '../stores/visualization'
 import { useWebSocketStore } from '../stores/websocket'
@@ -59,16 +60,20 @@ export default defineComponent({
     DebugPanel
   },
   setup() {
+    // Initialize stores first
     const settingsStore = useSettingsStore()
     const visualizationStore = useVisualizationStore()
     const websocketStore = useWebSocketStore()
+
+    // Get reactive refs from stores
+    const { connected: isConnected } = storeToRefs(websocketStore)
+    
     const websocketService = ref<WebsocketService | null>(null)
     const sceneContainer = ref<HTMLElement | null>(null)
     const isDebugMode = ref(
       window.location.search.includes('debug') || 
       process.env.NODE_ENV === 'development'
     )
-    const isConnected = computed(() => websocketStore.connected)
 
     // Initialize visualization system
     const { initialize: initVisualization, updateNodes } = useVisualization()
@@ -84,28 +89,13 @@ export default defineComponent({
       }
     }, { deep: true })
 
-    onMounted(async () => {
+    // Initialize WebSocket with proper store handling
+    const initializeWebSocket = async () => {
       try {
-        // Initialize settings with defaults
-        settingsStore.applyServerSettings({})
-        console.info('Settings initialized', {
-          context: 'App Setup',
-          settings: settingsStore.$state
-        })
-
-        // Initialize visualization system
-        if (sceneContainer.value) {
-          console.log('Initializing visualization system...')
-          await initVisualization({
-            canvas: document.createElement('canvas'),
-            scene: {
-              antialias: true,
-              alpha: true,
-              preserveDrawingBuffer: true,
-              powerPreference: 'high-performance'
-            }
-          })
-        }
+        // Reset store states
+        websocketStore.$reset()
+        settingsStore.$reset()
+        visualizationStore.reset() // Use store's custom reset method
 
         // Initialize WebSocket service
         console.log('Initializing WebSocket service...')
@@ -153,6 +143,47 @@ export default defineComponent({
             component: 'App'
           })
         })
+
+        // Connect to WebSocket server
+        console.log('Connecting to WebSocket server...')
+        await websocketService.value.connect()
+        console.log('WebSocket connection established')
+
+      } catch (error) {
+        console.error('Error initializing WebSocket:', error)
+        websocketStore.setError(error instanceof Error ? error.message : 'Unknown error')
+        errorTracking.trackError(error, {
+          context: 'WebSocket Initialization',
+          component: 'App'
+        })
+      }
+    }
+
+    onMounted(async () => {
+      try {
+        // Initialize settings with defaults
+        settingsStore.applyServerSettings({})
+        console.info('Settings initialized', {
+          context: 'App Setup',
+          settings: settingsStore.$state
+        })
+
+        // Initialize visualization system
+        if (sceneContainer.value) {
+          console.log('Initializing visualization system...')
+          await initVisualization({
+            canvas: document.createElement('canvas'),
+            scene: {
+              antialias: true,
+              alpha: true,
+              preserveDrawingBuffer: true,
+              powerPreference: 'high-performance'
+            }
+          })
+        }
+
+        // Initialize WebSocket after stores and visualization
+        await initializeWebSocket()
 
         // Log environment info
         console.info('Application initialized', {

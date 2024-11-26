@@ -25,10 +25,7 @@ export default defineComponent({
   setup() {
     const store = useVisualizationStore();
     
-    const nodeData = computed(() => {
-      if (!store.selectedNode) return null;
-      return store.getNodeById(store.selectedNode);
-    });
+    const nodeData = computed(() => store.selectedNode);
 
     const formatKey = (key: string) => {
       return key

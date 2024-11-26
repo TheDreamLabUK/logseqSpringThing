@@ -11,7 +11,36 @@ export const useVisualizationStore = defineStore('visualization', {
     selectedNode: null,
     hoveredNode: null,
     cameraPosition: [0, 0, 100],
-    cameraTarget: [0, 0, 0]
+    cameraTarget: [0, 0, 0],
+    renderSettings: {
+      nodeSize: 5,
+      nodeColor: '#1f77b4',
+      edgeWidth: 1,
+      edgeColor: '#999999',
+      highlightColor: '#ff7f0e',
+      opacity: 1,
+      bloom: {
+        enabled: false,
+        strength: 1,
+        radius: 1,
+        threshold: 0.5
+      },
+      fisheye: {
+        enabled: false,
+        strength: 1,
+        focusPoint: [0, 0, 0],
+        radius: 100
+      }
+    },
+    physicsSettings: {
+      enabled: true,
+      gravity: -1.2,
+      springLength: 100,
+      springStrength: 0.1,
+      repulsion: 50,
+      damping: 0.5,
+      timeStep: 0.016
+    }
   }),
 
   getters: {
@@ -60,12 +89,12 @@ export const useVisualizationStore = defineStore('visualization', {
       });
     },
 
-    selectNode(nodeId: string | null) {
-      this.selectedNode = nodeId;
+    selectNode(node: Node | null) {
+      this.selectedNode = node;
     },
 
-    setHoveredNode(nodeId: string | null) {
-      this.hoveredNode = nodeId;
+    setHoveredNode(node: Node | null) {
+      this.hoveredNode = node;
     },
 
     setCameraPosition(position: [number, number, number]) {
@@ -74,6 +103,14 @@ export const useVisualizationStore = defineStore('visualization', {
 
     setCameraTarget(target: [number, number, number]) {
       this.cameraTarget = target;
+    },
+
+    updateRenderSettings(settings: Partial<VisualizationState['renderSettings']>) {
+      this.renderSettings = { ...this.renderSettings, ...settings };
+    },
+
+    updatePhysicsSettings(settings: Partial<VisualizationState['physicsSettings']>) {
+      this.physicsSettings = { ...this.physicsSettings, ...settings };
     },
 
     setError(error: string | null) {
@@ -92,6 +129,36 @@ export const useVisualizationStore = defineStore('visualization', {
       this.hoveredNode = null;
       this.error = null;
       this.isLoading = false;
+      // Reset settings to defaults
+      this.renderSettings = {
+        nodeSize: 5,
+        nodeColor: '#1f77b4',
+        edgeWidth: 1,
+        edgeColor: '#999999',
+        highlightColor: '#ff7f0e',
+        opacity: 1,
+        bloom: {
+          enabled: false,
+          strength: 1,
+          radius: 1,
+          threshold: 0.5
+        },
+        fisheye: {
+          enabled: false,
+          strength: 1,
+          focusPoint: [0, 0, 0],
+          radius: 100
+        }
+      };
+      this.physicsSettings = {
+        enabled: true,
+        gravity: -1.2,
+        springLength: 100,
+        springStrength: 0.1,
+        repulsion: 50,
+        damping: 0.5,
+        timeStep: 0.016
+      };
     }
   }
 });
