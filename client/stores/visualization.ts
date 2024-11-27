@@ -1,164 +1,322 @@
-import { defineStore } from 'pinia';
-import type { VisualizationState, Node, Edge } from '../types/stores';
+import { defineStore } from 'pinia'
+import type { 
+  Node, 
+  Edge, 
+  GraphNode,
+  GraphEdge,
+  GraphData,
+  FisheyeSettings, 
+  PhysicsSettings,
+  MaterialSettings,
+  BloomSettings,
+  VisualizationSettings
+} from '../types/core'
+
+interface VisualizationState {
+  nodes: Node[]
+  edges: Edge[]
+  graphData: GraphData | null
+  selectedNode: Node | null
+  metadata: Record<string, any>
+  fisheyeSettings: FisheyeSettings
+  physicsSettings: PhysicsSettings
+  materialSettings: MaterialSettings
+  bloomSettings: BloomSettings
+}
 
 export const useVisualizationStore = defineStore('visualization', {
   state: (): VisualizationState => ({
     nodes: [],
     edges: [],
-    metadata: {},
-    isLoading: false,
-    error: null,
+    graphData: null,
     selectedNode: null,
-    hoveredNode: null,
-    cameraPosition: [0, 0, 100],
-    cameraTarget: [0, 0, 0],
-    renderSettings: {
-      nodeSize: 5,
-      nodeColor: '#1f77b4',
-      edgeWidth: 1,
-      edgeColor: '#999999',
-      highlightColor: '#ff7f0e',
-      opacity: 1,
-      bloom: {
-        enabled: false,
-        strength: 1,
-        radius: 1,
-        threshold: 0.5
-      },
-      fisheye: {
-        enabled: false,
-        strength: 1,
-        focusPoint: [0, 0, 0],
-        radius: 100
-      }
+    metadata: {},
+    fisheyeSettings: {
+      enabled: false,
+      strength: 1.0,
+      focusPoint: [0, 0, 0],
+      radius: 100
     },
     physicsSettings: {
       enabled: true,
       gravity: -1.2,
       springLength: 100,
       springStrength: 0.1,
-      repulsion: 50,
+      repulsion: 1.0,
       damping: 0.5,
       timeStep: 0.016
+    },
+    materialSettings: {
+      nodeSize: 1.0,
+      nodeColor: '#ffffff',
+      edgeWidth: 1.0,
+      edgeColor: '#666666',
+      highlightColor: '#ff0000',
+      opacity: 1.0,
+      metalness: 0.5,
+      roughness: 0.5
+    },
+    bloomSettings: {
+      enabled: true,
+      strength: 1.5,
+      radius: 0.4,
+      threshold: 0.6
     }
   }),
 
   getters: {
-    getNodeById: (state) => (id: string) => 
-      state.nodes.find(node => node.id === id),
-
-    getConnectedNodes: (state) => (nodeId: string) => {
-      const connectedEdges = state.edges.filter(
-        edge => edge.source === nodeId || edge.target === nodeId
-      );
-      const connectedNodeIds = new Set(
-        connectedEdges.flatMap(edge => [edge.source, edge.target])
-      );
-      connectedNodeIds.delete(nodeId);
-      return Array.from(connectedNodeIds);
+    getNodeById: (state) => (id: string) => {
+      return state.nodes.find(node => node.id === id)
     },
 
-    getNodePosition: (state) => (nodeId: string) => {
-      const node = state.nodes.find(n => n.id === nodeId);
-      return node?.position || [0, 0, 0];
+    getEdgesByNodeId: (state) => (nodeId: string) => {
+      return state.edges.filter(edge => 
+        edge.source === nodeId || edge.target === nodeId
+      )
     },
 
-    getVisibleNodes: (state) => {
-      // TODO: Implement frustum culling logic
-      return state.nodes;
-    }
+    getGraphData: (state): GraphData | null => state.graphData,
+    getFisheyeSettings: (state): FisheyeSettings => state.fisheyeSettings,
+    getPhysicsSettings: (state): PhysicsSettings => state.physicsSettings,
+    getMaterialSettings: (state): MaterialSettings => state.materialSettings,
+    getBloomSettings: (state): BloomSettings => state.bloomSettings,
+    
+    getVisualizationSettings: (state): VisualizationSettings => ({
+      material: state.materialSettings,
+      physics: state.physicsSettings,
+      bloom: state.bloomSettings,
+      fisheye: state.fisheyeSettings
+    })
   },
 
   actions: {
     setGraphData(nodes: Node[], edges: Edge[], metadata: Record<string, any> = {}) {
-      this.nodes = nodes;
-      this.edges = edges;
-      this.metadata = metadata;
-    },
+      console.log('Setting graph data:', {
+        nodes: nodes.length,
+        edges: edges.length,
+        metadata: Object.keys(metadata).length
+      })
 
-    updateNodePosition(nodeId: string, position: [number, number, number]) {
-      const node = this.nodes.find(n => n.id === nodeId);
-      if (node) {
-        node.position = position;
+      // Convert to graph data structure
+      const graphNodes = nodes.map(node => ({
+        ...node,
+        edges: [],
+        weight: 1
+      })) as GraphNode[]
+
+      // Create node lookup for edge processing
+      const nodeLookup = new Map<string, GraphNode>()
+      graphNodes.forEach(node => nodeLookup.set(node.id, node))
+
+      // Convert edges and link to nodes
+      const graphEdges = edges.map(edge => {
+        const sourceNode = nodeLookup.get(edge.source)
+        const targetNode = nodeLookup.get(edge.target)
+        if (!sourceNode || !targetNode) {
+          console.warn('Edge references missing node:', edge)
+          return null
+        }
+        const graphEdge: GraphEdge = {
+          ...edge,
+          sourceNode,
+          targetNode,
+          directed: false
+        }
+        sourceNode.edges.push(edge)
+        targetNode.edges.push(edge)
+        return graphEdge
+      }).filter((edge): edge is GraphEdge => edge !== null)
+
+      this.nodes = nodes
+      this.edges = edges
+      this.metadata = metadata
+      this.graphData = {
+        nodes: graphNodes,
+        edges: graphEdges,
+        metadata
       }
     },
 
-    updateNodePositions(positions: Array<[string, [number, number, number]]>) {
-      positions.forEach(([id, pos]) => {
-        this.updateNodePosition(id, pos);
-      });
-    },
-
-    selectNode(node: Node | null) {
-      this.selectedNode = node;
-    },
-
-    setHoveredNode(node: Node | null) {
-      this.hoveredNode = node;
-    },
-
-    setCameraPosition(position: [number, number, number]) {
-      this.cameraPosition = position;
-    },
-
-    setCameraTarget(target: [number, number, number]) {
-      this.cameraTarget = target;
-    },
-
-    updateRenderSettings(settings: Partial<VisualizationState['renderSettings']>) {
-      this.renderSettings = { ...this.renderSettings, ...settings };
-    },
-
-    updatePhysicsSettings(settings: Partial<VisualizationState['physicsSettings']>) {
-      this.physicsSettings = { ...this.physicsSettings, ...settings };
-    },
-
-    setError(error: string | null) {
-      this.error = error;
-    },
-
-    setLoading(loading: boolean) {
-      this.isLoading = loading;
-    },
-
-    reset() {
-      this.nodes = [];
-      this.edges = [];
-      this.metadata = {};
-      this.selectedNode = null;
-      this.hoveredNode = null;
-      this.error = null;
-      this.isLoading = false;
-      // Reset settings to defaults
-      this.renderSettings = {
-        nodeSize: 5,
-        nodeColor: '#1f77b4',
-        edgeWidth: 1,
-        edgeColor: '#999999',
-        highlightColor: '#ff7f0e',
-        opacity: 1,
-        bloom: {
-          enabled: false,
-          strength: 1,
-          radius: 1,
-          threshold: 0.5
-        },
-        fisheye: {
-          enabled: false,
-          strength: 1,
-          focusPoint: [0, 0, 0],
-          radius: 100
+    updateNode(nodeId: string, updates: Partial<Node>) {
+      const index = this.nodes.findIndex(n => n.id === nodeId)
+      if (index !== -1) {
+        this.nodes[index] = { ...this.nodes[index], ...updates }
+        
+        // Update graph data if it exists
+        if (this.graphData) {
+          const graphNodeIndex = this.graphData.nodes.findIndex(n => n.id === nodeId)
+          if (graphNodeIndex !== -1) {
+            this.graphData.nodes[graphNodeIndex] = {
+              ...this.graphData.nodes[graphNodeIndex],
+              ...updates
+            }
+          }
         }
-      };
+      }
+    },
+
+    updateNodePositions(updates: { id: string; position: [number, number, number]; velocity?: [number, number, number] }[]) {
+      updates.forEach(update => {
+        const node = this.nodes.find(n => n.id === update.id)
+        if (node) {
+          node.position = update.position
+          if (update.velocity) {
+            node.velocity = update.velocity
+          }
+        }
+      })
+    },
+
+    updateEdge(edgeId: string, updates: Partial<Edge>) {
+      const index = this.edges.findIndex(e => e.id === edgeId)
+      if (index !== -1) {
+        this.edges[index] = { ...this.edges[index], ...updates }
+      }
+    },
+
+    updateFisheyeSettings(settings: Partial<FisheyeSettings>) {
+      console.log('Updating fisheye settings:', settings)
+      this.fisheyeSettings = {
+        ...this.fisheyeSettings,
+        ...settings
+      }
+    },
+
+    updatePhysicsSettings(settings: Partial<PhysicsSettings>) {
+      console.log('Updating physics settings:', settings)
+      this.physicsSettings = {
+        ...this.physicsSettings,
+        ...settings
+      }
+    },
+
+    updateMaterialSettings(settings: Partial<MaterialSettings>) {
+      console.log('Updating material settings:', settings)
+      this.materialSettings = {
+        ...this.materialSettings,
+        ...settings
+      }
+    },
+
+    updateBloomSettings(settings: Partial<BloomSettings>) {
+      console.log('Updating bloom settings:', settings)
+      this.bloomSettings = {
+        ...this.bloomSettings,
+        ...settings
+      }
+    },
+
+    setSelectedNode(node: Node | null) {
+      this.selectedNode = node
+    },
+
+    addNode(node: Node) {
+      if (!this.nodes.find(n => n.id === node.id)) {
+        this.nodes.push(node)
+        if (this.graphData) {
+          const graphNode: GraphNode = {
+            ...node,
+            edges: [],
+            weight: 1
+          }
+          this.graphData.nodes.push(graphNode)
+        }
+      }
+    },
+
+    removeNode(nodeId: string) {
+      const index = this.nodes.findIndex(n => n.id === nodeId)
+      if (index !== -1) {
+        this.nodes.splice(index, 1)
+        // Remove associated edges
+        this.edges = this.edges.filter(edge => 
+          edge.source !== nodeId && edge.target !== nodeId
+        )
+        
+        // Update graph data if it exists
+        if (this.graphData) {
+          this.graphData.nodes = this.graphData.nodes.filter(n => n.id !== nodeId)
+          this.graphData.edges = this.graphData.edges.filter(edge => 
+            edge.sourceNode.id !== nodeId && edge.targetNode.id !== nodeId
+          )
+        }
+      }
+    },
+
+    addEdge(edge: Edge) {
+      if (!this.edges.find(e => e.id === edge.id)) {
+        this.edges.push(edge)
+        
+        // Update graph data if it exists
+        if (this.graphData) {
+          const sourceNode = this.graphData.nodes.find(n => n.id === edge.source)
+          const targetNode = this.graphData.nodes.find(n => n.id === edge.target)
+          if (sourceNode && targetNode) {
+            const graphEdge: GraphEdge = {
+              ...edge,
+              sourceNode,
+              targetNode,
+              directed: false
+            }
+            this.graphData.edges.push(graphEdge)
+            sourceNode.edges.push(edge)
+            targetNode.edges.push(edge)
+          }
+        }
+      }
+    },
+
+    removeEdge(edgeId: string) {
+      const index = this.edges.findIndex(e => e.id === edgeId)
+      if (index !== -1) {
+        this.edges.splice(index, 1)
+        
+        // Update graph data if it exists
+        if (this.graphData) {
+          this.graphData.edges = this.graphData.edges.filter(e => e.id !== edgeId)
+        }
+      }
+    },
+
+    clear() {
+      this.nodes = []
+      this.edges = []
+      this.graphData = null
+      this.selectedNode = null
+      this.metadata = {}
+      
+      // Reset settings to defaults
+      this.fisheyeSettings = {
+        enabled: false,
+        strength: 1.0,
+        focusPoint: [0, 0, 0],
+        radius: 100
+      }
       this.physicsSettings = {
         enabled: true,
         gravity: -1.2,
         springLength: 100,
         springStrength: 0.1,
-        repulsion: 50,
+        repulsion: 1.0,
         damping: 0.5,
         timeStep: 0.016
-      };
+      }
+      this.materialSettings = {
+        nodeSize: 1.0,
+        nodeColor: '#ffffff',
+        edgeWidth: 1.0,
+        edgeColor: '#666666',
+        highlightColor: '#ff0000',
+        opacity: 1.0,
+        metalness: 0.5,
+        roughness: 0.5
+      }
+      this.bloomSettings = {
+        enabled: true,
+        strength: 1.5,
+        radius: 0.4,
+        threshold: 0.6
+      }
     }
   }
-});
+})

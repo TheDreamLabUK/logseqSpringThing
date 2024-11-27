@@ -1,22 +1,105 @@
-import type { Vector3, WebGLRenderer, PerspectiveCamera, Scene, Camera, OrthographicCamera } from 'three';
+import type { WebGLRenderer, Scene, PerspectiveCamera, Object3D, Vector3 } from 'three';
 
-// Graph Types
+/**
+ * Core visualization state interface
+ */
+export interface CoreState {
+  renderer: WebGLRenderer | null;
+  camera: PerspectiveCamera | null;
+  scene: Scene | null;
+  canvas: HTMLCanvasElement | null;
+  isInitialized: boolean;
+  isXRSupported: boolean;
+  isWebGL2: boolean;
+  isGPUMode: boolean;
+  fps: number;
+  lastFrameTime: number;
+}
+
+/**
+ * Platform-specific core states
+ */
+export interface BrowserCoreState extends CoreState {
+  type: 'browser';
+}
+
+export interface XRCoreState extends CoreState {
+  type: 'xr';
+  xrSession: any; // XRSession type from WebXR
+}
+
+/**
+ * Transform interface for object positioning
+ */
+export interface Transform {
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: [number, number, number];
+}
+
+/**
+ * Viewport configuration
+ */
+export interface Viewport {
+  width: number;
+  height: number;
+  pixelRatio: number;
+}
+
+/**
+ * Scene configuration
+ */
+export interface SceneConfig {
+  antialias: boolean;
+  alpha: boolean;
+  preserveDrawingBuffer: boolean;
+  powerPreference: 'high-performance' | 'low-power' | 'default';
+}
+
+/**
+ * Performance configuration
+ */
+export interface PerformanceConfig {
+  targetFPS: number;
+  maxDrawCalls: number;
+  enableStats: boolean;
+}
+
+/**
+ * Platform capabilities
+ */
+export interface PlatformCapabilities {
+  webgl2: boolean;
+  xr: boolean;
+  maxTextureSize: number;
+  maxDrawCalls: number;
+  gpuTier: number;
+}
+
+/**
+ * Node interfaces
+ */
 export interface Node {
   id: string;
-  label: string;
+  label?: string;
   position?: [number, number, number];
   velocity?: [number, number, number];
   size?: number;
   color?: string;
   type?: string;
   metadata?: Record<string, any>;
-  userData?: {
-    bloomLayer?: boolean;
-    type?: string;
-    [key: string]: any;
-  };
+  userData?: Record<string, any>;
 }
 
+export interface GraphNode extends Node {
+  edges: Edge[];
+  weight: number;
+  group?: string;
+}
+
+/**
+ * Edge interfaces
+ */
 export interface Edge {
   id: string;
   source: string;
@@ -26,150 +109,129 @@ export interface Edge {
   color?: string;
   type?: string;
   metadata?: Record<string, any>;
-  userData?: {
-    bloomLayer?: boolean;
-    type?: string;
-    [key: string]: any;
-  };
+  userData?: Record<string, any>;
 }
 
-// Aliases for compatibility
-export type GraphNode = Node;
-export type GraphEdge = Edge;
-
-// Platform Types
-export interface CoreState {
-  renderer: WebGLRenderer | null;
-  camera: Camera | null;
-  scene: Scene | null;
-  canvas: HTMLCanvasElement | null;
-  isInitialized: boolean;
-  isXRSupported: boolean;
-  isWebGL2: boolean;
+export interface GraphEdge extends Edge {
+  sourceNode: GraphNode;
+  targetNode: GraphNode;
+  directed: boolean;
 }
 
-export interface BrowserCoreState extends CoreState {
-  renderer: WebGLRenderer;
-  camera: PerspectiveCamera | OrthographicCamera;
-  scene: Scene;
-  canvas: HTMLCanvasElement;
-}
-
-export interface XRCoreState extends CoreState {
-  renderer: WebGLRenderer;
-  camera: PerspectiveCamera;
-  scene: Scene;
-  canvas: HTMLCanvasElement;
-}
-
-export interface Transform {
-  position: Vector3;
-  rotation: Vector3;
-  scale: Vector3;
-}
-
-export interface Viewport {
-  width: number;
-  height: number;
-  pixelRatio: number;
-}
-
-export interface SceneConfig {
-  antialias?: boolean;
-  alpha?: boolean;
-  preserveDrawingBuffer?: boolean;
-  powerPreference?: 'high-performance' | 'low-power' | 'default';
-}
-
-export interface PerformanceConfig {
-  maxFPS?: number;
-  targetFrameTime?: number;
-  enableAdaptiveQuality?: boolean;
-  enableFrustumCulling?: boolean;
-  enableOcclusionCulling?: boolean;
-}
-
-export interface PlatformCapabilities {
-  webgl2: boolean;
-  xr: boolean;
-  multiview: boolean;
-  instancedArrays: boolean;
-  floatTextures: boolean;
-  depthTexture: boolean;
-  drawBuffers: boolean;
-  shaderTextureLOD: boolean;
-}
-
-export interface InitializationOptions {
-  canvas: HTMLCanvasElement;
-  scene?: SceneConfig;
-  performance?: PerformanceConfig;
-}
-
-// Graph Data Types
+/**
+ * Graph data structure
+ */
 export interface GraphData {
-  nodes: Node[];
-  edges: Edge[];
-  metadata?: Record<string, any>;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  metadata: Record<string, any>;
 }
 
-export interface NodePosition {
-  id: string;
-  position: Vector3;
+/**
+ * Fisheye effect settings
+ */
+export interface FisheyeSettings {
+  enabled: boolean;
+  strength: number;
+  focusPoint: [number, number, number];
+  radius: number;
 }
 
-export interface NodeVelocity {
-  id: string;
-  velocity: Vector3;
+/**
+ * Material settings
+ */
+export interface MaterialSettings {
+  nodeSize: number;
+  nodeColor: string;
+  edgeWidth: number;
+  edgeColor: string;
+  highlightColor: string;
+  opacity: number;
+  metalness: number;
+  roughness: number;
 }
 
-export interface NodeUpdate {
-  id: string;
-  position?: Vector3;
-  velocity?: Vector3;
-  metadata?: Record<string, any>;
+/**
+ * Physics simulation settings
+ */
+export interface PhysicsSettings {
+  enabled: boolean;
+  gravity: number;
+  springLength: number;
+  springStrength: number;
+  repulsion: number;
+  damping: number;
+  timeStep: number;
 }
 
-export interface GraphUpdate {
-  nodes?: NodeUpdate[];
-  edges?: Edge[];
-  metadata?: Record<string, any>;
+/**
+ * Bloom effect settings
+ */
+export interface BloomSettings {
+  enabled: boolean;
+  strength: number;
+  radius: number;
+  threshold: number;
 }
 
-export interface GraphMetrics {
-  nodeCount: number;
-  edgeCount: number;
-  density: number;
-  averageDegree: number;
-  clusteringCoefficient: number;
+/**
+ * Complete visualization settings
+ */
+export interface VisualizationSettings {
+  material: MaterialSettings;
+  physics: PhysicsSettings;
+  bloom: BloomSettings;
+  fisheye: FisheyeSettings;
 }
 
-export interface GraphLayout {
-  type: 'force' | 'circular' | 'grid' | 'random';
-  options?: Record<string, any>;
-}
-
-export interface GraphBounds {
-  min: Vector3;
-  max: Vector3;
-  center: Vector3;
-  size: Vector3;
-}
-
-export interface GraphSelection {
-  nodes: Set<string>;
-  edges: Set<string>;
-}
-
-export interface GraphFilter {
-  nodes?: (node: Node) => boolean;
-  edges?: (edge: Edge) => boolean;
-}
-
-export interface GraphStats {
+/**
+ * Performance metrics
+ */
+export interface PerformanceMetrics {
   fps: number;
   drawCalls: number;
   triangles: number;
   points: number;
-  lines: number;
+}
+
+/**
+ * Camera state
+ */
+export interface CameraState {
+  position: [number, number, number];
+  target: [number, number, number];
+  zoom: number;
+}
+
+/**
+ * Renderer capabilities
+ */
+export interface RendererCapabilities {
+  isWebGL2: boolean;
+  maxTextures: number;
+  maxAttributes: number;
+  maxVertices: number;
+  precision: string;
+}
+
+/**
+ * Initialization options
+ */
+export interface InitializationOptions {
+  canvas: HTMLCanvasElement;
+  scene?: Partial<SceneConfig>;
+  performance?: Partial<PerformanceConfig>;
+}
+
+/**
+ * Object3D with additional properties
+ */
+export interface EnhancedObject3D extends Object3D {
+  userData: {
+    id?: string;
+    type?: string;
+    originalPosition?: Vector3;
+    velocity?: Vector3;
+    [key: string]: any;
+  };
 }

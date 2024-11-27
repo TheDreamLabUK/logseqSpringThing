@@ -4,8 +4,12 @@
       <div id="scene-container" ref="sceneContainer"></div>
       <ControlPanel />
       <DebugPanel v-if="showDebugPanel" />
+      <PerformanceDebug :show-debug="showDebugPanel" />
       <div class="connection-status" :class="{ connected: isConnected }">
         WebSocket: {{ isConnected ? 'Connected' : 'Disconnected' }}
+      </div>
+      <div v-if="error" class="error-message">
+        {{ error }}
       </div>
     </div>
   </ErrorBoundary>
@@ -17,12 +21,14 @@ import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '../stores/settings'
 import { useVisualizationStore } from '../stores/visualization'
 import { useWebSocketStore } from '../stores/websocket'
+import { useBinaryUpdateStore } from '../stores/binaryUpdate'
 import ControlPanel from '@components/ControlPanel.vue'
 import ErrorBoundary from '@components/ErrorBoundary.vue'
 import DebugPanel from '@components/DebugPanel.vue'
+import PerformanceDebug from '@components/PerformanceDebug.vue'
 import { errorTracking } from '../services/errorTracking'
 import { useVisualization } from '../composables/useVisualization'
-import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge } from '../types/websocket'
+import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge, BinaryMessage, FisheyeUpdateMessage } from '../types/websocket'
 import type { Node as CoreNode, Edge as CoreEdge } from '../types/core'
 
 // Transform websocket node to core node
@@ -56,25 +62,28 @@ export default defineComponent({
   components: {
     ControlPanel,
     ErrorBoundary,
-    DebugPanel
+    DebugPanel,
+    PerformanceDebug
   },
   setup() {
     // Initialize stores
     const settingsStore = useSettingsStore()
     const visualizationStore = useVisualizationStore()
     const websocketStore = useWebSocketStore()
+    const binaryUpdateStore = useBinaryUpdateStore()
 
     // Get reactive refs from stores
     const { connected: isConnected } = storeToRefs(websocketStore)
     
     const sceneContainer = ref<HTMLElement | null>(null)
+    const error = ref<string | null>(null)
     const isDebugMode = ref(
       window.location.search.includes('debug') || 
       process.env.NODE_ENV === 'development'
     )
 
     // Initialize visualization system
-    const { initialize: initVisualization, updateNodes } = useVisualization()
+    const { initialize: initVisualization, updateNodes, updatePositions, updateFisheyeEffect } = useVisualization()
 
     // Show debug panel in development or when debug mode is enabled
     const showDebugPanel = computed(() => isDebugMode.value)
@@ -84,31 +93,127 @@ export default defineComponent({
       if (newNodes.length > 0) {
         console.log('Updating visualization with nodes:', newNodes.length)
         updateNodes(newNodes)
+        // Clear transient position updates when receiving full mesh update
+        binaryUpdateStore.clear()
       }
     }, { deep: true })
 
-    // Set up graph update handler
+    // Watch for binary position updates
+    watch(() => binaryUpdateStore.getAllPositions, (positions) => {
+      if (positions.length > 0) {
+        updatePositions(positions, binaryUpdateStore.isInitial)
+      }
+    })
+
+    // Watch for fisheye settings updates
+    watch(() => visualizationStore.fisheyeSettings, (settings) => {
+      updateFisheyeEffect(
+        settings.enabled,
+        settings.strength,
+        settings.focusPoint,
+        settings.radius
+      )
+    }, { deep: true })
+
+    // Set up WebSocket message handlers
     if (websocketStore.service) {
-      websocketStore.service.on('graphUpdate', ({ graphData }: GraphUpdateMessage) => {
-        if (!graphData) {
-          console.warn('Received graph update with no data')
-          return
+      // Handle JSON messages
+      websocketStore.service.on('message', (message: BaseMessage) => {
+        console.debug('Received message:', message)
+        switch (message.type) {
+          case 'graphUpdate':
+          case 'graphData':
+            const graphMsg = message as GraphUpdateMessage
+            if (!graphMsg.graphData) {
+              console.warn('Received graph update with no data')
+              return
+            }
+
+            console.log('Received graph update:', {
+              nodes: graphMsg.graphData.nodes?.length || 0,
+              edges: graphMsg.graphData.edges?.length || 0,
+              metadata: graphMsg.graphData.metadata ? Object.keys(graphMsg.graphData.metadata).length : 0
+            })
+
+            // Transform nodes and edges before setting graph data
+            const transformedNodes = (graphMsg.graphData.nodes || []).map(transformNode)
+            const transformedEdges = (graphMsg.graphData.edges || []).map(transformEdge)
+            visualizationStore.setGraphData(
+              transformedNodes,
+              transformedEdges,
+              graphMsg.graphData.metadata || {}
+            )
+            break
+
+          case 'fisheye_settings_updated':
+            const fisheyeMsg = message as FisheyeUpdateMessage
+            visualizationStore.updateFisheyeSettings({
+              enabled: fisheyeMsg.fisheye_enabled,
+              strength: fisheyeMsg.fisheye_strength,
+              focusPoint: [
+                fisheyeMsg.fisheye_focus_x,
+                fisheyeMsg.fisheye_focus_y,
+                fisheyeMsg.fisheye_focus_z
+              ],
+              radius: fisheyeMsg.fisheye_radius
+            })
+            break
+
+          case 'error':
+            const errorMsg = message as ErrorMessage
+            error.value = errorMsg.message
+            errorTracking.trackError(new Error(errorMsg.message), {
+              context: 'WebSocket Error',
+              component: 'App'
+            })
+            break
+
+          case 'settings_updated':
+            settingsStore.applyServerSettings(message.settings)
+            break
+
+          case 'position_update_complete':
+            console.debug('Position update completed:', message.status)
+            break
         }
+      })
 
-        console.log('Received graph update:', {
-          nodes: graphData.nodes?.length || 0,
-          edges: graphData.edges?.length || 0,
-          metadata: graphData.metadata ? Object.keys(graphData.metadata).length : 0
+      // Handle binary messages (GPU position updates)
+      websocketStore.service.on('gpuPositions', (data: BinaryMessage) => {
+        console.debug('Received GPU positions update:', {
+          positions: data.positions.length,
+          isInitial: data.isInitialLayout,
+          timeStep: data.timeStep
         })
-
-        // Transform nodes and edges before setting graph data
-        const transformedNodes = (graphData.nodes || []).map(transformNode)
-        const transformedEdges = (graphData.edges || []).map(transformEdge)
-        visualizationStore.setGraphData(
-          transformedNodes,
-          transformedEdges,
-          graphData.metadata || {}
+        // Store transient position updates
+        binaryUpdateStore.updatePositions(
+          data.positions,
+          data.isInitialLayout,
+          data.timeStep
         )
+      })
+
+      // Handle connection events
+      websocketStore.service.on('open', () => {
+        console.log('WebSocket connected')
+        error.value = null
+        // Request initial data on connection
+        websocketStore.requestInitialData()
+      })
+
+      websocketStore.service.on('close', () => {
+        console.log('WebSocket disconnected')
+        // Clear transient data on disconnect
+        binaryUpdateStore.clear()
+      })
+
+      websocketStore.service.on('error', (err: ErrorMessage) => {
+        console.error('WebSocket error:', err)
+        error.value = err.message
+        errorTracking.trackError(new Error(err.message), {
+          context: 'WebSocket Error',
+          component: 'App'
+        })
       })
     }
 
@@ -145,14 +250,10 @@ export default defineComponent({
           debug: isDebugMode.value
         })
 
-        // Set up window event listener for websocket messages
-        window.addEventListener('websocket:send', ((event: CustomEvent) => {
-          websocketStore.send(event.detail)
-        }) as EventListener)
-
-      } catch (error) {
-        console.error('Error during App setup:', error)
-        errorTracking.trackError(error, {
+      } catch (err) {
+        console.error('Error during App setup:', err)
+        error.value = err instanceof Error ? err.message : 'Unknown error during setup'
+        errorTracking.trackError(err, {
           context: 'App Setup',
           component: 'App'
         })
@@ -160,17 +261,14 @@ export default defineComponent({
     })
 
     onBeforeUnmount(() => {
-      // Clean up WebSocket through store
+      // Clean up stores
       websocketStore.cleanup()
-
-      // Remove event listeners
-      window.removeEventListener('websocket:send', ((event: CustomEvent) => {
-        websocketStore.send(event.detail)
-      }) as EventListener)
+      binaryUpdateStore.clear()
     })
 
     // Additional error handling at app level
     onErrorCaptured((err, instance: ComponentPublicInstance | null, info) => {
+      error.value = err instanceof Error ? err.message : 'An error occurred'
       errorTracking.trackError(err, {
         context: 'App Root Error',
         component: (instance as any)?.$options?.name || 'Unknown',
@@ -207,7 +305,8 @@ export default defineComponent({
     return {
       showDebugPanel,
       sceneContainer,
-      isConnected
+      isConnected,
+      error
     }
   }
 })
@@ -261,6 +360,20 @@ body, html {
 
 .connection-status.connected {
   color: #44ff44;
+}
+
+.error-message {
+  position: fixed;
+  top: 50px;
+  right: 10px;
+  padding: 10px;
+  background-color: rgba(255, 0, 0, 0.8);
+  color: white;
+  border-radius: 4px;
+  font-family: monospace;
+  z-index: 1000;
+  max-width: 300px;
+  word-wrap: break-word;
 }
 
 /* Debug styles */

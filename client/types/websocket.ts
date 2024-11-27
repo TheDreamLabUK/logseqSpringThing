@@ -22,6 +22,7 @@ export type MessageType =
 
 // Binary Protocol Types
 export interface PositionUpdate {
+  id: string;
   x: number;
   y: number;
   z: number;

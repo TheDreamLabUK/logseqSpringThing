@@ -5,7 +5,8 @@ import type {
   BaseMessage,
   ErrorMessage,
   BinaryMessage,
-  GraphUpdateMessage
+  GraphUpdateMessage,
+  PositionUpdate
 } from '../types/websocket'
 
 const DEFAULT_CONFIG: WebSocketConfig = {
@@ -38,7 +39,6 @@ export default class WebsocketService {
     const port = window.location.port ? `:${window.location.port}` : ''
     this.url = `${protocol}//${host}${port}/ws`
 
-    // Log the constructed URL for debugging
     console.debug('WebSocket URL:', this.url)
   }
 
@@ -50,10 +50,9 @@ export default class WebsocketService {
 
     return new Promise((resolve, reject) => {
       try {
-        console.debug(`Attempting WebSocket connection (attempt ${this.reconnectAttempts + 1}/${this.config.maxRetries})...`, { url: this.url })
+        console.debug(`Attempting WebSocket connection (attempt ${this.reconnectAttempts + 1}/${this.config.maxRetries})...`)
         
         this.ws = new WebSocket(this.url)
-        
         this.ws.binaryType = 'arraybuffer'
 
         this.ws.onopen = () => {
@@ -73,11 +72,7 @@ export default class WebsocketService {
         }
 
         this.ws.onerror = (error) => {
-          console.error('WebSocket connection error:', {
-            error,
-            url: this.url,
-            readyState: this.ws?.readyState
-          })
+          console.error('WebSocket connection error:', error)
           const errorMsg: ErrorMessage = {
             type: 'error',
             message: 'WebSocket connection error'
@@ -86,64 +81,30 @@ export default class WebsocketService {
           reject(error)
         }
 
-        this.ws.onmessage = (event) => {
-          this.handleMessage(event)
-        }
+        this.ws.onmessage = this.handleMessage.bind(this)
 
       } catch (error) {
-        console.error('Error creating WebSocket connection:', {
-          error,
-          url: this.url
-        })
+        console.error('Error creating WebSocket connection:', error)
         reject(error)
       }
     })
   }
 
-  private handleConnectionClose(): void {
-    this.emit('close')
-    
-    if (this.reconnectAttempts < this.config.maxRetries) {
-      this.reconnectAttempts++
-      console.debug(`Connection failed. Retrying in ${this.config.retryDelay}ms...`, {
-        attempt: this.reconnectAttempts,
-        maxRetries: this.config.maxRetries,
-        url: this.url
-      })
-      
-      this.reconnectTimeout = window.setTimeout(() => {
-        this.connect().catch(error => {
-          console.error('Reconnection attempt failed:', error)
-        })
-      }, this.config.retryDelay)
-    } else {
-      console.error('Max reconnection attempts reached', {
-        attempts: this.reconnectAttempts,
-        url: this.url
-      })
-      this.emit('maxReconnectAttemptsReached')
-      const errorMsg: ErrorMessage = {
-        type: 'error',
-        message: 'Max reconnection attempts reached'
-      }
-      this.emit('error', errorMsg)
-    }
-  }
-
   private handleMessage(event: MessageEvent): void {
     try {
       if (event.data instanceof ArrayBuffer) {
-        // Handle binary message (e.g., position updates)
+        // Handle binary message (position updates)
         const view = new DataView(event.data)
-        const isInitialLayout = view.getUint8(0) === 1
+        const isInitialLayout = view.getFloat32(0, true) >= 1.0
         const timeStep = view.getFloat32(1, true)
         const numPositions = (event.data.byteLength - 5) / 24 // 24 bytes per position (6 floats * 4 bytes)
         
-        const positions = []
+        const positions: PositionUpdate[] = []
         let offset = 5
         
         for (let i = 0; i < numPositions; i++) {
           positions.push({
+            id: `node_${i}`, // Generate unique ID for each position
             x: view.getFloat32(offset, true),
             y: view.getFloat32(offset + 4, true),
             z: view.getFloat32(offset + 8, true),
@@ -172,28 +133,8 @@ export default class WebsocketService {
           case 'graphData':
             this.emit('graphUpdate', message as GraphUpdateMessage)
             break
-          case 'ragflowResponse':
-            if ('answer' in message) {
-              this.emit('ragflowAnswer', message.answer as string)
-            }
-            break
-          case 'simulationModeSet':
-            if ('mode' in message) {
-              this.emit('simulationModeSet', message.mode as string)
-            }
-            break
-          case 'completion':
-            if ('result' in message) {
-              this.emit('completion', message.result as string)
-            }
-            break
-          case 'position_update_complete':
-            this.emit('positionUpdateComplete', 'complete')
-            break
           case 'error':
-            if ('message' in message) {
-              this.emit('error', message as ErrorMessage)
-            }
+            this.emit('error', message as ErrorMessage)
             break
         }
       }
@@ -204,6 +145,24 @@ export default class WebsocketService {
         message: 'Error processing message'
       }
       this.emit('error', errorMsg)
+    }
+  }
+
+  private handleConnectionClose(): void {
+    this.emit('close')
+    
+    if (this.reconnectAttempts < this.config.maxRetries) {
+      this.reconnectAttempts++
+      console.debug(`Connection failed. Retrying in ${this.config.retryDelay}ms...`)
+      
+      this.reconnectTimeout = window.setTimeout(() => {
+        this.connect().catch(error => {
+          console.error('Reconnection attempt failed:', error)
+        })
+      }, this.config.retryDelay)
+    } else {
+      console.error('Max reconnection attempts reached')
+      this.emit('maxReconnectAttemptsReached')
     }
   }
 

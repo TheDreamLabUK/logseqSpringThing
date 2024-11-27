@@ -12,7 +12,7 @@
     "lib": ["esnext", "dom"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./client/*"],
+      "*": ["./client/*"],
       "@components/*": ["./client/components/*"],
       "@types/*": ["./client/types/*"],
       "@stores/*": ["./client/stores/*"],
@@ -21,7 +21,11 @@
       "@visualization/*": ["./client/visualization/*"],
       "@xr/*": ["./client/xr/*"]
     },
-    "types": ["node"],
+    "types": [
+      "node",
+      "vue",
+      "chart.js"
+    ],
     "allowJs": true
   },
   "include": [
@@ -31,5 +35,10 @@
     "client/**/*.vue",
     "vite.config.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules"],
+  "references": [
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ]
 }
