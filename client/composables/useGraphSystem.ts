@@ -1,21 +1,40 @@
-import { ref, computed } from 'vue';
-import { Vector3, Scene, WebGLRenderer, PerspectiveCamera } from 'three';
+import { ref, computed, inject, onMounted, watch } from 'vue';
+import { Vector3, Scene, Group } from 'three';
 import { useVisualizationStore } from '../stores/visualization';
 import type { GraphNode, GraphEdge } from '../types/core';
 import type { VisualizationConfig } from '../types/components';
+import type { CoreState } from '../types/core';
 
 export function useGraphSystem() {
   const visualizationStore = useVisualizationStore();
+  
+  // Get scene from visualization state
+  const visualizationState = inject<{ value: CoreState }>('visualizationState');
+  const scene = visualizationState?.value.scene;
 
-  // Refs for Three.js groups
-  const graphGroup = ref(null);
-  const nodesGroup = ref(null);
-  const edgesGroup = ref(null);
+  if (!scene) {
+    throw new Error('Scene not provided to GraphSystem');
+  }
 
-  // Three.js core components
-  const scene = ref<Scene | null>(null);
-  const renderer = ref<WebGLRenderer | null>(null);
-  const camera = ref<PerspectiveCamera | null>(null);
+  // Create Three.js groups
+  const graphGroup = new Group();
+  const nodesGroup = new Group();
+  const edgesGroup = new Group();
+
+  // Add groups to scene hierarchy
+  graphGroup.add(nodesGroup);
+  graphGroup.add(edgesGroup);
+  scene.add(graphGroup);
+
+  // Initialize scene userData if needed
+  scene.userData = scene.userData || {};
+
+  console.debug('Graph system groups created:', {
+    graphGroup: graphGroup.id,
+    nodesGroup: nodesGroup.id,
+    edgesGroup: edgesGroup.id,
+    sceneChildren: scene.children.length
+  });
 
   // State
   const hoveredNode = ref<string | null>(null);
@@ -24,6 +43,24 @@ export function useGraphSystem() {
   const nodePositions = new Map<string, Vector3>();
   const nodeVelocities = new Map<string, Vector3>();
   const positionCache = new Map<string, { position: Vector3; timestamp: number }>();
+
+  // Watch for graph data changes
+  watch(() => visualizationStore.getGraphData, (newData) => {
+    if (newData) {
+      // Mark scene for update
+      scene.userData.needsRender = true;
+      scene.userData.lastUpdate = performance.now();
+
+      console.debug('Graph data updated in useGraphSystem:', {
+        nodes: newData.nodes.length,
+        edges: newData.edges.length,
+        nodesInScene: nodesGroup.children.length,
+        edgesInScene: edgesGroup.children.length,
+        sceneChildren: scene.children.length,
+        needsRender: scene.userData.needsRender
+      });
+    }
+  }, { deep: true });
 
   // Get settings from store
   const settings = computed<VisualizationConfig>(() => {
@@ -64,10 +101,17 @@ export function useGraphSystem() {
             Math.random() * 100 - 50
           );
       nodePositions.set(node.id, position);
+
+      // Mark scene for update when new position is created
+      scene.userData.needsRender = true;
+      scene.userData.lastUpdate = performance.now();
+
       console.debug('Created position for node:', {
         id: node.id,
         position: position.toArray(),
-        source: node.position ? 'data' : 'random'
+        source: node.position ? 'data' : 'random',
+        totalNodes: nodePositions.size,
+        needsRender: scene.userData.needsRender
       });
     }
 
@@ -123,7 +167,9 @@ export function useGraphSystem() {
     console.debug('Edge points:', {
       edge: `${edge.source}-${edge.target}`,
       source: points[0].toArray(),
-      target: points[1].toArray()
+      target: points[1].toArray(),
+      sourceNode: sourceNode.id,
+      targetNode: targetNode.id
     });
     return points;
   };
@@ -160,18 +206,26 @@ export function useGraphSystem() {
       position: node.position,
       edges: node.edges.length,
       color: getNodeColor(node),
-      scale: getNodeScale(node)
+      scale: getNodeScale(node),
+      scenePosition: getNodePosition(node).toArray()
     });
   };
 
   const handleNodeHover = (node: GraphNode | null) => {
     hoveredNode.value = node?.id || null;
+    
+    // Mark scene for update when hover state changes
+    scene.userData.needsRender = true;
+    scene.userData.lastUpdate = performance.now();
+
     if (node) {
       console.debug('Node hover:', {
         id: node.id,
         edges: node.edges.length,
         position: nodePositions.get(node.id)?.toArray(),
-        color: getNodeColor(node)
+        color: getNodeColor(node),
+        scenePosition: getNodePosition(node).toArray(),
+        needsRender: scene.userData.needsRender
       });
     }
   };
@@ -202,6 +256,11 @@ export function useGraphSystem() {
         positions: nodePositions.size,
         velocities: nodeVelocities.size,
         positionCache: positionCache.size
+      },
+      sceneStats: {
+        nodesInScene: nodesGroup.children.length,
+        edgesInScene: edgesGroup.children.length,
+        totalSceneChildren: scene.children.length
       }
     });
 
@@ -224,18 +283,34 @@ export function useGraphSystem() {
         });
       }
     });
+
+    // Mark scene for update after graph data changes
+    scene.userData.needsRender = true;
+    scene.userData.lastUpdate = performance.now();
   };
+
+  // Clean up on unmount
+  onMounted(() => {
+    console.debug('Graph system mounted:', {
+      groups: {
+        graph: graphGroup.id,
+        nodes: nodesGroup.id,
+        edges: edgesGroup.id
+      },
+      sceneChildren: scene.children.length,
+      sceneStats: {
+        nodesInScene: nodesGroup.children.length,
+        edgesInScene: edgesGroup.children.length,
+        totalSceneChildren: scene.children.length
+      }
+    });
+  });
 
   return {
     // Groups
     graphGroup,
     nodesGroup,
     edgesGroup,
-    
-    // Core components
-    scene,
-    renderer,
-    camera,
     
     // State
     hoveredNode,

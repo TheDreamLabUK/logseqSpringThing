@@ -1,106 +1,105 @@
 <template>
-  <Group ref="graphGroup">
-    <!-- Nodes -->
-    <Group ref="nodesGroup">
-      <template v-for="node in graphData.nodes" :key="node.id">
-        <Mesh
-          :position="getNodePosition(node)"
-          :scale="nodeScale(node)"
-          @click="handleNodeClick(node)"
-          @pointerenter="handleNodeHover(node)"
-          @pointerleave="handleNodeHover(null)"
-          @pointerdown="handleDragStart(node)"
-          @pointermove="handleDragMove"
-          @pointerup="handleDragEnd"
-        >
-          <SphereGeometry :args="[1, 32, 32]" />
-          <MeshStandardMaterial
-            :color="getNodeColor(node)"
-            :metalness="visualSettings.material.node_material_metalness"
-            :roughness="visualSettings.material.node_material_roughness"
-            :opacity="visualSettings.material.node_material_opacity"
+  <div v-if="isReady">
+    <!-- Graph Content -->
+    <primitive :object="graphGroup">
+      <!-- Nodes -->
+      <primitive :object="nodesGroup">
+        <template v-for="node in graphData.nodes" :key="node.id">
+          <Mesh
+            :position="getNodePosition(node)"
+            :scale="nodeScale(node)"
+            @click="handleNodeClick(node)"
+            @pointerenter="handleNodeHover(node)"
+            @pointerleave="handleNodeHover(null)"
+            @pointerdown="handleDragStart(node)"
+            @pointermove="handleDragMove"
+            @pointerup="handleDragEnd"
+          >
+            <SphereGeometry :args="[1, 32, 32]" />
+            <MeshStandardMaterial
+              :color="getNodeColor(node)"
+              :metalness="visualSettings.material.node_material_metalness"
+              :roughness="visualSettings.material.node_material_roughness"
+              :opacity="visualSettings.material.node_material_opacity"
+              :transparent="true"
+              :emissive="getNodeColor(node)"
+              :emissiveIntensity="getNodeEmissiveIntensity(node)"
+            />
+          </Mesh>
+          
+          <!-- Node Label -->
+          <Html
+            v-if="node.label"
+            :position="nodeLabelPosition(node)"
+            :occlude="true"
+            :center="true"
+            :sprite="true"
+            :style="{
+              fontSize: `${visualSettings.label_font_size}px`,
+              fontFamily: visualSettings.label_font_family,
+              padding: `${visualSettings.label_padding}px`,
+              backgroundColor: visualSettings.label_background_color,
+              color: visualSettings.label_text_color
+            }"
+          >
+            <div class="node-label" :class="{ 'is-hovered': hoveredNode === node.id }">
+              {{ node.label }}
+            </div>
+          </Html>
+        </template>
+      </primitive>
+
+      <!-- Edges -->
+      <primitive :object="edgesGroup">
+        <template v-for="edge in graphData.edges" :key="`${edge.source}-${edge.target}`">
+          <Line
+            :points="getEdgePoints(edge)"
+            :color="getEdgeColor(edge)"
+            :linewidth="getEdgeWidth(edge)"
+            :opacity="visualSettings.edge_opacity"
             :transparent="true"
-            :emissive="getNodeColor(node)"
-            :emissiveIntensity="getNodeEmissiveIntensity(node)"
           />
-        </Mesh>
-        
-        <!-- Node Label -->
-        <Html
-          v-if="node.label"
-          :position="nodeLabelPosition(node)"
-          :occlude="true"
-          :center="true"
-          :sprite="true"
-          :style="{
-            fontSize: `${visualSettings.label_font_size}px`,
-            fontFamily: visualSettings.label_font_family,
-            padding: `${visualSettings.label_padding}px`,
-            backgroundColor: visualSettings.label_background_color,
-            color: visualSettings.label_text_color
-          }"
-        >
-          <div class="node-label" :class="{ 'is-hovered': hoveredNode === node.id }">
-            {{ node.label }}
-          </div>
-        </Html>
-      </template>
-    </Group>
+        </template>
+      </primitive>
+    </primitive>
 
-    <!-- Edges -->
-    <Group ref="edgesGroup">
-      <template v-for="edge in graphData.edges" :key="`${edge.source}-${edge.target}`">
-        <Line
-          :points="getEdgePoints(edge)"
-          :color="getEdgeColor(edge)"
-          :linewidth="getEdgeWidth(edge)"
-          :opacity="visualSettings.edge_opacity"
-          :transparent="true"
-        />
-      </template>
-    </Group>
-
-    <!-- Scene Fog -->
-    <Scene>
-      <component
-        :is="'fog'"
-        :args="[0x000000, 50, 200]"
-        :density="visualSettings.fog_density"
-      />
-    </Scene>
-  </Group>
+    <!-- AR Button -->
+    <button 
+      v-if="platformInfo.isQuest && platformInfo.hasXRSupport"
+      class="ar-button"
+      @click="enableAR"
+    >
+      Enter AR
+    </button>
+  </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, watch, onMounted } from 'vue';
+import { defineComponent, ref, computed, watch, onMounted, inject } from 'vue';
 import { Vector3 } from 'three';
 import {
-  Group,
   Mesh,
   SphereGeometry,
   MeshStandardMaterial,
   Line,
-  Html,
-  Scene
+  Html
 } from '../three';
 import { useGraphSystem } from '../../composables/useGraphSystem';
 import { useWebSocketStore } from '../../stores/websocket';
 import { useBinaryUpdateStore } from '../../stores/binaryUpdate';
 import { useVisualizationStore } from '../../stores/visualization';
-import type { GraphNode, GraphEdge, GraphData } from '../../types/core';
+import { usePlatform } from '../../composables/usePlatform';
+import type { GraphNode, GraphEdge, GraphData, CoreState } from '../../types/core';
 import type { VisualizationConfig } from '../../types/components';
 
 export default defineComponent({
   name: 'GraphSystem',
-
   components: {
-    Group,
     Mesh,
     SphereGeometry,
     MeshStandardMaterial,
     Line,
-    Html,
-    Scene
+    Html
   },
 
   props: {
@@ -111,6 +110,17 @@ export default defineComponent({
   },
 
   setup(props) {
+    // Get visualization state
+    const visualizationState = inject<{ value: CoreState }>('visualizationState');
+    const isReady = computed(() => {
+      return visualizationState?.value.scene != null && 
+             visualizationState?.value.isInitialized === true;
+    });
+
+    // Get platform info
+    const { getPlatformInfo, enableVR } = usePlatform();
+    const platformInfo = getPlatformInfo();
+
     const {
       graphGroup,
       nodesGroup,
@@ -135,37 +145,14 @@ export default defineComponent({
     const draggedNode = ref<GraphNode | null>(null);
     const dragStartPosition = ref<Vector3 | null>(null);
 
-    // Use the transformed graph data from the visualization store
+    // Graph data from store
     const graphData = computed<GraphData>(() => {
-      const data = visualizationStore.getGraphData || { nodes: [], edges: [], metadata: {} };
-      console.debug('Graph data updated:', {
-        nodes: data.nodes.length,
-        edges: data.edges.length,
-        sampleNode: data.nodes[0] ? {
-          id: data.nodes[0].id,
-          position: data.nodes[0].position,
-          edges: data.nodes[0].edges.length
-        } : null,
-        sampleEdge: data.edges[0] ? {
-          source: data.edges[0].source,
-          target: data.edges[0].target,
-          weight: data.edges[0].weight
-        } : null
-      });
-      return data;
+      return visualizationStore.getGraphData || { nodes: [], edges: [], metadata: {} };
     });
 
-    // Watch for binary position updates from server
+    // Watch for binary position updates
     watch(() => binaryUpdateStore.getAllPositions, (positions) => {
-      if (!isDragging.value) { // Don't apply server updates while dragging
-        console.debug('Binary position update:', {
-          count: positions.length,
-          sample: positions[0] ? {
-            id: positions[0].id,
-            position: [positions[0].x, positions[0].y, positions[0].z],
-            velocity: [positions[0].vx, positions[0].vy, positions[0].vz]
-          } : null
-        });
+      if (!isDragging.value) {
         positions.forEach(pos => {
           const node = graphData.value.nodes.find(n => n.id === pos.id);
           if (node) {
@@ -176,7 +163,7 @@ export default defineComponent({
       }
     }, { deep: true });
 
-    // Enhanced node position getter that considers binary updates
+    // Position getters
     const getNodePosition = (node: GraphNode) => {
       if (isDragging.value && draggedNode.value?.id === node.id) {
         return getBaseNodePosition(node);
@@ -187,32 +174,19 @@ export default defineComponent({
         return new Vector3(binaryPos.x, binaryPos.y, binaryPos.z);
       }
 
-      const pos = getBaseNodePosition(node);
-      console.debug('Node position:', {
-        id: node.id,
-        position: pos.toArray(),
-        source: binaryPos ? 'binary' : 'base'
-      });
-      return pos;
+      return getBaseNodePosition(node);
     };
 
-    // Enhanced edge points getter that considers binary updates
     const getEdgePoints = (edge: GraphEdge) => {
-      const points = getBaseEdgePoints(edge);
-      console.debug('Edge points:', {
-        id: `${edge.source}-${edge.target}`,
-        points: points.map(p => p.toArray())
-      });
-      return points;
+      return getBaseEdgePoints(edge);
     };
 
-    // Node scale helper
+    // Node helpers
     const nodeScale = (node: GraphNode) => {
       const scale = getNodeScale(node);
       return { x: scale, y: scale, z: scale };
     };
 
-    // Node label position helper
     const nodeLabelPosition = (node: GraphNode) => {
       const pos = getNodePosition(node);
       return new Vector3(
@@ -222,48 +196,25 @@ export default defineComponent({
       );
     };
 
-    // Node emissive intensity helper
     const getNodeEmissiveIntensity = (node: GraphNode) => {
       const { node_emissive_min_intensity, node_emissive_max_intensity } = props.visualSettings.material;
       return node_emissive_min_intensity + (node.weight || 0) * (node_emissive_max_intensity - node_emissive_min_intensity);
     };
-
-    onMounted(() => {
-      console.log('GraphSystem mounted:', {
-        settings: props.visualSettings,
-        initialData: {
-          nodes: graphData.value.nodes.length,
-          edges: graphData.value.edges.length
-        }
-      });
-    });
 
     // Drag handlers
     const handleDragStart = (node: GraphNode) => {
       isDragging.value = true;
       draggedNode.value = node;
       dragStartPosition.value = getNodePosition(node).clone();
-      console.debug('Drag start:', {
-        id: node.id,
-        position: dragStartPosition.value.toArray()
-      });
     };
 
     const handleDragMove = (event: PointerEvent) => {
       if (!isDragging.value || !draggedNode.value) return;
 
-      // Update node position based on drag
       const newPosition = getNodePosition(draggedNode.value).clone();
       newPosition.x += event.movementX * 0.1;
       newPosition.y -= event.movementY * 0.1;
 
-      console.debug('Drag move:', {
-        id: draggedNode.value.id,
-        position: newPosition.toArray(),
-        movement: [event.movementX, event.movementY]
-      });
-
-      // Send position update to server
       if (websocketStore.service) {
         websocketStore.service.send({
           type: 'updateNodePosition',
@@ -275,14 +226,7 @@ export default defineComponent({
 
     const handleDragEnd = () => {
       if (isDragging.value && draggedNode.value && dragStartPosition.value) {
-        // Send final position to server
         const finalPosition = getNodePosition(draggedNode.value);
-        console.debug('Drag end:', {
-          id: draggedNode.value.id,
-          startPosition: dragStartPosition.value.toArray(),
-          finalPosition: finalPosition.toArray()
-        });
-
         if (websocketStore.service) {
           websocketStore.service.send({
             type: 'updateNodePosition',
@@ -296,17 +240,33 @@ export default defineComponent({
       dragStartPosition.value = null;
     };
 
+    // AR support
+    const enableAR = async () => {
+      try {
+        await enableVR();
+      } catch (err) {
+        console.error('Failed to enter AR:', err);
+      }
+    };
+
+    // Update graph data when component mounts
+    onMounted(() => {
+      updateGraphData(graphData.value);
+    });
+
     return {
+      // Add isReady to the returned object
+      isReady,
+      // Platform
+      platformInfo,
       // Groups
       graphGroup,
       nodesGroup,
       edgesGroup,
-      
       // State
       hoveredNode,
       isDragging,
       graphData,
-      
       // Helpers
       getNodePosition,
       nodeScale,
@@ -316,13 +276,13 @@ export default defineComponent({
       getEdgePoints,
       getEdgeColor,
       getEdgeWidth,
-      
       // Event handlers
       handleNodeClick,
       handleNodeHover,
       handleDragStart,
       handleDragMove,
-      handleDragEnd
+      handleDragEnd,
+      enableAR
     };
   }
 });
@@ -344,5 +304,23 @@ export default defineComponent({
 .node-label.is-hovered {
   transform: scale(1.1);
   background: rgba(0, 0, 0, 0.9);
+}
+
+.ar-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 20px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  z-index: 1000;
+}
+
+.ar-button:hover {
+  background: #45a049;
 }
 </style>
