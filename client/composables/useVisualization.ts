@@ -4,6 +4,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { useSettingsStore } from '../stores/settings';
 import type { Node, Edge, CoreState, InitializationOptions } from '../types/core';
 import type { PositionUpdate } from '../types/websocket';
+import { POSITION_SCALE, VELOCITY_SCALE } from '../constants/websocket';
+
 
 /**
  * Visualization system composable that handles:
@@ -196,13 +198,27 @@ export function useVisualization() {
       console.log('Switching to GPU-accelerated mode');
     }
 
-    // Update node positions efficiently
-    positions.forEach((pos, index) => {
-      const mesh = nodeMeshes.get(index.toString());
+    // Create a map of node IDs to their current meshes
+    const meshMap = new Map<string, THREE.InstancedMesh>();
+    nodeMeshes.forEach((mesh, id) => {
+      meshMap.set(id, mesh);
+    });
+
+    // Update node positions efficiently using node IDs
+    positions.forEach((pos) => {
+      const mesh = meshMap.get(pos.id);
       if (mesh) {
-        mesh.position.set(pos.x, pos.y, pos.z);
-        // Store velocity in userData for physics calculations
-        mesh.userData.velocity = new THREE.Vector3(pos.vx, pos.vy, pos.vz);
+        // Dequantize position values from millimeters to world units
+        const x = pos.x / POSITION_SCALE;
+        const y = pos.y / POSITION_SCALE;
+        const z = pos.z / POSITION_SCALE;
+        mesh.position.set(x, y, z);
+
+        // Dequantize velocity values from 0.0001 units to world units
+        const vx = pos.vx / VELOCITY_SCALE;
+        const vy = pos.vy / VELOCITY_SCALE;
+        const vz = pos.vz / VELOCITY_SCALE;
+        mesh.userData.velocity = new THREE.Vector3(vx, vy, vz);
       }
     });
 
