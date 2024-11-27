@@ -68,32 +68,11 @@
         :density="visualSettings.fog_density"
       />
     </Scene>
-
-    <!-- Debug Info -->
-    <Html
-      v-if="isDevelopment"
-      :position="debugPosition"
-      :center="false"
-      :occlude="false"
-      :sprite="false"
-      :style="{
-        position: 'fixed',
-        bottom: '10px',
-        left: '10px',
-        zIndex: '1000'
-      }"
-    >
-      <div class="debug-info">
-        <p>Nodes: {{ graphData.nodes.length }}</p>
-        <p>Edges: {{ graphData.edges.length }}</p>
-        <p>FPS: {{ currentFps.toFixed(1) }}</p>
-      </div>
-    </Html>
   </Group>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, watch } from 'vue';
+import { defineComponent, ref, computed, watch, onMounted } from 'vue';
 import { Vector3 } from 'three';
 import {
   Group,
@@ -155,18 +134,38 @@ export default defineComponent({
     const isDragging = ref(false);
     const draggedNode = ref<GraphNode | null>(null);
     const dragStartPosition = ref<Vector3 | null>(null);
-    const currentFps = ref(0);
-    const isDevelopment = ref(process.env.NODE_ENV === 'development');
-    const debugPosition = new Vector3(10, 10, 0);
 
     // Use the transformed graph data from the visualization store
     const graphData = computed<GraphData>(() => {
-      return visualizationStore.getGraphData || { nodes: [], edges: [], metadata: {} };
+      const data = visualizationStore.getGraphData || { nodes: [], edges: [], metadata: {} };
+      console.debug('Graph data updated:', {
+        nodes: data.nodes.length,
+        edges: data.edges.length,
+        sampleNode: data.nodes[0] ? {
+          id: data.nodes[0].id,
+          position: data.nodes[0].position,
+          edges: data.nodes[0].edges.length
+        } : null,
+        sampleEdge: data.edges[0] ? {
+          source: data.edges[0].source,
+          target: data.edges[0].target,
+          weight: data.edges[0].weight
+        } : null
+      });
+      return data;
     });
 
     // Watch for binary position updates from server
     watch(() => binaryUpdateStore.getAllPositions, (positions) => {
       if (!isDragging.value) { // Don't apply server updates while dragging
+        console.debug('Binary position update:', {
+          count: positions.length,
+          sample: positions[0] ? {
+            id: positions[0].id,
+            position: [positions[0].x, positions[0].y, positions[0].z],
+            velocity: [positions[0].vx, positions[0].vy, positions[0].vz]
+          } : null
+        });
         positions.forEach(pos => {
           const node = graphData.value.nodes.find(n => n.id === pos.id);
           if (node) {
@@ -188,12 +187,23 @@ export default defineComponent({
         return new Vector3(binaryPos.x, binaryPos.y, binaryPos.z);
       }
 
-      return getBaseNodePosition(node);
+      const pos = getBaseNodePosition(node);
+      console.debug('Node position:', {
+        id: node.id,
+        position: pos.toArray(),
+        source: binaryPos ? 'binary' : 'base'
+      });
+      return pos;
     };
 
     // Enhanced edge points getter that considers binary updates
     const getEdgePoints = (edge: GraphEdge) => {
-      return getBaseEdgePoints(edge);
+      const points = getBaseEdgePoints(edge);
+      console.debug('Edge points:', {
+        id: `${edge.source}-${edge.target}`,
+        points: points.map(p => p.toArray())
+      });
+      return points;
     };
 
     // Node scale helper
@@ -218,11 +228,25 @@ export default defineComponent({
       return node_emissive_min_intensity + (node.weight || 0) * (node_emissive_max_intensity - node_emissive_min_intensity);
     };
 
+    onMounted(() => {
+      console.log('GraphSystem mounted:', {
+        settings: props.visualSettings,
+        initialData: {
+          nodes: graphData.value.nodes.length,
+          edges: graphData.value.edges.length
+        }
+      });
+    });
+
     // Drag handlers
     const handleDragStart = (node: GraphNode) => {
       isDragging.value = true;
       draggedNode.value = node;
       dragStartPosition.value = getNodePosition(node).clone();
+      console.debug('Drag start:', {
+        id: node.id,
+        position: dragStartPosition.value.toArray()
+      });
     };
 
     const handleDragMove = (event: PointerEvent) => {
@@ -232,6 +256,12 @@ export default defineComponent({
       const newPosition = getNodePosition(draggedNode.value).clone();
       newPosition.x += event.movementX * 0.1;
       newPosition.y -= event.movementY * 0.1;
+
+      console.debug('Drag move:', {
+        id: draggedNode.value.id,
+        position: newPosition.toArray(),
+        movement: [event.movementX, event.movementY]
+      });
 
       // Send position update to server
       if (websocketStore.service) {
@@ -247,6 +277,12 @@ export default defineComponent({
       if (isDragging.value && draggedNode.value && dragStartPosition.value) {
         // Send final position to server
         const finalPosition = getNodePosition(draggedNode.value);
+        console.debug('Drag end:', {
+          id: draggedNode.value.id,
+          startPosition: dragStartPosition.value.toArray(),
+          finalPosition: finalPosition.toArray()
+        });
+
         if (websocketStore.service) {
           websocketStore.service.send({
             type: 'updateNodePosition',
@@ -270,9 +306,6 @@ export default defineComponent({
       hoveredNode,
       isDragging,
       graphData,
-      isDevelopment,
-      currentFps,
-      debugPosition,
       
       // Helpers
       getNodePosition,
@@ -311,19 +344,5 @@ export default defineComponent({
 .node-label.is-hovered {
   transform: scale(1.1);
   background: rgba(0, 0, 0, 0.9);
-}
-
-.debug-info {
-  background: rgba(0, 0, 0, 0.8);
-  color: #00ff00;
-  padding: 10px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 12px;
-  pointer-events: none;
-}
-
-.debug-info p {
-  margin: 2px 0;
 }
 </style>

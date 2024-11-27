@@ -1,14 +1,8 @@
-import { ref, computed, onBeforeUnmount } from 'vue';
-import { Vector3 } from 'three';
+import { ref, computed } from 'vue';
+import { Vector3, Scene, WebGLRenderer, PerspectiveCamera } from 'three';
 import { useVisualizationStore } from '../stores/visualization';
 import type { GraphNode, GraphEdge } from '../types/core';
 import type { VisualizationConfig } from '../types/components';
-
-export interface GraphMetrics {
-  positionUpdates: number;
-  cacheHits: number;
-  cacheMisses: number;
-}
 
 export function useGraphSystem() {
   const visualizationStore = useVisualizationStore();
@@ -18,10 +12,13 @@ export function useGraphSystem() {
   const nodesGroup = ref(null);
   const edgesGroup = ref(null);
 
+  // Three.js core components
+  const scene = ref<Scene | null>(null);
+  const renderer = ref<WebGLRenderer | null>(null);
+  const camera = ref<PerspectiveCamera | null>(null);
+
   // State
   const hoveredNode = ref<string | null>(null);
-  const lastUpdateTime = ref(Date.now());
-  const updateCount = ref(0);
 
   // Node position management with caching
   const nodePositions = new Map<string, Vector3>();
@@ -29,13 +26,24 @@ export function useGraphSystem() {
   const positionCache = new Map<string, { position: Vector3; timestamp: number }>();
 
   // Get settings from store
-  const settings = computed<VisualizationConfig>(() => visualizationStore.getVisualizationSettings);
-
-  // Performance metrics
-  const metrics = ref<GraphMetrics>({
-    positionUpdates: 0,
-    cacheHits: 0,
-    cacheMisses: 0
+  const settings = computed<VisualizationConfig>(() => {
+    const config = visualizationStore.getVisualizationSettings;
+    console.debug('Visualization settings updated:', {
+      material: {
+        metalness: config.material.node_material_metalness,
+        roughness: config.material.node_material_roughness,
+        opacity: config.material.node_material_opacity
+      },
+      nodeColors: {
+        base: config.node_color,
+        core: config.node_color_core
+      },
+      sizes: {
+        min: config.min_node_size,
+        max: config.max_node_size
+      }
+    });
+    return config;
   });
 
   // Node helpers
@@ -44,10 +52,8 @@ export function useGraphSystem() {
     const cached = positionCache.get(node.id);
     const now = Date.now();
     if (cached && now - cached.timestamp < 1000) { // 1 second cache
-      metrics.value.cacheHits++;
       return cached.position;
     }
-    metrics.value.cacheMisses++;
 
     if (!nodePositions.has(node.id)) {
       const position = node.position 
@@ -60,7 +66,8 @@ export function useGraphSystem() {
       nodePositions.set(node.id, position);
       console.debug('Created position for node:', {
         id: node.id,
-        position: position.toArray()
+        position: position.toArray(),
+        source: node.position ? 'data' : 'random'
       });
     }
 
@@ -74,51 +81,76 @@ export function useGraphSystem() {
     const baseSize = node.size || 1;
     const minSize = settings.value.min_node_size;
     const maxSize = settings.value.max_node_size;
-    return minSize + (baseSize * (maxSize - minSize));
+    const scale = minSize + (baseSize * (maxSize - minSize));
+    console.debug('Node scale:', {
+      id: node.id,
+      baseSize,
+      minSize,
+      maxSize,
+      finalScale: scale
+    });
+    return scale;
   };
 
   const getNodeColor = (node: GraphNode): string => {
-    if (node.id === hoveredNode.value) {
-      return settings.value.node_color_core;
-    }
-    return node.color || settings.value.node_color;
+    const color = node.id === hoveredNode.value
+      ? settings.value.node_color_core
+      : (node.color || settings.value.node_color);
+    console.debug('Node color:', {
+      id: node.id,
+      isHovered: node.id === hoveredNode.value,
+      color,
+      defaultColor: settings.value.node_color
+    });
+    return color;
   };
 
-  // Edge helpers with caching
-  const edgePointsCache = new Map<string, { points: [Vector3, Vector3]; timestamp: number }>();
-
+  // Edge helpers
   const getEdgePoints = (edge: GraphEdge): [Vector3, Vector3] => {
-    const cacheKey = `${edge.source}-${edge.target}`;
-    const cached = edgePointsCache.get(cacheKey);
-    const now = Date.now();
-    if (cached && now - cached.timestamp < 1000) {
-      metrics.value.cacheHits++;
-      return cached.points;
-    }
-    metrics.value.cacheMisses++;
-
     const sourceNode = edge.sourceNode;
     const targetNode = edge.targetNode;
     
     if (!sourceNode || !targetNode) {
-      console.warn('Edge missing nodes:', edge);
+      console.warn('Edge missing nodes:', {
+        edge: `${edge.source}-${edge.target}`,
+        hasSource: !!sourceNode,
+        hasTarget: !!targetNode
+      });
       return [new Vector3(), new Vector3()];
     }
 
     const points: [Vector3, Vector3] = [getNodePosition(sourceNode), getNodePosition(targetNode)];
-    edgePointsCache.set(cacheKey, { points: [points[0].clone(), points[1].clone()], timestamp: now });
+    console.debug('Edge points:', {
+      edge: `${edge.source}-${edge.target}`,
+      source: points[0].toArray(),
+      target: points[1].toArray()
+    });
     return points;
   };
 
   const getEdgeColor = (edge: GraphEdge): string => {
-    return edge.color || settings.value.edge_color;
+    const color = edge.color || settings.value.edge_color;
+    console.debug('Edge color:', {
+      edge: `${edge.source}-${edge.target}`,
+      color,
+      defaultColor: settings.value.edge_color
+    });
+    return color;
   };
 
   const getEdgeWidth = (edge: GraphEdge): number => {
     const baseWidth = edge.weight || 1;
     const minWidth = settings.value.edge_min_width;
     const maxWidth = settings.value.edge_max_width;
-    return minWidth + (baseWidth * (maxWidth - minWidth));
+    const width = minWidth + (baseWidth * (maxWidth - minWidth));
+    console.debug('Edge width:', {
+      edge: `${edge.source}-${edge.target}`,
+      baseWidth,
+      minWidth,
+      maxWidth,
+      finalWidth: width
+    });
+    return width;
   };
 
   // Event handlers
@@ -127,11 +159,8 @@ export function useGraphSystem() {
       id: node.id,
       position: node.position,
       edges: node.edges.length,
-      metrics: {
-        cacheHits: metrics.value.cacheHits,
-        cacheMisses: metrics.value.cacheMisses,
-        hitRate: metrics.value.cacheHits / (metrics.value.cacheHits + metrics.value.cacheMisses)
-      }
+      color: getNodeColor(node),
+      scale: getNodeScale(node)
     });
   };
 
@@ -141,33 +170,39 @@ export function useGraphSystem() {
       console.debug('Node hover:', {
         id: node.id,
         edges: node.edges.length,
-        position: nodePositions.get(node.id)?.toArray()
+        position: nodePositions.get(node.id)?.toArray(),
+        color: getNodeColor(node)
       });
     }
   };
 
   // Graph data management
   const updateGraphData = (graphData: { nodes: GraphNode[]; edges: GraphEdge[] }) => {
-    const now = Date.now();
-    const timeSinceLastUpdate = now - lastUpdateTime.value;
-    updateCount.value++;
-    metrics.value.positionUpdates++;
-
     console.debug('Updating graph data:', {
-      nodes: graphData.nodes.length,
-      edges: graphData.edges.length,
-      updateInterval: timeSinceLastUpdate,
-      updateCount: updateCount.value,
-      metrics: {
-        cacheHits: metrics.value.cacheHits,
-        cacheMisses: metrics.value.cacheMisses,
-        hitRate: metrics.value.cacheHits / (metrics.value.cacheHits + metrics.value.cacheMisses)
+      nodes: {
+        count: graphData.nodes.length,
+        sample: graphData.nodes[0] ? {
+          id: graphData.nodes[0].id,
+          edges: graphData.nodes[0].edges.length,
+          position: graphData.nodes[0].position,
+          color: getNodeColor(graphData.nodes[0]),
+          scale: getNodeScale(graphData.nodes[0])
+        } : null
       },
-      sample: graphData.nodes[0] ? {
-        id: graphData.nodes[0].id,
-        edges: graphData.nodes[0].edges.length,
-        position: graphData.nodes[0].position
-      } : null
+      edges: {
+        count: graphData.edges.length,
+        sample: graphData.edges[0] ? {
+          source: graphData.edges[0].source,
+          target: graphData.edges[0].target,
+          color: getEdgeColor(graphData.edges[0]),
+          width: getEdgeWidth(graphData.edges[0])
+        } : null
+      },
+      cacheStats: {
+        positions: nodePositions.size,
+        velocities: nodeVelocities.size,
+        positionCache: positionCache.size
+      }
     });
 
     // Initialize positions for new nodes
@@ -181,35 +216,15 @@ export function useGraphSystem() {
     const nodeIds = new Set(graphData.nodes.map(n => n.id));
     nodePositions.forEach((_, id) => {
       if (!nodeIds.has(id)) {
-        nodePositions.delete(id);
-        nodeVelocities.delete(id);
-        positionCache.delete(id);
+        console.debug('Removing node data:', {
+          id,
+          hadPosition: nodePositions.delete(id),
+          hadVelocity: nodeVelocities.delete(id),
+          hadCache: positionCache.delete(id)
+        });
       }
     });
-
-    // Clean up old edge cache entries
-    const edgeIds = new Set(graphData.edges.map(e => `${e.source}-${e.target}`));
-    edgePointsCache.forEach((_, key) => {
-      if (!edgeIds.has(key)) {
-        edgePointsCache.delete(key);
-      }
-    });
-
-    lastUpdateTime.value = now;
   };
-
-  // Cleanup
-  onBeforeUnmount(() => {
-    nodePositions.clear();
-    nodeVelocities.clear();
-    positionCache.clear();
-    edgePointsCache.clear();
-    metrics.value = {
-      positionUpdates: 0,
-      cacheHits: 0,
-      cacheMisses: 0
-    };
-  });
 
   return {
     // Groups
@@ -217,11 +232,13 @@ export function useGraphSystem() {
     nodesGroup,
     edgesGroup,
     
+    // Core components
+    scene,
+    renderer,
+    camera,
+    
     // State
     hoveredNode,
-    metrics,
-    lastUpdateTime,
-    updateCount,
     
     // Node helpers
     getNodePosition,

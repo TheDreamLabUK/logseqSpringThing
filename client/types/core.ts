@@ -136,8 +136,11 @@ export interface GraphData {
 export interface FisheyeSettings {
   enabled: boolean;
   strength: number;
-  focusPoint: [number, number, number];
   radius: number;
+  focus_x: number;
+  focus_y: number;
+  focus_z: number;
+
 }
 
 /**
@@ -238,3 +241,5 @@ export interface EnhancedObject3D extends Object3D {
     [key: string]: any;
   };
 }
+
+// Rest of the file remains the same...

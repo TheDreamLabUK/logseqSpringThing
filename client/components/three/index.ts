@@ -24,17 +24,43 @@ const eventMap: Record<SupportedEventType, keyof CustomObject3DEventMap> = {
   pointerup: 'pointerup'
 } as const;
 
+// Debug logging helper
+const debugLog = (component: string, action: string, details: any) => {
+  console.debug(`[Three.js ${component}] ${action}:`, details);
+};
+
+// Helper to safely get fog properties
+const getFogDetails = (fog: THREE.Fog | THREE.FogExp2 | null) => {
+  if (!fog) return null;
+  if (fog instanceof THREE.Fog) {
+    return {
+      type: 'Fog',
+      near: fog.near,
+      far: fog.far
+    };
+  }
+  if (fog instanceof THREE.FogExp2) {
+    return {
+      type: 'FogExp2',
+      density: fog.density
+    };
+  }
+  return null;
+};
+
 // Basic Three.js component wrapper
 export const Group = defineComponent({
   name: 'Group',
   setup(_, { slots }) {
     const group = new THREE.Group()
+    debugLog('Group', 'Created', { id: group.id });
     
     onMounted(() => {
-      // Parent will handle adding to scene
+      debugLog('Group', 'Mounted', { id: group.id });
     })
 
     onBeforeUnmount(() => {
+      debugLog('Group', 'Disposing', { id: group.id });
       group.clear()
     })
 
@@ -53,12 +79,21 @@ export const Scene = defineComponent({
   setup(props) {
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(props.background)
+    debugLog('Scene', 'Created', { 
+      background: scene.background.getHexString(),
+      fog: getFogDetails(scene.fog)
+    });
 
     watch(() => props.background, (newColor) => {
       scene.background = new THREE.Color(newColor)
+      debugLog('Scene', 'Background updated', { 
+        background: scene.background.getHexString(),
+        fog: getFogDetails(scene.fog)
+      });
     })
 
     onBeforeUnmount(() => {
+      debugLog('Scene', 'Disposing', { id: scene.id });
       scene.clear()
     })
 
@@ -86,10 +121,24 @@ export const Mesh = defineComponent({
       if (mesh.value) {
         mesh.value.position.copy(props.position)
         mesh.value.scale.set(props.scale.x, props.scale.y, props.scale.z)
+        debugLog('Mesh', 'Created', {
+          id: mesh.value.id,
+          position: mesh.value.position.toArray(),
+          scale: [mesh.value.scale.x, mesh.value.scale.y, mesh.value.scale.z],
+          geometry: mesh.value.geometry.type,
+          material: mesh.value.material instanceof Array 
+            ? mesh.value.material.map(m => m.type)
+            : mesh.value.material.type
+        });
 
         // Event handlers
         Object.entries(eventMap).forEach(([emitType, threeType]) => {
           const handler = (event: THREE.Event) => {
+            debugLog('Mesh', `Event: ${emitType}`, {
+              id: mesh.value?.id,
+              position: mesh.value?.position.toArray(),
+              event: event.type
+            });
             emit(emitType as SupportedEventType, event)
           }
           mesh.value?.addEventListener(threeType as keyof THREE.Object3DEventMap, handler)
@@ -100,17 +149,30 @@ export const Mesh = defineComponent({
     watch(() => props.position, (newPos) => {
       if (mesh.value) {
         mesh.value.position.copy(newPos)
+        debugLog('Mesh', 'Position updated', {
+          id: mesh.value.id,
+          position: mesh.value.position.toArray()
+        });
       }
     })
 
     watch(() => props.scale, (newScale) => {
       if (mesh.value) {
         mesh.value.scale.set(newScale.x, newScale.y, newScale.z)
+        debugLog('Mesh', 'Scale updated', {
+          id: mesh.value.id,
+          scale: [mesh.value.scale.x, mesh.value.scale.y, mesh.value.scale.z]
+        });
       }
     })
 
     onBeforeUnmount(() => {
       if (mesh.value) {
+        debugLog('Mesh', 'Disposing', {
+          id: mesh.value.id,
+          position: mesh.value.position.toArray(),
+          geometry: mesh.value.geometry.type
+        });
         mesh.value.geometry.dispose()
         if (Array.isArray(mesh.value.material)) {
           mesh.value.material.forEach(m => m.dispose())
@@ -134,8 +196,16 @@ export const SphereGeometry = defineComponent({
   },
   setup(props) {
     const geometry = new THREE.SphereGeometry(...props.args)
+    debugLog('SphereGeometry', 'Created', {
+      radius: props.args[0],
+      segments: [props.args[1], props.args[2]],
+      vertices: geometry.attributes.position.count
+    });
 
     onBeforeUnmount(() => {
+      debugLog('SphereGeometry', 'Disposing', {
+        vertices: geometry.attributes.position.count
+      });
       geometry.dispose()
     })
 
@@ -186,15 +256,30 @@ export const MeshStandardMaterial = defineComponent({
       emissiveIntensity: props.emissiveIntensity
     })
 
+    debugLog('MeshStandardMaterial', 'Created', {
+      color: props.color,
+      metalness: props.metalness,
+      roughness: props.roughness,
+      opacity: props.opacity,
+      emissive: props.emissive,
+      emissiveIntensity: props.emissiveIntensity
+    });
+
     watch(() => props.color, (newColor) => {
       material.color.set(newColor)
+      debugLog('MeshStandardMaterial', 'Color updated', { color: newColor });
     })
 
     watch(() => props.emissive, (newColor) => {
       material.emissive.set(newColor)
+      debugLog('MeshStandardMaterial', 'Emissive updated', { emissive: newColor });
     })
 
     onBeforeUnmount(() => {
+      debugLog('MeshStandardMaterial', 'Disposing', {
+        color: props.color,
+        emissive: props.emissive
+      });
       material.dispose()
     })
 
@@ -240,12 +325,28 @@ export const Line = defineComponent({
     })
     const line = new THREE.Line(geometry, material)
 
+    debugLog('Line', 'Created', {
+      points: props.points.map(p => p.toArray()),
+      color: props.color,
+      linewidth: props.linewidth,
+      opacity: props.opacity,
+      vertices: geometry.attributes.position.count
+    });
+
     watch(() => props.points, (newPoints) => {
       geometry.setFromPoints(newPoints)
       geometry.attributes.position.needsUpdate = true
+      debugLog('Line', 'Points updated', {
+        points: newPoints.map(p => p.toArray()),
+        vertices: geometry.attributes.position.count
+      });
     })
 
     onBeforeUnmount(() => {
+      debugLog('Line', 'Disposing', {
+        points: props.points.map(p => p.toArray()),
+        vertices: geometry.attributes.position.count
+      });
       geometry.dispose()
       material.dispose()
     })
@@ -293,6 +394,14 @@ export const Html = defineComponent({
         if (props.center) {
           container.value.style.transform += ' translate(-50%, -50%)'
         }
+
+        debugLog('Html', 'Mounted', {
+          position: [pos.x, pos.y, pos.z],
+          center: props.center,
+          occlude: props.occlude,
+          sprite: props.sprite,
+          style: props.style
+        });
       }
     })
 
@@ -302,6 +411,9 @@ export const Html = defineComponent({
         if (props.center) {
           container.value.style.transform += ' translate(-50%, -50%)'
         }
+        debugLog('Html', 'Position updated', {
+          position: [newPos.x, newPos.y, newPos.z]
+        });
       }
     })
 

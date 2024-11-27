@@ -29,35 +29,55 @@ import { errorTracking } from '../services/errorTracking'
 import { useVisualization } from '../composables/useVisualization'
 import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge, BinaryMessage, FisheyeUpdateMessage } from '../types/websocket'
 import type { Node as CoreNode, Edge as CoreEdge } from '../types/core'
+import type { FisheyeConfig } from '../types/components'
 
 // Transform websocket node to core node
-const transformNode = (wsNode: WSNode): CoreNode => ({
-  id: wsNode.id,
-  label: wsNode.label || wsNode.id,
-  position: wsNode.position,
-  velocity: wsNode.velocity,
-  size: wsNode.size,
-  color: wsNode.color,
-  type: wsNode.type,
-  metadata: wsNode.metadata || {},
-  userData: wsNode.userData || {},
-  weight: wsNode.weight,
-  group: wsNode.group
-})
+const transformNode = (wsNode: WSNode): CoreNode => {
+  const node = {
+    id: wsNode.id,
+    label: wsNode.label || wsNode.id,
+    position: wsNode.position,
+    velocity: wsNode.velocity,
+    size: wsNode.size,
+    color: wsNode.color,
+    type: wsNode.type,
+    metadata: wsNode.metadata || {},
+    userData: wsNode.userData || {},
+    weight: wsNode.weight,
+    group: wsNode.group
+  };
+  console.debug('Transformed node:', {
+    id: node.id,
+    position: node.position,
+    size: node.size,
+    weight: node.weight,
+    group: node.group
+  });
+  return node;
+}
 
 // Transform websocket edge to core edge
-const transformEdge = (wsEdge: WSEdge): CoreEdge => ({
-  id: `${wsEdge.source}-${wsEdge.target}`,
-  source: wsEdge.source,
-  target: wsEdge.target,
-  weight: wsEdge.weight,
-  width: wsEdge.width,
-  color: wsEdge.color,
-  type: wsEdge.type,
-  metadata: wsEdge.metadata || {},
-  userData: wsEdge.userData || {},
-  directed: wsEdge.directed
-})
+const transformEdge = (wsEdge: WSEdge): CoreEdge => {
+  const edge = {
+    id: `${wsEdge.source}-${wsEdge.target}`,
+    source: wsEdge.source,
+    target: wsEdge.target,
+    weight: wsEdge.weight,
+    width: wsEdge.width,
+    color: wsEdge.color,
+    type: wsEdge.type,
+    metadata: wsEdge.metadata || {},
+    userData: wsEdge.userData || {},
+    directed: wsEdge.directed
+  };
+  console.debug('Transformed edge:', {
+    id: edge.id,
+    weight: edge.weight,
+    width: edge.width,
+    directed: edge.directed
+  });
+  return edge;
+}
 
 export default defineComponent({
   name: 'App',
@@ -80,7 +100,25 @@ export default defineComponent({
     const error = ref<string | null>(null)
 
     // Get visualization settings
-    const visualSettings = computed(() => settingsStore.getVisualizationSettings)
+    const visualSettings = computed(() => {
+      const settings = settingsStore.getVisualizationSettings;
+      console.debug('Visualization settings:', {
+        material: {
+          metalness: settings.material.node_material_metalness,
+          roughness: settings.material.node_material_roughness,
+          opacity: settings.material.node_material_opacity
+        },
+        nodeColors: {
+          base: settings.node_color,
+          core: settings.node_color_core
+        },
+        sizes: {
+          min: settings.min_node_size,
+          max: settings.max_node_size
+        }
+      });
+      return settings;
+    });
 
     // Initialize visualization system
     const { initialize: initVisualization, updateNodes, updatePositions } = useVisualization()
@@ -88,7 +126,15 @@ export default defineComponent({
     // Watch for graph data updates from the store
     watch(() => visualizationStore.nodes, (newNodes) => {
       if (newNodes.length > 0) {
-        console.log('Updating visualization with nodes:', newNodes.length)
+        console.log('Updating visualization with nodes:', {
+          count: newNodes.length,
+          sample: newNodes[0] ? {
+            id: newNodes[0].id,
+            position: newNodes[0].position,
+            size: newNodes[0].size,
+            weight: newNodes[0].weight
+          } : null
+        });
         updateNodes(newNodes)
         // Clear transient position updates when receiving full mesh update
         binaryUpdateStore.clear()
@@ -98,6 +144,14 @@ export default defineComponent({
     // Watch for binary position updates
     watch(() => binaryUpdateStore.getAllPositions, (positions) => {
       if (positions.length > 0) {
+        console.debug('Binary position update:', {
+          count: positions.length,
+          sample: positions[0] ? {
+            id: positions[0].id,
+            position: [positions[0].x, positions[0].y, positions[0].z],
+            velocity: [positions[0].vx, positions[0].vy, positions[0].vz]
+          } : null
+        });
         updatePositions(positions, binaryUpdateStore.isInitial)
       }
     })
@@ -134,14 +188,16 @@ export default defineComponent({
 
           case 'fisheye_settings_updated':
             const fisheyeMsg = message as FisheyeUpdateMessage
-            visualizationStore.updateFisheyeSettings({
+            const fisheyeConfig: FisheyeConfig = {
               enabled: fisheyeMsg.fisheye_enabled,
               strength: fisheyeMsg.fisheye_strength,
+              radius: fisheyeMsg.fisheye_radius,
               focus_x: fisheyeMsg.fisheye_focus_x,
               focus_y: fisheyeMsg.fisheye_focus_y,
-              focus_z: fisheyeMsg.fisheye_focus_z,
-              radius: fisheyeMsg.fisheye_radius
-            })
+              focus_z: fisheyeMsg.fisheye_focus_z
+            }
+            console.debug('Fisheye settings updated:', fisheyeConfig);
+            visualizationStore.updateFisheyeSettings(fisheyeConfig)
             break
 
           case 'error':
@@ -167,7 +223,12 @@ export default defineComponent({
       websocketStore.service.on('gpuPositions', (data: BinaryMessage) => {
         console.debug('Received GPU positions update:', {
           positions: data.positions.length,
-          isInitial: data.isInitialLayout
+          isInitial: data.isInitialLayout,
+          sample: data.positions[0] ? {
+            id: data.positions[0].id,
+            position: [data.positions[0].x, data.positions[0].y, data.positions[0].z],
+            velocity: [data.positions[0].vx, data.positions[0].vy, data.positions[0].vz]
+          } : null
         })
         // Store transient position updates
         binaryUpdateStore.updatePositions(
