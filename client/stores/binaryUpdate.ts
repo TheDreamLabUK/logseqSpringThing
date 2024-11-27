@@ -55,27 +55,32 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
 
   actions: {
     /**
-     * Generate a unique ID for position updates that don't have one
-     */
-    generateUpdateId(index: number): string {
-      return `pos_${this.lastUpdateTime}_${index}`
-    },
-
-    /**
      * Process a single position update
      */
-    processUpdate(pos: PositionUpdate, index: number): void {
-      const updateId = pos.id ?? this.generateUpdateId(index)
-      const updatedPosition: PositionUpdate = {
-        id: updateId,
+    processUpdate(pos: PositionUpdate): void {
+      if (!pos.id) {
+        console.warn('Received position update without node ID')
+        return
+      }
+
+      // Store update with node ID
+      this.positions.set(pos.id, {
+        id: pos.id,
         x: pos.x,
         y: pos.y,
         z: pos.z,
         vx: pos.vx,
         vy: pos.vy,
         vz: pos.vz
+      })
+
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('Position update:', {
+          id: pos.id,
+          position: [pos.x, pos.y, pos.z],
+          velocity: [pos.vx, pos.vy, pos.vz]
+        })
       }
-      this.positions.set(updateId, updatedPosition)
     },
 
     /**
@@ -90,12 +95,12 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
 
       // Process any pending updates first
       if (this.pendingUpdates.length > 0) {
-        this.pendingUpdates.forEach((pos, index) => this.processUpdate(pos, index))
+        this.pendingUpdates.forEach(pos => this.processUpdate(pos))
         this.pendingUpdates = []
       }
 
       // Process new updates
-      positions.forEach((pos, index) => this.processUpdate(pos, index))
+      positions.forEach(pos => this.processUpdate(pos))
 
       // Update state
       this.lastUpdateTime = Date.now()
@@ -106,7 +111,8 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         console.debug('Binary update processed:', {
           positions: positions.length,
           total: this.positions.size,
-          isInitial
+          isInitial,
+          sample: positions.slice(0, 3).map(p => ({ id: p.id, pos: [p.x, p.y, p.z] }))
         })
       }
     },

@@ -19,9 +19,7 @@ const transformNode = (wsNode: WSNode): GraphNode => ({
 })
 
 // Transform websocket edge to graph edge
-const transformEdge = (wsNode: WSNode, wsEdge: WSEdge): GraphEdge => {
-  const sourceNode = transformNode(wsNode);
-  const targetNode = transformNode(wsNode);
+const transformEdge = (sourceNode: GraphNode, targetNode: GraphNode, wsEdge: WSEdge): GraphEdge => {
   return {
     id: `${wsEdge.source}-${wsEdge.target}`,
     source: wsEdge.source,
@@ -41,6 +39,8 @@ const transformEdge = (wsNode: WSNode, wsEdge: WSEdge): GraphEdge => {
 export default class GraphDataManager {
   private websocketService: WebsocketService
   private graphData: GraphData | null = null
+  // Map for quick node lookups by ID
+  private nodeMap: Map<string, GraphNode> = new Map()
 
   constructor(websocketService: WebsocketService) {
     this.websocketService = websocketService
@@ -63,21 +63,27 @@ export default class GraphDataManager {
       return
     }
 
+    console.log('Received graph update:', {
+      nodes: message.graphData.nodes?.length || 0,
+      edges: message.graphData.edges?.length || 0,
+      metadata: message.graphData.metadata ? Object.keys(message.graphData.metadata).length : 0
+    })
+
     // Transform nodes first
     const nodes = (message.graphData.nodes || []).map(transformNode)
     
     // Create a map of nodes by ID for quick lookup
-    const nodeMap = new Map(nodes.map(node => [node.id, node]))
+    this.nodeMap = new Map(nodes.map(node => [node.id, node]))
 
     // Transform edges and link them to nodes
     const edges = (message.graphData.edges || []).map(edge => {
-      const sourceNode = nodeMap.get(edge.source)
-      const targetNode = nodeMap.get(edge.target)
+      const sourceNode = this.nodeMap.get(edge.source)
+      const targetNode = this.nodeMap.get(edge.target)
       if (!sourceNode || !targetNode) {
         console.warn(`Edge references missing node: ${edge.source} -> ${edge.target}`)
         return null
       }
-      const graphEdge = transformEdge(sourceNode, edge)
+      const graphEdge = transformEdge(sourceNode, targetNode, edge)
       sourceNode.edges.push(graphEdge)
       targetNode.edges.push(graphEdge)
       return graphEdge
@@ -90,6 +96,12 @@ export default class GraphDataManager {
       metadata: message.graphData.metadata || {}
     }
 
+    console.log('Graph data transformed:', {
+      nodes: this.graphData.nodes.length,
+      edges: this.graphData.edges.length,
+      metadata: Object.keys(this.graphData.metadata).length
+    })
+
     // Emit custom event for graph update
     window.dispatchEvent(new CustomEvent('graphData:update', {
       detail: this.graphData
@@ -97,15 +109,39 @@ export default class GraphDataManager {
   }
 
   private handleBinaryPositionUpdate(data: BinaryMessage) {
-    if (!this.graphData?.nodes) return
+    if (!this.graphData?.nodes) {
+      console.warn('Received binary update but no graph data exists')
+      return
+    }
 
-    // Update node positions from binary data
-    data.positions.forEach((pos, index) => {
-      if (index < this.graphData!.nodes.length) {
-        this.graphData!.nodes[index].position = [pos.x, pos.y, pos.z]
-        this.graphData!.nodes[index].velocity = [pos.vx, pos.vy, pos.vz]
+    // Log binary update stats
+    console.debug('Processing binary position update:', {
+      numPositions: data.positions.length,
+      isInitialLayout: data.isInitialLayout,
+      numNodes: this.graphData.nodes.length,
+      numMappedNodes: this.nodeMap.size
+    })
+
+    // Update node positions from binary data using node IDs
+    data.positions.forEach((pos) => {
+      const node = this.nodeMap.get(pos.id)
+      if (node) {
+        node.position = [pos.x, pos.y, pos.z]
+        node.velocity = [pos.vx, pos.vy, pos.vz]
+      } else {
+        console.warn(`No node found for ID: ${pos.id}`)
       }
     })
+
+    // Log sample of updated positions
+    if (data.positions.length > 0) {
+      const sampleNode = this.nodeMap.get(data.positions[0].id)
+      console.debug('Sample node update:', {
+        id: data.positions[0].id,
+        position: sampleNode?.position,
+        velocity: sampleNode?.velocity
+      })
+    }
 
     // Emit custom event for position update
     window.dispatchEvent(new CustomEvent('graphData:positions', {
@@ -126,9 +162,7 @@ export default class GraphDataManager {
   }
 
   public updateNodePosition(nodeId: string, position: [number, number, number]) {
-    if (!this.graphData) return
-
-    const node = this.graphData.nodes.find(n => n.id === nodeId)
+    const node = this.nodeMap.get(nodeId)
     if (node) {
       node.position = position
       this.websocketService.send({
@@ -140,9 +174,7 @@ export default class GraphDataManager {
   }
 
   public updateNodeVelocity(nodeId: string, velocity: [number, number, number]) {
-    if (!this.graphData) return
-
-    const node = this.graphData.nodes.find(n => n.id === nodeId)
+    const node = this.nodeMap.get(nodeId)
     if (node) {
       node.velocity = velocity
       this.websocketService.send({
@@ -159,5 +191,6 @@ export default class GraphDataManager {
       this.websocketService.off('gpuPositions', this.handleBinaryPositionUpdate.bind(this))
     }
     this.graphData = null
+    this.nodeMap.clear()
   }
 }

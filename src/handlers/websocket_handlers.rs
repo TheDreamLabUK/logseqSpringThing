@@ -90,151 +90,129 @@ pub trait WebSocketSessionHandler {
     fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32);
 }
 
-// Handler for GPU position updates
-impl Handler<GpuUpdate> for WebSocketSession {
-    type Result = ResponseActFuture<Self, ()>;
-
-    fn handle(&mut self, _: GpuUpdate, ctx: &mut Self::Context) -> Self::Result {
-        let state = self.state.clone();
-        let gpu_compute = if let Some(gpu) = &state.gpu_compute {
-            gpu.clone()
-        } else {
-            return Box::pin(futures::future::ready(()).into_actor(self));
-        };
-        let ctx_addr = ctx.address();
-
-        Box::pin(async move {
-            let mut gpu = gpu_compute.write().await;
-            if let Err(e) = gpu.step() {
-                error!("GPU compute step failed: {}", e);
-                return;
-            }
-
-            // Send binary position updates to all connected clients
-            if let Ok(nodes) = gpu.get_node_positions().await {
-                let binary_data = positions_to_binary(&nodes);
-
-                if let Ok(sessions) = state.websocket_manager.sessions.lock() {
-                    for session in sessions.iter() {
-                        if session != &ctx_addr {
-                            let _ = session.do_send(SendBinary(binary_data.clone()));
-                        }
-                    }
-                }
-            }
-        }
-        .into_actor(self))
-    }
-}
-
-// Handler for text messages
-impl Handler<SendText> for WebSocketSession {
-    type Result = ();
-
-    fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
-        ctx.text(ByteString::from(msg.0));
-    }
-}
-
-// Handler for binary messages
-impl Handler<SendBinary> for WebSocketSession {
-    type Result = ();
-
-    fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
-        if let Some(gpu_compute) = &self.state.gpu_compute {
-            let gpu = gpu_compute.clone();
-            let bin_data = msg.0.clone();
-            let ctx_addr = ctx.address();
-
-            ctx.spawn(
-                async move {
-                    let gpu_read = gpu.read().await;
-                    let num_nodes = gpu_read.get_num_nodes() as usize;
-                    let expected_size = num_nodes * 24 + 4; // +4 for multiplexed header
-                    drop(gpu_read); // Release the read lock before writing
-
-                    if bin_data.len() != expected_size {
-                        error!("Invalid position data length: expected {}, got {}", 
-                            expected_size, bin_data.len());
-                        let error_message = ServerMessage::Error {
-                            message: format!("Invalid position data length: expected {}, got {}", 
-                                expected_size, bin_data.len()),
-                            code: Some("INVALID_DATA_LENGTH".to_string())
-                        };
-                        if let Ok(error_str) = serde_json::to_string(&error_message) {
-                            ctx_addr.do_send(SendText(error_str));
-                        }
-                        return;
-                    }
-
-                    let mut gpu_write = gpu.write().await;
-                    if let Err(e) = gpu_write.update_positions(&bin_data).await {
-                        error!("Failed to update node positions: {}", e);
-                        let error_message = ServerMessage::Error {
-                            message: format!("Failed to update node positions: {}", e),
-                            code: Some("UPDATE_POSITION_ERROR".to_string())
-                        };
-                        if let Ok(error_str) = serde_json::to_string(&error_message) {
-                            ctx_addr.do_send(SendText(error_str));
-                        }
-                    } else {
-                        // Convert first byte to f32 for proper comparison
-                        let is_initial = if bin_data.len() >= 4 {
-                            let bytes: [u8; 4] = [bin_data[0], bin_data[1], bin_data[2], bin_data[3]];
-                            let value = f32::from_le_bytes(bytes);
-                            value >= 1.0
-                        } else {
-                            false
-                        };
-
-                        // Send position update completion as JSON
-                        let completion_message = json!({
-                            "type": "position_update_complete",
-                            "status": "success",
-                            "is_initial_layout": is_initial
-                        });
-                        if let Ok(msg_str) = serde_json::to_string(&completion_message) {
-                            let msg: SendText = SendText(msg_str);
-                            ctx_addr.do_send(msg);
-                        }
-                    }
-                }
-                .into_actor(self)
-            );
-        }
-    }
-}
-
-// OpenAI message handlers
-impl Handler<OpenAIMessage> for WebSocketSession {
-    type Result = ();
-
-    fn handle(&mut self, msg: OpenAIMessage, _ctx: &mut Self::Context) {
-        if let Some(ref ws) = self.openai_ws {
-            ws.do_send(msg);
-        }
-    }
-}
-
-impl Handler<OpenAIConnected> for WebSocketSession {
-    type Result = ();
-
-    fn handle(&mut self, _: OpenAIConnected, _ctx: &mut Self::Context) {
-        debug!("OpenAI WebSocket connected");
-    }
-}
-
-impl Handler<OpenAIConnectionFailed> for WebSocketSession {
-    type Result = ();
-
-    fn handle(&mut self, _: OpenAIConnectionFailed, _ctx: &mut Self::Context) {
-        error!("OpenAI WebSocket connection failed");
-        self.openai_ws = None;
-    }
-}
-
 // Main WebSocket session handler implementation
 impl WebSocketSessionHandler for WebSocketSession {
+    // Handle initial data request - sends full graph data and settings
+    fn handle_initial_data(&mut self, ctx: &mut WebsocketContext<WebSocketSession>) {
+        let state = self.state.clone();
+        let ctx_addr = ctx.address();
+
+        let fut = async move {
+            let graph_data = state.graph_data.read().await;
+            let settings = state.settings.read().await;
+            
+            // Send graph data using ServerMessage enum, ensuring metadata is included
+            let graph_update = ServerMessage::GraphUpdate {
+                graph_data: json!({
+                    "nodes": graph_data.nodes.iter().map(|node| {
+                        json!({
+                            "id": node.id,
+                            "label": node.label,
+                            "position": node.position,
+                            "velocity": node.velocity,
+                            "size": node.size,
+                            "color": node.color,
+                            "type": node.type,
+                            "metadata": node.metadata,
+                            "weight": node.weight,
+                            "group": node.group
+                        })
+                    }).collect::<Vec<_>>(),
+                    "edges": graph_data.edges.iter().map(|edge| {
+                        json!({
+                            "source": edge.source,
+                            "target": edge.target,
+                            "weight": edge.weight,
+                            "width": edge.width,
+                            "color": edge.color,
+                            "type": edge.type,
+                            "metadata": edge.metadata,
+                            "directed": edge.directed
+                        })
+                    }).collect::<Vec<_>>(),
+                    "metadata": &graph_data.metadata
+                })
+            };
+            if let Ok(graph_str) = serde_json::to_string(&graph_update) {
+                ctx_addr.do_send(SendText(graph_str));
+            }
+
+            // Send settings using proper ServerMessage format
+            let settings_update = ServerMessage::SettingsUpdated {
+                settings: json!({
+                    "visualization": {
+                        "nodeColor": format_color(&settings.visualization.node_color),
+                        "edgeColor": format_color(&settings.visualization.edge_color),
+                        "hologramColor": format_color(&settings.visualization.hologram_color),
+                        "minNodeSize": settings.visualization.min_node_size,
+                        "maxNodeSize": settings.visualization.max_node_size,
+                        "hologramScale": settings.visualization.hologram_scale,
+                        "hologramOpacity": settings.visualization.hologram_opacity,
+                        "edgeOpacity": settings.visualization.edge_opacity,
+                        "fogDensity": settings.visualization.fog_density,
+                        "nodeMaterial": {
+                            "metalness": settings.visualization.node_material_metalness,
+                            "roughness": settings.visualization.node_material_roughness,
+                            "clearcoat": settings.visualization.node_material_clearcoat,
+                            "clearcoatRoughness": settings.visualization.node_material_clearcoat_roughness,
+                            "opacity": settings.visualization.node_material_opacity,
+                            "emissiveMin": settings.visualization.node_emissive_min_intensity,
+                            "emissiveMax": settings.visualization.node_emissive_max_intensity
+                        },
+                        "physics": {
+                            "iterations": settings.visualization.force_directed_iterations,
+                            "spring": settings.visualization.force_directed_spring,
+                            "repulsion": settings.visualization.force_directed_repulsion,
+                            "attraction": settings.visualization.force_directed_attraction,
+                            "damping": settings.visualization.force_directed_damping
+                        },
+                        "bloom": {
+                            "nodeStrength": settings.bloom.node_bloom_strength,
+                            "nodeRadius": settings.bloom.node_bloom_radius,
+                            "nodeThreshold": settings.bloom.node_bloom_threshold,
+                            "edgeStrength": settings.bloom.edge_bloom_strength,
+                            "edgeRadius": settings.bloom.edge_bloom_radius,
+                            "edgeThreshold": settings.bloom.edge_bloom_threshold,
+                            "envStrength": settings.bloom.environment_bloom_strength,
+                            "envRadius": settings.bloom.environment_bloom_radius,
+                            "envThreshold": settings.bloom.environment_bloom_threshold
+                        }
+                    },
+                    "fisheye": {
+                        "enabled": settings.fisheye.enabled,
+                        "strength": settings.fisheye.strength,
+                        "radius": settings.fisheye.radius,
+                        "focusPoint": [
+                            settings.fisheye.focus_x,
+                            settings.fisheye.focus_y,
+                            settings.fisheye.focus_z
+                        ]
+                    }
+                })
+            };
+            if let Ok(settings_str) = serde_json::to_string(&settings_update) {
+                ctx_addr.do_send(SendText(settings_str));
+            }
+
+            // Send completion
+            let completion = json!({
+                "type": "completion",
+                "message": "Initial data sent"
+            });
+            if let Ok(completion_str) = serde_json::to_string(&completion) {
+                ctx_addr.do_send(SendText(completion_str));
+            }
+        };
+
+        ctx.spawn(fut.into_actor(self));
+        
+        // Set simulation mode to remote and start GPU updates
+        self.simulation_mode = SimulationMode::Remote;
+        if self.state.gpu_compute.is_some() {
+            self.start_gpu_updates(ctx);
+        }
+    }
+
     // Start periodic GPU updates at 60fps
     fn start_gpu_updates(&self, ctx: &mut WebsocketContext<WebSocketSession>) {
         let addr = ctx.address();
@@ -462,96 +440,7 @@ impl WebSocketSessionHandler for WebSocketSession {
         ctx.spawn(fut.into_actor(self));
     }
 
-    // Handle initial data request - sends full graph data and settings
-    fn handle_initial_data(&mut self, ctx: &mut WebsocketContext<WebSocketSession>) {
-        let state = self.state.clone();
-        let ctx_addr = ctx.address();
-
-        let fut = async move {
-            let graph_data = state.graph_data.read().await;
-            let settings = state.settings.read().await;
-            
-            // Send graph data using ServerMessage enum
-            let graph_update = ServerMessage::GraphUpdate {
-                graph_data: json!({
-                    "nodes": &graph_data.nodes,
-                    "edges": &graph_data.edges
-                })
-            };
-            if let Ok(graph_str) = serde_json::to_string(&graph_update) {
-                ctx_addr.do_send(SendText(graph_str));
-            }
-
-            // Send settings using proper ServerMessage format
-            let settings_update = ServerMessage::SettingsUpdated {
-                settings: json!({
-                    "visualization": {
-                        "nodeColor": format_color(&settings.visualization.node_color),
-                        "edgeColor": format_color(&settings.visualization.edge_color),
-                        "hologramColor": format_color(&settings.visualization.hologram_color),
-                        "minNodeSize": settings.visualization.min_node_size,
-                        "maxNodeSize": settings.visualization.max_node_size,
-                        "hologramScale": settings.visualization.hologram_scale,
-                        "hologramOpacity": settings.visualization.hologram_opacity,
-                        "edgeOpacity": settings.visualization.edge_opacity,
-                        "fogDensity": settings.visualization.fog_density,
-                        "nodeMaterial": {
-                            "metalness": settings.visualization.node_material_metalness,
-                            "roughness": settings.visualization.node_material_roughness,
-                            "clearcoat": settings.visualization.node_material_clearcoat,
-                            "clearcoatRoughness": settings.visualization.node_material_clearcoat_roughness,
-                            "opacity": settings.visualization.node_material_opacity,
-                            "emissiveMin": settings.visualization.node_emissive_min_intensity,
-                            "emissiveMax": settings.visualization.node_emissive_max_intensity
-                        },
-                        "physics": {
-                            "iterations": settings.visualization.force_directed_iterations,
-                            "spring": settings.visualization.force_directed_spring,
-                            "repulsion": settings.visualization.force_directed_repulsion,
-                            "attraction": settings.visualization.force_directed_attraction,
-                            "damping": settings.visualization.force_directed_damping
-                        },
-                        "bloom": {
-                            "nodeStrength": settings.bloom.node_bloom_strength,
-                            "nodeRadius": settings.bloom.node_bloom_radius,
-                            "nodeThreshold": settings.bloom.node_bloom_threshold,
-                            "edgeStrength": settings.bloom.edge_bloom_strength,
-                            "edgeRadius": settings.bloom.edge_bloom_radius,
-                            "edgeThreshold": settings.bloom.edge_bloom_threshold,
-                            "envStrength": settings.bloom.environment_bloom_strength,
-                            "envRadius": settings.bloom.environment_bloom_radius,
-                            "envThreshold": settings.bloom.environment_bloom_threshold
-                        }
-                    },
-                    "fisheye": {
-                        "enabled": settings.fisheye.enabled,
-                        "strength": settings.fisheye.strength,
-                        "radius": settings.fisheye.radius,
-                        "focusPoint": [
-                            settings.fisheye.focus_x,
-                            settings.fisheye.focus_y,
-                            settings.fisheye.focus_z
-                        ]
-                    }
-                })
-            };
-            if let Ok(settings_str) = serde_json::to_string(&settings_update) {
-                ctx_addr.do_send(SendText(settings_str));
-            }
-
-            // Send completion
-            let completion = json!({
-                "type": "completion",
-                "message": "Initial data sent"
-            });
-            if let Ok(completion_str) = serde_json::to_string(&completion) {
-                ctx_addr.do_send(SendText(completion_str));
-            }
-        };
-
-        ctx.spawn(fut.into_actor(self));
-    }
-
+    // Handle fisheye settings updates
     fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
@@ -593,5 +482,85 @@ impl WebSocketSessionHandler for WebSocketSession {
         };
 
         ctx.spawn(fut.into_actor(self));
+    }
+}
+
+// Handler implementations for messages
+impl Handler<GpuUpdate> for WebSocketSession {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(&mut self, _: GpuUpdate, ctx: &mut Self::Context) -> Self::Result {
+        let state = self.state.clone();
+        let gpu_compute = if let Some(gpu) = &state.gpu_compute {
+            gpu.clone()
+        } else {
+            return Box::pin(futures::future::ready(()).into_actor(self));
+        };
+        let ctx_addr = ctx.address();
+
+        Box::pin(async move {
+            let mut gpu = gpu_compute.write().await;
+            if let Err(e) = gpu.step() {
+                error!("GPU compute step failed: {}", e);
+                return;
+            }
+
+            // Send binary position updates to all connected clients
+            if let Ok(nodes) = gpu.get_node_positions().await {
+                let binary_data = positions_to_binary(&nodes);
+
+                if let Ok(sessions) = state.websocket_manager.sessions.lock() {
+                    for session in sessions.iter() {
+                        if session != &ctx_addr {
+                            let _ = session.do_send(SendBinary(binary_data.clone()));
+                        }
+                    }
+                }
+            }
+        }
+        .into_actor(self))
+    }
+}
+
+impl Handler<SendText> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
+        ctx.text(ByteString::from(msg.0));
+    }
+}
+
+impl Handler<SendBinary> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
+        ctx.binary(msg.0);
+    }
+}
+
+impl Handler<OpenAIMessage> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: OpenAIMessage, _ctx: &mut Self::Context) {
+        if let Some(ref ws) = self.openai_ws {
+            ws.do_send(msg);
+        }
+    }
+}
+
+impl Handler<OpenAIConnected> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, _: OpenAIConnected, _ctx: &mut Self::Context) {
+        debug!("OpenAI WebSocket connected");
+    }
+}
+
+impl Handler<OpenAIConnectionFailed> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, _: OpenAIConnectionFailed, _ctx: &mut Self::Context) {
+        error!("OpenAI WebSocket connection failed");
+        self.openai_ws = None;
     }
 }

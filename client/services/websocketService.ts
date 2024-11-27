@@ -41,6 +41,8 @@ export default class WebsocketService {
   private reconnectTimeout: number | null = null
   private eventListeners: Map<keyof WebSocketEventMap, Set<WebSocketEventCallback<any>>> = new Map()
   private url: string
+  // Store node IDs in order they appear in initial graph data
+  private nodeIds: string[] = []
 
   constructor(config: Partial<WebSocketConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
@@ -120,21 +122,44 @@ export default class WebsocketService {
         const isInitialLayout = view.getFloat32(0, true) >= 1.0
         const numPositions = (event.data.byteLength - 4) / 24 // 24 bytes per position (6 int32s * 4 bytes)
         
+        // Log binary update stats
+        console.debug('Binary position update:', {
+          isInitialLayout,
+          numPositions,
+          numStoredIds: this.nodeIds.length,
+          dataSize: event.data.byteLength
+        })
+        
         const positions: PositionUpdate[] = []
         let offset = 4 // Skip isInitialLayout flag
         
         for (let i = 0; i < numPositions; i++) {
+          // Use stored node ID for this position index
+          const nodeId = this.nodeIds[i]
+          if (!nodeId) {
+            console.warn(`No stored ID for node index ${i}`)
+            continue
+          }
+          
           // Dequantize position and velocity values from integers
+          const x = view.getInt32(offset, true) / POSITION_SCALE
+          const y = view.getInt32(offset + 4, true) / POSITION_SCALE
+          const z = view.getInt32(offset + 8, true) / POSITION_SCALE
+          const vx = view.getInt32(offset + 12, true) / VELOCITY_SCALE
+          const vy = view.getInt32(offset + 16, true) / VELOCITY_SCALE
+          const vz = view.getInt32(offset + 20, true) / VELOCITY_SCALE
+          
           positions.push({
-            id: `node_${i}`, // Generate unique ID for each position
-            x: view.getInt32(offset, true) / POSITION_SCALE,
-            y: view.getInt32(offset + 4, true) / POSITION_SCALE,
-            z: view.getInt32(offset + 8, true) / POSITION_SCALE,
-            vx: view.getInt32(offset + 12, true) / VELOCITY_SCALE,
-            vy: view.getInt32(offset + 16, true) / VELOCITY_SCALE,
-            vz: view.getInt32(offset + 20, true) / VELOCITY_SCALE
+            id: nodeId,
+            x, y, z,
+            vx, vy, vz
           })
           offset += 24
+        }
+
+        // Log first few positions for debugging
+        if (positions.length > 0) {
+          console.debug('Sample positions:', positions.slice(0, 3))
         }
 
         const binaryMessage: BinaryMessage = {
@@ -148,15 +173,20 @@ export default class WebsocketService {
         const message: BaseMessage = JSON.parse(event.data)
         this.emit('message', message)
 
-        // Emit specific event based on message type
-        switch (message.type) {
-          case 'graphUpdate':
-          case 'graphData':
-            this.emit('graphUpdate', message as GraphUpdateMessage)
-            break
-          case 'error':
-            this.emit('error', message as ErrorMessage)
-            break
+        // Store node IDs from initial graph data
+        if (message.type === 'graphUpdate' || message.type === 'graphData') {
+          const graphMessage = message as GraphUpdateMessage
+          if (graphMessage.graphData?.nodes) {
+            // Store node IDs in order they appear in the array
+            this.nodeIds = graphMessage.graphData.nodes.map(node => node.id)
+            console.debug('Stored node IDs:', {
+              count: this.nodeIds.length,
+              sample: this.nodeIds.slice(0, 3)
+            })
+          }
+          this.emit('graphUpdate', graphMessage)
+        } else if (message.type === 'error') {
+          this.emit('error', message as ErrorMessage)
         }
       }
     } catch (error) {
@@ -301,5 +331,6 @@ export default class WebsocketService {
     this.lastMessageTime = 0
     this.reconnectAttempts = 0
     this.eventListeners.clear()
+    this.nodeIds = [] // Clear stored node IDs
   }
 }
