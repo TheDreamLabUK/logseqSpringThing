@@ -71,6 +71,8 @@ export interface PerformanceConfig {
 export interface PlatformCapabilities {
   webgl2: boolean;
   xr: boolean;
+  ar: boolean;  // Added AR support flag
+  vr: boolean;  // Added VR support flag
   maxTextureSize: number;
   maxDrawCalls: number;
   gpuTier: number;

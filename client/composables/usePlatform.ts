@@ -88,34 +88,51 @@ export function usePlatform() {
     if (!platformManager.hasXRSupport()) {
       throw new Error('WebXR not supported');
     }
-    // Since we've removed VR support, this is a no-op
-    console.warn('VR support has been removed');
+    return platformManager.startXRSession('immersive-vr');
   };
 
-  const disableVR = async () => {
-    // Since we've removed VR support, this is a no-op
-    console.warn('VR support has been removed');
+  const enableAR = async () => {
+    if (!platformManager.hasXRSupport()) {
+      throw new Error('WebXR not supported');
+    }
+    const capabilities = platformManager.getCapabilities();
+    if (!capabilities?.ar) {
+      throw new Error('AR not supported on this device');
+    }
+    return platformManager.startXRSession('immersive-ar');
   };
 
-  const isVRActive = () => false; // VR support removed
+  const disableXR = async () => {
+    return platformManager.endXRSession();
+  };
+
+  const isXRActive = () => platformManager.isInXRSession();
+  const isVRActive = () => platformManager.getXRSessionMode() === 'immersive-vr';
+  const isARActive = () => platformManager.getXRSessionMode() === 'immersive-ar';
 
   // Controller and Hand Access
   const getControllerGrip = (handedness: XRHandedness): Group | null => {
-    return null; // VR support removed
+    const state = getQuestState();
+    return state?.controllers.get(handedness)?.grip ?? null;
   };
 
   const getControllerRay = (handedness: XRHandedness): Group | null => {
-    return null; // VR support removed
+    const state = getQuestState();
+    return state?.controllers.get(handedness)?.ray ?? null;
   };
 
   const getHand = (handedness: XRHandedness): XRHand | null => {
-    return null; // VR support removed
+    const state = getQuestState();
+    return state?.hands.get(handedness) ?? null;
   };
 
   // Haptic Feedback
-  const vibrate = (handedness: XRHandedness, intensity?: number, duration?: number) => {
-    // VR support removed
-    console.warn('VR support has been removed');
+  const vibrate = (handedness: XRHandedness, intensity = 1.0, duration = 100) => {
+    const state = getQuestState();
+    const controller = state?.controllers.get(handedness);
+    if (controller?.gamepad?.hapticActuators?.[0]) {
+      controller.gamepad.hapticActuators[0].pulse(intensity, duration);
+    }
   };
 
   // Render and Resize Callbacks
@@ -146,7 +163,7 @@ export function usePlatform() {
 
     // Core Methods
     initialize,
-    initializePlatform, // Backward compatibility
+    initializePlatform,
     getState,
     getBrowserState,
     getQuestState,
@@ -157,12 +174,15 @@ export function usePlatform() {
     isBrowser: platformManager.isBrowser,
     hasXRSupport: platformManager.hasXRSupport,
 
-    // XR Methods (now stubs since VR support is removed)
+    // XR Methods
     enableVR,
-    disableVR,
+    enableAR,
+    disableXR,
+    isXRActive,
     isVRActive,
+    isARActive,
 
-    // Controller Methods (now stubs since VR support is removed)
+    // Controller Methods
     getControllerGrip,
     getControllerRay,
     getHand,

@@ -178,39 +178,32 @@ export default defineComponent({
             console.log('Received graph update:', {
               nodes: graphMsg.graphData.nodes?.length || 0,
               edges: graphMsg.graphData.edges?.length || 0,
-              metadata: graphMsg.graphData.metadata ? Object.keys(graphMsg.graphData.metadata).length : 0
+              metadata: graphMsg.graphData.metadata ? Object.keys(graphMsg.graphData.metadata).length : 0,
+              sampleNode: graphMsg.graphData.nodes?.[0] ? {
+                id: graphMsg.graphData.nodes[0].id,
+                position: graphMsg.graphData.nodes[0].position
+              } : null
             })
 
             // Transform nodes and edges before setting graph data
             const transformedNodes = (graphMsg.graphData.nodes || []).map(transformNode)
             const transformedEdges = (graphMsg.graphData.edges || []).map(transformEdge)
+            
+            // Set graph data in store
             visualizationStore.setGraphData(
               transformedNodes,
               transformedEdges,
               graphMsg.graphData.metadata || {}
             )
-            break
 
-          case 'fisheye_settings_updated':
-            const fisheyeMsg = message as FisheyeUpdateMessage
-            const fisheyeConfig: FisheyeConfig = {
-              enabled: fisheyeMsg.fisheye_enabled,
-              strength: fisheyeMsg.fisheye_strength,
-              radius: fisheyeMsg.fisheye_radius,
-              focus_x: fisheyeMsg.fisheye_focus_x,
-              focus_y: fisheyeMsg.fisheye_focus_y,
-              focus_z: fisheyeMsg.fisheye_focus_z
-            }
-            console.debug('Fisheye settings updated:', fisheyeConfig);
-            visualizationStore.updateFisheyeSettings(fisheyeConfig)
-            break
-
-          case 'error':
-            const errorMsg = message as ErrorMessage
-            error.value = errorMsg.message
-            errorTracking.trackError(new Error(errorMsg.message), {
-              context: 'WebSocket Error',
-              component: 'App'
+            // Log graph data state after update
+            console.log('Graph data state after update:', {
+              storeNodes: visualizationStore.nodes.length,
+              storeEdges: visualizationStore.edges.length,
+              graphData: visualizationStore.graphData ? {
+                nodes: visualizationStore.graphData.nodes.length,
+                edges: visualizationStore.graphData.edges.length
+              } : null
             })
             break
 
@@ -344,7 +337,7 @@ export default defineComponent({
       isConnected,
       error,
       visualSettings,
-      visualizationState // Expose visualization state to template
+      visualizationState
     }
   }
 })
