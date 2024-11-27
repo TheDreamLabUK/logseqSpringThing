@@ -168,7 +168,7 @@ export type WebSocketEventMap = {
   close: void;
   error: ErrorMessage;
   message: BaseMessage;
-  graphUpdate: { graphData: GraphData };
+  graphUpdate: GraphUpdateMessage;
   serverSettings: Record<string, any>;
   ragflowAnswer: string;
   openaiResponse: string;
