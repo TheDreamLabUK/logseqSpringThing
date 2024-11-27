@@ -110,6 +110,17 @@ http {
     gzip_comp_level 6;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
 
+    # Map to detect WebSocket upgrade
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
+    upstream backend {
+        server localhost:3000;
+        keepalive 32;
+    }
+
     server {
         listen 4000;
         server_name localhost;
@@ -120,6 +131,7 @@ http {
         add_header X-Content-Type-Options "nosniff";
         add_header Referrer-Policy "strict-origin-when-cross-origin";
         add_header Content-Security-Policy "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: wss:; connect-src 'self' ws: wss: http: https:;";
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
         
         # Root directory for static files
         root /app/data/public/dist;
@@ -139,21 +151,29 @@ http {
         
         # API proxy
         location /api {
-            proxy_pass http://localhost:4000;
+            proxy_pass http://backend;
             proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection 'upgrade';
             proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
             proxy_cache_bypass $http_upgrade;
         }
         
-        # WebSocket proxy
+        # WebSocket proxy with proper upgrade handling
         location /ws {
-            proxy_pass http://localhost:4000;
+            proxy_pass http://backend;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "Upgrade";
+            proxy_set_header Connection $connection_upgrade;
             proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
+            proxy_buffering off;
+            proxy_cache off;
         }
     }
 }

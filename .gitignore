@@ -19,6 +19,7 @@ dist-ssr
 *.local
 build
 out
+data/markdown
 
 # Editor directories and files
 .vscode/*

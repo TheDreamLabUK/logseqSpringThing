@@ -52,14 +52,26 @@ export default class WebsocketService {
         this.ws = new WebSocket(this.url)
         this.ws.binaryType = 'arraybuffer'
 
+        // Set a connection timeout
+        const connectionTimeout = setTimeout(() => {
+          if (this.ws?.readyState !== WebSocket.OPEN) {
+            console.error('WebSocket connection timeout')
+            this.ws?.close()
+            reject(new Error('WebSocket connection timeout'))
+          }
+        }, 10000) // 10 second timeout
+
         this.ws.onopen = () => {
+          clearTimeout(connectionTimeout)
           console.debug('WebSocket connection established')
           this.reconnectAttempts = 0
           this.emit('open')
+          this.processQueuedMessages()
           resolve()
         }
 
         this.ws.onclose = (event) => {
+          clearTimeout(connectionTimeout)
           console.debug('WebSocket connection closed:', {
             code: event.code,
             reason: event.reason,
@@ -69,6 +81,7 @@ export default class WebsocketService {
         }
 
         this.ws.onerror = (error) => {
+          clearTimeout(connectionTimeout)
           console.error('WebSocket connection error:', error)
           const errorMsg: ErrorMessage = {
             type: 'error',
@@ -150,13 +163,14 @@ export default class WebsocketService {
     
     if (this.reconnectAttempts < this.config.maxRetries) {
       this.reconnectAttempts++
-      console.debug(`Connection failed. Retrying in ${this.config.retryDelay}ms...`)
+      const delay = this.config.retryDelay * Math.pow(2, this.reconnectAttempts - 1) // Exponential backoff
+      console.debug(`Connection failed. Retrying in ${delay}ms...`)
       
       this.reconnectTimeout = window.setTimeout(() => {
         this.connect().catch(error => {
           console.error('Reconnection attempt failed:', error)
         })
-      }, this.config.retryDelay)
+      }, delay)
     } else {
       console.error('Max reconnection attempts reached')
       this.emit('maxReconnectAttemptsReached')
@@ -217,6 +231,15 @@ export default class WebsocketService {
       if (data) {
         this.send(data)
       }
+    }
+  }
+
+  private processQueuedMessages(): void {
+    if (this.messageQueue.length > 0) {
+      console.debug(`Processing ${this.messageQueue.length} queued messages`)
+      const messages = [...this.messageQueue]
+      this.messageQueue = []
+      messages.forEach(message => this.send(message))
     }
   }
 
