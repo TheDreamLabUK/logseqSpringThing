@@ -33,11 +33,8 @@ export default class WebsocketService {
   constructor(config: Partial<WebSocketConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
     
-    // Use the same host but with /ws path for WebSocket
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = window.location.hostname
-    const port = window.location.port ? `:${window.location.port}` : ''
-    this.url = `${protocol}//${host}${port}/ws`
+    // Use relative path for WebSocket to maintain protocol and host
+    this.url = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
 
     console.debug('WebSocket URL:', this.url)
   }
