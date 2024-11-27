@@ -4109,6 +4109,7 @@ dependencies = [
  "tokio-stream",
  "tokio-test",
  "tokio-tungstenite",
+ "toml",
  "tungstenite",
  "url",
  "wgpu",
