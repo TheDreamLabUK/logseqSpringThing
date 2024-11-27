@@ -5,7 +5,6 @@ interface BinaryUpdateState {
   positions: Map<string, PositionUpdate>
   lastUpdateTime: number
   isInitialLayout: boolean
-  timeStep: number
   pendingUpdates: PositionUpdate[]
   batchSize: number
 }
@@ -19,7 +18,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     positions: new Map(),
     lastUpdateTime: 0,
     isInitialLayout: false,
-    timeStep: 0,
     pendingUpdates: [],
     batchSize: 100 // Default batch size
   }),
@@ -43,11 +41,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
      * Check if this is initial layout data
      */
     isInitial: (state): boolean => state.isInitialLayout,
-
-    /**
-     * Get current simulation timestep
-     */
-    getCurrentTimeStep: (state): number => state.timeStep,
 
     /**
      * Get number of pending updates
@@ -88,7 +81,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     /**
      * Update positions from binary WebSocket message
      */
-    updatePositions(positions: PositionUpdate[], isInitial: boolean, timeStep: number) {
+    updatePositions(positions: PositionUpdate[], isInitial: boolean) {
       // Clear previous positions if this is initial layout
       if (isInitial) {
         this.positions.clear()
@@ -107,15 +100,13 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       // Update state
       this.lastUpdateTime = Date.now()
       this.isInitialLayout = isInitial
-      this.timeStep = timeStep
 
       // Log update in development
       if (process.env.NODE_ENV === 'development') {
         console.debug('Binary update processed:', {
           positions: positions.length,
           total: this.positions.size,
-          isInitial,
-          timeStep
+          isInitial
         })
       }
     },
@@ -139,7 +130,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.pendingUpdates = []
       this.lastUpdateTime = 0
       this.isInitialLayout = false
-      this.timeStep = 0
     }
   }
 })

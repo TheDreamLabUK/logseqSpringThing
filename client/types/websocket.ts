@@ -33,7 +33,6 @@ export interface PositionUpdate {
 
 export interface BinaryMessage {
   isInitialLayout: boolean;
-  timeStep: number;
   positions: PositionUpdate[];
 }
 

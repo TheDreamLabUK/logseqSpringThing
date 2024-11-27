@@ -9,14 +9,26 @@ import type {
   PositionUpdate
 } from '../types/websocket'
 
+import {
+  POSITION_SCALE,
+  VELOCITY_SCALE,
+  DEFAULT_RECONNECT_ATTEMPTS,
+  DEFAULT_RECONNECT_DELAY,
+  DEFAULT_MESSAGE_RATE_LIMIT,
+  DEFAULT_MESSAGE_TIME_WINDOW,
+  DEFAULT_MAX_MESSAGE_SIZE,
+  DEFAULT_MAX_AUDIO_SIZE,
+  DEFAULT_MAX_QUEUE_SIZE
+} from '../constants/websocket'
+
 const DEFAULT_CONFIG: WebSocketConfig = {
-  messageRateLimit: 60,
-  messageTimeWindow: 1000,
-  maxMessageSize: 1024 * 1024 * 5, // 5MB
-  maxAudioSize: 1024 * 1024 * 10, // 10MB
-  maxQueueSize: 1000,
-  maxRetries: 3,
-  retryDelay: 5000
+  messageRateLimit: DEFAULT_MESSAGE_RATE_LIMIT,
+  messageTimeWindow: DEFAULT_MESSAGE_TIME_WINDOW,
+  maxMessageSize: DEFAULT_MAX_MESSAGE_SIZE,
+  maxAudioSize: DEFAULT_MAX_AUDIO_SIZE,
+  maxQueueSize: DEFAULT_MAX_QUEUE_SIZE,
+  maxRetries: DEFAULT_RECONNECT_ATTEMPTS,
+  retryDelay: DEFAULT_RECONNECT_DELAY
 }
 
 export default class WebsocketService {
@@ -106,28 +118,27 @@ export default class WebsocketService {
         // Handle binary message (position updates)
         const view = new DataView(event.data)
         const isInitialLayout = view.getFloat32(0, true) >= 1.0
-        const timeStep = view.getFloat32(1, true)
-        const numPositions = (event.data.byteLength - 5) / 24 // 24 bytes per position (6 floats * 4 bytes)
+        const numPositions = (event.data.byteLength - 4) / 24 // 24 bytes per position (6 int32s * 4 bytes)
         
         const positions: PositionUpdate[] = []
-        let offset = 5
+        let offset = 4 // Skip isInitialLayout flag
         
         for (let i = 0; i < numPositions; i++) {
+          // Dequantize position and velocity values from integers
           positions.push({
             id: `node_${i}`, // Generate unique ID for each position
-            x: view.getFloat32(offset, true),
-            y: view.getFloat32(offset + 4, true),
-            z: view.getFloat32(offset + 8, true),
-            vx: view.getFloat32(offset + 12, true),
-            vy: view.getFloat32(offset + 16, true),
-            vz: view.getFloat32(offset + 20, true)
+            x: view.getInt32(offset, true) / POSITION_SCALE,
+            y: view.getInt32(offset + 4, true) / POSITION_SCALE,
+            z: view.getInt32(offset + 8, true) / POSITION_SCALE,
+            vx: view.getInt32(offset + 12, true) / VELOCITY_SCALE,
+            vy: view.getInt32(offset + 16, true) / VELOCITY_SCALE,
+            vz: view.getInt32(offset + 20, true) / VELOCITY_SCALE
           })
           offset += 24
         }
 
         const binaryMessage: BinaryMessage = {
           isInitialLayout,
-          timeStep,
           positions
         }
 

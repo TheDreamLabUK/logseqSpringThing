@@ -9,6 +9,10 @@ use actix_web_actors::ws;
 use log::{error, debug};
 use bytestring::ByteString;
 
+// Scale factors for network protocol quantization
+const POSITION_SCALE: f32 = 1000.0; // Quantize positions to millimeters
+const VELOCITY_SCALE: f32 = 10000.0; // Quantize velocities to 0.0001 units
+
 /// GPU-computed node positions and velocities
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GPUPositionUpdate {
@@ -24,14 +28,25 @@ impl GPUPositionUpdate {
         let header_value = if self.is_initial_layout { 1.0f32 } else { 0.0f32 };
         binary.extend_from_slice(&header_value.to_le_bytes());
 
-        // Write position updates (24 bytes each)
+        // Write quantized position updates (24 bytes each - 6 int32s)
         for update in &self.updates {
-            binary.extend_from_slice(&update.x.to_le_bytes());
-            binary.extend_from_slice(&update.y.to_le_bytes());
-            binary.extend_from_slice(&update.z.to_le_bytes());
-            binary.extend_from_slice(&update.vx.to_le_bytes());
-            binary.extend_from_slice(&update.vy.to_le_bytes());
-            binary.extend_from_slice(&update.vz.to_le_bytes());
+            // Quantize position values
+            let x = (update.x * POSITION_SCALE) as i32;
+            let y = (update.y * POSITION_SCALE) as i32;
+            let z = (update.z * POSITION_SCALE) as i32;
+            
+            // Quantize velocity values
+            let vx = (update.vx * VELOCITY_SCALE) as i32;
+            let vy = (update.vy * VELOCITY_SCALE) as i32;
+            let vz = (update.vz * VELOCITY_SCALE) as i32;
+
+            // Write quantized values
+            binary.extend_from_slice(&x.to_le_bytes());
+            binary.extend_from_slice(&y.to_le_bytes());
+            binary.extend_from_slice(&z.to_le_bytes());
+            binary.extend_from_slice(&vx.to_le_bytes());
+            binary.extend_from_slice(&vy.to_le_bytes());
+            binary.extend_from_slice(&vz.to_le_bytes());
         }
 
         binary
@@ -54,15 +69,14 @@ impl GPUPositionUpdate {
         // Read position updates
         for i in 0..num_nodes {
             let offset = 4 + i * 24;
-            let mut pos = [0u8; 24];
-            pos.copy_from_slice(&data[offset..offset + 24]);
-
-            let x = f32::from_le_bytes(pos[0..4].try_into().unwrap());
-            let y = f32::from_le_bytes(pos[4..8].try_into().unwrap());
-            let z = f32::from_le_bytes(pos[8..12].try_into().unwrap());
-            let vx = f32::from_le_bytes(pos[12..16].try_into().unwrap());
-            let vy = f32::from_le_bytes(pos[16..20].try_into().unwrap());
-            let vz = f32::from_le_bytes(pos[20..24].try_into().unwrap());
+            
+            // Read quantized integers
+            let x = i32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as f32 / POSITION_SCALE;
+            let y = i32::from_le_bytes(data[offset + 4..offset + 8].try_into().unwrap()) as f32 / POSITION_SCALE;
+            let z = i32::from_le_bytes(data[offset + 8..offset + 12].try_into().unwrap()) as f32 / POSITION_SCALE;
+            let vx = i32::from_le_bytes(data[offset + 12..offset + 16].try_into().unwrap()) as f32 / VELOCITY_SCALE;
+            let vy = i32::from_le_bytes(data[offset + 16..offset + 20].try_into().unwrap()) as f32 / VELOCITY_SCALE;
+            let vz = i32::from_le_bytes(data[offset + 20..offset + 24].try_into().unwrap()) as f32 / VELOCITY_SCALE;
 
             updates.push(NodePositionVelocity { x, y, z, vx, vy, vz });
         }
@@ -375,7 +389,19 @@ mod tests {
         let decoded = GPUPositionUpdate::from_binary(&binary, 2).unwrap();
         assert_eq!(decoded.updates.len(), 2);
         assert_eq!(decoded.is_initial_layout, true);
-        assert_eq!(decoded.updates[0].x, 1.0);
-        assert_eq!(decoded.updates[1].vz, 0.6);
+        
+        // Test quantization/dequantization precision
+        let original = &update.updates[0];
+        let decoded_pos = &decoded.updates[0];
+        
+        // Position values should be within 1mm
+        assert!((original.x - decoded_pos.x).abs() < 0.001);
+        assert!((original.y - decoded_pos.y).abs() < 0.001);
+        assert!((original.z - decoded_pos.z).abs() < 0.001);
+        
+        // Velocity values should be within 0.0001 units
+        assert!((original.vx - decoded_pos.vx).abs() < 0.0001);
+        assert!((original.vy - decoded_pos.vy).abs() < 0.0001);
+        assert!((original.vz - decoded_pos.vz).abs() < 0.0001);
     }
 }

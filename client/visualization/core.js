@@ -1,3 +1,4 @@
+// Previous imports unchanged...
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { NodeManager } from './nodes.js';
@@ -53,7 +54,7 @@ export class WebXRVisualization {
     handleBinaryUpdate(event) {
         if (!this.initialized || !this.nodeManager) return;
 
-        const { positions, isInitialLayout, timeStep } = event.detail;
+        const { positions, isInitialLayout } = event.detail;
         
         // Update position cache
         this.nodeManager.nodes.forEach((node, index) => {
