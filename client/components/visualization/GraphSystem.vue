@@ -2,7 +2,7 @@
   <Group ref="graphGroup">
     <!-- Nodes -->
     <Group ref="nodesGroup">
-      <template v-for="node in nodes" :key="node.id">
+      <template v-for="node in graphData.nodes" :key="node.id">
         <Mesh
           :position="getNodePosition(node)"
           :scale="nodeScale(node)"
@@ -40,7 +40,7 @@
 
     <!-- Edges -->
     <Group ref="edgesGroup">
-      <template v-for="edge in edges" :key="`${edge.source}-${edge.target}`">
+      <template v-for="edge in graphData.edges" :key="`${edge.source}-${edge.target}`">
         <Line
           :points="getEdgePoints(edge)"
           :color="getEdgeColor(edge)"
@@ -67,7 +67,8 @@ import {
 import { useGraphSystem } from '../../composables/useGraphSystem';
 import { useWebSocketStore } from '../../stores/websocket';
 import { useBinaryUpdateStore } from '../../stores/binaryUpdate';
-import type { Node as GraphNode, Edge as GraphEdge } from '../../types/core';
+import { useVisualizationStore } from '../../stores/visualization';
+import type { GraphNode, GraphEdge, GraphData } from '../../types/core';
 import type { VisualizationConfig } from '../../types/components';
 
 export default defineComponent({
@@ -83,14 +84,6 @@ export default defineComponent({
   },
 
   props: {
-    nodes: {
-      type: Array as () => GraphNode[],
-      required: true
-    },
-    edges: {
-      type: Array as () => GraphEdge[],
-      required: true
-    },
     visualSettings: {
       type: Object as () => VisualizationConfig,
       required: true
@@ -116,21 +109,22 @@ export default defineComponent({
 
     const websocketStore = useWebSocketStore();
     const binaryUpdateStore = useBinaryUpdateStore();
+    const visualizationStore = useVisualizationStore();
     
     const isDragging = ref(false);
     const draggedNode = ref<GraphNode | null>(null);
     const dragStartPosition = ref<Vector3 | null>(null);
 
-    // Watch for changes in props and update graph system
-    watch(() => ({ nodes: props.nodes, edges: props.edges }), (newData) => {
-      updateGraphData(newData);
-    }, { immediate: true, deep: true });
+    // Use the transformed graph data from the visualization store
+    const graphData = computed<GraphData>(() => {
+      return visualizationStore.getGraphData || { nodes: [], edges: [], metadata: {} };
+    });
 
     // Watch for binary position updates from server
     watch(() => binaryUpdateStore.getAllPositions, (positions) => {
       if (!isDragging.value) { // Don't apply server updates while dragging
         positions.forEach(pos => {
-          const node = props.nodes.find(n => n.id === pos.id);
+          const node = graphData.value.nodes.find(n => n.id === pos.id);
           if (node) {
             node.position = [pos.x, pos.y, pos.z];
             node.velocity = [pos.vx, pos.vy, pos.vz];
@@ -155,17 +149,7 @@ export default defineComponent({
 
     // Enhanced edge points getter that considers binary updates
     const getEdgePoints = (edge: GraphEdge) => {
-      const sourceNode = props.nodes.find(n => n.id === edge.source);
-      const targetNode = props.nodes.find(n => n.id === edge.target);
-      
-      if (!sourceNode || !targetNode) {
-        return getBaseEdgePoints(edge);
-      }
-
-      const sourcePos = getNodePosition(sourceNode);
-      const targetPos = getNodePosition(targetNode);
-      
-      return [sourcePos, targetPos];
+      return getBaseEdgePoints(edge);
     };
 
     // Node scale helper
@@ -235,6 +219,7 @@ export default defineComponent({
       // State
       hoveredNode,
       isDragging,
+      graphData,
       
       // Helpers
       getNodePosition,

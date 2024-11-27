@@ -92,7 +92,6 @@ pub trait WebSocketSessionHandler {
 
 // Main WebSocket session handler implementation
 impl WebSocketSessionHandler for WebSocketSession {
-    // Handle initial data request - sends full graph data and settings
     fn handle_initial_data(&mut self, ctx: &mut WebsocketContext<WebSocketSession>) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
@@ -108,12 +107,13 @@ impl WebSocketSessionHandler for WebSocketSession {
                         json!({
                             "id": node.id,
                             "label": node.label,
-                            "position": node.position,
-                            "velocity": node.velocity,
+                            "position": [node.x, node.y, node.z],
+                            "velocity": [node.vx, node.vy, node.vz],
                             "size": node.size,
                             "color": node.color,
-                            "type": node.type,
+                            "type": node.node_type,
                             "metadata": node.metadata,
+                            "userData": node.user_data,
                             "weight": node.weight,
                             "group": node.group
                         })
@@ -125,9 +125,10 @@ impl WebSocketSessionHandler for WebSocketSession {
                             "weight": edge.weight,
                             "width": edge.width,
                             "color": edge.color,
-                            "type": edge.type,
+                            "type": edge.edge_type,
                             "metadata": edge.metadata,
-                            "directed": edge.directed
+                            "userData": edge.user_data,
+                            "directed": edge.directed.unwrap_or(false)
                         })
                     }).collect::<Vec<_>>(),
                     "metadata": &graph_data.metadata
@@ -137,6 +138,7 @@ impl WebSocketSessionHandler for WebSocketSession {
                 ctx_addr.do_send(SendText(graph_str));
             }
 
+            // Rest of the function remains the same...
             // Send settings using proper ServerMessage format
             let settings_update = ServerMessage::SettingsUpdated {
                 settings: json!({
@@ -358,7 +360,7 @@ impl WebSocketSessionHandler for WebSocketSession {
         if let Ok(response_str) = serde_json::to_string(&response) {
             ctx.text(ByteString::from(response_str));
         }
-    }
+}
 
     // Handle layout parameter updates and GPU computation
     fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, params: SimulationParams) {
