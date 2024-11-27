@@ -16,6 +16,7 @@ use crate::models::simulation_params::{SimulationMode, SimulationParams};
 use crate::models::position_update::NodePositionVelocity;
 use crate::utils::websocket_messages::{
     MessageHandler, OpenAIConnected, OpenAIConnectionFailed, OpenAIMessage, SendBinary, SendText,
+    ServerMessage,
 };
 use crate::utils::websocket_openai::OpenAIWebSocket;
 
@@ -155,14 +156,13 @@ impl Handler<SendBinary> for WebSocketSession {
                     if bin_data.len() != expected_size {
                         error!("Invalid position data length: expected {}, got {}", 
                             expected_size, bin_data.len());
-                        let error_message = json!({
-                            "type": "error",
-                            "message": format!("Invalid position data length: expected {}, got {}", 
-                                expected_size, bin_data.len())
-                        });
+                        let error_message = ServerMessage::Error {
+                            message: format!("Invalid position data length: expected {}, got {}", 
+                                expected_size, bin_data.len()),
+                            code: Some("INVALID_DATA_LENGTH".to_string())
+                        };
                         if let Ok(error_str) = serde_json::to_string(&error_message) {
-                            let msg: SendText = SendText(error_str);
-                            ctx_addr.do_send(msg);
+                            ctx_addr.do_send(SendText(error_str));
                         }
                         return;
                     }
@@ -170,13 +170,12 @@ impl Handler<SendBinary> for WebSocketSession {
                     let mut gpu_write = gpu.write().await;
                     if let Err(e) = gpu_write.update_positions(&bin_data).await {
                         error!("Failed to update node positions: {}", e);
-                        let error_message = json!({
-                            "type": "error",
-                            "message": format!("Failed to update node positions: {}", e)
-                        });
+                        let error_message = ServerMessage::Error {
+                            message: format!("Failed to update node positions: {}", e),
+                            code: Some("UPDATE_POSITION_ERROR".to_string())
+                        };
                         if let Ok(error_str) = serde_json::to_string(&error_message) {
-                            let msg: SendText = SendText(error_str);
-                            ctx_addr.do_send(msg);
+                            ctx_addr.do_send(SendText(error_str));
                         }
                     } else {
                         // Convert first byte to f32 for proper comparison
@@ -299,10 +298,10 @@ impl WebSocketSessionHandler for WebSocketSession {
                                     debug!("Using local TTS service");
                                     if let Err(e) = state.speech_service.send_message(text).await {
                                         error!("Failed to generate speech: {}", e);
-                                        let error_message = json!({
-                                            "type": "error",
-                                            "message": format!("Failed to generate speech: {}", e)
-                                        });
+                                        let error_message = ServerMessage::Error {
+                                            message: format!("Failed to generate speech: {}", e),
+                                            code: Some("SPEECH_GENERATION_ERROR".to_string())
+                                        };
                                         if let Ok(error_str) = serde_json::to_string(&error_message) {
                                             ctx_addr.do_send(SendText(error_str));
                                         }
@@ -311,10 +310,10 @@ impl WebSocketSessionHandler for WebSocketSession {
                             },
                             Err(e) => {
                                 error!("Error processing RAGFlow response: {}", e);
-                                let error_message = json!({
-                                    "type": "error",
-                                    "message": format!("Error processing RAGFlow response: {}", e)
-                                });
+                                let error_message = ServerMessage::Error {
+                                    message: format!("Error processing RAGFlow response: {}", e),
+                                    code: Some("RAGFLOW_PROCESSING_ERROR".to_string())
+                                };
                                 if let Ok(error_str) = serde_json::to_string(&error_message) {
                                     ctx_addr.do_send(SendText(error_str));
                                 }
@@ -324,10 +323,10 @@ impl WebSocketSessionHandler for WebSocketSession {
                 },
                 Err(e) => {
                     error!("Failed to send message to RAGFlow: {}", e);
-                    let error_message = json!({
-                        "type": "error",
-                        "message": format!("Failed to send message to RAGFlow: {}", e)
-                    });
+                    let error_message = ServerMessage::Error {
+                        message: format!("Failed to send message to RAGFlow: {}", e),
+                        code: Some("RAGFLOW_SEND_ERROR".to_string())
+                    };
                     if let Ok(error_str) = serde_json::to_string(&error_message) {
                         ctx_addr.do_send(SendText(error_str));
                     }
@@ -374,12 +373,13 @@ impl WebSocketSessionHandler for WebSocketSession {
             }
         };
 
-        let response = json!({
-            "type": "simulation_mode_set",
-            "mode": mode,
-            "gpu_enabled": matches!(self.simulation_mode, SimulationMode::Remote | SimulationMode::GPU)
-        });
-        <Self as MessageHandler>::send_json_response(self, response, ctx);
+        let response = ServerMessage::SimulationModeSet {
+            mode: mode.to_string(),
+            gpu_enabled: matches!(self.simulation_mode, SimulationMode::Remote | SimulationMode::GPU)
+        };
+        if let Ok(response_str) = serde_json::to_string(&response) {
+            ctx.text(ByteString::from(response_str));
+        }
     }
 
     // Handle layout parameter updates and GPU computation
@@ -394,10 +394,10 @@ impl WebSocketSessionHandler for WebSocketSession {
                 
                 if let Err(e) = gpu.update_simulation_params(&params) {
                     error!("Failed to update simulation parameters: {}", e);
-                    let error_message = json!({
-                        "type": "error",
-                        "message": format!("Failed to update simulation parameters: {}", e)
-                    });
+                    let error_message = ServerMessage::Error {
+                        message: format!("Failed to update simulation parameters: {}", e),
+                        code: Some("SIMULATION_PARAMS_ERROR".to_string())
+                    };
                     if let Ok(error_str) = serde_json::to_string(&error_message) {
                         ctx_addr.do_send(SendText(error_str));
                     }
@@ -408,10 +408,10 @@ impl WebSocketSessionHandler for WebSocketSession {
                 for _ in 0..params.iterations {
                     if let Err(e) = gpu.step() {
                         error!("GPU compute step failed: {}", e);
-                        let error_message = json!({
-                            "type": "error",
-                            "message": format!("GPU compute step failed: {}", e)
-                        });
+                        let error_message = ServerMessage::Error {
+                            message: format!("GPU compute step failed: {}", e),
+                            code: Some("GPU_COMPUTE_ERROR".to_string())
+                        };
                         if let Ok(error_str) = serde_json::to_string(&error_message) {
                             ctx_addr.do_send(SendText(error_str));
                         }
@@ -427,10 +427,10 @@ impl WebSocketSessionHandler for WebSocketSession {
                     },
                     Err(e) => {
                         error!("Failed to get GPU node positions: {}", e);
-                        let error_message = json!({
-                            "type": "error",
-                            "message": format!("Failed to get GPU node positions: {}", e)
-                        });
+                        let error_message = ServerMessage::Error {
+                            message: format!("Failed to get GPU node positions: {}", e),
+                            code: Some("GPU_POSITION_ERROR".to_string())
+                        };
                         if let Ok(error_str) = serde_json::to_string(&error_message) {
                             ctx_addr.do_send(SendText(error_str));
                         }
@@ -438,10 +438,10 @@ impl WebSocketSessionHandler for WebSocketSession {
                 }
             } else {
                 error!("GPU compute service not available");
-                let error_message = json!({
-                    "type": "error",
-                    "message": "GPU compute service not available"
-                });
+                let error_message = ServerMessage::Error {
+                    message: "GPU compute service not available".to_string(),
+                    code: Some("GPU_SERVICE_ERROR".to_string())
+                };
                 if let Ok(error_str) = serde_json::to_string(&error_message) {
                     ctx_addr.do_send(SendText(error_str));
                 }
@@ -466,91 +466,86 @@ impl WebSocketSessionHandler for WebSocketSession {
     fn handle_initial_data(&mut self, ctx: &mut WebsocketContext<WebSocketSession>) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
-        let weak_addr = ctx.address().downgrade();
 
         let fut = async move {
             let graph_data = state.graph_data.read().await;
             let settings = state.settings.read().await;
             
-            // Helper function to send a simple JSON message
-            let send_settings = |msg_type: &str, fields: Vec<(&str, serde_json::Value)>| {
-                let mut map = serde_json::Map::new();
-                map.insert("type".to_string(), serde_json::Value::String(msg_type.to_string()));
-                for (key, value) in fields {
-                    map.insert(key.to_string(), value);
-                }
-                if let Ok(response_str) = serde_json::to_string(&serde_json::Value::Object(map)) {
-                    ctx_addr.do_send(SendText(response_str));
-                }
+            // Send graph data using ServerMessage enum
+            let graph_update = ServerMessage::GraphUpdate {
+                graph_data: json!({
+                    "nodes": &graph_data.nodes,
+                    "edges": &graph_data.edges
+                })
             };
+            if let Ok(graph_str) = serde_json::to_string(&graph_update) {
+                ctx_addr.do_send(SendText(graph_str));
+            }
 
-            // Send graph data
-            send_settings("graphData", vec![
-                ("nodes", serde_json::to_value(&graph_data.nodes).unwrap_or_default()),
-                ("edges", serde_json::to_value(&graph_data.edges).unwrap_or_default())
-            ]);
-
-            // Send basic visualization settings
-            send_settings("visualSettings", vec![
-                ("nodeColor", serde_json::Value::String(format_color(&settings.visualization.node_color))),
-                ("edgeColor", serde_json::Value::String(format_color(&settings.visualization.edge_color))),
-                ("hologramColor", serde_json::Value::String(format_color(&settings.visualization.hologram_color))),
-                ("minNodeSize", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.min_node_size as f64).unwrap())),
-                ("maxNodeSize", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.max_node_size as f64).unwrap())),
-                ("hologramScale", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.hologram_scale as f64).unwrap())),
-                ("hologramOpacity", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.hologram_opacity as f64).unwrap())),
-                ("edgeOpacity", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.edge_opacity as f64).unwrap())),
-                ("fogDensity", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.fog_density as f64).unwrap()))
-            ]);
-
-            // Send material settings
-            send_settings("materialSettings", vec![
-                ("metalness", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_material_metalness as f64).unwrap())),
-                ("roughness", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_material_roughness as f64).unwrap())),
-                ("clearcoat", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_material_clearcoat as f64).unwrap())),
-                ("clearcoatRoughness", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_material_clearcoat_roughness as f64).unwrap())),
-                ("opacity", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_material_opacity as f64).unwrap())),
-                ("emissiveMin", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_emissive_min_intensity as f64).unwrap())),
-                ("emissiveMax", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.node_emissive_max_intensity as f64).unwrap()))
-            ]);
-
-            // Send physics settings
-            send_settings("physicsSettings", vec![
-                ("iterations", serde_json::Value::Number(serde_json::Number::from(settings.visualization.force_directed_iterations))),
-                ("spring", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.force_directed_spring as f64).unwrap())),
-                ("repulsion", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.force_directed_repulsion as f64).unwrap())),
-                ("attraction", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.force_directed_attraction as f64).unwrap())),
-                ("damping", serde_json::Value::Number(serde_json::Number::from_f64(settings.visualization.force_directed_damping as f64).unwrap()))
-            ]);
-
-            // Send bloom settings
-            send_settings("bloomSettings", vec![
-                ("nodeStrength", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.node_bloom_strength as f64).unwrap())),
-                ("nodeRadius", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.node_bloom_radius as f64).unwrap())),
-                ("nodeThreshold", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.node_bloom_threshold as f64).unwrap())),
-                ("edgeStrength", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.edge_bloom_strength as f64).unwrap())),
-                ("edgeRadius", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.edge_bloom_radius as f64).unwrap())),
-                ("edgeThreshold", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.edge_bloom_threshold as f64).unwrap())),
-                ("envStrength", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.environment_bloom_strength as f64).unwrap())),
-                ("envRadius", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.environment_bloom_radius as f64).unwrap())),
-                ("envThreshold", serde_json::Value::Number(serde_json::Number::from_f64(settings.bloom.environment_bloom_threshold as f64).unwrap()))
-            ]);
-
-            // Send fisheye settings
-            send_settings("fisheyeSettings", vec![
-                ("enabled", serde_json::Value::Bool(settings.fisheye.enabled)),
-                ("strength", serde_json::Value::Number(serde_json::Number::from_f64(settings.fisheye.strength as f64).unwrap())),
-                ("radius", serde_json::Value::Number(serde_json::Number::from_f64(settings.fisheye.radius as f64).unwrap())),
-                ("focusX", serde_json::Value::Number(serde_json::Number::from_f64(settings.fisheye.focus_x as f64).unwrap())),
-                ("focusY", serde_json::Value::Number(serde_json::Number::from_f64(settings.fisheye.focus_y as f64).unwrap())),
-                ("focusZ", serde_json::Value::Number(serde_json::Number::from_f64(settings.fisheye.focus_z as f64).unwrap()))
-            ]);
+            // Send settings using proper ServerMessage format
+            let settings_update = ServerMessage::SettingsUpdated {
+                settings: json!({
+                    "visualization": {
+                        "nodeColor": format_color(&settings.visualization.node_color),
+                        "edgeColor": format_color(&settings.visualization.edge_color),
+                        "hologramColor": format_color(&settings.visualization.hologram_color),
+                        "minNodeSize": settings.visualization.min_node_size,
+                        "maxNodeSize": settings.visualization.max_node_size,
+                        "hologramScale": settings.visualization.hologram_scale,
+                        "hologramOpacity": settings.visualization.hologram_opacity,
+                        "edgeOpacity": settings.visualization.edge_opacity,
+                        "fogDensity": settings.visualization.fog_density,
+                        "nodeMaterial": {
+                            "metalness": settings.visualization.node_material_metalness,
+                            "roughness": settings.visualization.node_material_roughness,
+                            "clearcoat": settings.visualization.node_material_clearcoat,
+                            "clearcoatRoughness": settings.visualization.node_material_clearcoat_roughness,
+                            "opacity": settings.visualization.node_material_opacity,
+                            "emissiveMin": settings.visualization.node_emissive_min_intensity,
+                            "emissiveMax": settings.visualization.node_emissive_max_intensity
+                        },
+                        "physics": {
+                            "iterations": settings.visualization.force_directed_iterations,
+                            "spring": settings.visualization.force_directed_spring,
+                            "repulsion": settings.visualization.force_directed_repulsion,
+                            "attraction": settings.visualization.force_directed_attraction,
+                            "damping": settings.visualization.force_directed_damping
+                        },
+                        "bloom": {
+                            "nodeStrength": settings.bloom.node_bloom_strength,
+                            "nodeRadius": settings.bloom.node_bloom_radius,
+                            "nodeThreshold": settings.bloom.node_bloom_threshold,
+                            "edgeStrength": settings.bloom.edge_bloom_strength,
+                            "edgeRadius": settings.bloom.edge_bloom_radius,
+                            "edgeThreshold": settings.bloom.edge_bloom_threshold,
+                            "envStrength": settings.bloom.environment_bloom_strength,
+                            "envRadius": settings.bloom.environment_bloom_radius,
+                            "envThreshold": settings.bloom.environment_bloom_threshold
+                        }
+                    },
+                    "fisheye": {
+                        "enabled": settings.fisheye.enabled,
+                        "strength": settings.fisheye.strength,
+                        "radius": settings.fisheye.radius,
+                        "focusPoint": [
+                            settings.fisheye.focus_x,
+                            settings.fisheye.focus_y,
+                            settings.fisheye.focus_z
+                        ]
+                    }
+                })
+            };
+            if let Ok(settings_str) = serde_json::to_string(&settings_update) {
+                ctx_addr.do_send(SendText(settings_str));
+            }
 
             // Send completion
-            if let Some(addr) = weak_addr.upgrade() {
-                send_settings("completion", vec![
-                    ("message", serde_json::Value::String("Initial data sent".to_string()))
-                ]);
+            let completion = json!({
+                "type": "completion",
+                "message": "Initial data sent"
+            });
+            if let Ok(completion_str) = serde_json::to_string(&completion) {
+                ctx_addr.do_send(SendText(completion_str));
             }
         };
 
@@ -560,46 +555,40 @@ impl WebSocketSessionHandler for WebSocketSession {
     fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
-        let weak_addr = ctx.address().downgrade();
 
         let fut = async move {
             if let Some(gpu_compute) = &state.gpu_compute {
                 let mut gpu = gpu_compute.write().await;
                 gpu.update_fisheye_params(enabled, strength, focus_point, radius);
                 
-                // Send updated fisheye settings
-                let response = json!({
-                    "type": "fisheye_settings_updated",
-                    "enabled": enabled,
-                    "strength": strength,
-                    "focusX": focus_point[0],
-                    "focusY": focus_point[1],
-                    "focusZ": focus_point[2],
-                    "radius": radius
-                });
+                // Send updated fisheye settings using ServerMessage enum
+                let response = ServerMessage::FisheyeSettingsUpdated {
+                    enabled,
+                    strength,
+                    focus_point,
+                    radius,
+                };
                 if let Ok(response_str) = serde_json::to_string(&response) {
                     ctx_addr.do_send(SendText(response_str));
                 }
             } else {
                 error!("GPU compute service not available");
-                let error_message = json!({
-                    "type": "error",
-                    "message": "GPU compute service not available"
-                });
+                let error_message = ServerMessage::Error {
+                    message: "GPU compute service not available".to_string(),
+                    code: Some("GPU_SERVICE_ERROR".to_string())
+                };
                 if let Ok(error_str) = serde_json::to_string(&error_message) {
                     ctx_addr.do_send(SendText(error_str));
                 }
             }
 
             // Send completion
-            if let Some(addr) = weak_addr.upgrade() {
-                let completion = json!({
-                    "type": "completion",
-                    "message": "Fisheye settings updated"
-                });
-                if let Ok(completion_str) = serde_json::to_string(&completion) {
-                    addr.do_send(SendText(completion_str));
-                }
+            let completion = json!({
+                "type": "completion",
+                "message": "Fisheye settings updated"
+            });
+            if let Ok(completion_str) = serde_json::to_string(&completion) {
+                ctx_addr.do_send(SendText(completion_str));
             }
         };
 
