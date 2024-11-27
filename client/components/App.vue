@@ -3,7 +3,6 @@
     <div id="app">
       <div id="scene-container" ref="sceneContainer"></div>
       <ControlPanel />
-      <DebugPanel v-if="showDebugPanel" />
       <div class="connection-status" :class="{ connected: isConnected }">
         WebSocket: {{ isConnected ? 'Connected' : 'Disconnected' }}
       </div>
@@ -15,7 +14,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, onMounted, onErrorCaptured, ref, computed, onBeforeUnmount, ComponentPublicInstance, watch } from 'vue'
+import { defineComponent, onMounted, onErrorCaptured, ref, onBeforeUnmount, ComponentPublicInstance, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '../stores/settings'
 import { useVisualizationStore } from '../stores/visualization'
@@ -23,7 +22,6 @@ import { useWebSocketStore } from '../stores/websocket'
 import { useBinaryUpdateStore } from '../stores/binaryUpdate'
 import ControlPanel from '@components/ControlPanel.vue'
 import ErrorBoundary from '@components/ErrorBoundary.vue'
-import DebugPanel from '@components/DebugPanel.vue'
 import { errorTracking } from '../services/errorTracking'
 import { useVisualization } from '../composables/useVisualization'
 import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge, BinaryMessage, FisheyeUpdateMessage } from '../types/websocket'
@@ -59,8 +57,7 @@ export default defineComponent({
   name: 'App',
   components: {
     ControlPanel,
-    ErrorBoundary,
-    DebugPanel
+    ErrorBoundary
   },
   setup() {
     // Initialize stores
@@ -74,16 +71,9 @@ export default defineComponent({
     
     const sceneContainer = ref<HTMLElement | null>(null)
     const error = ref<string | null>(null)
-    const isDebugMode = ref(
-      window.location.search.includes('debug') || 
-      process.env.NODE_ENV === 'development'
-    )
 
     // Initialize visualization system
     const { initialize: initVisualization, updateNodes, updatePositions, updateFisheyeEffect } = useVisualization()
-
-    // Show debug panel in development or when debug mode is enabled
-    const showDebugPanel = computed(() => isDebugMode.value)
 
     // Watch for graph data updates from the store
     watch(() => visualizationStore.nodes, (newNodes) => {
@@ -179,14 +169,12 @@ export default defineComponent({
       websocketStore.service.on('gpuPositions', (data: BinaryMessage) => {
         console.debug('Received GPU positions update:', {
           positions: data.positions.length,
-          isInitial: data.isInitialLayout,
-          timeStep: data.timeStep
+          isInitial: data.isInitialLayout
         })
         // Store transient position updates
         binaryUpdateStore.updatePositions(
           data.positions,
-          data.isInitialLayout,
-          data.timeStep
+          data.isInitialLayout
         )
       })
 
@@ -243,8 +231,7 @@ export default defineComponent({
         // Log environment info
         console.info('Application initialized', {
           context: 'App Initialization',
-          environment: process.env.NODE_ENV,
-          debug: isDebugMode.value
+          environment: process.env.NODE_ENV
         })
 
       } catch (err) {
@@ -275,32 +262,7 @@ export default defineComponent({
       return false
     })
 
-    // Add keyboard shortcut for toggling debug panel
-    const handleKeyPress = (event: KeyboardEvent) => {
-      // Ctrl/Cmd + Shift + D to toggle debug panel
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'D') {
-        isDebugMode.value = !isDebugMode.value
-        // Update URL to reflect debug mode
-        const url = new URL(window.location.href)
-        if (isDebugMode.value) {
-          url.searchParams.set('debug', 'true')
-        } else {
-          url.searchParams.delete('debug')
-        }
-        window.history.replaceState({}, '', url.toString())
-      }
-    }
-
-    onMounted(() => {
-      window.addEventListener('keydown', handleKeyPress)
-    })
-
-    onBeforeUnmount(() => {
-      window.removeEventListener('keydown', handleKeyPress)
-    })
-
     return {
-      showDebugPanel,
       sceneContainer,
       isConnected,
       error
@@ -371,41 +333,5 @@ body, html {
   z-index: 1000;
   max-width: 300px;
   word-wrap: break-word;
-}
-
-/* Debug styles */
-.debug-visible {
-  border: 1px solid rgba(255, 0, 0, 0.3);
-}
-
-.debug-visible * {
-  border: 1px solid rgba(0, 255, 0, 0.1);
-}
-
-/* Keyboard shortcut tooltip */
-[data-tooltip] {
-  position: relative;
-}
-
-[data-tooltip]:after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 4px 8px;
-  background-color: rgba(0, 0, 0, 0.8);
-  color: white;
-  font-size: 12px;
-  border-radius: 4px;
-  white-space: nowrap;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.2s, visibility 0.2s;
-}
-
-[data-tooltip]:hover:after {
-  opacity: 1;
-  visibility: visible;
 }
 </style>

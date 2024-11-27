@@ -111,8 +111,7 @@ export default class GraphDataManager {
     window.dispatchEvent(new CustomEvent('graphData:positions', {
       detail: {
         positions: data.positions,
-        isInitialLayout: data.isInitialLayout,
-        timeStep: data.timeStep
+        isInitialLayout: data.isInitialLayout
       }
     }))
   }
