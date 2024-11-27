@@ -2,45 +2,7 @@
   <div v-if="isReady && graphData">
     <!-- Graph Content -->
     <primitive :object="graphGroup">
-      <!-- Nodes -->
-      <primitive :object="nodesGroup">
-        <template v-for="node in graphData.nodes" :key="node.id">
-          <Mesh
-            :position="getNodePosition(node)"
-            :scale="getNodeScaleVector(node)"
-            @click="handleNodeClick(node)"
-            @pointerenter="handleNodeHover(node)"
-            @pointerleave="handleNodeHover(null)"
-            @pointerdown="onDragStart($event, node)"
-            @pointermove="onDragMove"
-            @pointerup="onDragEnd"
-          >
-            <SphereGeometry :args="[1, 32, 32]" />
-            <MeshStandardMaterial
-              :color="getNodeColor(node)"
-              :metalness="visualSettings.material.node_material_metalness"
-              :roughness="visualSettings.material.node_material_roughness"
-              :opacity="visualSettings.material.node_material_opacity"
-              :transparent="true"
-              :emissive="getNodeColor(node)"
-              :emissiveIntensity="getNodeEmissiveIntensity(node)"
-            />
-          </Mesh>
-        </template>
-      </primitive>
-
-      <!-- Edges -->
-      <primitive :object="edgesGroup">
-        <template v-for="edge in graphData.edges" :key="`${edge.source}-${edge.target}`">
-          <Line
-            :points="getEdgePoints(edge)"
-            :color="getEdgeColor(edge)"
-            :linewidth="getEdgeWidth(edge)"
-            :opacity="visualSettings.edge_opacity"
-            :transparent="true"
-          />
-        </template>
-      </primitive>
+      <!-- Nodes and edges are now managed by useVisualization -->
     </primitive>
   </div>
 </template>
@@ -48,14 +10,6 @@
 <script lang="ts">
 import { defineComponent, ref, computed, watch, onMounted, inject } from 'vue';
 import { Vector3, Vector2, Plane, Raycaster } from 'three';
-import * as THREE from 'three';
-import {
-  Mesh,
-  SphereGeometry,
-  MeshStandardMaterial,
-  Line,
-  Html
-} from '../three';
 import { useGraphSystem } from '../../composables/useGraphSystem';
 import { useWebSocketStore } from '../../stores/websocket';
 import { useBinaryUpdateStore } from '../../stores/binaryUpdate';
@@ -66,13 +20,6 @@ import type { GraphNode, GraphEdge, GraphData, CoreState } from '../../types/cor
 
 export default defineComponent({
   name: 'GraphSystem',
-  components: {
-    Mesh,
-    SphereGeometry,
-    MeshStandardMaterial,
-    Line,
-    Html
-  },
 
   props: {
     visualSettings: {
@@ -105,8 +52,6 @@ export default defineComponent({
     // Initialize graph system
     const {
       graphGroup,
-      nodesGroup,
-      edgesGroup,
       hoveredNode,
       getNodePosition,
       getNodeScale,
@@ -135,35 +80,19 @@ export default defineComponent({
       return visualizationStore.getGraphData || { nodes: [], edges: [], metadata: {} };
     });
 
-    // Node helpers
-    const getNodeScaleVector = (node: GraphNode) => {
-      const scale = getNodeScale(node);
-      return new Vector3(scale, scale, scale);
-    };
-
-    const getNodeEmissiveIntensity = (node: GraphNode) => {
-      const { node_emissive_min_intensity, node_emissive_max_intensity } = props.visualSettings.material;
-      return node_emissive_min_intensity + (node.weight || 0) * (node_emissive_max_intensity - node_emissive_min_intensity);
-    };
-
     // Drag handlers
     const onDragStart = (event: PointerEvent, node: GraphNode) => {
       isDragging.value = true;
       draggedNode.value = node;
 
-      // Get the camera from visualization state
       const camera = visualizationState?.value.camera;
       if (!camera) return;
 
-      // Create a drag plane perpendicular to the camera
       const normal = new Vector3(0, 0, 1);
       normal.applyQuaternion(camera.quaternion);
       dragPlane.value = new Plane(normal, 0);
-
-      // Store initial position
       dragStartPosition.value = getNodePosition(node).clone();
 
-      // Mark scene for update
       if (visualizationState?.value.scene) {
         visualizationState.value.scene.userData.needsRender = true;
       }
@@ -172,7 +101,6 @@ export default defineComponent({
     const onDragMove = (event: PointerEvent) => {
       if (!isDragging.value || !draggedNode.value || !dragPlane.value) return;
 
-      // Get the camera from visualization state
       const camera = visualizationState?.value.camera;
       if (!camera) return;
 
@@ -181,19 +109,15 @@ export default defineComponent({
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-      // Create raycaster with Vector2
       const raycaster = new Raycaster();
       const pointer = new Vector2(x, y);
       raycaster.setFromCamera(pointer, camera);
 
-      // Find intersection with drag plane
       if (raycaster.ray.intersectPlane(dragPlane.value, dragIntersection)) {
-        // Update node position
         const node = draggedNode.value;
         const position = getNodePosition(node);
         position.copy(dragIntersection);
 
-        // Update position in store if needed
         if (websocketStore.service) {
           websocketStore.service.send({
             type: 'updateNodePosition',
@@ -202,7 +126,6 @@ export default defineComponent({
           });
         }
 
-        // Mark scene for update
         if (visualizationState?.value.scene) {
           visualizationState.value.scene.userData.needsRender = true;
         }
@@ -212,10 +135,8 @@ export default defineComponent({
     const onDragEnd = () => {
       if (!isDragging.value || !draggedNode.value || !dragStartPosition.value) return;
 
-      // Get final position
       const finalPosition = getNodePosition(draggedNode.value);
 
-      // Update position in store if needed
       if (websocketStore.service) {
         websocketStore.service.send({
           type: 'updateNodePosition',
@@ -224,13 +145,11 @@ export default defineComponent({
         });
       }
 
-      // Reset drag state
       isDragging.value = false;
       draggedNode.value = null;
       dragStartPosition.value = null;
       dragPlane.value = null;
 
-      // Mark scene for update
       if (visualizationState?.value.scene) {
         visualizationState.value.scene.userData.needsRender = true;
       }
@@ -261,35 +180,32 @@ export default defineComponent({
       }
     };
 
+    // Watch for graph data changes
+    watch(() => graphData.value, (newData) => {
+      if (newData && newData.nodes.length > 0) {
+        updateGraphData(newData);
+      }
+    }, { deep: true });
+
     // Update graph data when component mounts
     onMounted(() => {
-      updateGraphData(graphData.value);
+      if (graphData.value) {
+        updateGraphData(graphData.value);
+      }
     });
 
     return {
       isReady,
       platformInfo,
-      getNodeScaleVector,
       isXRActive,
       isVRActive,
       isARActive,
       enableAR: handleEnableAR,
       enableVR: handleEnableVR,
       graphGroup,
-      nodesGroup,
-      edgesGroup,
       hoveredNode,
       isDragging,
       graphData,
-      getNodePosition,
-      getNodeScale,
-      getNodeColor,
-      getNodeEmissiveIntensity,
-      getEdgePoints,
-      getEdgeColor,
-      getEdgeWidth,
-      handleNodeClick,
-      handleNodeHover,
       onDragStart,
       onDragMove,
       onDragEnd
@@ -299,23 +215,6 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.node-label {
-  background: v-bind('visualSettings.label_background_color');
-  color: v-bind('visualSettings.label_text_color');
-  padding: v-bind('visualSettings.label_padding + "px"');
-  border-radius: 4px;
-  font-size: v-bind('visualSettings.label_font_size + "px"');
-  font-family: v-bind('visualSettings.label_font_family');
-  white-space: nowrap;
-  pointer-events: none;
-  transition: transform 0.2s;
-}
-
-.node-label.is-hovered {
-  transform: scale(1.1);
-  background: rgba(0, 0, 0, 0.9);
-}
-
 .xr-controls {
   position: fixed;
   bottom: 20px;

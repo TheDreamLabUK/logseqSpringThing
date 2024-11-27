@@ -28,57 +28,38 @@ import ErrorBoundary from '@components/ErrorBoundary.vue'
 import GraphSystem from '@components/visualization/GraphSystem.vue'
 import { errorTracking } from '../services/errorTracking'
 import { useVisualization, SCENE_KEY } from '../composables/useVisualization'
-import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge, BinaryMessage, FisheyeUpdateMessage } from '../types/websocket'
-import type { Node as CoreNode, Edge as CoreEdge } from '../types/core'
+import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge, BinaryMessage } from '../types/websocket'
+import type { Node as CoreNode, Edge as CoreEdge, GraphNode, GraphEdge, GraphData } from '../types/core'
 import type { FisheyeConfig } from '../types/components'
 
 // Transform websocket node to core node
-const transformNode = (wsNode: WSNode): CoreNode => {
-  const node = {
-    id: wsNode.id,
-    label: wsNode.label || wsNode.id,
-    position: wsNode.position,
-    velocity: wsNode.velocity,
-    size: wsNode.size,
-    color: wsNode.color,
-    type: wsNode.type,
-    metadata: wsNode.metadata || {},
-    userData: wsNode.userData || {},
-    weight: wsNode.weight,
-    group: wsNode.group
-  };
-  console.debug('Transformed node:', {
-    id: node.id,
-    position: node.position,
-    size: node.size,
-    weight: node.weight,
-    group: node.group
-  });
-  return node;
-}
+const transformNode = (wsNode: WSNode): CoreNode => ({
+  id: wsNode.id,
+  label: wsNode.label || wsNode.id,
+  position: wsNode.position,
+  velocity: wsNode.velocity,
+  size: wsNode.size,
+  color: wsNode.color,
+  type: wsNode.type,
+  metadata: wsNode.metadata || {},
+  userData: wsNode.userData || {},
+  weight: wsNode.weight || 1,
+  group: wsNode.group
+});
 
 // Transform websocket edge to core edge
-const transformEdge = (wsEdge: WSEdge): CoreEdge => {
-  const edge = {
-    id: `${wsEdge.source}-${wsEdge.target}`,
-    source: wsEdge.source,
-    target: wsEdge.target,
-    weight: wsEdge.weight,
-    width: wsEdge.width,
-    color: wsEdge.color,
-    type: wsEdge.type,
-    metadata: wsEdge.metadata || {},
-    userData: wsEdge.userData || {},
-    directed: wsEdge.directed
-  };
-  console.debug('Transformed edge:', {
-    id: edge.id,
-    weight: edge.weight,
-    width: edge.width,
-    directed: edge.directed
-  });
-  return edge;
-}
+const transformEdge = (wsEdge: WSEdge): CoreEdge => ({
+  id: `${wsEdge.source}-${wsEdge.target}`,
+  source: wsEdge.source,
+  target: wsEdge.target,
+  weight: wsEdge.weight || 1,
+  width: wsEdge.width,
+  color: wsEdge.color,
+  type: wsEdge.type,
+  metadata: wsEdge.metadata || {},
+  userData: wsEdge.userData || {},
+  directed: wsEdge.directed || false
+});
 
 export default defineComponent({
   name: 'App',
@@ -128,39 +109,6 @@ export default defineComponent({
     // Provide visualization state to child components
     provide('visualizationState', visualizationState)
 
-    // Watch for graph data updates from the store
-    watch(() => visualizationStore.nodes, (newNodes) => {
-      if (newNodes.length > 0) {
-        console.log('Updating visualization with nodes:', {
-          count: newNodes.length,
-          sample: newNodes[0] ? {
-            id: newNodes[0].id,
-            position: newNodes[0].position,
-            size: newNodes[0].size,
-            weight: newNodes[0].weight
-          } : null
-        });
-        updateNodes(newNodes)
-        // Clear transient position updates when receiving full mesh update
-        binaryUpdateStore.clear()
-      }
-    }, { deep: true })
-
-    // Watch for binary position updates
-    watch(() => binaryUpdateStore.getAllPositions, (positions) => {
-      if (positions.length > 0) {
-        console.debug('Binary position update:', {
-          count: positions.length,
-          sample: positions[0] ? {
-            id: positions[0].id,
-            position: [positions[0].x, positions[0].y, positions[0].z],
-            velocity: [positions[0].vx, positions[0].vy, positions[0].vz]
-          } : null
-        });
-        updatePositions(positions, binaryUpdateStore.isInitial)
-      }
-    })
-
     // Set up WebSocket message handlers
     if (websocketStore.service) {
       // Handle JSON messages
@@ -196,6 +144,9 @@ export default defineComponent({
               graphMsg.graphData.metadata || {}
             )
 
+            // Update visualization
+            updateNodes(transformedNodes)
+
             // Log graph data state after update
             console.log('Graph data state after update:', {
               storeNodes: visualizationStore.nodes.length,
@@ -228,6 +179,9 @@ export default defineComponent({
             velocity: [data.positions[0].vx, data.positions[0].vy, data.positions[0].vz]
           } : null
         })
+        // Update visualization with position data
+        updatePositions(data.positions, data.isInitialLayout)
+        
         // Store transient position updates
         binaryUpdateStore.updatePositions(
           data.positions,
@@ -239,13 +193,12 @@ export default defineComponent({
       websocketStore.service.on('open', () => {
         console.log('WebSocket connected')
         error.value = null
-        // Request initial data on connection
+        // Request initial data
         websocketStore.requestInitialData()
       })
 
       websocketStore.service.on('close', () => {
         console.log('WebSocket disconnected')
-        // Clear transient data on disconnect
         binaryUpdateStore.clear()
       })
 

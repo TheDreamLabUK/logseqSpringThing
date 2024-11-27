@@ -26,6 +26,10 @@ export function useVisualization() {
     lastFrameTime: 0
   });
 
+  // Track meshes for updates
+  const nodeMeshes = new Map<string, THREE.Mesh>();
+  const nodeContainer = new THREE.Group();
+  
   // Track animation frame for cleanup
   let animationFrameId: number | null = null;
   let controls: OrbitControls | null = null;
@@ -39,23 +43,20 @@ export function useVisualization() {
     scene.background = new THREE.Color(0x000000);
     scene.fog = new THREE.Fog(0x000000, 50, 200);
 
+    // Add node container to scene
+    scene.add(nodeContainer);
+
     // Initialize scene userData
     scene.userData = {
       needsRender: true,
-      lastUpdate: performance.now()
+      lastUpdate: performance.now(),
+      nodeContainer
     };
 
     // Create camera
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 30, 50); // Position camera higher and back
-    camera.lookAt(0, 0, 0); // Look at origin
-    
-    console.debug('Camera initialized:', {
-      fov: camera.fov,
-      aspect: camera.aspect,
-      position: camera.position.toArray(),
-      lookAt: [0, 0, 0]
-    });
+    camera.position.set(0, 30, 50);
+    camera.lookAt(0, 0, 0);
 
     // Create renderer
     const renderer = new THREE.WebGLRenderer({
@@ -69,16 +70,6 @@ export function useVisualization() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    
-    console.debug('Renderer initialized:', {
-      size: [renderer.domElement.width, renderer.domElement.height],
-      pixelRatio: renderer.getPixelRatio(),
-      capabilities: {
-        isWebGL2: renderer.capabilities.isWebGL2,
-        maxTextures: renderer.capabilities.maxTextures,
-        precision: renderer.capabilities.precision
-      }
-    });
 
     // Add lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -87,42 +78,11 @@ export function useVisualization() {
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
     directionalLight.position.set(10, 20, 10);
     directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
-    directionalLight.shadow.camera.near = 0.5;
-    directionalLight.shadow.camera.far = 500;
-    directionalLight.shadow.camera.left = -100;
-    directionalLight.shadow.camera.right = 100;
-    directionalLight.shadow.camera.top = 100;
-    directionalLight.shadow.camera.bottom = -100;
-
-    // Add light target
-    const lightTarget = new THREE.Object3D();
-    lightTarget.position.set(0, 0, 0);
-    scene.add(lightTarget);
-    directionalLight.target = lightTarget;
     scene.add(directionalLight);
     
-    // Add hemisphere light for better ambient illumination
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
     hemiLight.position.set(0, 20, 0);
     scene.add(hemiLight);
-    
-    console.debug('Lights added:', {
-      ambient: { color: ambientLight.color.getHexString(), intensity: ambientLight.intensity },
-      directional: { 
-        color: directionalLight.color.getHexString(), 
-        intensity: directionalLight.intensity,
-        position: directionalLight.position.toArray(),
-        target: directionalLight.target.position.toArray()
-      },
-      hemisphere: {
-        skyColor: hemiLight.color.getHexString(),
-        groundColor: (hemiLight as THREE.HemisphereLight).groundColor.getHexString(),
-        intensity: hemiLight.intensity
-      },
-      sceneChildren: scene.children.length
-    });
 
     // Add controls
     controls = new OrbitControls(camera, renderer.domElement);
@@ -130,19 +90,46 @@ export function useVisualization() {
     controls.dampingFactor = 0.05;
     controls.maxDistance = 200;
     controls.minDistance = 10;
-    controls.maxPolarAngle = Math.PI * 0.8; // Prevent camera from going below ground
-    controls.target.set(0, 0, 0); // Look at origin
-    
-    console.debug('Controls initialized:', {
-      damping: controls.dampingFactor,
-      maxDistance: controls.maxDistance,
-      minDistance: controls.minDistance,
-      target: controls.target.toArray()
-    });
+    controls.maxPolarAngle = Math.PI * 0.8;
+    controls.target.set(0, 0, 0);
 
     // Provide scene to components
     provide(SCENE_KEY, scene);
     return { scene, camera, renderer };
+  };
+
+  // Create or update node mesh
+  const createNodeMesh = (node: Node) => {
+    const geometry = new THREE.SphereGeometry(1, 32, 32);
+    const material = new THREE.MeshStandardMaterial({
+      color: node.color || 0xffffff,
+      metalness: 0.3,
+      roughness: 0.7,
+      emissive: node.color || 0xffffff,
+      emissiveIntensity: 0.2
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    
+    // Set initial position
+    if (node.position) {
+      mesh.position.set(...node.position);
+    }
+    
+    // Set scale based on node size
+    const size = node.size || 1;
+    mesh.scale.setScalar(size);
+
+    // Store node data in userData
+    mesh.userData = {
+      id: node.id,
+      type: 'node',
+      originalData: { ...node }
+    };
+
+    return mesh;
   };
 
   // Animation loop
@@ -151,41 +138,31 @@ export function useVisualization() {
 
     const { renderer, scene, camera } = state.value;
     if (renderer && scene && camera) {
-      // Update controls
       controls?.update();
 
-      // Update FPS counter
       const currentTime = performance.now();
       const delta = currentTime - state.value.lastFrameTime;
       state.value.fps = 1000 / delta;
       state.value.lastFrameTime = currentTime;
 
-      // Check if scene needs render
       const needsRender = scene.userData?.needsRender !== false || 
                          controls?.enabled || 
                          currentTime - (scene.userData?.lastUpdate || 0) > 1000;
 
       if (needsRender) {
-        // Render scene
         renderer.render(scene, camera);
-        
-        // Update stats
-        if (process.env.NODE_ENV === 'development' && Math.floor(currentTime / 1000) % 5 === 0) {
-          console.debug('Render stats:', {
-            fps: state.value.fps.toFixed(1),
-            drawCalls: renderer.info.render.calls,
-            triangles: renderer.info.render.triangles,
-            geometries: renderer.info.memory.geometries,
-            textures: renderer.info.memory.textures,
-            sceneChildren: scene.children.length,
-            cameraPosition: camera.position.toArray(),
-            controlsTarget: controls?.target.toArray()
-          });
-        }
-
-        // Reset render flag and update timestamp
         scene.userData.needsRender = false;
         scene.userData.lastUpdate = currentTime;
+
+        // Log performance stats in development
+        if (process.env.NODE_ENV === 'development' && currentTime % 5000 < 16) {
+          console.debug('Render stats:', {
+            fps: state.value.fps.toFixed(1),
+            meshes: nodeMeshes.size,
+            drawCalls: renderer.info.render.calls,
+            triangles: renderer.info.render.triangles
+          });
+        }
       }
     }
 
@@ -197,10 +174,8 @@ export function useVisualization() {
     if (state.value.isInitialized) return;
 
     try {
-      console.log('Initializing visualization system...');
       const { scene, camera, renderer } = initScene(options.canvas);
 
-      // Store state
       state.value = {
         renderer,
         camera,
@@ -214,29 +189,18 @@ export function useVisualization() {
         lastFrameTime: performance.now()
       };
 
-      // Start animation loop
       animate();
 
       // Handle window resize
       const handleResize = () => {
         if (!camera || !renderer) return;
-        
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
-        console.debug('Window resized:', {
-          size: [window.innerWidth, window.innerHeight],
-          aspect: camera.aspect
-        });
       };
       window.addEventListener('resize', handleResize);
 
-      console.log('Visualization system initialized successfully', {
-        sceneChildren: scene.children.length,
-        cameraPosition: camera.position.toArray(),
-        rendererInfo: renderer.info.render
-      });
-
+      console.log('Visualization system initialized');
     } catch (error) {
       console.error('Failed to initialize visualization:', error);
       throw error;
@@ -247,21 +211,44 @@ export function useVisualization() {
   const updatePositions = (positions: PositionUpdate[], isInitialLayout: boolean) => {
     if (!state.value.scene || !state.value.isInitialized) return;
 
-    console.debug('Updating positions:', {
-      count: positions.length,
-      isInitial: isInitialLayout,
-      sample: positions[0] ? {
-        id: positions[0].id,
-        position: [positions[0].x / POSITION_SCALE, positions[0].y / POSITION_SCALE, positions[0].z / POSITION_SCALE],
-        velocity: [positions[0].vx / VELOCITY_SCALE, positions[0].vy / VELOCITY_SCALE, positions[0].vz / VELOCITY_SCALE]
-      } : null,
-      sceneChildren: state.value.scene.children.length
+    positions.forEach(pos => {
+      const mesh = nodeMeshes.get(pos.id);
+      if (mesh) {
+        // Apply scaling factors to convert from quantized values
+        mesh.position.set(
+          pos.x / POSITION_SCALE,
+          pos.y / POSITION_SCALE,
+          pos.z / POSITION_SCALE
+        );
+
+        // Store velocity in userData for potential use in animations
+        mesh.userData.velocity = new THREE.Vector3(
+          pos.vx / VELOCITY_SCALE,
+          pos.vy / VELOCITY_SCALE,
+          pos.vz / VELOCITY_SCALE
+        );
+      }
     });
 
-    // Enable GPU mode on first position update
-    if (!state.value.isGPUMode) {
-      state.value.isGPUMode = true;
-      console.log('Switching to GPU-accelerated mode');
+    if (state.value.scene) {
+      state.value.scene.userData.needsRender = true;
+    }
+
+    // Log update in development
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('Position update:', {
+        count: positions.length,
+        isInitial: isInitialLayout,
+        meshCount: nodeMeshes.size,
+        sample: positions[0] ? {
+          id: positions[0].id,
+          position: [
+            positions[0].x / POSITION_SCALE,
+            positions[0].y / POSITION_SCALE,
+            positions[0].z / POSITION_SCALE
+          ]
+        } : null
+      });
     }
   };
 
@@ -269,44 +256,82 @@ export function useVisualization() {
   const updateNodes = (nodes: Node[]) => {
     if (!state.value.scene) return;
 
-    console.debug('Updating nodes:', {
-      count: nodes.length,
-      sample: nodes[0] ? {
-        id: nodes[0].id,
-        position: nodes[0].position,
-        size: nodes[0].size,
-        weight: nodes[0].weight
-      } : null,
-      sceneChildren: state.value.scene.children.length
+    // Remove old nodes
+    const currentIds = new Set(nodes.map(n => n.id));
+    nodeMeshes.forEach((mesh, id) => {
+      if (!currentIds.has(id)) {
+        nodeContainer.remove(mesh);
+        mesh.geometry.dispose();
+        (mesh.material as THREE.Material).dispose();
+        nodeMeshes.delete(id);
+      }
     });
+
+    // Add or update nodes
+    nodes.forEach(node => {
+      let mesh = nodeMeshes.get(node.id);
+      
+      if (!mesh) {
+        // Create new mesh
+        mesh = createNodeMesh(node);
+        nodeContainer.add(mesh);
+        nodeMeshes.set(node.id, mesh);
+      } else {
+        // Update existing mesh
+        if (node.position) {
+          mesh.position.set(...node.position);
+        }
+        if (node.size) {
+          mesh.scale.setScalar(node.size);
+        }
+        if (node.color) {
+          (mesh.material as THREE.MeshStandardMaterial).color.set(node.color);
+          (mesh.material as THREE.MeshStandardMaterial).emissive.set(node.color);
+        }
+      }
+    });
+
+    if (state.value.scene) {
+      state.value.scene.userData.needsRender = true;
+    }
+
+    // Log update in development
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('Nodes updated:', {
+        count: nodes.length,
+        meshCount: nodeMeshes.size,
+        sample: nodes[0] ? {
+          id: nodes[0].id,
+          position: nodes[0].position,
+          size: nodes[0].size
+        } : null
+      });
+    }
   };
 
   // Cleanup
   onBeforeUnmount(() => {
-    console.log('Disposing visualization system...');
-    
     if (animationFrameId !== null) {
       cancelAnimationFrame(animationFrameId);
-      animationFrameId = null;
     }
 
     if (controls) {
       controls.dispose();
-      controls = null;
     }
 
-    if (!state.value.isInitialized) return;
+    // Clean up meshes
+    nodeMeshes.forEach(mesh => {
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    });
+    nodeMeshes.clear();
 
-    // Clean up renderer
     if (state.value.renderer) {
       state.value.renderer.dispose();
       state.value.renderer.forceContextLoss();
     }
     
-    // Remove canvas
     state.value.canvas?.remove();
-
-    // Reset state
     state.value = {
       renderer: null,
       camera: null,
@@ -319,8 +344,6 @@ export function useVisualization() {
       fps: 0,
       lastFrameTime: 0
     };
-
-    console.log('Visualization system disposed');
   });
 
   return {
