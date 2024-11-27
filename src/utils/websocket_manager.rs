@@ -9,7 +9,7 @@ use actix_web_actors::ws::WebsocketContext;
 use crate::AppState;
 use crate::models::simulation_params::SimulationMode;
 use crate::handlers::{WebSocketSession, WebSocketSessionHandler};
-use crate::utils::websocket_messages::{MessageHandler, SendText, ClientMessage};
+use crate::utils::websocket_messages::{MessageHandler, SendText, ClientMessage, ServerMessage};
 
 /// Manages WebSocket sessions and communication.
 pub struct WebSocketManager {
@@ -60,12 +60,16 @@ impl WebSocketManager {
 
     /// Broadcasts graph update to all connected WebSocket sessions.
     pub async fn broadcast_graph_update(&self, graph_data: &crate::models::graph::GraphData) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let json_data = json!({
-            "type": "graph_update",
-            "graph_data": graph_data
-        });
-        let message = json_data.to_string();
-        self.broadcast_message(&message).await
+        let message = ServerMessage::GraphUpdate {
+            graph_data: json!({
+                "nodes": graph_data.nodes,
+                "edges": graph_data.edges
+            })
+        };
+        if let Ok(message_str) = serde_json::to_string(&message) {
+            self.broadcast_message(&message_str).await?;
+        }
+        Ok(())
     }
 }
 
@@ -100,20 +104,20 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                         },
                         _ => {
                             error!("Unhandled client message type");
-                            let error_message = json!({
-                                "type": "error",
-                                "message": "Unhandled message type"
-                            });
-                            MessageHandler::send_json_response(self, error_message, ctx);
+                            let error_message = ServerMessage::Error {
+                                message: "Unhandled message type".to_string(),
+                                code: Some("UNHANDLED_MESSAGE".to_string())
+                            };
+                            <Self as MessageHandler>::send_server_message(self, error_message, ctx);
                         }
                     },
                     Err(e) => {
                         error!("Failed to parse client message: {}", e);
-                        let error_message = json!({
-                            "type": "error",
-                            "message": format!("Invalid message format: {}", e)
-                        });
-                        MessageHandler::send_json_response(self, error_message, ctx);
+                        let error_message = ServerMessage::Error {
+                            message: format!("Invalid message format: {}", e),
+                            code: Some("INVALID_FORMAT".to_string())
+                        };
+                        <Self as MessageHandler>::send_server_message(self, error_message, ctx);
                     }
                 }
             },
@@ -133,11 +137,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                             if bin_data.len() != expected_size {
                                 error!("Invalid position data length: expected {}, got {}", 
                                     expected_size, bin_data.len());
-                                let error_message = json!({
-                                    "type": "error",
-                                    "message": format!("Invalid position data length: expected {}, got {}", 
-                                        expected_size, bin_data.len())
-                                });
+                                let error_message = ServerMessage::Error {
+                                    message: format!("Invalid position data length: expected {}, got {}", 
+                                        expected_size, bin_data.len()),
+                                    code: Some("INVALID_DATA_LENGTH".to_string())
+                                };
                                 if let Ok(error_str) = serde_json::to_string(&error_message) {
                                     let msg: SendText = SendText(error_str);
                                     ctx_addr.do_send(msg);
@@ -158,10 +162,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                             let mut gpu_write = gpu.write().await;
                             if let Err(e) = gpu_write.update_positions(position_data).await {
                                 error!("Failed to update node positions: {}", e);
-                                let error_message = json!({
-                                    "type": "error",
-                                    "message": format!("Failed to update node positions: {}", e)
-                                });
+                                let error_message = ServerMessage::Error {
+                                    message: format!("Failed to update node positions: {}", e),
+                                    code: Some("UPDATE_POSITION_ERROR".to_string())
+                                };
                                 if let Ok(error_str) = serde_json::to_string(&error_message) {
                                     let msg: SendText = SendText(error_str);
                                     ctx_addr.do_send(msg);
