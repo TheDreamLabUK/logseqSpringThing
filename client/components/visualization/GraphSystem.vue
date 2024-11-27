@@ -4,15 +4,18 @@
     <Group ref="nodesGroup">
       <template v-for="node in nodes" :key="node.id">
         <Mesh
-          :position="nodePosition(node)"
+          :position="getNodePosition(node)"
           :scale="nodeScale(node)"
           @click="handleNodeClick(node)"
-          @pointerenter="handleNodeHover(node, true)"
-          @pointerleave="handleNodeHover(node, false)"
+          @pointerenter="handleNodeHover(node)"
+          @pointerleave="handleNodeHover(null)"
+          @pointerdown="handleDragStart(node)"
+          @pointermove="handleDragMove"
+          @pointerup="handleDragEnd"
         >
           <SphereGeometry :args="[1, 32, 32]" />
           <MeshStandardMaterial
-            :color="nodeColor(node)"
+            :color="getNodeColor(node)"
             :metalness="visualSettings.material.node_material_metalness"
             :roughness="visualSettings.material.node_material_roughness"
             :opacity="visualSettings.material.node_material_opacity"
@@ -39,35 +42,19 @@
     <Group ref="edgesGroup">
       <template v-for="edge in edges" :key="`${edge.source}-${edge.target}`">
         <Line
-          :points="edgePoints(edge)"
-          :color="edgeColor(edge)"
-          :linewidth="edgeWidth(edge)"
+          :points="getEdgePoints(edge)"
+          :color="getEdgeColor(edge)"
+          :linewidth="getEdgeWidth(edge)"
           :opacity="visualSettings.edge_opacity"
           :transparent="true"
         />
       </template>
     </Group>
-
-    <!-- Force Simulation -->
-    <movement-system
-      v-if="visualSettings.physics.force_directed_iterations > 0"
-      :iterations="visualSettings.physics.force_directed_iterations"
-      :spring-strength="visualSettings.physics.force_directed_spring"
-      :repulsion="visualSettings.physics.force_directed_repulsion"
-      :damping="visualSettings.physics.force_directed_damping"
-    >
-      <mass-object
-        v-for="node in nodes"
-        :key="node.id"
-        :position="nodePosition(node)"
-        :mass="1"
-      />
-    </movement-system>
   </Group>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed } from 'vue';
+import { defineComponent, ref, computed, watch, onMounted } from 'vue';
 import { Vector3 } from 'three';
 import {
   Group,
@@ -77,6 +64,9 @@ import {
   Line,
   Html
 } from 'vue-threejs';
+import { useGraphSystem } from '../../composables/useGraphSystem';
+import { useWebSocketStore } from '../../stores/websocket';
+import { useBinaryUpdateStore } from '../../stores/binaryUpdate';
 import type { Node as GraphNode, Edge as GraphEdge } from '../../types/core';
 import type { VisualizationConfig } from '../../types/components';
 
@@ -108,37 +98,85 @@ export default defineComponent({
   },
 
   setup(props) {
-    const graphGroup = ref(null);
-    const nodesGroup = ref(null);
-    const edgesGroup = ref(null);
-    const hoveredNode = ref<string | null>(null);
+    const {
+      graphGroup,
+      nodesGroup,
+      edgesGroup,
+      hoveredNode,
+      getNodePosition: getBaseNodePosition,
+      getNodeScale,
+      getNodeColor,
+      getEdgePoints: getBaseEdgePoints,
+      getEdgeColor,
+      getEdgeWidth,
+      handleNodeClick,
+      handleNodeHover,
+      updateGraphData
+    } = useGraphSystem();
 
-    // Node position helper
-    const nodePosition = (node: GraphNode) => {
-      if (node.position) {
-        return { x: node.position[0], y: node.position[1], z: node.position[2] };
+    const websocketStore = useWebSocketStore();
+    const binaryUpdateStore = useBinaryUpdateStore();
+    
+    const isDragging = ref(false);
+    const draggedNode = ref<GraphNode | null>(null);
+    const dragStartPosition = ref<Vector3 | null>(null);
+
+    // Watch for changes in props and update graph system
+    watch(() => ({ nodes: props.nodes, edges: props.edges }), (newData) => {
+      updateGraphData(newData);
+    }, { immediate: true, deep: true });
+
+    // Watch for binary position updates from server
+    watch(() => binaryUpdateStore.getAllPositions, (positions) => {
+      if (!isDragging.value) { // Don't apply server updates while dragging
+        positions.forEach(pos => {
+          const node = props.nodes.find(n => n.id === pos.id);
+          if (node) {
+            node.position = [pos.x, pos.y, pos.z];
+            node.velocity = [pos.vx, pos.vy, pos.vz];
+          }
+        });
       }
-      return { x: 0, y: 0, z: 0 };
+    }, { deep: true });
+
+    // Enhanced node position getter that considers binary updates
+    const getNodePosition = (node: GraphNode) => {
+      if (isDragging.value && draggedNode.value?.id === node.id) {
+        return getBaseNodePosition(node);
+      }
+
+      const binaryPos = binaryUpdateStore.getNodePosition(node.id);
+      if (binaryPos) {
+        return new Vector3(binaryPos.x, binaryPos.y, binaryPos.z);
+      }
+
+      return getBaseNodePosition(node);
+    };
+
+    // Enhanced edge points getter that considers binary updates
+    const getEdgePoints = (edge: GraphEdge) => {
+      const sourceNode = props.nodes.find(n => n.id === edge.source);
+      const targetNode = props.nodes.find(n => n.id === edge.target);
+      
+      if (!sourceNode || !targetNode) {
+        return getBaseEdgePoints(edge);
+      }
+
+      const sourcePos = getNodePosition(sourceNode);
+      const targetPos = getNodePosition(targetNode);
+      
+      return [sourcePos, targetPos];
     };
 
     // Node scale helper
     const nodeScale = (node: GraphNode) => {
-      const baseSize = node.size || 1;
-      const minSize = props.visualSettings.min_node_size;
-      const maxSize = props.visualSettings.max_node_size;
-      const scale = minSize + (baseSize * (maxSize - minSize));
+      const scale = getNodeScale(node);
       return { x: scale, y: scale, z: scale };
-    };
-
-    // Node color helper
-    const nodeColor = (node: GraphNode) => {
-      if (node.color) return node.color;
-      return props.visualSettings.node_color;
     };
 
     // Node label position helper
     const nodeLabelPosition = (node: GraphNode) => {
-      const pos = nodePosition(node);
+      const pos = getNodePosition(node);
       return new Vector3(
         pos.x,
         pos.y + props.visualSettings.label_vertical_offset,
@@ -146,59 +184,73 @@ export default defineComponent({
       );
     };
 
-    // Edge points helper
-    const edgePoints = computed(() => (edge: GraphEdge) => {
-      const sourceNode = props.nodes.find(n => n.id === edge.source);
-      const targetNode = props.nodes.find(n => n.id === edge.target);
-      
-      if (!sourceNode || !targetNode) return [];
-
-      const source = nodePosition(sourceNode);
-      const target = nodePosition(targetNode);
-      
-      return [
-        new Vector3(source.x, source.y, source.z),
-        new Vector3(target.x, target.y, target.z)
-      ];
-    });
-
-    // Edge color helper
-    const edgeColor = (edge: GraphEdge) => {
-      if (edge.color) return edge.color;
-      return props.visualSettings.edge_color;
+    // Drag handlers
+    const handleDragStart = (node: GraphNode) => {
+      isDragging.value = true;
+      draggedNode.value = node;
+      dragStartPosition.value = getNodePosition(node).clone();
     };
 
-    // Edge width helper
-    const edgeWidth = (edge: GraphEdge) => {
-      const baseWidth = edge.width || 1;
-      const minWidth = props.visualSettings.edge_min_width;
-      const maxWidth = props.visualSettings.edge_max_width;
-      return minWidth + (baseWidth * (maxWidth - minWidth));
+    const handleDragMove = (event: PointerEvent) => {
+      if (!isDragging.value || !draggedNode.value) return;
+
+      // Update node position based on drag
+      const newPosition = getNodePosition(draggedNode.value).clone();
+      newPosition.x += event.movementX * 0.1;
+      newPosition.y -= event.movementY * 0.1;
+
+      // Send position update to server
+      if (websocketStore.service) {
+        websocketStore.service.send({
+          type: 'updateNodePosition',
+          nodeId: draggedNode.value.id,
+          position: [newPosition.x, newPosition.y, newPosition.z]
+        });
+      }
     };
 
-    // Event handlers
-    const handleNodeClick = (node: GraphNode) => {
-      console.log('Node clicked:', node);
-    };
-
-    const handleNodeHover = (node: GraphNode, isHovered: boolean) => {
-      hoveredNode.value = isHovered ? node.id : null;
+    const handleDragEnd = () => {
+      if (isDragging.value && draggedNode.value && dragStartPosition.value) {
+        // Send final position to server
+        const finalPosition = getNodePosition(draggedNode.value);
+        if (websocketStore.service) {
+          websocketStore.service.send({
+            type: 'updateNodePosition',
+            nodeId: draggedNode.value.id,
+            position: [finalPosition.x, finalPosition.y, finalPosition.z]
+          });
+        }
+      }
+      isDragging.value = false;
+      draggedNode.value = null;
+      dragStartPosition.value = null;
     };
 
     return {
+      // Groups
       graphGroup,
       nodesGroup,
       edgesGroup,
+      
+      // State
       hoveredNode,
-      nodePosition,
+      isDragging,
+      
+      // Helpers
+      getNodePosition,
       nodeScale,
-      nodeColor,
+      getNodeColor,
       nodeLabelPosition,
-      edgePoints,
-      edgeColor,
-      edgeWidth,
+      getEdgePoints,
+      getEdgeColor,
+      getEdgeWidth,
+      
+      // Event handlers
       handleNodeClick,
-      handleNodeHover
+      handleNodeHover,
+      handleDragStart,
+      handleDragMove,
+      handleDragEnd
     };
   }
 });

@@ -21,7 +21,10 @@ This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it
 
 - **Real-time Updates:**
   - **WebSocket-Based Communication:** Ensures instant synchronization between the server and client.
-  - **Binary Position Updates:** Efficient data transfer for node positions, minimizing latency.
+  - **Optimized Binary Protocol:** 
+    - Efficient quantized position updates (millimeter precision)
+    - Quantized velocity updates (0.0001 unit precision)
+    - Compact 28-byte format per node (4-byte header + 24 bytes position/velocity)
   - **Automatic Graph Layout Recalculation:** Maintains an optimal layout as the graph evolves.
   - **Live Preview of Changes:** Immediate reflection of updates from the knowledge base.
 
@@ -62,6 +65,39 @@ This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it
   - **Dynamic Provider Switching:** Allows for flexible configuration of audio sources.
 
 ## Technical Architecture
+
+### Binary Protocol Format
+
+The WebSocket binary protocol has been optimized for efficient position updates:
+
+```
+[4 bytes] is_initial_layout flag (float32)
+For each node:
+  [12 bytes] Position (3 × int32, quantized to millimeter precision)
+  [12 bytes] Velocity (3 × int32, quantized to 0.0001 units)
+```
+
+This format provides:
+- Minimal bandwidth usage through quantization
+- High precision where needed (millimeter-level positioning)
+- Efficient parsing on both client and server
+- Clear distinction between initial and update messages
+
+[Previous architecture diagrams and sections remain unchanged...]
+
+### Performance Optimizations
+
+- **Network Efficiency:**
+  - Quantized position and velocity values
+  - Compact binary message format
+  - Minimal protocol overhead
+  - Efficient WebSocket streaming
+
+- **Rendering Performance:**
+  - GPU-accelerated computations
+  - Optimized Three.js rendering
+  - Efficient state management
+  - Minimal UI overhead
 
 ### Core System Architecture
 
@@ -668,3 +704,4 @@ If you encounter any bugs or have feature requests, please open an issue in the 
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
