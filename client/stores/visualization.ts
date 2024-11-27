@@ -20,6 +20,14 @@ import {
   DEFAULT_BLOOM_CONFIG,
   DEFAULT_FISHEYE_CONFIG
 } from '../types/components'
+import { POSITION_SCALE, VELOCITY_SCALE } from '../constants/websocket'
+
+// Helper function to scale positions
+const scalePosition = (pos: [number, number, number]): [number, number, number] => [
+  pos[0] / POSITION_SCALE,
+  pos[1] / POSITION_SCALE,
+  pos[2] / POSITION_SCALE
+];
 
 interface VisualizationState {
   nodes: Node[]
@@ -69,9 +77,10 @@ export const useVisualizationStore = defineStore('visualization', {
         metadata: Object.keys(metadata).length
       })
 
-      // Convert to graph data structure
+      // Convert to graph data structure with scaled positions
       const graphNodes = nodes.map(node => ({
         ...node,
+        position: node.position ? scalePosition(node.position) : undefined,
         edges: [],
         weight: node.weight || 1
       })) as GraphNode[]
@@ -109,7 +118,10 @@ export const useVisualizationStore = defineStore('visualization', {
         } : null
       })
 
-      this.nodes = nodes
+      this.nodes = nodes.map(node => ({
+        ...node,
+        position: node.position ? scalePosition(node.position) : undefined
+      }))
       this.edges = edges
       this.metadata = metadata
       this.graphData = {
@@ -122,7 +134,12 @@ export const useVisualizationStore = defineStore('visualization', {
     updateNode(nodeId: string, updates: Partial<Node>) {
       const index = this.nodes.findIndex(n => n.id === nodeId)
       if (index !== -1) {
-        this.nodes[index] = { ...this.nodes[index], ...updates }
+        // Scale position if provided in updates
+        const scaledUpdates = {
+          ...updates,
+          position: updates.position ? scalePosition(updates.position) : undefined
+        }
+        this.nodes[index] = { ...this.nodes[index], ...scaledUpdates }
         
         // Update graph data if it exists
         if (this.graphData) {
@@ -131,7 +148,7 @@ export const useVisualizationStore = defineStore('visualization', {
             const graphNode = this.graphData.nodes[graphNodeIndex]
             this.graphData.nodes[graphNodeIndex] = {
               ...graphNode,
-              ...updates,
+              ...scaledUpdates,
               edges: graphNode.edges // Preserve edges array
             } as GraphNode
           }
@@ -143,18 +160,23 @@ export const useVisualizationStore = defineStore('visualization', {
       updates.forEach(update => {
         const node = this.nodes.find(n => n.id === update.id)
         if (node) {
-          node.position = update.position
+          // Scale position and velocity
+          node.position = scalePosition(update.position)
           if (update.velocity) {
-            node.velocity = update.velocity
+            node.velocity = [
+              update.velocity[0] / VELOCITY_SCALE,
+              update.velocity[1] / VELOCITY_SCALE,
+              update.velocity[2] / VELOCITY_SCALE
+            ]
           }
 
           // Update graph data if it exists
           if (this.graphData) {
             const graphNode = this.graphData.nodes.find(n => n.id === update.id)
             if (graphNode) {
-              graphNode.position = update.position
+              graphNode.position = node.position
               if (update.velocity) {
-                graphNode.velocity = update.velocity
+                graphNode.velocity = node.velocity
               }
             }
           }
@@ -162,6 +184,7 @@ export const useVisualizationStore = defineStore('visualization', {
       })
     },
 
+    // Rest of the actions remain unchanged...
     updateEdge(edgeId: string, updates: Partial<Edge>) {
       const index = this.edges.findIndex(e => e.id === edgeId)
       if (index !== -1) {
@@ -225,10 +248,15 @@ export const useVisualizationStore = defineStore('visualization', {
 
     addNode(node: Node) {
       if (!this.nodes.find(n => n.id === node.id)) {
-        this.nodes.push(node)
+        // Scale position if provided
+        const scaledNode = {
+          ...node,
+          position: node.position ? scalePosition(node.position) : undefined
+        }
+        this.nodes.push(scaledNode)
         if (this.graphData) {
           const graphNode: GraphNode = {
-            ...node,
+            ...scaledNode,
             edges: [],
             weight: node.weight || 1
           }

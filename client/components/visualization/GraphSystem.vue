@@ -1,9 +1,10 @@
 <template>
   <div v-if="isReady && graphData">
     <!-- Graph Content -->
-    <primitive :object="graphGroup">
-      <!-- Nodes and edges are now managed by useVisualization -->
-    </primitive>
+    <primitive :object="graphGroup" />
+    <div v-if="process.env.NODE_ENV === 'development'" class="debug-info">
+      Nodes: {{ graphData.nodes.length }} | Edges: {{ graphData.edges.length }}
+    </div>
   </div>
 </template>
 
@@ -17,6 +18,7 @@ import { useVisualizationStore } from '../../stores/visualization';
 import { usePlatform } from '../../composables/usePlatform';
 import type { VisualizationConfig } from '../../types/components';
 import type { GraphNode, GraphEdge, GraphData, CoreState } from '../../types/core';
+import type { PositionUpdate } from '../../types/websocket';
 
 export default defineComponent({
   name: 'GraphSystem',
@@ -32,8 +34,14 @@ export default defineComponent({
     // Get visualization state
     const visualizationState = inject<{ value: CoreState }>('visualizationState');
     const isReady = computed(() => {
-      return visualizationState?.value.scene != null && 
+      const ready = visualizationState?.value.scene != null && 
              visualizationState?.value.isInitialized === true;
+      console.debug('Graph system ready state:', {
+        hasScene: visualizationState?.value.scene != null,
+        isInitialized: visualizationState?.value.isInitialized,
+        ready
+      });
+      return ready;
     });
 
     // Get platform info
@@ -75,10 +83,42 @@ export default defineComponent({
     const dragPlane = ref<Plane | null>(null);
     const dragIntersection = new Vector3();
 
-    // Graph data from store
+    // Graph data from store with debug logging
     const graphData = computed<GraphData>(() => {
-      return visualizationStore.getGraphData || { nodes: [], edges: [], metadata: {} };
+      const data = visualizationStore.getGraphData || { nodes: [], edges: [], metadata: {} };
+      console.debug('Graph data computed:', {
+        nodes: data.nodes.length,
+        edges: data.edges.length,
+        hasMetadata: Object.keys(data.metadata || {}).length > 0
+      });
+      return data;
     });
+
+    // Watch for binary updates
+    watch(() => binaryUpdateStore.positions, (positions) => {
+      const positionEntries = Array.from(positions.entries());
+      if (positionEntries.length > 0) {
+        console.debug('Processing binary position update:', {
+          updateCount: positionEntries.length,
+          sample: positionEntries[0][1]
+        });
+        
+        // Update node positions
+        positionEntries.forEach(([id, pos]) => {
+          const node = graphData.value.nodes.find(n => n.id === id);
+          if (node) {
+            node.position = [pos.x, pos.y, pos.z];
+            node.velocity = [pos.vx, pos.vy, pos.vz];
+          }
+        });
+
+        // Trigger graph update
+        if (visualizationState?.value.scene) {
+          visualizationState.value.scene.userData.needsRender = true;
+          updateGraphData(graphData.value);
+        }
+      }
+    }, { deep: true });
 
     // Drag handlers
     const onDragStart = (event: PointerEvent, node: GraphNode) => {
@@ -183,12 +223,17 @@ export default defineComponent({
     // Watch for graph data changes
     watch(() => graphData.value, (newData) => {
       if (newData && newData.nodes.length > 0) {
+        console.debug('Graph data changed:', {
+          nodes: newData.nodes.length,
+          edges: newData.edges.length
+        });
         updateGraphData(newData);
       }
     }, { deep: true });
 
     // Update graph data when component mounts
     onMounted(() => {
+      console.debug('GraphSystem mounted');
       if (graphData.value) {
         updateGraphData(graphData.value);
       }
@@ -208,13 +253,31 @@ export default defineComponent({
       graphData,
       onDragStart,
       onDragMove,
-      onDragEnd
+      onDragEnd,
+      process: {
+        env: {
+          NODE_ENV: process.env.NODE_ENV
+        }
+      }
     };
   }
 });
 </script>
 
 <style scoped>
+.debug-info {
+  position: fixed;
+  top: 40px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  z-index: 1000;
+}
+
 .xr-controls {
   position: fixed;
   bottom: 20px;

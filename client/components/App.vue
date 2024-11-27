@@ -3,7 +3,10 @@
     <div id="app">
       <div id="scene-container" ref="sceneContainer">
         <canvas ref="canvas" />
-        <GraphSystem v-if="visualizationState.scene" :visual-settings="visualSettings" />
+        <GraphSystem 
+          v-if="visualizationState.scene" 
+          :visual-settings="visualSettings" 
+        />
       </div>
       <ControlPanel />
       <div class="connection-status" :class="{ connected: isConnected }">
@@ -11,6 +14,13 @@
       </div>
       <div v-if="error" class="error-message">
         {{ error }}
+      </div>
+      <div v-if="process.env.NODE_ENV === 'development'" class="debug-info">
+        Scene Status: {{ visualizationState.isInitialized ? 'Ready' : 'Initializing' }}
+        <br />
+        Nodes: {{ visualizationStore.nodes.length }}
+        <br />
+        Edges: {{ visualizationStore.edges.length }}
       </div>
     </div>
   </ErrorBoundary>
@@ -290,7 +300,13 @@ export default defineComponent({
       isConnected,
       error,
       visualSettings,
-      visualizationState
+      visualizationState,
+      visualizationStore,
+      process: {
+        env: {
+          NODE_ENV: process.env.NODE_ENV
+        }
+      }
     }
   }
 })
@@ -358,6 +374,20 @@ body, html {
   right: 10px;
   padding: 10px;
   background-color: rgba(255, 0, 0, 0.8);
+  color: white;
+  border-radius: 4px;
+  font-family: monospace;
+  z-index: 1000;
+  max-width: 300px;
+  word-wrap: break-word;
+}
+
+.debug-info {
+  position: fixed;
+  top: 90px;
+  right: 10px;
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.8);
   color: white;
   border-radius: 4px;
   font-family: monospace;

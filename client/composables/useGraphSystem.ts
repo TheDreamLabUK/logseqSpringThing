@@ -10,12 +10,7 @@ export function useGraphSystem() {
   
   // Get scene from visualization state
   const visualizationState = inject<{ value: CoreState }>('visualizationState');
-  const scene = visualizationState?.value.scene;
-
-  if (!scene) {
-    throw new Error('Scene not provided to GraphSystem');
-  }
-
+  
   // Create Three.js groups
   const graphGroup = new Group();
   const nodesGroup = new Group();
@@ -24,20 +19,27 @@ export function useGraphSystem() {
   // Add groups to scene hierarchy
   graphGroup.add(nodesGroup);
   graphGroup.add(edgesGroup);
-  scene.add(graphGroup);
 
-  // Initialize scene userData if needed
-  scene.userData = scene.userData || {};
-  scene.userData.graphGroup = graphGroup;
-  scene.userData.nodesGroup = nodesGroup;
-  scene.userData.edgesGroup = edgesGroup;
+  // Initialize scene when available
+  watch(() => visualizationState?.value.scene, (scene) => {
+    if (scene) {
+      // Add groups to scene
+      scene.add(graphGroup);
 
-  console.debug('Graph system groups created:', {
-    graphGroup: graphGroup.id,
-    nodesGroup: nodesGroup.id,
-    edgesGroup: edgesGroup.id,
-    sceneChildren: scene.children.length
-  });
+      // Initialize scene userData if needed
+      scene.userData = scene.userData || {};
+      scene.userData.graphGroup = graphGroup;
+      scene.userData.nodesGroup = nodesGroup;
+      scene.userData.edgesGroup = edgesGroup;
+
+      console.debug('Graph system groups created:', {
+        graphGroup: graphGroup.id,
+        nodesGroup: nodesGroup.id,
+        edgesGroup: edgesGroup.id,
+        sceneChildren: scene.children.length
+      });
+    }
+  }, { immediate: true });
 
   // State
   const hoveredNode = ref<string | null>(null);
@@ -49,7 +51,8 @@ export function useGraphSystem() {
 
   // Watch for graph data changes
   watch(() => visualizationStore.getGraphData, (newData) => {
-    if (newData) {
+    if (newData && visualizationState?.value.scene) {
+      const scene = visualizationState.value.scene;
       // Mark scene for update
       scene.userData.needsRender = true;
       scene.userData.lastUpdate = performance.now();
@@ -82,7 +85,9 @@ export function useGraphSystem() {
             Math.random() * 100 - 50
           );
       nodePositions.set(node.id, position);
-      scene.userData.needsRender = true;
+      if (visualizationState?.value.scene) {
+        visualizationState.value.scene.userData.needsRender = true;
+      }
     }
 
     const position = nodePositions.get(node.id)!;
@@ -143,7 +148,9 @@ export function useGraphSystem() {
 
   const handleNodeHover = (node: GraphNode | null) => {
     hoveredNode.value = node?.id || null;
-    scene.userData.needsRender = true;
+    if (visualizationState?.value.scene) {
+      visualizationState.value.scene.userData.needsRender = true;
+    }
   };
 
   // Graph data management
@@ -171,20 +178,24 @@ export function useGraphSystem() {
     });
 
     // Mark scene for update
-    scene.userData.needsRender = true;
-    scene.userData.lastUpdate = performance.now();
+    if (visualizationState?.value.scene) {
+      visualizationState.value.scene.userData.needsRender = true;
+      visualizationState.value.scene.userData.lastUpdate = performance.now();
+    }
   };
 
   // Clean up on unmount
   onMounted(() => {
-    console.debug('Graph system mounted:', {
-      groups: {
-        graph: graphGroup.id,
-        nodes: nodesGroup.id,
-        edges: edgesGroup.id
-      },
-      sceneChildren: scene.children.length
-    });
+    if (visualizationState?.value.scene) {
+      console.debug('Graph system mounted:', {
+        groups: {
+          graph: graphGroup.id,
+          nodes: nodesGroup.id,
+          edges: edgesGroup.id
+        },
+        sceneChildren: visualizationState.value.scene.children.length
+      });
+    }
   });
 
   return {
