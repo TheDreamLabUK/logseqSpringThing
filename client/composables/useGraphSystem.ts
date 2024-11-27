@@ -1,36 +1,54 @@
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
-import { Vector3, Group } from 'three';
-import { useSettingsStore } from '@stores/settings';
-import { usePlatform } from './usePlatform';
+import { ref, computed, onBeforeUnmount } from 'vue';
+import { Vector3 } from 'three';
+import { useVisualizationStore } from '../stores/visualization';
 import type { GraphNode, GraphEdge } from '../types/core';
 import type { VisualizationConfig } from '../types/components';
 
-export function useGraphSystem() {
-  const settingsStore = useSettingsStore();
-  const { getPlatformInfo } = usePlatform();
+export interface GraphMetrics {
+  positionUpdates: number;
+  cacheHits: number;
+  cacheMisses: number;
+}
 
-  // Refs for Three.js objects
-  const graphGroup = ref<Group | null>(null);
-  const nodesGroup = ref<Group | null>(null);
-  const edgesGroup = ref<Group | null>(null);
+export function useGraphSystem() {
+  const visualizationStore = useVisualizationStore();
+
+  // Refs for Three.js groups
+  const graphGroup = ref(null);
+  const nodesGroup = ref(null);
+  const edgesGroup = ref(null);
 
   // State
-  const nodes = ref<GraphNode[]>([]);
-  const edges = ref<GraphEdge[]>([]);
-  const selectedNode = ref<string | null>(null);
   const hoveredNode = ref<string | null>(null);
-  const isSimulating = ref(false);
+  const lastUpdateTime = ref(Date.now());
+  const updateCount = ref(0);
 
-  // Settings
-  const settings = computed(() => settingsStore.getVisualizationSettings);
-  const platformInfo = computed(() => getPlatformInfo());
-
-  // Node position management
+  // Node position management with caching
   const nodePositions = new Map<string, Vector3>();
   const nodeVelocities = new Map<string, Vector3>();
+  const positionCache = new Map<string, { position: Vector3; timestamp: number }>();
+
+  // Get settings from store
+  const settings = computed<VisualizationConfig>(() => visualizationStore.getVisualizationSettings);
+
+  // Performance metrics
+  const metrics = ref<GraphMetrics>({
+    positionUpdates: 0,
+    cacheHits: 0,
+    cacheMisses: 0
+  });
 
   // Node helpers
   const getNodePosition = (node: GraphNode): Vector3 => {
+    // Check cache first
+    const cached = positionCache.get(node.id);
+    const now = Date.now();
+    if (cached && now - cached.timestamp < 1000) { // 1 second cache
+      metrics.value.cacheHits++;
+      return cached.position;
+    }
+    metrics.value.cacheMisses++;
+
     if (!nodePositions.has(node.id)) {
       const position = node.position 
         ? new Vector3(...node.position)
@@ -40,8 +58,16 @@ export function useGraphSystem() {
             Math.random() * 100 - 50
           );
       nodePositions.set(node.id, position);
+      console.debug('Created position for node:', {
+        id: node.id,
+        position: position.toArray()
+      });
     }
-    return nodePositions.get(node.id)!;
+
+    const position = nodePositions.get(node.id)!;
+    // Update cache
+    positionCache.set(node.id, { position: position.clone(), timestamp: now });
+    return position;
   };
 
   const getNodeScale = (node: GraphNode): number => {
@@ -52,25 +78,36 @@ export function useGraphSystem() {
   };
 
   const getNodeColor = (node: GraphNode): string => {
-    if (node.id === selectedNode.value) {
-      return settings.value.node_color_core;
-    }
     if (node.id === hoveredNode.value) {
-      return settings.value.node_color_recent;
+      return settings.value.node_color_core;
     }
     return node.color || settings.value.node_color;
   };
 
-  // Edge helpers
+  // Edge helpers with caching
+  const edgePointsCache = new Map<string, { points: [Vector3, Vector3]; timestamp: number }>();
+
   const getEdgePoints = (edge: GraphEdge): [Vector3, Vector3] => {
-    const sourceNode = nodes.value.find(n => n.id === edge.source);
-    const targetNode = nodes.value.find(n => n.id === edge.target);
+    const cacheKey = `${edge.source}-${edge.target}`;
+    const cached = edgePointsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && now - cached.timestamp < 1000) {
+      metrics.value.cacheHits++;
+      return cached.points;
+    }
+    metrics.value.cacheMisses++;
+
+    const sourceNode = edge.sourceNode;
+    const targetNode = edge.targetNode;
     
     if (!sourceNode || !targetNode) {
+      console.warn('Edge missing nodes:', edge);
       return [new Vector3(), new Vector3()];
     }
 
-    return [getNodePosition(sourceNode), getNodePosition(targetNode)];
+    const points: [Vector3, Vector3] = [getNodePosition(sourceNode), getNodePosition(targetNode)];
+    edgePointsCache.set(cacheKey, { points: [points[0].clone(), points[1].clone()], timestamp: now });
+    return points;
   };
 
   const getEdgeColor = (edge: GraphEdge): string => {
@@ -84,128 +121,107 @@ export function useGraphSystem() {
     return minWidth + (baseWidth * (maxWidth - minWidth));
   };
 
-  // Physics simulation
-  const applyForces = () => {
-    if (!isSimulating.value) return;
-
-    const physics = settings.value.physics;
-    
-    // Reset forces
-    nodes.value.forEach(node => {
-      nodeVelocities.set(node.id, new Vector3());
-    });
-
-    // Apply spring forces (edges)
-    edges.value.forEach(edge => {
-      const source = nodes.value.find(n => n.id === edge.source);
-      const target = nodes.value.find(n => n.id === edge.target);
-      if (!source || !target) return;
-
-      const sourcePos = getNodePosition(source);
-      const targetPos = getNodePosition(target);
-      const direction = targetPos.clone().sub(sourcePos);
-      const distance = direction.length();
-      
-      // Spring force
-      const force = direction.normalize().multiplyScalar(
-        (distance - physics.force_directed_spring) * physics.force_directed_attraction
-      );
-
-      nodeVelocities.get(source.id)?.add(force);
-      nodeVelocities.get(target.id)?.sub(force);
-    });
-
-    // Apply repulsion forces
-    nodes.value.forEach((node1, i) => {
-      nodes.value.slice(i + 1).forEach(node2 => {
-        const pos1 = getNodePosition(node1);
-        const pos2 = getNodePosition(node2);
-        const direction = pos2.clone().sub(pos1);
-        const distance = direction.length();
-        
-        if (distance > 0) {
-          const force = direction.normalize().multiplyScalar(
-            -physics.force_directed_repulsion / (distance * distance)
-          );
-
-          nodeVelocities.get(node1.id)?.add(force);
-          nodeVelocities.get(node2.id)?.sub(force);
-        }
-      });
-    });
-
-    // Update positions
-    nodes.value.forEach(node => {
-      const position = getNodePosition(node);
-      const velocity = nodeVelocities.get(node.id);
-      if (velocity) {
-        position.add(velocity.multiplyScalar(physics.force_directed_damping));
-      }
-    });
-  };
-
-  // Animation loop
-  let animationFrameId: number;
-  const animate = () => {
-    applyForces();
-    animationFrameId = requestAnimationFrame(animate);
-  };
-
   // Event handlers
   const handleNodeClick = (node: GraphNode) => {
-    selectedNode.value = node.id;
+    console.debug('Node clicked:', {
+      id: node.id,
+      position: node.position,
+      edges: node.edges.length,
+      metrics: {
+        cacheHits: metrics.value.cacheHits,
+        cacheMisses: metrics.value.cacheMisses,
+        hitRate: metrics.value.cacheHits / (metrics.value.cacheHits + metrics.value.cacheMisses)
+      }
+    });
   };
 
   const handleNodeHover = (node: GraphNode | null) => {
     hoveredNode.value = node?.id || null;
+    if (node) {
+      console.debug('Node hover:', {
+        id: node.id,
+        edges: node.edges.length,
+        position: nodePositions.get(node.id)?.toArray()
+      });
+    }
   };
 
   // Graph data management
   const updateGraphData = (graphData: { nodes: GraphNode[]; edges: GraphEdge[] }) => {
-    nodes.value = graphData.nodes;
-    edges.value = graphData.edges;
+    const now = Date.now();
+    const timeSinceLastUpdate = now - lastUpdateTime.value;
+    updateCount.value++;
+    metrics.value.positionUpdates++;
+
+    console.debug('Updating graph data:', {
+      nodes: graphData.nodes.length,
+      edges: graphData.edges.length,
+      updateInterval: timeSinceLastUpdate,
+      updateCount: updateCount.value,
+      metrics: {
+        cacheHits: metrics.value.cacheHits,
+        cacheMisses: metrics.value.cacheMisses,
+        hitRate: metrics.value.cacheHits / (metrics.value.cacheHits + metrics.value.cacheMisses)
+      },
+      sample: graphData.nodes[0] ? {
+        id: graphData.nodes[0].id,
+        edges: graphData.nodes[0].edges.length,
+        position: graphData.nodes[0].position
+      } : null
+    });
 
     // Initialize positions for new nodes
-    nodes.value.forEach(node => {
+    graphData.nodes.forEach(node => {
       if (!nodePositions.has(node.id)) {
         getNodePosition(node); // This will create a new position
       }
     });
+
+    // Clean up removed nodes
+    const nodeIds = new Set(graphData.nodes.map(n => n.id));
+    nodePositions.forEach((_, id) => {
+      if (!nodeIds.has(id)) {
+        nodePositions.delete(id);
+        nodeVelocities.delete(id);
+        positionCache.delete(id);
+      }
+    });
+
+    // Clean up old edge cache entries
+    const edgeIds = new Set(graphData.edges.map(e => `${e.source}-${e.target}`));
+    edgePointsCache.forEach((_, key) => {
+      if (!edgeIds.has(key)) {
+        edgePointsCache.delete(key);
+      }
+    });
+
+    lastUpdateTime.value = now;
   };
 
-  // Lifecycle
-  onMounted(() => {
-    if (isSimulating.value) {
-      animate();
-    }
-  });
-
+  // Cleanup
   onBeforeUnmount(() => {
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId);
-    }
-  });
-
-  // Watch for simulation state changes
-  watch(() => settings.value.physics.force_directed_iterations, (newValue) => {
-    isSimulating.value = newValue > 0;
-    if (isSimulating.value && !animationFrameId) {
-      animate();
-    }
+    nodePositions.clear();
+    nodeVelocities.clear();
+    positionCache.clear();
+    edgePointsCache.clear();
+    metrics.value = {
+      positionUpdates: 0,
+      cacheHits: 0,
+      cacheMisses: 0
+    };
   });
 
   return {
-    // State
-    nodes,
-    edges,
-    selectedNode,
-    hoveredNode,
-    isSimulating,
-    
     // Groups
     graphGroup,
     nodesGroup,
     edgesGroup,
+    
+    // State
+    hoveredNode,
+    metrics,
+    lastUpdateTime,
+    updateCount,
     
     // Node helpers
     getNodePosition,

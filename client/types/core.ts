@@ -89,11 +89,13 @@ export interface Node {
   type?: string;
   metadata?: Record<string, any>;
   userData?: Record<string, any>;
+  weight?: number;  // Added to match Rust struct
+  group?: string;   // Added to match Rust struct
 }
 
 export interface GraphNode extends Node {
-  edges: Edge[];
-  weight: number;
+  edges: GraphEdge[];  // Changed from Edge[] to GraphEdge[]
+  weight: number;      // Required in GraphNode
   group?: string;
 }
 
@@ -110,12 +112,13 @@ export interface Edge {
   type?: string;
   metadata?: Record<string, any>;
   userData?: Record<string, any>;
+  directed?: boolean;  // Added to match Rust struct
 }
 
 export interface GraphEdge extends Edge {
   sourceNode: GraphNode;
   targetNode: GraphNode;
-  directed: boolean;
+  directed: boolean;   // Required in GraphEdge
 }
 
 /**

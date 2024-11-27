@@ -1,16 +1,16 @@
 <template>
-  <div class="debug-panel" v-if="isVisible">
+  <div class="debug-panel" v-if="state.isVisible">
     <div class="header">
       <h3>Debug Panel</h3>
-      <button @click="togglePanel">{{ isExpanded ? 'Collapse' : 'Expand' }}</button>
+      <button @click="togglePanel">{{ state.isExpanded ? 'Collapse' : 'Expand' }}</button>
     </div>
 
-    <div v-if="isExpanded" class="content">
+    <div v-if="state.isExpanded" class="content">
       <div class="section">
         <h4>Graph Stats</h4>
         <ul>
-          <li>Nodes: {{ graphData?.nodes.length || 0 }}</li>
-          <li>Edges: {{ graphData?.edges.length || 0 }}</li>
+          <li>Nodes: {{ state.metrics.nodeCount }}</li>
+          <li>Edges: {{ state.metrics.edgeCount }}</li>
           <li>Metadata Keys: {{ Object.keys(graphData?.metadata || {}).length }}</li>
         </ul>
       </div>
@@ -18,19 +18,32 @@
       <div class="section">
         <h4>Binary Updates</h4>
         <ul>
-          <li>Last Update: {{ formatTime(binaryStore.lastUpdateTime) }}</li>
-          <li>Active Positions: {{ binaryStore.getAllPositions.length }}</li>
-          <li>Initial Layout: {{ binaryStore.isInitial ? 'Yes' : 'No' }}</li>
-          <li>Pending Updates: {{ binaryStore.pendingUpdateCount }}</li>
+          <li>Last Update: {{ formatTime(state.binaryStatus.lastUpdateTime) }}</li>
+          <li>Active Positions: {{ state.binaryStatus.activePositions }}</li>
+          <li>Initial Layout: {{ state.binaryStatus.isInitialLayout ? 'Yes' : 'No' }}</li>
+          <li>Pending Updates: {{ state.binaryStatus.pendingCount }}</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h4>Performance</h4>
+        <ul>
+          <li>Cache Hit Rate: {{ formatPercent(state.metrics.cacheHitRate) }}</li>
+          <li>Update Interval: {{ formatTime(state.metrics.updateInterval) }}</li>
+          <li>Position Updates: {{ state.metrics.positionUpdates }}</li>
+          <li>FPS: {{ state.metrics.fps.toFixed(1) }}</li>
         </ul>
       </div>
 
       <div class="section">
         <h4>Sample Node</h4>
-        <div v-if="sampleNode" class="sample-data">
-          <p>ID: {{ sampleNode.id }}</p>
-          <p>Position: {{ formatPosition(sampleNode) }}</p>
-          <p>Velocity: {{ formatVelocity(sampleNode) }}</p>
+        <div v-if="state.sampleNode" class="sample-data">
+          <p>ID: {{ state.sampleNode.id }}</p>
+          <p>Position: {{ formatVector(state.sampleNode.position) }}</p>
+          <p>Velocity: {{ formatVector(state.sampleNode.velocity) }}</p>
+          <p>Edges: {{ state.sampleNode.edgeCount }}</p>
+          <p v-if="state.sampleNode.weight">Weight: {{ state.sampleNode.weight.toFixed(2) }}</p>
+          <p v-if="state.sampleNode.group">Group: {{ state.sampleNode.group }}</p>
         </div>
         <p v-else>No nodes available</p>
       </div>
@@ -38,10 +51,10 @@
       <div class="section">
         <h4>WebSocket Status</h4>
         <ul>
-          <li>Connected: {{ wsStore.connected ? 'Yes' : 'No' }}</li>
-          <li>Last Message: {{ formatTime(wsStore.lastMessageTime) }}</li>
-          <li>Messages Sent: {{ wsStore.messageCount }}</li>
-          <li>Queue Size: {{ wsStore.queueSize }}</li>
+          <li>Connected: {{ state.wsStatus.connected ? 'Yes' : 'No' }}</li>
+          <li>Last Message: {{ formatTime(state.wsStatus.lastMessageTime) }}</li>
+          <li>Messages Sent: {{ state.wsStatus.messageCount }}</li>
+          <li>Queue Size: {{ state.wsStatus.queueSize }}</li>
         </ul>
       </div>
 
@@ -56,30 +69,104 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted } from 'vue'
+import { defineComponent, reactive, computed, watch } from 'vue'
+import { useVisualizationStore } from '../stores/visualization'
 import { useBinaryUpdateStore } from '../stores/binaryUpdate'
 import { useWebSocketStore } from '../stores/websocket'
-import type { PositionUpdate } from '../types/websocket'
+import { useGraphSystem } from '../composables/useGraphSystem'
+import type { DebugPanelState, SampleNodeData } from '../types/debug'
 
 export default defineComponent({
   name: 'DebugPanel',
 
   setup() {
-    const isVisible = ref(process.env.NODE_ENV === 'development')
-    const isExpanded = ref(false)
-    const wsStore = useWebSocketStore()
+    const visualizationStore = useVisualizationStore()
     const binaryStore = useBinaryUpdateStore()
-    
-    // For now, we'll just show basic graph data from the binary store
-    const graphData = computed(() => ({
-      nodes: binaryStore.getAllPositions,
-      edges: [],
-      metadata: {}
-    }))
-    const sampleNode = computed(() => graphData.value.nodes[0])
+    const wsStore = useWebSocketStore()
+    const graphSystem = useGraphSystem()
+
+    const state = reactive<DebugPanelState>({
+      isVisible: process.env.NODE_ENV === 'development',
+      isExpanded: false,
+      metrics: {
+        cacheHitRate: 0,
+        updateInterval: 0,
+        fps: 0,
+        nodeCount: 0,
+        edgeCount: 0,
+        positionUpdates: 0,
+        messageCount: 0,
+        queueSize: 0
+      },
+      sampleNode: null,
+      wsStatus: {
+        connected: false,
+        lastMessageTime: 0,
+        messageCount: 0,
+        queueSize: 0,
+        pendingUpdates: 0
+      },
+      binaryStatus: {
+        lastUpdateTime: 0,
+        activePositions: 0,
+        isInitialLayout: false,
+        pendingCount: 0
+      }
+    })
+
+    const graphData = computed(() => visualizationStore.getGraphData)
+
+    // Update metrics
+    watch([graphData, () => graphSystem.metrics.value, () => wsStore.connected], () => {
+      if (!graphData.value) return
+
+      const total = graphSystem.metrics.value.cacheHits + graphSystem.metrics.value.cacheMisses
+      const hitRate = total > 0 ? graphSystem.metrics.value.cacheHits / total : 0
+
+      state.metrics = {
+        cacheHitRate: hitRate,
+        updateInterval: Date.now() - graphSystem.lastUpdateTime.value,
+        fps: state.metrics.updateInterval > 0 ? 1000 / state.metrics.updateInterval : 0,
+        nodeCount: graphData.value.nodes.length,
+        edgeCount: graphData.value.edges.length,
+        positionUpdates: graphSystem.metrics.value.positionUpdates,
+        messageCount: wsStore.messageCount,
+        queueSize: wsStore.queueSize
+      }
+
+      // Update sample node
+      const firstNode = graphData.value.nodes[0]
+      if (firstNode) {
+        state.sampleNode = {
+          id: firstNode.id,
+          position: firstNode.position,
+          velocity: firstNode.velocity,
+          edgeCount: firstNode.edges.length,
+          weight: firstNode.weight,
+          group: firstNode.group
+        }
+      }
+
+      // Update WebSocket status
+      state.wsStatus = {
+        connected: wsStore.connected,
+        lastMessageTime: wsStore.lastMessageTime,
+        messageCount: wsStore.messageCount,
+        queueSize: wsStore.queueSize,
+        pendingUpdates: wsStore.queueSize // Use queueSize as pendingUpdates
+      }
+
+      // Update binary status
+      state.binaryStatus = {
+        lastUpdateTime: binaryStore.lastUpdateTime,
+        activePositions: binaryStore.getAllPositions.length,
+        isInitialLayout: binaryStore.isInitial,
+        pendingCount: binaryStore.pendingUpdateCount
+      }
+    })
 
     const togglePanel = () => {
-      isExpanded.value = !isExpanded.value
+      state.isExpanded = !state.isExpanded
     }
 
     const formatTime = (timestamp: number) => {
@@ -89,12 +176,13 @@ export default defineComponent({
       return `${Math.round(diff / 1000)}s ago`
     }
 
-    const formatPosition = (node: PositionUpdate) => {
-      return `[${node.x.toFixed(2)}, ${node.y.toFixed(2)}, ${node.z.toFixed(2)}]`
+    const formatVector = (vec?: number[] | null) => {
+      if (!vec) return 'N/A'
+      return `[${vec.map(v => v.toFixed(2)).join(', ')}]`
     }
 
-    const formatVelocity = (node: PositionUpdate) => {
-      return `[${node.vx.toFixed(2)}, ${node.vy.toFixed(2)}, ${node.vz.toFixed(2)}]`
+    const formatPercent = (value: number) => {
+      return `${(value * 100).toFixed(1)}%`
     }
 
     const requestInitialData = () => {
@@ -112,23 +200,13 @@ export default defineComponent({
       wsStore.reconnect()
     }
 
-    onMounted(() => {
-      if (!wsStore.connected) {
-        wsStore.initialize()
-      }
-    })
-
     return {
-      isVisible,
-      isExpanded,
+      state,
       graphData,
-      sampleNode,
-      binaryStore,
-      wsStore,
       togglePanel,
       formatTime,
-      formatPosition,
-      formatVelocity,
+      formatVector,
+      formatPercent,
       requestInitialData,
       clearBinaryStore,
       reconnectWebSocket

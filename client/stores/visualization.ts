@@ -5,12 +5,21 @@ import type {
   GraphNode,
   GraphEdge,
   GraphData,
-  FisheyeSettings, 
-  PhysicsSettings,
-  MaterialSettings,
-  BloomSettings,
-  VisualizationSettings
+  FisheyeSettings as CoreFisheyeSettings, 
+  PhysicsSettings as CorePhysicsSettings,
+  MaterialSettings as CoreMaterialSettings,
+  BloomSettings as CoreBloomSettings
 } from '../types/core'
+import type {
+  VisualizationConfig,
+  BloomConfig,
+  FisheyeConfig
+} from '../types/components'
+import {
+  DEFAULT_VISUALIZATION_CONFIG,
+  DEFAULT_BLOOM_CONFIG,
+  DEFAULT_FISHEYE_CONFIG
+} from '../types/components'
 
 interface VisualizationState {
   nodes: Node[]
@@ -18,10 +27,9 @@ interface VisualizationState {
   graphData: GraphData | null
   selectedNode: Node | null
   metadata: Record<string, any>
-  fisheyeSettings: FisheyeSettings
-  physicsSettings: PhysicsSettings
-  materialSettings: MaterialSettings
-  bloomSettings: BloomSettings
+  visualConfig: VisualizationConfig
+  bloomConfig: BloomConfig
+  fisheyeConfig: FisheyeConfig
 }
 
 export const useVisualizationStore = defineStore('visualization', {
@@ -31,37 +39,9 @@ export const useVisualizationStore = defineStore('visualization', {
     graphData: null,
     selectedNode: null,
     metadata: {},
-    fisheyeSettings: {
-      enabled: false,
-      strength: 1.0,
-      focusPoint: [0, 0, 0],
-      radius: 100
-    },
-    physicsSettings: {
-      enabled: true,
-      gravity: -1.2,
-      springLength: 100,
-      springStrength: 0.1,
-      repulsion: 1.0,
-      damping: 0.5,
-      timeStep: 0.016
-    },
-    materialSettings: {
-      nodeSize: 1.0,
-      nodeColor: '#ffffff',
-      edgeWidth: 1.0,
-      edgeColor: '#666666',
-      highlightColor: '#ff0000',
-      opacity: 1.0,
-      metalness: 0.5,
-      roughness: 0.5
-    },
-    bloomSettings: {
-      enabled: true,
-      strength: 1.5,
-      radius: 0.4,
-      threshold: 0.6
-    }
+    visualConfig: { ...DEFAULT_VISUALIZATION_CONFIG },
+    bloomConfig: { ...DEFAULT_BLOOM_CONFIG },
+    fisheyeConfig: { ...DEFAULT_FISHEYE_CONFIG }
   }),
 
   getters: {
@@ -76,17 +56,9 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     getGraphData: (state): GraphData | null => state.graphData,
-    getFisheyeSettings: (state): FisheyeSettings => state.fisheyeSettings,
-    getPhysicsSettings: (state): PhysicsSettings => state.physicsSettings,
-    getMaterialSettings: (state): MaterialSettings => state.materialSettings,
-    getBloomSettings: (state): BloomSettings => state.bloomSettings,
-    
-    getVisualizationSettings: (state): VisualizationSettings => ({
-      material: state.materialSettings,
-      physics: state.physicsSettings,
-      bloom: state.bloomSettings,
-      fisheye: state.fisheyeSettings
-    })
+    getVisualizationSettings: (state): VisualizationConfig => state.visualConfig,
+    getBloomSettings: (state): BloomConfig => state.bloomConfig,
+    getFisheyeSettings: (state): FisheyeConfig => state.fisheyeConfig,
   },
 
   actions: {
@@ -101,7 +73,7 @@ export const useVisualizationStore = defineStore('visualization', {
       const graphNodes = nodes.map(node => ({
         ...node,
         edges: [],
-        weight: 1
+        weight: node.weight || 1
       })) as GraphNode[]
 
       // Create node lookup for edge processing
@@ -120,12 +92,22 @@ export const useVisualizationStore = defineStore('visualization', {
           ...edge,
           sourceNode,
           targetNode,
-          directed: false
+          directed: edge.directed || false
         }
-        sourceNode.edges.push(edge)
-        targetNode.edges.push(edge)
+        sourceNode.edges.push(graphEdge)
+        targetNode.edges.push(graphEdge)
         return graphEdge
       }).filter((edge): edge is GraphEdge => edge !== null)
+
+      console.log('Transformed graph data:', {
+        graphNodes: graphNodes.length,
+        graphEdges: graphEdges.length,
+        sampleNode: graphNodes[0] ? {
+          id: graphNodes[0].id,
+          edges: graphNodes[0].edges.length,
+          position: graphNodes[0].position
+        } : null
+      })
 
       this.nodes = nodes
       this.edges = edges
@@ -146,10 +128,12 @@ export const useVisualizationStore = defineStore('visualization', {
         if (this.graphData) {
           const graphNodeIndex = this.graphData.nodes.findIndex(n => n.id === nodeId)
           if (graphNodeIndex !== -1) {
+            const graphNode = this.graphData.nodes[graphNodeIndex]
             this.graphData.nodes[graphNodeIndex] = {
-              ...this.graphData.nodes[graphNodeIndex],
-              ...updates
-            }
+              ...graphNode,
+              ...updates,
+              edges: graphNode.edges // Preserve edges array
+            } as GraphNode
           }
         }
       }
@@ -163,6 +147,17 @@ export const useVisualizationStore = defineStore('visualization', {
           if (update.velocity) {
             node.velocity = update.velocity
           }
+
+          // Update graph data if it exists
+          if (this.graphData) {
+            const graphNode = this.graphData.nodes.find(n => n.id === update.id)
+            if (graphNode) {
+              graphNode.position = update.position
+              if (update.velocity) {
+                graphNode.velocity = update.velocity
+              }
+            }
+          }
         }
       })
     },
@@ -171,38 +166,56 @@ export const useVisualizationStore = defineStore('visualization', {
       const index = this.edges.findIndex(e => e.id === edgeId)
       if (index !== -1) {
         this.edges[index] = { ...this.edges[index], ...updates }
+        
+        // Update graph data if it exists
+        if (this.graphData) {
+          const graphEdgeIndex = this.graphData.edges.findIndex(e => e.id === edgeId)
+          if (graphEdgeIndex !== -1) {
+            const graphEdge = this.graphData.edges[graphEdgeIndex]
+            this.graphData.edges[graphEdgeIndex] = {
+              ...graphEdge,
+              ...updates,
+              sourceNode: graphEdge.sourceNode,
+              targetNode: graphEdge.targetNode
+            }
+          }
+        }
       }
     },
 
-    updateFisheyeSettings(settings: Partial<FisheyeSettings>) {
-      console.log('Updating fisheye settings:', settings)
-      this.fisheyeSettings = {
-        ...this.fisheyeSettings,
+    updateVisualizationSettings(settings: Partial<VisualizationConfig>) {
+      console.log('Updating visualization settings:', settings)
+      this.visualConfig = {
+        ...this.visualConfig,
         ...settings
       }
     },
 
-    updatePhysicsSettings(settings: Partial<PhysicsSettings>) {
-      console.log('Updating physics settings:', settings)
-      this.physicsSettings = {
-        ...this.physicsSettings,
-        ...settings
-      }
-    },
-
-    updateMaterialSettings(settings: Partial<MaterialSettings>) {
-      console.log('Updating material settings:', settings)
-      this.materialSettings = {
-        ...this.materialSettings,
-        ...settings
-      }
-    },
-
-    updateBloomSettings(settings: Partial<BloomSettings>) {
+    updateBloomSettings(settings: Partial<BloomConfig>) {
       console.log('Updating bloom settings:', settings)
-      this.bloomSettings = {
-        ...this.bloomSettings,
+      this.bloomConfig = {
+        ...this.bloomConfig,
         ...settings
+      }
+    },
+
+    updateFisheyeSettings(settings: Partial<FisheyeConfig>) {
+      console.log('Updating fisheye settings:', settings)
+      // Convert focusPoint to individual coordinates if provided
+      if ('focusPoint' in settings) {
+        const [focus_x, focus_y, focus_z] = settings.focusPoint as [number, number, number]
+        this.fisheyeConfig = {
+          ...this.fisheyeConfig,
+          ...settings,
+          focus_x,
+          focus_y,
+          focus_z
+        }
+      } else {
+        this.fisheyeConfig = {
+          ...this.fisheyeConfig,
+          ...settings
+        }
       }
     },
 
@@ -217,7 +230,7 @@ export const useVisualizationStore = defineStore('visualization', {
           const graphNode: GraphNode = {
             ...node,
             edges: [],
-            weight: 1
+            weight: node.weight || 1
           }
           this.graphData.nodes.push(graphNode)
         }
@@ -256,11 +269,11 @@ export const useVisualizationStore = defineStore('visualization', {
               ...edge,
               sourceNode,
               targetNode,
-              directed: false
+              directed: edge.directed || false
             }
             this.graphData.edges.push(graphEdge)
-            sourceNode.edges.push(edge)
-            targetNode.edges.push(edge)
+            sourceNode.edges.push(graphEdge)
+            targetNode.edges.push(graphEdge)
           }
         }
       }
@@ -286,37 +299,9 @@ export const useVisualizationStore = defineStore('visualization', {
       this.metadata = {}
       
       // Reset settings to defaults
-      this.fisheyeSettings = {
-        enabled: false,
-        strength: 1.0,
-        focusPoint: [0, 0, 0],
-        radius: 100
-      }
-      this.physicsSettings = {
-        enabled: true,
-        gravity: -1.2,
-        springLength: 100,
-        springStrength: 0.1,
-        repulsion: 1.0,
-        damping: 0.5,
-        timeStep: 0.016
-      }
-      this.materialSettings = {
-        nodeSize: 1.0,
-        nodeColor: '#ffffff',
-        edgeWidth: 1.0,
-        edgeColor: '#666666',
-        highlightColor: '#ff0000',
-        opacity: 1.0,
-        metalness: 0.5,
-        roughness: 0.5
-      }
-      this.bloomSettings = {
-        enabled: true,
-        strength: 1.5,
-        radius: 0.4,
-        threshold: 0.6
-      }
+      this.visualConfig = { ...DEFAULT_VISUALIZATION_CONFIG }
+      this.bloomConfig = { ...DEFAULT_BLOOM_CONFIG }
+      this.fisheyeConfig = { ...DEFAULT_FISHEYE_CONFIG }
     }
   }
 })

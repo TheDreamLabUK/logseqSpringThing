@@ -1,19 +1,16 @@
 import { ref, computed, onBeforeUnmount } from 'vue';
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { Vector3 } from 'three';
 import { useSettingsStore } from '../stores/settings';
 import type { Node, Edge, CoreState, InitializationOptions } from '../types/core';
 import type { PositionUpdate } from '../types/websocket';
 import { POSITION_SCALE, VELOCITY_SCALE } from '../constants/websocket';
 
-
 /**
  * Visualization system composable that handles:
- * - Three.js scene management
- * - GPU-accelerated rendering
- * - Binary position updates from WebSocket
- * - Fisheye distortion effect
- * - Performance optimizations for large graphs
+ * - State management for vue-threejs
+ * - Position updates from WebSocket
+ * - Node/Edge data transformation
+ * - Performance optimizations
  */
 export function useVisualization() {
   // Store for visualization settings
@@ -28,152 +25,37 @@ export function useVisualization() {
     isInitialized: false,
     isXRSupported: false,
     isWebGL2: false,
-    // Track if we're receiving GPU updates
     isGPUMode: false,
-    // Performance metrics
     fps: 0,
     lastFrameTime: 0
   });
 
-  // Efficient storage for node meshes using Map
-  const nodeMeshes = new Map<string, THREE.InstancedMesh>();
+  // Node positions for efficient updates
+  const nodePositions = new Map<string, Vector3>();
+  const nodeVelocities = new Map<string, Vector3>();
   
-  // Track animation frame for cleanup
-  let animationFrameId: number | null = null;
-
   // Computed settings from store
   const settings = computed(() => settingsStore.getVisualizationSettings);
 
   /**
-   * Main animation loop
-   * Handles:
-   * - Scene rendering
-   * - Controls updates
-   * - FPS calculation
-   * - Performance monitoring
-   */
-  const animate = () => {
-    if (!state.value.isInitialized) return;
-
-    const { renderer, scene, camera } = state.value;
-    if (renderer && scene && camera) {
-      // Update FPS counter
-      const currentTime = performance.now();
-      const delta = currentTime - state.value.lastFrameTime;
-      state.value.fps = 1000 / delta;
-      state.value.lastFrameTime = currentTime;
-
-      // Render scene
-      renderer.render(scene, camera);
-    }
-
-    animationFrameId = requestAnimationFrame(animate);
-  };
-
-  /**
-   * Initialize Three.js scene with optimizations for large graphs
-   * Sets up:
-   * - WebGL2 renderer with optimizations
-   * - Efficient camera and controls
-   * - Instanced rendering for nodes
-   * - Post-processing effects
-   */
-  const initScene = () => {
-    // Create scene with fog for depth perception
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000);
-    scene.fog = new THREE.Fog(0x000000, 50, 200);
-
-    // Optimized camera setup
-    const camera = new THREE.PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
-    camera.position.set(0, 0, 50);
-
-    // Create WebGL2 renderer with optimizations
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      powerPreference: 'high-performance',
-      logarithmicDepthBuffer: true // Better z-fighting handling
-    });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.info.autoReset = false; // Manual stats reset for better performance
-
-    // Optimized lighting setup
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambientLight);
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(10, 10, 10);
-    scene.add(directionalLight);
-
-    // Efficient controls
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.maxDistance = 200;
-    controls.minDistance = 10;
-
-    // Store state
-    state.value = {
-      renderer,
-      camera,
-      scene,
-      canvas: renderer.domElement,
-      isInitialized: true,
-      isXRSupported: false,
-      isWebGL2: renderer.capabilities.isWebGL2,
-      isGPUMode: false,
-      fps: 0,
-      lastFrameTime: performance.now()
-    };
-
-    // Start animation loop
-    animate();
-
-    return { renderer, scene, camera, controls };
-  };
-
-  /**
    * Initialize visualization system
-   * Handles:
-   * - Scene setup
-   * - Window resize
-   * - Error handling
-   * - WebGL capability detection
    */
   const initialize = async (options: InitializationOptions) => {
     if (state.value.isInitialized) return;
 
     try {
       console.log('Initializing visualization system...');
-      const { renderer, scene, camera } = initScene();
-
-      // Add canvas to container
-      const container = document.getElementById('scene-container');
-      if (container && renderer.domElement) {
-        container.appendChild(renderer.domElement);
-      }
-
-      // Efficient resize handler
-      const handleResize = () => {
-        if (!camera || !renderer) return;
-        
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-      };
-      window.addEventListener('resize', handleResize);
+      
+      // Set up WebGL2 context
+      const context = options.canvas.getContext('webgl2');
+      state.value.isWebGL2 = !!context;
+      state.value.canvas = options.canvas;
+      state.value.isInitialized = true;
 
       console.log('Visualization system initialized:', {
         webgl2: state.value.isWebGL2,
-        maxTextures: renderer.capabilities.maxTextures,
-        precision: renderer.capabilities.precision
+        canvas: state.value.canvas?.width,
+        height: state.value.canvas?.height
       });
 
     } catch (error) {
@@ -184,13 +66,9 @@ export function useVisualization() {
 
   /**
    * Handle binary position updates from WebSocket
-   * Optimized for:
-   * - Efficient updates of large numbers of nodes
-   * - Minimal garbage collection
-   * - GPU-accelerated rendering
    */
   const updatePositions = (positions: PositionUpdate[], isInitialLayout: boolean) => {
-    if (!state.value.scene || !state.value.isInitialized) return;
+    if (!state.value.isInitialized) return;
 
     // Enable GPU mode on first position update
     if (!state.value.isGPUMode) {
@@ -198,181 +76,83 @@ export function useVisualization() {
       console.log('Switching to GPU-accelerated mode');
     }
 
-    // Create a map of node IDs to their current meshes
-    const meshMap = new Map<string, THREE.InstancedMesh>();
-    nodeMeshes.forEach((mesh, id) => {
-      meshMap.set(id, mesh);
-    });
-
-    // Update node positions efficiently using node IDs
+    // Update node positions and velocities
     positions.forEach((pos) => {
-      const mesh = meshMap.get(pos.id);
-      if (mesh) {
-        // Dequantize position values from millimeters to world units
-        const x = pos.x / POSITION_SCALE;
-        const y = pos.y / POSITION_SCALE;
-        const z = pos.z / POSITION_SCALE;
-        mesh.position.set(x, y, z);
+      // Dequantize position values
+      const position = new Vector3(
+        pos.x / POSITION_SCALE,
+        pos.y / POSITION_SCALE,
+        pos.z / POSITION_SCALE
+      );
+      nodePositions.set(pos.id, position);
 
-        // Dequantize velocity values from 0.0001 units to world units
-        const vx = pos.vx / VELOCITY_SCALE;
-        const vy = pos.vy / VELOCITY_SCALE;
-        const vz = pos.vz / VELOCITY_SCALE;
-        mesh.userData.velocity = new THREE.Vector3(vx, vy, vz);
-      }
+      // Dequantize velocity values
+      const velocity = new Vector3(
+        pos.vx / VELOCITY_SCALE,
+        pos.vy / VELOCITY_SCALE,
+        pos.vz / VELOCITY_SCALE
+      );
+      nodeVelocities.set(pos.id, velocity);
     });
 
-    // Force scene update if this is initial layout
-    if (isInitialLayout && state.value.camera) {
-      // Reset camera to fit all nodes
-      const box = new THREE.Box3();
-      nodeMeshes.forEach(mesh => box.expandByObject(mesh));
-      const center = box.getCenter(new THREE.Vector3());
-      const size = box.getSize(new THREE.Vector3());
-      const maxDim = Math.max(size.x, size.y, size.z);
-      state.value.camera.position.copy(center);
-      state.value.camera.position.z += maxDim * 2;
-      state.value.camera.lookAt(center);
-    }
+    // Log update stats
+    console.debug('Position update:', {
+      count: positions.length,
+      isInitial: isInitialLayout,
+      sample: positions[0] ? {
+        id: positions[0].id,
+        position: nodePositions.get(positions[0].id)?.toArray(),
+        velocity: nodeVelocities.get(positions[0].id)?.toArray()
+      } : null
+    });
   };
 
   /**
-   * Update node visualization
-   * Handles:
-   * - Efficient mesh creation/updates
-   * - Material updates
-   * - Size/color changes
-   * - Memory management
+   * Update node data
    */
   const updateNodes = (nodes: Node[]) => {
-    if (!state.value.scene) return;
+    if (!state.value.isInitialized) return;
 
-    // Create shared geometry and material
-    const nodeGeometry = new THREE.SphereGeometry(1, 16, 16);
-    const nodeMaterial = new THREE.MeshStandardMaterial({
-      color: 0x00ff00,
-      metalness: 0.3,
-      roughness: 0.7,
-      transparent: true
+    console.log('Updating nodes:', {
+      count: nodes.length,
+      sample: nodes[0] ? {
+        id: nodes[0].id,
+        position: nodes[0].position,
+        size: nodes[0].size
+      } : null
     });
 
-    // Update or create meshes efficiently
+    // Update stored positions
     nodes.forEach(node => {
-      let mesh = nodeMeshes.get(node.id);
-      
-      if (!mesh) {
-        // Create new instanced mesh for better performance
-        mesh = new THREE.InstancedMesh(nodeGeometry, nodeMaterial.clone(), 1);
-        nodeMeshes.set(node.id, mesh);
-        state.value.scene?.add(mesh);
-      }
-
-      // Update transform
       if (node.position) {
-        mesh.position.set(node.position[0], node.position[1], node.position[2]);
-      }
-
-      // Update appearance
-      if (node.color && mesh.material instanceof THREE.MeshStandardMaterial) {
-        mesh.material.color.setStyle(node.color);
-      }
-
-      // Update size
-      const scale = node.size || 1;
-      mesh.scale.set(scale, scale, scale);
-    });
-
-    // Clean up removed nodes
-    nodeMeshes.forEach((mesh, id) => {
-      if (!nodes.find(node => node.id === id)) {
-        state.value.scene?.remove(mesh);
-        mesh.geometry.dispose();
-        if (mesh.material instanceof THREE.Material) {
-          mesh.material.dispose();
-        }
-        nodeMeshes.delete(id);
+        nodePositions.set(node.id, new Vector3(...node.position));
       }
     });
   };
 
   /**
-   * Apply fisheye distortion effect
-   * @param enabled Whether the effect is active
-   * @param strength Distortion strength
-   * @param focusPoint Focus point of the distortion
-   * @param radius Radius of effect
+   * Get node position
    */
-  const updateFisheyeEffect = (
-    enabled: boolean,
-    strength: number,
-    focusPoint: [number, number, number],
-    radius: number
-  ) => {
-    if (!state.value.isInitialized) return;
+  const getNodePosition = (nodeId: string): Vector3 | undefined => {
+    return nodePositions.get(nodeId);
+  };
 
-    // Apply fisheye distortion to each node
-    nodeMeshes.forEach((mesh) => {
-      if (!enabled) {
-        // Reset position if effect disabled
-        if (mesh.userData.originalPosition) {
-          mesh.position.copy(mesh.userData.originalPosition);
-        }
-        return;
-      }
-
-      // Store original position
-      if (!mesh.userData.originalPosition) {
-        mesh.userData.originalPosition = mesh.position.clone();
-      }
-
-      // Calculate distortion
-      const focus = new THREE.Vector3(...focusPoint);
-      const dir = mesh.position.clone().sub(focus);
-      const dist = dir.length();
-      
-      if (dist < radius) {
-        const normDist = dist / radius;
-        const scale = 1 + strength * (1 - normDist);
-        dir.multiplyScalar(scale);
-        mesh.position.copy(focus).add(dir);
-      }
-    });
+  /**
+   * Get node velocity
+   */
+  const getNodeVelocity = (nodeId: string): Vector3 | undefined => {
+    return nodeVelocities.get(nodeId);
   };
 
   /**
    * Clean up visualization system
-   * Handles:
-   * - Memory cleanup
-   * - WebGL context cleanup
-   * - Event listener removal
    */
   const dispose = () => {
     console.log('Disposing visualization system...');
     
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = null;
-    }
-
-    if (!state.value.isInitialized) return;
-
-    // Clean up meshes
-    nodeMeshes.forEach((mesh) => {
-      mesh.geometry.dispose();
-      if (mesh.material instanceof THREE.Material) {
-        mesh.material.dispose();
-      }
-    });
-    nodeMeshes.clear();
-
-    // Clean up renderer
-    if (state.value.renderer) {
-      state.value.renderer.dispose();
-      state.value.renderer.forceContextLoss();
-    }
-    
-    // Remove canvas
-    state.value.canvas?.remove();
+    // Clear stored data
+    nodePositions.clear();
+    nodeVelocities.clear();
 
     // Reset state
     state.value = {
@@ -401,7 +181,8 @@ export function useVisualization() {
     initialize,
     updateNodes,
     updatePositions,
-    updateFisheyeEffect,
+    getNodePosition,
+    getNodeVelocity,
     dispose
   };
 }

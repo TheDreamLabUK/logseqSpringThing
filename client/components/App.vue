@@ -1,7 +1,9 @@
 <template>
   <ErrorBoundary>
     <div id="app">
-      <div id="scene-container" ref="sceneContainer"></div>
+      <div id="scene-container" ref="sceneContainer">
+        <GraphSystem :visual-settings="visualSettings" />
+      </div>
       <ControlPanel />
       <div class="connection-status" :class="{ connected: isConnected }">
         WebSocket: {{ isConnected ? 'Connected' : 'Disconnected' }}
@@ -14,7 +16,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, onMounted, onErrorCaptured, ref, onBeforeUnmount, ComponentPublicInstance, watch } from 'vue'
+import { defineComponent, onMounted, onErrorCaptured, ref, onBeforeUnmount, ComponentPublicInstance, watch, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '../stores/settings'
 import { useVisualizationStore } from '../stores/visualization'
@@ -22,6 +24,7 @@ import { useWebSocketStore } from '../stores/websocket'
 import { useBinaryUpdateStore } from '../stores/binaryUpdate'
 import ControlPanel from '@components/ControlPanel.vue'
 import ErrorBoundary from '@components/ErrorBoundary.vue'
+import GraphSystem from '@components/visualization/GraphSystem.vue'
 import { errorTracking } from '../services/errorTracking'
 import { useVisualization } from '../composables/useVisualization'
 import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge, BinaryMessage, FisheyeUpdateMessage } from '../types/websocket'
@@ -37,7 +40,9 @@ const transformNode = (wsNode: WSNode): CoreNode => ({
   color: wsNode.color,
   type: wsNode.type,
   metadata: wsNode.metadata || {},
-  userData: wsNode.userData || {}
+  userData: wsNode.userData || {},
+  weight: wsNode.weight,
+  group: wsNode.group
 })
 
 // Transform websocket edge to core edge
@@ -50,14 +55,16 @@ const transformEdge = (wsEdge: WSEdge): CoreEdge => ({
   color: wsEdge.color,
   type: wsEdge.type,
   metadata: wsEdge.metadata || {},
-  userData: wsEdge.userData || {}
+  userData: wsEdge.userData || {},
+  directed: wsEdge.directed
 })
 
 export default defineComponent({
   name: 'App',
   components: {
     ControlPanel,
-    ErrorBoundary
+    ErrorBoundary,
+    GraphSystem
   },
   setup() {
     // Initialize stores
@@ -72,8 +79,11 @@ export default defineComponent({
     const sceneContainer = ref<HTMLElement | null>(null)
     const error = ref<string | null>(null)
 
+    // Get visualization settings
+    const visualSettings = computed(() => settingsStore.getVisualizationSettings)
+
     // Initialize visualization system
-    const { initialize: initVisualization, updateNodes, updatePositions, updateFisheyeEffect } = useVisualization()
+    const { initialize: initVisualization, updateNodes, updatePositions } = useVisualization()
 
     // Watch for graph data updates from the store
     watch(() => visualizationStore.nodes, (newNodes) => {
@@ -91,16 +101,6 @@ export default defineComponent({
         updatePositions(positions, binaryUpdateStore.isInitial)
       }
     })
-
-    // Watch for fisheye settings updates
-    watch(() => visualizationStore.fisheyeSettings, (settings) => {
-      updateFisheyeEffect(
-        settings.enabled,
-        settings.strength,
-        settings.focusPoint,
-        settings.radius
-      )
-    }, { deep: true })
 
     // Set up WebSocket message handlers
     if (websocketStore.service) {
@@ -137,11 +137,9 @@ export default defineComponent({
             visualizationStore.updateFisheyeSettings({
               enabled: fisheyeMsg.fisheye_enabled,
               strength: fisheyeMsg.fisheye_strength,
-              focusPoint: [
-                fisheyeMsg.fisheye_focus_x,
-                fisheyeMsg.fisheye_focus_y,
-                fisheyeMsg.fisheye_focus_z
-              ],
+              focus_x: fisheyeMsg.fisheye_focus_x,
+              focus_y: fisheyeMsg.fisheye_focus_y,
+              focus_z: fisheyeMsg.fisheye_focus_z,
               radius: fisheyeMsg.fisheye_radius
             })
             break
@@ -214,8 +212,10 @@ export default defineComponent({
         // Initialize visualization system
         if (sceneContainer.value) {
           console.log('Initializing visualization system...')
+          const canvas = document.createElement('canvas')
+          sceneContainer.value.appendChild(canvas)
           await initVisualization({
-            canvas: document.createElement('canvas'),
+            canvas,
             scene: {
               antialias: true,
               alpha: true,
@@ -223,6 +223,7 @@ export default defineComponent({
               powerPreference: 'high-performance'
             }
           })
+          console.log('Visualization system initialized')
         }
 
         // Initialize WebSocket through store
@@ -265,7 +266,8 @@ export default defineComponent({
     return {
       sceneContainer,
       isConnected,
-      error
+      error,
+      visualSettings
     }
   }
 })
