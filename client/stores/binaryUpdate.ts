@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia'
-import { usePerformanceMonitor } from './performanceMonitor'
 import type { PositionUpdate } from '../types/websocket'
 
 interface BinaryUpdateState {
@@ -14,7 +13,6 @@ interface BinaryUpdateState {
 /**
  * Store for handling transient binary position/velocity updates
  * These updates are frequent and superseded by full mesh updates
- * Includes performance optimization and batching
  */
 export const useBinaryUpdateStore = defineStore('binaryUpdate', {
   state: (): BinaryUpdateState => ({
@@ -89,17 +87,8 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
 
     /**
      * Update positions from binary WebSocket message
-     * Uses performance monitoring and batched processing
      */
     updatePositions(positions: PositionUpdate[], isInitial: boolean, timeStep: number) {
-      const performanceMonitor = usePerformanceMonitor()
-
-      // Skip update if frame rate limit reached
-      if (!performanceMonitor.shouldProcessFrame) {
-        this.pendingUpdates.push(...positions)
-        return
-      }
-
       // Clear previous positions if this is initial layout
       if (isInitial) {
         this.positions.clear()
@@ -108,68 +97,27 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
 
       // Process any pending updates first
       if (this.pendingUpdates.length > 0) {
-        performanceMonitor.processBatch(
-          this.pendingUpdates,
-          (pos: PositionUpdate, index: number) => this.processUpdate(pos, index)
-        )
+        this.pendingUpdates.forEach((pos, index) => this.processUpdate(pos, index))
         this.pendingUpdates = []
       }
 
-      // Process new updates in batches
-      performanceMonitor.processBatch(
-        positions,
-        (pos: PositionUpdate, index: number) => this.processUpdate(pos, index)
-      )
+      // Process new updates
+      positions.forEach((pos, index) => this.processUpdate(pos, index))
 
       // Update state
       this.lastUpdateTime = Date.now()
       this.isInitialLayout = isInitial
       this.timeStep = timeStep
 
-      // Update performance metrics
-      performanceMonitor.setNodeCount(this.positions.size)
-      performanceMonitor.trackFrame()
-
       // Log update in development
       if (process.env.NODE_ENV === 'development') {
         console.debug('Binary update processed:', {
           positions: positions.length,
-          pending: this.pendingUpdates.length,
           total: this.positions.size,
           isInitial,
-          timeStep,
-          batchSize: this.batchSize
+          timeStep
         })
       }
-    },
-
-    /**
-     * Process pending updates
-     * Called by animation frame when below frame rate limit
-     */
-    processPendingUpdates() {
-      const performanceMonitor = usePerformanceMonitor()
-      
-      if (this.pendingUpdates.length > 0 && performanceMonitor.shouldProcessFrame) {
-        const startTime = performance.now()
-
-        performanceMonitor.processBatch(
-          this.pendingUpdates,
-          (pos: PositionUpdate, index: number) => this.processUpdate(pos, index)
-        )
-        this.pendingUpdates = []
-        
-        const endTime = performance.now()
-        performanceMonitor.trackUpdate(endTime - startTime)
-      }
-    },
-
-    /**
-     * Set frame rate limit for updates
-     */
-    setFrameRateLimit(fps: number) {
-      const performanceMonitor = usePerformanceMonitor()
-      performanceMonitor.setFrameRateLimit(fps)
     },
 
     /**
@@ -183,7 +131,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     },
 
     /**
-     * Clear all position data and metrics
+     * Clear all position data
      * Called when receiving full mesh update or on cleanup
      */
     clear() {
@@ -192,10 +140,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.lastUpdateTime = 0
       this.isInitialLayout = false
       this.timeStep = 0
-
-      // Reset performance metrics
-      const performanceMonitor = usePerformanceMonitor()
-      performanceMonitor.reset()
     }
   }
 })

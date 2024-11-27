@@ -6,9 +6,9 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
-import { useSettingsStore } from '@/stores/settings';
+import { useSettingsStore } from '@stores/settings';
 import { usePlatform } from './usePlatform';
-import { PASS_OUTPUT } from '@/utils/threeUtils';
+import { PASS_OUTPUT } from '../utils/threeUtils';
 
 // Configure color management for modern Three.js
 THREE.ColorManagement.enabled = true;

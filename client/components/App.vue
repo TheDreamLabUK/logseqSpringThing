@@ -4,7 +4,6 @@
       <div id="scene-container" ref="sceneContainer"></div>
       <ControlPanel />
       <DebugPanel v-if="showDebugPanel" />
-      <PerformanceDebug :show-debug="showDebugPanel" />
       <div class="connection-status" :class="{ connected: isConnected }">
         WebSocket: {{ isConnected ? 'Connected' : 'Disconnected' }}
       </div>
@@ -25,7 +24,6 @@ import { useBinaryUpdateStore } from '../stores/binaryUpdate'
 import ControlPanel from '@components/ControlPanel.vue'
 import ErrorBoundary from '@components/ErrorBoundary.vue'
 import DebugPanel from '@components/DebugPanel.vue'
-import PerformanceDebug from '@components/PerformanceDebug.vue'
 import { errorTracking } from '../services/errorTracking'
 import { useVisualization } from '../composables/useVisualization'
 import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge, BinaryMessage, FisheyeUpdateMessage } from '../types/websocket'
@@ -62,8 +60,7 @@ export default defineComponent({
   components: {
     ControlPanel,
     ErrorBoundary,
-    DebugPanel,
-    PerformanceDebug
+    DebugPanel
   },
   setup() {
     // Initialize stores

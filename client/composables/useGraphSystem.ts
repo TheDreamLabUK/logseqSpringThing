@@ -1,9 +1,9 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { Vector3, Group } from 'three';
-import { useSettingsStore } from '@/stores/settings';
+import { useSettingsStore } from '@stores/settings';
 import { usePlatform } from './usePlatform';
-import type { GraphNode, GraphEdge } from '@/types/core';
-import type { VisualizationConfig } from '@/types/components';
+import type { GraphNode, GraphEdge } from '../types/core';
+import type { VisualizationConfig } from '../types/components';
 
 export function useGraphSystem() {
   const settingsStore = useSettingsStore();

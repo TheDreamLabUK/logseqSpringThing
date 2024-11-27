@@ -1,9 +1,9 @@
 import type WebsocketService from './websocketService'
 import type { GraphUpdateMessage, BinaryMessage, Node as WSNode, Edge as WSEdge } from '../types/websocket'
-import type { Node, Edge, GraphData } from '../types/core'
+import type { GraphNode, GraphEdge, GraphData } from '../types/core'
 
-// Transform websocket node to core node
-const transformNode = (wsNode: WSNode): Node => ({
+// Transform websocket node to graph node
+const transformNode = (wsNode: WSNode): GraphNode => ({
   id: wsNode.id,
   label: wsNode.label || wsNode.id,
   position: wsNode.position,
@@ -12,21 +12,31 @@ const transformNode = (wsNode: WSNode): Node => ({
   color: wsNode.color,
   type: wsNode.type,
   metadata: wsNode.metadata || {},
-  userData: wsNode.userData || {}
+  userData: wsNode.userData || {},
+  edges: [], // Will be populated after edges are transformed
+  weight: wsNode.weight || 1,
+  group: wsNode.group
 })
 
-// Transform websocket edge to core edge
-const transformEdge = (wsEdge: WSEdge): Edge => ({
-  id: `${wsEdge.source}-${wsEdge.target}`,
-  source: wsEdge.source,
-  target: wsEdge.target,
-  weight: wsEdge.weight,
-  width: wsEdge.width,
-  color: wsEdge.color,
-  type: wsEdge.type,
-  metadata: wsEdge.metadata || {},
-  userData: wsEdge.userData || {}
-})
+// Transform websocket edge to graph edge
+const transformEdge = (wsNode: WSNode, wsEdge: WSEdge): GraphEdge => {
+  const sourceNode = transformNode(wsNode);
+  const targetNode = transformNode(wsNode);
+  return {
+    id: `${wsEdge.source}-${wsEdge.target}`,
+    source: wsEdge.source,
+    target: wsEdge.target,
+    weight: wsEdge.weight || 1,
+    width: wsEdge.width,
+    color: wsEdge.color,
+    type: wsEdge.type,
+    metadata: wsEdge.metadata || {},
+    userData: wsEdge.userData || {},
+    sourceNode,
+    targetNode,
+    directed: wsEdge.directed || false
+  };
+}
 
 export default class GraphDataManager {
   private websocketService: WebsocketService
@@ -53,11 +63,31 @@ export default class GraphDataManager {
       return
     }
 
-    // Transform nodes and edges to core types
+    // Transform nodes first
+    const nodes = (message.graphData.nodes || []).map(transformNode)
+    
+    // Create a map of nodes by ID for quick lookup
+    const nodeMap = new Map(nodes.map(node => [node.id, node]))
+
+    // Transform edges and link them to nodes
+    const edges = (message.graphData.edges || []).map(edge => {
+      const sourceNode = nodeMap.get(edge.source)
+      const targetNode = nodeMap.get(edge.target)
+      if (!sourceNode || !targetNode) {
+        console.warn(`Edge references missing node: ${edge.source} -> ${edge.target}`)
+        return null
+      }
+      const graphEdge = transformEdge(sourceNode, edge)
+      sourceNode.edges.push(graphEdge)
+      targetNode.edges.push(graphEdge)
+      return graphEdge
+    }).filter((edge): edge is GraphEdge => edge !== null)
+
+    // Store the transformed data
     this.graphData = {
-      nodes: (message.graphData.nodes || []).map(transformNode),
-      edges: (message.graphData.edges || []).map(transformEdge),
-      metadata: message.graphData.metadata
+      nodes,
+      edges,
+      metadata: message.graphData.metadata || {}
     }
 
     // Emit custom event for graph update
