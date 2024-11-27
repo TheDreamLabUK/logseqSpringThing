@@ -1,16 +1,43 @@
 import type { XRCoreState, Transform, Viewport, SceneConfig, PerformanceConfig } from '../core';
 import type { Group, Object3D } from 'three';
 
-// Use the global XRSession type from the WebXR API
-export type XRSession = globalThis.XRSession;
+// Base XR interfaces
+export interface XRRigidTransform {
+    position: { x: number; y: number; z: number };
+    orientation: { x: number; y: number; z: number; w: number };
+    matrix: Float32Array;
+}
 
-export interface XRReferenceSpace {
+export interface XRSpace extends EventTarget {
+    // Base XR space interface
+}
+
+export interface XRReferenceSpace extends XRSpace {
     getOffsetReferenceSpace(originOffset: XRRigidTransform): XRReferenceSpace;
 }
 
-export interface XRWebGLLayer {
-    framebuffer: WebGLFramebuffer;
-    getViewport(view: XRView): XRViewport;
+export interface XRRay {
+    origin: DOMPointReadOnly;
+    direction: DOMPointReadOnly;
+    matrix: Float32Array;
+}
+
+export interface XRHitTestSource {
+    cancel(): void;
+}
+
+export interface XRHitTestOptionsInit {
+    space: XRSpace;
+    offsetRay?: XRRay;
+    entityTypes?: string[];
+}
+
+// Use the global XRWebGLLayer type
+export type XRWebGLLayer = globalThis.XRWebGLLayer;
+
+// Extend XRSession type with AR-specific methods
+export interface XRSession extends globalThis.XRSession {
+    requestHitTestSource?(options: XRHitTestOptionsInit): Promise<XRHitTestSource> | undefined;
 }
 
 export interface XRRenderStateInit {
@@ -31,12 +58,6 @@ export interface XRViewport {
     y: number;
     width: number;
     height: number;
-}
-
-export interface XRRigidTransform {
-    position: { x: number; y: number; z: number };
-    orientation: { x: number; y: number; z: number; w: number };
-    matrix: Float32Array;
 }
 
 export type XRFrameRequestCallback = (time: number, frame: XRFrame) => void;
@@ -90,8 +111,6 @@ export interface XRJointSpace extends XRSpace {
     jointRadius: number;
 }
 
-export interface XRSpace {}
-
 export interface QuestInitOptions {
     canvas: HTMLCanvasElement;
     scene?: SceneConfig;
@@ -108,6 +127,7 @@ export interface QuestState extends XRCoreState {
     xrSession: XRSession | null;
     xrSpace: XRReferenceSpace | null;
     xrLayer: XRWebGLLayer | null;
+    hitTestSource: XRHitTestSource | null;
     controllers: Map<XRHandedness, XRController>;
     hands: Map<XRHandedness, XRHand>;
     viewport: Viewport;
