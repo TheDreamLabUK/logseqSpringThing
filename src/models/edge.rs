@@ -5,9 +5,15 @@ use crate::models::node::Node;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Edge {
     pub source: String,
-    #[serde(rename = "target_node")]  // Rename for JSON serialization to match client expectations
     pub target: String,
     pub weight: f32,
+    pub width: Option<f32>,
+    pub color: Option<String>,
+    #[serde(rename = "type")]
+    pub edge_type: Option<String>,
+    pub metadata: Option<HashMap<String, String>>,
+    pub user_data: Option<HashMap<String, String>>,
+    pub directed: Option<bool>,
 }
 
 // GPU representation of an edge, must match the shader's Edge struct
@@ -30,6 +36,12 @@ impl Edge {
             source,
             target,
             weight,
+            width: None,
+            color: None,
+            edge_type: None,
+            metadata: None,
+            user_data: None,
+            directed: Some(false),
         }
     }
 

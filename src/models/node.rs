@@ -19,6 +19,13 @@ pub struct Node {
     pub vz: f32,
     #[serde(skip)]
     pub file_size: u64, // Used to calculate mass
+    #[serde(rename = "type")]
+    pub node_type: Option<String>,
+    pub size: Option<f32>,
+    pub color: Option<String>,
+    pub weight: Option<f32>,
+    pub group: Option<String>,
+    pub user_data: Option<HashMap<String, String>>,
 }
 
 impl Node {
@@ -34,7 +41,21 @@ impl Node {
             vy: 0.0,
             vz: 0.0,
             file_size: 0,
+            node_type: None,
+            size: None,
+            color: None,
+            weight: None,
+            group: None,
+            user_data: None,
         }
+    }
+
+    pub fn position(&self) -> [f32; 3] {
+        [self.x, self.y, self.z]
+    }
+
+    pub fn velocity(&self) -> [f32; 3] {
+        [self.vx, self.vy, self.vz]
     }
 
     /// Convert file size to quantized mass value (0-255)
@@ -107,6 +128,12 @@ impl Default for Node {
             vy: 0.0,
             vz: 0.0,
             file_size: 0,
+            node_type: None,
+            size: None,
+            color: None,
+            weight: None,
+            group: None,
+            user_data: None,
         }
     }
 }

@@ -6,13 +6,19 @@ interface WebSocketState {
   connected: boolean
   error: string | null
   service: WebsocketService | null
+  lastMessageTime: number
+  messageCount: number
+  queueSize: number
 }
 
 export const useWebSocketStore = defineStore('websocket', {
   state: (): WebSocketState => ({
     connected: false,
     error: null,
-    service: null
+    service: null,
+    lastMessageTime: 0,
+    messageCount: 0,
+    queueSize: 0
   }),
 
   actions: {
@@ -74,6 +80,14 @@ export const useWebSocketStore = defineStore('websocket', {
       this.send({ type: 'getInitialData' })
     },
 
+    async reconnect() {
+      if (this.service) {
+        this.service.cleanup()
+        this.service = null
+      }
+      await this.initialize()
+    },
+
     cleanup() {
       if (this.service) {
         this.service.cleanup()
@@ -81,6 +95,9 @@ export const useWebSocketStore = defineStore('websocket', {
       }
       this.connected = false
       this.error = null
+      this.lastMessageTime = 0
+      this.messageCount = 0
+      this.queueSize = 0
     }
   }
 })
