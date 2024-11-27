@@ -20,6 +20,8 @@
             :roughness="visualSettings.material.node_material_roughness"
             :opacity="visualSettings.material.node_material_opacity"
             :transparent="true"
+            :emissive="getNodeColor(node)"
+            :emissiveIntensity="getNodeEmissiveIntensity(node)"
           />
         </Mesh>
         
@@ -30,6 +32,13 @@
           :occlude="true"
           :center="true"
           :sprite="true"
+          :style="{
+            fontSize: `${visualSettings.label_font_size}px`,
+            fontFamily: visualSettings.label_font_family,
+            padding: `${visualSettings.label_padding}px`,
+            backgroundColor: visualSettings.label_background_color,
+            color: visualSettings.label_text_color
+          }"
         >
           <div class="node-label" :class="{ 'is-hovered': hoveredNode === node.id }">
             {{ node.label }}
@@ -50,11 +59,41 @@
         />
       </template>
     </Group>
+
+    <!-- Scene Fog -->
+    <Scene>
+      <component
+        :is="'fog'"
+        :args="[0x000000, 50, 200]"
+        :density="visualSettings.fog_density"
+      />
+    </Scene>
+
+    <!-- Debug Info -->
+    <Html
+      v-if="isDevelopment"
+      :position="debugPosition"
+      :center="false"
+      :occlude="false"
+      :sprite="false"
+      :style="{
+        position: 'fixed',
+        bottom: '10px',
+        left: '10px',
+        zIndex: '1000'
+      }"
+    >
+      <div class="debug-info">
+        <p>Nodes: {{ graphData.nodes.length }}</p>
+        <p>Edges: {{ graphData.edges.length }}</p>
+        <p>FPS: {{ currentFps.toFixed(1) }}</p>
+      </div>
+    </Html>
   </Group>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, watch, onMounted } from 'vue';
+import { defineComponent, ref, computed, watch } from 'vue';
 import { Vector3 } from 'three';
 import {
   Group,
@@ -62,8 +101,9 @@ import {
   SphereGeometry,
   MeshStandardMaterial,
   Line,
-  Html
-} from 'vue-threejs';
+  Html,
+  Scene
+} from '../three';
 import { useGraphSystem } from '../../composables/useGraphSystem';
 import { useWebSocketStore } from '../../stores/websocket';
 import { useBinaryUpdateStore } from '../../stores/binaryUpdate';
@@ -80,7 +120,8 @@ export default defineComponent({
     SphereGeometry,
     MeshStandardMaterial,
     Line,
-    Html
+    Html,
+    Scene
   },
 
   props: {
@@ -114,6 +155,9 @@ export default defineComponent({
     const isDragging = ref(false);
     const draggedNode = ref<GraphNode | null>(null);
     const dragStartPosition = ref<Vector3 | null>(null);
+    const currentFps = ref(0);
+    const isDevelopment = ref(process.env.NODE_ENV === 'development');
+    const debugPosition = new Vector3(10, 10, 0);
 
     // Use the transformed graph data from the visualization store
     const graphData = computed<GraphData>(() => {
@@ -168,6 +212,12 @@ export default defineComponent({
       );
     };
 
+    // Node emissive intensity helper
+    const getNodeEmissiveIntensity = (node: GraphNode) => {
+      const { node_emissive_min_intensity, node_emissive_max_intensity } = props.visualSettings.material;
+      return node_emissive_min_intensity + (node.weight || 0) * (node_emissive_max_intensity - node_emissive_min_intensity);
+    };
+
     // Drag handlers
     const handleDragStart = (node: GraphNode) => {
       isDragging.value = true;
@@ -220,11 +270,15 @@ export default defineComponent({
       hoveredNode,
       isDragging,
       graphData,
+      isDevelopment,
+      currentFps,
+      debugPosition,
       
       // Helpers
       getNodePosition,
       nodeScale,
       getNodeColor,
+      getNodeEmissiveIntensity,
       nodeLabelPosition,
       getEdgePoints,
       getEdgeColor,
@@ -243,11 +297,12 @@ export default defineComponent({
 
 <style scoped>
 .node-label {
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 4px 8px;
+  background: v-bind('visualSettings.label_background_color');
+  color: v-bind('visualSettings.label_text_color');
+  padding: v-bind('visualSettings.label_padding + "px"');
   border-radius: 4px;
-  font-size: 12px;
+  font-size: v-bind('visualSettings.label_font_size + "px"');
+  font-family: v-bind('visualSettings.label_font_family');
   white-space: nowrap;
   pointer-events: none;
   transition: transform 0.2s;
@@ -256,5 +311,19 @@ export default defineComponent({
 .node-label.is-hovered {
   transform: scale(1.1);
   background: rgba(0, 0, 0, 0.9);
+}
+
+.debug-info {
+  background: rgba(0, 0, 0, 0.8);
+  color: #00ff00;
+  padding: 10px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.debug-info p {
+  margin: 2px 0;
 }
 </style>
