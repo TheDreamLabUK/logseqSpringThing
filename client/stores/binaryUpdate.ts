@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { PositionUpdate } from '../types/websocket'
+import { POSITION_SCALE, VELOCITY_SCALE } from '../constants/websocket'
 
 interface BinaryUpdateState {
   positions: Map<string, PositionUpdate>
@@ -77,8 +78,16 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       if (process.env.NODE_ENV === 'development') {
         console.debug('Position update:', {
           id: pos.id,
-          position: [pos.x, pos.y, pos.z],
-          velocity: [pos.vx, pos.vy, pos.vz]
+          position: [
+            pos.x / POSITION_SCALE,
+            pos.y / POSITION_SCALE,
+            pos.z / POSITION_SCALE
+          ],
+          velocity: [
+            pos.vx / VELOCITY_SCALE,
+            pos.vy / VELOCITY_SCALE,
+            pos.vz / VELOCITY_SCALE
+          ]
         })
       }
     },
@@ -112,7 +121,19 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
           positions: positions.length,
           total: this.positions.size,
           isInitial,
-          sample: positions.slice(0, 3).map(p => ({ id: p.id, pos: [p.x, p.y, p.z] }))
+          sample: positions.slice(0, 3).map(p => ({
+            id: p.id,
+            pos: [
+              p.x / POSITION_SCALE,
+              p.y / POSITION_SCALE,
+              p.z / POSITION_SCALE
+            ],
+            vel: [
+              p.vx / VELOCITY_SCALE,
+              p.vy / VELOCITY_SCALE,
+              p.vz / VELOCITY_SCALE
+            ]
+          }))
         })
       }
     },
