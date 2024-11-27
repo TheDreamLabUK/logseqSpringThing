@@ -2,7 +2,8 @@
   <ErrorBoundary>
     <div id="app">
       <div id="scene-container" ref="sceneContainer">
-        <GraphSystem :visual-settings="visualSettings" />
+        <canvas ref="canvas" />
+        <GraphSystem v-if="visualizationState.scene" :visual-settings="visualSettings" />
       </div>
       <ControlPanel />
       <div class="connection-status" :class="{ connected: isConnected }">
@@ -16,7 +17,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, onMounted, onErrorCaptured, ref, onBeforeUnmount, ComponentPublicInstance, watch, computed } from 'vue'
+import { defineComponent, onMounted, onErrorCaptured, ref, onBeforeUnmount, ComponentPublicInstance, watch, computed, provide } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '../stores/settings'
 import { useVisualizationStore } from '../stores/visualization'
@@ -26,7 +27,7 @@ import ControlPanel from '@components/ControlPanel.vue'
 import ErrorBoundary from '@components/ErrorBoundary.vue'
 import GraphSystem from '@components/visualization/GraphSystem.vue'
 import { errorTracking } from '../services/errorTracking'
-import { useVisualization } from '../composables/useVisualization'
+import { useVisualization, SCENE_KEY } from '../composables/useVisualization'
 import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge, BinaryMessage, FisheyeUpdateMessage } from '../types/websocket'
 import type { Node as CoreNode, Edge as CoreEdge } from '../types/core'
 import type { FisheyeConfig } from '../types/components'
@@ -97,6 +98,7 @@ export default defineComponent({
     const { connected: isConnected } = storeToRefs(websocketStore)
     
     const sceneContainer = ref<HTMLElement | null>(null)
+    const canvas = ref<HTMLCanvasElement | null>(null)
     const error = ref<string | null>(null)
 
     // Get visualization settings
@@ -121,7 +123,10 @@ export default defineComponent({
     });
 
     // Initialize visualization system
-    const { initialize: initVisualization, updateNodes, updatePositions } = useVisualization()
+    const { initialize: initVisualization, updateNodes, updatePositions, state: visualizationState } = useVisualization()
+
+    // Provide visualization state to child components
+    provide('visualizationState', visualizationState)
 
     // Watch for graph data updates from the store
     watch(() => visualizationStore.nodes, (newNodes) => {
@@ -271,12 +276,16 @@ export default defineComponent({
         })
 
         // Initialize visualization system
-        if (sceneContainer.value) {
+        if (canvas.value && sceneContainer.value) {
           console.log('Initializing visualization system...')
-          const canvas = document.createElement('canvas')
-          sceneContainer.value.appendChild(canvas)
+          
+          // Set initial canvas size
+          const rect = sceneContainer.value.getBoundingClientRect()
+          canvas.value.width = rect.width
+          canvas.value.height = rect.height
+          
           await initVisualization({
-            canvas,
+            canvas: canvas.value,
             scene: {
               antialias: true,
               alpha: true,
@@ -285,6 +294,11 @@ export default defineComponent({
             }
           })
           console.log('Visualization system initialized')
+
+          // Provide scene to child components
+          if (visualizationState.value.scene) {
+            provide(SCENE_KEY, visualizationState.value.scene)
+          }
         }
 
         // Initialize WebSocket through store
@@ -326,9 +340,11 @@ export default defineComponent({
 
     return {
       sceneContainer,
+      canvas,
       isConnected,
       error,
-      visualSettings
+      visualSettings,
+      visualizationState // Expose visualization state to template
     }
   }
 })
@@ -352,6 +368,12 @@ body, html {
   z-index: 0;
   background: #000000;
   touch-action: none;
+}
+
+#scene-container canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 #app {

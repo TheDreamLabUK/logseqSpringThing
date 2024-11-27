@@ -3,6 +3,9 @@ import { createPinia } from 'pinia'
 import App from './components/App.vue'
 import { errorTracking } from './services/errorTracking'
 
+// Disable Vue devtools
+window.__VUE_PROD_DEVTOOLS__ = false
+
 // Create Vue application
 const app = createApp(App)
 
