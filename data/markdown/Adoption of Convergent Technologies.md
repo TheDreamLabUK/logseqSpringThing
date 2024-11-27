@@ -1,38 +1,75 @@
 public:: true
 
-- According to [recent research](https://www.pw.hks.harvard.edu/post/the-rapid-adoption-of-generative-ai) from Harvard and other institutions, generative AI has seen remarkably rapid adoption since its introduction:
-	- ![889099_6bc1d69ec5284cc0a19315afe6075af0~mv2.webp](../assets/889099_6bc1d69ec5284cc0a19315afe6075af0~mv2_1728113404306_0.webp){:width 800}
-	-
-	- I did a whole lot of finger waving, guessing, integrating across "sauces", projecting, s-curve fitting, normalising, and lin/log swapsies. 
-	  GenAI hitting higher user numbers than android handsets is likely a 2030 projection hype artefact, but not completely impossible if you assume genai on all Android handsets in some form by 2030. Take it all with a pinch of salt.
-	  Bitcoin looks proper "drama" but it's possibly on a very compressed s-curve with a bend to the right sometime after 2030. Again, serious people are saying this, it's not just me, but that line especially is 'brittle'.
-	  So, while this isn't exactly academic rigour, it IS inline with the citations across this page. It's a useful glance piece. These are just about the fastest tech adoptions in human history, in one place.
-	- ![output.png](../assets/output_1728117882810_0.png){:width 900}
-	-
-	- ## Key Findings
-		- As of August 2024, 39.4% of Americans aged 18-64 reported using generative AI[1](https://www.aibase.com/news/11986)[2](https://www.pw.hks.harvard.edu/post/the-rapid-adoption-of-generative-ai).
-		- 28% of employed respondents said they use generative AI at work[2](https://www.pw.hks.harvard.edu/post/the-rapid-adoption-of-generative-ai)[4](https://www.stlouisfed.org/on-the-economy/2024/sep/rapid-adoption-generative-ai).
-		- Nearly 1 in 9 workers (10.6%) reported using generative AI daily at work[3](https://forklightning.substack.com/p/the-rapid-adoption-of-generative).
-		- Adoption has been faster than previous transformative technologies like personal computers and the internet[2](https://www.pw.hks.harvard.edu/post/the-rapid-adoption-of-generative-ai)[5](https://www.hks.harvard.edu/publications/rapid-adoption-generative-ai).
-		- ### Adoption Across Industries
-			- Generative AI usage spans a wide range of occupations:
-			- Over 40% adoption in management, business, and computing professions[1](https://www.aibase.com/news/11986).
-			- 20% of "blue-collar" workers (e.g. construction, maintenance, transportation) use generative AI frequently at work[1](https://www.aibase.com/news/11986).
-		- ### Common Use Cases
-			- Workers employ generative AI for various tasks:
-			- 57% use it for writing assistance
-			- 49% use it for information searches
-			- Other applications include summarizing reports and generating creative ideas[1](https://www.aibase.com/news/11986)
-		- ### Potential Impact
-			- Researchers estimate generative AI currently supports 0.5-3.5% of all work hours in the U.S.[2](https://www.pw.hks.harvard.edu/post/the-rapid-adoption-of-generative-ai)
-			- This could potentially boost labor productivity by 0.125-0.875 percentage points, though this estimate is speculative[2](https://www.pw.hks.harvard.edu/post/the-rapid-adoption-of-generative-ai).
-		- ### Factors Driving Rapid Adoption
-			- The study suggests several reasons for generative AI's quick uptake:
-			- Low cost and portability of tools like ChatGPT and Google Gemini[1](https://www.aibase.com/news/11986)
-			- Widespread access to computers and internet as a foundation[3](https://forklightning.substack.com/p/the-rapid-adoption-of-generative)
-			- Broad applicability across many occupations and tasks[4](https://www.stlouisfed.org/on-the-economy/2024/sep/rapid-adoption-generative-ai)
-		- While adoption has been swift, researchers caution that the long-term economic impact will depend on how deeply generative AI becomes integrated into daily work processes over time[1](https://www.aibase.com/news/11986).
-		-
+- # Findings and Comments from the 2024 State of Enterprise AI Report by Menlo Ventures
+	- [Menlo Ventures’ 2024 State of Generative AI Report Reveals](https://www.globenewswire.com/news-release/2024/11/20/2984728/0/en/Menlo-Ventures-2024-State-of-Generative-AI-Report-Reveals-6x-Spike-in-Enterprise-Spending-as-Market-Leaders-Shift.html)
+	- ## Enterprise AI Adoption and Spending
+		- AI spending increased from $2.3 billion in 2023 to $13.8 billion in 2024.
+		- 72% of decision-makers anticipate broader adoption of generative AI tools soon.
+		- Over a third of organisations lack a clear vision for implementing generative AI.
+		- Generative AI adoption reflects a continuous, iterative process rather than a one-time transition.
+	- ## Funding and Organisational Changes
+		- 60% of generative AI investments come from innovation budgets, while 40% derive from permanent budgets.
+		- 58% of permanent funding was redirected from existing allocations, highlighting a growing commitment to AI transformation.
+		- Innovation teams are being reimagined as coordination hubs integrated across organisational functions.
+	- ## AI Purchasing Trends
+		- Spending on AI applications increased from $600 million in 2023 to $4.6 billion in 2024.
+		- Enterprises are identifying an average of 10 AI use cases, with nearly 25% prioritised for near-term implementation.
+		- Application-level spending signals a maturing AI journey with organisations focusing on transformative workflows.
+	- ## Most Adopted Enterprise AI Use Cases
+		- Code co-pilots: 51%
+		- Support chatbots: 31%
+		- Enterprise search, retrieval, and data extraction: 27-28%
+		- Meeting summarisation: 24%
+		- Copywriting: 21%
+		- Image generation: 20%
+		- Use cases reflect a shift from consumer-focused tasks to enterprise-specific applications.
+	- ## Build vs Buy Dynamics
+		- Shift from reliance on third-party software (80% in 2023) to in-house solutions (47% in 2024).
+		- In-house solutions are driven by security and data interaction requirements.
+		- Anticipated long-term oscillation between in-house and third-party solutions as vertical and functional applications evolve.
+	- ## AI Spending Across Departments
+		- IT and product/engineering lead AI spending with 22% and 19%, respectively.
+		- Other notable areas include customer support (9%), sales (8%), data science (8%), marketing (7%), human resources (7%), and accounting/finance (7%).
+	- ## Agentic Architectures
+		- Adoption of agentic architectures grew from 0% in 2023 to 12% in 2024.
+		- Future growth in agentic architectures is expected as the technology matures.
+	- ## Conclusion
+		- Enterprise AI is driving broad organisational transformation across multiple departments.
+		- Challenges persist due to the wide-reaching and iterative nature of generative AI adoption.
+	- # Harvard Report
+		- According to [recent research](https://www.pw.hks.harvard.edu/post/the-rapid-adoption-of-generative-ai) from Harvard and other institutions, generative AI has seen remarkably rapid adoption since its introduction:
+			- ![889099_6bc1d69ec5284cc0a19315afe6075af0~mv2.webp](../assets/889099_6bc1d69ec5284cc0a19315afe6075af0~mv2_1728113404306_0.webp){:width 800}
+			-
+			- I did a whole lot of finger waving, guessing, integrating across "sauces", projecting, s-curve fitting, normalising, and lin/log swapsies. 
+			  GenAI hitting higher user numbers than android handsets is likely a 2030 projection hype artefact, but not completely impossible if you assume genai on all Android handsets in some form by 2030. Take it all with a pinch of salt.
+			  Bitcoin looks proper "drama" but it's possibly on a very compressed s-curve with a bend to the right sometime after 2030. Again, serious people are saying this, it's not just me, but that line especially is 'brittle'.
+			  So, while this isn't exactly academic rigour, it IS inline with the citations across this page. It's a useful glance piece. These are just about the fastest tech adoptions in human history, in one place.
+			- ![output.png](../assets/output_1728117882810_0.png){:width 900}
+			-
+			- ## Key Findings
+				- As of August 2024, 39.4% of Americans aged 18-64 reported using generative AI[1](https://www.aibase.com/news/11986)[2](https://www.pw.hks.harvard.edu/post/the-rapid-adoption-of-generative-ai).
+				- 28% of employed respondents said they use generative AI at work[2](https://www.pw.hks.harvard.edu/post/the-rapid-adoption-of-generative-ai)[4](https://www.stlouisfed.org/on-the-economy/2024/sep/rapid-adoption-generative-ai).
+				- Nearly 1 in 9 workers (10.6%) reported using generative AI daily at work[3](https://forklightning.substack.com/p/the-rapid-adoption-of-generative).
+				- Adoption has been faster than previous transformative technologies like personal computers and the internet[2](https://www.pw.hks.harvard.edu/post/the-rapid-adoption-of-generative-ai)[5](https://www.hks.harvard.edu/publications/rapid-adoption-generative-ai).
+				- ### Adoption Across Industries
+					- Generative AI usage spans a wide range of occupations:
+					- Over 40% adoption in management, business, and computing professions[1](https://www.aibase.com/news/11986).
+					- 20% of "blue-collar" workers (e.g. construction, maintenance, transportation) use generative AI frequently at work[1](https://www.aibase.com/news/11986).
+				- ### Common Use Cases
+					- Workers employ generative AI for various tasks:
+					- 57% use it for writing assistance
+					- 49% use it for information searches
+					- Other applications include summarizing reports and generating creative ideas[1](https://www.aibase.com/news/11986)
+				- ### Potential Impact
+					- Researchers estimate generative AI currently supports 0.5-3.5% of all work hours in the U.S.[2](https://www.pw.hks.harvard.edu/post/the-rapid-adoption-of-generative-ai)
+					- This could potentially boost labor productivity by 0.125-0.875 percentage points, though this estimate is speculative[2](https://www.pw.hks.harvard.edu/post/the-rapid-adoption-of-generative-ai).
+				- ### Factors Driving Rapid Adoption
+					- The study suggests several reasons for generative AI's quick uptake:
+					- Low cost and portability of tools like ChatGPT and Google Gemini[1](https://www.aibase.com/news/11986)
+					- Widespread access to computers and internet as a foundation[3](https://forklightning.substack.com/p/the-rapid-adoption-of-generative)
+					- Broad applicability across many occupations and tasks[4](https://www.stlouisfed.org/on-the-economy/2024/sep/rapid-adoption-generative-ai)
+				- While adoption has been swift, researchers caution that the long-term economic impact will depend on how deeply generative AI becomes integrated into daily work processes over time[1](https://www.aibase.com/news/11986).
+				-
 - # Ramp Report on AI Spending
 	- [AI spending grew 293% last year. Here's how companies are using AI to stay ahead. (ramp.com)](https://ramp.com/blog/q1-2024-spending-insights)
 	- **Increase in AI Spending:**

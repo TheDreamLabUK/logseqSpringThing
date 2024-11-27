@@ -23,8 +23,7 @@
     },
     "types": [
       "node",
-      "vue",
-      "chart.js"
+      "vue"
     ],
     "allowJs": true
   },

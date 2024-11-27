@@ -1,5 +1,5 @@
 import { ref, shallowRef } from 'vue';
-import type { CoreState, PlatformCapabilities } from '../types/core';
+import type { CoreState, PlatformCapabilities, SceneConfig, Transform } from '../types/core';
 import type { BrowserState, BrowserInitOptions } from '../types/platform/browser';
 import type { QuestState, QuestInitOptions, XRController, XRHand, XRHandedness, XRSession } from '../types/platform/quest';
 import * as THREE from 'three';
@@ -20,6 +20,7 @@ export class PlatformManager {
   private animationFrameId: number | null = null;
   private resizeCallbacks: Set<ResizeCallback> = new Set();
   private renderCallbacks: Set<RenderCallback> = new Set();
+  private lastFrameTime = 0;
 
   private constructor() {
     this.detectPlatform();
@@ -35,24 +36,25 @@ export class PlatformManager {
 
   private setupResizeHandler() {
     const handleResize = () => {
-      if (!this.state.value?.canvas) return;
+      const state = this.state.value;
+      if (!state?.canvas || !state.renderer) return;
 
       const width = window.innerWidth;
       const height = window.innerHeight;
       const pixelRatio = window.devicePixelRatio;
 
       // Update renderer
-      this.state.value.renderer.setSize(width, height);
-      this.state.value.renderer.setPixelRatio(pixelRatio);
+      state.renderer.setSize(width, height);
+      state.renderer.setPixelRatio(pixelRatio);
 
       // Update camera
-      if ('aspect' in this.state.value.camera) {
-        this.state.value.camera.aspect = width / height;
-        this.state.value.camera.updateProjectionMatrix();
+      if (state.camera && 'aspect' in state.camera) {
+        state.camera.aspect = width / height;
+        state.camera.updateProjectionMatrix();
       }
 
       // Update viewport
-      this.state.value.viewport = {
+      state.viewport = {
         width,
         height,
         pixelRatio
@@ -83,12 +85,9 @@ export class PlatformManager {
     this.capabilities.value = {
       webgl2,
       xr: xrSupported,
-      multiview: this.checkMultiviewSupport(),
-      instancedArrays: true,
-      floatTextures: this.checkFloatTextureSupport(),
-      depthTexture: true,
-      drawBuffers: true,
-      shaderTextureLOD: this.checkShaderTextureLODSupport()
+      maxTextureSize: 4096,
+      maxDrawCalls: 10000,
+      gpuTier: 1
     };
 
     this.platform = isQuest ? 'quest' : 'browser';
@@ -101,21 +100,6 @@ export class PlatformManager {
     } catch {
       return false;
     }
-  }
-
-  private checkMultiviewSupport(): boolean {
-    const gl = document.createElement('canvas').getContext('webgl2');
-    return gl ? !!gl.getExtension('OVR_multiview2') : false;
-  }
-
-  private checkFloatTextureSupport(): boolean {
-    const gl = document.createElement('canvas').getContext('webgl2');
-    return gl ? !!gl.getExtension('EXT_color_buffer_float') : false;
-  }
-
-  private checkShaderTextureLODSupport(): boolean {
-    const gl = document.createElement('canvas').getContext('webgl2');
-    return gl ? !!gl.getExtension('EXT_shader_texture_lod') : false;
   }
 
   async initialize(options: BrowserInitOptions | QuestInitOptions) {
@@ -133,12 +117,17 @@ export class PlatformManager {
     }
   }
 
-private async initializeQuest(options: QuestInitOptions) {
+  private async initializeQuest(options: QuestInitOptions) {
+    const sceneConfig: SceneConfig = {
+      antialias: true,
+      alpha: true,
+      preserveDrawingBuffer: true,
+      powerPreference: 'high-performance'
+    };
+
     const renderer = new THREE.WebGLRenderer({
       canvas: options.canvas,
-      antialias: options.scene?.antialias ?? true,
-      alpha: options.scene?.alpha ?? true,
-      powerPreference: options.scene?.powerPreference ?? 'high-performance',
+      ...sceneConfig,
       xr: { enabled: true }
     });
 
@@ -187,7 +176,14 @@ private async initializeQuest(options: QuestInitOptions) {
       scene.add(hand);
     });
 
+    const transform: Transform = {
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    };
+
     this.state.value = {
+      type: 'xr',
       renderer,
       camera,
       scene,
@@ -195,6 +191,9 @@ private async initializeQuest(options: QuestInitOptions) {
       isInitialized: true,
       isXRSupported: true,
       isWebGL2: true,
+      isGPUMode: false,
+      fps: 0,
+      lastFrameTime: 0,
       xrSession: null,
       xrSpace: null,
       xrLayer: null,
@@ -205,14 +204,14 @@ private async initializeQuest(options: QuestInitOptions) {
         height: window.innerHeight,
         pixelRatio: window.devicePixelRatio
       },
-      transform: {
-        position: new THREE.Vector3(),
-        rotation: new THREE.Vector3(),
-        scale: new THREE.Vector3(1, 1, 1)
-      },
+      transform,
       config: {
-        scene: options.scene ?? {},
-        performance: options.performance ?? {},
+        scene: sceneConfig,
+        performance: {
+          targetFPS: 90,
+          maxDrawCalls: 10000,
+          enableStats: false
+        },
         xr: {
           referenceSpaceType: options.xr?.referenceSpaceType ?? 'local-floor',
           sessionMode: options.xr?.sessionMode ?? 'immersive-vr',
@@ -231,11 +230,16 @@ private async initializeQuest(options: QuestInitOptions) {
       OrbitControls = module.OrbitControls;
     }
 
+    const sceneConfig: SceneConfig = {
+      antialias: true,
+      alpha: true,
+      preserveDrawingBuffer: true,
+      powerPreference: 'high-performance'
+    };
+
     const renderer = new THREE.WebGLRenderer({
       canvas: options.canvas,
-      antialias: options.scene?.antialias ?? true,
-      alpha: options.scene?.alpha ?? true,
-      powerPreference: options.scene?.powerPreference ?? 'high-performance'
+      ...sceneConfig
     });
 
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -247,7 +251,14 @@ private async initializeQuest(options: QuestInitOptions) {
     Object.assign(controls, options.controls ?? {});
     controls.enableDamping = true;
 
+    const transform: Transform = {
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    };
+
     this.state.value = {
+      type: 'browser',
       renderer,
       camera,
       scene,
@@ -256,6 +267,9 @@ private async initializeQuest(options: QuestInitOptions) {
       isInitialized: true,
       isXRSupported: false,
       isWebGL2: true,
+      isGPUMode: false,
+      fps: 0,
+      lastFrameTime: 0,
       mousePosition: new THREE.Vector2(),
       touchActive: false,
       pointerLocked: false,
@@ -264,86 +278,32 @@ private async initializeQuest(options: QuestInitOptions) {
         height: window.innerHeight,
         pixelRatio: window.devicePixelRatio
       },
-      transform: {
-        position: new THREE.Vector3(),
-        rotation: new THREE.Vector3(),
-        scale: new THREE.Vector3(1, 1, 1)
-      },
+      transform,
       config: {
-        scene: options.scene ?? {},
-        performance: options.performance ?? {}
+        scene: sceneConfig,
+        performance: {
+          targetFPS: 60,
+          maxDrawCalls: 10000,
+          enableStats: false
+        }
       }
     };
 
     this.startRenderLoop();
   }
 
-  // Quest-specific methods
-  async enableVR(): Promise<void> {
-    if (!this.isQuest() || !this.state.value) return;
-
-    const state = this.state.value as QuestState;
-    const { sessionMode, optionalFeatures, requiredFeatures } = state.config.xr;
-
-    try {
-      const session = await (navigator as any).xr?.requestSession(sessionMode, {
-        optionalFeatures,
-        requiredFeatures
-      });
-
-      if (session) {
-        state.xrSession = session as XRSession;
-        await state.renderer.xr.setSession(session);
-      }
-    } catch (error) {
-      console.error('Failed to start XR session:', error);
-      throw error;
-    }
-  }
-
-  async disableVR(): Promise<void> {
-    if (!this.isQuest() || !this.state.value) return;
-
-    const state = this.state.value as QuestState;
-    if (state.xrSession) {
-      await state.xrSession.end();
-      state.xrSession = null;
-    }
-  }
-
-  isVRActive(): boolean {
-    if (!this.isQuest() || !this.state.value) return false;
-    return !!(this.state.value as QuestState).xrSession;
-  }
-
-  getControllerGrip(handedness: XRHandedness): Group | null {
-    if (!this.isQuest() || !this.state.value) return null;
-    return (this.state.value as QuestState).controllers.get(handedness)?.grip ?? null;
-  }
-
-  getControllerRay(handedness: XRHandedness): Group | null {
-    if (!this.isQuest() || !this.state.value) return null;
-    return (this.state.value as QuestState).controllers.get(handedness)?.ray ?? null;
-  }
-
-  getHand(handedness: XRHandedness): XRHand | null {
-    if (!this.isQuest() || !this.state.value) return null;
-    return (this.state.value as QuestState).hands.get(handedness) ?? null;
-  }
-
-  vibrate(handedness: XRHandedness, intensity = 1.0, duration = 100): void {
-    if (!this.isQuest() || !this.state.value) return;
-    
-    const controller = (this.state.value as QuestState).controllers.get(handedness);
-    if (controller?.gamepad?.hapticActuators?.[0]) {
-      controller.gamepad.hapticActuators[0].pulse(intensity, duration);
-    }
-  }
-
   private render() {
-    if (!this.state.value) return;
-
     const state = this.state.value;
+    if (!state?.renderer || !state.scene || !state.camera) return;
+
+    const now = performance.now();
+    const deltaTime = now - this.lastFrameTime;
+    this.lastFrameTime = now;
+
+    // Update FPS
+    state.fps = 1000 / deltaTime;
+    state.lastFrameTime = now;
+
     if (this.platform === 'browser') {
       const browserState = state as BrowserState;
       if (browserState.controls) {
@@ -353,7 +313,9 @@ private async initializeQuest(options: QuestInitOptions) {
 
     // Execute render callbacks
     this.renderCallbacks.forEach(callback => {
-      callback(state.renderer, state.scene, state.camera);
+      if (state.renderer && state.scene && state.camera) {
+        callback(state.renderer, state.scene, state.camera);
+      }
     });
 
     // Final render
