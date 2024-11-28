@@ -1,7 +1,7 @@
 use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor};
 use wgpu::util::DeviceExt;
 use std::io::Error;
-use log::{debug, info};
+use log::{debug, info, error, warn};  // Added error and warn imports
 use crate::models::graph::GraphData;
 use crate::models::edge::GPUEdge;
 use crate::models::node::GPUNode;
@@ -11,12 +11,16 @@ use futures::channel::oneshot;
 
 // Constants for buffer management and computation
 const WORKGROUP_SIZE: u32 = 256;
-const INITIAL_BUFFER_SIZE: u64 = 1024 * 1024;  // 1MB initial size
+const INITIAL_BUFFER_SIZE: u64 = 4 * 1024 * 1024;  // Increased to 4MB for larger quantized values
 const BUFFER_ALIGNMENT: u64 = 256;  // Required GPU memory alignment
 const EDGE_SIZE: u64 = 32;  // Size of Edge struct (must match WGSL)
-const NODE_SIZE: u64 = 28;  // Size of Node struct in WGSL (optimized)
+const NODE_SIZE: u64 = 32;  // Increased from 28 to 32 for better alignment with larger values
 const MAX_NODES: u32 = 1_000_000;  // Safety limit for number of nodes
 const MAX_EDGES: u32 = 5_000_000;  // Safety limit for number of edges
+
+// Position update constants
+const POSITION_BUFFER_SIZE: u64 = 32;  // Increased from 24 to 32 for better alignment
+const POSITION_UPDATE_ALIGNMENT: u64 = 16;  // Alignment for position updates
 
 /// Represents adjacency information for graph nodes
 #[repr(C)]
@@ -269,7 +273,7 @@ impl GPUCompute {
         // Create dedicated position buffers
         let position_update_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Position Update Buffer"),
-            size: (MAX_NODES as u64) * 24, // 6 floats per node (position + velocity)
+            size: (MAX_NODES as u64) * POSITION_BUFFER_SIZE,  // Increased size per node
             usage: wgpu::BufferUsages::STORAGE 
                 | wgpu::BufferUsages::COPY_DST 
                 | wgpu::BufferUsages::COPY_SRC,
@@ -278,7 +282,7 @@ impl GPUCompute {
 
         let position_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Position Staging Buffer"),
-            size: (MAX_NODES as u64) * 24, // 6 floats per node (position + velocity)
+            size: (MAX_NODES as u64) * POSITION_BUFFER_SIZE,  // Increased size per node
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -409,6 +413,22 @@ impl GPUCompute {
 
     /// Updates the graph data in GPU buffers
     pub fn update_graph_data(&mut self, graph: &GraphData) -> Result<(), Error> {
+        debug!("Updating GPU graph data: {} nodes, {} edges", 
+            graph.nodes.len(), graph.edges.len());
+
+        // Validate buffer sizes
+        let required_node_size = (graph.nodes.len() as u64) * NODE_SIZE;
+        let required_edge_size = (graph.edges.len() as u64) * EDGE_SIZE;
+
+        if required_node_size > INITIAL_BUFFER_SIZE || required_edge_size > INITIAL_BUFFER_SIZE {
+            error!("Graph data exceeds buffer size limits: nodes={}, edges={}", 
+                required_node_size, required_edge_size);
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Graph data exceeds buffer size limits"
+            ));
+        }
+
         let gpu_nodes: Vec<GPUNode> = graph.nodes.iter().map(|node| GPUNode {
             x: node.x,
             y: node.y,
@@ -421,15 +441,28 @@ impl GPUCompute {
             padding: [0; 2],
         }).collect();
 
+        debug!("Created GPU nodes. Sample positions: {:?}", 
+            gpu_nodes.iter().take(3).map(|n| (n.x, n.y, n.z)).collect::<Vec<_>>());
+
         let gpu_edges: Vec<GPUEdge> = graph.edges.iter()
             .map(|edge| edge.to_gpu_edge(&graph.nodes))
             .collect();
+
+        debug!("Created GPU edges. Sample edges: {:?}",
+            gpu_edges.iter().take(3).collect::<Vec<_>>());
+
+        // Write data to GPU buffers with alignment
+        let aligned_node_size = (required_node_size + BUFFER_ALIGNMENT - 1) & !(BUFFER_ALIGNMENT - 1);
+        let aligned_edge_size = (required_edge_size + BUFFER_ALIGNMENT - 1) & !(BUFFER_ALIGNMENT - 1);
 
         self.queue.write_buffer(&self.nodes_buffer, 0, bytemuck::cast_slice(&gpu_nodes));
         self.queue.write_buffer(&self.edges_buffer, 0, bytemuck::cast_slice(&gpu_edges));
         
         self.num_nodes = graph.nodes.len() as u32;
         self.num_edges = graph.edges.len() as u32;
+
+        debug!("GPU buffers updated successfully: aligned_node_size={}, aligned_edge_size={}", 
+            aligned_node_size, aligned_edge_size);
         
         Ok(())
     }
@@ -439,6 +472,8 @@ impl GPUCompute {
         // Verify data length (24 bytes per node - position + velocity, plus 4 bytes for header)
         let expected_size = self.num_nodes as usize * 24 + 4;
         if binary_data.len() != expected_size {
+            error!("Invalid position data length: expected {}, got {}", 
+                expected_size, binary_data.len());
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("Invalid position data length: expected {}, got {}", 
@@ -451,6 +486,9 @@ impl GPUCompute {
         header_bytes.copy_from_slice(&binary_data[0..4]);
         let header_value = f32::from_le_bytes(header_bytes);
         let is_initial_layout = header_value >= 1.0;
+
+        debug!("Processing position update: {} bytes, initial layout: {}", 
+            binary_data.len(), is_initial_layout);
 
         // Update simulation params
         let mut params = self.simulation_params;
@@ -467,6 +505,8 @@ impl GPUCompute {
             0,
             &binary_data[4..]
         );
+
+        debug!("Position data written to GPU buffer");
 
         // Run position validation shader
         let mut encoder = self.device.create_command_encoder(
@@ -485,11 +525,11 @@ impl GPUCompute {
 
             compute_pass.set_pipeline(&self.position_pipeline);
             compute_pass.set_bind_group(0, &self.position_bind_group, &[]);
-            compute_pass.dispatch_workgroups(
-                (self.num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 
-                1, 
-                1
-            );
+            
+            let workgroups = (self.num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+            debug!("Dispatching position validation shader: {} workgroups", workgroups);
+            
+            compute_pass.dispatch_workgroups(workgroups, 1, 1);
         }
 
         // Copy validated positions and velocities to node buffer
@@ -502,58 +542,8 @@ impl GPUCompute {
         );
 
         self.queue.submit(Some(encoder.finish()));
+        debug!("Position update complete");
 
-        Ok(())
-    }
-
-    /// Get current positions in binary format for client updates
-    pub async fn get_position_updates(&self) -> Result<Vec<NodePositionVelocity>, Error> {
-        let mut encoder = self.device.create_command_encoder(
-            &wgpu::CommandEncoderDescriptor {
-                label: Some("Position Readback Encoder"),
-            }
-        );
-
-        // Copy position and velocity data
-        encoder.copy_buffer_to_buffer(
-            &self.nodes_buffer,
-            0,
-            &self.position_staging_buffer,
-            0,
-            (self.num_nodes as u64) * 24, // 24 bytes per node
-        );
-
-        self.queue.submit(Some(encoder.finish()));
-
-        // Map buffer and read positions
-        let buffer_slice = self.position_staging_buffer.slice(..);
-        let (sender, receiver) = futures::channel::oneshot::channel();
-        
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            sender.send(result).unwrap();
-        });
-        
-        self.device.poll(wgpu::Maintain::Wait);
-
-        receiver.await.unwrap()
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-
-        let data = buffer_slice.get_mapped_range();
-        let positions: Vec<NodePositionVelocity> = bytemuck::cast_slice(&data).to_vec();
-        drop(data);
-        self.position_staging_buffer.unmap();
-
-        Ok(positions)
-    }
-
-    /// Updates simulation parameters
-    pub fn update_simulation_params(&mut self, params: &SimulationParams) -> Result<(), Error> {
-        self.simulation_params = *params;
-        self.queue.write_buffer(
-            &self.simulation_params_buffer,
-            0,
-            bytemuck::cast_slice(&[self.simulation_params])
-        );
         Ok(())
     }
 
@@ -563,6 +553,9 @@ impl GPUCompute {
             label: Some("Force Compute Encoder"),
         });
 
+        debug!("Starting force computation step: {} nodes, {} edges", 
+            self.num_nodes, self.num_edges);
+
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Force Compute Pass"),
@@ -571,25 +564,34 @@ impl GPUCompute {
 
             compute_pass.set_pipeline(&self.force_pipeline);
             compute_pass.set_bind_group(0, &self.force_bind_group, &[]);
-            compute_pass.dispatch_workgroups((self.num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE, 1, 1);
+            
+            let workgroups = (self.num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+            debug!("Dispatching force computation: {} workgroups", workgroups);
+            
+            compute_pass.dispatch_workgroups(workgroups, 1, 1);
         }
 
         self.queue.submit(Some(encoder.finish()));
+        debug!("Force computation step complete");
+        
         Ok(())
     }
 
     /// Retrieves current node positions from GPU
     pub async fn get_node_positions(&self) -> Result<Vec<GPUNode>, Error> {
+        debug!("Reading node positions from GPU: {} nodes", self.num_nodes);
+
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Node Position Readback"),
         });
 
+        let buffer_size = (self.num_nodes as u64) * std::mem::size_of::<GPUNode>() as u64;
         encoder.copy_buffer_to_buffer(
             &self.nodes_buffer,
             0,
             &self.nodes_staging_buffer,
             0,
-            (self.num_nodes as u64) * std::mem::size_of::<GPUNode>() as u64,
+            buffer_size,
         );
 
         self.queue.submit(Some(encoder.finish()));
@@ -607,11 +609,32 @@ impl GPUCompute {
         drop(data);
         self.nodes_staging_buffer.unmap();
 
+        debug!("Node positions read successfully. Sample positions: {:?}", 
+            nodes.iter().take(3).map(|n| (n.x, n.y, n.z)).collect::<Vec<_>>());
+
         Ok(nodes)
+    }
+
+    /// Updates simulation parameters
+    pub fn update_simulation_params(&mut self, params: &SimulationParams) -> Result<(), Error> {
+        debug!("Updating simulation parameters: {:?}", params);
+        
+        self.simulation_params = *params;
+        self.queue.write_buffer(
+            &self.simulation_params_buffer,
+            0,
+            bytemuck::cast_slice(&[self.simulation_params])
+        );
+
+        debug!("Simulation parameters updated successfully");
+        Ok(())
     }
 
     /// Updates fisheye distortion parameters
     pub fn update_fisheye_params(&mut self, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32) -> Result<(), Error> {
+        debug!("Updating fisheye parameters: enabled={}, strength={}, focus={:?}, radius={}", 
+            enabled, strength, focus_point, radius);
+
         self.fisheye_params = FisheyeParams {
             enabled: if enabled { 1 } else { 0 },
             strength,
@@ -623,6 +646,8 @@ impl GPUCompute {
             0,
             bytemuck::cast_slice(&[self.fisheye_params])
         );
+
+        debug!("Fisheye parameters updated successfully");
         Ok(())
     }
 }

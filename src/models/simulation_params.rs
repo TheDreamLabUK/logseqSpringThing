@@ -20,10 +20,10 @@ pub enum SimulationPhase {
 #[repr(C)]
 pub struct SimulationParams {
     pub iterations: u32,           // Range: 1-500, Default: varies by phase
-    pub spring_strength: f32,      // Range: 0.001-1.0, Default: 0.01
-    pub repulsion_strength: f32,   // Range: 1.0-10000.0, Default: 1000.0
-    pub attraction_strength: f32,  // Range: 0.001-1.0, Default: 0.01
-    pub damping: f32,             // Range: 0.5-0.95, Default: 0.8
+    pub spring_strength: f32,      // Range: 0.001-1.0, Default: 0.015
+    pub repulsion_strength: f32,   // Range: 1.0-10000.0, Default: 1200.0
+    pub attraction_strength: f32,  // Range: 0.001-1.0, Default: 0.012
+    pub damping: f32,             // Range: 0.5-0.95, Default: 0.85
     pub is_initial_layout: bool,   // true for initial layout, false for interactive
     pub time_step: f32,           // Animation time step (0.1-1.0)
     pub padding: u32,             // Complete 32-byte alignment
@@ -32,11 +32,11 @@ pub struct SimulationParams {
 impl Default for SimulationParams {
     fn default() -> Self {
         Self {
-            iterations: 5,
-            spring_strength: 0.01,
-            repulsion_strength: 1000.0,
-            attraction_strength: 0.01,
-            damping: 0.8,
+            iterations: 5,                // Default for interactive mode
+            spring_strength: 0.015,       // Increased from 0.01 to match settings.toml
+            repulsion_strength: 1200.0,   // Increased from 1000.0 to match settings.toml
+            attraction_strength: 0.012,   // Increased from 0.01 to match settings.toml
+            damping: 0.85,               // Increased from 0.8 to match settings.toml
             is_initial_layout: false,
             time_step: 0.5,
             padding: 0,
@@ -65,7 +65,7 @@ impl SimulationParams {
             attraction_strength: attraction_strength.clamp(0.001, 1.0),
             damping: damping.clamp(0.5, 0.95),
             is_initial_layout: is_initial,
-            time_step: 0.5,
+            time_step: if is_initial { 0.8 } else { 0.5 }, // Faster initial layout
             padding: 0,
         }
     }
@@ -74,7 +74,11 @@ impl SimulationParams {
     pub fn from_config(config: &crate::config::VisualizationSettings, phase: SimulationPhase) -> Self {
         let is_initial = matches!(phase, SimulationPhase::Initial);
         Self::new(
-            if is_initial { config.force_directed_iterations } else { 5 },
+            if is_initial { 
+                config.force_directed_iterations.max(300) // Ensure enough iterations for initial layout
+            } else { 
+                5 
+            },
             config.force_directed_spring,
             config.force_directed_repulsion,
             config.force_directed_attraction,
@@ -122,6 +126,19 @@ impl SimulationParams {
         self.time_step = time_step.clamp(0.1, 1.0);
         self
     }
+
+    /// Returns true if the parameters are suitable for initial layout
+    pub fn is_initial_phase(&self) -> bool {
+        self.is_initial_layout && self.iterations >= 200
+    }
+
+    /// Returns true if the parameters need adjustment for stability
+    pub fn needs_stability_adjustment(&self) -> bool {
+        self.spring_strength > 0.5 || 
+        self.repulsion_strength > 5000.0 || 
+        self.attraction_strength > 0.5 ||
+        self.damping < 0.7
+    }
 }
 
 // Manual implementations for required GPU traits
@@ -142,10 +159,10 @@ mod tests {
     fn test_simulation_params_default() {
         let params = SimulationParams::default();
         assert_eq!(params.iterations, 5);
-        assert_eq!(params.spring_strength, 0.01);
-        assert_eq!(params.repulsion_strength, 1000.0);
-        assert_eq!(params.attraction_strength, 0.01);
-        assert_eq!(params.damping, 0.8);
+        assert_eq!(params.spring_strength, 0.015);
+        assert_eq!(params.repulsion_strength, 1200.0);
+        assert_eq!(params.attraction_strength, 0.012);
+        assert_eq!(params.damping, 0.85);
         assert!(!params.is_initial_layout);
     }
 
@@ -184,5 +201,23 @@ mod tests {
         assert_eq!(params.attraction_strength, 0.05);
         assert_eq!(params.damping, 0.7);
         assert_eq!(params.time_step, 0.8);
+    }
+
+    #[test]
+    fn test_initial_phase_detection() {
+        let initial_params = SimulationParams::new(300, 0.1, 1000.0, 0.1, 0.8, true);
+        assert!(initial_params.is_initial_phase());
+
+        let interactive_params = SimulationParams::default();
+        assert!(!interactive_params.is_initial_phase());
+    }
+
+    #[test]
+    fn test_stability_detection() {
+        let unstable_params = SimulationParams::new(300, 0.6, 6000.0, 0.6, 0.6, true);
+        assert!(unstable_params.needs_stability_adjustment());
+
+        let stable_params = SimulationParams::default();
+        assert!(!stable_params.needs_stability_adjustment());
     }
 }

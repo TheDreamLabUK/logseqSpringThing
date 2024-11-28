@@ -331,14 +331,15 @@ export function useVisualization() {
 
     // Log update in development
     if (process.env.NODE_ENV === 'development') {
+      const samplePos = positions[0];
       console.debug('Position update:', {
         count: positions.length,
         isInitial: isInitialLayout,
         meshCount: nodeMeshes.size,
-        sample: positions[0] ? {
-          id: positions[0].id,
-          position: [pos.x, pos.y, pos.z],
-          velocity: [pos.vx, pos.vy, pos.vz]
+        sample: samplePos ? {
+          id: samplePos.id,
+          position: [samplePos.x, samplePos.y, samplePos.z],
+          velocity: [samplePos.vx, samplePos.vy, samplePos.vz]
         } : null
       });
     }

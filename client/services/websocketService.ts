@@ -122,12 +122,13 @@ export default class WebsocketService {
         const isInitialLayout = view.getFloat32(0, true) >= 1.0
         const numPositions = (event.data.byteLength - 4) / 24 // 24 bytes per position (6 int32s * 4 bytes)
         
-        // Log binary update stats
-        console.debug('Binary position update:', {
+        // Enhanced debug logging for binary updates
+        console.debug('Received binary position update:', {
           isInitialLayout,
           numPositions,
           numStoredIds: this.nodeIds.length,
-          dataSize: event.data.byteLength
+          dataSize: event.data.byteLength,
+          timestamp: new Date().toISOString()
         })
         
         const positions: PositionUpdate[] = []
@@ -141,13 +142,13 @@ export default class WebsocketService {
             continue
           }
           
-          // Dequantize position and velocity values from integers
-          const x = view.getInt32(offset, true) / POSITION_SCALE
-          const y = view.getInt32(offset + 4, true) / POSITION_SCALE
-          const z = view.getInt32(offset + 8, true) / POSITION_SCALE
-          const vx = view.getInt32(offset + 12, true) / VELOCITY_SCALE
-          const vy = view.getInt32(offset + 16, true) / VELOCITY_SCALE
-          const vz = view.getInt32(offset + 20, true) / VELOCITY_SCALE
+          // Positions and velocities are already scaled by the GPU
+          const x = view.getInt32(offset, true)
+          const y = view.getInt32(offset + 4, true)
+          const z = view.getInt32(offset + 8, true)
+          const vx = view.getInt32(offset + 12, true)
+          const vy = view.getInt32(offset + 16, true)
+          const vz = view.getInt32(offset + 20, true)
           
           positions.push({
             id: nodeId,
@@ -157,9 +158,14 @@ export default class WebsocketService {
           offset += 24
         }
 
-        // Log first few positions for debugging
+        // Enhanced debug logging for position data
         if (positions.length > 0) {
-          console.debug('Sample positions:', positions.slice(0, 3))
+          console.debug('Position update details:', {
+            totalPositions: positions.length,
+            firstNode: positions[0],
+            lastNode: positions[positions.length - 1],
+            timestamp: new Date().toISOString()
+          })
         }
 
         const binaryMessage: BinaryMessage = {
@@ -171,6 +177,14 @@ export default class WebsocketService {
       } else {
         // Handle JSON message
         const message: BaseMessage = JSON.parse(event.data)
+        
+        // Enhanced debug logging for JSON messages
+        console.debug('Received JSON message:', {
+          type: message.type,
+          timestamp: new Date().toISOString(),
+          messageSize: event.data.length
+        })
+
         this.emit('message', message)
 
         // Store node IDs from initial graph data
@@ -179,13 +193,15 @@ export default class WebsocketService {
           if (graphMessage.graphData?.nodes) {
             // Store node IDs in order they appear in the array
             this.nodeIds = graphMessage.graphData.nodes.map(node => node.id)
-            console.debug('Stored node IDs:', {
+            console.debug('Updated node IDs from graph data:', {
               count: this.nodeIds.length,
-              sample: this.nodeIds.slice(0, 3)
+              sample: this.nodeIds.slice(0, 3),
+              timestamp: new Date().toISOString()
             })
           }
           this.emit('graphUpdate', graphMessage)
         } else if (message.type === 'error') {
+          console.error('Received error message:', message)
           this.emit('error', message as ErrorMessage)
         }
       }
@@ -247,6 +263,13 @@ export default class WebsocketService {
         throw new Error('Message exceeds maximum size')
       }
       
+      // Enhanced debug logging for outgoing messages
+      console.debug('Sending message:', {
+        type: data.type,
+        size: message.length,
+        timestamp: new Date().toISOString()
+      })
+
       this.ws.send(message)
       this.messageCount++
       this.lastMessageTime = now

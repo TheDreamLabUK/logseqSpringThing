@@ -39,7 +39,8 @@ export default defineComponent({
       console.debug('Graph system ready state:', {
         hasScene: visualizationState?.value.scene != null,
         isInitialized: visualizationState?.value.isInitialized,
-        ready
+        ready,
+        timestamp: new Date().toISOString()
       });
       return ready;
     });
@@ -83,33 +84,52 @@ export default defineComponent({
     const dragPlane = ref<Plane | null>(null);
     const dragIntersection = new Vector3();
 
-    // Graph data from store with debug logging
+    // Graph data from store with enhanced debug logging
     const graphData = computed<GraphData>(() => {
       const data = visualizationStore.getGraphData || { nodes: [], edges: [], metadata: {} };
       console.debug('Graph data computed:', {
         nodes: data.nodes.length,
         edges: data.edges.length,
-        hasMetadata: Object.keys(data.metadata || {}).length > 0
+        hasMetadata: Object.keys(data.metadata || {}).length > 0,
+        sampleNodes: data.nodes.slice(0, 3).map(n => ({
+          id: n.id,
+          hasPosition: !!n.position,
+          edgeCount: n.edges?.length || 0
+        })),
+        timestamp: new Date().toISOString()
       });
       return data;
     });
 
-    // Watch for binary updates
+    // Watch for binary updates with enhanced logging
     watch(() => binaryUpdateStore.positions, (positions) => {
       const positionEntries = Array.from(positions.entries());
       if (positionEntries.length > 0) {
         console.debug('Processing binary position update:', {
           updateCount: positionEntries.length,
-          sample: positionEntries[0][1]
+          sample: positionEntries.slice(0, 3).map(([id, pos]) => ({
+            id,
+            position: [pos.x, pos.y, pos.z],
+            velocity: [pos.vx, pos.vy, pos.vz]
+          })),
+          timestamp: new Date().toISOString()
         });
         
         // Update node positions
+        let updatedCount = 0;
         positionEntries.forEach(([id, pos]) => {
           const node = graphData.value.nodes.find(n => n.id === id);
           if (node) {
             node.position = [pos.x, pos.y, pos.z];
             node.velocity = [pos.vx, pos.vy, pos.vz];
+            updatedCount++;
           }
+        });
+
+        console.debug('Position updates applied:', {
+          totalUpdates: positionEntries.length,
+          successfulUpdates: updatedCount,
+          timestamp: new Date().toISOString()
         });
 
         // Trigger graph update
@@ -120,8 +140,14 @@ export default defineComponent({
       }
     }, { deep: true });
 
-    // Drag handlers
+    // Drag handlers with enhanced logging
     const onDragStart = (event: PointerEvent, node: GraphNode) => {
+      console.debug('Starting node drag:', {
+        nodeId: node.id,
+        initialPosition: getNodePosition(node),
+        timestamp: new Date().toISOString()
+      });
+
       isDragging.value = true;
       draggedNode.value = node;
 
@@ -158,6 +184,12 @@ export default defineComponent({
         const position = getNodePosition(node);
         position.copy(dragIntersection);
 
+        console.debug('Node drag update:', {
+          nodeId: node.id,
+          newPosition: [position.x, position.y, position.z],
+          timestamp: new Date().toISOString()
+        });
+
         if (websocketStore.service) {
           websocketStore.service.send({
             type: 'updateNodePosition',
@@ -176,6 +208,13 @@ export default defineComponent({
       if (!isDragging.value || !draggedNode.value || !dragStartPosition.value) return;
 
       const finalPosition = getNodePosition(draggedNode.value);
+
+      console.debug('Node drag ended:', {
+        nodeId: draggedNode.value.id,
+        startPosition: dragStartPosition.value.toArray(),
+        finalPosition: finalPosition.toArray(),
+        timestamp: new Date().toISOString()
+      });
 
       if (websocketStore.service) {
         websocketStore.service.send({
@@ -220,12 +259,18 @@ export default defineComponent({
       }
     };
 
-    // Watch for graph data changes
+    // Watch for graph data changes with enhanced logging
     watch(() => graphData.value, (newData) => {
       if (newData && newData.nodes.length > 0) {
         console.debug('Graph data changed:', {
           nodes: newData.nodes.length,
-          edges: newData.edges.length
+          edges: newData.edges.length,
+          sampleNode: newData.nodes[0] ? {
+            id: newData.nodes[0].id,
+            hasPosition: !!newData.nodes[0].position,
+            edgeCount: newData.nodes[0].edges?.length || 0
+          } : null,
+          timestamp: new Date().toISOString()
         });
         updateGraphData(newData);
       }
@@ -235,6 +280,11 @@ export default defineComponent({
     onMounted(() => {
       console.debug('GraphSystem mounted');
       if (graphData.value) {
+        console.debug('Initial graph data update:', {
+          nodes: graphData.value.nodes.length,
+          edges: graphData.value.edges.length,
+          timestamp: new Date().toISOString()
+        });
         updateGraphData(graphData.value);
       }
     });

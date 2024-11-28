@@ -69,9 +69,9 @@ async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::i
 }
 
 /// Periodic graph update function
-/// Checks for GitHub updates every 5 minutes while preserving node positions
+/// Checks for GitHub updates every 12 hours while preserving node positions
 async fn update_graph_periodically(app_state: web::Data<AppState>) {
-    let mut interval = interval(Duration::from_secs(300)); // 5 minute interval
+    let mut interval = interval(Duration::from_secs(43200)); // 12 hour interval
 
     loop {
         interval.tick().await;

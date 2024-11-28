@@ -1,201 +1,155 @@
-use actix_web::{web, Error, HttpRequest, HttpResponse};
-use actix_web_actors::ws;
 use actix::prelude::*;
-use log::{info, error};
-use std::sync::{Mutex, Arc};
+use actix_web_actors::ws;
+use bytestring::ByteString;
+use log::{debug, error, info};
 use serde_json::json;
-use actix_web_actors::ws::WebsocketContext;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::RwLock;
+use tokio::time::sleep;
 
-use crate::AppState;
-use crate::models::simulation_params::SimulationMode;
-use crate::handlers::{WebSocketSession, WebSocketSessionHandler};
-use crate::utils::websocket_messages::{MessageHandler, SendText, ClientMessage, ServerMessage};
+use crate::models::node::GPUNode;
+use crate::models::position_update::NodePositionVelocity;
+use crate::utils::websocket_messages::{SendBinary, SendText};
 
-/// Manages WebSocket sessions and communication.
 pub struct WebSocketManager {
-    pub sessions: Mutex<Vec<Addr<WebSocketSession>>>,
-    pub conversation_id: Arc<Mutex<Option<String>>>,
+    pub sessions: Arc<RwLock<Vec<Addr<WebSocketSession>>>>,
 }
 
 impl WebSocketManager {
-    /// Creates a new WebSocketManager instance.
     pub fn new() -> Self {
         WebSocketManager {
-            sessions: Mutex::new(Vec::new()),
-            conversation_id: Arc::new(Mutex::new(None)),
+            sessions: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
-    /// Initializes the WebSocketManager with a conversation ID.
-    pub async fn initialize(&self, ragflow_service: &crate::services::ragflow_service::RAGFlowService) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let conversation_id = ragflow_service.create_conversation("default_user".to_string()).await?;
-        let mut conv_id_lock = self.conversation_id.lock().unwrap();
-        *conv_id_lock = Some(conversation_id.clone());
-        info!("Initialized conversation with ID: {}", conversation_id);
-        Ok(())
-    }
+    pub async fn broadcast_binary(&self, nodes: &[GPUNode], is_initial: bool) {
+        debug!("Broadcasting binary update: {} nodes, initial: {}", nodes.len(), is_initial);
 
-    /// Handles incoming WebSocket connection requests.
-    pub async fn handle_websocket(req: HttpRequest, stream: web::Payload, state: web::Data<AppState>) -> Result<HttpResponse, Error> {
-        info!("New WebSocket connection request");
-        let session = WebSocketSession {
-            state: state.clone(),
-            tts_method: "piper".to_string(),
-            openai_ws: None,
-            simulation_mode: SimulationMode::Remote,
-            conversation_id: Some(state.websocket_manager.conversation_id.clone()),
-        };
-        ws::start(session, &req, stream)
-    }
+        // Create binary message
+        let mut binary_data = Vec::with_capacity(4 + nodes.len() * std::mem::size_of::<NodePositionVelocity>());
+        
+        // Add initial layout flag as float32
+        let flag_bytes = (if is_initial { 1.0f32 } else { 0.0f32 }).to_le_bytes();
+        binary_data.extend_from_slice(&flag_bytes);
 
-    /// Broadcasts a message to all connected WebSocket sessions.
-    pub async fn broadcast_message(&self, message: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let sessions = self.sessions.lock().unwrap().clone();
-        for session in sessions {
-            let msg: SendText = SendText(message.to_string());
-            session.do_send(msg);
+        // Add node positions and velocities
+        for node in nodes {
+            let update = NodePositionVelocity {
+                x: node.x,
+                y: node.y,
+                z: node.z,
+                vx: node.vx,
+                vy: node.vy,
+                vz: node.vz,
+            };
+            binary_data.extend_from_slice(bytemuck::bytes_of(&update));
         }
-        Ok(())
+
+        debug!("Binary message created: {} bytes, sample nodes: {:?}", 
+            binary_data.len(),
+            nodes.iter().take(3).map(|n| json!({
+                "x": n.x,
+                "y": n.y,
+                "z": n.z,
+                "vx": n.vx,
+                "vy": n.vy,
+                "vz": n.vz
+            })).collect::<Vec<_>>()
+        );
+
+        // Send to all connected clients
+        let sessions = self.sessions.read().await;
+        for session in sessions.iter() {
+            if let Err(e) = session.try_send(SendBinary(binary_data.clone())) {
+                error!("Failed to send binary update to session: {}", e);
+            }
+        }
+
+        debug!("Binary update broadcast complete: {} recipients", sessions.len());
     }
 
-    /// Broadcasts graph update to all connected WebSocket sessions.
-    pub async fn broadcast_graph_update(&self, graph_data: &crate::models::graph::GraphData) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let message = ServerMessage::GraphUpdate {
-            graph_data: json!({
-                "nodes": graph_data.nodes,
-                "edges": graph_data.edges
-            })
-        };
-        if let Ok(message_str) = serde_json::to_string(&message) {
-            self.broadcast_message(&message_str).await?;
+    pub async fn broadcast_text(&self, message: &str) {
+        debug!("Broadcasting text message: {} chars", message.len());
+        
+        let sessions = self.sessions.read().await;
+        for session in sessions.iter() {
+            if let Err(e) = session.try_send(SendText(message.to_string())) {
+                error!("Failed to send text message to session: {}", e);
+            }
         }
-        Ok(())
+
+        debug!("Text message broadcast complete: {} recipients", sessions.len());
+    }
+
+    pub async fn add_session(&self, addr: Addr<WebSocketSession>) {
+        let mut sessions = self.sessions.write().await;
+        debug!("Adding new WebSocket session. Total sessions: {}", sessions.len() + 1);
+        sessions.push(addr);
+    }
+
+    pub async fn remove_session(&self, addr: &Addr<WebSocketSession>) {
+        let mut sessions = self.sessions.write().await;
+        sessions.retain(|x| x != addr);
+        debug!("Removed WebSocket session. Remaining sessions: {}", sessions.len());
+    }
+}
+
+pub struct WebSocketSession;
+
+impl Actor for WebSocketSession {
+    type Context = ws::WebsocketContext<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        debug!("WebSocket session started");
+    }
+
+    fn stopped(&mut self, ctx: &mut Self::Context) {
+        debug!("WebSocket session stopped");
     }
 }
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
-    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut WebsocketContext<Self>) {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Ping(msg)) => {
-                let ctx: &mut WebsocketContext<WebSocketSession> = ctx;
+                debug!("Received ping");
                 ctx.pong(&msg);
-            },
-            Ok(ws::Message::Pong(_)) => (),
+            }
+            Ok(ws::Message::Pong(_)) => {
+                debug!("Received pong");
+            }
             Ok(ws::Message::Text(text)) => {
-                match serde_json::from_str::<ClientMessage>(&text) {
-                    Ok(client_msg) => match client_msg {
-                        ClientMessage::ChatMessage { message, use_openai } => {
-                            WebSocketSessionHandler::handle_chat_message(self, ctx, message, use_openai);
-                        },
-                        ClientMessage::SetSimulationMode { mode } => {
-                            WebSocketSessionHandler::handle_simulation_mode(self, ctx, &mode);
-                        },
-                        ClientMessage::RecalculateLayout { params } => {
-                            WebSocketSessionHandler::handle_layout(self, ctx, params);
-                        },
-                        ClientMessage::GetInitialData => {
-                            WebSocketSessionHandler::handle_initial_data(self, ctx);
-                        },
-                        ClientMessage::UpdateFisheyeSettings { enabled, strength, focus_point, radius } => {
-                            WebSocketSessionHandler::handle_fisheye_settings(self, ctx, enabled, strength, focus_point, radius);
-                        },
-                        ClientMessage::UpdateSettings { settings } => {
-                            MessageHandler::handle_settings_update(self, settings, ctx);
-                        },
-                        _ => {
-                            error!("Unhandled client message type");
-                            let error_message = ServerMessage::Error {
-                                message: "Unhandled message type".to_string(),
-                                code: Some("UNHANDLED_MESSAGE".to_string())
-                            };
-                            <Self as MessageHandler>::send_server_message(self, error_message, ctx);
-                        }
-                    },
-                    Err(e) => {
-                        error!("Failed to parse client message: {}", e);
-                        let error_message = ServerMessage::Error {
-                            message: format!("Invalid message format: {}", e),
-                            code: Some("INVALID_FORMAT".to_string())
-                        };
-                        <Self as MessageHandler>::send_server_message(self, error_message, ctx);
-                    }
-                }
-            },
+                debug!("Received text message: {} chars", text.len());
+                ctx.text(text);
+            }
             Ok(ws::Message::Binary(bin)) => {
-                if let Some(gpu_compute) = &self.state.gpu_compute {
-                    let gpu = gpu_compute.clone();
-                    let bin_data = bin.to_vec();
-                    let ctx_addr = ctx.address();
-
-                    ctx.spawn(
-                        async move {
-                            let gpu_read = gpu.read().await;
-                            let num_nodes = gpu_read.get_num_nodes() as usize;
-                            let expected_size = num_nodes * 24 + 4; // +4 for is_initial_layout flag
-                            drop(gpu_read); // Release the read lock before writing
-
-                            if bin_data.len() != expected_size {
-                                error!("Invalid position data length: expected {}, got {}", 
-                                    expected_size, bin_data.len());
-                                let error_message = ServerMessage::Error {
-                                    message: format!("Invalid position data length: expected {}, got {}", 
-                                        expected_size, bin_data.len()),
-                                    code: Some("INVALID_DATA_LENGTH".to_string())
-                                };
-                                if let Ok(error_str) = serde_json::to_string(&error_message) {
-                                    let msg: SendText = SendText(error_str);
-                                    ctx_addr.do_send(msg);
-                                }
-                                return;
-                            }
-
-                            // Read is_initial_layout flag from the first 4 bytes
-                            let is_initial_layout = {
-                                let mut flag_bytes = [0u8; 4];
-                                flag_bytes.copy_from_slice(&bin_data[0..4]);
-                                f32::from_le_bytes(flag_bytes) > 0.5
-                            };
-
-                            // Skip the flag when updating positions
-                            let position_data = &bin_data[4..];
-
-                            let mut gpu_write = gpu.write().await;
-                            if let Err(e) = gpu_write.update_positions(position_data).await {
-                                error!("Failed to update node positions: {}", e);
-                                let error_message = ServerMessage::Error {
-                                    message: format!("Failed to update node positions: {}", e),
-                                    code: Some("UPDATE_POSITION_ERROR".to_string())
-                                };
-                                if let Ok(error_str) = serde_json::to_string(&error_message) {
-                                    let msg: SendText = SendText(error_str);
-                                    ctx_addr.do_send(msg);
-                                }
-                            } else {
-                                // Send position update completion as JSON
-                                let completion_message = json!({
-                                    "type": "position_update_complete",
-                                    "status": "success",
-                                    "is_initial_layout": is_initial_layout
-                                });
-                                if let Ok(msg_str) = serde_json::to_string(&completion_message) {
-                                    let msg: SendText = SendText(msg_str);
-                                    ctx_addr.do_send(msg);
-                                }
-                            }
-                        }
-                        .into_actor(self)
-                    );
-                }
-            },
+                debug!("Received binary message: {} bytes", bin.len());
+                ctx.binary(bin);
+            }
             Ok(ws::Message::Close(reason)) => {
+                debug!("Received close message: {:?}", reason);
                 ctx.close(reason);
-                ctx.stop();
-            },
-            Err(e) => {
-                error!("WebSocket error: {}", e);
-                ctx.stop();
-            },
-            _ => (),
+            }
+            _ => {}
         }
+    }
+}
+
+impl Handler<SendText> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
+        debug!("Sending text message: {} chars", msg.0.len());
+        ctx.text(ByteString::from(msg.0));
+    }
+}
+
+impl Handler<SendBinary> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
+        debug!("Sending binary message: {} bytes", msg.0.len());
+        ctx.binary(msg.0);
     }
 }

@@ -1,201 +1,164 @@
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use std::fs;
-use toml;
-use crate::models::simulation_params::SimulationParams;
-use crate::models::position_update::NodePositionVelocity;
-use actix_web_actors::ws;
-use log::{error, debug};
-use bytestring::ByteString;
+use serde_json::Value;
 
-// Scale factors for network protocol quantization
-const POSITION_SCALE: f32 = 1000.0; // Quantize positions to millimeters
-const VELOCITY_SCALE: f32 = 10000.0; // Quantize velocities to 0.0001 units
+// Constants for binary protocol
+pub const POSITION_SCALE: f32 = 10000.0;  // Increased to match client
+pub const VELOCITY_SCALE: f32 = 20000.0;  // Increased to match client
+pub const BINARY_HEADER_SIZE: usize = 4;  // Float32 for initial layout flag
+pub const BINARY_NODE_SIZE: usize = 24;   // 6 float32s per node (position + velocity)
 
-/// GPU-computed node positions and velocities
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GPUPositionUpdate {
-    pub updates: Vec<NodePositionVelocity>,
-    pub is_initial_layout: bool
-}
+// Maximum valid values for validation
+pub const MAX_VALID_POSITION: f32 = 1000.0;
+pub const MAX_VALID_VELOCITY: f32 = 50.0;
 
-impl GPUPositionUpdate {
-    pub fn to_binary(&self) -> Vec<u8> {
-        let mut binary = Vec::with_capacity(4 + self.updates.len() * 24);
-        
-        // Write header (4 bytes)
-        let header_value = if self.is_initial_layout { 1.0f32 } else { 0.0f32 };
-        binary.extend_from_slice(&header_value.to_le_bytes());
+/// Trait for handling WebSocket messages
+pub trait MessageHandler {}
 
-        // Write quantized position updates (24 bytes each - 6 int32s)
-        for update in &self.updates {
-            // Quantize position values
-            let x = (update.x * POSITION_SCALE) as i32;
-            let y = (update.y * POSITION_SCALE) as i32;
-            let z = (update.z * POSITION_SCALE) as i32;
-            
-            // Quantize velocity values
-            let vx = (update.vx * VELOCITY_SCALE) as i32;
-            let vy = (update.vy * VELOCITY_SCALE) as i32;
-            let vz = (update.vz * VELOCITY_SCALE) as i32;
-
-            // Write quantized values
-            binary.extend_from_slice(&x.to_le_bytes());
-            binary.extend_from_slice(&y.to_le_bytes());
-            binary.extend_from_slice(&z.to_le_bytes());
-            binary.extend_from_slice(&vx.to_le_bytes());
-            binary.extend_from_slice(&vy.to_le_bytes());
-            binary.extend_from_slice(&vz.to_le_bytes());
-        }
-
-        binary
-    }
-
-    pub fn from_binary(data: &[u8], num_nodes: usize) -> Result<Self, String> {
-        if data.len() != 4 + num_nodes * 24 {
-            return Err(format!("Invalid data length: expected {}, got {}", 
-                4 + num_nodes * 24, data.len()));
-        }
-
-        // Read header
-        let mut header_bytes = [0u8; 4];
-        header_bytes.copy_from_slice(&data[0..4]);
-        let header_value = f32::from_le_bytes(header_bytes);
-        let is_initial_layout = header_value >= 1.0;
-
-        let mut updates = Vec::with_capacity(num_nodes);
-
-        // Read position updates
-        for i in 0..num_nodes {
-            let offset = 4 + i * 24;
-            
-            // Read quantized integers
-            let x = i32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as f32 / POSITION_SCALE;
-            let y = i32::from_le_bytes(data[offset + 4..offset + 8].try_into().unwrap()) as f32 / POSITION_SCALE;
-            let z = i32::from_le_bytes(data[offset + 8..offset + 12].try_into().unwrap()) as f32 / POSITION_SCALE;
-            let vx = i32::from_le_bytes(data[offset + 12..offset + 16].try_into().unwrap()) as f32 / VELOCITY_SCALE;
-            let vy = i32::from_le_bytes(data[offset + 16..offset + 20].try_into().unwrap()) as f32 / VELOCITY_SCALE;
-            let vz = i32::from_le_bytes(data[offset + 20..offset + 24].try_into().unwrap()) as f32 / VELOCITY_SCALE;
-
-            updates.push(NodePositionVelocity { x, y, z, vx, vy, vz });
-        }
-
-        Ok(Self {
-            updates,
-            is_initial_layout
-        })
-    }
-}
-
-/// Message for sending text data
+/// Message types for WebSocket communication
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct SendText(pub String);
 
-/// Message for sending binary data
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct SendBinary(pub Vec<u8>);
 
-/// Message for OpenAI text-to-speech
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct OpenAIMessage(pub String);
 
-/// Message indicating OpenAI connection success
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct OpenAIConnected;
 
-/// Message indicating OpenAI connection failure
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct OpenAIConnectionFailed;
 
-/// Represents messages sent from the client.
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
-pub enum ClientMessage {
-    #[serde(rename = "setTtsMethod")]
-    SetTTSMethod { method: String },
-    
-    #[serde(rename = "chatMessage")]
-    ChatMessage { 
-        message: String, 
-        use_openai: bool 
-    },
-    
-    #[serde(rename = "getInitialData")]
-    GetInitialData,
-    
-    #[serde(rename = "setSimulationMode")]
-    SetSimulationMode { mode: String },
-    
-    #[serde(rename = "recalculateLayout")]
-    RecalculateLayout { params: SimulationParams },
-    
-    #[serde(rename = "ragflowQuery")]
-    RagflowQuery {
-        message: String,
-        quote: Option<bool>,
-        doc_ids: Option<Vec<String>>
-    },
-    
-    #[serde(rename = "openaiQuery")]
-    OpenAIQuery { message: String },
-
-    #[serde(rename = "updateFisheyeSettings")]
-    UpdateFisheyeSettings {
-        enabled: bool,
-        strength: f32,
-        focus_point: [f32; 3],
-        radius: f32,
-    },
-
-    #[serde(rename = "updateSettings")]
-    UpdateSettings {
-        settings: Value
-    }
+/// Helper function to validate position values
+pub fn validate_position(x: f32, y: f32, z: f32) -> bool {
+    x.abs() <= MAX_VALID_POSITION && 
+    y.abs() <= MAX_VALID_POSITION && 
+    z.abs() <= MAX_VALID_POSITION
 }
 
-/// Represents messages sent from the server to the client.
-#[derive(Serialize, Deserialize, Debug)]
+/// Helper function to validate velocity values
+pub fn validate_velocity(vx: f32, vy: f32, vz: f32) -> bool {
+    vx.abs() <= MAX_VALID_VELOCITY && 
+    vy.abs() <= MAX_VALID_VELOCITY && 
+    vz.abs() <= MAX_VALID_VELOCITY
+}
+
+/// Helper function to quantize position for network transmission
+pub fn quantize_position(pos: f32) -> i32 {
+    (pos * POSITION_SCALE).round() as i32
+}
+
+/// Helper function to quantize velocity for network transmission
+pub fn quantize_velocity(vel: f32) -> i32 {
+    (vel * VELOCITY_SCALE).round() as i32
+}
+
+/// Helper function to dequantize position from network transmission
+pub fn dequantize_position(pos: i32) -> f32 {
+    pos as f32 / POSITION_SCALE
+}
+
+/// Helper function to dequantize velocity from network transmission
+pub fn dequantize_velocity(vel: i32) -> f32 {
+    vel as f32 / VELOCITY_SCALE
+}
+
+/// Helper function to create binary position update message
+pub fn create_binary_update(positions: &[(f32, f32, f32, f32, f32, f32)], is_initial: bool) -> Vec<u8> {
+    let mut binary_data = Vec::with_capacity(BINARY_HEADER_SIZE + positions.len() * BINARY_NODE_SIZE);
+    
+    // Add initial layout flag
+    let flag = if is_initial { 1.0f32 } else { 0.0f32 };
+    binary_data.extend_from_slice(&flag.to_le_bytes());
+    
+    // Add quantized positions and velocities
+    for &(x, y, z, vx, vy, vz) in positions {
+        // Validate values before quantizing
+        if !validate_position(x, y, z) || !validate_velocity(vx, vy, vz) {
+            continue;
+        }
+        
+        // Quantize and add position
+        binary_data.extend_from_slice(&quantize_position(x).to_le_bytes());
+        binary_data.extend_from_slice(&quantize_position(y).to_le_bytes());
+        binary_data.extend_from_slice(&quantize_position(z).to_le_bytes());
+        
+        // Quantize and add velocity
+        binary_data.extend_from_slice(&quantize_velocity(vx).to_le_bytes());
+        binary_data.extend_from_slice(&quantize_velocity(vy).to_le_bytes());
+        binary_data.extend_from_slice(&quantize_velocity(vz).to_le_bytes());
+    }
+    
+    binary_data
+}
+
+/// Helper function to parse binary position update message
+pub fn parse_binary_update(data: &[u8]) -> Option<(bool, Vec<(f32, f32, f32, f32, f32, f32)>)> {
+    if data.len() < BINARY_HEADER_SIZE {
+        return None;
+    }
+    
+    // Read initial layout flag
+    let mut flag_bytes = [0u8; 4];
+    flag_bytes.copy_from_slice(&data[0..4]);
+    let is_initial = f32::from_le_bytes(flag_bytes) >= 1.0;
+    
+    // Calculate number of positions
+    let num_positions = (data.len() - BINARY_HEADER_SIZE) / BINARY_NODE_SIZE;
+    let mut positions = Vec::with_capacity(num_positions);
+    
+    // Parse positions and velocities
+    let mut offset = BINARY_HEADER_SIZE;
+    while offset + BINARY_NODE_SIZE <= data.len() {
+        let mut buf = [0i32; 6];
+        for i in 0..6 {
+            let mut bytes = [0u8; 4];
+            bytes.copy_from_slice(&data[offset + i * 4..offset + (i + 1) * 4]);
+            buf[i] = i32::from_le_bytes(bytes);
+        }
+        
+        let x = dequantize_position(buf[0]);
+        let y = dequantize_position(buf[1]);
+        let z = dequantize_position(buf[2]);
+        let vx = dequantize_velocity(buf[3]);
+        let vy = dequantize_velocity(buf[4]);
+        let vz = dequantize_velocity(buf[5]);
+        
+        // Validate dequantized values
+        if validate_position(x, y, z) && validate_velocity(vx, vy, vz) {
+            positions.push((x, y, z, vx, vy, vz));
+        }
+        
+        offset += BINARY_NODE_SIZE;
+    }
+    
+    Some((is_initial, positions))
+}
+
+/// Server message types for WebSocket communication
+#[derive(Serialize, Debug)]
 #[serde(tag = "type")]
 pub enum ServerMessage {
-    #[serde(rename = "audioData")]
-    AudioData {
-        audio_data: String // base64 encoded audio
-    },
-    
-    #[serde(rename = "ragflowResponse")]
-    RagflowResponse {
-        answer: String
-    },
-    
-    #[serde(rename = "openaiResponse")]
-    OpenAIResponse {
-        response: String,
-        audio: Option<String> // base64 encoded audio
-    },
-    
-    #[serde(rename = "error")]
-    Error {
-        message: String,
-        code: Option<String>
-    },
-    
     #[serde(rename = "graphUpdate")]
     GraphUpdate {
-        graph_data: Value
+        graph_data: Value,
     },
-    
+    #[serde(rename = "settingsUpdated")]
+    SettingsUpdated {
+        settings: Value,
+    },
     #[serde(rename = "simulationModeSet")]
     SimulationModeSet {
         mode: String,
-        gpu_enabled: bool
+        gpu_enabled: bool,
     },
-
     #[serde(rename = "fisheyeSettingsUpdated")]
     FisheyeSettingsUpdated {
         enabled: bool,
@@ -203,103 +166,33 @@ pub enum ServerMessage {
         focus_point: [f32; 3],
         radius: f32,
     },
-
-    #[serde(rename = "gpuPositions")]
-    GPUPositions(GPUPositionUpdate),
-
-    #[serde(rename = "settings_updated")]
-    SettingsUpdated {
-        settings: Value
-    }
+    #[serde(rename = "error")]
+    Error {
+        message: String,
+        code: Option<String>,
+    },
 }
 
-pub trait MessageHandler: Actor<Context = ws::WebsocketContext<Self>> {
-    fn send_json_response(&self, response: Value, ctx: &mut ws::WebsocketContext<Self>) {
-        match serde_json::to_string(&response) {
-            Ok(json_string) => {
-                debug!("Sending JSON response: {}", json_string);
-                ctx.text(ByteString::from(json_string));
-            },
-            Err(e) => {
-                error!("Failed to serialize JSON response: {}", e);
-                let error_message = json!({
-                    "type": "error",
-                    "message": format!("Failed to serialize response: {}", e),
-                    "code": "SERIALIZATION_ERROR"
-                });
-                if let Ok(error_string) = serde_json::to_string(&error_message) {
-                    ctx.text(ByteString::from(error_string));
-                }
-            }
-        }
-    }
-
-    fn send_server_message(&self, message: ServerMessage, ctx: &mut ws::WebsocketContext<Self>) {
-        match serde_json::to_value(message) {
-            Ok(value) => self.send_json_response(value, ctx),
-            Err(e) => {
-                error!("Failed to serialize ServerMessage: {}", e);
-                let error_message = json!({
-                    "type": "error",
-                    "message": "Internal server error",
-                    "code": "SERIALIZATION_ERROR"
-                });
-                self.send_json_response(error_message, ctx);
-            }
-        }
-    }
-
-    fn handle_fisheye_update(&self, settings: ClientMessage, gpu_compute: &mut crate::utils::gpu_compute::GPUCompute, ctx: &mut ws::WebsocketContext<Self>) {
-        if let ClientMessage::UpdateFisheyeSettings { enabled, strength, focus_point, radius } = settings {
-            match gpu_compute.update_fisheye_params(enabled, strength, focus_point, radius) {
-                Ok(_) => {
-                    // Send confirmation back to client
-                    self.send_server_message(
-                        ServerMessage::FisheyeSettingsUpdated {
-                            enabled,
-                            strength,
-                            focus_point,
-                            radius,
-                        },
-                        ctx
-                    );
-                },
-                Err(e) => {
-                    error!("Failed to update fisheye settings: {}", e);
-                    self.send_server_message(
-                        ServerMessage::Error {
-                            message: format!("Failed to update fisheye settings: {}", e),
-                            code: Some("FISHEYE_UPDATE_ERROR".to_string()),
-                        },
-                        ctx
-                    );
-                }
-            }
-        }
-    }
-
-    fn handle_settings_update(&self, settings: Value, ctx: &mut ws::WebsocketContext<Self>) {
-        // Write to settings.toml
-        if let Err(e) = fs::write("settings.toml", toml::to_string_pretty(&settings).unwrap()) {
-            error!("Failed to write settings.toml: {}", e);
-            self.send_server_message(
-                ServerMessage::Error {
-                    message: format!("Failed to save settings: {}", e),
-                    code: Some("SETTINGS_WRITE_ERROR".to_string()),
-                },
-                ctx
-            );
-            return;
-        }
-
-        // Send confirmation back to client
-        self.send_server_message(
-            ServerMessage::SettingsUpdated {
-                settings
-            },
-            ctx
-        );
-    }
+/// Client message types for WebSocket communication
+#[derive(Deserialize, Debug)]
+#[serde(tag = "type")]
+pub enum ClientMessage {
+    #[serde(rename = "updateNodePosition")]
+    UpdateNodePosition {
+        node_id: String,
+        position: [f32; 3],
+    },
+    #[serde(rename = "setSimulationMode")]
+    SetSimulationMode {
+        mode: String,
+    },
+    #[serde(rename = "updateFisheyeSettings")]
+    UpdateFisheyeSettings {
+        enabled: bool,
+        strength: f32,
+        focus_point: [f32; 3],
+        radius: f32,
+    },
 }
 
 #[cfg(test)]
@@ -307,101 +200,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_client_message_serialization() {
-        let message = ClientMessage::ChatMessage {
-            message: "Hello".to_string(),
-            use_openai: true
-        };
-        let serialized = serde_json::to_string(&message).unwrap();
-        assert!(serialized.contains("chatMessage"));
-        assert!(serialized.contains("Hello"));
-
-        let fisheye_message = ClientMessage::UpdateFisheyeSettings {
-            enabled: true,
-            strength: 0.5,
-            focus_point: [0.0, 0.0, 0.0],
-            radius: 100.0,
-        };
-        let serialized = serde_json::to_string(&fisheye_message).unwrap();
-        assert!(serialized.contains("updateFisheyeSettings"));
-        assert!(serialized.contains("strength"));
-
-        let settings_message = ClientMessage::UpdateSettings {
-            settings: json!({
-                "visualization": {
-                    "node_color": "#FFA500"
-                }
-            })
-        };
-        let serialized = serde_json::to_string(&settings_message).unwrap();
-        assert!(serialized.contains("updateSettings"));
-        assert!(serialized.contains("visualization"));
+    fn test_position_quantization() {
+        let pos = 123.456;
+        let quantized = quantize_position(pos);
+        let dequantized = dequantize_position(quantized);
+        assert!((pos - dequantized).abs() < 0.001);
     }
 
     #[test]
-    fn test_server_message_serialization() {
-        let message = ServerMessage::RagflowResponse {
-            answer: "Test answer".to_string()
-        };
-        let serialized = serde_json::to_string(&message).unwrap();
-        assert!(serialized.contains("ragflowResponse"));
-        assert!(serialized.contains("Test answer"));
-
-        let fisheye_message = ServerMessage::FisheyeSettingsUpdated {
-            enabled: true,
-            strength: 0.5,
-            focus_point: [0.0, 0.0, 0.0],
-            radius: 100.0,
-        };
-        
-        let json = serde_json::to_string(&fisheye_message).unwrap();
-        assert!(json.contains("\"type\":\"fisheye_settings_updated\""));
-        assert!(json.contains("\"enabled\":true"));
-        assert!(json.contains("\"strength\":0.5"));
-        assert!(json.contains("\"focus_point\":[0.0,0.0,0.0]"));
-        assert!(json.contains("\"radius\":100.0"));
-
-        let settings_message = ServerMessage::SettingsUpdated {
-            settings: json!({
-                "visualization": {
-                    "node_color": "#FFA500"
-                }
-            })
-        };
-        let json = serde_json::to_string(&settings_message).unwrap();
-        assert!(json.contains("\"type\":\"settings_updated\""));
-        assert!(json.contains("visualization"));
+    fn test_velocity_quantization() {
+        let vel = 1.2345;
+        let quantized = quantize_velocity(vel);
+        let dequantized = dequantize_velocity(quantized);
+        assert!((vel - dequantized).abs() < 0.0001);
     }
 
     #[test]
-    fn test_gpu_position_update_binary() {
-        let update = GPUPositionUpdate {
-            updates: vec![
-                NodePositionVelocity { x: 1.0, y: 2.0, z: 3.0, vx: 0.1, vy: 0.2, vz: 0.3 },
-                NodePositionVelocity { x: 4.0, y: 5.0, z: 6.0, vx: 0.4, vy: 0.5, vz: 0.6 },
-            ],
-            is_initial_layout: true
-        };
+    fn test_binary_update_roundtrip() {
+        let positions = vec![
+            (1.0, 2.0, 3.0, 0.1, 0.2, 0.3),
+            (-1.0, -2.0, -3.0, -0.1, -0.2, -0.3),
+        ];
+        let binary = create_binary_update(&positions, true);
+        let parsed = parse_binary_update(&binary).unwrap();
+        
+        assert!(parsed.0); // is_initial
+        assert_eq!(parsed.1.len(), positions.len());
+        
+        for (orig, parsed) in positions.iter().zip(parsed.1.iter()) {
+            assert!((orig.0 - parsed.0).abs() < 0.001);
+            assert!((orig.1 - parsed.1).abs() < 0.001);
+            assert!((orig.2 - parsed.2).abs() < 0.001);
+            assert!((orig.3 - parsed.3).abs() < 0.0001);
+            assert!((orig.4 - parsed.4).abs() < 0.0001);
+            assert!((orig.5 - parsed.5).abs() < 0.0001);
+        }
+    }
 
-        let binary = update.to_binary();
-        assert_eq!(binary.len(), 52); // 4 bytes header + 2 * 24 bytes data
-
-        let decoded = GPUPositionUpdate::from_binary(&binary, 2).unwrap();
-        assert_eq!(decoded.updates.len(), 2);
-        assert_eq!(decoded.is_initial_layout, true);
+    #[test]
+    fn test_validation() {
+        assert!(validate_position(100.0, -100.0, 500.0));
+        assert!(!validate_position(2000.0, 0.0, 0.0));
         
-        // Test quantization/dequantization precision
-        let original = &update.updates[0];
-        let decoded_pos = &decoded.updates[0];
-        
-        // Position values should be within 1mm
-        assert!((original.x - decoded_pos.x).abs() < 0.001);
-        assert!((original.y - decoded_pos.y).abs() < 0.001);
-        assert!((original.z - decoded_pos.z).abs() < 0.001);
-        
-        // Velocity values should be within 0.0001 units
-        assert!((original.vx - decoded_pos.vx).abs() < 0.0001);
-        assert!((original.vy - decoded_pos.vy).abs() < 0.0001);
-        assert!((original.vz - decoded_pos.vz).abs() < 0.0001);
+        assert!(validate_velocity(10.0, -10.0, 20.0));
+        assert!(!validate_velocity(100.0, 0.0, 0.0));
     }
 }

@@ -36,13 +36,31 @@ struct SimulationParams {
 @group(0) @binding(1) var<storage, read> edges_buffer: EdgesBuffer;
 @group(0) @binding(2) var<uniform> params: SimulationParams;
 
-// Physics constants
+// Physics constants - aligned with settings.toml
 const WORKGROUP_SIZE: u32 = 256;
-const MAX_FORCE: f32 = 50.0;
-const MIN_DISTANCE: f32 = 1.0;
-const CENTER_RADIUS: f32 = 50.0;
-const MAX_VELOCITY: f32 = 10.0;
-const NATURAL_LENGTH: f32 = 30.0;
+const MAX_FORCE: f32 = 100.0;          // Increased for stronger forces
+const MIN_DISTANCE: f32 = 5.0;         // Increased minimum distance
+const CENTER_RADIUS: f32 = 250.0;      // Matches target_radius from settings
+const MAX_VELOCITY: f32 = 20.0;        // Increased for faster movement
+const NATURAL_LENGTH: f32 = 120.0;     // Matches natural_length from settings
+const BOUNDARY_LIMIT: f32 = 600.0;     // Matches boundary_limit from settings
+
+// Validation functions
+fn is_valid_float(x: f32) -> bool {
+    return x == x && abs(x) < 1e10;  // Check for NaN and infinity
+}
+
+fn is_valid_float3(v: vec3<f32>) -> bool {
+    return is_valid_float(v.x) && is_valid_float(v.y) && is_valid_float(v.z);
+}
+
+fn clamp_force(force: vec3<f32>) -> vec3<f32> {
+    let magnitude = length(force);
+    if (magnitude > MAX_FORCE) {
+        return (force / magnitude) * MAX_FORCE;
+    }
+    return force;
+}
 
 // Convert quantized mass (0-255 in lower byte) to float (0.0-2.0)
 fn decode_mass(mass_packed: u32) -> f32 {
@@ -68,11 +86,12 @@ fn calculate_spring_force(pos1: vec3<f32>, pos2: vec3<f32>, mass1: f32, mass2: f
         return normalize(displacement) * MAX_FORCE;
     }
     
-    // Combined spring and attraction forces
+    // Combined spring and attraction forces with weight scaling
     let spring_force = params.spring_strength * weight * (distance - NATURAL_LENGTH);
     let attraction_force = params.attraction_strength * weight * distance;
     
-    return normalize(displacement) * (spring_force + attraction_force);
+    let total_force = normalize(displacement) * (spring_force + attraction_force);
+    return clamp_force(total_force);
 }
 
 // Calculate repulsion force between nodes
@@ -84,9 +103,10 @@ fn calculate_repulsion_force(pos1: vec3<f32>, pos2: vec3<f32>, mass1: f32, mass2
         return normalize(displacement) * -MAX_FORCE;
     }
     
-    // Coulomb-like repulsion scaled by masses
-    let force_magnitude = -params.repulsion_strength * mass1 * mass2 / distance_sq;
-    return normalize(displacement) * min(abs(force_magnitude), MAX_FORCE) * sign(force_magnitude);
+    // Coulomb-like repulsion scaled by masses and adjusted for graph size
+    let force_magnitude = -params.repulsion_strength * mass1 * mass2 / max(distance_sq, 0.1);
+    let force = normalize(displacement) * min(abs(force_magnitude), MAX_FORCE) * sign(force_magnitude);
+    return clamp_force(force);
 }
 
 // Calculate center gravity force
@@ -96,8 +116,9 @@ fn calculate_center_force(position: vec3<f32>) -> vec3<f32> {
     
     if (distance > CENTER_RADIUS) {
         // Stronger centering force during initial layout
-        let center_strength = select(0.05, 0.1, params.is_initial_layout == 1u);
-        return normalize(to_center) * center_strength * (distance - CENTER_RADIUS);
+        let center_strength = select(0.1, 0.2, params.is_initial_layout == 1u);
+        let force = normalize(to_center) * center_strength * (distance - CENTER_RADIUS);
+        return clamp_force(force);
     }
     return vec3<f32>(0.0);
 }
@@ -112,6 +133,20 @@ fn compute_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     var node = nodes_buffer.nodes[node_id];
+    
+    // Validate input node data
+    if (!is_valid_float3(get_position(node)) || !is_valid_float3(get_velocity(node))) {
+        // Reset invalid node to origin
+        node.x = 0.0;
+        node.y = 0.0;
+        node.z = 0.0;
+        node.vx = 0.0;
+        node.vy = 0.0;
+        node.vz = 0.0;
+        nodes_buffer.nodes[node_id] = node;
+        return;
+    }
+
     var total_force = vec3<f32>(0.0);
     let node_mass = decode_mass(node.mass);
     let node_pos = get_position(node);
@@ -123,17 +158,24 @@ fn compute_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         if (edge.source == node_id || edge.target_idx == node_id) {
             let other_id = select(edge.source, edge.target_idx, edge.source == node_id);
             let other_node = nodes_buffer.nodes[other_id];
+            
+            // Validate other node
+            if (!is_valid_float3(get_position(other_node))) {
+                continue;
+            }
+            
             let other_mass = decode_mass(other_node.mass);
             let other_pos = get_position(other_node);
             
             // Accumulate spring force
-            total_force += calculate_spring_force(
+            let spring_force = calculate_spring_force(
                 node_pos,
                 other_pos,
                 node_mass,
                 other_mass,
                 edge.weight
             );
+            total_force += spring_force;
         }
     }
 
@@ -141,24 +183,33 @@ fn compute_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     for (var i = 0u; i < n_nodes; i = i + 1u) {
         if (i != node_id) {
             let other_node = nodes_buffer.nodes[i];
+            
+            // Validate other node
+            if (!is_valid_float3(get_position(other_node))) {
+                continue;
+            }
+            
             let other_mass = decode_mass(other_node.mass);
             let other_pos = get_position(other_node);
             
-            total_force += calculate_repulsion_force(
+            let repulsion_force = calculate_repulsion_force(
                 node_pos,
                 other_pos,
                 node_mass,
                 other_mass
             );
+            total_force += repulsion_force;
         }
     }
 
     // Add center gravity force
-    total_force += calculate_center_force(node_pos);
+    let center_force = calculate_center_force(node_pos);
+    total_force += center_force;
 
     // Scale forces based on layout phase
     let force_scale = select(1.0, 2.0, params.is_initial_layout == 1u);
     total_force *= force_scale;
+    total_force = clamp_force(total_force);
 
     // Update velocity with damping
     var velocity = get_velocity(node);
@@ -176,17 +227,28 @@ fn compute_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Apply position bounds
     let bounded_pos = clamp(
         new_pos,
-        vec3<f32>(-CENTER_RADIUS * 2.0),
-        vec3<f32>(CENTER_RADIUS * 2.0)
+        vec3<f32>(-BOUNDARY_LIMIT),
+        vec3<f32>(BOUNDARY_LIMIT)
     );
 
-    // Update node with new values
-    node.x = bounded_pos.x;
-    node.y = bounded_pos.y;
-    node.z = bounded_pos.z;
-    node.vx = velocity.x;
-    node.vy = velocity.y;
-    node.vz = velocity.z;
+    // Validate final values
+    if (!is_valid_float3(bounded_pos) || !is_valid_float3(velocity)) {
+        // Reset to origin if invalid
+        node.x = 0.0;
+        node.y = 0.0;
+        node.z = 0.0;
+        node.vx = 0.0;
+        node.vy = 0.0;
+        node.vz = 0.0;
+    } else {
+        // Update node with new values
+        node.x = bounded_pos.x;
+        node.y = bounded_pos.y;
+        node.z = bounded_pos.z;
+        node.vx = velocity.x;
+        node.vy = velocity.y;
+        node.vz = velocity.z;
+    }
 
     nodes_buffer.nodes[node_id] = node;
 }
