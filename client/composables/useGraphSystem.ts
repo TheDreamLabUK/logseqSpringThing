@@ -50,39 +50,20 @@ export function useGraphSystem() {
   // State
   const hoveredNode = ref<string | null>(null);
 
-  // Node position management with caching
+  // Node position management with caching and persistence
   const nodePositions = new Map<string, Vector3>();
   const nodeVelocities = new Map<string, Vector3>();
   const positionCache = new Map<string, { position: Vector3; timestamp: number }>();
-
-  // Watch for graph data changes with enhanced logging
-  watch(() => visualizationStore.getGraphData, (newData) => {
-    if (newData && visualizationState?.value.scene) {
-      console.debug('Graph data update detected:', {
-        nodes: newData.nodes.length,
-        edges: newData.edges.length,
-        hasScene: !!visualizationState.value.scene,
-        timestamp: new Date().toISOString()
-      });
-
-      const scene = visualizationState.value.scene;
-      // Mark scene for update
-      scene.userData.needsRender = true;
-      scene.userData.lastUpdate = performance.now();
-
-      // Update graph data
-      updateGraphData(newData);
-    }
-  }, { deep: true });
-
-  // Get settings from store
-  const settings = computed<VisualizationConfig>(() => {
-    return visualizationStore.getVisualizationSettings;
-  });
+  const persistentPositions = new Map<string, Vector3>();
 
   // Node helpers with enhanced logging
   const getNodePosition = (node: GraphNode): Vector3 => {
-    // Check cache first
+    // First check persistent positions
+    if (persistentPositions.has(node.id)) {
+      return persistentPositions.get(node.id)!;
+    }
+
+    // Then check cache
     const cached = positionCache.get(node.id);
     const now = Date.now();
     if (cached && now - cached.timestamp < 1000) {
@@ -104,6 +85,9 @@ export function useGraphSystem() {
             Math.random() * 100 - 50
           );
       nodePositions.set(node.id, position);
+      // Store in persistent positions
+      persistentPositions.set(node.id, position.clone());
+      
       if (visualizationState?.value.scene) {
         visualizationState.value.scene.userData.needsRender = true;
       }
@@ -112,6 +96,20 @@ export function useGraphSystem() {
     const position = nodePositions.get(node.id)!;
     positionCache.set(node.id, { position: position.clone(), timestamp: now });
     return position;
+  };
+
+  const updateNodePosition = (nodeId: string, position: Vector3, velocity: Vector3) => {
+    // Update both current and persistent positions
+    nodePositions.set(nodeId, position.clone());
+    persistentPositions.set(nodeId, position.clone());
+    nodeVelocities.set(nodeId, velocity.clone());
+    
+    // Clear cache entry to force position refresh
+    positionCache.delete(nodeId);
+    
+    if (visualizationState?.value.scene) {
+      visualizationState.value.scene.userData.needsRender = true;
+    }
   };
 
   const getNodeScale = (node: GraphNode): number => {
@@ -240,10 +238,10 @@ export function useGraphSystem() {
       timestamp: new Date().toISOString()
     });
 
-    // Initialize positions for new nodes
+    // Initialize positions for new nodes while preserving existing positions
     let newNodeCount = 0;
     graphData.nodes.forEach(node => {
-      if (!nodePositions.has(node.id)) {
+      if (!persistentPositions.has(node.id)) {
         getNodePosition(node);
         newNodeCount++;
       }
@@ -257,6 +255,7 @@ export function useGraphSystem() {
         nodePositions.delete(id);
         nodeVelocities.delete(id);
         positionCache.delete(id);
+        persistentPositions.delete(id);
         removedNodeCount++;
       }
     });
@@ -275,6 +274,11 @@ export function useGraphSystem() {
       visualizationState.value.scene.userData.lastUpdate = performance.now();
     }
   };
+
+  // Get settings from store
+  const settings = computed<VisualizationConfig>(() => {
+    return visualizationStore.getVisualizationSettings;
+  });
 
   // Clean up on unmount
   onMounted(() => {
@@ -302,6 +306,7 @@ export function useGraphSystem() {
     
     // Node helpers
     getNodePosition,
+    updateNodePosition,
     getNodeScale,
     getNodeColor,
     
