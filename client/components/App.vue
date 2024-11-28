@@ -119,10 +119,11 @@ export default defineComponent({
     // Provide visualization state to child components
     provide('visualizationState', visualizationState)
 
+    // Set up WebSocket message handlers
     const setupWebSocketHandlers = () => {
       if (!websocketStore.service) {
-        console.error('WebSocket service not initialized')
-        return
+        console.error('WebSocket service not initialized');
+        return;
       }
 
       // Handle JSON messages
@@ -132,30 +133,31 @@ export default defineComponent({
           case 'graphUpdate':
           case 'graphData':
             const graphMsg = message as GraphUpdateMessage
-            if (!graphMsg.graphData) {
+            const graphData = graphMsg.graphData || graphMsg.graph_data
+            if (!graphData) {
               console.warn('Received graph update with no data')
               return
             }
 
             console.log('Received graph update:', {
-              nodes: graphMsg.graphData.nodes?.length || 0,
-              edges: graphMsg.graphData.edges?.length || 0,
-              metadata: graphMsg.graphData.metadata ? Object.keys(graphMsg.graphData.metadata).length : 0,
-              sampleNode: graphMsg.graphData.nodes?.[0] ? {
-                id: graphMsg.graphData.nodes[0].id,
-                position: graphMsg.graphData.nodes[0].position
+              nodes: graphData.nodes?.length || 0,
+              edges: graphData.edges?.length || 0,
+              metadata: graphData.metadata ? Object.keys(graphData.metadata).length : 0,
+              sampleNode: graphData.nodes?.[0] ? {
+                id: graphData.nodes[0].id,
+                position: graphData.nodes[0].position
               } : null
             })
 
             // Transform nodes and edges before setting graph data
-            const transformedNodes = (graphMsg.graphData.nodes || []).map(transformNode)
-            const transformedEdges = (graphMsg.graphData.edges || []).map(transformEdge)
+            const transformedNodes = (graphData.nodes || []).map(transformNode)
+            const transformedEdges = (graphData.edges || []).map(transformEdge)
             
             // Set graph data in store
             visualizationStore.setGraphData(
               transformedNodes,
               transformedEdges,
-              graphMsg.graphData.metadata || {}
+              graphData.metadata || {}
             )
 
             // Update visualization
