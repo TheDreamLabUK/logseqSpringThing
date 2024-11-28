@@ -163,17 +163,7 @@ impl SpeechService {
                                                                         if let Some(audio_data) = item["audio"].as_str() {
                                                                             // Decode base64 audio data using the new API
                                                                             if let Ok(audio_bytes) = BASE64.decode(audio_data) {
-                                                                                // Create a JSON wrapper for the binary data
-                                                                                let audio_message = json!({
-                                                                                    "type": "audio",
-                                                                                    "data": audio_bytes
-                                                                                });
-                                                                                
-                                                                                if let Err(e) = websocket_manager.broadcast_message(
-                                                                                    &serde_json::to_string(&audio_message).unwrap()
-                                                                                ).await {
-                                                                                    error!("Failed to broadcast audio: {}", e);
-                                                                                }
+                                                                                websocket_manager.broadcast_audio(&audio_bytes).await;
                                                                             }
                                                                         }
                                                                     }
@@ -182,6 +172,10 @@ impl SpeechService {
                                                         },
                                                         Some("error") => {
                                                             error!("OpenAI Realtime API error: {:?}", event);
+                                                            websocket_manager.broadcast_error(
+                                                                &format!("OpenAI API error: {:?}", event),
+                                                                Some("OPENAI_API_ERROR")
+                                                            ).await;
                                                             break;
                                                         },
                                                         Some("response.completed") => {
@@ -193,6 +187,10 @@ impl SpeechService {
                                                 Ok(Message::Close(_)) => break,
                                                 Err(e) => {
                                                     error!("Error receiving from OpenAI: {}", e);
+                                                    websocket_manager.broadcast_error(
+                                                        &format!("OpenAI connection error: {}", e),
+                                                        Some("OPENAI_CONNECTION_ERROR")
+                                                    ).await;
                                                     break;
                                                 },
                                                 _ => {}
@@ -201,6 +199,10 @@ impl SpeechService {
                                     }
                                 } else {
                                     error!("OpenAI WebSocket not initialized");
+                                    websocket_manager.broadcast_error(
+                                        "OpenAI WebSocket not initialized",
+                                        Some("OPENAI_NOT_INITIALIZED")
+                                    ).await;
                                 }
                             },
                             TTSProvider::Sonata => {
@@ -222,22 +224,23 @@ impl SpeechService {
                                 match child.wait_with_output() {
                                     Ok(output) => {
                                         if output.status.success() {
-                                            // Create a JSON wrapper for the binary data
-                                            let audio_message = json!({
-                                                "type": "audio",
-                                                "data": output.stdout
-                                            });
-                                            
-                                            if let Err(e) = websocket_manager.broadcast_message(
-                                                &serde_json::to_string(&audio_message).unwrap()
-                                            ).await {
-                                                error!("Failed to broadcast audio: {}", e);
-                                            }
+                                            websocket_manager.broadcast_audio(&output.stdout).await;
                                         } else {
-                                            error!("Sonata TTS failed: {}", String::from_utf8_lossy(&output.stderr));
+                                            let error_msg = String::from_utf8_lossy(&output.stderr);
+                                            error!("Sonata TTS failed: {}", error_msg);
+                                            websocket_manager.broadcast_error(
+                                                &format!("Sonata TTS failed: {}", error_msg),
+                                                Some("SONATA_TTS_ERROR")
+                                            ).await;
                                         }
                                     },
-                                    Err(e) => error!("Failed to get child process output: {}", e),
+                                    Err(e) => {
+                                        error!("Failed to get child process output: {}", e);
+                                        websocket_manager.broadcast_error(
+                                            &format!("Failed to get audio output: {}", e),
+                                            Some("AUDIO_PROCESS_ERROR")
+                                        ).await;
+                                    }
                                 }
                             }
                         }

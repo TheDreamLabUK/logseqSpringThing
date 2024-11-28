@@ -119,10 +119,11 @@ async fn update_graph_periodically(app_state: web::Data<AppState>) {
                                 node.z = z;
                             }
                         }
-                        *graph = new_graph;
-                        
+                        *graph = new_graph.clone();
+                        drop(graph); // Release the write lock before broadcasting
+
                         // Notify clients of the update
-                        if let Err(e) = app_state.websocket_manager.broadcast_graph_update(&graph).await {
+                        if let Err(e) = app_state.websocket_manager.broadcast_graph_update(&new_graph).await {
                             log::error!("Failed to broadcast graph update: {}", e);
                         }
                     }
@@ -287,13 +288,6 @@ async fn main() -> std::io::Result<()> {
     log::info!("Initializing graph with cached data...");
     if let Err(e) = initialize_cached_graph_data(&app_state).await {
         log::warn!("Failed to initialize from cache: {:?}, proceeding with empty graph", e);
-    }
-
-    // Initialize WebSocket manager
-    log::info!("Initializing WebSocket manager...");
-    if let Err(e) = websocket_manager.initialize(&ragflow_service).await {
-        log::error!("Failed to initialize WebSocket manager: {:?}", e);
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize WebSocket manager: {:?}", e)));
     }
 
     // Start periodic update task

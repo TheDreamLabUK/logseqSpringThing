@@ -9,6 +9,9 @@ use log::{debug, error, info};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use tokio::time::Duration;
+use actix_web_actors::ws;  // Add ws import
+use actix::StreamHandler;  // Add StreamHandler import
+
 
 use crate::AppState;
 use crate::models::node::GPUNode;
@@ -38,8 +41,113 @@ pub struct WebSocketSession {
     pub conversation_id: Option<Arc<Mutex<Option<String>>>>,
 }
 
+impl WebSocketSession {
+    pub fn new(state: web::Data<AppState>) -> Self {
+        Self {
+            state,
+            tts_method: String::from("local"),
+            openai_ws: None,
+            simulation_mode: SimulationMode::Remote,
+            conversation_id: Some(Arc::new(Mutex::new(None))),
+        }
+    }
+}
+
 impl Actor for WebSocketSession {
     type Context = WebsocketContext<Self>;
+}
+
+// Add StreamHandler implementation for WebSocket messages
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        match msg {
+            Ok(ws::Message::Ping(msg)) => {
+                debug!("Ping received");
+                ctx.pong(&msg);
+            }
+            Ok(ws::Message::Pong(_)) => {
+                debug!("Pong received");
+            }
+            Ok(ws::Message::Text(text)) => {
+                debug!("Text message received: {}", text);
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                    match value.get("type").and_then(|t| t.as_str()) {
+                        Some("chat") => {
+                            if let Some(message) = value.get("message").and_then(|m| m.as_str()) {
+                                let use_openai = value.get("useOpenAI")
+                                    .and_then(|o| o.as_bool())
+                                    .unwrap_or(false);
+                                self.handle_chat_message(ctx, message.to_string(), use_openai);
+                            }
+                        }
+                        Some("simulation_mode") => {
+                            if let Some(mode) = value.get("mode").and_then(|m| m.as_str()) {
+                                self.handle_simulation_mode(ctx, mode);
+                            }
+                        }
+                        Some("layout") => {
+                            if let Ok(params) = serde_json::from_value::<SimulationParams>(value["params"].clone()) {
+                                self.handle_layout(ctx, params);
+                            }
+                        }
+                        Some("fisheye") => {
+                            let enabled = value.get("enabled").and_then(|e| e.as_bool()).unwrap_or(false);
+                            let strength = value.get("strength").and_then(|s| s.as_f64()).unwrap_or(1.0) as f32;
+                            let focus_point = value.get("focusPoint")
+                                .and_then(|f| f.as_array())
+                                .and_then(|arr| {
+                                    if arr.len() == 3 {
+                                        Some([
+                                            arr[0].as_f64().unwrap_or(0.0) as f32,
+                                            arr[1].as_f64().unwrap_or(0.0) as f32,
+                                            arr[2].as_f64().unwrap_or(0.0) as f32,
+                                        ])
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .unwrap_or([0.0, 0.0, 0.0]);
+                            let radius = value.get("radius").and_then(|r| r.as_f64()).unwrap_or(1.0) as f32;
+                            self.handle_fisheye_settings(ctx, enabled, strength, focus_point, radius);
+                        }
+                        Some("initial_data") => {
+                            self.handle_initial_data(ctx);
+                        }
+                        _ => {
+                            error!("Unknown message type received");
+                            let error_message = ServerMessage::Error {
+                                message: "Unknown message type".to_string(),
+                                code: Some("UNKNOWN_MESSAGE_TYPE".to_string())
+                            };
+                            if let Ok(error_str) = serde_json::to_string(&error_message) {
+                                ctx.text(ByteString::from(error_str));
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(ws::Message::Binary(bin)) => {
+                debug!("Binary message received: {} bytes", bin.len());
+                // Handle binary messages if needed
+            }
+            Ok(ws::Message::Close(reason)) => {
+                debug!("Client disconnected: {:?}", reason);
+                ctx.close(reason);
+                ctx.stop();
+            }
+            Ok(ws::Message::Continuation(_)) => {
+                debug!("Continuation frame received");
+                // Handle continuation frames if needed
+            }
+            Ok(ws::Message::Nop) => {
+                debug!("Nop frame received");
+            }
+            Err(e) => {
+                error!("Error in WebSocket message handling: {}", e);
+                ctx.stop();
+            }
+        }
+    }
 }
 
 impl MessageHandler for WebSocketSession {}
@@ -491,33 +599,25 @@ impl WebSocketSessionHandler for WebSocketSession {
 impl Handler<GpuUpdate> for WebSocketSession {
     type Result = ResponseActFuture<Self, ()>;
 
-    fn handle(&mut self, _: GpuUpdate, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _: GpuUpdate, _ctx: &mut Self::Context) -> Self::Result {
         let state = self.state.clone();
         let gpu_compute = if let Some(gpu) = &state.gpu_compute {
             gpu.clone()
         } else {
             return Box::pin(futures::future::ready(()).into_actor(self));
         };
-        let ctx_addr = ctx.address();
 
         Box::pin(async move {
             let mut gpu = gpu_compute.write().await;
             if let Err(e) = gpu.step() {
                 error!("GPU compute step failed: {}", e);
                 return;
-            }
+}
 
             // Send binary position updates to all connected clients
             if let Ok(nodes) = gpu.get_node_positions().await {
-                let binary_data = positions_to_binary(&nodes);
-
-                if let Ok(sessions) = state.websocket_manager.sessions.lock() {
-                    for session in sessions.iter() {
-                        if session != &ctx_addr {
-                            let _ = session.do_send(SendBinary(binary_data.clone()));
-                        }
-                    }
-                }
+                // Let WebSocketManager handle the broadcasting
+                state.websocket_manager.broadcast_binary(&nodes, false).await;
             }
         }
         .into_actor(self))
