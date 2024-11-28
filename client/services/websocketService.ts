@@ -181,7 +181,21 @@ export default class WebsocketService {
         this.emit('gpuPositions', binaryMessage);
       } else {
         // Handle JSON message
-        const message: BaseMessage = JSON.parse(event.data);
+        const rawMessage = JSON.parse(event.data);
+        console.debug('Received raw message:', rawMessage);
+
+        // Transform message to match client-side expectations
+        const message: BaseMessage = {
+          ...rawMessage,
+          // Handle snake_case to camelCase conversion for graph data
+          graphData: rawMessage.graph_data,
+        };
+
+        // Remove the original snake_case field if it exists
+        if ('graph_data' in message) {
+          delete (message as any).graph_data;
+        }
+
         this.emit('message', message);
 
         // Store node IDs from initial graph data

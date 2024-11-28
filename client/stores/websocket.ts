@@ -56,22 +56,29 @@ export const useWebSocketStore = defineStore('websocket', {
       // Handle graph updates
       this.service.on('graphUpdate', (message: GraphUpdateMessage) => {
         console.debug('Received graph update:', {
-          nodeCount: message.graphData.nodes.length,
-          edgeCount: message.graphData.edges.length,
+          nodeCount: (message.graphData || message.graph_data)?.nodes?.length || 0,
+          edgeCount: (message.graphData || message.graph_data)?.edges?.length || 0,
           timestamp: new Date().toISOString()
         })
+
+        // Get graph data from either camelCase or snake_case field
+        const graphData = message.graphData || message.graph_data
+        if (!graphData) {
+          console.warn('No graph data found in message')
+          return
+        }
         
         // Convert websocket edges to core edges by adding IDs
-        const edges: Edge[] = message.graphData.edges.map((edge: WsEdge) => ({
+        const edges: Edge[] = graphData.edges.map((edge: WsEdge) => ({
           ...edge,
           id: `${edge.source}-${edge.target}` // Generate ID from source and target
         }))
 
         // Update visualization store with new graph data
         visualizationStore.setGraphData(
-          message.graphData.nodes as Node[],
+          graphData.nodes as Node[],
           edges,
-          message.graphData.metadata
+          graphData.metadata
         )
       })
 
@@ -121,7 +128,7 @@ export const useWebSocketStore = defineStore('websocket', {
 
     requestInitialData() {
       console.debug('Requesting initial graph data')
-      this.send({ type: 'getInitialData' })
+      this.send({ type: 'initial_data' })
     },
 
     async reconnect() {

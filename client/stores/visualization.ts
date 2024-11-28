@@ -88,7 +88,11 @@ export const useVisualizationStore = defineStore('visualization', {
 
       console.debug('Node lookup created:', {
         lookupSize: nodeLookup.size,
-        sampleEntries: Array.from(nodeLookup.entries()).slice(0, 3)
+        sampleEntries: Array.from(nodeLookup.entries()).slice(0, 3).map(([id, node]) => ({
+          id,
+          position: node.position,
+          hasPosition: !!node.position
+        }))
       })
 
       // Convert edges and link to nodes
@@ -97,7 +101,7 @@ export const useVisualizationStore = defineStore('visualization', {
         const targetNode = nodeLookup.get(edge.target)
         if (!sourceNode || !targetNode) {
           console.warn('Edge references missing node:', {
-            edge,
+            edge: `${edge.source}-${edge.target}`,
             hasSource: !!sourceNode,
             hasTarget: !!targetNode,
             timestamp: new Date().toISOString()
@@ -129,6 +133,7 @@ export const useVisualizationStore = defineStore('visualization', {
         timestamp: new Date().toISOString()
       })
 
+      // Store the data
       this.nodes = nodes
       this.edges = edges
       this.metadata = metadata
@@ -137,6 +142,15 @@ export const useVisualizationStore = defineStore('visualization', {
         edges: graphEdges,
         metadata
       }
+
+      // Log final state
+      console.debug('Graph data state after update:', {
+        storeNodes: this.nodes.length,
+        storeEdges: this.edges.length,
+        graphDataNodes: this.graphData.nodes.length,
+        graphDataEdges: this.graphData.edges.length,
+        timestamp: new Date().toISOString()
+      })
     },
 
     updateNode(nodeId: string, updates: Partial<Node>) {
@@ -182,7 +196,11 @@ export const useVisualizationStore = defineStore('visualization', {
       console.debug('Batch updating node positions:', {
         updateCount: updates.length,
         timestamp: new Date().toISOString(),
-        sampleUpdates: updates.slice(0, 3)
+        sampleUpdates: updates.slice(0, 3).map(u => ({
+          id: u.id,
+          position: u.position,
+          hasVelocity: !!u.velocity
+        }))
       })
 
       let updatedCount = 0

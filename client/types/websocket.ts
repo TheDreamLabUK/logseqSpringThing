@@ -1,6 +1,6 @@
 // Message Types
 export type MessageType = 
-  | 'getInitialData'
+  | 'initial_data'
   | 'graphUpdate'
   | 'audioData'
   | 'answer'
@@ -66,9 +66,11 @@ export interface Edge {
   [key: string]: any;
 }
 
+// Update GraphUpdateMessage to handle both camelCase and snake_case
 export interface GraphUpdateMessage extends BaseMessage {
   type: 'graphUpdate' | 'graphData';
-  graphData: GraphData;
+  graphData?: GraphData;  // camelCase version
+  graph_data?: GraphData; // snake_case version from server
 }
 
 export interface FisheyeSettings {
