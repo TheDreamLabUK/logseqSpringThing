@@ -20,14 +20,6 @@ import {
   DEFAULT_BLOOM_CONFIG,
   DEFAULT_FISHEYE_CONFIG
 } from '../types/components'
-import { POSITION_SCALE, VELOCITY_SCALE } from '../constants/websocket'
-
-// Helper function to scale positions
-const scalePosition = (pos: [number, number, number]): [number, number, number] => [
-  pos[0] / POSITION_SCALE,
-  pos[1] / POSITION_SCALE,
-  pos[2] / POSITION_SCALE
-];
 
 interface VisualizationState {
   nodes: Node[]
@@ -71,16 +63,21 @@ export const useVisualizationStore = defineStore('visualization', {
 
   actions: {
     setGraphData(nodes: Node[], edges: Edge[], metadata: Record<string, any> = {}) {
-      console.log('Setting graph data:', {
-        nodes: nodes.length,
-        edges: edges.length,
-        metadata: Object.keys(metadata).length
+      console.debug('Setting graph data:', {
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        metadataKeys: Object.keys(metadata),
+        timestamp: new Date().toISOString(),
+        sampleNodes: nodes.slice(0, 3).map(n => ({
+          id: n.id,
+          position: n.position,
+          hasPosition: !!n.position
+        }))
       })
 
-      // Convert to graph data structure with scaled positions
+      // Convert to graph data structure
       const graphNodes = nodes.map(node => ({
         ...node,
-        position: node.position ? scalePosition(node.position) : undefined,
         edges: [],
         weight: node.weight || 1
       })) as GraphNode[]
@@ -89,12 +86,22 @@ export const useVisualizationStore = defineStore('visualization', {
       const nodeLookup = new Map<string, GraphNode>()
       graphNodes.forEach(node => nodeLookup.set(node.id, node))
 
+      console.debug('Node lookup created:', {
+        lookupSize: nodeLookup.size,
+        sampleEntries: Array.from(nodeLookup.entries()).slice(0, 3)
+      })
+
       // Convert edges and link to nodes
       const graphEdges = edges.map(edge => {
         const sourceNode = nodeLookup.get(edge.source)
         const targetNode = nodeLookup.get(edge.target)
         if (!sourceNode || !targetNode) {
-          console.warn('Edge references missing node:', edge)
+          console.warn('Edge references missing node:', {
+            edge,
+            hasSource: !!sourceNode,
+            hasTarget: !!targetNode,
+            timestamp: new Date().toISOString()
+          })
           return null
         }
         const graphEdge: GraphEdge = {
@@ -108,20 +115,21 @@ export const useVisualizationStore = defineStore('visualization', {
         return graphEdge
       }).filter((edge): edge is GraphEdge => edge !== null)
 
-      console.log('Transformed graph data:', {
-        graphNodes: graphNodes.length,
-        graphEdges: graphEdges.length,
-        sampleNode: graphNodes[0] ? {
+      console.debug('Graph data transformation complete:', {
+        originalNodes: nodes.length,
+        originalEdges: edges.length,
+        transformedNodes: graphNodes.length,
+        transformedEdges: graphEdges.length,
+        sampleGraphNode: graphNodes[0] ? {
           id: graphNodes[0].id,
-          edges: graphNodes[0].edges.length,
-          position: graphNodes[0].position
-        } : null
+          edgeCount: graphNodes[0].edges.length,
+          position: graphNodes[0].position,
+          hasPosition: !!graphNodes[0].position
+        } : null,
+        timestamp: new Date().toISOString()
       })
 
-      this.nodes = nodes.map(node => ({
-        ...node,
-        position: node.position ? scalePosition(node.position) : undefined
-      }))
+      this.nodes = nodes
       this.edges = edges
       this.metadata = metadata
       this.graphData = {
@@ -132,14 +140,16 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     updateNode(nodeId: string, updates: Partial<Node>) {
+      console.debug('Updating node:', {
+        nodeId,
+        updates,
+        hasPosition: !!updates.position,
+        timestamp: new Date().toISOString()
+      })
+
       const index = this.nodes.findIndex(n => n.id === nodeId)
       if (index !== -1) {
-        // Scale position if provided in updates
-        const scaledUpdates = {
-          ...updates,
-          position: updates.position ? scalePosition(updates.position) : undefined
-        }
-        this.nodes[index] = { ...this.nodes[index], ...scaledUpdates }
+        this.nodes[index] = { ...this.nodes[index], ...updates }
         
         // Update graph data if it exists
         if (this.graphData) {
@@ -148,26 +158,43 @@ export const useVisualizationStore = defineStore('visualization', {
             const graphNode = this.graphData.nodes[graphNodeIndex]
             this.graphData.nodes[graphNodeIndex] = {
               ...graphNode,
-              ...scaledUpdates,
+              ...updates,
               edges: graphNode.edges // Preserve edges array
             } as GraphNode
+
+            console.debug('Graph node updated:', {
+              nodeId,
+              position: updates.position,
+              edgeCount: graphNode.edges.length,
+              timestamp: new Date().toISOString()
+            })
           }
         }
+      } else {
+        console.warn('Node not found for update:', {
+          nodeId,
+          timestamp: new Date().toISOString()
+        })
       }
     },
 
     updateNodePositions(updates: { id: string; position: [number, number, number]; velocity?: [number, number, number] }[]) {
+      console.debug('Batch updating node positions:', {
+        updateCount: updates.length,
+        timestamp: new Date().toISOString(),
+        sampleUpdates: updates.slice(0, 3)
+      })
+
+      let updatedCount = 0
+      let skippedCount = 0
+
       updates.forEach(update => {
         const node = this.nodes.find(n => n.id === update.id)
         if (node) {
-          // Scale position and velocity
-          node.position = scalePosition(update.position)
+          // Update position and velocity directly (already scaled)
+          node.position = update.position
           if (update.velocity) {
-            node.velocity = [
-              update.velocity[0] / VELOCITY_SCALE,
-              update.velocity[1] / VELOCITY_SCALE,
-              update.velocity[2] / VELOCITY_SCALE
-            ]
+            node.velocity = update.velocity
           }
 
           // Update graph data if it exists
@@ -178,36 +205,28 @@ export const useVisualizationStore = defineStore('visualization', {
               if (update.velocity) {
                 graphNode.velocity = node.velocity
               }
+              updatedCount++
             }
           }
+        } else {
+          skippedCount++
         }
+      })
+
+      console.debug('Node position updates complete:', {
+        totalUpdates: updates.length,
+        successfulUpdates: updatedCount,
+        skippedUpdates: skippedCount,
+        timestamp: new Date().toISOString()
       })
     },
 
-    // Rest of the actions remain unchanged...
-    updateEdge(edgeId: string, updates: Partial<Edge>) {
-      const index = this.edges.findIndex(e => e.id === edgeId)
-      if (index !== -1) {
-        this.edges[index] = { ...this.edges[index], ...updates }
-        
-        // Update graph data if it exists
-        if (this.graphData) {
-          const graphEdgeIndex = this.graphData.edges.findIndex(e => e.id === edgeId)
-          if (graphEdgeIndex !== -1) {
-            const graphEdge = this.graphData.edges[graphEdgeIndex]
-            this.graphData.edges[graphEdgeIndex] = {
-              ...graphEdge,
-              ...updates,
-              sourceNode: graphEdge.sourceNode,
-              targetNode: graphEdge.targetNode
-            }
-          }
-        }
-      }
-    },
-
     updateVisualizationSettings(settings: Partial<VisualizationConfig>) {
-      console.log('Updating visualization settings:', settings)
+      console.debug('Updating visualization settings:', {
+        oldSettings: this.visualConfig,
+        newSettings: settings,
+        timestamp: new Date().toISOString()
+      })
       this.visualConfig = {
         ...this.visualConfig,
         ...settings
@@ -215,7 +234,11 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     updateBloomSettings(settings: Partial<BloomConfig>) {
-      console.log('Updating bloom settings:', settings)
+      console.debug('Updating bloom settings:', {
+        oldSettings: this.bloomConfig,
+        newSettings: settings,
+        timestamp: new Date().toISOString()
+      })
       this.bloomConfig = {
         ...this.bloomConfig,
         ...settings
@@ -223,8 +246,12 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     updateFisheyeSettings(settings: Partial<FisheyeConfig>) {
-      console.log('Updating fisheye settings:', settings)
-      // Convert focusPoint to individual coordinates if provided
+      console.debug('Updating fisheye settings:', {
+        oldSettings: this.fisheyeConfig,
+        newSettings: settings,
+        timestamp: new Date().toISOString()
+      })
+      
       if ('focusPoint' in settings) {
         const [focus_x, focus_y, focus_z] = settings.focusPoint as [number, number, number]
         this.fisheyeConfig = {
@@ -242,84 +269,14 @@ export const useVisualizationStore = defineStore('visualization', {
       }
     },
 
-    setSelectedNode(node: Node | null) {
-      this.selectedNode = node
-    },
-
-    addNode(node: Node) {
-      if (!this.nodes.find(n => n.id === node.id)) {
-        // Scale position if provided
-        const scaledNode = {
-          ...node,
-          position: node.position ? scalePosition(node.position) : undefined
-        }
-        this.nodes.push(scaledNode)
-        if (this.graphData) {
-          const graphNode: GraphNode = {
-            ...scaledNode,
-            edges: [],
-            weight: node.weight || 1
-          }
-          this.graphData.nodes.push(graphNode)
-        }
-      }
-    },
-
-    removeNode(nodeId: string) {
-      const index = this.nodes.findIndex(n => n.id === nodeId)
-      if (index !== -1) {
-        this.nodes.splice(index, 1)
-        // Remove associated edges
-        this.edges = this.edges.filter(edge => 
-          edge.source !== nodeId && edge.target !== nodeId
-        )
-        
-        // Update graph data if it exists
-        if (this.graphData) {
-          this.graphData.nodes = this.graphData.nodes.filter(n => n.id !== nodeId)
-          this.graphData.edges = this.graphData.edges.filter(edge => 
-            edge.sourceNode.id !== nodeId && edge.targetNode.id !== nodeId
-          )
-        }
-      }
-    },
-
-    addEdge(edge: Edge) {
-      if (!this.edges.find(e => e.id === edge.id)) {
-        this.edges.push(edge)
-        
-        // Update graph data if it exists
-        if (this.graphData) {
-          const sourceNode = this.graphData.nodes.find(n => n.id === edge.source)
-          const targetNode = this.graphData.nodes.find(n => n.id === edge.target)
-          if (sourceNode && targetNode) {
-            const graphEdge: GraphEdge = {
-              ...edge,
-              sourceNode,
-              targetNode,
-              directed: edge.directed || false
-            }
-            this.graphData.edges.push(graphEdge)
-            sourceNode.edges.push(graphEdge)
-            targetNode.edges.push(graphEdge)
-          }
-        }
-      }
-    },
-
-    removeEdge(edgeId: string) {
-      const index = this.edges.findIndex(e => e.id === edgeId)
-      if (index !== -1) {
-        this.edges.splice(index, 1)
-        
-        // Update graph data if it exists
-        if (this.graphData) {
-          this.graphData.edges = this.graphData.edges.filter(e => e.id !== edgeId)
-        }
-      }
-    },
-
     clear() {
+      console.debug('Clearing visualization store:', {
+        nodeCount: this.nodes.length,
+        edgeCount: this.edges.length,
+        hasGraphData: !!this.graphData,
+        timestamp: new Date().toISOString()
+      })
+      
       this.nodes = []
       this.edges = []
       this.graphData = null

@@ -64,7 +64,22 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         return
       }
 
-      // Store update with node ID
+      // Enhanced debug logging for position updates
+      console.debug('Processing position update:', {
+        nodeId: pos.id,
+        oldPosition: this.positions.get(pos.id),
+        newPosition: {
+          x: pos.x,
+          y: pos.y,
+          z: pos.z,
+          vx: pos.vx,
+          vy: pos.vy,
+          vz: pos.vz
+        },
+        timestamp: new Date().toISOString()
+      })
+
+      // Store update with node ID - no scaling needed as values are already scaled
       this.positions.set(pos.id, {
         id: pos.id,
         x: pos.x,
@@ -74,36 +89,31 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         vy: pos.vy,
         vz: pos.vz
       })
-
-      if (process.env.NODE_ENV === 'development') {
-        console.debug('Position update:', {
-          id: pos.id,
-          position: [
-            pos.x / POSITION_SCALE,
-            pos.y / POSITION_SCALE,
-            pos.z / POSITION_SCALE
-          ],
-          velocity: [
-            pos.vx / VELOCITY_SCALE,
-            pos.vy / VELOCITY_SCALE,
-            pos.vz / VELOCITY_SCALE
-          ]
-        })
-      }
     },
 
     /**
      * Update positions from binary WebSocket message
      */
     updatePositions(positions: PositionUpdate[], isInitial: boolean) {
+      // Enhanced debug logging for batch updates
+      console.debug('Starting batch position update:', {
+        updateCount: positions.length,
+        isInitial,
+        currentPositionsCount: this.positions.size,
+        pendingUpdatesCount: this.pendingUpdates.length,
+        timestamp: new Date().toISOString()
+      })
+
       // Clear previous positions if this is initial layout
       if (isInitial) {
+        console.debug('Clearing previous positions for initial layout')
         this.positions.clear()
         this.pendingUpdates = []
       }
 
       // Process any pending updates first
       if (this.pendingUpdates.length > 0) {
+        console.debug(`Processing ${this.pendingUpdates.length} pending updates`)
         this.pendingUpdates.forEach(pos => this.processUpdate(pos))
         this.pendingUpdates = []
       }
@@ -115,37 +125,40 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.lastUpdateTime = Date.now()
       this.isInitialLayout = isInitial
 
-      // Log update in development
-      if (process.env.NODE_ENV === 'development') {
-        console.debug('Binary update processed:', {
-          positions: positions.length,
-          total: this.positions.size,
-          isInitial,
-          sample: positions.slice(0, 3).map(p => ({
-            id: p.id,
-            pos: [
-              p.x / POSITION_SCALE,
-              p.y / POSITION_SCALE,
-              p.z / POSITION_SCALE
-            ],
-            vel: [
-              p.vx / VELOCITY_SCALE,
-              p.vy / VELOCITY_SCALE,
-              p.vz / VELOCITY_SCALE
-            ]
-          }))
-        })
-      }
+      // Enhanced debug logging for update completion
+      console.debug('Batch position update completed:', {
+        finalPositionsCount: this.positions.size,
+        isInitial,
+        samplePositions: Array.from(this.positions.entries())
+          .slice(0, 3)
+          .map(([id, pos]) => ({
+            id,
+            position: {
+              x: pos.x,
+              y: pos.y,
+              z: pos.z
+            },
+            velocity: {
+              vx: pos.vx,
+              vy: pos.vy,
+              vz: pos.vz
+            }
+          })),
+        timestamp: new Date().toISOString()
+      })
     },
 
     /**
      * Set batch size for processing updates
      */
     setBatchSize(size: number) {
+      const oldSize = this.batchSize
       this.batchSize = Math.max(1, Math.min(1000, size)) // Clamp between 1-1000
-      if (process.env.NODE_ENV === 'development') {
-        console.debug(`Batch size set to ${this.batchSize}`)
-      }
+      console.debug('Batch size updated:', {
+        oldSize,
+        newSize: this.batchSize,
+        timestamp: new Date().toISOString()
+      })
     },
 
     /**
@@ -153,6 +166,11 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
      * Called when receiving full mesh update or on cleanup
      */
     clear() {
+      console.debug('Clearing binary update store:', {
+        clearedPositions: this.positions.size,
+        clearedPending: this.pendingUpdates.length,
+        timestamp: new Date().toISOString()
+      })
       this.positions.clear()
       this.pendingUpdates = []
       this.lastUpdateTime = 0
