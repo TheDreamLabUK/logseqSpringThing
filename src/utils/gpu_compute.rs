@@ -1,12 +1,11 @@
 use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor};
 use wgpu::util::DeviceExt;
 use std::io::Error;
-use log::{debug, info, error, warn};  // Added error and warn imports
+use log::{debug, info, error};  // Removed unused warn import
 use crate::models::graph::GraphData;
 use crate::models::edge::GPUEdge;
 use crate::models::node::GPUNode;
-use crate::models::simulation_params::{SimulationParams, SimulationMode};
-use crate::models::position_update::NodePositionVelocity;
+use crate::models::simulation_params::SimulationParams;  // Removed unused SimulationMode
 use futures::channel::oneshot;
 
 // Constants for buffer management and computation

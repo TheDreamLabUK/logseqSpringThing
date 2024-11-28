@@ -60,12 +60,7 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
                     info!("Graph data structure updated successfully");
 
                     // Broadcast graph update to connected clients
-                    let broadcast_result = state.websocket_manager.broadcast_message(&json!({
-                        "type": "graphUpdate",
-                        "data": graph_data,
-                    }).to_string()).await;
-
-                    if let Err(e) = broadcast_result {
+                    if let Err(e) = state.websocket_manager.broadcast_graph_update(&graph_data).await {
                         error!("Failed to broadcast graph update: {}", e);
                     } else {
                         debug!("Graph update broadcasted successfully");
@@ -132,12 +127,7 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
             *graph = graph_data.clone();
             info!("Graph data structure refreshed successfully");
 
-            let broadcast_result = state.websocket_manager.broadcast_message(&json!({
-                "type": "graphUpdate",
-                "data": graph_data,
-            }).to_string()).await;
-
-            if let Err(e) = broadcast_result {
+            if let Err(e) = state.websocket_manager.broadcast_graph_update(&graph_data).await {
                 error!("Failed to broadcast graph update: {}", e);
             } else {
                 debug!("Graph update broadcasted successfully");

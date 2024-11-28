@@ -7,6 +7,3 @@ pub mod websocket_handlers;
 
 // Re-export WebSocketSession and related types
 pub use websocket_handlers::{WebSocketSession, WebSocketSessionHandler};
-
-// Re-export handlers for easier access
-pub use perplexity_handler::process_files as process_perplexity_files;
