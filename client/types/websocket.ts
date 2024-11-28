@@ -18,7 +18,11 @@ export type MessageType =
   | 'bloomSettings'
   | 'fisheyeSettings'
   | 'updateSettings'
-  | 'settings_updated';
+  | 'settings_updated'
+  | 'chatMessage'
+  | 'setTTSMethod'
+  | 'updateNodePosition'
+  | 'updateNodeVelocity';
 
 // Binary Protocol Types
 export interface PositionUpdate {
