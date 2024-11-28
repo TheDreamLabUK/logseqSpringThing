@@ -70,7 +70,8 @@ export default defineComponent({
       getEdgeWidth,
       handleNodeClick,
       handleNodeHover,
-      updateGraphData
+      updateGraphData,
+      updateNodePosition
     } = useGraphSystem();
 
     const websocketStore = useWebSocketStore();
@@ -115,13 +116,20 @@ export default defineComponent({
           timestamp: new Date().toISOString()
         });
         
-        // Update node positions
+        // Update node positions using updateNodePosition
         let updatedCount = 0;
         positionEntries.forEach(([id, pos]) => {
           const node = graphData.value.nodes.find(n => n.id === id);
           if (node) {
+            // Create Vector3 objects for position and velocity
+            const position = new Vector3(pos.x, pos.y, pos.z);
+            const velocity = new Vector3(pos.vx, pos.vy, pos.vz);
+            
+            // Update both the graph system and the node data
+            updateNodePosition(id, position, velocity);
             node.position = [pos.x, pos.y, pos.z];
             node.velocity = [pos.vx, pos.vy, pos.vz];
+            
             updatedCount++;
           }
         });
@@ -135,7 +143,6 @@ export default defineComponent({
         // Trigger graph update
         if (visualizationState?.value.scene) {
           visualizationState.value.scene.userData.needsRender = true;
-          updateGraphData(graphData.value);
         }
       }
     }, { deep: true });
@@ -183,6 +190,9 @@ export default defineComponent({
         const node = draggedNode.value;
         const position = getNodePosition(node);
         position.copy(dragIntersection);
+
+        // Update position with zero velocity during drag
+        updateNodePosition(node.id, position, new Vector3(0, 0, 0));
 
         console.debug('Node drag update:', {
           nodeId: node.id,

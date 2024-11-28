@@ -119,8 +119,12 @@ export default defineComponent({
     // Provide visualization state to child components
     provide('visualizationState', visualizationState)
 
-    // Set up WebSocket message handlers
-    if (websocketStore.service) {
+    const setupWebSocketHandlers = () => {
+      if (!websocketStore.service) {
+        console.error('WebSocket service not initialized')
+        return
+      }
+
       // Handle JSON messages
       websocketStore.service.on('message', (message: BaseMessage) => {
         console.debug('Received message:', message)
@@ -203,8 +207,6 @@ export default defineComponent({
       websocketStore.service.on('open', () => {
         console.log('WebSocket connected')
         error.value = null
-        // Request initial data
-        websocketStore.requestInitialData()
       })
 
       websocketStore.service.on('close', () => {
@@ -259,6 +261,9 @@ export default defineComponent({
 
         // Initialize WebSocket through store
         await websocketStore.initialize()
+        
+        // Set up WebSocket handlers after initialization
+        setupWebSocketHandlers()
 
         // Log environment info
         console.info('Application initialized', {

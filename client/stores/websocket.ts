@@ -1,6 +1,9 @@
 import { defineStore } from 'pinia'
 import WebsocketService from '../services/websocketService'
-import type { BaseMessage, ErrorMessage } from '../types/websocket'
+import { useVisualizationStore } from './visualization'
+import { useBinaryUpdateStore } from './binaryUpdate'
+import type { BaseMessage, ErrorMessage, GraphUpdateMessage, BinaryMessage, Edge as WsEdge } from '../types/websocket'
+import type { Node, Edge } from '../types/core'
 
 interface WebSocketState {
   connected: boolean
@@ -28,12 +31,18 @@ export const useWebSocketStore = defineStore('websocket', {
         return
       }
 
+      const visualizationStore = useVisualizationStore()
+      const binaryUpdateStore = useBinaryUpdateStore()
+
       this.service = new WebsocketService()
       
       // Set up event handlers
       this.service.on('open', () => {
+        console.debug('WebSocket connected, requesting initial data')
         this.connected = true
         this.error = null
+        // Request initial data immediately after connection
+        this.requestInitialData()
       })
 
       this.service.on('close', () => {
@@ -42,6 +51,40 @@ export const useWebSocketStore = defineStore('websocket', {
 
       this.service.on('error', (error: ErrorMessage) => {
         this.error = error.message || 'Unknown error'
+      })
+
+      // Handle graph updates
+      this.service.on('graphUpdate', (message: GraphUpdateMessage) => {
+        console.debug('Received graph update:', {
+          nodeCount: message.graphData.nodes.length,
+          edgeCount: message.graphData.edges.length,
+          timestamp: new Date().toISOString()
+        })
+        
+        // Convert websocket edges to core edges by adding IDs
+        const edges: Edge[] = message.graphData.edges.map((edge: WsEdge) => ({
+          ...edge,
+          id: `${edge.source}-${edge.target}` // Generate ID from source and target
+        }))
+
+        // Update visualization store with new graph data
+        visualizationStore.setGraphData(
+          message.graphData.nodes as Node[],
+          edges,
+          message.graphData.metadata
+        )
+      })
+
+      // Handle binary position updates
+      this.service.on('gpuPositions', (message: BinaryMessage) => {
+        console.debug('Received binary position update:', {
+          positionCount: message.positions.length,
+          isInitialLayout: message.isInitialLayout,
+          timestamp: new Date().toISOString()
+        })
+        
+        // Update binary update store
+        binaryUpdateStore.updatePositions(message.positions, message.isInitialLayout)
       })
 
       // Connect to server
@@ -77,6 +120,7 @@ export const useWebSocketStore = defineStore('websocket', {
     },
 
     requestInitialData() {
+      console.debug('Requesting initial graph data')
       this.send({ type: 'getInitialData' })
     },
 

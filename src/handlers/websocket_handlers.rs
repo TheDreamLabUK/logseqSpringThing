@@ -5,13 +5,12 @@ use actix_web_actors::ws::WebsocketContext;
 use bytestring::ByteString;
 use bytemuck;
 use futures::StreamExt;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use tokio::time::Duration;
-use actix_web_actors::ws;  // Add ws import
-use actix::StreamHandler;  // Add StreamHandler import
-
+use actix_web_actors::ws;
+use actix::StreamHandler;
 
 use crate::AppState;
 use crate::models::node::GPUNode;
@@ -23,16 +22,13 @@ use crate::utils::websocket_messages::{
 };
 use crate::utils::websocket_openai::OpenAIWebSocket;
 
-// Constants for timing and performance
 pub const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-pub const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(16); // ~60fps for smooth updates
+pub const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(16);
 
-// Message type for GPU position updates
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct GpuUpdate;
 
-/// WebSocket session actor handling client communication
 pub struct WebSocketSession {
     pub state: web::Data<AppState>,
     pub tts_method: String,
@@ -51,13 +47,72 @@ impl WebSocketSession {
             conversation_id: Some(Arc::new(Mutex::new(None))),
         }
     }
+
+    // Helper method to validate binary data
+    fn validate_binary_data(&self, data: &[u8]) -> bool {
+        let node_size = std::mem::size_of::<NodePositionVelocity>();
+        if data.len() % node_size != 0 {
+            warn!("Invalid binary data length: {} (not a multiple of {})", data.len(), node_size);
+            return false;
+        }
+        true
+    }
+
+// Helper method to process binary position updates
+    fn process_binary_update(&mut self, data: &[u8]) -> Result<(), String> {
+        if !self.validate_binary_data(data) {
+            return Err("Invalid binary data format".to_string());
+        }
+
+        let positions: Vec<NodePositionVelocity> = bytemuck::cast_slice(data).to_vec();
+        
+        // Log first few positions for debugging
+        if !positions.is_empty() {
+            debug!(
+                "Processing binary update with {} positions. First position: x={}, y={}, z={}, vx={}, vy={}, vz={}",
+                positions.len(),
+                positions[0].x, positions[0].y, positions[0].z,
+                positions[0].vx, positions[0].vy, positions[0].vz
+            );
+        } else {
+            warn!("Received empty positions array");
+            return Ok(());
+        }
+
+        // Update graph data with new positions
+        let state = self.state.clone();
+        let positions = positions.clone(); // Clone for async move
+        
+        actix::spawn(async move {
+            let mut graph_data = state.graph_data.write().await;
+            // Update node positions while preserving other attributes
+            for (i, pos) in positions.iter().enumerate() {
+                if i < graph_data.nodes.len() {
+                    debug!(
+                        "Updating node {}: old pos=({},{},{}), new pos=({},{},{})",
+                        i,
+                        graph_data.nodes[i].x, graph_data.nodes[i].y, graph_data.nodes[i].z,
+                        pos.x, pos.y, pos.z
+                    );
+                    graph_data.nodes[i].x = pos.x;
+                    graph_data.nodes[i].y = pos.y;
+                    graph_data.nodes[i].z = pos.z;
+                    graph_data.nodes[i].vx = pos.vx;
+                    graph_data.nodes[i].vy = pos.vy;
+                    graph_data.nodes[i].vz = pos.vz;
+                }
+            }
+            debug!("Updated {} node positions", positions.len());
+        });
+
+        Ok(())
+    }
 }
 
 impl Actor for WebSocketSession {
     type Context = WebsocketContext<Self>;
 }
 
-// Add StreamHandler implementation for WebSocket messages
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
@@ -128,7 +183,21 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
             }
             Ok(ws::Message::Binary(bin)) => {
                 debug!("Binary message received: {} bytes", bin.len());
-                // Handle binary messages if needed
+                match self.process_binary_update(&bin) {
+                    Ok(_) => {
+                        debug!("Binary update processed successfully");
+                    },
+                    Err(e) => {
+                        error!("Failed to process binary update: {}", e);
+                        let error_message = ServerMessage::Error {
+                            message: format!("Binary update processing failed: {}", e),
+                            code: Some("BINARY_UPDATE_ERROR".to_string())
+                        };
+                        if let Ok(error_str) = serde_json::to_string(&error_message) {
+                            ctx.text(ByteString::from(error_str));
+                        }
+                    }
+                }
             }
             Ok(ws::Message::Close(reason)) => {
                 debug!("Client disconnected: {:?}", reason);
@@ -137,7 +206,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
             }
             Ok(ws::Message::Continuation(_)) => {
                 debug!("Continuation frame received");
-                // Handle continuation frames if needed
             }
             Ok(ws::Message::Nop) => {
                 debug!("Nop frame received");
@@ -152,28 +220,36 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
 
 impl MessageHandler for WebSocketSession {}
 
-/// Helper function to convert hex color to proper format
-/// Handles various input formats (0x, #, or raw hex) and normalizes to #RRGGBB
 pub fn format_color(color: &str) -> String {
     let color = color.trim_matches('"')
         .trim_start_matches("0x")
         .trim_start_matches('#');
     
-    // Handle rgba format
     if color.starts_with("rgba(") {
         return color.to_string();
     }
     
-    // Handle regular hex colors
     format!("#{}", color)
 }
 
-/// Helper function to convert GPU nodes to binary position updates
-/// Creates efficient binary format for network transfer (24 bytes per node)
 pub fn positions_to_binary(nodes: &[GPUNode]) -> Vec<u8> {
     let mut binary_data = Vec::with_capacity(nodes.len() * std::mem::size_of::<NodePositionVelocity>());
+    
+    // Log first node for debugging
+    if !nodes.is_empty() {
+        debug!(
+            "Converting first node: x={}, y={}, z={}, vx={}, vy={}, vz={}",
+            nodes[0].x, nodes[0].y, nodes[0].z,
+            nodes[0].vx, nodes[0].vy, nodes[0].vz
+        );
+    }
+
     for node in nodes {
-        // Convert to position update format (24 bytes)
+        // Ensure values are not zero unless they should be
+        if node.x == 0.0 && node.y == 0.0 && node.z == 0.0 {
+            warn!("Node position is all zeros - this might indicate an issue");
+        }
+
         let update = NodePositionVelocity {
             x: node.x,
             y: node.y,
@@ -182,9 +258,12 @@ pub fn positions_to_binary(nodes: &[GPUNode]) -> Vec<u8> {
             vy: node.vy,
             vz: node.vz,
         };
-        // Use as_bytes() since NodePositionVelocity is Pod
         binary_data.extend_from_slice(bytemuck::bytes_of(&update));
     }
+
+    // Log binary data size for debugging
+    debug!("Binary data size: {} bytes", binary_data.len());
+    
     binary_data
 }
 
@@ -246,8 +325,6 @@ impl WebSocketSessionHandler for WebSocketSession {
                 ctx_addr.do_send(SendText(graph_str));
             }
 
-            // Rest of the function remains the same...
-            // Send settings using proper ServerMessage format
             let settings_update = ServerMessage::SettingsUpdated {
                 settings: json!({
                     "visualization": {
@@ -323,7 +400,6 @@ impl WebSocketSessionHandler for WebSocketSession {
         }
     }
 
-    // Start periodic GPU updates at 60fps
     fn start_gpu_updates(&self, ctx: &mut WebsocketContext<WebSocketSession>) {
         let addr = ctx.address();
         ctx.run_interval(GPU_UPDATE_INTERVAL, move |_, _| {
@@ -331,7 +407,6 @@ impl WebSocketSessionHandler for WebSocketSession {
         });
     }
 
-    // Handle chat messages and TTS responses
     fn handle_chat_message(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, message: String, use_openai: bool) {
         let state = self.state.clone();
         let conversation_id = self.conversation_id.clone();
@@ -353,7 +428,7 @@ impl WebSocketSessionHandler for WebSocketSession {
                     }
                 }
             } else {
-                error!("No conversation ID available");
+                error!("Failed to acquire conversation ID");
                 return;
             };
 
@@ -436,7 +511,6 @@ impl WebSocketSessionHandler for WebSocketSession {
         ctx.spawn(fut.into_actor(self));
     }
 
-    // Handle simulation mode changes
     fn handle_simulation_mode(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, mode: &str) {
         self.simulation_mode = match mode {
             "remote" => {
@@ -468,9 +542,8 @@ impl WebSocketSessionHandler for WebSocketSession {
         if let Ok(response_str) = serde_json::to_string(&response) {
             ctx.text(ByteString::from(response_str));
         }
-}
+    }
 
-    // Handle layout parameter updates and GPU computation
     fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, params: SimulationParams) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
@@ -550,7 +623,6 @@ impl WebSocketSessionHandler for WebSocketSession {
         ctx.spawn(fut.into_actor(self));
     }
 
-    // Handle fisheye settings updates
     fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
@@ -595,7 +667,6 @@ impl WebSocketSessionHandler for WebSocketSession {
     }
 }
 
-// Handler implementations for messages
 impl Handler<GpuUpdate> for WebSocketSession {
     type Result = ResponseActFuture<Self, ()>;
 
@@ -612,12 +683,27 @@ impl Handler<GpuUpdate> for WebSocketSession {
             if let Err(e) = gpu.step() {
                 error!("GPU compute step failed: {}", e);
                 return;
-}
+            }
 
-            // Send binary position updates to all connected clients
-            if let Ok(nodes) = gpu.get_node_positions().await {
-                // Let WebSocketManager handle the broadcasting
-                state.websocket_manager.broadcast_binary(&nodes, false).await;
+            match gpu.get_node_positions().await {
+                Ok(nodes) => {
+                    if nodes.is_empty() {
+                        warn!("No nodes returned from GPU compute");
+                        return;
+                    }
+
+                    // Log first node position for debugging
+                    debug!(
+                        "First node position: x={}, y={}, z={}",
+                        nodes[0].x, nodes[0].y, nodes[0].z
+                    );
+
+                    // Let WebSocketManager handle the broadcasting
+                    state.websocket_manager.broadcast_binary(&nodes, false).await;
+                },
+                Err(e) => {
+                    error!("Failed to get node positions: {}", e);
+                }
             }
         }
         .into_actor(self))

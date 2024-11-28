@@ -39,8 +39,9 @@ export default class WebsocketService {
   private reconnectTimeout: number | null = null;
   private eventListeners: Map<keyof WebSocketEventMap, Set<WebSocketEventCallback<any>>> = new Map();
   private url: string;
-  // Store node IDs in order they appear in initial graph data
-  private nodeIds: string[] = [];
+  // Store node IDs and their indices for binary updates
+  private nodeIdToIndex: Map<string, number> = new Map();
+  private indexToNodeId: string[] = [];
 
   constructor(config: Partial<WebSocketConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -121,10 +122,10 @@ export default class WebsocketService {
         const numPositions = (event.data.byteLength - 4) / 24; // 24 bytes per position (6 float32s * 4 bytes)
         
         // Log binary update stats
-        console.debug('Binary position update:', {
+        console.debug('Binary position update received:', {
           isInitialLayout,
           numPositions,
-          numStoredIds: this.nodeIds.length,
+          numStoredIds: this.indexToNodeId.length,
           dataSize: event.data.byteLength
         });
         
@@ -133,7 +134,7 @@ export default class WebsocketService {
         
         for (let i = 0; i < numPositions; i++) {
           // Use stored node ID for this position index
-          const nodeId = this.nodeIds[i];
+          const nodeId = this.indexToNodeId[i];
           if (!nodeId) {
             console.warn(`No stored ID for node index ${i}`);
             continue;
@@ -147,6 +148,16 @@ export default class WebsocketService {
           const vy = view.getFloat32(offset + 16, true);
           const vz = view.getFloat32(offset + 20, true);
           
+          // Validate position values
+          if (isNaN(x) || isNaN(y) || isNaN(z) || 
+              isNaN(vx) || isNaN(vy) || isNaN(vz)) {
+            console.warn(`Invalid position values for node ${nodeId}:`, {
+              position: [x, y, z],
+              velocity: [vx, vy, vz]
+            });
+            continue;
+          }
+          
           positions.push({
             id: nodeId,
             x, y, z,
@@ -155,10 +166,12 @@ export default class WebsocketService {
           offset += 24;
         }
 
-        // Log first few positions for debugging
-        if (positions.length > 0) {
-          console.debug('Sample positions:', positions.slice(0, 3));
-        }
+        // Log position updates for debugging
+        console.debug('Position updates processed:', {
+          total: positions.length,
+          sample: positions.slice(0, 3),
+          timestamp: new Date().toISOString()
+        });
 
         const binaryMessage: BinaryMessage = {
           isInitialLayout,
@@ -175,11 +188,21 @@ export default class WebsocketService {
         if (message.type === 'graphUpdate' || message.type === 'graphData') {
           const graphMessage = message as GraphUpdateMessage;
           if (graphMessage.graphData?.nodes) {
-            // Store node IDs in order they appear in the array
-            this.nodeIds = graphMessage.graphData.nodes.map(node => node.id);
-            console.debug('Stored node IDs:', {
-              count: this.nodeIds.length,
-              sample: this.nodeIds.slice(0, 3)
+            // Clear existing mappings
+            this.nodeIdToIndex.clear();
+            this.indexToNodeId = [];
+            
+            // Store node IDs and create bidirectional mapping
+            graphMessage.graphData.nodes.forEach((node, index) => {
+              this.nodeIdToIndex.set(node.id, index);
+              this.indexToNodeId[index] = node.id;
+            });
+            
+            console.debug('Node ID mappings updated:', {
+              count: this.indexToNodeId.length,
+              sampleIds: this.indexToNodeId.slice(0, 3),
+              sampleMappings: Array.from(this.nodeIdToIndex.entries()).slice(0, 3),
+              timestamp: new Date().toISOString()
             });
           }
           this.emit('graphUpdate', graphMessage);
@@ -329,6 +352,7 @@ export default class WebsocketService {
     this.lastMessageTime = 0;
     this.reconnectAttempts = 0;
     this.eventListeners.clear();
-    this.nodeIds = []; // Clear stored node IDs
+    this.nodeIdToIndex.clear();
+    this.indexToNodeId = [];
   }
 }
