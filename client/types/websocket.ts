@@ -1,31 +1,19 @@
-// Message Types
+// Message Types (matching server's ServerMessage enum)
 export type MessageType = 
-  | 'initial_data'
-  | 'graphUpdate'
-  | 'audioData'
-  | 'answer'
-  | 'error'
-  | 'ragflowResponse'
-  | 'openaiResponse'
-  | 'simulationModeSet'
-  | 'simulation_mode_set'
-  | 'fisheye_settings_updated'
-  | 'completion'
-  | 'position_update_complete'
-  | 'graphData'
-  | 'visualSettings'
-  | 'materialSettings'
-  | 'physicsSettings'
-  | 'bloomSettings'
-  | 'fisheyeSettings'
-  | 'updateSettings'
-  | 'settings_updated'
-  | 'chatMessage'
-  | 'setTTSMethod'
-  | 'updateNodePosition'
-  | 'updateNodeVelocity'
+  | 'graphUpdate'                  // From ServerMessage::GraphUpdate
+  | 'error'                        // From ServerMessage::Error
+  | 'position_update_complete'     // From ServerMessage::PositionUpdateComplete
+  | 'settings_updated'             // From ServerMessage::SettingsUpdated
+  | 'simulation_mode_set'          // From ServerMessage::SimulationModeSet
+  | 'fisheye_settings_updated'     // From ServerMessage::FisheyeSettingsUpdated
+  | 'initial_data'                 // Client-side types
+  | 'gpu_state'
   | 'layout_state'
-  | 'gpu_state';
+  | 'audioData'                    // Additional message types
+  | 'updateSettings'
+  | 'openaiResponse'
+  | 'ragflowResponse'
+  | 'completion';
 
 // Binary Protocol Types
 export interface BinaryMessage {
@@ -66,9 +54,9 @@ export interface Edge {
 
 // Update GraphUpdateMessage to handle both camelCase and snake_case
 export interface GraphUpdateMessage extends BaseMessage {
-  type: 'graphUpdate' | 'graphData';
-  graphData?: GraphData;  // camelCase version
-  graph_data?: GraphData; // snake_case version from server
+  type: 'graphUpdate';
+  graphData?: GraphData;     // camelCase version
+  graph_data?: GraphData;    // snake_case version from server
 }
 
 // Base Message Interface
@@ -110,15 +98,13 @@ export interface BloomSettings {
   threshold: number;
 }
 
-// Message Type Interfaces
+// Message Type Interfaces (matching server's ServerMessage variants)
 export interface FisheyeUpdateMessage extends BaseMessage {
   type: 'fisheye_settings_updated';
-  fisheye_enabled: boolean;
-  fisheye_strength: number;
-  fisheye_focus_x: number;
-  fisheye_focus_y: number;
-  fisheye_focus_z: number;
-  fisheye_radius: number;
+  enabled: boolean;
+  strength: number;
+  focus_point: [number, number, number];
+  radius: number;
 }
 
 export interface ErrorMessage extends BaseMessage {
@@ -142,7 +128,7 @@ export interface RagflowResponse extends BaseMessage {
 export interface SimulationModeMessage extends BaseMessage {
   type: 'simulation_mode_set';
   mode: string;
-  gpu_enabled?: boolean;
+  gpu_enabled: boolean;
 }
 
 export interface SettingsUpdateMessage extends BaseMessage {

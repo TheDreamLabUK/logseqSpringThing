@@ -22,9 +22,10 @@ import {
   DEFAULT_MAX_AUDIO_SIZE,
   DEFAULT_MAX_QUEUE_SIZE,
   CONNECTION_TIMEOUT,
-  MESSAGE_TYPES,
+  SERVER_MESSAGE_TYPES,
   ERROR_CODES,
-  ENABLE_BINARY_DEBUG
+  ENABLE_BINARY_DEBUG,
+  MESSAGE_FIELDS
 } from '../constants/websocket'
 
 const DEFAULT_CONFIG: WebSocketConfig = {
@@ -98,7 +99,7 @@ export default class WebsocketService {
           clearTimeout(connectionTimeout);
           console.error('WebSocket connection error:', error);
           const errorMsg: ErrorMessage = {
-            type: MESSAGE_TYPES.ERROR,
+            type: SERVER_MESSAGE_TYPES.ERROR,
             message: 'WebSocket connection error',
             code: ERROR_CODES.CONNECTION_FAILED
           };
@@ -153,87 +154,82 @@ export default class WebsocketService {
 
       // Handle specific message types
       switch (type) {
-        case MESSAGE_TYPES.GRAPH_UPDATE:
-        case MESSAGE_TYPES.GRAPH_DATA:
+        case SERVER_MESSAGE_TYPES.GRAPH_UPDATE:
           const graphMessage = message as GraphUpdateMessage;
           // Handle both camelCase and snake_case versions
-          if (graphMessage.graphData || graphMessage.graph_data) {
+          const graphData = graphMessage.graphData || graphMessage.graph_data;
+          if (graphData) {
             this.emit('graphUpdate', {
-              type: graphMessage.type,
-              graphData: graphMessage.graphData || graphMessage.graph_data
+              type: SERVER_MESSAGE_TYPES.GRAPH_UPDATE,
+              graphData,
+              graph_data: graphData // Include both versions for compatibility
             });
           }
           break;
 
-        case MESSAGE_TYPES.ERROR:
+        case SERVER_MESSAGE_TYPES.ERROR:
           const errorMessage = message as ErrorMessage;
           this.emit('error', {
-            type: MESSAGE_TYPES.ERROR,
-            message: errorMessage.message,
-            details: errorMessage.details,
-            code: errorMessage.code
+            type: SERVER_MESSAGE_TYPES.ERROR,
+            message: errorMessage[MESSAGE_FIELDS.MESSAGE],
+            details: errorMessage[MESSAGE_FIELDS.DETAILS],
+            code: errorMessage[MESSAGE_FIELDS.CODE]
           });
           break;
 
-        case MESSAGE_TYPES.POSITION_UPDATE_COMPLETE:
-          this.emit('positionUpdateComplete', message.status || 'complete');
+        case SERVER_MESSAGE_TYPES.POSITION_UPDATE_COMPLETE:
+          this.emit('positionUpdateComplete', message[MESSAGE_FIELDS.STATUS] || 'complete');
           // Also emit the is_initial_layout flag if present
-          if ('is_initial_layout' in message) {
+          if (MESSAGE_FIELDS.IS_INITIAL_LAYOUT in message) {
             this.emit('message', {
-              type: MESSAGE_TYPES.LAYOUT_STATE,
-              isInitial: message.is_initial_layout
+              type: SERVER_MESSAGE_TYPES.LAYOUT_STATE,
+              isInitial: message[MESSAGE_FIELDS.IS_INITIAL_LAYOUT]
             });
           }
           break;
 
-        case MESSAGE_TYPES.SIMULATION_MODE_SET:
-          const simMessage = message as SimulationModeMessage & { gpu_enabled?: boolean };
-          this.emit('simulationModeSet', simMessage.mode);
+        case SERVER_MESSAGE_TYPES.SIMULATION_MODE_SET:
+          const simMessage = message as SimulationModeMessage;
+          this.emit('simulationModeSet', simMessage[MESSAGE_FIELDS.MODE]);
           // Also emit GPU state if present
-          if ('gpu_enabled' in simMessage) {
+          if (MESSAGE_FIELDS.GPU_ENABLED in simMessage) {
             this.emit('message', {
-              type: MESSAGE_TYPES.GPU_STATE,
-              enabled: simMessage.gpu_enabled
+              type: SERVER_MESSAGE_TYPES.GPU_STATE,
+              enabled: simMessage[MESSAGE_FIELDS.GPU_ENABLED]
             });
           }
           break;
 
-        case MESSAGE_TYPES.SETTINGS_UPDATED:
+        case SERVER_MESSAGE_TYPES.SETTINGS_UPDATED:
           const settingsMessage = message as SettingsUpdatedMessage;
           this.emit('serverSettings', settingsMessage.settings);
           break;
 
-        case MESSAGE_TYPES.FISHEYE_SETTINGS_UPDATED:
+        case SERVER_MESSAGE_TYPES.FISHEYE_SETTINGS_UPDATED:
           const fisheyeMessage = message as FisheyeUpdateMessage & { focus_point?: [number, number, number] };
           // Handle both focus_point array and individual coordinates
-          const focusPoint = fisheyeMessage.focus_point || (
-            'fisheye_focus_x' in fisheyeMessage ? [
-              (fisheyeMessage as any).fisheye_focus_x,
-              (fisheyeMessage as any).fisheye_focus_y,
-              (fisheyeMessage as any).fisheye_focus_z
-            ] : [0, 0, 0]
-          );
+          const focusPoint = fisheyeMessage[MESSAGE_FIELDS.FOCUS_POINT] || [0, 0, 0];
           
           this.emit('serverSettings', {
             fisheye: {
-              enabled: fisheyeMessage.fisheye_enabled,
-              strength: fisheyeMessage.fisheye_strength,
+              enabled: fisheyeMessage[MESSAGE_FIELDS.ENABLED],
+              strength: fisheyeMessage[MESSAGE_FIELDS.STRENGTH],
               focusPoint,
-              radius: fisheyeMessage.fisheye_radius
+              radius: fisheyeMessage[MESSAGE_FIELDS.RADIUS]
             }
           });
           break;
 
-        case 'ragflowResponse':
+        case SERVER_MESSAGE_TYPES.RAGFLOW_RESPONSE:
           const ragflowMessage = message as RagflowResponse;
           this.emit('ragflowAnswer', ragflowMessage.answer);
           break;
 
-        case 'openaiResponse':
+        case SERVER_MESSAGE_TYPES.OPENAI_RESPONSE:
           this.emit('openaiResponse', message.response);
           break;
 
-        case 'completion':
+        case SERVER_MESSAGE_TYPES.COMPLETION:
           this.emit('completion', message.text);
           break;
 
@@ -244,7 +240,7 @@ export default class WebsocketService {
     } catch (error) {
       console.error('Error handling WebSocket message:', error);
       const errorMsg: ErrorMessage = {
-        type: MESSAGE_TYPES.ERROR,
+        type: SERVER_MESSAGE_TYPES.ERROR,
         message: 'Error processing message',
         code: ERROR_CODES.INVALID_MESSAGE
       };
@@ -269,7 +265,7 @@ export default class WebsocketService {
       console.error('Max reconnection attempts reached');
       this.emit('maxReconnectAttemptsReached');
       this.emit('error', {
-        type: MESSAGE_TYPES.ERROR,
+        type: SERVER_MESSAGE_TYPES.ERROR,
         message: 'Maximum reconnection attempts reached',
         code: ERROR_CODES.MAX_RETRIES_EXCEEDED
       });
@@ -319,7 +315,7 @@ export default class WebsocketService {
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMsg: ErrorMessage = {
-        type: MESSAGE_TYPES.ERROR,
+        type: SERVER_MESSAGE_TYPES.ERROR,
         message: 'Error sending message',
         code: error instanceof Error && error.message === ERROR_CODES.MESSAGE_TOO_LARGE
           ? ERROR_CODES.MESSAGE_TOO_LARGE

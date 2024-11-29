@@ -1,5 +1,16 @@
 import { defineStore } from 'pinia'
 import type { BinaryMessage } from '../types/websocket'
+import {
+  BINARY_UPDATE_HEADER_SIZE,
+  BINARY_UPDATE_NODE_SIZE,
+  FLOAT32_SIZE,
+  MAX_VALID_POSITION,
+  MIN_VALID_POSITION,
+  MAX_VALID_VELOCITY,
+  MIN_VALID_VELOCITY,
+  ENABLE_BINARY_DEBUG,
+  ENABLE_POSITION_VALIDATION
+} from '../constants/websocket'
 
 interface BinaryUpdateState {
   // Use TypedArrays for better performance with binary data
@@ -8,6 +19,7 @@ interface BinaryUpdateState {
   nodeCount: number
   lastUpdateTime: number
   isInitialLayout: boolean
+  invalidUpdates: number   // Track number of invalid updates for monitoring
 }
 
 /**
@@ -20,7 +32,8 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     velocities: new Float32Array(0),
     nodeCount: 0,
     lastUpdateTime: 0,
-    isInitialLayout: false
+    isInitialLayout: false,
+    invalidUpdates: 0
   }),
 
   getters: {
@@ -67,10 +80,47 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     /**
      * Check if this is initial layout data
      */
-    isInitial: (state): boolean => state.isInitialLayout
+    isInitial: (state): boolean => state.isInitialLayout,
+
+    /**
+     * Get percentage of invalid updates
+     */
+    invalidUpdateRate: (state): number => {
+      if (state.lastUpdateTime === 0) return 0;
+      const totalUpdates = Math.max(1, state.nodeCount * (state.lastUpdateTime - state.lastUpdateTime) / 1000);
+      return (state.invalidUpdates / totalUpdates) * 100;
+    }
   },
 
   actions: {
+    /**
+     * Internal: Validate a position value
+     */
+    _validatePosition(value: number): boolean {
+      return value >= MIN_VALID_POSITION && value <= MAX_VALID_POSITION;
+    },
+
+    /**
+     * Internal: Validate a velocity value
+     */
+    _validateVelocity(value: number): boolean {
+      return value >= MIN_VALID_VELOCITY && value <= MAX_VALID_VELOCITY;
+    },
+
+    /**
+     * Internal: Clamp a position value to valid range
+     */
+    _clampPosition(value: number): number {
+      return Math.max(MIN_VALID_POSITION, Math.min(MAX_VALID_POSITION, value));
+    },
+
+    /**
+     * Internal: Clamp a velocity value to valid range
+     */
+    _clampVelocity(value: number): number {
+      return Math.max(MIN_VALID_VELOCITY, Math.min(MAX_VALID_VELOCITY, value));
+    },
+
     /**
      * Update position for a single node
      */
@@ -82,6 +132,29 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       if (index >= 0 && index < this.nodeCount) {
         const posIndex = index * 3;
         const velIndex = index * 3;
+
+        if (ENABLE_POSITION_VALIDATION) {
+          // Validate position values
+          const positionsValid = [x, y, z].every(v => this._validatePosition(v));
+          const velocitiesValid = [vx, vy, vz].every(v => this._validateVelocity(v));
+
+          if (!positionsValid || !velocitiesValid) {
+            this.invalidUpdates++;
+            console.warn('Invalid position/velocity values detected:', {
+              index,
+              position: [x, y, z],
+              velocity: [vx, vy, vz]
+            });
+
+            // Clamp values to valid ranges
+            x = this._clampPosition(x);
+            y = this._clampPosition(y);
+            z = this._clampPosition(z);
+            vx = this._clampVelocity(vx);
+            vy = this._clampVelocity(vy);
+            vz = this._clampVelocity(vz);
+          }
+        }
 
         // Update position
         this.positions[posIndex] = x;
@@ -105,6 +178,16 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       const totalFloats = dataView.length - 1; // Subtract 1 for isInitialLayout flag
       const nodeCount = totalFloats / 6; // 6 floats per node (x,y,z,vx,vy,vz)
 
+      // Validate buffer size
+      const expectedSize = BINARY_UPDATE_HEADER_SIZE + (nodeCount * BINARY_UPDATE_NODE_SIZE);
+      if (message.data.byteLength !== expectedSize) {
+        console.error('Invalid binary message size:', {
+          received: message.data.byteLength,
+          expected: expectedSize
+        });
+        return;
+      }
+
       // Resize arrays if needed
       if (this.nodeCount !== nodeCount) {
         this.positions = new Float32Array(nodeCount * 3);
@@ -118,15 +201,47 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         const posOffset = i * 3;
         const velOffset = i * 3;
 
+        let x = dataView[srcOffset];
+        let y = dataView[srcOffset + 1];
+        let z = dataView[srcOffset + 2];
+        let vx = dataView[srcOffset + 3];
+        let vy = dataView[srcOffset + 4];
+        let vz = dataView[srcOffset + 5];
+
+        if (ENABLE_POSITION_VALIDATION) {
+          // Validate and clamp values
+          const positionsValid = [x, y, z].every(v => this._validatePosition(v));
+          const velocitiesValid = [vx, vy, vz].every(v => this._validateVelocity(v));
+
+          if (!positionsValid || !velocitiesValid) {
+            this.invalidUpdates++;
+            if (ENABLE_BINARY_DEBUG) {
+              console.warn('Invalid values in binary update:', {
+                index: i,
+                position: [x, y, z],
+                velocity: [vx, vy, vz]
+              });
+            }
+
+            // Clamp values
+            x = this._clampPosition(x);
+            y = this._clampPosition(y);
+            z = this._clampPosition(z);
+            vx = this._clampVelocity(vx);
+            vy = this._clampVelocity(vy);
+            vz = this._clampVelocity(vz);
+          }
+        }
+
         // Copy positions
-        this.positions[posOffset] = dataView[srcOffset];
-        this.positions[posOffset + 1] = dataView[srcOffset + 1];
-        this.positions[posOffset + 2] = dataView[srcOffset + 2];
+        this.positions[posOffset] = x;
+        this.positions[posOffset + 1] = y;
+        this.positions[posOffset + 2] = z;
 
         // Copy velocities
-        this.velocities[velOffset] = dataView[srcOffset + 3];
-        this.velocities[velOffset + 1] = dataView[srcOffset + 4];
-        this.velocities[velOffset + 2] = dataView[srcOffset + 5];
+        this.velocities[velOffset] = vx;
+        this.velocities[velOffset + 1] = vy;
+        this.velocities[velOffset + 2] = vz;
 
         srcOffset += 6;
       }
@@ -135,10 +250,11 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.lastUpdateTime = Date.now();
 
       // Debug logging
-      if (nodeCount > 0) {
+      if (ENABLE_BINARY_DEBUG && nodeCount > 0) {
         console.debug('Binary update processed:', {
           nodeCount,
           isInitial: this.isInitialLayout,
+          invalidRate: this.invalidUpdateRate,
           sample: {
             position: [
               this.positions[0],
@@ -165,6 +281,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.nodeCount = 0;
       this.lastUpdateTime = 0;
       this.isInitialLayout = false;
+      this.invalidUpdates = 0;
     }
   }
 })
