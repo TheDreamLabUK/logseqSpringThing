@@ -24,10 +24,25 @@ export type MessageType =
   | 'updateNodePosition'
   | 'updateNodeVelocity';
 
-// Binary Protocol Types
-export interface BinaryMessage {
-  data: ArrayBuffer;
+// Position Types
+export interface Position {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+}
+
+export interface PositionUpdate {
+  positions: Position[];
   isInitialLayout: boolean;
+}
+
+// Binary Protocol Types
+export interface BinaryMessage extends PositionUpdate {
+  data: ArrayBuffer;
 }
 
 // WebSocket Message Interfaces

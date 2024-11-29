@@ -4,10 +4,13 @@ use actix_web::{web, Error, HttpRequest, HttpResponse};
 use bytemuck;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use log::{debug, error};
+use log::{debug};
 use std::time::{Duration, Instant};
+use serde_json;
 
 use crate::models::node::GPUNode;
+use crate::models::graph::GraphData;
+use crate::utils::websocket_messages::{SendBinary, SendText};
 
 // Constants for binary protocol
 const FLOAT32_SIZE: usize = std::mem::size_of::<f32>();
@@ -21,6 +24,15 @@ const HEARTBEAT_TIMEOUT: Duration = Duration::from_millis(5000);
 pub struct WebSocketManager {
     binary_buffer: Arc<Mutex<Vec<u8>>>,
     connections: Arc<Mutex<Vec<Addr<WebSocketSession>>>>,
+    addr: Option<Addr<Self>>,
+}
+
+impl Actor for WebSocketManager {
+    type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        self.addr = Some(ctx.address());
+    }
 }
 
 impl WebSocketManager {
@@ -28,7 +40,18 @@ impl WebSocketManager {
         Self {
             binary_buffer: Arc::new(Mutex::new(Vec::with_capacity(1024 * 1024))), // 1MB initial capacity
             connections: Arc::new(Mutex::new(Vec::new())),
+            addr: None,
         }
+    }
+
+    pub fn start(mut self) -> Addr<Self> {
+        let addr = Actor::start(self.clone());
+        self.addr = Some(addr.clone());
+        addr
+    }
+
+    pub fn get_addr(&self) -> Option<Addr<Self>> {
+        self.addr.clone()
     }
 
     pub async fn add_connection(&self, addr: Addr<WebSocketSession>) {
@@ -85,12 +108,24 @@ impl WebSocketManager {
         Ok(())
     }
 
+    pub async fn broadcast_graph_update(&self, graph: &GraphData) -> Result<(), Box<dyn std::error::Error>> {
+        // Create a message with type and data
+        let message = serde_json::json!({
+            "type": "graph_update",
+            "data": graph
+        });
+
+        // Serialize to string and broadcast
+        let message_str = serde_json::to_string(&message)?;
+        self.broadcast_message(&message_str).await
+    }
+
     pub async fn handle_websocket(
         req: HttpRequest,
         stream: web::Payload,
         websocket_manager: web::Data<Arc<WebSocketManager>>,
     ) -> Result<HttpResponse, Error> {
-        let ws = WebSocketSession::new(websocket_manager.get_ref().clone());
+        let ws = WebSocketSession::new(Arc::clone(&websocket_manager));
         ws::start(ws, &req, stream)
     }
 }
@@ -100,28 +135,20 @@ impl Clone for WebSocketManager {
         Self {
             binary_buffer: self.binary_buffer.clone(),
             connections: self.connections.clone(),
+            addr: self.addr.clone(),
         }
     }
 }
 
-// Message types for direct binary communication
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct SendBinary(pub Vec<u8>);
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct SendText(pub String);
-
 // WebSocket session actor
 pub struct WebSocketSession {
-    manager: WebSocketManager,
+    manager: Arc<WebSocketManager>,
     hb: Instant,
     last_pong: Instant,
 }
 
 impl WebSocketSession {
-    pub fn new(manager: WebSocketManager) -> Self {
+    pub fn new(manager: Arc<WebSocketManager>) -> Self {
         Self {
             manager,
             hb: Instant::now(),
