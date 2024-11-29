@@ -1,3 +1,4 @@
+<!-- Previous template section unchanged -->
 <template>
   <ErrorBoundary>
     <div id="app">
@@ -27,6 +28,7 @@
 </template>
 
 <script lang="ts">
+// Previous imports unchanged
 import { defineComponent, onMounted, onErrorCaptured, ref, onBeforeUnmount, ComponentPublicInstance, watch, computed, provide } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '../stores/settings'
@@ -42,7 +44,7 @@ import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edg
 import type { Node as CoreNode, Edge as CoreEdge, GraphNode, GraphEdge, GraphData } from '../types/core'
 import type { FisheyeConfig } from '../types/components'
 
-// Transform websocket node to core node
+// Transform functions unchanged
 const transformNode = (wsNode: WSNode): CoreNode => ({
   id: wsNode.id,
   label: wsNode.label || wsNode.id,
@@ -57,7 +59,6 @@ const transformNode = (wsNode: WSNode): CoreNode => ({
   group: wsNode.group
 });
 
-// Transform websocket edge to core edge
 const transformEdge = (wsEdge: WSEdge): CoreEdge => ({
   id: `${wsEdge.source}-${wsEdge.target}`,
   source: wsEdge.source,
@@ -79,20 +80,19 @@ export default defineComponent({
     GraphSystem
   },
   setup() {
-    // Initialize stores
+    // Store initializations unchanged
     const settingsStore = useSettingsStore()
     const visualizationStore = useVisualizationStore()
     const websocketStore = useWebSocketStore()
     const binaryUpdateStore = useBinaryUpdateStore()
 
-    // Get reactive refs from stores
     const { connected: isConnected } = storeToRefs(websocketStore)
     
     const sceneContainer = ref<HTMLElement | null>(null)
     const canvas = ref<HTMLCanvasElement | null>(null)
     const error = ref<string | null>(null)
 
-    // Get visualization settings
+    // Visualization settings unchanged
     const visualSettings = computed(() => {
       const settings = settingsStore.getVisualizationSettings;
       console.debug('Visualization settings:', {
@@ -113,20 +113,17 @@ export default defineComponent({
       return settings;
     });
 
-    // Initialize visualization system
     const { initialize: initVisualization, updateNodes, updatePositions, state: visualizationState } = useVisualization()
 
-    // Provide visualization state to child components
     provide('visualizationState', visualizationState)
 
-    // Set up WebSocket message handlers
     const setupWebSocketHandlers = () => {
       if (!websocketStore.service) {
         console.error('WebSocket service not initialized');
         return;
       }
 
-      // Handle JSON messages
+      // JSON message handler unchanged
       websocketStore.service.on('message', (message: BaseMessage) => {
         console.debug('Received message:', message)
         switch (message.type) {
@@ -149,21 +146,17 @@ export default defineComponent({
               } : null
             })
 
-            // Transform nodes and edges before setting graph data
             const transformedNodes = (graphData.nodes || []).map(transformNode)
             const transformedEdges = (graphData.edges || []).map(transformEdge)
             
-            // Set graph data in store
             visualizationStore.setGraphData(
               transformedNodes,
               transformedEdges,
               graphData.metadata || {}
             )
 
-            // Update visualization
             updateNodes(transformedNodes)
 
-            // Log graph data state after update
             console.log('Graph data state after update:', {
               storeNodes: visualizationStore.nodes.length,
               storeEdges: visualizationStore.edges.length,
@@ -184,28 +177,27 @@ export default defineComponent({
         }
       })
 
-      // Handle binary messages (GPU position updates)
+      // Updated binary message handler
       websocketStore.service.on('gpuPositions', (data: BinaryMessage) => {
         console.debug('Received GPU positions update:', {
-          positions: data.positions.length,
+          bufferSize: data.data.byteLength,
           isInitial: data.isInitialLayout,
-          sample: data.positions[0] ? {
-            id: data.positions[0].id,
-            position: [data.positions[0].x, data.positions[0].y, data.positions[0].z],
-            velocity: [data.positions[0].vx, data.positions[0].vy, data.positions[0].vz]
-          } : null
+          nodeCount: visualizationStore.nodes.length
         })
-        // Update visualization with position data
-        updatePositions(data.positions, data.isInitialLayout)
-        
-        // Store transient position updates
-        binaryUpdateStore.updatePositions(
-          data.positions,
-          data.isInitialLayout
-        )
+
+        // Update binary store with raw ArrayBuffer data
+        binaryUpdateStore.updateFromBinary(data)
+
+        // Get the processed TypedArrays from the store
+        const positions = binaryUpdateStore.getAllPositions
+        const velocities = binaryUpdateStore.getAllVelocities
+        const nodeCount = visualizationStore.nodes.length
+
+        // Update visualization with TypedArrays and node count
+        updatePositions(positions, velocities, nodeCount)
       })
 
-      // Handle connection events
+      // Connection event handlers unchanged
       websocketStore.service.on('open', () => {
         console.log('WebSocket connected')
         error.value = null
@@ -226,20 +218,18 @@ export default defineComponent({
       })
     }
 
+    // Rest of the component unchanged
     onMounted(async () => {
       try {
-        // Initialize settings with defaults
         settingsStore.applyServerSettings({})
         console.info('Settings initialized', {
           context: 'App Setup',
           settings: settingsStore.$state
         })
 
-        // Initialize visualization system
         if (canvas.value && sceneContainer.value) {
           console.log('Initializing visualization system...')
           
-          // Set initial canvas size
           const rect = sceneContainer.value.getBoundingClientRect()
           canvas.value.width = rect.width
           canvas.value.height = rect.height
@@ -255,19 +245,14 @@ export default defineComponent({
           })
           console.log('Visualization system initialized')
 
-          // Provide scene to child components
           if (visualizationState.value.scene) {
             provide(SCENE_KEY, visualizationState.value.scene)
           }
         }
 
-        // Initialize WebSocket through store
         await websocketStore.initialize()
-        
-        // Set up WebSocket handlers after initialization
         setupWebSocketHandlers()
 
-        // Log environment info
         console.info('Application initialized', {
           context: 'App Initialization',
           environment: process.env.NODE_ENV
@@ -284,12 +269,10 @@ export default defineComponent({
     })
 
     onBeforeUnmount(() => {
-      // Clean up stores
       websocketStore.cleanup()
       binaryUpdateStore.clear()
     })
 
-    // Additional error handling at app level
     onErrorCaptured((err, instance: ComponentPublicInstance | null, info) => {
       error.value = err instanceof Error ? err.message : 'An error occurred'
       errorTracking.trackError(err, {
@@ -297,7 +280,6 @@ export default defineComponent({
         component: (instance as any)?.$options?.name || 'Unknown',
         additional: { info }
       })
-      // Let the error boundary handle it
       return false
     })
 
@@ -320,6 +302,7 @@ export default defineComponent({
 </script>
 
 <style>
+/* Styles unchanged */
 body, html {
   margin: 0;
   padding: 0;
