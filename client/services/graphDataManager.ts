@@ -121,19 +121,16 @@ export default class GraphDataManager {
     // Log binary update stats
     console.debug('Processing binary position update:', {
       bufferSize: data.data.byteLength,
-      isInitialLayout: data.isInitialLayout,
       nodeCount,
       numMappedNodes: this.nodeMap.size
     })
 
-    // Skip first float (isInitialLayout flag)
-    let offset = 1
-    
     // Update node positions from binary data
     for (let i = 0; i < nodeCount; i++) {
       const node = this.graphData.nodes[i]
       if (node) {
         // Each node has 6 floats: x,y,z,vx,vy,vz
+        const offset = i * 6
         node.position = [
           dataView[offset],
           dataView[offset + 1],
@@ -144,7 +141,6 @@ export default class GraphDataManager {
           dataView[offset + 4],
           dataView[offset + 5]
         ]
-        offset += 6
       }
     }
 
@@ -162,7 +158,6 @@ export default class GraphDataManager {
     window.dispatchEvent(new CustomEvent('graphData:positions', {
       detail: {
         data: data.data,
-        isInitialLayout: data.isInitialLayout,
         nodeCount
       }
     }))

@@ -4,14 +4,12 @@ import type {
   WebSocketEventCallback,
   BaseMessage,
   ErrorMessage,
-  GraphUpdateMessage,
   BinaryMessage,
-  MessageType,
-  SimulationModeMessage,
-  SettingsUpdatedMessage,
-  FisheyeUpdateMessage,
-  RagflowResponse
+  GraphUpdateMessage,
+  NodePosition
 } from '../types/websocket'
+
+import { processPositionUpdate } from '../utils/gpuUtils'
 
 import {
   DEFAULT_RECONNECT_ATTEMPTS,
@@ -21,11 +19,10 @@ import {
   DEFAULT_MAX_MESSAGE_SIZE,
   DEFAULT_MAX_AUDIO_SIZE,
   DEFAULT_MAX_QUEUE_SIZE,
-  CONNECTION_TIMEOUT,
-  SERVER_MESSAGE_TYPES,
-  ERROR_CODES,
-  ENABLE_BINARY_DEBUG,
-  MESSAGE_FIELDS
+  MAX_VALID_POSITION,
+  MIN_VALID_POSITION,
+  MAX_VALID_VELOCITY,
+  MIN_VALID_VELOCITY
 } from '../constants/websocket'
 
 const DEFAULT_CONFIG: WebSocketConfig = {
@@ -48,11 +45,16 @@ export default class WebsocketService {
   private reconnectTimeout: number | null = null;
   private eventListeners: Map<keyof WebSocketEventMap, Set<WebSocketEventCallback<any>>> = new Map();
   private url: string;
-  private isInitialDataReceived = false;
+  // Store node IDs and their indices for binary updates
+  private nodeIdToIndex: Map<string, number> = new Map();
+  private indexToNodeId: string[] = [];
 
   constructor(config: Partial<WebSocketConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    
+    // Use relative path for WebSocket to maintain protocol and host
     this.url = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
+
     console.debug('WebSocket URL:', this.url);
   }
 
@@ -69,26 +71,20 @@ export default class WebsocketService {
         this.ws = new WebSocket(this.url);
         this.ws.binaryType = 'arraybuffer';
 
+        // Set a connection timeout
         const connectionTimeout = setTimeout(() => {
           if (this.ws?.readyState !== WebSocket.OPEN) {
             console.error('WebSocket connection timeout');
-            this.cleanup();
-            reject(new Error(ERROR_CODES.CONNECTION_FAILED));
+            this.ws?.close();
+            reject(new Error('WebSocket connection timeout'));
           }
-        }, CONNECTION_TIMEOUT);
+        }, 10000); // 10 second timeout
 
         this.ws.onopen = () => {
           clearTimeout(connectionTimeout);
           console.debug('WebSocket connection established');
           this.reconnectAttempts = 0;
           this.emit('open');
-
-          // Request initial data immediately after connection
-          if (!this.isInitialDataReceived) {
-            console.debug('Requesting initial data');
-            this.send({ type: SERVER_MESSAGE_TYPES.INITIAL_DATA });
-          }
-
           this.processQueuedMessages();
           resolve();
         };
@@ -100,19 +96,17 @@ export default class WebsocketService {
             reason: event.reason,
             wasClean: event.wasClean
           });
-          this.handleConnectionClose(event.wasClean);
+          this.handleConnectionClose();
         };
 
         this.ws.onerror = (error) => {
           clearTimeout(connectionTimeout);
           console.error('WebSocket connection error:', error);
           const errorMsg: ErrorMessage = {
-            type: SERVER_MESSAGE_TYPES.ERROR,
-            message: 'WebSocket connection error',
-            code: ERROR_CODES.CONNECTION_FAILED
+            type: 'error',
+            message: 'WebSocket connection error'
           };
           this.emit('error', errorMsg);
-          this.cleanup();
           reject(error);
         };
 
@@ -120,7 +114,6 @@ export default class WebsocketService {
 
       } catch (error) {
         console.error('Error creating WebSocket connection:', error);
-        this.cleanup();
         reject(error);
       }
     });
@@ -129,142 +122,90 @@ export default class WebsocketService {
   private handleMessage(event: MessageEvent): void {
     try {
       if (event.data instanceof ArrayBuffer) {
-        if (ENABLE_BINARY_DEBUG) {
-          console.debug('Received binary message:', {
-            size: event.data.byteLength,
-            timestamp: new Date().toISOString()
-          });
+        // Handle binary message (position updates)
+        const result = processPositionUpdate(event.data);
+        if (!result) {
+          throw new Error('Failed to process position update');
         }
 
-        // Handle binary position updates
-        const dataView = new Float32Array(event.data);
-        const isInitialLayout = dataView[0] >= 1.0;
-        
-        // Calculate node count from buffer size
-        // Buffer contains: isInitialLayout(1) + (x,y,z,vx,vy,vz)(6) per node
-        const totalFloats = dataView.length - 1; // Subtract isInitialLayout flag
-        const nodeCount = totalFloats / 6; // 6 floats per node
-        
+        // Validate node count matches expected
+        if (result.positions.length !== this.indexToNodeId.length) {
+          console.warn(`Position update node count mismatch: expected ${this.indexToNodeId.length}, got ${result.positions.length}`);
+        }
+
+        // Map positions to node IDs
+        const positions = result.positions.map((pos, index) => {
+          const nodeId = this.indexToNodeId[index];
+          if (!nodeId) {
+            console.warn(`No stored ID for node index ${index}`);
+            return null;
+          }
+          return {
+            ...pos,
+            id: nodeId
+          };
+        }).filter((pos): pos is NodePosition & { id: string } => pos !== null);
+
         const binaryMessage: BinaryMessage = {
           data: event.data,
-          isInitialLayout,
-          nodeCount
+          positions,
+          nodeCount: this.indexToNodeId.length
         };
-        
+
         this.emit('gpuPositions', binaryMessage);
-        return;
-      }
 
-      // Handle JSON messages
-      const message = JSON.parse(event.data) as BaseMessage;
-      const type = message.type as MessageType;
-
-      // Always emit the raw message
-      this.emit('message', message);
-
-      // Handle specific message types
-      switch (type) {
-        case SERVER_MESSAGE_TYPES.GRAPH_UPDATE:
-          const graphMsg = message as GraphUpdateMessage;
-          const graphData = graphMsg.graphData || graphMsg[MESSAGE_FIELDS.GRAPH_DATA];
-          if (graphData) {
-            this.emit('graphUpdate', {
-              type: SERVER_MESSAGE_TYPES.GRAPH_UPDATE,
-              graphData,
-              graph_data: graphData // Include both versions for compatibility
-            });
-            this.isInitialDataReceived = true;
-          }
-          break;
-
-        case SERVER_MESSAGE_TYPES.ERROR:
-          const errorMessage = message as ErrorMessage;
-          this.emit('error', {
-            type: SERVER_MESSAGE_TYPES.ERROR,
-            message: errorMessage[MESSAGE_FIELDS.MESSAGE],
-            details: errorMessage[MESSAGE_FIELDS.DETAILS],
-            code: errorMessage[MESSAGE_FIELDS.CODE]
-          });
-          break;
-
-        case SERVER_MESSAGE_TYPES.POSITION_UPDATE_COMPLETE:
-          this.emit('positionUpdateComplete', message[MESSAGE_FIELDS.STATUS] || 'complete');
-          // Also emit the is_initial_layout flag if present
-          if (MESSAGE_FIELDS.IS_INITIAL_LAYOUT in message) {
-            this.emit('message', {
-              type: SERVER_MESSAGE_TYPES.LAYOUT_STATE,
-              isInitial: message[MESSAGE_FIELDS.IS_INITIAL_LAYOUT]
-            });
-          }
-          break;
-
-        case SERVER_MESSAGE_TYPES.SIMULATION_MODE_SET:
-          const simMessage = message as SimulationModeMessage;
-          this.emit('simulationModeSet', simMessage[MESSAGE_FIELDS.MODE]);
-          // Also emit GPU state if present
-          if (MESSAGE_FIELDS.GPU_ENABLED in simMessage) {
-            this.emit('message', {
-              type: SERVER_MESSAGE_TYPES.GPU_STATE,
-              enabled: simMessage[MESSAGE_FIELDS.GPU_ENABLED]
-            });
-          }
-          break;
-
-        case SERVER_MESSAGE_TYPES.SETTINGS_UPDATED:
-          const settingsMessage = message as SettingsUpdatedMessage;
-          this.emit('serverSettings', settingsMessage.settings);
-          break;
-
-        case SERVER_MESSAGE_TYPES.FISHEYE_SETTINGS_UPDATED:
-          const fisheyeMessage = message as FisheyeUpdateMessage & { focus_point?: [number, number, number] };
-          // Handle both focus_point array and individual coordinates
-          const focusPoint = fisheyeMessage[MESSAGE_FIELDS.FOCUS_POINT] || [0, 0, 0];
+      } else {
+        // Handle JSON message
+        const message = JSON.parse(event.data) as BaseMessage;
+        
+        // Handle graph updates and store node mappings
+        if (message.type === 'graphUpdate') {
+          const graphMessage = message as GraphUpdateMessage;
+          const graphData = graphMessage.graphData || graphMessage.graph_data;
           
-          this.emit('serverSettings', {
-            fisheye: {
-              enabled: fisheyeMessage[MESSAGE_FIELDS.ENABLED],
-              strength: fisheyeMessage[MESSAGE_FIELDS.STRENGTH],
-              focusPoint,
-              radius: fisheyeMessage[MESSAGE_FIELDS.RADIUS]
-            }
-          });
-          break;
-
-        case SERVER_MESSAGE_TYPES.RAGFLOW_RESPONSE:
-          const ragflowMessage = message as RagflowResponse;
-          this.emit('ragflowAnswer', ragflowMessage.answer);
-          break;
-
-        case SERVER_MESSAGE_TYPES.OPENAI_RESPONSE:
-          this.emit('openaiResponse', message.response);
-          break;
-
-        case SERVER_MESSAGE_TYPES.COMPLETION:
-          this.emit('completion', message.text);
-          break;
-
-        default:
-          console.debug('Unhandled message type:', type);
-          break;
+          if (graphData?.nodes) {
+            // Clear existing mappings
+            this.nodeIdToIndex.clear();
+            this.indexToNodeId = [];
+            
+            // Store node IDs in order for binary updates
+            graphData.nodes.forEach((node, index) => {
+              this.nodeIdToIndex.set(node.id, index);
+              this.indexToNodeId[index] = node.id;
+            });
+            
+            console.debug('Node ID mappings updated:', {
+              count: this.indexToNodeId.length,
+              sampleIds: this.indexToNodeId.slice(0, 3)
+            });
+          }
+          
+          this.emit('graphUpdate', graphMessage);
+        } else {
+          this.emit('message', message);
+          
+          // Handle specific message types
+          if (message.type === 'error') {
+            this.emit('error', message as ErrorMessage);
+          }
+        }
       }
     } catch (error) {
       console.error('Error handling WebSocket message:', error);
       const errorMsg: ErrorMessage = {
-        type: SERVER_MESSAGE_TYPES.ERROR,
-        message: 'Error processing message',
-        code: ERROR_CODES.INVALID_MESSAGE
+        type: 'error',
+        message: 'Error processing message'
       };
       this.emit('error', errorMsg);
     }
   }
 
-  private handleConnectionClose(wasClean: boolean): void {
+  private handleConnectionClose(): void {
     this.emit('close');
-    this.isInitialDataReceived = false;
     
-    if (!wasClean && this.reconnectAttempts < this.config.maxRetries) {
+    if (this.reconnectAttempts < this.config.maxRetries) {
       this.reconnectAttempts++;
-      const delay = this.calculateReconnectDelay();
+      const delay = this.config.retryDelay * Math.pow(2, this.reconnectAttempts - 1); // Exponential backoff
       console.debug(`Connection failed. Retrying in ${delay}ms...`);
       
       this.reconnectTimeout = window.setTimeout(() => {
@@ -272,22 +213,10 @@ export default class WebsocketService {
           console.error('Reconnection attempt failed:', error);
         });
       }, delay);
-    } else if (!wasClean) {
+    } else {
       console.error('Max reconnection attempts reached');
       this.emit('maxReconnectAttemptsReached');
-      this.emit('error', {
-        type: SERVER_MESSAGE_TYPES.ERROR,
-        message: 'Maximum reconnection attempts reached',
-        code: ERROR_CODES.MAX_RETRIES_EXCEEDED
-      });
     }
-  }
-
-  private calculateReconnectDelay(): number {
-    const baseDelay = this.config.retryDelay;
-    const exponentialDelay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
-    const jitter = Math.random() * 1000; // Add up to 1 second of jitter
-    return Math.min(exponentialDelay + jitter, 30000); // Cap at 30 seconds
   }
 
   public send(data: any): void {
@@ -316,21 +245,20 @@ export default class WebsocketService {
     try {
       const message = JSON.stringify(data);
       if (message.length > this.config.maxMessageSize) {
-        throw new Error(ERROR_CODES.MESSAGE_TOO_LARGE);
+        throw new Error('Message exceeds maximum size');
       }
       
       this.ws.send(message);
       this.messageCount++;
       this.lastMessageTime = now;
+
+      // Process queued messages
       this.processQueue();
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMsg: ErrorMessage = {
-        type: SERVER_MESSAGE_TYPES.ERROR,
-        message: 'Error sending message',
-        code: error instanceof Error && error.message === ERROR_CODES.MESSAGE_TOO_LARGE
-          ? ERROR_CODES.MESSAGE_TOO_LARGE
-          : ERROR_CODES.INVALID_MESSAGE
+        type: 'error',
+        message: 'Error sending message'
       };
       this.emit('error', errorMsg);
     }
@@ -394,7 +322,7 @@ export default class WebsocketService {
     }
 
     if (this.ws) {
-      this.ws.onclose = null;
+      this.ws.onclose = null; // Prevent reconnection attempt
       this.ws.close();
       this.ws = null;
     }
@@ -404,6 +332,7 @@ export default class WebsocketService {
     this.lastMessageTime = 0;
     this.reconnectAttempts = 0;
     this.eventListeners.clear();
-    this.isInitialDataReceived = false;
+    this.nodeIdToIndex.clear();
+    this.indexToNodeId = [];
   }
 }

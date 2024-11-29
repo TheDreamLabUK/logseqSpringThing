@@ -31,22 +31,12 @@ export function useGraphSystem() {
 
   // Computed states from WebSocket store
   const isGPUEnabled = computed(() => webSocketStore.isGPUEnabled);
-  const isInitialLayout = computed(() => webSocketStore.isInitialLayoutPhase);
 
   // Watch for GPU state changes
   watch(isGPUEnabled, (enabled) => {
     console.debug(`GPU acceleration ${enabled ? 'enabled' : 'disabled'}`);
     if (visualizationState?.value.scene) {
       visualizationState.value.scene.userData.gpuEnabled = enabled;
-      visualizationState.value.scene.userData.needsRender = true;
-    }
-  });
-
-  // Watch for layout phase changes
-  watch(isInitialLayout, (initial) => {
-    console.debug(`Layout phase: ${initial ? 'initial' : 'dynamic'}`);
-    if (visualizationState?.value.scene) {
-      visualizationState.value.scene.userData.initialLayout = initial;
       visualizationState.value.scene.userData.needsRender = true;
     }
   });
@@ -150,8 +140,7 @@ export function useGraphSystem() {
     console.debug('Node clicked:', { 
       id: node.id, 
       position,
-      gpuEnabled: isGPUEnabled.value,
-      layoutPhase: isInitialLayout.value ? 'initial' : 'dynamic'
+      gpuEnabled: isGPUEnabled.value
     });
   };
 
@@ -163,7 +152,7 @@ export function useGraphSystem() {
     }
   };
 
-  // Graph data management with GPU and layout phase awareness
+  // Graph data management with GPU awareness
   const updateGraphData = (graphData: { nodes: GraphNode[]; edges: GraphEdge[] }) => {
     if (isProcessingUpdate.value) return; // Prevent concurrent updates
     
@@ -171,17 +160,14 @@ export function useGraphSystem() {
     try {
       nodeCount.value = graphData.nodes.length;
       
-      // Create binary message with initial positions
-      const dataSize = 1 + (nodeCount.value * 6); // isInitialLayout flag + (x,y,z,vx,vy,vz) per node
+      // Create binary data for positions and velocities
+      const dataSize = nodeCount.value * 6; // (x,y,z,vx,vy,vz) per node
       const binaryData = new ArrayBuffer(dataSize * 4); // 4 bytes per float
       const dataView = new Float32Array(binaryData);
       
-      // Set isInitialLayout flag based on current state
-      dataView[0] = isInitialLayout.value ? 1 : 0;
-      
       // Fill position and velocity data
-      let offset = 1; // Start after flag
       graphData.nodes.forEach((node, index) => {
+        const offset = index * 6;
         // Set positions
         dataView[offset] = node.position?.[0] || 0;
         dataView[offset + 1] = node.position?.[1] || 0;
@@ -191,14 +177,22 @@ export function useGraphSystem() {
         dataView[offset + 3] = node.velocity?.[0] || 0;
         dataView[offset + 4] = node.velocity?.[1] || 0;
         dataView[offset + 5] = node.velocity?.[2] || 0;
-        
-        offset += 6;
       });
 
-      // Update binary store using the same format as websocket messages
+      // Update binary store
       binaryStore.updateFromBinary({
         data: binaryData,
-        isInitialLayout: isInitialLayout.value,
+        positions: graphData.nodes.map((node, index) => {
+          const offset = index * 6;
+          return {
+            x: dataView[offset],
+            y: dataView[offset + 1],
+            z: dataView[offset + 2],
+            vx: dataView[offset + 3],
+            vy: dataView[offset + 4],
+            vz: dataView[offset + 5]
+          };
+        }),
         nodeCount: nodeCount.value
       });
 
@@ -207,7 +201,6 @@ export function useGraphSystem() {
         visualizationState.value.scene.userData.needsRender = true;
         visualizationState.value.scene.userData.lastUpdate = performance.now();
         visualizationState.value.scene.userData.gpuEnabled = isGPUEnabled.value;
-        visualizationState.value.scene.userData.initialLayout = isInitialLayout.value;
       }
     } finally {
       isProcessingUpdate.value = false;
@@ -227,7 +220,6 @@ export function useGraphSystem() {
       visualizationState.value.scene.userData.nodesGroup = nodesGroup;
       visualizationState.value.scene.userData.edgesGroup = edgesGroup;
       visualizationState.value.scene.userData.gpuEnabled = isGPUEnabled.value;
-      visualizationState.value.scene.userData.initialLayout = isInitialLayout.value;
     }
   });
 
@@ -241,7 +233,6 @@ export function useGraphSystem() {
     hoveredNode,
     nodeCount,
     isGPUEnabled,
-    isInitialLayout,
     
     // Node helpers
     getNodePosition,

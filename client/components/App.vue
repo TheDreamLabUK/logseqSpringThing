@@ -211,7 +211,6 @@ export default defineComponent({
         if (ENABLE_BINARY_DEBUG) {
           console.debug('Received GPU positions update:', {
             bufferSize: data.data.byteLength,
-            isInitial: data.isInitialLayout,
             nodeCount: visualizationStore.nodes.length
           });
         }

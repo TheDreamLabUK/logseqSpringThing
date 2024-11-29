@@ -15,7 +15,6 @@ interface WebSocketState {
   connectionAttempts: number
   lastReconnectTime: number
   gpuEnabled: boolean
-  isInitialLayout: boolean
   performanceMetrics: {
     avgMessageProcessingTime: number
     messageProcessingSamples: number[]
@@ -39,7 +38,6 @@ export const useWebSocketStore = defineStore('websocket', {
     connectionAttempts: 0,
     lastReconnectTime: 0,
     gpuEnabled: false,
-    isInitialLayout: true,
     performanceMetrics: {
       avgMessageProcessingTime: 0,
       messageProcessingSamples: [],
@@ -64,8 +62,7 @@ export const useWebSocketStore = defineStore('websocket', {
       if (avgMessageProcessingTime > 50 || avgPositionUpdateTime > 8) return 'fair'
       return 'good'
     },
-    isGPUEnabled: (state) => state.gpuEnabled,
-    isInitialLayoutPhase: (state) => state.isInitialLayout
+    isGPUEnabled: (state) => state.gpuEnabled
   },
 
   actions: {
@@ -130,8 +127,7 @@ export const useWebSocketStore = defineStore('websocket', {
         const startTime = performance.now()
         
         try {
-          this.isInitialLayout = message.isInitialLayout
-          binaryUpdateStore.updateFromBinary(message.data, message.isInitialLayout)
+          binaryUpdateStore.updateFromBinary(message)
         } catch (error) {
           console.error('Error processing position update:', error)
         }
@@ -144,15 +140,11 @@ export const useWebSocketStore = defineStore('websocket', {
         visualizationStore.setSimulationMode(mode)
       })
 
-      // Handle all messages to catch GPU and layout state updates
+      // Handle all messages to catch GPU state updates
       this.service.on('message', (message: BaseMessage) => {
         if (message.type === 'gpu_state' && 'enabled' in message) {
           this.gpuEnabled = message.enabled
           console.debug(`GPU acceleration ${message.enabled ? 'enabled' : 'disabled'}`)
-        }
-        else if (message.type === 'layout_state' && 'isInitial' in message) {
-          this.isInitialLayout = message.isInitial
-          console.debug(`Layout phase: ${message.isInitial ? 'initial' : 'dynamic'}`)
         }
       })
     },
@@ -291,7 +283,6 @@ export const useWebSocketStore = defineStore('websocket', {
       this.connectionAttempts = 0
       this.lastReconnectTime = 0
       this.gpuEnabled = false
-      this.isInitialLayout = true
       this.performanceMetrics = {
         avgMessageProcessingTime: 0,
         messageProcessingSamples: [],
