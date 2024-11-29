@@ -3,7 +3,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { useSettingsStore } from '../stores/settings';
 import type { Node, Edge, CoreState, InitializationOptions, GraphNode, GraphEdge } from '../types/core';
-import type { PositionUpdate } from '../types/websocket';
 import { POSITION_SCALE, VELOCITY_SCALE } from '../constants/websocket';
 import { VISUALIZATION_CONSTANTS, LIGHT_SETTINGS } from '../constants/visualization';
 
@@ -51,9 +50,10 @@ export function useVisualization() {
     lastFrameTime: 0
   });
 
-  // Track meshes for updates - using Maps to avoid reactivity issues
+  // Track meshes and indices for updates
   const nodeMeshes = new Map<string, THREE.Mesh>();
   const edgeMeshes = new Map<string, THREE.Line>();
+  const nodeIndices = new Map<string, number>(); // Map node IDs to array indices
   const nodeContainer = markRaw(new THREE.Group());
   const edgeContainer = markRaw(new THREE.Group());
   
@@ -291,17 +291,29 @@ export function useVisualization() {
   };
 
   // Handle binary position updates
-  const updatePositions = (positions: PositionUpdate[], isInitialLayout: boolean) => {
+  const updatePositions = (positions: Float32Array, velocities: Float32Array, nodeCount: number) => {
     if (!state.value.scene || !state.value.isInitialized) return;
 
-    positions.forEach(pos => {
-      const mesh = nodeMeshes.get(pos.id);
-      if (mesh) {
-        // Positions are already scaled in WebSocket service
-        mesh.position.set(pos.x, pos.y, pos.z);
+    // Update each node's position based on its index
+    nodeMeshes.forEach((mesh, nodeId) => {
+      const index = nodeIndices.get(nodeId);
+      if (index !== undefined && index < nodeCount) {
+        const posOffset = index * 3;
+        const velOffset = index * 3;
 
-        // Store velocity in userData for potential use in animations
-        mesh.userData.velocity = new THREE.Vector3(pos.vx, pos.vy, pos.vz);
+        // Update mesh position
+        mesh.position.set(
+          positions[posOffset],
+          positions[posOffset + 1],
+          positions[posOffset + 2]
+        );
+
+        // Store velocity in userData
+        mesh.userData.velocity = new THREE.Vector3(
+          velocities[velOffset],
+          velocities[velOffset + 1],
+          velocities[velOffset + 2]
+        );
 
         // Update connected edges
         const nodeData = mesh.userData.originalData as GraphNode;
@@ -313,9 +325,9 @@ export function useVisualization() {
               const geometry = edgeMesh.geometry as THREE.BufferGeometry;
               const positions = geometry.getAttribute('position');
               
-              if (edge.source === pos.id) {
+              if (edge.source === nodeId) {
                 positions.setXYZ(0, mesh.position.x, mesh.position.y, mesh.position.z);
-              } else if (edge.target === pos.id) {
+              } else if (edge.target === nodeId) {
                 positions.setXYZ(1, mesh.position.x, mesh.position.y, mesh.position.z);
               }
               positions.needsUpdate = true;
@@ -331,23 +343,23 @@ export function useVisualization() {
 
     // Log update in development
     if (process.env.NODE_ENV === 'development') {
-      const samplePos = positions[0];
       console.debug('Position update:', {
-        count: positions.length,
-        isInitial: isInitialLayout,
+        nodeCount,
         meshCount: nodeMeshes.size,
-        sample: samplePos ? {
-          id: samplePos.id,
-          position: [samplePos.x, samplePos.y, samplePos.z],
-          velocity: [samplePos.vx, samplePos.vy, samplePos.vz]
+        sample: nodeCount > 0 ? {
+          position: [positions[0], positions[1], positions[2]],
+          velocity: [velocities[0], velocities[1], velocities[2]]
         } : null
       });
     }
   };
 
-  // Update nodes
+  // Update nodes and maintain index mapping
   const updateNodes = (nodes: Node[]) => {
     if (!state.value.scene) return;
+
+    // Clear old index mappings
+    nodeIndices.clear();
 
     // Remove old nodes
     const currentIds = new Set(nodes.map(n => n.id));
@@ -360,8 +372,10 @@ export function useVisualization() {
       }
     });
 
-    // Add or update nodes
-    nodes.forEach(node => {
+    // Add or update nodes and store indices
+    nodes.forEach((node, index) => {
+      nodeIndices.set(node.id, index);
+      
       let mesh = nodeMeshes.get(node.id);
       
       if (!mesh) {
@@ -415,8 +429,10 @@ export function useVisualization() {
         count: nodes.length,
         meshCount: nodeMeshes.size,
         edgeCount: edgeMeshes.size,
+        indexMapSize: nodeIndices.size,
         sample: nodes[0] ? {
           id: nodes[0].id,
+          index: nodeIndices.get(nodes[0].id),
           position: nodes[0].position ? scalePosition(nodes[0].position) : null,
           size: nodes[0].size
         } : null

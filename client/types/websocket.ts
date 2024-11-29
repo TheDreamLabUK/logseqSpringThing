@@ -24,35 +24,17 @@ export type MessageType =
   | 'updateNodePosition'
   | 'updateNodeVelocity';
 
-// Position Types
-export interface Position {
-  id: string;
-  x: number;
-  y: number;
-  z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-}
-
-export interface PositionUpdate {
-  positions: Position[];
-  isInitialLayout: boolean;
-}
-
 // Binary Protocol Types
-export interface BinaryMessage extends PositionUpdate {
-  data: ArrayBuffer;
+export interface BinaryMessage {
+  data: ArrayBuffer;        // Raw binary data in format:
+                           // [isInitial(4)] + [x,y,z,vx,vy,vz](24) per node
+                           // Node index in array matches index in original graph data
+  isInitialLayout: boolean; // First 4 bytes flag
 }
 
-// WebSocket Message Interfaces
-export interface BaseMessage {
-  type: MessageType;
-  [key: string]: any;
-}
-
+// Graph Data (establishes node order for binary updates)
 export interface GraphData {
-  nodes: Node[];
+  nodes: Node[];  // Order of nodes here determines binary update indices
   edges: Edge[];
   metadata?: Record<string, any>;
 }
@@ -78,6 +60,13 @@ export interface GraphUpdateMessage extends BaseMessage {
   graph_data?: GraphData; // snake_case version from server
 }
 
+// Base Message Interface
+export interface BaseMessage {
+  type: MessageType;
+  [key: string]: any;
+}
+
+// Settings Interfaces
 export interface FisheyeSettings {
   enabled: boolean;
   strength: number;
@@ -110,6 +99,7 @@ export interface BloomSettings {
   threshold: number;
 }
 
+// Message Type Interfaces
 export interface FisheyeUpdateMessage extends BaseMessage {
   type: 'fisheye_settings_updated';
   fisheye_enabled: boolean;
@@ -162,7 +152,7 @@ export interface SettingsUpdatedMessage extends BaseMessage {
   };
 }
 
-// WebSocket Service Configuration Types
+// WebSocket Configuration
 export interface WebSocketConfig {
   messageRateLimit: number;
   messageTimeWindow: number;
