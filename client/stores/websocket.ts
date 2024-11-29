@@ -12,7 +12,19 @@ interface WebSocketState {
   lastMessageTime: number
   messageCount: number
   queueSize: number
+  connectionAttempts: number
+  lastReconnectTime: number
+  performanceMetrics: {
+    avgMessageProcessingTime: number
+    messageProcessingSamples: number[]
+    avgPositionUpdateTime: number
+    positionUpdateSamples: number[]
+    lastPerformanceReset: number
+  }
 }
+
+const MAX_PERFORMANCE_SAMPLES = 100;
+const PERFORMANCE_RESET_INTERVAL = 60000; // Reset metrics every minute
 
 export const useWebSocketStore = defineStore('websocket', {
   state: (): WebSocketState => ({
@@ -21,8 +33,34 @@ export const useWebSocketStore = defineStore('websocket', {
     service: null,
     lastMessageTime: 0,
     messageCount: 0,
-    queueSize: 0
+    queueSize: 0,
+    connectionAttempts: 0,
+    lastReconnectTime: 0,
+    performanceMetrics: {
+      avgMessageProcessingTime: 0,
+      messageProcessingSamples: [],
+      avgPositionUpdateTime: 0,
+      positionUpdateSamples: [],
+      lastPerformanceReset: Date.now()
+    }
   }),
+
+  getters: {
+    isConnected: (state) => state.connected,
+    hasError: (state) => state.error !== null,
+    connectionHealth: (state) => {
+      if (!state.connected) return 'disconnected'
+      if (state.error) return 'error'
+      if (state.connectionAttempts > 0) return 'unstable'
+      return 'healthy'
+    },
+    performanceStatus: (state) => {
+      const { avgMessageProcessingTime, avgPositionUpdateTime } = state.performanceMetrics
+      if (avgMessageProcessingTime > 100 || avgPositionUpdateTime > 16) return 'poor'
+      if (avgMessageProcessingTime > 50 || avgPositionUpdateTime > 8) return 'fair'
+      return 'good'
+    }
+  },
 
   actions: {
     async initialize() {
@@ -36,85 +74,150 @@ export const useWebSocketStore = defineStore('websocket', {
 
       this.service = new WebsocketService()
       
-      // Set up event handlers
+      this._setupEventHandlers(visualizationStore, binaryUpdateStore)
+      
+      try {
+        await this.service.connect()
+      } catch (error) {
+        this._handleConnectionError(error)
+        throw error
+      }
+    },
+
+    _setupEventHandlers(visualizationStore: any, binaryUpdateStore: any) {
+      if (!this.service) return
+
       this.service.on('open', () => {
         console.debug('WebSocket connected, requesting initial data')
         this.connected = true
         this.error = null
-        // Request initial data immediately after connection
+        this.connectionAttempts = 0
         this.requestInitialData()
       })
 
       this.service.on('close', () => {
         this.connected = false
+        this._handleDisconnect()
       })
 
       this.service.on('error', (error: ErrorMessage) => {
-        this.error = error.message || 'Unknown error'
+        this._handleError(error)
       })
 
-      // Handle graph updates
+      this.service.on('maxReconnectAttemptsReached', () => {
+        this._handleMaxReconnectAttempts()
+      })
+
       this.service.on('graphUpdate', (message: GraphUpdateMessage) => {
-        console.debug('Received graph update:', {
-          nodeCount: (message.graphData || message.graph_data)?.nodes?.length || 0,
-          edgeCount: (message.graphData || message.graph_data)?.edges?.length || 0,
-          timestamp: new Date().toISOString()
-        })
-
-        // Get graph data from either camelCase or snake_case field
-        const graphData = message.graphData || message.graph_data
-        if (!graphData) {
-          console.warn('No graph data found in message')
-          return
+        const startTime = performance.now()
+        
+        try {
+          this._handleGraphUpdate(message, visualizationStore)
+        } catch (error) {
+          console.error('Error processing graph update:', error)
         }
-        
-        // Convert websocket edges to core edges by adding IDs
-        const edges: Edge[] = graphData.edges.map((edge: WsEdge) => ({
-          ...edge,
-          id: `${edge.source}-${edge.target}` // Generate ID from source and target
-        }))
 
-        // Update visualization store with new graph data
-        visualizationStore.setGraphData(
-          graphData.nodes as Node[],
-          edges,
-          graphData.metadata
-        )
+        this._updateMessageProcessingMetrics(performance.now() - startTime)
       })
 
-      // Handle binary position updates
       this.service.on('gpuPositions', (message: BinaryMessage) => {
-        console.debug('Received binary position update:', {
-          positionCount: message.positions.length,
-          isInitialLayout: message.isInitialLayout,
-          timestamp: new Date().toISOString()
-        })
+        const startTime = performance.now()
         
-        // Update binary update store
-        binaryUpdateStore.updatePositions(message.positions, message.isInitialLayout)
+        try {
+          binaryUpdateStore.updateFromBinary(message.data, message.isInitialLayout)
+        } catch (error) {
+          console.error('Error processing position update:', error)
+        }
+
+        this._updatePositionUpdateMetrics(performance.now() - startTime)
+      })
+    },
+
+    _handleGraphUpdate(message: GraphUpdateMessage, visualizationStore: any) {
+      console.debug('Received graph update:', {
+        nodeCount: message.graphData?.nodes?.length || 0,
+        edgeCount: message.graphData?.edges?.length || 0,
+        timestamp: new Date().toISOString()
       })
 
-      // Connect to server
-      try {
-        await this.service.connect()
-      } catch (error) {
-        this.error = error instanceof Error ? error.message : 'Unknown error'
-        throw error
+      if (!message.graphData) {
+        console.warn('No graph data found in message')
+        return
       }
+
+      const edges: Edge[] = message.graphData.edges.map((edge: WsEdge) => ({
+        ...edge,
+        id: `${edge.source}-${edge.target}`
+      }))
+
+      visualizationStore.setGraphData(
+        message.graphData.nodes as Node[],
+        edges,
+        message.graphData.metadata
+      )
     },
 
-    setConnected(value: boolean) {
-      this.connected = value
+    _handleConnectionError(error: unknown) {
+      this.error = error instanceof Error ? error.message : 'Unknown connection error'
+      this.connectionAttempts++
+      this.lastReconnectTime = Date.now()
     },
 
-    setError(message: string) {
-      this.error = message
+    _handleError(error: ErrorMessage) {
+      this.error = error.message || 'Unknown error'
+      console.error('WebSocket error:', this.error)
     },
 
-    handleMessage(message: BaseMessage) {
-      // Handle incoming messages
-      if (message.type === 'error') {
-        this.error = (message as ErrorMessage).message
+    _handleDisconnect() {
+      const timeSinceLastReconnect = Date.now() - this.lastReconnectTime
+      
+      if (timeSinceLastReconnect > 60000) { // Reset counter if more than 1 minute since last reconnect
+        this.connectionAttempts = 0
+      }
+      
+      this.connectionAttempts++
+    },
+
+    _handleMaxReconnectAttempts() {
+      this.error = 'Maximum reconnection attempts reached. Please refresh the page.'
+      console.error('WebSocket max reconnection attempts reached')
+    },
+
+    _updateMessageProcessingMetrics(processingTime: number) {
+      this._updateMetrics('message', processingTime)
+    },
+
+    _updatePositionUpdateMetrics(processingTime: number) {
+      this._updateMetrics('position', processingTime)
+    },
+
+    _updateMetrics(type: 'message' | 'position', processingTime: number) {
+      const metrics = this.performanceMetrics
+      const now = Date.now()
+
+      // Reset metrics if needed
+      if (now - metrics.lastPerformanceReset > PERFORMANCE_RESET_INTERVAL) {
+        metrics.messageProcessingSamples = []
+        metrics.positionUpdateSamples = []
+        metrics.lastPerformanceReset = now
+      }
+
+      if (type === 'message') {
+        metrics.messageProcessingSamples.push(processingTime)
+        if (metrics.messageProcessingSamples.length > MAX_PERFORMANCE_SAMPLES) {
+          metrics.messageProcessingSamples.shift()
+        }
+        metrics.avgMessageProcessingTime = 
+          metrics.messageProcessingSamples.reduce((a, b) => a + b, 0) / 
+          metrics.messageProcessingSamples.length
+      } else {
+        metrics.positionUpdateSamples.push(processingTime)
+        if (metrics.positionUpdateSamples.length > MAX_PERFORMANCE_SAMPLES) {
+          metrics.positionUpdateSamples.shift()
+        }
+        metrics.avgPositionUpdateTime = 
+          metrics.positionUpdateSamples.reduce((a, b) => a + b, 0) / 
+          metrics.positionUpdateSamples.length
       }
     },
 
@@ -123,6 +226,8 @@ export const useWebSocketStore = defineStore('websocket', {
         console.error('Cannot send message: WebSocket service not initialized')
         return
       }
+      this.messageCount++
+      this.lastMessageTime = Date.now()
       this.service.send(data)
     },
 
@@ -149,6 +254,15 @@ export const useWebSocketStore = defineStore('websocket', {
       this.lastMessageTime = 0
       this.messageCount = 0
       this.queueSize = 0
+      this.connectionAttempts = 0
+      this.lastReconnectTime = 0
+      this.performanceMetrics = {
+        avgMessageProcessingTime: 0,
+        messageProcessingSamples: [],
+        avgPositionUpdateTime: 0,
+        positionUpdateSamples: [],
+        lastPerformanceReset: Date.now()
+      }
     }
   }
 })
