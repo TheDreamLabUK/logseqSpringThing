@@ -75,7 +75,6 @@ pub struct RealGitHubService {
     owner: String,
     repo: String,
     base_path: String,
-    metadata_cache: Arc<RwLock<HashMap<String, GithubFileMetadata>>>,
     settings: Arc<RwLock<Settings>>,
 }
 
@@ -98,7 +97,6 @@ impl RealGitHubService {
             owner,
             repo,
             base_path,
-            metadata_cache: Arc::new(RwLock::new(HashMap::new())),
             settings,
         })
     }

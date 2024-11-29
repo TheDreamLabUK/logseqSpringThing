@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia'
-import type { PositionUpdate } from '../types/websocket'
+import type { Position, PositionUpdate } from '../types/websocket'
 
 interface BinaryUpdateState {
   // Use TypedArrays for better performance with binary data
-  positions: Float32Array
-  velocities: Float32Array
+  positions: Float32Array  // [x,y,z] for each node
+  velocities: Float32Array // [vx,vy,vz] for each node
+  nodeIds: string[]       // Map index to node ID
+  idToIndex: Map<string, number>  // Map node ID to index
   nodeCount: number
   lastUpdateTime: number
   isInitialLayout: boolean
@@ -18,6 +20,8 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
   state: (): BinaryUpdateState => ({
     positions: new Float32Array(0),
     velocities: new Float32Array(0),
+    nodeIds: [],
+    idToIndex: new Map(),
     nodeCount: 0,
     lastUpdateTime: 0,
     isInitialLayout: false
@@ -25,33 +29,35 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
 
   getters: {
     /**
-     * Get position for node at index
+     * Get position for node by ID
      */
-    getNodePosition: (state) => (index: number): [number, number, number] | undefined => {
-      if (index >= 0 && index < state.nodeCount) {
-        const baseIndex = index * 3
+    getNodePosition: (state) => (id: string): [number, number, number] | undefined => {
+      const index = state.idToIndex.get(id);
+      if (index !== undefined) {
+        const baseIndex = index * 3;
         return [
           state.positions[baseIndex],
           state.positions[baseIndex + 1],
           state.positions[baseIndex + 2]
-        ]
+        ];
       }
-      return undefined
+      return undefined;
     },
 
     /**
-     * Get velocity for node at index
+     * Get velocity for node by ID
      */
-    getNodeVelocity: (state) => (index: number): [number, number, number] | undefined => {
-      if (index >= 0 && index < state.nodeCount) {
-        const baseIndex = index * 3
+    getNodeVelocity: (state) => (id: string): [number, number, number] | undefined => {
+      const index = state.idToIndex.get(id);
+      if (index !== undefined) {
+        const baseIndex = index * 3;
         return [
           state.velocities[baseIndex],
           state.velocities[baseIndex + 1],
           state.velocities[baseIndex + 2]
-        ]
+        ];
       }
-      return undefined
+      return undefined;
     },
 
     /**
@@ -72,75 +78,97 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
 
   actions: {
     /**
-     * Update positions from binary WebSocket message
-     * @param buffer - Raw ArrayBuffer from WebSocket
-     * @param isInitial - Whether this is initial layout data
+     * Update position for a single node
      */
-    updateFromBinary(buffer: ArrayBuffer, isInitial: boolean) {
-      const dataView = new Float32Array(buffer)
-      const totalFloats = dataView.length - 1 // Subtract 1 for isInitialLayout flag
-      const nodeCount = totalFloats / 6 // 6 floats per node (3 for position, 3 for velocity)
-
-      // Resize arrays if needed
-      if (this.nodeCount !== nodeCount) {
-        this.positions = new Float32Array(nodeCount * 3)
-        this.velocities = new Float32Array(nodeCount * 3)
-        this.nodeCount = nodeCount
+    updatePosition(id: string, position: Position) {
+      let index = this.idToIndex.get(id);
+      
+      // If node doesn't exist, add it
+      if (index === undefined) {
+        index = this.nodeCount;
+        this.nodeCount++;
+        
+        // Resize arrays if needed
+        const newPositions = new Float32Array(this.nodeCount * 3);
+        const newVelocities = new Float32Array(this.nodeCount * 3);
+        newPositions.set(this.positions);
+        newVelocities.set(this.velocities);
+        this.positions = newPositions;
+        this.velocities = newVelocities;
+        
+        // Update mappings
+        this.nodeIds.push(id);
+        this.idToIndex.set(id, index);
       }
 
-      // Process position and velocity data directly from binary
-      let srcOffset = 1 // Skip isInitialLayout flag
-      for (let i = 0; i < nodeCount; i++) {
-        const posOffset = i * 3
-        const velOffset = i * 3
+      // Update position and velocity
+      const baseIndex = index * 3;
+      this.positions[baseIndex] = position.x;
+      this.positions[baseIndex + 1] = position.y;
+      this.positions[baseIndex + 2] = position.z;
+      this.velocities[baseIndex] = position.vx;
+      this.velocities[baseIndex + 1] = position.vy;
+      this.velocities[baseIndex + 2] = position.vz;
 
-        // Copy positions
-        this.positions[posOffset] = dataView[srcOffset]
-        this.positions[posOffset + 1] = dataView[srcOffset + 1]
-        this.positions[posOffset + 2] = dataView[srcOffset + 2]
+      this.lastUpdateTime = Date.now();
+    },
 
-        // Copy velocities
-        this.velocities[velOffset] = dataView[srcOffset + 3]
-        this.velocities[velOffset + 1] = dataView[srcOffset + 4]
-        this.velocities[velOffset + 2] = dataView[srcOffset + 5]
-
-        srcOffset += 6
+    /**
+     * Update multiple positions
+     */
+    updatePositions(positions: Position[], isInitial: boolean = false) {
+      if (isInitial) {
+        // Reset state for initial layout
+        this.clear();
+        
+        // Pre-allocate arrays
+        this.positions = new Float32Array(positions.length * 3);
+        this.velocities = new Float32Array(positions.length * 3);
+        this.nodeIds = new Array(positions.length);
+        this.nodeCount = positions.length;
       }
 
-      this.lastUpdateTime = Date.now()
-      this.isInitialLayout = isInitial
+      // Update all positions
+      positions.forEach((pos) => {
+        this.updatePosition(pos.id, pos);
+      });
+
+      this.isInitialLayout = isInitial;
+      this.lastUpdateTime = Date.now();
 
       // Debug logging
-      if (nodeCount > 0) {
-        console.debug('Binary update processed:', {
-          nodeCount,
+      if (positions.length > 0) {
+        console.debug('Positions updated:', {
+          count: positions.length,
           isInitial,
-          firstNode: {
-            position: [
-              this.positions[0],
-              this.positions[1],
-              this.positions[2]
-            ],
-            velocity: [
-              this.velocities[0],
-              this.velocities[1],
-              this.velocities[2]
-            ]
+          sample: {
+            id: positions[0].id,
+            position: [positions[0].x, positions[0].y, positions[0].z],
+            velocity: [positions[0].vx, positions[0].vy, positions[0].vz]
           },
           timestamp: new Date().toISOString()
-        })
+        });
       }
+    },
+
+    /**
+     * Update from binary data
+     */
+    updateFromBinary(data: PositionUpdate) {
+      this.updatePositions(data.positions, data.isInitialLayout);
     },
 
     /**
      * Clear all position data
      */
     clear() {
-      this.positions = new Float32Array(0)
-      this.velocities = new Float32Array(0)
-      this.nodeCount = 0
-      this.lastUpdateTime = 0
-      this.isInitialLayout = false
+      this.positions = new Float32Array(0);
+      this.velocities = new Float32Array(0);
+      this.nodeIds = [];
+      this.idToIndex.clear();
+      this.nodeCount = 0;
+      this.lastUpdateTime = 0;
+      this.isInitialLayout = false;
     }
   }
 })

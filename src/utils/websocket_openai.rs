@@ -313,62 +313,63 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
         
         while let Some(response) = read.next().await {
             message_count += 1;
-            match response {
-                Ok(Message::Text(text)) => {
-                    debug!("Received text message #{} from OpenAI: {}", message_count, text);
-                    match serde_json::from_str::<serde_json::Value>(&text) {
-                        Ok(json_msg) => {
-                            if let Some(audio_data) = json_msg["delta"]["audio"].as_str() {
-                                debug!("Processing audio data from message #{}", message_count);
-                                if let Err(e) = self.send_audio_to_client(audio_data).await {
-                                    error!("Failed to send audio to client: {}", e);
-                                    continue;
-                                }
-                            } else if json_msg["type"].as_str() == Some("response.text.done") {
-                                debug!("Received completion signal after {} messages", message_count);
-                                break;
-                            }
-                        },
-                        Err(e) => {
-                            error!("Error parsing JSON response from OpenAI: {}", e);
-                            if let Err(e) = self.send_error_to_client(&format!("Error parsing JSON response from OpenAI: {}", e)).await {
-                                error!("Failed to send error message: {}", e);
-                            }
-                            continue;
-                        }
+match response {
+    Ok(Message::Text(text)) => {
+        debug!("Received text message #{} from OpenAI: {}", message_count, text);
+        match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(json_msg) => {
+                if let Some(audio_data) = json_msg["delta"]["audio"].as_str() {
+                    debug!("Processing audio data from message #{}", message_count);
+                    if let Err(e) = self.send_audio_to_client(audio_data).await {
+                        error!("Failed to send audio to client: {}", e);
+                        continue;
                     }
-                },
-                Ok(Message::Close(reason)) => {
-                    info!("OpenAI WebSocket connection closed by server: {:?}", reason);
+                } else if json_msg["type"].as_str() == Some("response.text.done") {
+                    debug!("Received completion signal after {} messages", message_count);
                     break;
-                },
-                Ok(Message::Ping(_)) => {
-                    debug!("Received ping from server");
-                    let message = Message::Pong(vec![]);
-                    if let Err(e) = write.send(message).await {
-                        error!("Failed to send pong response: {}", e);
-                    } else {
-                        debug!("Sent pong response");
-                    }
-                },
-                Ok(Message::Pong(_)) => {
-                    debug!("Received pong from OpenAI WebSocket");
-                },
-                Err(e) => {
-                    error!("Error receiving message from OpenAI: {}", e);
-                    if let Err(e) = self.send_error_to_client(&format!("Error receiving message from OpenAI: {}", e)).await {
-                        error!("Failed to send error message: {}", e);
-                    }
-                    if e.to_string().contains("Connection reset by peer") || 
-                       e.to_string().contains("Broken pipe") {
-                        warn!("Connection terminated unexpectedly");
-                        break;
-                    }
-                    continue;
-                },
-                _ => {
-                    debug!("Received unhandled message type");
-                    continue;
+                }
+            },
+            Err(e) => {
+                error!("Error parsing JSON response from OpenAI: {}", e);
+                if let Err(e) = self.send_error_to_client(&format!("Error parsing JSON response from OpenAI: {}", e)).await {
+                    error!("Failed to send error message: {}", e);
+                }
+                return Err(Box::new(WebSocketError::InvalidMessage(format!(
+                    "Invalid JSON response from OpenAI: {}", e
+                ))));
+            }
+        }
+    },
+    Ok(Message::Close(reason)) => {
+        info!("OpenAI WebSocket connection closed by server: {:?}", reason);
+        return Err(Box::new(WebSocketError::StreamClosed(format!(
+            "Connection closed by server: {:?}", reason
+        ))));
+    },
+    Ok(Message::Ping(_)) => {
+        debug!("Received ping from server");
+        let message = Message::Pong(vec![]);
+        if let Err(e) = write.send(message).await {
+            error!("Failed to send pong response: {}", e);
+        } else {
+            debug!("Sent pong response");
+        }
+    },
+    Ok(Message::Pong(_)) => {
+        debug!("Received pong from OpenAI WebSocket");
+    },
+    Err(e) => {
+        error!("Error receiving message from OpenAI: {}", e);
+        if let Err(e) = self.send_error_to_client(&format!("Error receiving message from OpenAI: {}", e)).await {
+            error!("Failed to send error message: {}", e);
+        }
+        return Err(Box::new(WebSocketError::ReceiveFailed(format!(
+            "Failed to receive message from OpenAI: {}", e
+        ))));
+    },
+    _ => {
+        debug!("Received unhandled message type");
+        continue;
                 }
             }
         }

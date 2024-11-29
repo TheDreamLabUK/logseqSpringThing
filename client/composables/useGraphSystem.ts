@@ -1,5 +1,5 @@
 import { ref, computed, inject, onMounted } from 'vue';
-import { Scene, Group } from 'three';
+import { Scene, Group, Vector3 } from 'three';
 import { useVisualizationStore } from '../stores/visualization';
 import { useBinaryUpdateStore } from '../stores/binaryUpdate';
 import type { GraphNode, GraphEdge } from '../types/core';
@@ -23,48 +23,42 @@ export function useGraphSystem() {
   graphGroup.add(edgesGroup);
 
   // State
-  const hoveredNode = ref<number | null>(null);
+  const hoveredNode = ref<string | null>(null);
   const nodeCount = ref(0);
 
   // Direct access to binary data
-  const getNodePosition = (index: number): [number, number, number] => {
-    const positions = binaryStore.getAllPositions;
-    const offset = index * 3;
-    return [
-      positions[offset],
-      positions[offset + 1],
-      positions[offset + 2]
-    ];
+  const getNodePosition = (node: GraphNode | string): Vector3 => {
+    const id = typeof node === 'object' ? node.id : node;
+    const position = binaryStore.getNodePosition(id);
+    if (position) {
+      return new Vector3(position[0], position[1], position[2]);
+    }
+    return new Vector3();
   };
 
-  const getNodeVelocity = (index: number): [number, number, number] => {
-    const velocities = binaryStore.getAllVelocities;
-    const offset = index * 3;
-    return [
-      velocities[offset],
-      velocities[offset + 1],
-      velocities[offset + 2]
-    ];
+  const getNodeVelocity = (node: GraphNode | string): Vector3 => {
+    const id = typeof node === 'object' ? node.id : node;
+    const velocity = binaryStore.getNodeVelocity(id);
+    if (velocity) {
+      return new Vector3(velocity[0], velocity[1], velocity[2]);
+    }
+    return new Vector3();
   };
 
   const updateNodePosition = (
-    index: number,
-    x: number, y: number, z: number,
-    vx: number, vy: number, vz: number
+    id: string,
+    position: Vector3,
+    velocity: Vector3
   ) => {
-    const positions = binaryStore.getAllPositions;
-    const velocities = binaryStore.getAllVelocities;
-    const offset = index * 3;
-
-    // Update positions
-    positions[offset] = x;
-    positions[offset + 1] = y;
-    positions[offset + 2] = z;
-
-    // Update velocities
-    velocities[offset] = vx;
-    velocities[offset + 1] = vy;
-    velocities[offset + 2] = vz;
+    binaryStore.updatePosition(id, {
+      id,
+      x: position.x,
+      y: position.y,
+      z: position.z,
+      vx: velocity.x,
+      vy: velocity.y,
+      vz: velocity.z
+    });
 
     if (visualizationState?.value.scene) {
       visualizationState.value.scene.userData.needsRender = true;
@@ -78,17 +72,17 @@ export function useGraphSystem() {
     return minSize + (baseSize * (maxSize - minSize));
   };
 
-  const getNodeColor = (node: GraphNode, index: number): string => {
-    return index === hoveredNode.value
+  const getNodeColor = (node: GraphNode): string => {
+    return node.id === hoveredNode.value
       ? settings.value.node_color_core
       : (node.color || settings.value.node_color);
   };
 
-  // Edge helpers using direct array access
-  const getEdgePoints = (sourceIndex: number, targetIndex: number): [[number, number, number], [number, number, number]] => {
+  // Edge helpers using direct access
+  const getEdgePoints = (source: GraphNode, target: GraphNode): [Vector3, Vector3] => {
     return [
-      getNodePosition(sourceIndex),
-      getNodePosition(targetIndex)
+      getNodePosition(source),
+      getNodePosition(target)
     ];
   };
 
@@ -103,14 +97,14 @@ export function useGraphSystem() {
     return minWidth + (baseWidth * (maxWidth - minWidth));
   };
 
-  // Event handlers with direct array access
-  const handleNodeClick = (index: number) => {
-    const position = getNodePosition(index);
-    console.debug('Node clicked:', { index, position });
+  // Event handlers
+  const handleNodeClick = (node: GraphNode) => {
+    const position = getNodePosition(node);
+    console.debug('Node clicked:', { id: node.id, position });
   };
 
-  const handleNodeHover = (index: number | null) => {
-    hoveredNode.value = index;
+  const handleNodeHover = (node: GraphNode | null) => {
+    hoveredNode.value = node?.id || null;
     if (visualizationState?.value.scene) {
       visualizationState.value.scene.userData.needsRender = true;
     }
@@ -120,11 +114,18 @@ export function useGraphSystem() {
   const updateGraphData = (graphData: { nodes: GraphNode[]; edges: GraphEdge[] }) => {
     nodeCount.value = graphData.nodes.length;
     
-    // Binary store will handle the actual position/velocity arrays
-    binaryStore.updateFromBinary(
-      new Float32Array(nodeCount.value * 6 + 1).buffer, // +1 for header
-      true
-    );
+    // Initialize positions for all nodes
+    const positions = graphData.nodes.map(node => ({
+      id: node.id,
+      x: node.position?.[0] || 0,
+      y: node.position?.[1] || 0,
+      z: node.position?.[2] || 0,
+      vx: node.velocity?.[0] || 0,
+      vy: node.velocity?.[1] || 0,
+      vz: node.velocity?.[2] || 0
+    }));
+    
+    binaryStore.updatePositions(positions, true);
 
     // Mark scene for update
     if (visualizationState?.value.scene) {

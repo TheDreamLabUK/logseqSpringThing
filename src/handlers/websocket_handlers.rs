@@ -172,7 +172,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                             error!("Unknown message type received");
                             let error_message = ServerMessage::Error {
                                 message: "Unknown message type".to_string(),
-                                code: Some("UNKNOWN_MESSAGE_TYPE".to_string())
+                                code: Some("UNKNOWN_MESSAGE_TYPE".to_string()),
+                                details: Some("The received message type is not recognized by the server".to_string())
                             };
                             if let Ok(error_str) = serde_json::to_string(&error_message) {
                                 ctx.text(ByteString::from(error_str));
@@ -191,7 +192,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                         error!("Failed to process binary update: {}", e);
                         let error_message = ServerMessage::Error {
                             message: format!("Binary update processing failed: {}", e),
-                            code: Some("BINARY_UPDATE_ERROR".to_string())
+                            code: Some("BINARY_UPDATE_ERROR".to_string()),
+                            details: Some("Error occurred while processing binary position update data".to_string())
                         };
                         if let Ok(error_str) = serde_json::to_string(&error_message) {
                             ctx.text(ByteString::from(error_str));
@@ -463,7 +465,8 @@ impl WebSocketSessionHandler for WebSocketSession {
                                         error!("Failed to generate speech: {}", e);
                                         let error_message = ServerMessage::Error {
                                             message: format!("Failed to generate speech: {}", e),
-                                            code: Some("SPEECH_GENERATION_ERROR".to_string())
+                                            code: Some("SPEECH_GENERATION_ERROR".to_string()),
+                                            details: Some("Error occurred while generating speech using local TTS service".to_string())
                                         };
                                         if let Ok(error_str) = serde_json::to_string(&error_message) {
                                             ctx_addr.do_send(SendText(error_str));
@@ -475,7 +478,8 @@ impl WebSocketSessionHandler for WebSocketSession {
                                 error!("Error processing RAGFlow response: {}", e);
                                 let error_message = ServerMessage::Error {
                                     message: format!("Error processing RAGFlow response: {}", e),
-                                    code: Some("RAGFLOW_PROCESSING_ERROR".to_string())
+                                    code: Some("RAGFLOW_PROCESSING_ERROR".to_string()),
+                                    details: Some("Failed to process the response from RAGFlow service".to_string())
                                 };
                                 if let Ok(error_str) = serde_json::to_string(&error_message) {
                                     ctx_addr.do_send(SendText(error_str));
@@ -488,7 +492,8 @@ impl WebSocketSessionHandler for WebSocketSession {
                     error!("Failed to send message to RAGFlow: {}", e);
                     let error_message = ServerMessage::Error {
                         message: format!("Failed to send message to RAGFlow: {}", e),
-                        code: Some("RAGFLOW_SEND_ERROR".to_string())
+                        code: Some("RAGFLOW_SEND_ERROR".to_string()),
+                        details: Some("Error occurred while sending message to RAGFlow service".to_string())
                     };
                     if let Ok(error_str) = serde_json::to_string(&error_message) {
                         ctx_addr.do_send(SendText(error_str));
@@ -557,7 +562,8 @@ impl WebSocketSessionHandler for WebSocketSession {
                     error!("Failed to update simulation parameters: {}", e);
                     let error_message = ServerMessage::Error {
                         message: format!("Failed to update simulation parameters: {}", e),
-                        code: Some("SIMULATION_PARAMS_ERROR".to_string())
+                        code: Some("SIMULATION_PARAMS_ERROR".to_string()),
+                        details: Some("Error occurred while updating GPU simulation parameters".to_string())
                     };
                     if let Ok(error_str) = serde_json::to_string(&error_message) {
                         ctx_addr.do_send(SendText(error_str));
@@ -571,7 +577,8 @@ impl WebSocketSessionHandler for WebSocketSession {
                         error!("GPU compute step failed: {}", e);
                         let error_message = ServerMessage::Error {
                             message: format!("GPU compute step failed: {}", e),
-                            code: Some("GPU_COMPUTE_ERROR".to_string())
+                            code: Some("GPU_COMPUTE_ERROR".to_string()),
+                            details: Some("Error occurred during GPU computation step".to_string())
                         };
                         if let Ok(error_str) = serde_json::to_string(&error_message) {
                             ctx_addr.do_send(SendText(error_str));
@@ -590,7 +597,8 @@ impl WebSocketSessionHandler for WebSocketSession {
                         error!("Failed to get GPU node positions: {}", e);
                         let error_message = ServerMessage::Error {
                             message: format!("Failed to get GPU node positions: {}", e),
-                            code: Some("GPU_POSITION_ERROR".to_string())
+                            code: Some("GPU_POSITION_ERROR".to_string()),
+                            details: Some("Error occurred while retrieving node positions from GPU".to_string())
                         };
                         if let Ok(error_str) = serde_json::to_string(&error_message) {
                             ctx_addr.do_send(SendText(error_str));
@@ -601,7 +609,8 @@ impl WebSocketSessionHandler for WebSocketSession {
                 error!("GPU compute service not available");
                 let error_message = ServerMessage::Error {
                     message: "GPU compute service not available".to_string(),
-                    code: Some("GPU_SERVICE_ERROR".to_string())
+                    code: Some("GPU_SERVICE_ERROR".to_string()),
+                    details: Some("The GPU compute service is not initialized or unavailable".to_string())
                 };
                 if let Ok(error_str) = serde_json::to_string(&error_message) {
                     ctx_addr.do_send(SendText(error_str));
@@ -646,7 +655,8 @@ impl WebSocketSessionHandler for WebSocketSession {
                 error!("GPU compute service not available");
                 let error_message = ServerMessage::Error {
                     message: "GPU compute service not available".to_string(),
-                    code: Some("GPU_SERVICE_ERROR".to_string())
+                    code: Some("GPU_SERVICE_ERROR".to_string()),
+                    details: Some("The GPU compute service is not initialized or unavailable for fisheye settings".to_string())
                 };
                 if let Ok(error_str) = serde_json::to_string(&error_message) {
                     ctx_addr.do_send(SendText(error_str));

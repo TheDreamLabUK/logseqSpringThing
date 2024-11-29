@@ -15,19 +15,9 @@ const BUFFER_ALIGNMENT: u64 = 256;  // Required GPU memory alignment
 const EDGE_SIZE: u64 = 32;  // Size of Edge struct (must match WGSL)
 const NODE_SIZE: u64 = 32;  // Increased from 28 to 32 for better alignment with larger values
 const MAX_NODES: u32 = 1_000_000;  // Safety limit for number of nodes
-const MAX_EDGES: u32 = 5_000_000;  // Safety limit for number of edges
 
 // Position update constants
 const POSITION_BUFFER_SIZE: u64 = 32;  // Increased from 24 to 32 for better alignment
-const POSITION_UPDATE_ALIGNMENT: u64 = 16;  // Alignment for position updates
-
-/// Represents adjacency information for graph nodes
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Adjacency {
-    offset: u32,
-    count: u32,
-}
 
 /// Parameters for fisheye distortion effect
 #[repr(C)]
