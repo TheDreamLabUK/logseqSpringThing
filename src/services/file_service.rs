@@ -1,4 +1,5 @@
 use crate::models::metadata::Metadata;
+use crate::models::graph::GraphData;
 use crate::config::Settings;
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
@@ -15,6 +16,7 @@ use tokio::sync::RwLock;
 use std::error::Error as StdError;
 use std::time::Duration;
 use tokio::time::sleep;
+use actix_web::web;
 
 // Constants
 const METADATA_PATH: &str = "data/markdown/metadata.json";
@@ -210,6 +212,97 @@ impl GitHubService for RealGitHubService {
 pub struct FileService;
 
 impl FileService {
+    /// Process uploaded file and return graph data
+    pub async fn process_file_upload(&self, payload: web::Bytes) -> Result<GraphData, Box<dyn StdError + Send + Sync>> {
+        let content = String::from_utf8(payload.to_vec())?;
+        let metadata = Self::load_or_create_metadata()?;
+        let mut graph_data = GraphData::new();
+        
+        // Create a temporary file to process
+        let temp_filename = format!("temp_{}.md", Utc::now().timestamp());
+        let temp_path = format!("{}/{}", MARKDOWN_DIR, temp_filename);
+        fs::write(&temp_path, &content)?;
+
+        // Extract references and create metadata
+        let valid_nodes: Vec<String> = metadata.keys()
+            .map(|name| name.trim_end_matches(".md").to_string())
+            .collect();
+
+        let references = Self::extract_references(&content, &valid_nodes);
+        let topic_counts = Self::convert_references_to_topic_counts(references);
+
+        // Create metadata for the uploaded file
+        let file_size = content.len();
+        let node_size = Self::calculate_node_size(file_size);
+        let file_metadata = Metadata {
+            file_name: temp_filename.clone(),
+            file_size,
+            node_size,
+            hyperlink_count: Self::count_hyperlinks(&content),
+            sha1: Self::calculate_sha1(&content),
+            last_modified: Utc::now(),
+            perplexity_link: String::new(),
+            last_perplexity_process: None,
+            topic_counts,
+        };
+
+        // Update graph data
+        graph_data.metadata.insert(temp_filename, file_metadata);
+
+        // Clean up temporary file
+        if let Err(e) = fs::remove_file(&temp_path) {
+            error!("Failed to remove temporary file: {}", e);
+        }
+
+        Ok(graph_data)
+    }
+
+    /// List available files
+    pub async fn list_files(&self) -> Result<Vec<String>, Box<dyn StdError + Send + Sync>> {
+        let metadata = Self::load_or_create_metadata()?;
+        Ok(metadata.keys().cloned().collect())
+    }
+
+    /// Load a specific file and return graph data
+    pub async fn load_file(&self, filename: &str) -> Result<GraphData, Box<dyn StdError + Send + Sync>> {
+        let file_path = format!("{}/{}", MARKDOWN_DIR, filename);
+        if !Path::new(&file_path).exists() {
+            return Err(format!("File not found: {}", filename).into());
+        }
+
+        let content = fs::read_to_string(&file_path)?;
+        let metadata = Self::load_or_create_metadata()?;
+        let mut graph_data = GraphData::new();
+
+        // Extract references and update metadata
+        let valid_nodes: Vec<String> = metadata.keys()
+            .map(|name| name.trim_end_matches(".md").to_string())
+            .collect();
+
+        let references = Self::extract_references(&content, &valid_nodes);
+        let topic_counts = Self::convert_references_to_topic_counts(references);
+
+        // Update or create metadata for the file
+        let file_size = content.len();
+        let node_size = Self::calculate_node_size(file_size);
+        let file_metadata = Metadata {
+            file_name: filename.to_string(),
+            file_size,
+            node_size,
+            hyperlink_count: Self::count_hyperlinks(&content),
+            sha1: Self::calculate_sha1(&content),
+            last_modified: Utc::now(),
+            perplexity_link: String::new(),
+            last_perplexity_process: None,
+            topic_counts,
+        };
+
+        // Update graph data
+        graph_data.metadata.insert(filename.to_string(), file_metadata);
+        
+        Ok(graph_data)
+    }
+
     /// Load metadata from file or create new if not exists
     pub fn load_or_create_metadata() -> Result<HashMap<String, Metadata>, Box<dyn StdError + Send + Sync>> {
         if Path::new(METADATA_PATH).exists() {
