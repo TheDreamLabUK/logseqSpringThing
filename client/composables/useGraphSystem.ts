@@ -26,10 +26,18 @@ export function useGraphSystem() {
   const hoveredNode = ref<string | null>(null);
   const nodeCount = ref(0);
 
+  // Get node index from the visualization store's nodes array
+  const getNodeIndex = (id: string): number => {
+    return visualizationStore.nodes.findIndex(node => node.id === id);
+  };
+
   // Direct access to binary data
   const getNodePosition = (node: GraphNode | string): Vector3 => {
     const id = typeof node === 'object' ? node.id : node;
-    const position = binaryStore.getNodePosition(id);
+    const index = getNodeIndex(id);
+    if (index === -1) return new Vector3();
+
+    const position = binaryStore.getNodePosition(index);
     if (position) {
       return new Vector3(position[0], position[1], position[2]);
     }
@@ -38,7 +46,10 @@ export function useGraphSystem() {
 
   const getNodeVelocity = (node: GraphNode | string): Vector3 => {
     const id = typeof node === 'object' ? node.id : node;
-    const velocity = binaryStore.getNodeVelocity(id);
+    const index = getNodeIndex(id);
+    if (index === -1) return new Vector3();
+
+    const velocity = binaryStore.getNodeVelocity(index);
     if (velocity) {
       return new Vector3(velocity[0], velocity[1], velocity[2]);
     }
@@ -50,15 +61,18 @@ export function useGraphSystem() {
     position: Vector3,
     velocity: Vector3
   ) => {
-    binaryStore.updatePosition(id, {
-      id,
-      x: position.x,
-      y: position.y,
-      z: position.z,
-      vx: velocity.x,
-      vy: velocity.y,
-      vz: velocity.z
-    });
+    const index = getNodeIndex(id);
+    if (index === -1) return;
+
+    binaryStore.updateNodePosition(
+      index,
+      position.x,
+      position.y,
+      position.z,
+      velocity.x,
+      velocity.y,
+      velocity.z
+    );
 
     if (visualizationState?.value.scene) {
       visualizationState.value.scene.userData.needsRender = true;
@@ -114,18 +128,36 @@ export function useGraphSystem() {
   const updateGraphData = (graphData: { nodes: GraphNode[]; edges: GraphEdge[] }) => {
     nodeCount.value = graphData.nodes.length;
     
-    // Initialize positions for all nodes
-    const positions = graphData.nodes.map(node => ({
-      id: node.id,
-      x: node.position?.[0] || 0,
-      y: node.position?.[1] || 0,
-      z: node.position?.[2] || 0,
-      vx: node.velocity?.[0] || 0,
-      vy: node.velocity?.[1] || 0,
-      vz: node.velocity?.[2] || 0
-    }));
+    // Create binary message with initial positions
+    const dataSize = 1 + (nodeCount.value * 6); // isInitialLayout flag + (x,y,z,vx,vy,vz) per node
+    const binaryData = new ArrayBuffer(dataSize * 4); // 4 bytes per float
+    const dataView = new Float32Array(binaryData);
     
-    binaryStore.updatePositions(positions, true);
+    // Set isInitialLayout flag
+    dataView[0] = 1; // true
+    
+    // Fill position and velocity data
+    let offset = 1; // Start after flag
+    graphData.nodes.forEach((node, index) => {
+      // Set positions
+      dataView[offset] = node.position?.[0] || 0;
+      dataView[offset + 1] = node.position?.[1] || 0;
+      dataView[offset + 2] = node.position?.[2] || 0;
+      
+      // Set velocities
+      dataView[offset + 3] = node.velocity?.[0] || 0;
+      dataView[offset + 4] = node.velocity?.[1] || 0;
+      dataView[offset + 5] = node.velocity?.[2] || 0;
+      
+      offset += 6;
+    });
+
+    // Update binary store using the same format as websocket messages
+    binaryStore.updateFromBinary({
+      data: binaryData,
+      isInitialLayout: true,
+      nodeCount: nodeCount.value
+    });
 
     // Mark scene for update
     if (visualizationState?.value.scene) {

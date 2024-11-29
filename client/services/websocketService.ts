@@ -148,12 +148,19 @@ export default class WebsocketService {
     try {
       if (event.data instanceof ArrayBuffer) {
         // First float32 is isInitialLayout flag
-        const isInitialLayout = new Float32Array(event.data.slice(0, 4))[0] >= 1.0;
+        const dataView = new Float32Array(event.data);
+        const isInitialLayout = dataView[0] >= 1.0;
         
-        // Emit binary data directly
+        // Calculate node count from buffer size
+        // Buffer contains: isInitialLayout(1) + (x,y,z,vx,vy,vz)(6) per node
+        const totalFloats = dataView.length - 1; // Subtract isInitialLayout flag
+        const nodeCount = totalFloats / 6; // 6 floats per node
+        
+        // Emit binary data
         const binaryMessage: BinaryMessage = {
           data: event.data,
-          isInitialLayout
+          isInitialLayout,
+          nodeCount
         };
         
         this.emit('gpuPositions', binaryMessage);
