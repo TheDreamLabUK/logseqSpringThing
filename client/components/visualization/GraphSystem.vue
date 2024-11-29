@@ -18,7 +18,6 @@ import { useVisualizationStore } from '../../stores/visualization';
 import { usePlatform } from '../../composables/usePlatform';
 import type { VisualizationConfig } from '../../types/components';
 import type { GraphNode, GraphEdge, GraphData, CoreState } from '../../types/core';
-import type { PositionUpdate } from '../../types/websocket';
 
 export default defineComponent({
   name: 'GraphSystem',
@@ -103,41 +102,29 @@ export default defineComponent({
     });
 
     // Watch for binary updates with enhanced logging
-    watch(() => binaryUpdateStore.positions, (positions) => {
-      const positionEntries = Array.from(positions.entries());
-      if (positionEntries.length > 0) {
+    watch(() => binaryUpdateStore.getAllPositions, (positions) => {
+      const nodeCount = positions.length / 3;
+      if (nodeCount > 0) {
         console.debug('Processing binary position update:', {
-          updateCount: positionEntries.length,
-          sample: positionEntries.slice(0, 3).map(([id, pos]) => ({
-            id,
-            position: [pos.x, pos.y, pos.z],
-            velocity: [pos.vx, pos.vy, pos.vz]
-          })),
+          nodeCount,
           timestamp: new Date().toISOString()
         });
         
-        // Update node positions using updateNodePosition
-        let updatedCount = 0;
-        positionEntries.forEach(([id, pos]) => {
-          const node = graphData.value.nodes.find(n => n.id === id);
-          if (node) {
+        // Update node positions using array indices
+        graphData.value.nodes.forEach((node, index) => {
+          const position = binaryUpdateStore.getNodePosition(index);
+          const velocity = binaryUpdateStore.getNodeVelocity(index);
+          
+          if (position && velocity) {
             // Create Vector3 objects for position and velocity
-            const position = new Vector3(pos.x, pos.y, pos.z);
-            const velocity = new Vector3(pos.vx, pos.vy, pos.vz);
+            const pos = new Vector3(position[0], position[1], position[2]);
+            const vel = new Vector3(velocity[0], velocity[1], velocity[2]);
             
             // Update both the graph system and the node data
-            updateNodePosition(id, position, velocity);
-            node.position = [pos.x, pos.y, pos.z];
-            node.velocity = [pos.vx, pos.vy, pos.vz];
-            
-            updatedCount++;
+            updateNodePosition(node.id, pos, vel);
+            node.position = position;
+            node.velocity = velocity;
           }
-        });
-
-        console.debug('Position updates applied:', {
-          totalUpdates: positionEntries.length,
-          successfulUpdates: updatedCount,
-          timestamp: new Date().toISOString()
         });
 
         // Trigger graph update
@@ -191,11 +178,20 @@ export default defineComponent({
         const position = getNodePosition(node);
         position.copy(dragIntersection);
 
-        // Update position with zero velocity during drag
-        updateNodePosition(node.id, position, new Vector3(0, 0, 0));
+        // Find node index
+        const nodeIndex = graphData.value.nodes.findIndex(n => n.id === node.id);
+        if (nodeIndex !== -1) {
+          // Update position with zero velocity during drag
+          binaryUpdateStore.updateNodePosition(
+            nodeIndex,
+            position.x, position.y, position.z,
+            0, 0, 0
+          );
+        }
 
         console.debug('Node drag update:', {
           nodeId: node.id,
+          nodeIndex,
           newPosition: [position.x, position.y, position.z],
           timestamp: new Date().toISOString()
         });
@@ -204,6 +200,7 @@ export default defineComponent({
           websocketStore.service.send({
             type: 'updateNodePosition',
             nodeId: node.id,
+            nodeIndex,
             position: [position.x, position.y, position.z]
           });
         }
@@ -218,9 +215,11 @@ export default defineComponent({
       if (!isDragging.value || !draggedNode.value || !dragStartPosition.value) return;
 
       const finalPosition = getNodePosition(draggedNode.value);
+      const nodeIndex = graphData.value.nodes.findIndex(n => n.id === draggedNode.value!.id);
 
       console.debug('Node drag ended:', {
         nodeId: draggedNode.value.id,
+        nodeIndex,
         startPosition: dragStartPosition.value.toArray(),
         finalPosition: finalPosition.toArray(),
         timestamp: new Date().toISOString()
@@ -230,6 +229,7 @@ export default defineComponent({
         websocketStore.service.send({
           type: 'updateNodePosition',
           nodeId: draggedNode.value.id,
+          nodeIndex,
           position: [finalPosition.x, finalPosition.y, finalPosition.z]
         });
       }
