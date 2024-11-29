@@ -8,6 +8,7 @@ export type MessageType =
   | 'ragflowResponse'
   | 'openaiResponse'
   | 'simulationModeSet'
+  | 'simulation_mode_set'
   | 'fisheye_settings_updated'
   | 'completion'
   | 'position_update_complete'
@@ -22,7 +23,9 @@ export type MessageType =
   | 'chatMessage'
   | 'setTTSMethod'
   | 'updateNodePosition'
-  | 'updateNodeVelocity';
+  | 'updateNodeVelocity'
+  | 'layout_state'
+  | 'gpu_state';
 
 // Binary Protocol Types
 export interface BinaryMessage {
@@ -122,6 +125,7 @@ export interface ErrorMessage extends BaseMessage {
   type: 'error';
   message: string;
   details?: string;
+  code?: string;
 }
 
 export interface AudioMessage extends BaseMessage {
@@ -136,8 +140,9 @@ export interface RagflowResponse extends BaseMessage {
 }
 
 export interface SimulationModeMessage extends BaseMessage {
-  type: 'simulationModeSet';
+  type: 'simulation_mode_set';
   mode: string;
+  gpu_enabled?: boolean;
 }
 
 export interface SettingsUpdateMessage extends BaseMessage {

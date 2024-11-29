@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import WebsocketService from '../services/websocketService'
 import { useVisualizationStore } from './visualization'
 import { useBinaryUpdateStore } from './binaryUpdate'
-import type { BaseMessage, ErrorMessage, GraphUpdateMessage, BinaryMessage, Edge as WsEdge } from '../types/websocket'
+import type { BaseMessage, ErrorMessage, GraphUpdateMessage, BinaryMessage, Edge as WsEdge, SimulationModeMessage } from '../types/websocket'
 import type { Node, Edge } from '../types/core'
 
 interface WebSocketState {
@@ -14,6 +14,8 @@ interface WebSocketState {
   queueSize: number
   connectionAttempts: number
   lastReconnectTime: number
+  gpuEnabled: boolean
+  isInitialLayout: boolean
   performanceMetrics: {
     avgMessageProcessingTime: number
     messageProcessingSamples: number[]
@@ -36,6 +38,8 @@ export const useWebSocketStore = defineStore('websocket', {
     queueSize: 0,
     connectionAttempts: 0,
     lastReconnectTime: 0,
+    gpuEnabled: false,
+    isInitialLayout: true,
     performanceMetrics: {
       avgMessageProcessingTime: 0,
       messageProcessingSamples: [],
@@ -59,7 +63,9 @@ export const useWebSocketStore = defineStore('websocket', {
       if (avgMessageProcessingTime > 100 || avgPositionUpdateTime > 16) return 'poor'
       if (avgMessageProcessingTime > 50 || avgPositionUpdateTime > 8) return 'fair'
       return 'good'
-    }
+    },
+    isGPUEnabled: (state) => state.gpuEnabled,
+    isInitialLayoutPhase: (state) => state.isInitialLayout
   },
 
   actions: {
@@ -124,12 +130,30 @@ export const useWebSocketStore = defineStore('websocket', {
         const startTime = performance.now()
         
         try {
+          this.isInitialLayout = message.isInitialLayout
           binaryUpdateStore.updateFromBinary(message.data, message.isInitialLayout)
         } catch (error) {
           console.error('Error processing position update:', error)
         }
 
         this._updatePositionUpdateMetrics(performance.now() - startTime)
+      })
+
+      // Handle simulation mode changes
+      this.service.on('simulationModeSet', (mode: string) => {
+        visualizationStore.setSimulationMode(mode)
+      })
+
+      // Handle all messages to catch GPU and layout state updates
+      this.service.on('message', (message: BaseMessage) => {
+        if (message.type === 'gpu_state' && 'enabled' in message) {
+          this.gpuEnabled = message.enabled
+          console.debug(`GPU acceleration ${message.enabled ? 'enabled' : 'disabled'}`)
+        }
+        else if (message.type === 'layout_state' && 'isInitial' in message) {
+          this.isInitialLayout = message.isInitial
+          console.debug(`Layout phase: ${message.isInitial ? 'initial' : 'dynamic'}`)
+        }
       })
     },
 
@@ -140,20 +164,23 @@ export const useWebSocketStore = defineStore('websocket', {
         timestamp: new Date().toISOString()
       })
 
-      if (!message.graphData) {
+      if (!message.graphData && !message.graph_data) {
         console.warn('No graph data found in message')
         return
       }
 
-      const edges: Edge[] = message.graphData.edges.map((edge: WsEdge) => ({
+      const graphData = message.graphData || message.graph_data
+      if (!graphData) return
+
+      const edges: Edge[] = graphData.edges.map((edge: WsEdge) => ({
         ...edge,
         id: `${edge.source}-${edge.target}`
       }))
 
       visualizationStore.setGraphData(
-        message.graphData.nodes as Node[],
+        graphData.nodes as Node[],
         edges,
-        message.graphData.metadata
+        graphData.metadata
       )
     },
 
@@ -165,7 +192,14 @@ export const useWebSocketStore = defineStore('websocket', {
 
     _handleError(error: ErrorMessage) {
       this.error = error.message || 'Unknown error'
-      console.error('WebSocket error:', this.error)
+      if (error.code) {
+        console.error(`WebSocket error [${error.code}]:`, this.error)
+      } else {
+        console.error('WebSocket error:', this.error)
+      }
+      if (error.details) {
+        console.debug('Error details:', error.details)
+      }
     },
 
     _handleDisconnect() {
@@ -256,6 +290,8 @@ export const useWebSocketStore = defineStore('websocket', {
       this.queueSize = 0
       this.connectionAttempts = 0
       this.lastReconnectTime = 0
+      this.gpuEnabled = false
+      this.isInitialLayout = true
       this.performanceMetrics = {
         avgMessageProcessingTime: 0,
         messageProcessingSamples: [],
