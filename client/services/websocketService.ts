@@ -72,7 +72,7 @@ export default class WebsocketService {
         const connectionTimeout = setTimeout(() => {
           if (this.ws?.readyState !== WebSocket.OPEN) {
             console.error('WebSocket connection timeout');
-            this.ws?.close();
+            this.cleanup();
             reject(new Error(ERROR_CODES.CONNECTION_FAILED));
           }
         }, CONNECTION_TIMEOUT);
@@ -112,6 +112,7 @@ export default class WebsocketService {
             code: ERROR_CODES.CONNECTION_FAILED
           };
           this.emit('error', errorMsg);
+          this.cleanup();
           reject(error);
         };
 
@@ -119,6 +120,7 @@ export default class WebsocketService {
 
       } catch (error) {
         console.error('Error creating WebSocket connection:', error);
+        this.cleanup();
         reject(error);
       }
     });
