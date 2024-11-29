@@ -1,9 +1,141 @@
 use actix_web::{web, Error as ActixError, HttpResponse};
 use serde_json::json;
 use log::{info, error, debug};
+use std::sync::Arc;
+
 use crate::AppState;
 use crate::services::file_service::FileService;
 use crate::services::graph_service::GraphService;
+use crate::utils::websocket_manager::{BroadcastGraph, BroadcastError};
+
+pub async fn handle_file_upload(
+    state: web::Data<AppState>,
+    file_service: web::Data<FileService>,
+    payload: web::Bytes,
+) -> Result<HttpResponse, ActixError> {
+    debug!("Handling file upload request");
+
+    match file_service.get_ref().process_file_upload(payload).await {
+        Ok(graph_data) => {
+            debug!("File processed successfully, updating graph data");
+            
+            // Update shared graph data
+            {
+                let mut graph = state.graph_data.write().await;
+                *graph = graph_data.clone();
+            }
+
+            // Broadcast update to all connected clients
+            let graph_msg = BroadcastGraph {
+                graph: Arc::new(graph_data)
+            };
+
+            if let Some(addr) = state.websocket_manager.get_addr() {
+                addr.do_send(graph_msg);
+            }
+
+            Ok(HttpResponse::Ok().json(json!({
+                "message": "File processed successfully"
+            })))
+        },
+        Err(e) => {
+            error!("Error processing file: {}", e);
+            
+            // Broadcast error to clients
+            let error_msg = BroadcastError {
+                message: format!("Error processing file: {}", e)
+            };
+
+            if let Some(addr) = state.websocket_manager.get_addr() {
+                addr.do_send(error_msg);
+            }
+
+            Ok(HttpResponse::BadRequest().json(json!({
+                "error": format!("Error processing file: {}", e)
+            })))
+        }
+    }
+}
+
+pub async fn handle_file_list(
+    state: web::Data<AppState>,
+    file_service: web::Data<FileService>,
+) -> Result<HttpResponse, ActixError> {
+    debug!("Handling file list request");
+
+    match file_service.get_ref().list_files().await {
+        Ok(files) => {
+            Ok(HttpResponse::Ok().json(json!({
+                "files": files
+            })))
+        },
+        Err(e) => {
+            error!("Error listing files: {}", e);
+            
+            // Broadcast error to clients
+            let error_msg = BroadcastError {
+                message: format!("Error listing files: {}", e)
+            };
+
+            if let Some(addr) = state.websocket_manager.get_addr() {
+                addr.do_send(error_msg);
+            }
+
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "error": format!("Error listing files: {}", e)
+            })))
+        }
+    }
+}
+
+pub async fn handle_file_load(
+    state: web::Data<AppState>,
+    file_service: web::Data<FileService>,
+    filename: web::Path<String>,
+) -> Result<HttpResponse, ActixError> {
+    debug!("Handling file load request for: {}", filename);
+
+    match file_service.get_ref().load_file(&filename).await {
+        Ok(graph_data) => {
+            debug!("File loaded successfully, updating graph data");
+            
+            // Update shared graph data
+            {
+                let mut graph = state.graph_data.write().await;
+                *graph = graph_data.clone();
+            }
+
+            // Broadcast update to all connected clients
+            let graph_msg = BroadcastGraph {
+                graph: Arc::new(graph_data)
+            };
+
+            if let Some(addr) = state.websocket_manager.get_addr() {
+                addr.do_send(graph_msg);
+            }
+
+            Ok(HttpResponse::Ok().json(json!({
+                "message": "File loaded successfully"
+            })))
+        },
+        Err(e) => {
+            error!("Error loading file: {}", e);
+            
+            // Broadcast error to clients
+            let error_msg = BroadcastError {
+                message: format!("Error loading file: {}", e)
+            };
+
+            if let Some(addr) = state.websocket_manager.get_addr() {
+                addr.do_send(error_msg);
+            }
+
+            Ok(HttpResponse::BadRequest().json(json!({
+                "error": format!("Error loading file: {}", e)
+            })))
+        }
+    }
+}
 
 pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse {
     info!("Initiating optimized file fetch and processing");
@@ -59,10 +191,13 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
                     *graph = graph_data.clone();
                     info!("Graph data structure updated successfully");
 
-                    // Broadcast graph update to connected clients
-                    if let Err(e) = state.websocket_manager.broadcast_graph_update(&graph_data).await {
-                        error!("Failed to broadcast graph update: {}", e);
-                    } else {
+                    // Broadcast update to all connected clients
+                    let graph_msg = BroadcastGraph {
+                        graph: Arc::new(graph_data)
+                    };
+
+                    if let Some(addr) = state.websocket_manager.get_addr() {
+                        addr.do_send(graph_msg);
                         debug!("Graph update broadcasted successfully");
                     }
 
@@ -127,9 +262,13 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
             *graph = graph_data.clone();
             info!("Graph data structure refreshed successfully");
 
-            if let Err(e) = state.websocket_manager.broadcast_graph_update(&graph_data).await {
-                error!("Failed to broadcast graph update: {}", e);
-            } else {
+            // Broadcast update to all connected clients
+            let graph_msg = BroadcastGraph {
+                graph: Arc::new(graph_data)
+            };
+
+            if let Some(addr) = state.websocket_manager.get_addr() {
+                addr.do_send(graph_msg);
                 debug!("Graph update broadcasted successfully");
             }
 
@@ -166,6 +305,15 @@ pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, Ac
         Ok(graph) => {
             // Update graph data
             *state.graph_data.write().await = graph.clone();
+            
+            // Broadcast update to all connected clients
+            let graph_msg = BroadcastGraph {
+                graph: Arc::new(graph.clone())
+            };
+
+            if let Some(addr) = state.websocket_manager.get_addr() {
+                addr.do_send(graph_msg);
+            }
             
             Ok(HttpResponse::Ok().json(json!({
                 "status": "success",
