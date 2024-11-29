@@ -114,40 +114,56 @@ export default class GraphDataManager {
       return
     }
 
+    // Process binary data
+    const dataView = new Float32Array(data.data)
+    const nodeCount = this.graphData.nodes.length
+    
     // Log binary update stats
     console.debug('Processing binary position update:', {
-      numPositions: data.positions.length,
+      bufferSize: data.data.byteLength,
       isInitialLayout: data.isInitialLayout,
-      numNodes: this.graphData.nodes.length,
+      nodeCount,
       numMappedNodes: this.nodeMap.size
     })
 
-    // Update node positions from binary data using node IDs
-    data.positions.forEach((pos) => {
-      const node = this.nodeMap.get(pos.id)
+    // Skip first float (isInitialLayout flag)
+    let offset = 1
+    
+    // Update node positions from binary data
+    for (let i = 0; i < nodeCount; i++) {
+      const node = this.graphData.nodes[i]
       if (node) {
-        node.position = [pos.x, pos.y, pos.z]
-        node.velocity = [pos.vx, pos.vy, pos.vz]
-      } else {
-        console.warn(`No node found for ID: ${pos.id}`)
+        // Each node has 6 floats: x,y,z,vx,vy,vz
+        node.position = [
+          dataView[offset],
+          dataView[offset + 1],
+          dataView[offset + 2]
+        ]
+        node.velocity = [
+          dataView[offset + 3],
+          dataView[offset + 4],
+          dataView[offset + 5]
+        ]
+        offset += 6
       }
-    })
+    }
 
     // Log sample of updated positions
-    if (data.positions.length > 0) {
-      const sampleNode = this.nodeMap.get(data.positions[0].id)
+    if (nodeCount > 0) {
+      const sampleNode = this.graphData.nodes[0]
       console.debug('Sample node update:', {
-        id: data.positions[0].id,
-        position: sampleNode?.position,
-        velocity: sampleNode?.velocity
+        id: sampleNode.id,
+        position: sampleNode.position,
+        velocity: sampleNode.velocity
       })
     }
 
     // Emit custom event for position update
     window.dispatchEvent(new CustomEvent('graphData:positions', {
       detail: {
-        positions: data.positions,
-        isInitialLayout: data.isInitialLayout
+        data: data.data,
+        isInitialLayout: data.isInitialLayout,
+        nodeCount
       }
     }))
   }

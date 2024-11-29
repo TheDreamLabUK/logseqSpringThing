@@ -30,6 +30,14 @@ export interface BinaryMessage {
                            // [isInitial(4)] + [x,y,z,vx,vy,vz](24) per node
                            // Node index in array matches index in original graph data
   isInitialLayout: boolean; // First 4 bytes flag
+  nodeCount: number;        // Number of nodes in the update
+}
+
+// Node Position Update
+export interface NodePositionUpdate {
+  nodeIndex: number;      // Index in the nodes array
+  position: [number, number, number];
+  velocity?: [number, number, number];
 }
 
 // Graph Data (establishes node order for binary updates)
