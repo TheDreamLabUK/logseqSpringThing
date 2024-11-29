@@ -1,4 +1,5 @@
 <template>
+  <!-- Template remains unchanged -->
   <div id="control-panel" :class="{ hidden: isHidden }">
     <button class="toggle-button" @click="togglePanel">
       {{ isHidden ? 'Show Controls' : 'Hide Controls' }}
@@ -46,8 +47,8 @@
       <!-- Save Settings Button -->
       <button class="save-button" 
               @click="saveSettings"
-              :disabled="!hasUnsavedChanges">
-        {{ hasUnsavedChanges ? 'Save Settings' : 'No Changes' }}
+              :disabled="!hasUnsavedChanges || isSaving">
+        {{ getSaveButtonText() }}
       </button>
     </div>
   </div>
@@ -57,15 +58,19 @@
 import { defineComponent, ref, computed, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useSettingsStore } from '../stores/settings';
+import { useWebSocketStore } from '../stores/websocket';
 import { useControlGroups } from '../composables/useControlGroups';
 import { useControlSettings } from '../composables/useControlSettings';
+import { SERVER_MESSAGE_TYPES, MESSAGE_FIELDS } from '../constants/websocket';
 import type { ControlGroup } from '../types/components';
+import type { SettingsUpdateMessage, MaterialSettings, BloomSettings, FisheyeSettings } from '../types/websocket';
 
 export default defineComponent({
   name: 'ControlPanel',
   
   setup() {
     const settingsStore = useSettingsStore();
+    const websocketStore = useWebSocketStore();
     const { collapsedGroups, toggleGroup } = useControlGroups();
     const { 
       createAppearanceGroup,
@@ -78,7 +83,18 @@ export default defineComponent({
     } = useControlSettings();
 
     const isHidden = ref(false);
+    const isSaving = ref(false);
     const { visualization, bloom, fisheye, isDirty: hasUnsavedChanges } = storeToRefs(settingsStore);
+
+    // Map visualization settings to material settings
+    const getMaterialSettings = computed((): Partial<MaterialSettings> => ({
+      nodeSize: (visualization.value.min_node_size + visualization.value.max_node_size) / 2,
+      nodeColor: visualization.value.node_color,
+      edgeWidth: (visualization.value.edge_min_width + visualization.value.edge_max_width) / 2,
+      edgeColor: visualization.value.edge_color,
+      highlightColor: visualization.value.node_color_core,
+      opacity: visualization.value.material.node_material_opacity
+    }));
 
     // Compute control groups based on current settings
     const controlGroups = computed<ControlGroup[]>(() => [
@@ -110,27 +126,53 @@ export default defineComponent({
       handleControlChange(groupName, controlName, input.checked);
     };
 
-    const saveSettings = () => {
-      const settings = {
-        visualization: visualization.value,
-        bloom: bloom.value,
-        fisheye: fisheye.value
-      };
+    const getSaveButtonText = () => {
+      if (isSaving.value) return 'Saving...';
+      if (!hasUnsavedChanges.value) return 'No Changes';
+      return 'Save Settings';
+    };
+
+    const saveSettings = async () => {
+      if (!hasUnsavedChanges.value || isSaving.value) return;
       
-      // Dispatch event for settings update
-      window.dispatchEvent(new CustomEvent('settingsUpdate', {
-        detail: settings
-      }));
-      
-      settingsStore.markSaved();
+      try {
+        isSaving.value = true;
+        
+        // Prepare settings update message
+        const updateMessage: SettingsUpdateMessage = {
+          type: SERVER_MESSAGE_TYPES.UPDATE_SETTINGS,
+          settings: {
+            [MESSAGE_FIELDS.MATERIAL]: getMaterialSettings.value,
+            [MESSAGE_FIELDS.BLOOM]: bloom.value,
+            [MESSAGE_FIELDS.FISHEYE]: fisheye.value
+          }
+        };
+
+        // Send settings through WebSocket
+        websocketStore.send(updateMessage);
+        
+        // Mark settings as saved in store
+        settingsStore.markSaved();
+        
+        console.debug('Settings update sent:', updateMessage);
+      } catch (error) {
+        console.error('Failed to save settings:', error);
+      } finally {
+        isSaving.value = false;
+      }
     };
 
     onMounted(() => {
-      console.log('ControlPanel mounted');
+      console.debug('ControlPanel mounted, initial settings:', {
+        material: getMaterialSettings.value,
+        bloom: bloom.value,
+        fisheye: fisheye.value
+      });
     });
 
     return {
       isHidden,
+      isSaving,
       collapsedGroups,
       controlGroups,
       hasUnsavedChanges,
@@ -139,13 +181,15 @@ export default defineComponent({
       handleColorInput,
       handleRangeInput,
       handleCheckboxChange,
-      saveSettings
+      saveSettings,
+      getSaveButtonText
     };
   }
 });
 </script>
 
 <style scoped>
+/* Styles remain unchanged */
 #control-panel {
   position: fixed;
   top: 20px;

@@ -38,27 +38,77 @@ export const ENABLE_BINARY_DEBUG = true;         // Enable detailed binary updat
 export const ENABLE_POSITION_VALIDATION = true;  // Enable position/velocity validation
 export const ENABLE_PERFORMANCE_LOGGING = true;  // Enable performance metric logging
 
-// Message type constants (matching server)
-export const MESSAGE_TYPES = {
+// Server message types (matching server's ServerMessage enum)
+export const SERVER_MESSAGE_TYPES = {
+    // Direct server message types from ServerMessage enum
     GRAPH_UPDATE: 'graphUpdate',
-    GRAPH_DATA: 'graphData',
     ERROR: 'error',
     POSITION_UPDATE_COMPLETE: 'position_update_complete',
     SETTINGS_UPDATED: 'settings_updated',
     SIMULATION_MODE_SET: 'simulation_mode_set',
     FISHEYE_SETTINGS_UPDATED: 'fisheye_settings_updated',
+    
+    // Additional client-side message types
     INITIAL_DATA: 'initial_data',
     GPU_STATE: 'gpu_state',
-    LAYOUT_STATE: 'layout_state'
+    LAYOUT_STATE: 'layout_state',
+    OPENAI_RESPONSE: 'openaiResponse',
+    RAGFLOW_RESPONSE: 'ragflowResponse',
+    COMPLETION: 'completion',
+    UPDATE_SETTINGS: 'updateSettings'  // Added for settings updates
 } as const;
 
-// Error codes (matching server)
+// Error codes (matching server error structure)
 export const ERROR_CODES = {
+    // Connection errors
     CONNECTION_FAILED: 'CONNECTION_FAILED',
+    MAX_RETRIES_EXCEEDED: 'MAX_RETRIES_EXCEEDED',
+    HEARTBEAT_TIMEOUT: 'HEARTBEAT_TIMEOUT',
+    
+    // Message errors
     MESSAGE_TOO_LARGE: 'MESSAGE_TOO_LARGE',
     INVALID_MESSAGE: 'INVALID_MESSAGE',
+    
+    // Data validation errors
     INVALID_POSITION: 'INVALID_POSITION',
     INVALID_VELOCITY: 'INVALID_VELOCITY',
-    MAX_RETRIES_EXCEEDED: 'MAX_RETRIES_EXCEEDED',
-    HEARTBEAT_TIMEOUT: 'HEARTBEAT_TIMEOUT'
+    
+    // Graph errors
+    INVALID_NODE: 'INVALID_NODE',
+    INVALID_EDGE: 'INVALID_EDGE',
+    
+    // State errors
+    INVALID_STATE: 'INVALID_STATE',
+    SIMULATION_ERROR: 'SIMULATION_ERROR'
+} as const;
+
+// Message field names (matching server struct fields)
+export const MESSAGE_FIELDS = {
+    // GraphUpdate fields
+    GRAPH_DATA: 'graph_data',
+    
+    // Error fields
+    MESSAGE: 'message',
+    CODE: 'code',
+    DETAILS: 'details',
+    
+    // PositionUpdateComplete fields
+    STATUS: 'status',
+    IS_INITIAL_LAYOUT: 'is_initial_layout',
+    
+    // SimulationModeSet fields
+    MODE: 'mode',
+    GPU_ENABLED: 'gpu_enabled',
+    
+    // FisheyeSettingsUpdated fields
+    ENABLED: 'enabled',
+    STRENGTH: 'strength',
+    FOCUS_POINT: 'focus_point',
+    RADIUS: 'radius',
+
+    // Settings fields
+    SETTINGS: 'settings',
+    MATERIAL: 'material',
+    BLOOM: 'bloom',
+    FISHEYE: 'fisheye'
 } as const;

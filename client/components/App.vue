@@ -28,7 +28,6 @@
 </template>
 
 <script lang="ts">
-// Previous imports unchanged
 import { defineComponent, onMounted, onErrorCaptured, ref, onBeforeUnmount, ComponentPublicInstance, watch, computed, provide } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '../stores/settings'
@@ -43,6 +42,7 @@ import { useVisualization, SCENE_KEY } from '../composables/useVisualization'
 import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge, BinaryMessage } from '../types/websocket'
 import type { Node as CoreNode, Edge as CoreEdge, GraphNode, GraphEdge, GraphData } from '../types/core'
 import type { FisheyeConfig } from '../types/components'
+import { SERVER_MESSAGE_TYPES, MESSAGE_FIELDS, ENABLE_BINARY_DEBUG } from '../constants/websocket'
 
 // Transform functions unchanged
 const transformNode = (wsNode: WSNode): CoreNode => ({
@@ -123,14 +123,13 @@ export default defineComponent({
         return;
       }
 
-      // JSON message handler unchanged
+      // JSON message handler
       websocketStore.service.on('message', (message: BaseMessage) => {
         console.debug('Received message:', message)
         switch (message.type) {
-          case 'graphUpdate':
-          case 'graphData':
+          case SERVER_MESSAGE_TYPES.GRAPH_UPDATE:
             const graphMsg = message as GraphUpdateMessage
-            const graphData = graphMsg.graphData || graphMsg.graph_data
+            const graphData = graphMsg.graphData || graphMsg[MESSAGE_FIELDS.GRAPH_DATA]
             if (!graphData) {
               console.warn('Received graph update with no data')
               return
@@ -167,23 +166,25 @@ export default defineComponent({
             })
             break
 
-          case 'settings_updated':
+          case SERVER_MESSAGE_TYPES.SETTINGS_UPDATED:
             settingsStore.applyServerSettings(message.settings)
             break
 
-          case 'position_update_complete':
-            console.debug('Position update completed:', message.status)
+          case SERVER_MESSAGE_TYPES.POSITION_UPDATE_COMPLETE:
+            console.debug('Position update completed:', message[MESSAGE_FIELDS.STATUS])
             break
         }
       })
 
-      // Updated binary message handler
+      // Binary message handler
       websocketStore.service.on('gpuPositions', (data: BinaryMessage) => {
-        console.debug('Received GPU positions update:', {
-          bufferSize: data.data.byteLength,
-          isInitial: data.isInitialLayout,
-          nodeCount: visualizationStore.nodes.length
-        })
+        if (ENABLE_BINARY_DEBUG) {
+          console.debug('Received GPU positions update:', {
+            bufferSize: data.data.byteLength,
+            isInitial: data.isInitialLayout,
+            nodeCount: visualizationStore.nodes.length
+          })
+        }
 
         // Update binary store with raw ArrayBuffer data
         binaryUpdateStore.updateFromBinary(data)
@@ -197,7 +198,7 @@ export default defineComponent({
         updatePositions(positions, velocities, nodeCount)
       })
 
-      // Connection event handlers unchanged
+      // Connection event handlers
       websocketStore.service.on('open', () => {
         console.log('WebSocket connected')
         error.value = null
