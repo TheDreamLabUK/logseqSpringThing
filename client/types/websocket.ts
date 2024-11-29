@@ -18,17 +18,19 @@ export type MessageType =
 // Binary Protocol Types
 export interface BinaryMessage {
   data: ArrayBuffer;        // Raw binary data in format:
-                           // [isInitial(4)] + [x,y,z,vx,vy,vz](24) per node
+                           // [x,y,z,vx,vy,vz](24) per node
                            // Node index in array matches index in original graph data
-  isInitialLayout: boolean; // First 4 bytes flag
+  positions: NodePosition[];  // Processed position data
   nodeCount: number;        // Number of nodes in the update
 }
 
-// Node Position Update
-export interface NodePositionUpdate {
-  nodeIndex: number;      // Index in the nodes array
-  position: [number, number, number];
-  velocity?: [number, number, number];
+export interface NodePosition {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
 }
 
 // Graph Data (establishes node order for binary updates)

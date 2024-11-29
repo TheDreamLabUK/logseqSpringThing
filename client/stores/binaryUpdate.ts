@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import type { BinaryMessage } from '../types/websocket'
 import {
-  BINARY_UPDATE_HEADER_SIZE,
   BINARY_UPDATE_NODE_SIZE,
   FLOAT32_SIZE,
   MAX_VALID_POSITION,
@@ -19,7 +18,6 @@ interface BinaryUpdateState {
   nodeCount: number
   firstUpdateTime: number  // Track when updates started
   lastUpdateTime: number   // Track most recent update
-  isInitialLayout: boolean
   invalidUpdates: number   // Track number of invalid updates for monitoring
 }
 
@@ -34,7 +32,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     nodeCount: 0,
     firstUpdateTime: 0,
     lastUpdateTime: 0,
-    isInitialLayout: false,
     invalidUpdates: 0
   }),
 
@@ -78,11 +75,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
      * Get all velocities as Float32Array
      */
     getAllVelocities: (state): Float32Array => state.velocities,
-
-    /**
-     * Check if this is initial layout data
-     */
-    isInitial: (state): boolean => state.isInitialLayout,
 
     /**
      * Get percentage of invalid updates
@@ -192,11 +184,10 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
      */
     updateFromBinary(message: BinaryMessage): void {
       const dataView = new Float32Array(message.data);
-      const totalFloats = dataView.length - 1; // Subtract 1 for isInitialLayout flag
-      const nodeCount = totalFloats / 6; // 6 floats per node (x,y,z,vx,vy,vz)
+      const nodeCount = dataView.length / 6; // 6 floats per node (x,y,z,vx,vy,vz)
 
       // Validate buffer size
-      const expectedSize = BINARY_UPDATE_HEADER_SIZE + (nodeCount * BINARY_UPDATE_NODE_SIZE);
+      const expectedSize = nodeCount * BINARY_UPDATE_NODE_SIZE;
       if (message.data.byteLength !== expectedSize) {
         console.error('Invalid binary message size:', {
           received: message.data.byteLength,
@@ -215,8 +206,8 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       }
 
       // Process position and velocity data directly from binary
-      let srcOffset = 1; // Skip isInitialLayout flag
       for (let i = 0; i < nodeCount; i++) {
+        const srcOffset = i * 6;
         const posOffset = i * 3;
         const velOffset = i * 3;
 
@@ -262,11 +253,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         this.velocities[velOffset] = vx;
         this.velocities[velOffset + 1] = vy;
         this.velocities[velOffset + 2] = vz;
-
-        srcOffset += 6;
       }
-
-      this.isInitialLayout = message.isInitialLayout;
       
       // Update timing
       const now = Date.now();
@@ -279,7 +266,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       if (ENABLE_BINARY_DEBUG && nodeCount > 0) {
         console.debug('Binary update processed:', {
           nodeCount,
-          isInitial: this.isInitialLayout,
           invalidRate: this.invalidUpdateRate,
           updateFrequency: this.updateFrequency,
           sample: {
@@ -308,7 +294,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.nodeCount = 0;
       this.firstUpdateTime = 0;
       this.lastUpdateTime = 0;
-      this.isInitialLayout = false;
       this.invalidUpdates = 0;
     }
   }

@@ -17,7 +17,6 @@ export const HEARTBEAT_INTERVAL = 30000;      // 30 seconds between pings
 export const HEARTBEAT_TIMEOUT = 5000;        // 5 seconds to receive pong
 
 // Binary protocol constants
-export const BINARY_UPDATE_HEADER_SIZE = 4;   // Float32 for initial layout flag
 export const BINARY_UPDATE_NODE_SIZE = 24;    // 6 float32s per node (position + velocity)
 export const FLOAT32_SIZE = 4;                // Size of Float32 in bytes
 
@@ -94,7 +93,6 @@ export const MESSAGE_FIELDS = {
     
     // PositionUpdateComplete fields
     STATUS: 'status',
-    IS_INITIAL_LAYOUT: 'is_initial_layout',
     
     // SimulationModeSet fields
     MODE: 'mode',

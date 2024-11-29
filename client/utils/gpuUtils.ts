@@ -6,7 +6,6 @@ export interface GPUContext {
 }
 
 export interface PositionUpdate {
-  isInitialLayout: boolean;
   positions: NodePosition[];
 }
 
@@ -67,17 +66,16 @@ export async function initGPU(): Promise<GPUContext | null> {
 
 /**
  * Apply position updates received from server
- * @param buffer - Binary position data from server
+ * @param buffer - Binary position data from server (6 float32s per node: x,y,z,vx,vy,vz)
  * @returns Processed position data
  */
 export function processPositionUpdate(buffer: ArrayBuffer): PositionUpdate | null {
   try {
     const dataView = new Float32Array(buffer);
-    const isInitialLayout = dataView[0] === 1.0;
     const positions: NodePosition[] = [];
     
-    // Skip header (first float32)
-    for (let i = 1; i < dataView.length; i += 6) {
+    // Process 6 floats at a time (x,y,z,vx,vy,vz)
+    for (let i = 0; i < dataView.length; i += 6) {
       if (i + 5 < dataView.length) {
         positions.push({
           x: dataView[i],
@@ -90,10 +88,7 @@ export function processPositionUpdate(buffer: ArrayBuffer): PositionUpdate | nul
       }
     }
 
-    return {
-      isInitialLayout,
-      positions
-    };
+    return { positions };
   } catch (error) {
     console.error('Error processing position update:', error);
     return null;
