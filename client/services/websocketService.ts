@@ -48,6 +48,7 @@ export default class WebsocketService {
   private reconnectTimeout: number | null = null;
   private eventListeners: Map<keyof WebSocketEventMap, Set<WebSocketEventCallback<any>>> = new Map();
   private url: string;
+  private isInitialDataReceived = false;
 
   constructor(config: Partial<WebSocketConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -81,6 +82,13 @@ export default class WebsocketService {
           console.debug('WebSocket connection established');
           this.reconnectAttempts = 0;
           this.emit('open');
+
+          // Request initial data immediately after connection
+          if (!this.isInitialDataReceived) {
+            console.debug('Requesting initial data');
+            this.send({ type: SERVER_MESSAGE_TYPES.INITIAL_DATA });
+          }
+
           this.processQueuedMessages();
           resolve();
         };
@@ -155,15 +163,15 @@ export default class WebsocketService {
       // Handle specific message types
       switch (type) {
         case SERVER_MESSAGE_TYPES.GRAPH_UPDATE:
-          const graphMessage = message as GraphUpdateMessage;
-          // Handle both camelCase and snake_case versions
-          const graphData = graphMessage.graphData || graphMessage.graph_data;
+          const graphMsg = message as GraphUpdateMessage;
+          const graphData = graphMsg.graphData || graphMsg[MESSAGE_FIELDS.GRAPH_DATA];
           if (graphData) {
             this.emit('graphUpdate', {
               type: SERVER_MESSAGE_TYPES.GRAPH_UPDATE,
               graphData,
               graph_data: graphData // Include both versions for compatibility
             });
+            this.isInitialDataReceived = true;
           }
           break;
 
@@ -250,6 +258,7 @@ export default class WebsocketService {
 
   private handleConnectionClose(wasClean: boolean): void {
     this.emit('close');
+    this.isInitialDataReceived = false;
     
     if (!wasClean && this.reconnectAttempts < this.config.maxRetries) {
       this.reconnectAttempts++;
@@ -393,5 +402,6 @@ export default class WebsocketService {
     this.lastMessageTime = 0;
     this.reconnectAttempts = 0;
     this.eventListeners.clear();
+    this.isInitialDataReceived = false;
   }
 }
