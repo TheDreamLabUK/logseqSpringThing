@@ -1,4 +1,3 @@
-<!-- Previous template section unchanged -->
 <template>
   <ErrorBoundary>
     <div id="app">
@@ -39,10 +38,10 @@ import ErrorBoundary from '@components/ErrorBoundary.vue'
 import GraphSystem from '@components/visualization/GraphSystem.vue'
 import { errorTracking } from '../services/errorTracking'
 import { useVisualization, SCENE_KEY } from '../composables/useVisualization'
+import { SERVER_MESSAGE_TYPES, MESSAGE_FIELDS, ENABLE_BINARY_DEBUG } from '../constants/websocket'
 import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge, BinaryMessage } from '../types/websocket'
 import type { Node as CoreNode, Edge as CoreEdge, GraphNode, GraphEdge, GraphData } from '../types/core'
 import type { FisheyeConfig } from '../types/components'
-import { SERVER_MESSAGE_TYPES, MESSAGE_FIELDS, ENABLE_BINARY_DEBUG } from '../constants/websocket'
 
 // Transform functions unchanged
 const transformNode = (wsNode: WSNode): CoreNode => ({
@@ -91,6 +90,7 @@ export default defineComponent({
     const sceneContainer = ref<HTMLElement | null>(null)
     const canvas = ref<HTMLCanvasElement | null>(null)
     const error = ref<string | null>(null)
+    const isInitialDataRequested = ref(false)
 
     // Visualization settings unchanged
     const visualSettings = computed(() => {
@@ -123,16 +123,46 @@ export default defineComponent({
         return;
       }
 
+      // Connection event handlers
+      websocketStore.service.on('open', () => {
+        console.log('WebSocket connected');
+        error.value = null;
+        
+        // Request initial data when connection is established
+        if (!isInitialDataRequested.value) {
+          console.debug('Requesting initial graph data');
+          websocketStore.service?.send({
+            type: SERVER_MESSAGE_TYPES.INITIAL_DATA
+          });
+          isInitialDataRequested.value = true;
+        }
+      });
+
+      websocketStore.service.on('close', () => {
+        console.log('WebSocket disconnected');
+        binaryUpdateStore.clear();
+        isInitialDataRequested.value = false;
+      });
+
+      websocketStore.service.on('error', (err: ErrorMessage) => {
+        console.error('WebSocket error:', err);
+        error.value = err.message;
+        errorTracking.trackError(new Error(err.message), {
+          context: 'WebSocket Error',
+          component: 'App'
+        });
+      });
+
       // JSON message handler
       websocketStore.service.on('message', (message: BaseMessage) => {
-        console.debug('Received message:', message)
+        console.debug('Received message:', message);
         switch (message.type) {
           case SERVER_MESSAGE_TYPES.GRAPH_UPDATE:
-            const graphMsg = message as GraphUpdateMessage
-            const graphData = graphMsg.graphData || graphMsg[MESSAGE_FIELDS.GRAPH_DATA]
+            const graphMsg = message as GraphUpdateMessage;
+            const graphData = graphMsg.graphData || graphMsg[MESSAGE_FIELDS.GRAPH_DATA];
             if (!graphData) {
-              console.warn('Received graph update with no data')
-              return
+              console.warn('Received graph update with no data');
+              return;
             }
 
             console.log('Received graph update:', {
@@ -143,18 +173,18 @@ export default defineComponent({
                 id: graphData.nodes[0].id,
                 position: graphData.nodes[0].position
               } : null
-            })
+            });
 
-            const transformedNodes = (graphData.nodes || []).map(transformNode)
-            const transformedEdges = (graphData.edges || []).map(transformEdge)
+            const transformedNodes = (graphData.nodes || []).map(transformNode);
+            const transformedEdges = (graphData.edges || []).map(transformEdge);
             
             visualizationStore.setGraphData(
               transformedNodes,
               transformedEdges,
               graphData.metadata || {}
-            )
+            );
 
-            updateNodes(transformedNodes)
+            updateNodes(transformedNodes);
 
             console.log('Graph data state after update:', {
               storeNodes: visualizationStore.nodes.length,
@@ -163,18 +193,18 @@ export default defineComponent({
                 nodes: visualizationStore.graphData.nodes.length,
                 edges: visualizationStore.graphData.edges.length
               } : null
-            })
-            break
+            });
+            break;
 
           case SERVER_MESSAGE_TYPES.SETTINGS_UPDATED:
-            settingsStore.applyServerSettings(message.settings)
-            break
+            settingsStore.applyServerSettings(message.settings);
+            break;
 
           case SERVER_MESSAGE_TYPES.POSITION_UPDATE_COMPLETE:
-            console.debug('Position update completed:', message[MESSAGE_FIELDS.STATUS])
-            break
+            console.debug('Position update completed:', message[MESSAGE_FIELDS.STATUS]);
+            break;
         }
-      })
+      });
 
       // Binary message handler
       websocketStore.service.on('gpuPositions', (data: BinaryMessage) => {
@@ -183,57 +213,37 @@ export default defineComponent({
             bufferSize: data.data.byteLength,
             isInitial: data.isInitialLayout,
             nodeCount: visualizationStore.nodes.length
-          })
+          });
         }
 
         // Update binary store with raw ArrayBuffer data
-        binaryUpdateStore.updateFromBinary(data)
+        binaryUpdateStore.updateFromBinary(data);
 
         // Get the processed TypedArrays from the store
-        const positions = binaryUpdateStore.getAllPositions
-        const velocities = binaryUpdateStore.getAllVelocities
-        const nodeCount = visualizationStore.nodes.length
+        const positions = binaryUpdateStore.getAllPositions;
+        const velocities = binaryUpdateStore.getAllVelocities;
+        const nodeCount = visualizationStore.nodes.length;
 
         // Update visualization with TypedArrays and node count
-        updatePositions(positions, velocities, nodeCount)
-      })
-
-      // Connection event handlers
-      websocketStore.service.on('open', () => {
-        console.log('WebSocket connected')
-        error.value = null
-      })
-
-      websocketStore.service.on('close', () => {
-        console.log('WebSocket disconnected')
-        binaryUpdateStore.clear()
-      })
-
-      websocketStore.service.on('error', (err: ErrorMessage) => {
-        console.error('WebSocket error:', err)
-        error.value = err.message
-        errorTracking.trackError(new Error(err.message), {
-          context: 'WebSocket Error',
-          component: 'App'
-        })
-      })
-    }
+        updatePositions(positions, velocities, nodeCount);
+      });
+    };
 
     // Rest of the component unchanged
     onMounted(async () => {
       try {
-        settingsStore.applyServerSettings({})
+        settingsStore.applyServerSettings({});
         console.info('Settings initialized', {
           context: 'App Setup',
           settings: settingsStore.$state
-        })
+        });
 
         if (canvas.value && sceneContainer.value) {
-          console.log('Initializing visualization system...')
+          console.log('Initializing visualization system...');
           
-          const rect = sceneContainer.value.getBoundingClientRect()
-          canvas.value.width = rect.width
-          canvas.value.height = rect.height
+          const rect = sceneContainer.value.getBoundingClientRect();
+          canvas.value.width = rect.width;
+          canvas.value.height = rect.height;
           
           await initVisualization({
             canvas: canvas.value,
@@ -243,46 +253,46 @@ export default defineComponent({
               preserveDrawingBuffer: true,
               powerPreference: 'high-performance'
             }
-          })
-          console.log('Visualization system initialized')
+          });
+          console.log('Visualization system initialized');
 
           if (visualizationState.value.scene) {
-            provide(SCENE_KEY, visualizationState.value.scene)
+            provide(SCENE_KEY, visualizationState.value.scene);
           }
         }
 
-        await websocketStore.initialize()
-        setupWebSocketHandlers()
+        await websocketStore.initialize();
+        setupWebSocketHandlers();
 
         console.info('Application initialized', {
           context: 'App Initialization',
           environment: process.env.NODE_ENV
-        })
+        });
 
       } catch (err) {
-        console.error('Error during App setup:', err)
-        error.value = err instanceof Error ? err.message : 'Unknown error during setup'
+        console.error('Error during App setup:', err);
+        error.value = err instanceof Error ? err.message : 'Unknown error during setup';
         errorTracking.trackError(err, {
           context: 'App Setup',
           component: 'App'
-        })
+        });
       }
-    })
+    });
 
     onBeforeUnmount(() => {
-      websocketStore.cleanup()
-      binaryUpdateStore.clear()
-    })
+      websocketStore.cleanup();
+      binaryUpdateStore.clear();
+    });
 
     onErrorCaptured((err, instance: ComponentPublicInstance | null, info) => {
-      error.value = err instanceof Error ? err.message : 'An error occurred'
+      error.value = err instanceof Error ? err.message : 'An error occurred';
       errorTracking.trackError(err, {
         context: 'App Root Error',
         component: (instance as any)?.$options?.name || 'Unknown',
         additional: { info }
-      })
-      return false
-    })
+      });
+      return false;
+    });
 
     return {
       sceneContainer,
@@ -297,9 +307,9 @@ export default defineComponent({
           NODE_ENV: process.env.NODE_ENV
         }
       }
-    }
+    };
   }
-})
+});
 </script>
 
 <style>

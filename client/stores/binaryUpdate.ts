@@ -17,7 +17,8 @@ interface BinaryUpdateState {
   positions: Float32Array  // [x,y,z] for each node
   velocities: Float32Array // [vx,vy,vz] for each node
   nodeCount: number
-  lastUpdateTime: number
+  firstUpdateTime: number  // Track when updates started
+  lastUpdateTime: number   // Track most recent update
   isInitialLayout: boolean
   invalidUpdates: number   // Track number of invalid updates for monitoring
 }
@@ -31,6 +32,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     positions: new Float32Array(0),
     velocities: new Float32Array(0),
     nodeCount: 0,
+    firstUpdateTime: 0,
     lastUpdateTime: 0,
     isInitialLayout: false,
     invalidUpdates: 0
@@ -86,9 +88,19 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
      * Get percentage of invalid updates
      */
     invalidUpdateRate: (state): number => {
-      if (state.lastUpdateTime === 0) return 0;
-      const totalUpdates = Math.max(1, state.nodeCount * (state.lastUpdateTime - state.lastUpdateTime) / 1000);
+      if (state.firstUpdateTime === 0) return 0;
+      const timeSpan = (state.lastUpdateTime - state.firstUpdateTime) / 1000; // seconds
+      const totalUpdates = Math.max(1, state.nodeCount * timeSpan);
       return (state.invalidUpdates / totalUpdates) * 100;
+    },
+
+    /**
+     * Get update frequency in updates per second
+     */
+    updateFrequency: (state): number => {
+      if (state.firstUpdateTime === 0) return 0;
+      const timeSpan = (state.lastUpdateTime - state.firstUpdateTime) / 1000; // seconds
+      return timeSpan > 0 ? state.nodeCount / timeSpan : 0;
     }
   },
 
@@ -166,7 +178,12 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         this.velocities[velIndex + 1] = vy;
         this.velocities[velIndex + 2] = vz;
 
-        this.lastUpdateTime = Date.now();
+        // Update timing
+        const now = Date.now();
+        if (this.firstUpdateTime === 0) {
+          this.firstUpdateTime = now;
+        }
+        this.lastUpdateTime = now;
       }
     },
 
@@ -183,7 +200,9 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       if (message.data.byteLength !== expectedSize) {
         console.error('Invalid binary message size:', {
           received: message.data.byteLength,
-          expected: expectedSize
+          expected: expectedSize,
+          nodeCount,
+          timestamp: new Date().toISOString()
         });
         return;
       }
@@ -219,7 +238,8 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
               console.warn('Invalid values in binary update:', {
                 index: i,
                 position: [x, y, z],
-                velocity: [vx, vy, vz]
+                velocity: [vx, vy, vz],
+                timestamp: new Date().toISOString()
               });
             }
 
@@ -247,7 +267,13 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       }
 
       this.isInitialLayout = message.isInitialLayout;
-      this.lastUpdateTime = Date.now();
+      
+      // Update timing
+      const now = Date.now();
+      if (this.firstUpdateTime === 0) {
+        this.firstUpdateTime = now;
+      }
+      this.lastUpdateTime = now;
 
       // Debug logging
       if (ENABLE_BINARY_DEBUG && nodeCount > 0) {
@@ -255,6 +281,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
           nodeCount,
           isInitial: this.isInitialLayout,
           invalidRate: this.invalidUpdateRate,
+          updateFrequency: this.updateFrequency,
           sample: {
             position: [
               this.positions[0],
@@ -279,6 +306,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.positions = new Float32Array(0);
       this.velocities = new Float32Array(0);
       this.nodeCount = 0;
+      this.firstUpdateTime = 0;
       this.lastUpdateTime = 0;
       this.isInitialLayout = false;
       this.invalidUpdates = 0;
