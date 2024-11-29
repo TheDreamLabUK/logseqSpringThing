@@ -1,178 +1,144 @@
 import { defineStore } from 'pinia'
 import type { PositionUpdate } from '../types/websocket'
-import { POSITION_SCALE, VELOCITY_SCALE } from '../constants/websocket'
 
 interface BinaryUpdateState {
-  positions: Map<string, PositionUpdate>
+  // Use TypedArrays for better performance with binary data
+  positions: Float32Array
+  velocities: Float32Array
+  nodeCount: number
   lastUpdateTime: number
   isInitialLayout: boolean
-  pendingUpdates: PositionUpdate[]
-  batchSize: number
 }
 
 /**
- * Store for handling transient binary position/velocity updates
- * These updates are frequent and superseded by full mesh updates
+ * Store for handling binary position/velocity updates
+ * Optimized for high-frequency updates in force-directed graph
  */
 export const useBinaryUpdateStore = defineStore('binaryUpdate', {
   state: (): BinaryUpdateState => ({
-    positions: new Map(),
+    positions: new Float32Array(0),
+    velocities: new Float32Array(0),
+    nodeCount: 0,
     lastUpdateTime: 0,
-    isInitialLayout: false,
-    pendingUpdates: [],
-    batchSize: 100 // Default batch size
+    isInitialLayout: false
   }),
 
   getters: {
     /**
-     * Get latest position update for a node
+     * Get position for node at index
      */
-    getNodePosition: (state) => (nodeId: string): PositionUpdate | undefined => {
-      return state.positions.get(nodeId)
+    getNodePosition: (state) => (index: number): [number, number, number] | undefined => {
+      if (index >= 0 && index < state.nodeCount) {
+        const baseIndex = index * 3
+        return [
+          state.positions[baseIndex],
+          state.positions[baseIndex + 1],
+          state.positions[baseIndex + 2]
+        ]
+      }
+      return undefined
     },
 
     /**
-     * Get all current position updates
+     * Get velocity for node at index
      */
-    getAllPositions: (state): PositionUpdate[] => {
-      return Array.from(state.positions.values())
+    getNodeVelocity: (state) => (index: number): [number, number, number] | undefined => {
+      if (index >= 0 && index < state.nodeCount) {
+        const baseIndex = index * 3
+        return [
+          state.velocities[baseIndex],
+          state.velocities[baseIndex + 1],
+          state.velocities[baseIndex + 2]
+        ]
+      }
+      return undefined
     },
+
+    /**
+     * Get all positions as Float32Array
+     */
+    getAllPositions: (state): Float32Array => state.positions,
+
+    /**
+     * Get all velocities as Float32Array
+     */
+    getAllVelocities: (state): Float32Array => state.velocities,
 
     /**
      * Check if this is initial layout data
      */
-    isInitial: (state): boolean => state.isInitialLayout,
-
-    /**
-     * Get number of pending updates
-     */
-    pendingUpdateCount: (state): number => state.pendingUpdates.length,
-
-    /**
-     * Get current batch size
-     */
-    getBatchSize: (state): number => state.batchSize
+    isInitial: (state): boolean => state.isInitialLayout
   },
 
   actions: {
     /**
-     * Process a single position update
-     */
-    processUpdate(pos: PositionUpdate): void {
-      if (!pos.id) {
-        console.warn('Received position update without node ID')
-        return
-      }
-
-      // Enhanced debug logging for position updates
-      console.debug('Processing position update:', {
-        nodeId: pos.id,
-        oldPosition: this.positions.get(pos.id),
-        newPosition: {
-          x: pos.x,
-          y: pos.y,
-          z: pos.z,
-          vx: pos.vx,
-          vy: pos.vy,
-          vz: pos.vz
-        },
-        timestamp: new Date().toISOString()
-      })
-
-      // Store update with node ID - no scaling needed as values are already scaled
-      this.positions.set(pos.id, {
-        id: pos.id,
-        x: pos.x,
-        y: pos.y,
-        z: pos.z,
-        vx: pos.vx,
-        vy: pos.vy,
-        vz: pos.vz
-      })
-    },
-
-    /**
      * Update positions from binary WebSocket message
+     * @param buffer - Raw ArrayBuffer from WebSocket
+     * @param isInitial - Whether this is initial layout data
      */
-    updatePositions(positions: PositionUpdate[], isInitial: boolean) {
-      // Enhanced debug logging for batch updates
-      console.debug('Starting batch position update:', {
-        updateCount: positions.length,
-        isInitial,
-        currentPositionsCount: this.positions.size,
-        pendingUpdatesCount: this.pendingUpdates.length,
-        timestamp: new Date().toISOString()
-      })
+    updateFromBinary(buffer: ArrayBuffer, isInitial: boolean) {
+      const dataView = new Float32Array(buffer)
+      const totalFloats = dataView.length - 1 // Subtract 1 for isInitialLayout flag
+      const nodeCount = totalFloats / 6 // 6 floats per node (3 for position, 3 for velocity)
 
-      // Clear previous positions if this is initial layout
-      if (isInitial) {
-        console.debug('Clearing previous positions for initial layout')
-        this.positions.clear()
-        this.pendingUpdates = []
+      // Resize arrays if needed
+      if (this.nodeCount !== nodeCount) {
+        this.positions = new Float32Array(nodeCount * 3)
+        this.velocities = new Float32Array(nodeCount * 3)
+        this.nodeCount = nodeCount
       }
 
-      // Process any pending updates first
-      if (this.pendingUpdates.length > 0) {
-        console.debug(`Processing ${this.pendingUpdates.length} pending updates`)
-        this.pendingUpdates.forEach(pos => this.processUpdate(pos))
-        this.pendingUpdates = []
+      // Process position and velocity data directly from binary
+      let srcOffset = 1 // Skip isInitialLayout flag
+      for (let i = 0; i < nodeCount; i++) {
+        const posOffset = i * 3
+        const velOffset = i * 3
+
+        // Copy positions
+        this.positions[posOffset] = dataView[srcOffset]
+        this.positions[posOffset + 1] = dataView[srcOffset + 1]
+        this.positions[posOffset + 2] = dataView[srcOffset + 2]
+
+        // Copy velocities
+        this.velocities[velOffset] = dataView[srcOffset + 3]
+        this.velocities[velOffset + 1] = dataView[srcOffset + 4]
+        this.velocities[velOffset + 2] = dataView[srcOffset + 5]
+
+        srcOffset += 6
       }
 
-      // Process new updates
-      positions.forEach(pos => this.processUpdate(pos))
-
-      // Update state
       this.lastUpdateTime = Date.now()
       this.isInitialLayout = isInitial
 
-      // Enhanced debug logging for update completion
-      console.debug('Batch position update completed:', {
-        finalPositionsCount: this.positions.size,
-        isInitial,
-        samplePositions: Array.from(this.positions.entries())
-          .slice(0, 3)
-          .map(([id, pos]) => ({
-            id,
-            position: {
-              x: pos.x,
-              y: pos.y,
-              z: pos.z
-            },
-            velocity: {
-              vx: pos.vx,
-              vy: pos.vy,
-              vz: pos.vz
-            }
-          })),
-        timestamp: new Date().toISOString()
-      })
-    },
-
-    /**
-     * Set batch size for processing updates
-     */
-    setBatchSize(size: number) {
-      const oldSize = this.batchSize
-      this.batchSize = Math.max(1, Math.min(1000, size)) // Clamp between 1-1000
-      console.debug('Batch size updated:', {
-        oldSize,
-        newSize: this.batchSize,
-        timestamp: new Date().toISOString()
-      })
+      // Debug logging
+      if (nodeCount > 0) {
+        console.debug('Binary update processed:', {
+          nodeCount,
+          isInitial,
+          firstNode: {
+            position: [
+              this.positions[0],
+              this.positions[1],
+              this.positions[2]
+            ],
+            velocity: [
+              this.velocities[0],
+              this.velocities[1],
+              this.velocities[2]
+            ]
+          },
+          timestamp: new Date().toISOString()
+        })
+      }
     },
 
     /**
      * Clear all position data
-     * Called when receiving full mesh update or on cleanup
      */
     clear() {
-      console.debug('Clearing binary update store:', {
-        clearedPositions: this.positions.size,
-        clearedPending: this.pendingUpdates.length,
-        timestamp: new Date().toISOString()
-      })
-      this.positions.clear()
-      this.pendingUpdates = []
+      this.positions = new Float32Array(0)
+      this.velocities = new Float32Array(0)
+      this.nodeCount = 0
       this.lastUpdateTime = 0
       this.isInitialLayout = false
     }

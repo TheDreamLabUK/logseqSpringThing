@@ -25,19 +25,9 @@ export type MessageType =
   | 'updateNodeVelocity';
 
 // Binary Protocol Types
-export interface PositionUpdate {
-  id: string;
-  x: number;
-  y: number;
-  z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-}
-
 export interface BinaryMessage {
+  data: ArrayBuffer;
   isInitialLayout: boolean;
-  positions: PositionUpdate[];
 }
 
 // WebSocket Message Interfaces
