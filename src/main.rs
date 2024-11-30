@@ -319,8 +319,7 @@ async fn main() -> std::io::Result<()> {
     });
 
     // Start HTTP server
-    let port = env::var("PORT").unwrap_or_else(|_| "4000".to_string());
-    let bind_address = format!("0.0.0.0:{}", port);
+    let bind_address = "0.0.0.0:3000"; // Hardcode to port 3000 for nginx proxy
     log::info!("Starting HTTP server on {}", bind_address);
 
     HttpServer::new(move || {
@@ -357,7 +356,7 @@ async fn main() -> std::io::Result<()> {
                 Files::new("/", "/app/data/public/dist").index_file("index.html")
             )
     })
-    .bind(&bind_address)?
+    .bind(bind_address)?
     .run()
     .await
 }
