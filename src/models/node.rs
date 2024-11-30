@@ -4,6 +4,7 @@ use bytemuck::{Pod, Zeroable};
 use crate::models::position_update::NodePositionVelocity;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Node {
     pub id: String,
     pub label: String,

@@ -42,19 +42,19 @@ export const SERVER_MESSAGE_TYPES = {
     // Direct server message types from ServerMessage enum
     GRAPH_UPDATE: 'graphUpdate',
     ERROR: 'error',
-    POSITION_UPDATE_COMPLETE: 'position_update_complete',
-    SETTINGS_UPDATED: 'settings_updated',
-    SIMULATION_MODE_SET: 'simulation_mode_set',
-    FISHEYE_SETTINGS_UPDATED: 'fisheye_settings_updated',
+    POSITION_UPDATE_COMPLETE: 'positionUpdateComplete',
+    SETTINGS_UPDATED: 'settingsUpdated',
+    SIMULATION_MODE_SET: 'simulationModeSet',
+    FISHEYE_SETTINGS_UPDATED: 'fisheyeSettingsUpdated',
     
     // Additional client-side message types
-    INITIAL_DATA: 'initial_data',
-    GPU_STATE: 'gpu_state',
-    LAYOUT_STATE: 'layout_state',
+    INITIAL_DATA: 'initialData',
+    GPU_STATE: 'gpuState',
+    LAYOUT_STATE: 'layoutState',
     OPENAI_RESPONSE: 'openaiResponse',
     RAGFLOW_RESPONSE: 'ragflowResponse',
     COMPLETION: 'completion',
-    UPDATE_SETTINGS: 'updateSettings'  // Added for settings updates
+    UPDATE_SETTINGS: 'updateSettings'
 } as const;
 
 // Error codes (matching server error structure)
@@ -84,7 +84,7 @@ export const ERROR_CODES = {
 // Message field names (matching server struct fields)
 export const MESSAGE_FIELDS = {
     // GraphUpdate fields
-    GRAPH_DATA: 'graph_data',
+    GRAPH_DATA: 'graphData',
     
     // Error fields
     MESSAGE: 'message',
@@ -96,12 +96,12 @@ export const MESSAGE_FIELDS = {
     
     // SimulationModeSet fields
     MODE: 'mode',
-    GPU_ENABLED: 'gpu_enabled',
+    GPU_ENABLED: 'gpuEnabled',
     
     // FisheyeSettingsUpdated fields
     ENABLED: 'enabled',
     STRENGTH: 'strength',
-    FOCUS_POINT: 'focus_point',
+    FOCUS_POINT: 'focusPoint',
     RADIUS: 'radius',
 
     // Settings fields

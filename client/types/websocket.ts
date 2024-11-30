@@ -1,20 +1,20 @@
 // Message Types (matching server's ServerMessage enum)
 export type MessageType = 
-  | 'graphUpdate'                  // From ServerMessage::GraphUpdate
-  | 'error'                        // From ServerMessage::Error
-  | 'position_update_complete'     // From ServerMessage::PositionUpdateComplete
-  | 'settings_updated'             // From ServerMessage::SettingsUpdated
-  | 'simulation_mode_set'          // From ServerMessage::SimulationModeSet
-  | 'fisheye_settings_updated'     // From ServerMessage::FisheyeSettingsUpdated
-  | 'initial_data'                 // Client-side types
-  | 'gpu_state'
-  | 'layout_state'
-  | 'audioData'                    // Additional message types
+  | 'graphUpdate'
+  | 'error'
+  | 'positionUpdateComplete'
+  | 'settingsUpdated'
+  | 'simulationModeSet'
+  | 'fisheyeSettingsUpdated'
+  | 'initialData'
+  | 'gpuState'
+  | 'layoutState'
+  | 'audioData'
   | 'updateSettings'
   | 'openaiResponse'
   | 'ragflowResponse'
   | 'completion'
-  | 'ping'                         // Heartbeat messages
+  | 'ping'
   | 'pong';
 
 // Binary Protocol Types
@@ -47,20 +47,32 @@ export interface Node {
   label?: string;
   position?: [number, number, number];
   velocity?: [number, number, number];
-  [key: string]: any;
+  size?: number;
+  color?: string;
+  type?: string;
+  metadata?: Record<string, any>;
+  userData?: Record<string, any>;
+  weight?: number;
+  group?: string;
 }
 
 export interface Edge {
+  id: string;  // Added to match core Edge type
   source: string;
   target: string;
-  [key: string]: any;
+  weight?: number;
+  width?: number;
+  color?: string;
+  type?: string;
+  metadata?: Record<string, any>;
+  userData?: Record<string, any>;
+  directed?: boolean;
 }
 
-// Update GraphUpdateMessage to handle both camelCase and snake_case
+// Graph Update Message
 export interface GraphUpdateMessage extends BaseMessage {
   type: 'graphUpdate';
-  graphData?: GraphData;     // camelCase version
-  graph_data?: GraphData;    // snake_case version from server
+  graphData: GraphData;
 }
 
 // Base Message Interface
@@ -104,10 +116,10 @@ export interface BloomSettings {
 
 // Message Type Interfaces (matching server's ServerMessage variants)
 export interface FisheyeUpdateMessage extends BaseMessage {
-  type: 'fisheye_settings_updated';
+  type: 'fisheyeSettingsUpdated';
   enabled: boolean;
   strength: number;
-  focus_point: [number, number, number];
+  focusPoint: [number, number, number];
   radius: number;
 }
 
@@ -120,7 +132,7 @@ export interface ErrorMessage extends BaseMessage {
 
 export interface AudioMessage extends BaseMessage {
   type: 'audioData';
-  audio_data: Blob;
+  audioData: Blob;
 }
 
 export interface RagflowResponse extends BaseMessage {
@@ -130,9 +142,9 @@ export interface RagflowResponse extends BaseMessage {
 }
 
 export interface SimulationModeMessage extends BaseMessage {
-  type: 'simulation_mode_set';
+  type: 'simulationModeSet';
   mode: string;
-  gpu_enabled: boolean;
+  gpuEnabled: boolean;
 }
 
 export interface SettingsUpdateMessage extends BaseMessage {
@@ -146,7 +158,7 @@ export interface SettingsUpdateMessage extends BaseMessage {
 }
 
 export interface SettingsUpdatedMessage extends BaseMessage {
-  type: 'settings_updated';
+  type: 'settingsUpdated';
   settings: {
     material?: MaterialSettings;
     physics?: PhysicsSettings;

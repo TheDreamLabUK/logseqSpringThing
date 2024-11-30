@@ -3,9 +3,12 @@ use serde::{Serialize, Deserialize};
 use crate::models::node::Node;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Edge {
     pub source: String,
     pub target: String,
+    #[serde(skip_deserializing)]
+    pub id: String,  // Added id field, skip deserializing as we generate it
     pub weight: f32,
     pub width: Option<f32>,
     pub color: Option<String>,
@@ -33,6 +36,7 @@ pub struct GPUEdge {
 impl Edge {
     pub fn new(source: String, target: String, weight: f32) -> Self {
         Self {
+            id: format!("{}-{}", source, target),  // Generate id from source and target
             source,
             target,
             weight,

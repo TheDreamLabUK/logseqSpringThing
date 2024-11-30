@@ -9,6 +9,7 @@ use crate::models::metadata::Metadata;
 
 /// Struct to serialize GraphData for HTTP responses.
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GraphResponse {
     /// List of nodes in the graph.
     pub nodes: Vec<crate::models::node::Node>,

@@ -127,7 +127,6 @@ export const useWebSocketStore = defineStore('websocket', {
         console.debug('[WebSocketStore] Received graph update message:', {
           type: message.type,
           hasGraphData: !!message.graphData,
-          hasSnakeCaseData: !!message.graph_data,
           timestamp: new Date().toISOString()
         })
         
@@ -170,7 +169,7 @@ export const useWebSocketStore = defineStore('websocket', {
           timestamp: new Date().toISOString()
         })
         
-        if (message.type === 'gpu_state' && 'enabled' in message) {
+        if (message.type === 'gpuState' && 'enabled' in message) {
           this.gpuEnabled = message.enabled
           console.debug(`[WebSocketStore] GPU acceleration ${message.enabled ? 'enabled' : 'disabled'}`)
         }
@@ -181,33 +180,30 @@ export const useWebSocketStore = defineStore('websocket', {
       console.debug('[WebSocketStore] Processing graph update:', {
         nodeCount: message.graphData?.nodes?.length || 0,
         edgeCount: message.graphData?.edges?.length || 0,
-        hasMetadata: !!(message.graphData?.metadata || message.graph_data?.metadata),
+        hasMetadata: !!message.graphData?.metadata,
         timestamp: new Date().toISOString()
       })
 
-      if (!message.graphData && !message.graph_data) {
+      if (!message.graphData) {
         console.warn('[WebSocketStore] No graph data found in message')
         return
       }
 
-      const graphData = message.graphData || message.graph_data
-      if (!graphData) return
-
       console.debug('[WebSocketStore] Graph data details:', {
-        nodes: graphData.nodes?.map(n => ({ id: n.id, hasPosition: !!n.position })) || [],
-        edges: graphData.edges?.map(e => ({ source: e.source, target: e.target })) || [],
-        metadata: graphData.metadata
+        nodes: message.graphData.nodes?.map(n => ({ id: n.id, hasPosition: !!n.position })) || [],
+        edges: message.graphData.edges?.map(e => ({ source: e.source, target: e.target })) || [],
+        metadata: message.graphData.metadata
       })
 
-      const edges: Edge[] = graphData.edges.map((edge: WsEdge) => ({
+      const edges: Edge[] = message.graphData.edges.map((edge: WsEdge) => ({
         ...edge,
         id: `${edge.source}-${edge.target}`
       }))
 
       visualizationStore.setGraphData(
-        graphData.nodes as Node[],
+        message.graphData.nodes as Node[],
         edges,
-        graphData.metadata
+        message.graphData.metadata
       )
     },
 
@@ -305,7 +301,7 @@ export const useWebSocketStore = defineStore('websocket', {
     requestInitialData() {
       console.debug('[WebSocketStore] Requesting initial graph data')
       this.initialDataRequested = true
-      this.send({ type: 'initial_data' })
+      this.send({ type: 'initialData' })
     },
 
     async reconnect() {
