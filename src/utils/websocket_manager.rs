@@ -4,13 +4,13 @@ use actix_web::{web, Error, HttpRequest, HttpResponse};
 use bytemuck;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use std::time::{Duration, Instant};
 use serde_json;
 
 use crate::models::node::GPUNode;
 use crate::models::graph::GraphData;
-use crate::utils::websocket_messages::{SendBinary, SendText};
+use crate::utils::websocket_messages::{SendBinary, SendText, ServerMessage};
 
 // Constants for binary protocol
 const FLOAT32_SIZE: usize = std::mem::size_of::<f32>();
@@ -118,15 +118,23 @@ impl WebSocketManager {
         info!("[WebSocketManager] Broadcasting graph update with {} nodes and {} edges", 
             graph.nodes.len(), graph.edges.len());
 
-        // Create a message with type and data
-        let message = serde_json::json!({
-            "type": "graph_update",
-            "data": graph
-        });
+        // Create message using ServerMessage enum
+        let message = ServerMessage::GraphUpdate {
+            graph_data: serde_json::to_value(graph)?
+        };
 
         // Serialize to string and broadcast
         let message_str = serde_json::to_string(&message)?;
-        self.broadcast_message(&message_str).await
+        debug!("[WebSocketManager] Graph update message size: {} bytes", message_str.len());
+        
+        // Get connections and broadcast
+        let connections = self.connections.lock().await;
+        debug!("[WebSocketManager] Broadcasting to {} connections", connections.len());
+        for addr in connections.iter() {
+            addr.do_send(SendText(message_str.clone()));
+        }
+        
+        Ok(())
     }
 
     pub async fn handle_websocket(

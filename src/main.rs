@@ -54,11 +54,20 @@ async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::i
     match GraphService::build_graph_from_metadata(&metadata_map).await {
         Ok(graph_data) => {
             let mut graph = app_state.graph_data.write().await;
-            *graph = graph_data;
+            *graph = graph_data.clone(); // Clone before dropping the lock
             log::info!("Graph initialized from cache with {} nodes and {} edges", 
                 graph.nodes.len(), 
                 graph.edges.len()
             );
+            drop(graph); // Release the lock before broadcasting
+
+            // Broadcast initial graph data to any connected clients
+            if let Err(e) = app_state.websocket_manager.broadcast_graph_update(&graph_data).await {
+                log::error!("Failed to broadcast initial graph data: {}", e);
+            } else {
+                log::info!("Successfully broadcast initial graph data");
+            }
+            
             Ok(())
         },
         Err(e) => {
@@ -330,7 +339,7 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api/perplexity")
                     .route("/process", web::post().to(perplexity_handler::process_files))
             )
-            .route("/ws", web::get().to(WebSocketManager::handle_websocket))
+            .route("/ws", web::get().to(|req: HttpRequest, stream: web::Payload, websocket_manager: web::Data<Arc<WebSocketManager>>| WebSocketManager::handle_websocket(req, stream, websocket_manager)))
             .route("/test_speech", web::get().to(test_speech_service))
             .service(
                 Files::new("/", "/app/data/public/dist").index_file("index.html")
