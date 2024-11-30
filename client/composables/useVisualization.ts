@@ -2,8 +2,11 @@ import { ref, computed, onBeforeUnmount, provide, markRaw, shallowRef } from 'vu
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { useSettingsStore } from '../stores/settings';
-import type { Node, Edge, CoreState, InitializationOptions, GraphNode, GraphEdge } from '../types/core';
-import { POSITION_SCALE, VELOCITY_SCALE } from '../constants/websocket';
+import { useVisualizationStore } from '../stores/visualization';
+import { useBinaryUpdateStore } from '../stores/binaryUpdate';
+import { useWebSocketStore } from '../stores/websocket';
+import type { Node, Edge, CoreState, InitializationOptions, GraphNode } from '../types/core';
+import { POSITION_SCALE } from '../constants/websocket';
 import { VISUALIZATION_CONSTANTS, LIGHT_SETTINGS } from '../constants/visualization';
 
 // Symbol for providing scene to components
@@ -35,8 +38,11 @@ const scalePosition = (pos: [number, number, number]): [number, number, number] 
 
 export function useVisualization() {
   const settingsStore = useSettingsStore();
+  const visualizationStore = useVisualizationStore();
+  const binaryStore = useBinaryUpdateStore();
+  const webSocketStore = useWebSocketStore();
   
-  // Core visualization state - using shallowRef for Three.js objects
+  // Core visualization state
   const state = shallowRef<CoreState>({
     renderer: null,
     camera: null,
@@ -50,20 +56,27 @@ export function useVisualization() {
     lastFrameTime: 0
   });
 
-  // Track meshes and indices for updates
-  const nodeMeshes = new Map<string, THREE.Mesh>();
-  const edgeMeshes = new Map<string, THREE.Line>();
-  const nodeIndices = new Map<string, number>(); // Map node IDs to array indices
-  const nodeContainer = markRaw(new THREE.Group());
-  const edgeContainer = markRaw(new THREE.Group());
-  
+  // Mesh cache using Maps for O(1) lookup
+  const meshCache = {
+    nodes: new Map<string, THREE.Mesh>(),
+    edges: new Map<string, THREE.Line>()
+  };
+
+  // Interaction state
+  const hoveredNode = ref<string | null>(null);
+  const selectedNode = ref<string | null>(null);
+  const isProcessingUpdate = ref(false);
+
+  // GPU acceleration state
+  const isGPUEnabled = computed(() => webSocketStore.isGPUEnabled);
+
   // Track animation frame for cleanup
   let animationFrameId: number | null = null;
   let controls: OrbitControls | null = null;
 
-  // Create or update node mesh
+  // Create or update node mesh with efficient caching
   const createNodeMesh = (node: Node): THREE.Mesh => {
-    const geometry = new THREE.SphereGeometry(0.02, 32, 32); // Smaller radius for scaled scene
+    const geometry = new THREE.SphereGeometry(0.02, 32, 32);
     const material = new THREE.MeshStandardMaterial({
       color: node.color || 0xffffff,
       metalness: 0.3,
@@ -76,17 +89,14 @@ export function useVisualization() {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     
-    // Set initial position
     if (node.position) {
       const scaledPos = scalePosition(node.position);
       mesh.position.set(...scaledPos);
     }
     
-    // Set scale based on node size
-    const size = (node.size || 1) * 0.02; // Smaller scale for scaled scene
+    const size = (node.size || 1) * 0.02;
     mesh.scale.setScalar(size);
 
-    // Store node data in userData
     mesh.userData = {
       id: node.id,
       type: 'node',
@@ -96,46 +106,12 @@ export function useVisualization() {
     return markRaw(mesh);
   };
 
-  // Create or update edge mesh
-  const createEdgeMesh = (edge: Edge, startPos: THREE.Vector3, endPos: THREE.Vector3): THREE.Line => {
-    const geometry = new THREE.BufferGeometry().setFromPoints([startPos, endPos]);
-    const material = new THREE.LineBasicMaterial({
-      color: edge.color || 0xffffff,
-      linewidth: (edge.width || 1) * 0.02 // Smaller width for scaled scene
-    });
-
-    const line = new THREE.Line(geometry, material);
-    line.userData = {
-      id: edge.id,
-      type: 'edge',
-      originalData: { ...edge }
-    };
-
-    return markRaw(line);
-  };
-
   // Initialize Three.js scene
   const initScene = (canvas: HTMLCanvasElement) => {
-    console.debug('Initializing Three.js scene...');
-
-    // Create scene
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
     scene.fog = new THREE.Fog(0x000000, SCENE_SETTINGS.fogNear, SCENE_SETTINGS.fogFar);
 
-    // Add containers to scene
-    scene.add(nodeContainer);
-    scene.add(edgeContainer);
-
-    // Initialize scene userData
-    scene.userData = {
-      needsRender: true,
-      lastUpdate: performance.now(),
-      nodeContainer,
-      edgeContainer
-    };
-
-    // Create camera
     const camera = new THREE.PerspectiveCamera(
       CAMERA_SETTINGS.fov,
       window.innerWidth / window.innerHeight,
@@ -145,7 +121,6 @@ export function useVisualization() {
     camera.position.copy(CAMERA_SETTINGS.position);
     camera.lookAt(CAMERA_SETTINGS.target);
 
-    // Create renderer
     const renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
@@ -185,12 +160,12 @@ export function useVisualization() {
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.maxDistance = 5; // Adjusted for scaled scene
-    controls.minDistance = 0.1; // Adjusted for scaled scene
+    controls.maxDistance = 5;
+    controls.minDistance = 0.1;
     controls.maxPolarAngle = Math.PI * 0.8;
     controls.target.copy(CAMERA_SETTINGS.target);
 
-    // Add grid helper for scale reference
+    // Add grid helper
     const gridHelper = new THREE.GridHelper(
       SCENE_SETTINGS.gridSize,
       SCENE_SETTINGS.gridDivisions,
@@ -199,14 +174,15 @@ export function useVisualization() {
     );
     scene.add(gridHelper);
 
-    // Add axes helper for orientation
-    const axesHelper = new THREE.AxesHelper(1); // Smaller for scaled scene
+    // Add axes helper
+    const axesHelper = new THREE.AxesHelper(1);
     scene.add(axesHelper);
 
-    // Provide scene to components
+    // Store GPU state in scene
+    scene.userData.gpuEnabled = isGPUEnabled.value;
+
     provide(SCENE_KEY, scene);
 
-    // Return raw objects
     return {
       scene: markRaw(scene),
       camera: markRaw(camera),
@@ -214,7 +190,7 @@ export function useVisualization() {
     };
   };
 
-  // Animation loop
+  // Animation loop with GPU awareness
   const animate = () => {
     if (!state.value.isInitialized) return;
 
@@ -235,17 +211,6 @@ export function useVisualization() {
         renderer.render(scene, camera);
         scene.userData.needsRender = false;
         scene.userData.lastUpdate = currentTime;
-
-        // Log performance stats in development
-        if (process.env.NODE_ENV === 'development' && currentTime % 5000 < 16) {
-          console.debug('Render stats:', {
-            fps: state.value.fps.toFixed(1),
-            meshes: nodeMeshes.size,
-            edges: edgeMeshes.size,
-            drawCalls: renderer.info.render.calls,
-            triangles: renderer.info.render.triangles
-          });
-        }
       }
     }
 
@@ -267,21 +232,19 @@ export function useVisualization() {
         isInitialized: true,
         isXRSupported: false,
         isWebGL2: renderer.capabilities.isWebGL2,
-        isGPUMode: false,
+        isGPUMode: isGPUEnabled.value,
         fps: 0,
         lastFrameTime: performance.now()
       });
 
       animate();
 
-      // Handle window resize
-      const handleResize = () => {
+      window.addEventListener('resize', () => {
         if (!camera || !renderer) return;
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
-      };
-      window.addEventListener('resize', handleResize);
+      });
 
       console.log('Visualization system initialized');
     } catch (error) {
@@ -290,153 +253,98 @@ export function useVisualization() {
     }
   };
 
-  // Handle binary position updates
+  // Update node positions from binary data with GPU awareness
   const updatePositions = (positions: Float32Array, velocities: Float32Array, nodeCount: number) => {
-    if (!state.value.scene || !state.value.isInitialized) return;
+    if (!state.value.scene || !state.value.isInitialized || isProcessingUpdate.value) return;
 
-    // Update each node's position based on its index
-    nodeMeshes.forEach((mesh, nodeId) => {
-      const index = nodeIndices.get(nodeId);
-      if (index !== undefined && index < nodeCount) {
-        const posOffset = index * 3;
-        const velOffset = index * 3;
+    isProcessingUpdate.value = true;
+    try {
+      const nodes = visualizationStore.nodes;
+      for (let i = 0; i < nodeCount; i++) {
+        const node = nodes[i];
+        if (!node) continue;
 
-        // Update mesh position
+        const mesh = meshCache.nodes.get(node.id);
+        if (!mesh) continue;
+
+        const posOffset = i * 3;
         mesh.position.set(
           positions[posOffset],
           positions[posOffset + 1],
           positions[posOffset + 2]
         );
-
-        // Store velocity in userData
-        mesh.userData.velocity = new THREE.Vector3(
-          velocities[velOffset],
-          velocities[velOffset + 1],
-          velocities[velOffset + 2]
-        );
-
-        // Update connected edges
-        const nodeData = mesh.userData.originalData as GraphNode;
-        if (nodeData.edges) {
-          nodeData.edges.forEach((edge: GraphEdge) => {
-            const edgeId = `${edge.source}-${edge.target}`;
-            const edgeMesh = edgeMeshes.get(edgeId);
-            if (edgeMesh) {
-              const geometry = edgeMesh.geometry as THREE.BufferGeometry;
-              const positions = geometry.getAttribute('position');
-              
-              if (edge.source === nodeId) {
-                positions.setXYZ(0, mesh.position.x, mesh.position.y, mesh.position.z);
-              } else if (edge.target === nodeId) {
-                positions.setXYZ(1, mesh.position.x, mesh.position.y, mesh.position.z);
-              }
-              positions.needsUpdate = true;
-            }
-          });
-        }
       }
-    });
 
-    if (state.value.scene) {
-      state.value.scene.userData.needsRender = true;
-    }
-
-    // Log update in development
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('Position update:', {
-        nodeCount,
-        meshCount: nodeMeshes.size,
-        sample: nodeCount > 0 ? {
-          position: [positions[0], positions[1], positions[2]],
-          velocity: [velocities[0], velocities[1], velocities[2]]
-        } : null
-      });
+      if (state.value.scene) {
+        state.value.scene.userData.needsRender = true;
+      }
+    } finally {
+      isProcessingUpdate.value = false;
     }
   };
 
-  // Update nodes and maintain index mapping
+  // Optimized node updates using mesh cache
   const updateNodes = (nodes: Node[]) => {
-    if (!state.value.scene) return;
+    if (!state.value.scene || isProcessingUpdate.value) return;
 
-    // Clear old index mappings
-    nodeIndices.clear();
+    isProcessingUpdate.value = true;
+    try {
+      const scene = state.value.scene;
+      const currentIds = new Set(nodes.map(n => n.id));
 
-    // Remove old nodes
-    const currentIds = new Set(nodes.map(n => n.id));
-    nodeMeshes.forEach((mesh, id) => {
-      if (!currentIds.has(id)) {
-        nodeContainer.remove(mesh);
-        mesh.geometry.dispose();
-        (mesh.material as THREE.Material).dispose();
-        nodeMeshes.delete(id);
-      }
-    });
-
-    // Add or update nodes and store indices
-    nodes.forEach((node, index) => {
-      nodeIndices.set(node.id, index);
-      
-      let mesh = nodeMeshes.get(node.id);
-      
-      if (!mesh) {
-        // Create new mesh
-        mesh = createNodeMesh(node);
-        nodeContainer.add(mesh);
-        nodeMeshes.set(node.id, mesh);
-      } else {
-        // Update existing mesh
-        if (node.position) {
-          const scaledPos = scalePosition(node.position);
-          mesh.position.set(...scaledPos);
-        }
-        if (node.size) {
-          const size = node.size * 0.1;
-          mesh.scale.setScalar(size);
-        }
-        if (node.color) {
-          (mesh.material as THREE.MeshStandardMaterial).color.set(node.color);
-          (mesh.material as THREE.MeshStandardMaterial).emissive.set(node.color);
+      // Remove old nodes
+      for (const [id, mesh] of meshCache.nodes.entries()) {
+        if (!currentIds.has(id)) {
+          scene.remove(mesh);
+          mesh.geometry.dispose();
+          (mesh.material as THREE.Material).dispose();
+          meshCache.nodes.delete(id);
         }
       }
 
-      // Update edges if node is a GraphNode
-      const graphNode = node as GraphNode;
-      if (graphNode.edges) {
-        graphNode.edges.forEach(edge => {
-          const edgeId = `${edge.source}-${edge.target}`;
-          let edgeMesh = edgeMeshes.get(edgeId);
-          
-          if (!edgeMesh) {
-            const startNode = nodeMeshes.get(edge.source);
-            const endNode = nodeMeshes.get(edge.target);
-            if (startNode && endNode) {
-              edgeMesh = createEdgeMesh(edge, startNode.position, endNode.position);
-              edgeContainer.add(edgeMesh);
-              edgeMeshes.set(edgeId, edgeMesh);
-            }
+      // Add or update nodes
+      nodes.forEach(node => {
+        let mesh = meshCache.nodes.get(node.id);
+        
+        if (!mesh) {
+          // Create new mesh
+          mesh = createNodeMesh(node);
+          scene.add(mesh);
+          meshCache.nodes.set(node.id, mesh);
+        } else {
+          // Update existing mesh
+          if (node.position) {
+            const scaledPos = scalePosition(node.position);
+            mesh.position.set(...scaledPos);
           }
-        });
-      }
-    });
+          if (node.size) {
+            mesh.scale.setScalar(node.size * 0.02);
+          }
+          if (node.color) {
+            (mesh.material as THREE.MeshStandardMaterial).color.set(node.color);
+            (mesh.material as THREE.MeshStandardMaterial).emissive.set(node.color);
+          }
+        }
+      });
 
+      scene.userData.needsRender = true;
+    } finally {
+      isProcessingUpdate.value = false;
+    }
+  };
+
+  // Event handlers
+  const handleNodeHover = (nodeId: string | null) => {
+    hoveredNode.value = nodeId;
     if (state.value.scene) {
       state.value.scene.userData.needsRender = true;
     }
+  };
 
-    // Log update in development
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('Nodes updated:', {
-        count: nodes.length,
-        meshCount: nodeMeshes.size,
-        edgeCount: edgeMeshes.size,
-        indexMapSize: nodeIndices.size,
-        sample: nodes[0] ? {
-          id: nodes[0].id,
-          index: nodeIndices.get(nodes[0].id),
-          position: nodes[0].position ? scalePosition(nodes[0].position) : null,
-          size: nodes[0].size
-        } : null
-      });
+  const handleNodeSelect = (nodeId: string | null) => {
+    selectedNode.value = nodeId;
+    if (state.value.scene) {
+      state.value.scene.userData.needsRender = true;
     }
   };
 
@@ -451,17 +359,17 @@ export function useVisualization() {
     }
 
     // Clean up meshes
-    nodeMeshes.forEach(mesh => {
+    meshCache.nodes.forEach(mesh => {
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
     });
-    nodeMeshes.clear();
+    meshCache.nodes.clear();
 
-    edgeMeshes.forEach(edge => {
+    meshCache.edges.forEach(edge => {
       edge.geometry.dispose();
       (edge.material as THREE.Material).dispose();
     });
-    edgeMeshes.clear();
+    meshCache.edges.clear();
 
     if (state.value.renderer) {
       state.value.renderer.dispose();
@@ -487,6 +395,11 @@ export function useVisualization() {
     state,
     initialize,
     updateNodes,
-    updatePositions
+    updatePositions,
+    handleNodeHover,
+    handleNodeSelect,
+    hoveredNode: computed(() => hoveredNode.value),
+    selectedNode: computed(() => selectedNode.value),
+    isGPUEnabled
   };
 }
