@@ -4,7 +4,7 @@ use actix_web::{web, Error, HttpRequest, HttpResponse};
 use bytemuck;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use log::{debug};
+use log::{debug, info, warn};
 use std::time::{Duration, Instant};
 use serde_json;
 
@@ -32,11 +32,13 @@ impl Actor for WebSocketManager {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         self.addr = Some(ctx.address());
+        info!("[WebSocketManager] Actor started");
     }
 }
 
 impl WebSocketManager {
     pub fn new() -> Self {
+        info!("[WebSocketManager] Creating new instance");
         Self {
             binary_buffer: Arc::new(Mutex::new(Vec::with_capacity(1024 * 1024))), // 1MB initial capacity
             connections: Arc::new(Mutex::new(Vec::new())),
@@ -45,6 +47,7 @@ impl WebSocketManager {
     }
 
     pub fn start(mut self) -> Addr<Self> {
+        info!("[WebSocketManager] Starting actor");
         let addr = Actor::start(self.clone());
         self.addr = Some(addr.clone());
         addr
@@ -57,17 +60,18 @@ impl WebSocketManager {
     pub async fn add_connection(&self, addr: Addr<WebSocketSession>) {
         let mut connections = self.connections.lock().await;
         connections.push(addr);
-        debug!("New WebSocket connection added. Total connections: {}", connections.len());
+        info!("[WebSocketManager] New WebSocket connection added. Total connections: {}", connections.len());
     }
 
     pub async fn remove_connection(&self, addr: &Addr<WebSocketSession>) {
         let mut connections = self.connections.lock().await;
         let before_len = connections.len();
         connections.retain(|x| x != addr);
-        debug!("WebSocket connection removed. Connections: {} -> {}", before_len, connections.len());
+        info!("[WebSocketManager] WebSocket connection removed. Connections: {} -> {}", before_len, connections.len());
     }
 
     pub async fn broadcast_binary(&self, nodes: &[GPUNode], is_initial: bool) -> Result<(), Box<dyn std::error::Error>> {
+        debug!("[WebSocketManager] Broadcasting binary update for {} nodes", nodes.len());
         let mut buffer = self.binary_buffer.lock().await;
         let total_size = HEADER_SIZE + nodes.len() * NODE_SIZE;
         
@@ -93,6 +97,7 @@ impl WebSocketManager {
         // Broadcast to all connections
         let binary_data = buffer.clone();
         let connections = self.connections.lock().await;
+        debug!("[WebSocketManager] Broadcasting binary data to {} connections", connections.len());
         for addr in connections.iter() {
             addr.do_send(SendBinary(binary_data.clone()));
         }
@@ -102,6 +107,7 @@ impl WebSocketManager {
 
     pub async fn broadcast_message(&self, message: &str) -> Result<(), Box<dyn std::error::Error>> {
         let connections = self.connections.lock().await;
+        debug!("[WebSocketManager] Broadcasting message to {} connections", connections.len());
         for addr in connections.iter() {
             addr.do_send(SendText(message.to_string()));
         }
@@ -109,6 +115,9 @@ impl WebSocketManager {
     }
 
     pub async fn broadcast_graph_update(&self, graph: &GraphData) -> Result<(), Box<dyn std::error::Error>> {
+        info!("[WebSocketManager] Broadcasting graph update with {} nodes and {} edges", 
+            graph.nodes.len(), graph.edges.len());
+
         // Create a message with type and data
         let message = serde_json::json!({
             "type": "graph_update",
@@ -125,6 +134,9 @@ impl WebSocketManager {
         stream: web::Payload,
         websocket_manager: web::Data<Arc<WebSocketManager>>,
     ) -> Result<HttpResponse, Error> {
+        info!("[WebSocketManager] New websocket connection request from {:?}", 
+            req.peer_addr().unwrap_or_else(|| std::net::SocketAddr::from(([0, 0, 0, 0], 0))));
+        
         let ws = WebSocketSession::new(Arc::clone(&websocket_manager));
         ws::start(ws, &req, stream)
     }
@@ -149,6 +161,7 @@ pub struct WebSocketSession {
 
 impl WebSocketSession {
     pub fn new(manager: Arc<WebSocketManager>) -> Self {
+        info!("[WebSocketSession] Creating new session");
         Self {
             manager,
             hb: Instant::now(),
@@ -157,10 +170,11 @@ impl WebSocketSession {
     }
 
     fn start_heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
+        debug!("[WebSocketSession] Starting heartbeat checks");
         ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
             // Check client heartbeat
             if Instant::now().duration_since(act.last_pong) > HEARTBEAT_TIMEOUT {
-                debug!("WebSocket Client heartbeat failed, disconnecting!");
+                warn!("[WebSocketSession] Client heartbeat failed, disconnecting!");
                 ctx.stop();
                 return;
             }
@@ -174,12 +188,26 @@ impl Actor for WebSocketSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        info!("[WebSocketSession] Session started");
         self.start_heartbeat(ctx);
-        debug!("WebSocket session started");
+        
+        // Add connection to manager
+        let addr = ctx.address();
+        let manager = self.manager.clone();
+        actix::spawn(async move {
+            manager.add_connection(addr).await;
+        });
     }
 
-    fn stopped(&mut self, _: &mut Self::Context) {
-        debug!("WebSocket session stopped");
+    fn stopped(&mut self, ctx: &mut Self::Context) {
+        info!("[WebSocketSession] Session stopped");
+        
+        // Remove connection from manager
+        let addr = ctx.address();
+        let manager = self.manager.clone();
+        actix::spawn(async move {
+            manager.remove_connection(&addr).await;
+        });
     }
 }
 
@@ -187,6 +215,7 @@ impl Handler<SendBinary> for WebSocketSession {
     type Result = ();
 
     fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
+        debug!("[WebSocketSession] Sending binary message of size {}", msg.0.len());
         ctx.binary(msg.0);
     }
 }
@@ -195,6 +224,7 @@ impl Handler<SendText> for WebSocketSession {
     type Result = ();
 
     fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
+        debug!("[WebSocketSession] Sending text message: {}", msg.0);
         ctx.text(msg.0);
     }
 }
@@ -203,13 +233,16 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Ping(msg)) => {
+                debug!("[WebSocketSession] Ping received");
                 self.hb = Instant::now();
                 ctx.pong(&msg);
             }
             Ok(ws::Message::Pong(_)) => {
+                debug!("[WebSocketSession] Pong received");
                 self.last_pong = Instant::now();
             }
             Ok(ws::Message::Text(text)) => {
+                debug!("[WebSocketSession] Text message received: {}", text);
                 if text.contains("\"type\":\"ping\"") {
                     ctx.text("{\"type\":\"pong\"}");
                 } else {
@@ -224,7 +257,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                     let is_initial = f32::from_le_bytes(header_bytes) >= 1.0;
 
                     let num_nodes = (bin.len() - HEADER_SIZE) / NODE_SIZE;
-                    debug!("Received binary update: {} nodes, initial={}", num_nodes, is_initial);
+                    debug!("[WebSocketSession] Received binary update: {} nodes, initial={}", num_nodes, is_initial);
 
                     // Forward binary data to other clients
                     let connections = self.manager.connections.clone();
@@ -238,6 +271,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 }
             }
             Ok(ws::Message::Close(reason)) => {
+                info!("[WebSocketSession] Close message received: {:?}", reason);
                 ctx.close(reason);
                 ctx.stop();
             }

@@ -25,11 +25,12 @@ interface VisualizationState {
   nodes: Node[]
   edges: Edge[]
   graphData: GraphData | null
-  selectedNode: Node | null
+  selectedNode: null | Node
   metadata: Record<string, any>
   visualConfig: VisualizationConfig
   bloomConfig: BloomConfig
   fisheyeConfig: FisheyeConfig
+  initialized: boolean
 }
 
 export const useVisualizationStore = defineStore('visualization', {
@@ -41,7 +42,8 @@ export const useVisualizationStore = defineStore('visualization', {
     metadata: {},
     visualConfig: { ...DEFAULT_VISUALIZATION_CONFIG },
     bloomConfig: { ...DEFAULT_BLOOM_CONFIG },
-    fisheyeConfig: { ...DEFAULT_FISHEYE_CONFIG }
+    fisheyeConfig: { ...DEFAULT_FISHEYE_CONFIG },
+    initialized: false
   }),
 
   getters: {
@@ -59,21 +61,35 @@ export const useVisualizationStore = defineStore('visualization', {
     getVisualizationSettings: (state): VisualizationConfig => state.visualConfig,
     getBloomSettings: (state): BloomConfig => state.bloomConfig,
     getFisheyeSettings: (state): FisheyeConfig => state.fisheyeConfig,
+    isInitialized: (state): boolean => state.initialized
   },
 
   actions: {
     setGraphData(nodes: Node[], edges: Edge[], metadata: Record<string, any> = {}) {
-      console.debug('Setting graph data:', {
+      console.debug('[VisualizationStore] Setting graph data:', {
         nodeCount: nodes.length,
         edgeCount: edges.length,
         metadataKeys: Object.keys(metadata),
         timestamp: new Date().toISOString(),
+        initialized: this.initialized,
         sampleNodes: nodes.slice(0, 3).map(n => ({
           id: n.id,
           position: n.position,
-          hasPosition: !!n.position
+          hasPosition: !!n.position,
+          velocity: n.velocity,
+          hasVelocity: !!n.velocity
         }))
       })
+
+      // Validate node positions
+      const nodesWithoutPosition = nodes.filter(n => !n.position)
+      if (nodesWithoutPosition.length > 0) {
+        console.warn('[VisualizationStore] Nodes missing position data:', {
+          count: nodesWithoutPosition.length,
+          sampleIds: nodesWithoutPosition.slice(0, 3).map(n => n.id),
+          timestamp: new Date().toISOString()
+        })
+      }
 
       // Convert to graph data structure
       const graphNodes = nodes.map(node => ({
@@ -86,21 +102,32 @@ export const useVisualizationStore = defineStore('visualization', {
       const nodeLookup = new Map<string, GraphNode>()
       graphNodes.forEach(node => nodeLookup.set(node.id, node))
 
-      console.debug('Node lookup created:', {
+      console.debug('[VisualizationStore] Node lookup created:', {
         lookupSize: nodeLookup.size,
         sampleEntries: Array.from(nodeLookup.entries()).slice(0, 3).map(([id, node]) => ({
           id,
           position: node.position,
-          hasPosition: !!node.position
+          hasPosition: !!node.position,
+          velocity: node.velocity,
+          hasVelocity: !!node.velocity
         }))
       })
+
+      // Track edge connection stats
+      let missingSourceCount = 0
+      let missingTargetCount = 0
+      let validEdgeCount = 0
 
       // Convert edges and link to nodes
       const graphEdges = edges.map(edge => {
         const sourceNode = nodeLookup.get(edge.source)
         const targetNode = nodeLookup.get(edge.target)
+        
         if (!sourceNode || !targetNode) {
-          console.warn('Edge references missing node:', {
+          if (!sourceNode) missingSourceCount++
+          if (!targetNode) missingTargetCount++
+          
+          console.warn('[VisualizationStore] Edge references missing node:', {
             edge: `${edge.source}-${edge.target}`,
             hasSource: !!sourceNode,
             hasTarget: !!targetNode,
@@ -108,6 +135,8 @@ export const useVisualizationStore = defineStore('visualization', {
           })
           return null
         }
+
+        validEdgeCount++
         const graphEdge: GraphEdge = {
           ...edge,
           sourceNode,
@@ -119,16 +148,27 @@ export const useVisualizationStore = defineStore('visualization', {
         return graphEdge
       }).filter((edge): edge is GraphEdge => edge !== null)
 
-      console.debug('Graph data transformation complete:', {
+      console.debug('[VisualizationStore] Edge processing complete:', {
+        totalEdges: edges.length,
+        validEdges: validEdgeCount,
+        missingSourceNodes: missingSourceCount,
+        missingTargetNodes: missingTargetCount,
+        timestamp: new Date().toISOString()
+      })
+
+      console.debug('[VisualizationStore] Graph data transformation complete:', {
         originalNodes: nodes.length,
         originalEdges: edges.length,
         transformedNodes: graphNodes.length,
         transformedEdges: graphEdges.length,
+        nodesWithoutPosition: nodesWithoutPosition.length,
         sampleGraphNode: graphNodes[0] ? {
           id: graphNodes[0].id,
           edgeCount: graphNodes[0].edges.length,
           position: graphNodes[0].position,
-          hasPosition: !!graphNodes[0].position
+          hasPosition: !!graphNodes[0].position,
+          velocity: graphNodes[0].velocity,
+          hasVelocity: !!graphNodes[0].velocity
         } : null,
         timestamp: new Date().toISOString()
       })
@@ -142,22 +182,25 @@ export const useVisualizationStore = defineStore('visualization', {
         edges: graphEdges,
         metadata
       }
+      this.initialized = true
 
       // Log final state
-      console.debug('Graph data state after update:', {
+      console.debug('[VisualizationStore] Graph data state after update:', {
         storeNodes: this.nodes.length,
         storeEdges: this.edges.length,
         graphDataNodes: this.graphData.nodes.length,
         graphDataEdges: this.graphData.edges.length,
+        initialized: this.initialized,
         timestamp: new Date().toISOString()
       })
     },
 
     updateNode(nodeId: string, updates: Partial<Node>) {
-      console.debug('Updating node:', {
+      console.debug('[VisualizationStore] Updating node:', {
         nodeId,
         updates,
         hasPosition: !!updates.position,
+        hasVelocity: !!updates.velocity,
         timestamp: new Date().toISOString()
       })
 
@@ -176,16 +219,19 @@ export const useVisualizationStore = defineStore('visualization', {
               edges: graphNode.edges // Preserve edges array
             } as GraphNode
 
-            console.debug('Graph node updated:', {
+            console.debug('[VisualizationStore] Graph node updated:', {
               nodeId,
               position: updates.position,
+              hasPosition: !!updates.position,
+              velocity: updates.velocity,
+              hasVelocity: !!updates.velocity,
               edgeCount: graphNode.edges.length,
               timestamp: new Date().toISOString()
             })
           }
         }
       } else {
-        console.warn('Node not found for update:', {
+        console.warn('[VisualizationStore] Node not found for update:', {
           nodeId,
           timestamp: new Date().toISOString()
         })
@@ -193,7 +239,7 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     updateNodePositions(updates: { id: string; position: [number, number, number]; velocity?: [number, number, number] }[]) {
-      console.debug('Batch updating node positions:', {
+      console.debug('[VisualizationStore] Batch updating node positions:', {
         updateCount: updates.length,
         timestamp: new Date().toISOString(),
         sampleUpdates: updates.slice(0, 3).map(u => ({
@@ -205,8 +251,14 @@ export const useVisualizationStore = defineStore('visualization', {
 
       let updatedCount = 0
       let skippedCount = 0
+      let missingPositionCount = 0
 
       updates.forEach(update => {
+        if (!update.position) {
+          missingPositionCount++
+          return
+        }
+
         const node = this.nodes.find(n => n.id === update.id)
         if (node) {
           // Update position and velocity directly (already scaled)
@@ -231,16 +283,17 @@ export const useVisualizationStore = defineStore('visualization', {
         }
       })
 
-      console.debug('Node position updates complete:', {
+      console.debug('[VisualizationStore] Node position updates complete:', {
         totalUpdates: updates.length,
         successfulUpdates: updatedCount,
         skippedUpdates: skippedCount,
+        missingPositions: missingPositionCount,
         timestamp: new Date().toISOString()
       })
     },
 
     updateVisualizationSettings(settings: Partial<VisualizationConfig>) {
-      console.debug('Updating visualization settings:', {
+      console.debug('[VisualizationStore] Updating visualization settings:', {
         oldSettings: this.visualConfig,
         newSettings: settings,
         timestamp: new Date().toISOString()
@@ -252,7 +305,7 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     updateBloomSettings(settings: Partial<BloomConfig>) {
-      console.debug('Updating bloom settings:', {
+      console.debug('[VisualizationStore] Updating bloom settings:', {
         oldSettings: this.bloomConfig,
         newSettings: settings,
         timestamp: new Date().toISOString()
@@ -264,7 +317,7 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     updateFisheyeSettings(settings: Partial<FisheyeConfig>) {
-      console.debug('Updating fisheye settings:', {
+      console.debug('[VisualizationStore] Updating fisheye settings:', {
         oldSettings: this.fisheyeConfig,
         newSettings: settings,
         timestamp: new Date().toISOString()
@@ -288,10 +341,11 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     clear() {
-      console.debug('Clearing visualization store:', {
+      console.debug('[VisualizationStore] Clearing visualization store:', {
         nodeCount: this.nodes.length,
         edgeCount: this.edges.length,
         hasGraphData: !!this.graphData,
+        wasInitialized: this.initialized,
         timestamp: new Date().toISOString()
       })
       
@@ -300,6 +354,7 @@ export const useVisualizationStore = defineStore('visualization', {
       this.graphData = null
       this.selectedNode = null
       this.metadata = {}
+      this.initialized = false
       
       // Reset settings to defaults
       this.visualConfig = { ...DEFAULT_VISUALIZATION_CONFIG }
