@@ -6,11 +6,11 @@ public:: true
 -
 - Currently I am Spatial AI Lead in an emerging [media innovation lab](https://www.mediacityuk.co.uk/immersive-technologies-innovation-hub/), supporting human storytelling with immersive and AI tech.
 - I am also Chief Hallucination Officer for [DreamLab](https://www.linkedin.com/company/dreamlabinstitute/?); an emerging institute of creatives, academics, professionals, storytellers and technologists.
-	- ![Screenshot 2024-06-15 102949.png](../assets/Screenshot_2024-06-15_102949_1718443829936_0.png){:width 500}
-	- I have a micro company which develops open source software and knowledge, and offers consultancy called "[flossverse](https://github.com/flossverse)" (free, libre, open source software - verse).
-	-
+	- ![Screenshot 2024-11-27 094227.png](../assets/Screenshot_2024-11-27_094227_1732701085534_0.png)
 	- This (creative commons 0) open source knowledge base is supported in part by:
 	- ![supprot.png](../assets/supprot_1713182959874_0.png){width 600}
+- ## Flossverse
+	- I have a micro company which develops open source software and knowledge, and offers consultancy called "[flossverse](https://github.com/flossverse)" (free, libre, open source software - verse).
 - # What are these pages?
 	- This interface is an example of [[Knowledge Graphing and RAG]].
 	  id:: 661d5f74-5dfe-4569-9374-37b63637b3d8
