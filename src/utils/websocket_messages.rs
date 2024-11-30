@@ -2,16 +2,12 @@ use serde::{Serialize, Deserialize};
 use actix::prelude::*;
 use serde_json::Value;
 
-// Binary protocol is kept minimal for efficient position/velocity updates only
-// Format: [4 bytes isInitialLayout flag][24 bytes per node (position + velocity)]
-
-// Message types for non-binary communication
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ServerMessage {
     #[serde(rename = "graphUpdate")]
     GraphUpdate {
-        graph_data: Value,
+        graphData: Value,
     },
     #[serde(rename = "error")]
     Error {
@@ -19,25 +15,25 @@ pub enum ServerMessage {
         code: Option<String>,
         details: Option<String>,
     },
-    #[serde(rename = "position_update_complete")]
+    #[serde(rename = "positionUpdateComplete")]
     PositionUpdateComplete {
         status: String,
-        is_initial_layout: bool,
+        isInitialLayout: bool,
     },
-    #[serde(rename = "settings_updated")]
+    #[serde(rename = "settingsUpdated")]
     SettingsUpdated {
         settings: Value,
     },
-    #[serde(rename = "simulation_mode_set")]
+    #[serde(rename = "simulationModeSet")]
     SimulationModeSet {
         mode: String,
-        gpu_enabled: bool,
+        gpuEnabled: bool,
     },
-    #[serde(rename = "fisheye_settings_updated")]
+    #[serde(rename = "fisheyeSettingsUpdated")]
     FisheyeSettingsUpdated {
         enabled: bool,
         strength: f32,
-        focus_point: [f32; 3],
+        focusPoint: [f32; 3],
         radius: f32,
     },
 }
@@ -63,11 +59,11 @@ pub struct Node {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub node_type: Option<String>,
+    pub nodeType: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_data: Option<Value>,
+    pub userData: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weight: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -85,16 +81,15 @@ pub struct Edge {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub edge_type: Option<String>,
+    pub edgeType: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_data: Option<Value>,
+    pub userData: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub directed: Option<bool>,
 }
 
-// Message types for WebSocket communication
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct BroadcastGraph {
