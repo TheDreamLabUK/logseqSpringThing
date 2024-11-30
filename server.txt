@@ -47,6 +47,9 @@ pub struct GitHubSettings {
 pub struct RagFlowSettings {
     pub api_key: String,
     pub endpoint: String,
+    pub base_url: String,
+    pub timeout: u64,
+    pub max_retries: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -54,6 +57,14 @@ pub struct RagFlowSettings {
 pub struct PerplexitySettings {
     pub api_key: String,
     pub model: String,
+    pub api_url: String,
+    pub max_tokens: u32,
+    pub temperature: f32,
+    pub top_p: f32,
+    pub presence_penalty: f32,
+    pub frequency_penalty: f32,
+    pub timeout: u64,
+    pub rate_limit: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -61,6 +72,9 @@ pub struct PerplexitySettings {
 pub struct OpenAISettings {
     pub api_key: String,
     pub model: String,
+    pub base_url: String,
+    pub timeout: u64,
+    pub rate_limit: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -77,6 +91,18 @@ pub struct VisualizationSettings {
     pub node_color: String,
     pub edge_color: String,
     pub hologram_color: String,
+
+    // Node age-based colors
+    pub node_color_new: String,
+    pub node_color_recent: String,
+    pub node_color_medium: String,
+    pub node_color_old: String,
+    pub node_age_max_days: u32,
+
+    // Node type colors
+    pub node_color_core: String,
+    pub node_color_secondary: String,
+    pub node_color_default: String,
 
     // Sizes and scales
     pub min_node_size: f32,
@@ -98,6 +124,31 @@ pub struct VisualizationSettings {
     pub node_material_opacity: f32,
     pub node_emissive_min_intensity: f32,
     pub node_emissive_max_intensity: f32,
+
+    // Label properties
+    pub label_font_size: u32,
+    pub label_font_family: String,
+    pub label_padding: u32,
+    pub label_vertical_offset: f32,
+    pub label_close_offset: f32,
+    pub label_background_color: String,
+    pub label_text_color: String,
+    pub label_info_text_color: String,
+    pub label_xr_font_size: u32,
+
+    // Edge properties
+    pub edge_weight_normalization: f32,
+    pub edge_min_width: f32,
+    pub edge_max_width: f32,
+
+    // Geometry properties
+    pub geometry_min_segments: u32,
+    pub geometry_max_segments: u32,
+    pub geometry_segment_per_hyperlink: f32,
+
+    // Interaction properties
+    pub click_emissive_boost: f32,
+    pub click_feedback_duration: u32,
 
     // Force-directed layout parameters
     pub force_directed_iterations: u32,
@@ -1835,11 +1886,10 @@ utils/gpu_compute.rs
 use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor};
 use wgpu::util::DeviceExt;
 use std::io::Error;
-use log::{debug, info, error};
+use log::{debug, info};
 use crate::models::graph::GraphData;
-use crate::models::edge::GPUEdge;
 use crate::models::node::GPUNode;
-use crate::models::simulation_params::{SimulationParams, GPUSimulationParams};
+use crate::models::simulation_params::SimulationParams;
 use futures::channel::oneshot;
 
 // Constants for buffer management and computation
@@ -2254,8 +2304,6 @@ impl GPUCompute {
         // Verify data length (24 bytes per node - position + velocity, plus 4 bytes for header)
         let expected_size = self.num_nodes as usize * 24 + 4;
         if binary_data.len() != expected_size {
-            error!("Invalid position data length: expected {}, got {}", 
-                expected_size, binary_data.len());
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("Invalid position data length: expected {}, got {}", 
@@ -2428,7 +2476,7 @@ use actix_web::{web, Error, HttpRequest, HttpResponse};
 use bytemuck;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use std::time::{Duration, Instant};
 use serde_json;
 
@@ -2828,7 +2876,7 @@ pub struct NodePositionVelocity {
     pub vz: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PositionUpdate {
     /// Maps node indices to their new positions and velocities
@@ -3553,7 +3601,6 @@ pub async fn get_visualization_settings(
             "hologramScale": settings.visualization.hologram_scale,
             "hologramOpacity": settings.visualization.hologram_opacity,
             "edgeOpacity": settings.visualization.edge_opacity,
-            "labelFontSize": settings.visualization.label_font_size,
             "fogDensity": settings.visualization.fog_density,
             "forceDirectedIterations": settings.visualization.force_directed_iterations,
             "forceDirectedRepulsion": settings.visualization.force_directed_repulsion,
@@ -3986,9 +4033,14 @@ impl WebSocketSession {
                 let mut graph_data = state.graph_data.write().await;
                 for node_pos in &msg.nodes {
                     if let Some(node) = graph_data.nodes.iter_mut().find(|n| n.id == node_pos.id) {
-                        node.position = Some(node_pos.position);
-                        // Reset velocity since this is a manual position update
-                        node.velocity = Some([0.0, 0.0, 0.0]);
+                        // Update x, y, z directly instead of using position method
+                        node.x = node_pos.position[0];
+                        node.y = node_pos.position[1];
+                        node.z = node_pos.position[2];
+                        // Reset velocity components directly
+                        node.vx = 0.0;
+                        node.vy = 0.0;
+                        node.vz = 0.0;
                     }
                 }
             }

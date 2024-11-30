@@ -14,7 +14,7 @@ pub struct NodePositionVelocity {
     pub vz: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PositionUpdate {
     /// Maps node indices to their new positions and velocities

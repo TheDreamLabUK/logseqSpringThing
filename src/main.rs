@@ -195,11 +195,19 @@ async fn main() -> std::io::Result<()> {
     log::info!("Initializing GitHub service...");
     let github_service: Arc<dyn GitHubService + Send + Sync> = {
         let settings_read = settings.read().await;
+        // Parse repository string (format: "owner/repo")
+        let repo_parts: Vec<&str> = settings_read.github.repository.split('/').collect();
+        if repo_parts.len() != 2 {
+            log::error!("Invalid repository format in settings. Expected 'owner/repo'");
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid repository format"));
+        }
+        let (owner, repo) = (repo_parts[0].to_string(), repo_parts[1].to_string());
+        
         match RealGitHubService::new(
             settings_read.github.access_token.clone(),
-            settings_read.github.owner.clone(),
-            settings_read.github.repo.clone(),
-            settings_read.github.directory.clone(),
+            owner.clone(),
+            repo.clone(),
+            settings_read.github.branch.clone(),
             settings.clone(),
         ) {
             Ok(service) => Arc::new(service),
@@ -214,11 +222,15 @@ async fn main() -> std::io::Result<()> {
     log::info!("Initializing GitHub PR service...");
     let github_pr_service: Arc<dyn GitHubPRService + Send + Sync> = {
         let settings_read = settings.read().await;
+        // Parse repository string (format: "owner/repo")
+        let repo_parts: Vec<&str> = settings_read.github.repository.split('/').collect();
+        let (owner, repo) = (repo_parts[0].to_string(), repo_parts[1].to_string());
+        
         match RealGitHubPRService::new(
             settings_read.github.access_token.clone(),
-            settings_read.github.owner.clone(),
-            settings_read.github.repo.clone(),
-            settings_read.github.directory.clone(),
+            owner,
+            repo,
+            settings_read.github.branch.clone(),
         ) {
             Ok(service) => Arc::new(service),
             Err(e) => {

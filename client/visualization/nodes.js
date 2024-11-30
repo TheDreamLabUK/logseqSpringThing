@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { visualizationSettings } from '../services/visualizationSettings.js';
 import { LAYERS, LAYER_GROUPS, LayerManager } from './layerManager.js';
+import { TextRenderer } from './textRenderer.js';
 
 /**
  * NodeManager handles the efficient rendering and updating of nodes and edges in the graph visualization.
@@ -33,6 +34,9 @@ export class NodeManager {
         this.position = new THREE.Vector3();
         this.scale = new THREE.Vector3();
         this.color = new THREE.Color();
+
+        // Text renderer for labels
+        this.textRenderer = new TextRenderer();
         
         // Initialize settings
         this.initializeSettings(settings);
@@ -57,126 +61,75 @@ export class NodeManager {
     }
 
     /**
-     * Initializes settings from server or defaults
+     * Creates or updates a label for a node
      */
-    initializeSettings(settings) {
-        const nodeSettings = visualizationSettings.getNodeSettings();
-        if (!nodeSettings) {
-            console.warn('Using default node settings');
+    createNodeLabel(nodeId, node) {
+        let label = this.labelPool.get(nodeId);
+        
+        // Create label text with metadata
+        let labelText = node.label || nodeId;
+        if (node.metadata && Object.keys(node.metadata).length > 0) {
+            labelText += '\n' + Object.entries(node.metadata)
+                .map(([key, value]) => `${key}: ${value}`)
+                .join('\n');
         }
 
-        // Node appearance
-        this.minNodeSize = settings.minNodeSize || nodeSettings?.minNodeSize || 0.15;
-        this.maxNodeSize = settings.maxNodeSize || nodeSettings?.maxNodeSize || 0.4;
-        this.nodeColor = new THREE.Color(settings.nodeColor || nodeSettings?.color || 0xffa500);
-        
-        // Material settings
-        this.materialSettings = {
-            metalness: nodeSettings?.material?.metalness || 0.3,
-            roughness: nodeSettings?.material?.roughness || 0.5,
-            clearcoat: nodeSettings?.material?.clearcoat || 0.8,
-            opacity: nodeSettings?.material?.opacity || 0.95,
-            emissiveMinIntensity: nodeSettings?.material?.emissiveMinIntensity || 0.0,
-            emissiveMaxIntensity: nodeSettings?.material?.emissiveMaxIntensity || 0.3
-        };
-
-        // Age-based colors
-        this.ageColors = {
-            NEW: new THREE.Color(nodeSettings?.colorNew || 0x00ff88),
-            RECENT: new THREE.Color(nodeSettings?.colorRecent || 0x4444ff),
-            MEDIUM: new THREE.Color(nodeSettings?.colorMedium || 0xffaa00),
-            OLD: new THREE.Color(nodeSettings?.colorOld || 0xff4444)
-        };
-        
-        // Edge appearance
-        const edgeSettings = visualizationSettings.getEdgeSettings();
-        this.edgeColor = new THREE.Color(settings.edgeColor || edgeSettings?.color || 0xffffff);
-        this.edgeOpacity = settings.edgeOpacity || edgeSettings?.opacity || 0.4;
-        
-        // Label settings
-        this.labelFontSize = settings.labelFontSize || 32;
-        this.maxAge = settings.maxAge || 30; // days
-    }
-
-    /**
-     * Initializes instanced meshes for efficient rendering
-     */
-    initInstancedMeshes() {
-        try {
-            // Create geometries for different LOD levels
-            const highDetailGeometry = new THREE.SphereGeometry(1, 32, 32);
-            const mediumDetailGeometry = new THREE.SphereGeometry(1, 16, 16);
-            const lowDetailGeometry = new THREE.SphereGeometry(1, 8, 8);
-
-            // Create base material
-            const nodeMaterial = new THREE.MeshPhysicalMaterial({
-                metalness: this.materialSettings.metalness,
-                roughness: this.materialSettings.roughness,
-                transparent: true,
-                opacity: this.materialSettings.opacity,
-                clearcoat: this.materialSettings.clearcoat,
-                clearcoatRoughness: 0.1,
-                emissive: this.nodeColor,
-                emissiveIntensity: this.materialSettings.emissiveMinIntensity
+        // Create or update label sprite
+        if (!label) {
+            label = this.textRenderer.createTextSprite(labelText, {
+                fontSize: this.labelFontSize,
+                color: 0xffffff,
+                backgroundColor: 0x000000,
+                backgroundOpacity: 0.85
             });
-
-            // Initialize instanced meshes
-            const maxInstances = 10000;
-            this.nodeInstancedMeshes = {
-                high: new THREE.InstancedMesh(highDetailGeometry, nodeMaterial.clone(), maxInstances),
-                medium: new THREE.InstancedMesh(mediumDetailGeometry, nodeMaterial.clone(), maxInstances),
-                low: new THREE.InstancedMesh(lowDetailGeometry, nodeMaterial.clone(), maxInstances)
-            };
-
-            // Set up edge instanced mesh
-            const edgeGeometry = new THREE.CylinderGeometry(0.15, 0.15, 1, 8);
-            edgeGeometry.rotateX(Math.PI / 2);
             
-            const edgeMaterial = new THREE.MeshBasicMaterial({
-                color: this.edgeColor,
-                transparent: true,
-                opacity: this.edgeOpacity,
-                depthWrite: false
+            // Make label always face camera
+            label.material.depthWrite = false;
+            label.material.depthTest = false;
+            label.renderOrder = 1;
+            
+            this.labelPool.set(nodeId, label);
+            this.scene.add(label);
+        } else {
+            // Update existing label
+            const newSprite = this.textRenderer.createTextSprite(labelText, {
+                fontSize: this.labelFontSize,
+                color: 0xffffff,
+                backgroundColor: 0x000000,
+                backgroundOpacity: 0.85
             });
-
-            this.edgeInstancedMesh = new THREE.InstancedMesh(
-                edgeGeometry,
-                edgeMaterial,
-                maxInstances * 2
-            );
-
-            // Add meshes to container
-            Object.values(this.nodeInstancedMeshes).forEach(mesh => {
-                mesh.count = 0;
-                LayerManager.setLayerGroup(mesh, 'BLOOM');
-                this.instancedContainer.add(mesh);
-            });
-
-            LayerManager.setLayerGroup(this.edgeInstancedMesh, 'EDGE');
-            this.instancedContainer.add(this.edgeInstancedMesh);
-
-        } catch (error) {
-            console.error('Error initializing instanced meshes:', error);
-            throw error;
+            
+            // Update material and texture
+            if (label.material) {
+                if (label.material.map) label.material.map.dispose();
+                label.material.dispose();
+            }
+            label.material = newSprite.material;
+            label.scale.copy(newSprite.scale);
         }
+
+        // Position label above node
+        const nodeSize = this.getNodeSize(node.metadata || {});
+        const pos = new THREE.Vector3(node.x, node.y, node.z);
+        label.position.copy(pos).add(new THREE.Vector3(0, nodeSize * 1.5, 0));
+        
+        // Make label face camera
+        label.quaternion.copy(this.camera.quaternion);
+        
+        return label;
     }
 
     /**
-     * Initializes the label renderer
+     * Updates labels for all nodes
      */
-    initializeLabelRenderer() {
-        this.labelCanvas = document.createElement('canvas');
-        this.labelContext = this.labelCanvas.getContext('2d', {
-            alpha: true,
-            desynchronized: true,
-            willReadFrequently: false
+    updateLabels() {
+        this.nodeData.forEach((node, nodeId) => {
+            this.createNodeLabel(nodeId, node);
         });
     }
 
     /**
      * Handles binary position updates from WebSocket
-     * @param {Float32Array} positions - Array of [x,y,z,vx,vy,vz] values
-     * @param {boolean} isInitialLayout - Whether this is the initial layout
      */
     updateNodePositions(positions, isInitialLayout = false) {
         if (!this.nodeInstancedMeshes) return;
@@ -226,6 +179,13 @@ export class NodeManager {
             this.instancePositions[posIndex + 1] = pos[1];
             this.instancePositions[posIndex + 2] = pos[2];
             this.instanceIds.set(`${[pos[0], pos[1], pos[2]]}`, nodeId);
+
+            // Update label position
+            const label = this.labelPool.get(nodeId);
+            if (label) {
+                label.position.copy(position).add(new THREE.Vector3(0, size * 1.5, 0));
+                label.quaternion.copy(this.camera.quaternion);
+            }
         }
 
         // Update instance matrices

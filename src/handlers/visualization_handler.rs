@@ -15,7 +15,6 @@ pub async fn get_visualization_settings(
             "hologramScale": settings.visualization.hologram_scale,
             "hologramOpacity": settings.visualization.hologram_opacity,
             "edgeOpacity": settings.visualization.edge_opacity,
-            "labelFontSize": settings.visualization.label_font_size,
             "fogDensity": settings.visualization.fog_density,
             "forceDirectedIterations": settings.visualization.force_directed_iterations,
             "forceDirectedRepulsion": settings.visualization.force_directed_repulsion,
