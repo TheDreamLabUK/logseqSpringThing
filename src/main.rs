@@ -190,24 +190,16 @@ async fn main() -> std::io::Result<()> {
     // Initialize core data structures
     let file_cache = Arc::new(RwLock::new(HashMap::new()));
     let graph_data = Arc::new(RwLock::new(GraphData::default()));
-    
+
     // Initialize GitHub service
     log::info!("Initializing GitHub service...");
     let github_service: Arc<dyn GitHubService + Send + Sync> = {
         let settings_read = settings.read().await;
-        // Parse repository string (format: "owner/repo")
-        let repo_parts: Vec<&str> = settings_read.github.repository.split('/').collect();
-        if repo_parts.len() != 2 {
-            log::error!("Invalid repository format in settings. Expected 'owner/repo'");
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid repository format"));
-        }
-        let (owner, repo) = (repo_parts[0].to_string(), repo_parts[1].to_string());
-        
         match RealGitHubService::new(
             settings_read.github.access_token.clone(),
-            owner.clone(),
-            repo.clone(),
-            settings_read.github.branch.clone(),
+            settings_read.github.owner.clone(),
+            settings_read.github.repo.clone(),
+            settings_read.github.directory.clone(),
             settings.clone(),
         ) {
             Ok(service) => Arc::new(service),
@@ -222,15 +214,11 @@ async fn main() -> std::io::Result<()> {
     log::info!("Initializing GitHub PR service...");
     let github_pr_service: Arc<dyn GitHubPRService + Send + Sync> = {
         let settings_read = settings.read().await;
-        // Parse repository string (format: "owner/repo")
-        let repo_parts: Vec<&str> = settings_read.github.repository.split('/').collect();
-        let (owner, repo) = (repo_parts[0].to_string(), repo_parts[1].to_string());
-        
         match RealGitHubPRService::new(
             settings_read.github.access_token.clone(),
-            owner,
-            repo,
-            settings_read.github.branch.clone(),
+            settings_read.github.owner.clone(),
+            settings_read.github.repo.clone(),
+            settings_read.github.directory.clone(),
         ) {
             Ok(service) => Arc::new(service),
             Err(e) => {
@@ -239,7 +227,7 @@ async fn main() -> std::io::Result<()> {
             }
         }
     };
-    
+
     // Initialize services
     let perplexity_service = Arc::new(PerplexityServiceImpl::new()) as Arc<dyn PerplexityService + Send + Sync>;
     

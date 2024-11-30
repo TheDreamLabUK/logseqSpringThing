@@ -11,7 +11,7 @@ pub struct Settings {
     pub ragflow: RagFlowSettings,
     pub perplexity: PerplexitySettings,
     pub openai: OpenAISettings,
-    pub defaults: DefaultSettings,
+    pub default: DefaultSettings,  // Changed from defaults to default to match settings.toml
     pub visualization: VisualizationSettings,
     pub bloom: BloomSettings,
     pub fisheye: FisheyeSettings,
@@ -45,25 +45,47 @@ impl Settings {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NetworkSettings {
     pub domain: String,
+    pub port: u16,
+    pub bind_address: String,
+    pub enable_tls: bool,
+    pub min_tls_version: String,
+    pub enable_http2: bool,
+    pub max_request_size: usize,
+    pub enable_rate_limiting: bool,
+    pub rate_limit_requests: u32,
+    pub rate_limit_window: u32,
+    pub tunnel_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SecuritySettings {
     pub enable_cors: bool,
     pub allowed_origins: Vec<String>,
+    pub enable_csrf: bool,
+    pub csrf_token_timeout: u32,
+    pub session_timeout: u32,
+    pub cookie_secure: bool,
+    pub cookie_httponly: bool,
+    pub cookie_samesite: String,
+    pub enable_security_headers: bool,
+    pub enable_request_validation: bool,
+    pub enable_audit_logging: bool,
+    pub audit_log_path: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GitHubSettings {
     pub access_token: String,
-    pub repository: String,
-    pub branch: String,
+    pub owner: String,
+    pub repo: String,
+    pub directory: String,
+    pub api_version: String,
+    pub rate_limit_enabled: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RagFlowSettings {
     pub api_key: String,
-    pub endpoint: String,
     pub base_url: String,
     pub timeout: u64,
     pub max_retries: u32,
@@ -86,16 +108,26 @@ pub struct PerplexitySettings {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpenAISettings {
     pub api_key: String,
-    pub model: String,
     pub base_url: String,
     pub timeout: u64,
     pub rate_limit: u32,
+    pub model: String,  // Added model field
 }
+
+// Rest of the code remains the same...
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DefaultSettings {
     pub max_concurrent_requests: usize,
-    pub request_timeout: u64,
+    pub max_retries: u32,
+    pub retry_delay: u64,
+    pub api_client_timeout: u64,
+    pub max_payload_size: usize,
+    pub enable_request_logging: bool,
+    pub enable_metrics: bool,
+    pub metrics_port: u16,
+    pub log_level: String,
+    pub log_format: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

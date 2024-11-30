@@ -92,9 +92,8 @@ impl OpenAIWebSocket {
         
         info!("Connecting to OpenAI WebSocket at URL: {}", url);
 
-        // Create RealtimeClient instance
-        let client = RealtimeClient::new_with_endpoint(
-            url.clone(),
+        // Create RealtimeClient instance using new() instead of new_with_endpoint()
+        let client = RealtimeClient::new(
             api_key.clone(),
             "gpt-4".to_string(),
         );
@@ -104,6 +103,7 @@ impl OpenAIWebSocket {
         *client_guard = Some(client);
         drop(client_guard);
 
+        // Rest of the function remains the same...
         // Get client reference for connection
         let client_guard = self.client.lock().await;
         if let Some(ref client) = *client_guard {
