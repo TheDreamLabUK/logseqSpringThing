@@ -88,3 +88,4 @@ components.d.ts
 *.gltf
 *.hdr
 *.exr
+data/markdown/metadata.json
