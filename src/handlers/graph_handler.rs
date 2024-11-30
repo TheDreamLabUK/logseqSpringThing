@@ -3,7 +3,8 @@
 use actix_web::{web, HttpResponse, Responder};
 use crate::AppState;
 use serde::Serialize;
-use log::info;
+use log::{info, debug};
+use std::collections::HashMap;
 
 /// Struct to serialize GraphData for HTTP responses.
 #[derive(Serialize)]
@@ -12,6 +13,8 @@ pub struct GraphResponse {
     pub nodes: Vec<crate::models::node::Node>,
     /// List of edges connecting the nodes.
     pub edges: Vec<crate::models::edge::Edge>,
+    /// Additional metadata about the graph.
+    pub metadata: HashMap<String, serde_json::Value>,
 }
 
 /// Handler to retrieve the current graph data.
@@ -34,10 +37,16 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     // Step 1: Acquire read access to the shared graph data.
     let graph = state.graph_data.read().await;
 
+    debug!("Preparing graph response with {} nodes and {} edges",
+        graph.nodes.len(),
+        graph.edges.len()
+    );
+
     // Step 2: Prepare the response struct.
     let response = GraphResponse {
         nodes: graph.nodes.clone(),
         edges: graph.edges.clone(),
+        metadata: graph.metadata.clone(),
     };
 
     // Step 3: Respond with the serialized graph data.

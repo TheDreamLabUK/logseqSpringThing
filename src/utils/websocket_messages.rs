@@ -46,8 +46,7 @@ pub enum ServerMessage {
 pub struct GraphData {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    pub metadata: Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -64,15 +63,35 @@ pub struct Node {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<serde_json::Value>,
+    pub node_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_data: Option<serde_json::Value>,
+    pub metadata: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_data: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weight: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Edge {
     pub source: String,
     pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weight: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edge_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_data: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub directed: Option<bool>,
 }
 
 // Message types for WebSocket communication
