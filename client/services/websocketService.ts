@@ -19,10 +19,8 @@ import {
   DEFAULT_MAX_MESSAGE_SIZE,
   DEFAULT_MAX_AUDIO_SIZE,
   DEFAULT_MAX_QUEUE_SIZE,
-  MAX_VALID_POSITION,
-  MIN_VALID_POSITION,
-  MAX_VALID_VELOCITY,
-  MIN_VALID_VELOCITY
+  HEARTBEAT_INTERVAL,
+  HEARTBEAT_TIMEOUT
 } from '../constants/websocket'
 
 const DEFAULT_CONFIG: WebSocketConfig = {
@@ -43,19 +41,45 @@ export default class WebsocketService {
   private lastMessageTime = 0;
   private reconnectAttempts = 0;
   private reconnectTimeout: number | null = null;
+  private heartbeatInterval: number | null = null;
+  private lastPongTime: number = Date.now();
   private eventListeners: Map<keyof WebSocketEventMap, Set<WebSocketEventCallback<any>>> = new Map();
   private url: string;
-  // Store node IDs and their indices for binary updates
   private nodeIdToIndex: Map<string, number> = new Map();
   private indexToNodeId: string[] = [];
 
   constructor(config: Partial<WebSocketConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    
-    // Use relative path for WebSocket to maintain protocol and host
     this.url = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
-
     console.debug('[WebsocketService] Initialized with URL:', this.url);
+  }
+
+  private startHeartbeat() {
+    if (this.heartbeatInterval) {
+      window.clearInterval(this.heartbeatInterval);
+    }
+
+    this.heartbeatInterval = window.setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        // Check if we've received a pong within the timeout period
+        if (Date.now() - this.lastPongTime > HEARTBEAT_TIMEOUT) {
+          console.warn('[WebsocketService] Heartbeat timeout - no pong received');
+          this.ws.close();
+          return;
+        }
+
+        // Send ping message
+        console.debug('[WebsocketService] Sending ping');
+        this.ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, HEARTBEAT_INTERVAL);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      window.clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
   }
 
   public async connect(): Promise<void> {
@@ -78,12 +102,14 @@ export default class WebsocketService {
             this.ws?.close();
             reject(new Error('WebSocket connection timeout'));
           }
-        }, 10000); // 10 second timeout
+        }, 10000);
 
         this.ws.onopen = () => {
           clearTimeout(connectionTimeout);
           console.debug('[WebsocketService] WebSocket connection established');
           this.reconnectAttempts = 0;
+          this.lastPongTime = Date.now();
+          this.startHeartbeat();
           this.emit('open');
           this.processQueuedMessages();
           resolve();
@@ -91,6 +117,7 @@ export default class WebsocketService {
 
         this.ws.onclose = (event) => {
           clearTimeout(connectionTimeout);
+          this.stopHeartbeat();
           console.debug('[WebsocketService] WebSocket connection closed:', {
             code: event.code,
             reason: event.reason,
@@ -125,7 +152,7 @@ export default class WebsocketService {
         // Handle binary message (position updates)
         console.debug('[WebsocketService] Received binary message:', {
           size: event.data.byteLength,
-          expectedSize: this.indexToNodeId.length * 24, // 6 float32s per node
+          expectedSize: this.indexToNodeId.length * 24,
           timestamp: new Date().toISOString()
         });
 
@@ -134,7 +161,6 @@ export default class WebsocketService {
           throw new Error('Failed to process position update');
         }
 
-        // Validate node count matches expected
         if (result.positions.length !== this.indexToNodeId.length) {
           console.warn('[WebsocketService] Position update node count mismatch:', {
             expected: this.indexToNodeId.length,
@@ -143,7 +169,6 @@ export default class WebsocketService {
           });
         }
 
-        // Map positions to node IDs
         const positions = result.positions.map((pos, index) => {
           const nodeId = this.indexToNodeId[index];
           if (!nodeId) {
@@ -171,6 +196,13 @@ export default class WebsocketService {
           type: message.type,
           timestamp: new Date().toISOString()
         });
+
+        // Handle pong messages
+        if (message.type === 'pong') {
+          console.debug('[WebsocketService] Received pong');
+          this.lastPongTime = Date.now();
+          return;
+        }
         
         // Handle graph updates and store node mappings
         if (message.type === 'graphUpdate') {
@@ -185,11 +217,9 @@ export default class WebsocketService {
           const graphData = graphMessage.graphData || graphMessage.graph_data;
           
           if (graphData?.nodes) {
-            // Clear existing mappings
             this.nodeIdToIndex.clear();
             this.indexToNodeId = [];
             
-            // Store node IDs in order for binary updates
             graphData.nodes.forEach((node, index) => {
               this.nodeIdToIndex.set(node.id, index);
               this.indexToNodeId[index] = node.id;
@@ -211,7 +241,6 @@ export default class WebsocketService {
         } else {
           this.emit('message', message);
           
-          // Handle specific message types
           if (message.type === 'error') {
             console.error('[WebsocketService] Received error message:', message);
             this.emit('error', message as ErrorMessage);
@@ -233,7 +262,7 @@ export default class WebsocketService {
     
     if (this.reconnectAttempts < this.config.maxRetries) {
       this.reconnectAttempts++;
-      const delay = this.config.retryDelay * Math.pow(2, this.reconnectAttempts - 1); // Exponential backoff
+      const delay = this.config.retryDelay * Math.pow(2, this.reconnectAttempts - 1);
       console.debug(`[WebsocketService] Connection failed. Retrying in ${delay}ms...`);
       
       this.reconnectTimeout = window.setTimeout(() => {
@@ -296,7 +325,6 @@ export default class WebsocketService {
       this.messageCount++;
       this.lastMessageTime = now;
 
-      // Process queued messages
       this.processQueue();
     } catch (error) {
       console.error('[WebsocketService] Error sending message:', error);
@@ -366,13 +394,15 @@ export default class WebsocketService {
 
   public cleanup(): void {
     console.debug('[WebsocketService] Cleaning up websocket service');
+    this.stopHeartbeat();
+    
     if (this.reconnectTimeout !== null) {
       window.clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
 
     if (this.ws) {
-      this.ws.onclose = null; // Prevent reconnection attempt
+      this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
     }
