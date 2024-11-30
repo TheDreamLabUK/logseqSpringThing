@@ -58,7 +58,7 @@ impl WebSocketSession {
         true
     }
 
-// Helper method to process binary position updates
+    // Helper method to process binary position updates
     fn process_binary_update(&mut self, data: &[u8]) -> Result<(), String> {
         if !self.validate_binary_data(data) {
             return Err("Invalid binary data format".to_string());
@@ -111,6 +111,14 @@ impl WebSocketSession {
 
 impl Actor for WebSocketSession {
     type Context = WebsocketContext<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        info!("WebSocket session started");
+    }
+
+    fn stopped(&mut self, _: &mut Self::Context) {
+        info!("WebSocket session stopped");
+    }
 }
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
@@ -166,6 +174,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                             self.handle_fisheye_settings(ctx, enabled, strength, focus_point, radius);
                         }
                         Some("initial_data") => {
+                            info!("Received initial_data request");
                             self.handle_initial_data(ctx);
                         }
                         _ => {
@@ -202,7 +211,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 }
             }
             Ok(ws::Message::Close(reason)) => {
-                debug!("Client disconnected: {:?}", reason);
+                info!("Client disconnected: {:?}", reason);
                 ctx.close(reason);
                 ctx.stop();
             }
@@ -286,10 +295,44 @@ impl WebSocketSessionHandler for WebSocketSession {
         let ctx_addr = ctx.address();
 
         let fut = async move {
-            let graph_data = state.graph_data.read().await;
-            let settings = state.settings.read().await;
+            info!("Handling initial_data request");
             
-            // Send graph data using ServerMessage enum, ensuring metadata is included
+            // Get graph data with detailed logging
+            let graph_data = match state.graph_data.try_read() {
+                Ok(data) => {
+                    info!("Successfully acquired graph data read lock");
+                    info!("Current graph state: {} nodes, {} edges, {} metadata entries",
+                        data.nodes.len(),
+                        data.edges.len(),
+                        data.metadata.len()
+                    );
+                    
+                    // Log sample of nodes if available
+                    if !data.nodes.is_empty() {
+                        debug!("Sample node data: {:?}", &data.nodes[0]);
+                    }
+                    
+                    data
+                },
+                Err(e) => {
+                    error!("Failed to acquire graph data read lock: {}", e);
+                    return;
+                }
+            };
+
+            let settings = match state.settings.try_read() {
+                Ok(s) => {
+                    info!("Successfully acquired settings read lock");
+                    s
+                },
+                Err(e) => {
+                    error!("Failed to acquire settings read lock: {}", e);
+                    return;
+                }
+            };
+            
+            // Prepare graph update message
+            info!("Preparing graph update message");
             let graph_update = ServerMessage::GraphUpdate {
                 graph_data: json!({
                     "nodes": graph_data.nodes.iter().map(|node| {
@@ -299,7 +342,7 @@ impl WebSocketSessionHandler for WebSocketSession {
                             "position": [node.x, node.y, node.z],
                             "velocity": [node.vx, node.vy, node.vz],
                             "size": node.size,
-                            "color": node.color,
+                            "color": node.color.as_ref().map(|c| format_color(c)),
                             "type": node.node_type,
                             "metadata": node.metadata,
                             "userData": node.user_data,
@@ -313,7 +356,7 @@ impl WebSocketSessionHandler for WebSocketSession {
                             "target": edge.target,
                             "weight": edge.weight,
                             "width": edge.width,
-                            "color": edge.color,
+                            "color": edge.color.as_ref().map(|c| format_color(c)),
                             "type": edge.edge_type,
                             "metadata": edge.metadata,
                             "userData": edge.user_data,
@@ -323,10 +366,18 @@ impl WebSocketSessionHandler for WebSocketSession {
                     "metadata": &graph_data.metadata
                 })
             };
+
+            // Send graph data
+            info!("Sending graph data to client");
             if let Ok(graph_str) = serde_json::to_string(&graph_update) {
+                debug!("Graph data JSON size: {} bytes", graph_str.len());
                 ctx_addr.do_send(SendText(graph_str));
+            } else {
+                error!("Failed to serialize graph data");
             }
 
+            // Prepare and send settings
+            info!("Preparing settings update");
             let settings_update = ServerMessage::SettingsUpdated {
                 settings: json!({
                     "visualization": {
@@ -379,11 +430,17 @@ impl WebSocketSessionHandler for WebSocketSession {
                     }
                 })
             };
+
+            info!("Sending settings to client");
             if let Ok(settings_str) = serde_json::to_string(&settings_update) {
+                debug!("Settings JSON size: {} bytes", settings_str.len());
                 ctx_addr.do_send(SendText(settings_str));
+            } else {
+                error!("Failed to serialize settings");
             }
 
             // Send completion
+            info!("Sending completion message");
             let completion = json!({
                 "type": "completion",
                 "message": "Initial data sent"
@@ -398,7 +455,10 @@ impl WebSocketSessionHandler for WebSocketSession {
         // Set simulation mode to remote and start GPU updates
         self.simulation_mode = SimulationMode::Remote;
         if self.state.gpu_compute.is_some() {
+            info!("Starting GPU updates");
             self.start_gpu_updates(ctx);
+        } else {
+            warn!("GPU compute not available");
         }
     }
 
