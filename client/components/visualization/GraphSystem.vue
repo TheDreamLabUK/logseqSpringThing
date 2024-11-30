@@ -15,6 +15,7 @@ import { useGraphSystem } from '../../composables/useGraphSystem';
 import { useWebSocketStore } from '../../stores/websocket';
 import { useBinaryUpdateStore } from '../../stores/binaryUpdate';
 import { useVisualizationStore } from '../../stores/visualization';
+import { useVisualization } from '../../composables/useVisualization';
 import { usePlatform } from '../../composables/usePlatform';
 import type { VisualizationConfig } from '../../types/components';
 import type { GraphNode, GraphEdge, GraphData, CoreState } from '../../types/core';
@@ -30,8 +31,10 @@ export default defineComponent({
   },
 
   setup(props) {
-    // Get visualization state
+    // Get visualization state and composable
     const visualizationState = inject<{ value: CoreState }>('visualizationState');
+    const visualization = useVisualization();
+    
     const isReady = computed(() => {
       const ready = visualizationState?.value.scene != null && 
              visualizationState?.value.isInitialized === true;
@@ -101,10 +104,35 @@ export default defineComponent({
       return data;
     });
 
+    // Watch for graph data changes with enhanced logging
+    watch(() => graphData.value, (newData) => {
+      if (newData && newData.nodes.length > 0) {
+        console.debug('Graph data changed:', {
+          nodes: newData.nodes.length,
+          edges: newData.edges.length,
+          sampleNode: newData.nodes[0] ? {
+            id: newData.nodes[0].id,
+            hasPosition: !!newData.nodes[0].position,
+            edgeCount: newData.nodes[0].edges?.length || 0
+          } : null,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Use mergeGraphData to preserve client-side positions
+        visualizationStore.mergeGraphData(newData);
+        
+        // Update graph system with merged data
+        updateGraphData(visualizationStore.getGraphData);
+        
+        // Trigger layout update if needed
+        visualization.updateLayoutPositions();
+      }
+    }, { deep: true });
+
     // Watch for binary updates with enhanced logging
     watch(() => binaryUpdateStore.getAllPositions, (positions) => {
       const nodeCount = positions.length / 3;
-      if (nodeCount > 0) {
+      if (nodeCount > 0 && !visualization.isInteracting.value) {
         console.debug('Processing binary position update:', {
           nodeCount,
           timestamp: new Date().toISOString()
@@ -153,6 +181,9 @@ export default defineComponent({
       dragPlane.value = new Plane(normal, 0);
       dragStartPosition.value = getNodePosition(node).clone();
 
+      // Start local force simulation
+      visualization.startInteraction();
+
       if (visualizationState?.value.scene) {
         visualizationState.value.scene.userData.needsRender = true;
       }
@@ -178,32 +209,13 @@ export default defineComponent({
         const position = getNodePosition(node);
         position.copy(dragIntersection);
 
-        // Find node index
-        const nodeIndex = graphData.value.nodes.findIndex(n => n.id === node.id);
-        if (nodeIndex !== -1) {
-          // Update position with zero velocity during drag
-          binaryUpdateStore.updateNodePosition(
-            nodeIndex,
-            position.x, position.y, position.z,
-            0, 0, 0
-          );
-        }
-
-        console.debug('Node drag update:', {
-          nodeId: node.id,
-          nodeIndex,
-          newPosition: [position.x, position.y, position.z],
-          timestamp: new Date().toISOString()
+        // Update node position in visualization store
+        visualizationStore.updateNode(node.id, {
+          position: [position.x, position.y, position.z]
         });
 
-        if (websocketStore.service) {
-          websocketStore.service.send({
-            type: 'updateNodePosition',
-            nodeId: node.id,
-            nodeIndex,
-            position: [position.x, position.y, position.z]
-          });
-        }
+        // Trigger layout update
+        visualization.updateLayoutPositions();
 
         if (visualizationState?.value.scene) {
           visualizationState.value.scene.userData.needsRender = true;
@@ -215,24 +227,16 @@ export default defineComponent({
       if (!isDragging.value || !draggedNode.value || !dragStartPosition.value) return;
 
       const finalPosition = getNodePosition(draggedNode.value);
-      const nodeIndex = graphData.value.nodes.findIndex(n => n.id === draggedNode.value!.id);
 
       console.debug('Node drag ended:', {
         nodeId: draggedNode.value.id,
-        nodeIndex,
         startPosition: dragStartPosition.value.toArray(),
         finalPosition: finalPosition.toArray(),
         timestamp: new Date().toISOString()
       });
 
-      if (websocketStore.service) {
-        websocketStore.service.send({
-          type: 'updateNodePosition',
-          nodeId: draggedNode.value.id,
-          nodeIndex,
-          position: [finalPosition.x, finalPosition.y, finalPosition.z]
-        });
-      }
+      // End local force simulation
+      visualization.endInteraction();
 
       isDragging.value = false;
       draggedNode.value = null;
@@ -268,23 +272,6 @@ export default defineComponent({
         console.error('Failed to toggle VR:', err);
       }
     };
-
-    // Watch for graph data changes with enhanced logging
-    watch(() => graphData.value, (newData) => {
-      if (newData && newData.nodes.length > 0) {
-        console.debug('Graph data changed:', {
-          nodes: newData.nodes.length,
-          edges: newData.edges.length,
-          sampleNode: newData.nodes[0] ? {
-            id: newData.nodes[0].id,
-            hasPosition: !!newData.nodes[0].position,
-            edgeCount: newData.nodes[0].edges?.length || 0
-          } : null,
-          timestamp: new Date().toISOString()
-        });
-        updateGraphData(newData);
-      }
-    }, { deep: true });
 
     // Update graph data when component mounts
     onMounted(() => {

@@ -65,6 +65,49 @@ export const useVisualizationStore = defineStore('visualization', {
   },
 
   actions: {
+    mergeGraphData(serverData: GraphData) {
+      console.debug('[VisualizationStore] Merging server graph data:', {
+        serverNodes: serverData.nodes.length,
+        serverEdges: serverData.edges.length,
+        localNodes: this.nodes.length,
+        localEdges: this.edges.length,
+        timestamp: new Date().toISOString()
+      });
+
+      // Create maps for quick lookups
+      const localNodeMap = new Map(this.nodes.map(node => [node.id, node]));
+      const serverNodeMap = new Map(serverData.nodes.map(node => [node.id, node]));
+
+      // Merge nodes, preserving local positions for existing nodes
+      const mergedNodes = serverData.nodes.map(serverNode => {
+        const localNode = localNodeMap.get(serverNode.id);
+        if (localNode) {
+          // Preserve local position and velocity if they exist
+          return {
+            ...serverNode,
+            position: localNode.position || serverNode.position,
+            velocity: localNode.velocity || serverNode.velocity
+          };
+        }
+        return serverNode;
+      });
+
+      // Convert edges and update with merged nodes
+      const mergedEdges = serverData.edges.map(edge => ({
+        ...edge,
+        id: `${edge.source}-${edge.target}`
+      }));
+
+      // Update store with merged data
+      this.setGraphData(mergedNodes, mergedEdges, serverData.metadata);
+
+      console.debug('[VisualizationStore] Graph data merge complete:', {
+        mergedNodes: mergedNodes.length,
+        mergedEdges: mergedEdges.length,
+        timestamp: new Date().toISOString()
+      });
+    },
+
     setGraphData(nodes: Node[], edges: Edge[], metadata: Record<string, any> = {}) {
       console.debug('[VisualizationStore] Setting graph data:', {
         nodeCount: nodes.length,

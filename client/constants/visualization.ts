@@ -13,6 +13,30 @@ export const VISUALIZATION_CONSTANTS = {
   DEFAULT_CAMERA_TARGET: [0, 0, 0] as [number, number, number]
 };
 
+export const SCENE_SETTINGS = {
+  fogNear: 1,
+  fogFar: 5,
+  gridSize: 2,
+  gridDivisions: 20
+};
+
+export const FORCE_SETTINGS = {
+  linkDistance: 0.3,
+  linkStrength: 1,
+  charge: -30,
+  alpha: 1,
+  alphaDecay: 0.02,
+  velocityDecay: 0.4
+};
+
+export const CAMERA_SETTINGS = {
+  fov: 60,
+  near: 0.01,
+  far: 10000,
+  position: new THREE.Vector3(0, 0.5, 2),
+  target: new THREE.Vector3(0, 0, 0)
+};
+
 export const WEBGL_CONTEXT_ATTRIBUTES: WebGLContextAttributes = {
   alpha: false,
   antialias: true,

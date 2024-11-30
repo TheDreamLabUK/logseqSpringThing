@@ -298,6 +298,20 @@ export const useWebSocketStore = defineStore('websocket', {
       this.service.send(data)
     },
 
+    sendBinary(data: ArrayBuffer) {
+      if (!this.service) {
+        console.error('[WebSocketStore] Cannot send binary data: WebSocket service not initialized')
+        return
+      }
+      console.debug('[WebSocketStore] Sending binary data:', {
+        size: data.byteLength,
+        timestamp: new Date().toISOString()
+      })
+      this.messageCount++
+      this.lastMessageTime = Date.now()
+      this.service.sendBinary(data)
+    },
+
     requestInitialData() {
       console.debug('[WebSocketStore] Requesting initial graph data')
       this.initialDataRequested = true

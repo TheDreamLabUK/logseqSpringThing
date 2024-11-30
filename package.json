@@ -13,16 +13,16 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "@types/d3-force": "^3.0.10",
+    "d3-force-3d": "^3.0.5",
     "oimo": "^1.0.9",
-    "pako": "^2.1.0",
-    "pinia": "^2.2.6",
-    "three": "0.170.0",
-    "vue": "^3.3.4"
+    "pako": "^2.1.0"
   },
   "devDependencies": {
     "@types/dat.gui": "^0.7.13",
     "@types/node": "^22.10.0",
     "@types/three": "0.170.0",
+    "@types/vue": "^2.0.0",
     "@typescript-eslint/eslint-plugin": "^8.16.0",
     "@typescript-eslint/parser": "^8.16.0",
     "@vitejs/plugin-vue": "^5.2.1",
@@ -30,11 +30,14 @@
     "dat.gui": "^0.7.9",
     "eslint": "^8.57.0",
     "eslint-plugin-vue": "^9.31.0",
+    "pinia": "^2.2.6",
     "prettier": "^3.4.1",
     "terser": "^5.36.0",
-    "typescript": "~5.4.0",
+    "three": "0.170.0",
+    "typescript": "~5.4.5",
     "vite": "^5.1.4",
     "vite-plugin-html": "^3.2.2",
+    "vue": "^3.5.13",
     "vue-tsc": "^2.0.4"
   },
   "engines": {
