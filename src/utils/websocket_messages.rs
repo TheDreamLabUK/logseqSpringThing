@@ -59,6 +59,14 @@ pub struct Node {
     pub position: Option<[f32; 3]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub velocity: Option<[f32; 3]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_data: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
