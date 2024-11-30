@@ -20,7 +20,8 @@ import {
   DEFAULT_MAX_AUDIO_SIZE,
   DEFAULT_MAX_QUEUE_SIZE,
   HEARTBEAT_INTERVAL,
-  HEARTBEAT_TIMEOUT
+  HEARTBEAT_TIMEOUT,
+  CONNECTION_TIMEOUT
 } from '../constants/websocket'
 
 const DEFAULT_CONFIG: WebSocketConfig = {
@@ -47,10 +48,18 @@ export default class WebsocketService {
   private url: string;
   private nodeIdToIndex: Map<string, number> = new Map();
   private indexToNodeId: string[] = [];
+  private isReconnecting: boolean = false;
+  private forceClose: boolean = false;
 
   constructor(config: Partial<WebSocketConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.url = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
+    
+    // Use the same protocol and hostname for websocket connection
+    // Cloudflare Tunnel handles the routing through port 4000
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const hostname = window.location.hostname;
+    this.url = `${protocol}//${hostname}/ws`;
+    
     console.debug('[WebsocketService] Initialized with URL:', this.url);
   }
 
@@ -64,13 +73,18 @@ export default class WebsocketService {
         // Check if we've received a pong within the timeout period
         if (Date.now() - this.lastPongTime > HEARTBEAT_TIMEOUT) {
           console.warn('[WebsocketService] Heartbeat timeout - no pong received');
-          this.ws.close();
+          this.reconnect();
           return;
         }
 
-        // Send ping message
-        console.debug('[WebsocketService] Sending ping');
-        this.ws.send(JSON.stringify({ type: 'ping' }));
+        try {
+          // Send ping message
+          console.debug('[WebsocketService] Sending ping');
+          this.ws.send(JSON.stringify({ type: 'ping' }));
+        } catch (error) {
+          console.error('[WebsocketService] Error sending heartbeat:', error);
+          this.reconnect();
+        }
       }
     }, HEARTBEAT_INTERVAL);
   }
@@ -79,6 +93,32 @@ export default class WebsocketService {
     if (this.heartbeatInterval) {
       window.clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
+    }
+  }
+
+  private reconnect() {
+    if (this.isReconnecting || this.forceClose) return;
+    
+    this.isReconnecting = true;
+    this.cleanup(false);
+    
+    if (this.reconnectAttempts < this.config.maxRetries) {
+      this.reconnectAttempts++;
+      const delay = this.config.retryDelay * Math.pow(2, this.reconnectAttempts - 1);
+      console.debug(`[WebsocketService] Connection failed. Retrying in ${delay}ms...`);
+      
+      this.reconnectTimeout = window.setTimeout(() => {
+        this.connect().catch(error => {
+          console.error('[WebsocketService] Reconnection attempt failed:', error);
+          this.reconnect();
+        }).finally(() => {
+          this.isReconnecting = false;
+        });
+      }, delay);
+    } else {
+      console.error('[WebsocketService] Max reconnection attempts reached');
+      this.emit('maxReconnectAttemptsReached');
+      this.isReconnecting = false;
     }
   }
 
@@ -101,8 +141,9 @@ export default class WebsocketService {
             console.error('[WebsocketService] WebSocket connection timeout');
             this.ws?.close();
             reject(new Error('WebSocket connection timeout'));
+            this.reconnect();
           }
-        }, 10000);
+        }, CONNECTION_TIMEOUT);
 
         this.ws.onopen = () => {
           clearTimeout(connectionTimeout);
@@ -123,7 +164,12 @@ export default class WebsocketService {
             reason: event.reason,
             wasClean: event.wasClean
           });
-          this.handleConnectionClose();
+          
+          if (!this.forceClose) {
+            this.reconnect();
+          }
+          
+          this.emit('close', event);
         };
 
         this.ws.onerror = (error) => {
@@ -134,7 +180,11 @@ export default class WebsocketService {
             message: 'WebSocket connection error'
           };
           this.emit('error', errorMsg);
-          reject(error);
+          
+          // Only reject if we haven't already
+          if (this.ws?.readyState !== WebSocket.OPEN) {
+            reject(error);
+          }
         };
 
         this.ws.onmessage = this.handleMessage.bind(this);
@@ -142,6 +192,7 @@ export default class WebsocketService {
       } catch (error) {
         console.error('[WebsocketService] Error creating WebSocket connection:', error);
         reject(error);
+        this.reconnect();
       }
     });
   }
@@ -251,25 +302,6 @@ export default class WebsocketService {
         message: 'Error processing message'
       };
       this.emit('error', errorMsg);
-    }
-  }
-
-  private handleConnectionClose(): void {
-    this.emit('close');
-    
-    if (this.reconnectAttempts < this.config.maxRetries) {
-      this.reconnectAttempts++;
-      const delay = this.config.retryDelay * Math.pow(2, this.reconnectAttempts - 1);
-      console.debug(`[WebsocketService] Connection failed. Retrying in ${delay}ms...`);
-      
-      this.reconnectTimeout = window.setTimeout(() => {
-        this.connect().catch(error => {
-          console.error('[WebsocketService] Reconnection attempt failed:', error);
-        });
-      }, delay);
-    } else {
-      console.error('[WebsocketService] Max reconnection attempts reached');
-      this.emit('maxReconnectAttemptsReached');
     }
   }
 
@@ -412,7 +444,7 @@ export default class WebsocketService {
     }
   }
 
-  public cleanup(): void {
+  public cleanup(force: boolean = true): void {
     console.debug('[WebsocketService] Cleaning up websocket service');
     this.stopHeartbeat();
     
@@ -422,6 +454,7 @@ export default class WebsocketService {
     }
 
     if (this.ws) {
+      this.forceClose = force;
       this.ws.onclose = null;
       this.ws.close();
       this.ws = null;
@@ -430,9 +463,11 @@ export default class WebsocketService {
     this.messageQueue = [];
     this.messageCount = 0;
     this.lastMessageTime = 0;
-    this.reconnectAttempts = 0;
-    this.eventListeners.clear();
-    this.nodeIdToIndex.clear();
-    this.indexToNodeId = [];
+    if (force) {
+      this.reconnectAttempts = 0;
+      this.eventListeners.clear();
+      this.nodeIdToIndex.clear();
+      this.indexToNodeId = [];
+    }
   }
 }

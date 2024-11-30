@@ -24,7 +24,7 @@ services:
               count: 1
               capabilities: [gpu]
     ports:
-      - "4000:4000"
+      - "4000:3000"  # Map container port 3000 to host port 4000
     environment:
       - RUST_LOG=info
       - RUST_BACKTRACE=1
@@ -46,7 +46,7 @@ services:
           size: 4G
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
       interval: 5s
       timeout: 3s
       retries: 2

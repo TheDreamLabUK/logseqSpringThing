@@ -206,7 +206,7 @@ export interface WebSocketConfig {
 // Event System Types
 export type WebSocketEventMap = {
   open: void;
-  close: void;
+  close: CloseEvent;  // Updated to use CloseEvent type
   error: ErrorMessage;
   message: BaseMessage;
   graphUpdate: GraphUpdateMessage;
