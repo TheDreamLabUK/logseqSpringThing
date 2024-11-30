@@ -1,5 +1,4 @@
 use actix::prelude::*;
-use actix::ResponseActFuture;
 use actix_web::web;
 use actix_web_actors::ws::WebsocketContext;
 use bytestring::ByteString;
@@ -17,13 +16,70 @@ use crate::models::node::GPUNode;
 use crate::models::simulation_params::{SimulationMode, SimulationParams};
 use crate::models::position_update::NodePositionVelocity;
 use crate::utils::websocket_messages::{
-    MessageHandler, OpenAIConnected, OpenAIConnectionFailed, OpenAIMessage, SendBinary, SendText,
+    OpenAIMessage, SendBinary, SendText,
     ServerMessage,
 };
 use crate::utils::websocket_openai::OpenAIWebSocket;
 
 pub const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(16);
+
+// Helper function to parse color string into RGB float array
+fn parse_color(color_str: &str) -> Option<[f32; 3]> {
+    if color_str.starts_with("rgb(") && color_str.ends_with(")") {
+        let rgb = color_str
+            .trim_start_matches("rgb(")
+            .trim_end_matches(")")
+            .split(',')
+            .map(|s| s.trim().parse::<u8>().ok())
+            .collect::<Option<Vec<_>>>()?;
+        if rgb.len() == 3 {
+            return Some([
+                rgb[0] as f32 / 255.0,
+                rgb[1] as f32 / 255.0,
+                rgb[2] as f32 / 255.0,
+            ]);
+        }
+    } else if color_str.starts_with("0x") || color_str.starts_with("#") {
+        let hex = color_str.trim_start_matches("0x").trim_start_matches("#");
+        if hex.len() == 6 {
+            if let Ok(value) = u32::from_str_radix(hex, 16) {
+                return Some([
+                    ((value >> 16) & 0xFF) as f32 / 255.0,
+                    ((value >> 8) & 0xFF) as f32 / 255.0,
+                    (value & 0xFF) as f32 / 255.0,
+                ]);
+            }
+        }
+    }
+    None
+}
+
+// Helper function to format color values
+fn format_color(color: &[f32; 3]) -> String {
+    format!("rgb({}, {}, {})", 
+        (color[0] * 255.0) as u8,
+        (color[1] * 255.0) as u8,
+        (color[2] * 255.0) as u8
+    )
+}
+
+// Helper function to convert positions to binary data
+fn positions_to_binary(nodes: &[GPUNode]) -> Vec<u8> {
+    let mut binary_data = Vec::with_capacity(nodes.len() * std::mem::size_of::<NodePositionVelocity>());
+    for node in nodes {
+        let position = NodePositionVelocity {
+            x: node.x,
+            y: node.y,
+            z: node.z,
+            vx: node.vx,
+            vy: node.vy,
+            vz: node.vz,
+        };
+        binary_data.extend_from_slice(bytemuck::bytes_of(&position));
+    }
+    binary_data
+}
 
 #[derive(Message)]
 #[rtype(result = "()")]
@@ -35,6 +91,44 @@ pub struct WebSocketSession {
     pub openai_ws: Option<Addr<OpenAIWebSocket>>,
     pub simulation_mode: SimulationMode,
     pub conversation_id: Option<Arc<Mutex<Option<String>>>>,
+}
+
+// Implement Handler for SendText
+impl Handler<SendText> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
+        ctx.text(msg.0);
+    }
+}
+
+// Implement Handler for SendBinary
+impl Handler<SendBinary> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
+        ctx.binary(msg.0);
+    }
+}
+
+// Implement Handler for GpuUpdate
+impl Handler<GpuUpdate> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, _: GpuUpdate, ctx: &mut Self::Context) {
+        if let Some(gpu_compute) = &self.state.gpu_compute {
+            let gpu_compute = gpu_compute.clone();
+            let ctx_addr = ctx.address();
+            
+            actix::spawn(async move {
+                let gpu = gpu_compute.read().await;
+                if let Ok(nodes) = gpu.get_node_positions().await {
+                    let binary_data = positions_to_binary(&nodes);
+                    ctx_addr.do_send(SendBinary(binary_data));
+                }
+            });
+        }
+    }
 }
 
 impl WebSocketSession {
@@ -97,7 +191,7 @@ impl WebSocketSession {
 impl Actor for WebSocketSession {
     type Context = WebsocketContext<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
+    fn started(&mut self, _ctx: &mut Self::Context) {
         info!("WebSocket session started");
     }
 
@@ -501,7 +595,7 @@ impl WebSocketSessionHandler for WebSocketSession {
                     "position": [node.x, node.y, node.z],
                     "velocity": [node.vx, node.vy, node.vz],
                     "size": node.size,
-                    "color": node.color.as_ref().map(|c| format_color(c)),
+                    "color": node.color.as_ref().and_then(|c| parse_color(c)).map(|c| format_color(&c)),
                     "type": node.node_type,
                     "metadata": node.metadata,
                     "userData": node.user_data,
@@ -516,7 +610,7 @@ impl WebSocketSessionHandler for WebSocketSession {
                     "target": edge.target,
                     "weight": edge.weight,
                     "width": edge.width,
-                    "color": edge.color.as_ref().map(|c| format_color(c)),
+                    "color": edge.color.as_ref().and_then(|c| parse_color(c)).map(|c| format_color(&c)),
                     "type": edge.edge_type,
                     "metadata": edge.metadata,
                     "userData": edge.user_data,
@@ -546,9 +640,9 @@ impl WebSocketSessionHandler for WebSocketSession {
             let settings_update = ServerMessage::SettingsUpdated {
                 settings: json!({
                     "visualization": {
-                        "nodeColor": format_color(&settings.visualization.node_color),
-                        "edgeColor": format_color(&settings.visualization.edge_color),
-                        "hologramColor": format_color(&settings.visualization.hologram_color),
+                        "nodeColor": parse_color(&settings.visualization.node_color).map(|c| format_color(&c)),
+                        "edgeColor": parse_color(&settings.visualization.edge_color).map(|c| format_color(&c)),
+                        "hologramColor": parse_color(&settings.visualization.hologram_color).map(|c| format_color(&c)),
                         "minNodeSize": settings.visualization.min_node_size,
                         "maxNodeSize": settings.visualization.max_node_size,
                         "hologramScale": settings.visualization.hologram_scale,
@@ -625,44 +719,17 @@ impl WebSocketSessionHandler for WebSocketSession {
     }
 
     fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32) {
-        let state = self.state.clone();
+        // TODO: Remove server-side fisheye handling
+        // Fisheye effect should be purely client-side in the visualization layer
+        // This handler is temporarily disabled until proper client-side implementation
+        
         let ctx_addr = ctx.address();
-
-        let fut = async move {
-            if let Some(gpu_compute) = &state.gpu_compute {
-                let mut gpu = gpu_compute.write().await;
-                gpu.update_fisheye_params(enabled, strength, focus_point, radius);
-                
-                let response = ServerMessage::FisheyeSettingsUpdated {
-                    enabled,
-                    strength,
-                    focus_point,
-                    radius,
-                };
-                if let Ok(response_str) = serde_json::to_string(&response) {
-                    ctx_addr.do_send(SendText(response_str));
-                }
-            } else {
-                error!("GPU compute service not available");
-                let error_message = ServerMessage::Error {
-                    message: "GPU compute service not available".to_string(),
-                    code: Some("GPU_SERVICE_ERROR".to_string()),
-                    details: Some("The GPU compute service is not initialized or unavailable for fisheye settings".to_string()),
-                };
-                if let Ok(error_str) = serde_json::to_string(&error_message) {
-                    ctx_addr.do_send(SendText(error_str));
-                }
-            }
-
-            let completion = json!({
-                "type": "completion",
-                "message": "Fisheye settings updated"
-            });
-            if let Ok(completion_str) = serde_json::to_string(&completion) {
-                ctx_addr.do_send(SendText(completion_str));
-            }
-        };
-
-        ctx.spawn(fut.into_actor(self));
+        let completion = json!({
+            "type": "completion",
+            "message": "Fisheye settings acknowledged (to be handled client-side)"
+        });
+        if let Ok(completion_str) = serde_json::to_string(&completion) {
+            ctx_addr.do_send(SendText(completion_str));
+        }
     }
 }

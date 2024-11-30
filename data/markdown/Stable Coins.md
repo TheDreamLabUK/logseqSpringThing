@@ -42,6 +42,33 @@ public:: true
 	      *  https://bitcoinmagazine.com/legal/u-s-treasury-introduces-cbdc-digital-dollar-working-group
 	      rbi monetary museum: India's e-rupee unpopular as central banks push digital currency
 		- The Economic Times https://economictimes.indiatimes.com/industry/banking/finance/banking/indias-e-rupee-unpopular-as-central-banks-push-digital-currency/articleshow/99049236.cms?from=mdr
+- ## Stripe Acquires Bridge
+	- **Stripe Acquisition**
+		- On October 22nd, fintech giant Stripe acquired stablecoin infrastructure firm Bridge for $1.1 billion, marking the largest acquisition in crypto history and Stripe's most significant purchase to date.
+		- Bridge provides business-facing software that enables companies to accept stablecoin payments, enhancing Stripe's capabilities in the stablecoin payments sector.
+		- At the time of acquisition, Bridge was last valued at $200 million during their Series A funding, representing a substantial markup and a significant exit for founders and investors.
+	- **Stripe's Strategic Intent**
+		- The acquisition underscores Stripe's commitment to stablecoins as the future of payments, signaling their intention to double down on stablecoin infrastructure.
+		- Patrick Collison, CEO of Stripe, stated, "Stable coins are room temperature superconductors for financial services. Thanks to stable coins, businesses around the world will benefit from significant speed, coverage, and cost improvements in the coming years."\r\n
+		- Stripe aims to build the world's best stablecoin infrastructure, integrating multiple stablecoins and partnering with firms like Paxos for backend infrastructure.
+		- Bridge's platform facilitates stablecoin payments across 70 countries, with impressive early adoption metrics reported by Stripe.
+		- The integration of Bridge enhances Stripe's ability to provide instant, global, dollar-based payment rails, reducing crypto complexity for businesses.
+	- **Positive Endorsements**
+		- Simon Taylor of fintech Brain Fruit praised the acquisition, likening it to an "Instagram-like all-time great acquisition" that addresses long-term challenges for Stripe.
+		- Overdraft's head of macro at Lightspeed Ventures highlighted the shift from crypto being price-centric to focusing on business value.
+		- Jeremy Black, principal at fintech firm Kinvey, noted that Stripe's $1 billion investment communicates a strong market signal to customers and partners, discouraging competitors.
+		- Rob Boadock, general partner at Dragonfly Capital, emphasized that the acquisition broadens Stripe's business from merchant dependence to establishing its own global payment network.
+		- Jacob Horn, co-founder of LER 2 Zora, indicated that Bridge and Stripe's collaboration will enable any app to have stablecoin on-ramps and off-ramps similar to Coinbase, with enhanced regional support.
+		- Chia Wang of Alliance Dow suggested that the acquisition signals to venture capitalists that stablecoin startups have clearer paths to significant exits, potentially leading to increased funding and entrepreneurial activity in the stablecoin space.
+		- Nick Carter of Castle Island predicted that the Bridge acquisition would "turbocharge" the stablecoin market, aligning with broader industry enthusiasm.
+	- **Stablecoins in Financial Infrastructure**
+		- Stablecoins are increasingly recognized as essential to future financial infrastructure, especially in regions with limited access to traditional banking.
+		- The acquisition by Stripe reflects a broader industry acknowledgment of stablecoins' role in facilitating seamless, global transactions.\r\n
+	- **Market Trends and Adoption**
+		- Stablecoins have maintained a steady ascent, becoming integral to various financial services beyond speculative trading, including payments, remittances, and decentralized finance (DeFi).
+		- Institutional interest in stablecoins is growing, driven by their potential to enhance payment speed, reduce costs, and provide stable value storage.
+		- As stablecoins become more embedded in the financial system, regulatory frameworks will likely evolve to address associated risks and ensure compliance.
+		- The ongoing collaboration between traditional financial institutions and blockchain-based firms like Stripe and Bridge suggests a converging future for fintech and crypto sectors.
 - ## By the numbers
 	- It’s worth taking a look at these tokens individually, to get a feel forthe trade-offs, and figure out how they might be useful for us in our proposed metaverse applications. It’s important to know that these tokenised dollars and/or other currencies are issued on top of the public blockchains we have been detailing throughout. Which tokens areon what blockchains is constantly evolving, so it’s not really worth enumerating specifics. In a metaverse application it would be necessary to manage both the underlying public blockchain and the stablecoin issued on top of it, making the interaction with the global financial system perversely more not less complex. In the following list of a fewof the major coins, the first hyperlink is the whitepaper if it’s available.
 		- [USDC](https://f.hubspotusercontent30.net/hubfs/9304636/PDF/centre-whitepaper.pdf) is a dollar and Euro backed coin issued by a consortium of major players in the space, most notably Circle, and Coinbase. It’s has a better transparency record than tether but is still not backed 1:1 by actual dollars in reserve. It may or may not be a fractional reserve asset. It’s well positioned to take advantage of regulatory changes in the USA, and seems to be quietly lobbying to be the choice of a government endorsed digital dollar, at least a significant part of a central bank digital currency initiative. It’s too early to tell how this will work out, but it has [substantial ‘legacy finance backing’](https://www.forbes.com/sites/ninabambysheva/2022/04/13/blackrocks-newest-investment-paves-the-way-for-digital-assets-on-wall-street/?). It is the only stablecoin to increase slightly in value (depegging upward) in the wake of the UST implosion. This ‘flight to quality’ shows the advantage of the work that CENTRE put into regulatory compliance. It runs on Ethereum, Algorand, Solana, Stellar, Tron, Hedera, Avalanche and Flow blockchains. At this time USDC may be [under speculative attack](https://twitter.com/Excellion/status/1567472488589963264) by Chinese exchange Binance, in favour of their own offering BUSD, and is losing market share. Payment provider Stripe supports USDC as of 2024.

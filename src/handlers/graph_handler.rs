@@ -5,6 +5,7 @@ use crate::AppState;
 use serde::Serialize;
 use log::{info, debug};
 use std::collections::HashMap;
+use crate::models::metadata::Metadata;
 
 /// Struct to serialize GraphData for HTTP responses.
 #[derive(Serialize)]
@@ -14,7 +15,7 @@ pub struct GraphResponse {
     /// List of edges connecting the nodes.
     pub edges: Vec<crate::models::edge::Edge>,
     /// Additional metadata about the graph.
-    pub metadata: HashMap<String, serde_json::Value>,
+    pub metadata: HashMap<String, Metadata>,
 }
 
 /// Handler to retrieve the current graph data.
