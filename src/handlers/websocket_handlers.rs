@@ -17,7 +17,7 @@ use crate::models::simulation_params::{SimulationMode, SimulationParams};
 use crate::models::position_update::NodePositionVelocity;
 use crate::utils::websocket_messages::{
     OpenAIMessage, SendBinary, SendText,
-    ServerMessage,
+    ServerMessage, UpdatePositionsMessage,
 };
 use crate::utils::websocket_openai::OpenAIWebSocket;
 
@@ -146,6 +146,75 @@ impl WebSocketSession {
 
         Ok(())
     }
+
+    fn handle_position_update(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, msg: UpdatePositionsMessage) {
+        let state = self.state.clone();
+        let ctx_addr = ctx.address();
+
+        let fut = async move {
+            debug!("Processing position update for {} nodes", msg.nodes.len());
+
+            // Update graph data with new positions
+            {
+                let mut graph_data = state.graph_data.write().await;
+                for node_pos in &msg.nodes {
+                    if let Some(node) = graph_data.nodes.iter_mut().find(|n| n.id == node_pos.id) {
+                        node.position = Some(node_pos.position);
+                        // Reset velocity since this is a manual position update
+                        node.velocity = Some([0.0, 0.0, 0.0]);
+                    }
+                }
+            }
+
+            // Update GPU compute if available
+            if let Some(gpu_compute) = &state.gpu_compute {
+                let mut gpu = gpu_compute.write().await;
+                
+                // Update GPU node positions
+                if let Err(e) = gpu.update_node_positions(&msg.nodes).await {
+                    error!("Failed to update GPU node positions: {}", e);
+                    let error_message = ServerMessage::Error {
+                        message: format!("Failed to update GPU node positions: {}", e),
+                        code: Some("GPU_UPDATE_ERROR".to_string()),
+                        details: Some("Error occurred while updating GPU node positions".to_string()),
+                    };
+                    if let Ok(error_str) = serde_json::to_string(&error_message) {
+                        ctx_addr.do_send(SendText(error_str));
+                    }
+                    return;
+                }
+
+                // Get updated positions from GPU
+                match gpu.get_node_positions().await {
+                    Ok(nodes) => {
+                        let binary_data = positions_to_binary(&nodes);
+                        ctx_addr.do_send(SendBinary(binary_data));
+                    },
+                    Err(e) => {
+                        error!("Failed to get GPU node positions: {}", e);
+                        let error_message = ServerMessage::Error {
+                            message: format!("Failed to get GPU node positions: {}", e),
+                            code: Some("GPU_POSITION_ERROR".to_string()),
+                            details: Some("Error occurred while retrieving node positions from GPU".to_string()),
+                        };
+                        if let Ok(error_str) = serde_json::to_string(&error_message) {
+                            ctx_addr.do_send(SendText(error_str));
+                        }
+                    }
+                }
+            }
+
+            // Send completion message
+            let completion = ServerMessage::PositionUpdateComplete {
+                status: "success".to_string(),
+            };
+            if let Ok(completion_str) = serde_json::to_string(&completion) {
+                ctx_addr.do_send(SendText(completion_str));
+            }
+        };
+
+        ctx.spawn(fut.into_actor(self));
+    }
 }
 
 impl Actor for WebSocketSession {
@@ -174,6 +243,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 debug!("Text message received: {}", text);
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
                     match value.get("type").and_then(|t| t.as_str()) {
+                        Some("updatePositions") => {
+                            if let Ok(update_msg) = serde_json::from_value::<UpdatePositionsMessage>(value) {
+                                self.handle_position_update(ctx, update_msg);
+                            }
+                        }
                         Some("chat") => {
                             if let Some(message) = value.get("message").and_then(|m| m.as_str()) {
                                 let use_openai = value.get("useOpenAI")

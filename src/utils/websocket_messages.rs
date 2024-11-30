@@ -87,6 +87,19 @@ pub struct Edge {
     pub directed: Option<bool>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodePosition {
+    pub id: String,
+    pub position: [f32; 3],
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePositionsMessage {
+    pub nodes: Vec<NodePosition>,
+}
+
 #[derive(Message)]
 #[rtype(result = "()")]
 pub struct BroadcastGraph {

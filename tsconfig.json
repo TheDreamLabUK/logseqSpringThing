@@ -23,9 +23,15 @@
     },
     "types": [
       "node",
-      "vue"
+      "three",
+      "vite/client"
     ],
-    "allowJs": true
+    "allowJs": true,
+    "noImplicitAny": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "useDefineForClassFields": true,
+    "isolatedModules": true
   },
   "include": [
     "client/**/*.ts",

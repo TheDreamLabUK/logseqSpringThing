@@ -333,6 +333,29 @@ export default class WebsocketService {
     }
   }
 
+  public sendBinary(data: ArrayBuffer): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn('[WebsocketService] Cannot send binary data: WebSocket not open');
+      return;
+    }
+
+    try {
+      console.debug('[WebsocketService] Sending binary data:', {
+        size: data.byteLength,
+        timestamp: new Date().toISOString()
+      });
+
+      this.ws.send(data);
+    } catch (error) {
+      console.error('[WebsocketService] Error sending binary data:', error);
+      const errorMsg: ErrorMessage = {
+        type: 'error',
+        message: 'Error sending binary data'
+      };
+      this.emit('error', errorMsg);
+    }
+  }
+
   private processQueue(): void {
     while (
       this.messageQueue.length > 0 &&

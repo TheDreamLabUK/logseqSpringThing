@@ -15,7 +15,8 @@ export type MessageType =
   | 'ragflowResponse'
   | 'completion'
   | 'ping'
-  | 'pong';
+  | 'pong'
+  | 'updatePositions';  // Added for client-side force simulation updates
 
 // Binary Protocol Types
 export interface BinaryMessage {
@@ -33,6 +34,21 @@ export interface NodePosition {
   vx: number;
   vy: number;
   vz: number;
+}
+
+// Position update message for client-side force simulation
+export interface UpdatePositionsMessage extends BaseMessage {
+  type: 'updatePositions';
+  nodes: Array<{
+    id: string;
+    position: [number, number, number];
+  }>;
+}
+
+// Position update complete message from server
+export interface PositionUpdateCompleteMessage extends BaseMessage {
+  type: 'positionUpdateComplete';
+  status: string;
 }
 
 // Graph Data (establishes node order for binary updates)
