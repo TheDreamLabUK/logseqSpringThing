@@ -18,8 +18,8 @@ const HEADER_SIZE: usize = FLOAT32_SIZE; // isInitialLayout flag
 const NODE_SIZE: usize = 6 * FLOAT32_SIZE; // x, y, z, vx, vy, vz
 
 // Constants for heartbeat
-const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(30000);
-const HEARTBEAT_TIMEOUT: Duration = Duration::from_millis(5000);
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15); // Send ping every 15 seconds
+const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(60); // Wait 60 seconds for pong response
 
 pub struct WebSocketManager {
     binary_buffer: Arc<Mutex<Vec<u8>>>,
@@ -179,6 +179,7 @@ impl WebSocketSession {
                 return;
             }
 
+            debug!("[WebSocketSession] Sending ping");
             ctx.ping(b"");
         });
     }

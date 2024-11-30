@@ -13,7 +13,9 @@ export type MessageType =
   | 'updateSettings'
   | 'openaiResponse'
   | 'ragflowResponse'
-  | 'completion';
+  | 'completion'
+  | 'ping'                         // Heartbeat messages
+  | 'pong';
 
 // Binary Protocol Types
 export interface BinaryMessage {
@@ -151,6 +153,15 @@ export interface SettingsUpdatedMessage extends BaseMessage {
     bloom?: BloomSettings;
     fisheye?: FisheyeSettings;
   };
+}
+
+// Heartbeat Messages
+export interface PingMessage extends BaseMessage {
+  type: 'ping';
+}
+
+export interface PongMessage extends BaseMessage {
+  type: 'pong';
 }
 
 // WebSocket Configuration

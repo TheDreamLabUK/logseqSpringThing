@@ -13,8 +13,8 @@ export const DEFAULT_MAX_QUEUE_SIZE = 1000;
 
 // Connection timeouts (matching server)
 export const CONNECTION_TIMEOUT = 10000;      // 10 seconds to establish connection
-export const HEARTBEAT_INTERVAL = 30000;      // 30 seconds between pings
-export const HEARTBEAT_TIMEOUT = 5000;        // 5 seconds to receive pong
+export const HEARTBEAT_INTERVAL = 15000;      // 15 seconds between pings (matching server)
+export const HEARTBEAT_TIMEOUT = 60000;       // 60 seconds to receive pong (matching server)
 
 // Binary protocol constants
 export const BINARY_UPDATE_NODE_SIZE = 24;    // 6 float32s per node (position + velocity)
