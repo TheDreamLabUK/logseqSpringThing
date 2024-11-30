@@ -45,8 +45,6 @@ impl Settings {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NetworkSettings {
     pub domain: String,
-    pub port: u16,
-    pub ws_port: u16,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
