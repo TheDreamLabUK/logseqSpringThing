@@ -1,11 +1,11 @@
 use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor};
 use wgpu::util::DeviceExt;
 use std::io::Error;
-use log::{debug, info, error};
+use log::{debug, info};
 use crate::models::graph::GraphData;
-use crate::models::edge::GPUEdge;
 use crate::models::node::GPUNode;
-use crate::models::simulation_params::{SimulationParams, GPUSimulationParams};
+use crate::models::simulation_params::SimulationParams;
+use crate::models::position_update::NodePositionVelocity;
 use futures::channel::oneshot;
 
 // Constants for buffer management and computation
@@ -415,13 +415,87 @@ impl GPUCompute {
         Ok(())
     }
 
+    /// Updates the graph data in GPU buffers
+    pub fn update_graph_data(&mut self, graph: &GraphData) -> Result<(), Error> {
+        debug!("Updating GPU graph data: {} nodes, {} edges", 
+            graph.nodes.len(), graph.edges.len());
+
+        // Convert nodes to GPU format
+        let gpu_nodes: Vec<GPUNode> = graph.nodes.iter()
+            .map(|node| node.to_gpu_node())
+            .collect();
+
+        // Write nodes to buffer
+        self.queue.write_buffer(
+            &self.nodes_buffer,
+            0,
+            bytemuck::cast_slice(&gpu_nodes)
+        );
+
+        // Update counts
+        self.num_nodes = graph.nodes.len() as u32;
+        self.num_edges = graph.edges.len() as u32;
+        self.is_initialized = true;
+
+        debug!("Graph data updated successfully");
+        Ok(())
+    }
+
+    /// Updates node positions from client data
+    pub async fn update_positions(&mut self, nodes: &[NodePositionVelocity]) -> Result<(), Error> {
+        debug!("Updating node positions for {} nodes", nodes.len());
+
+        // Write position data to buffer
+        self.queue.write_buffer(
+            &self.position_update_buffer,
+            0,
+            bytemuck::cast_slice(nodes)
+        );
+
+        // Run position validation shader
+        let mut encoder = self.device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor {
+                label: Some("Position Update Encoder"),
+            }
+        );
+
+        {
+            let mut compute_pass = encoder.begin_compute_pass(
+                &wgpu::ComputePassDescriptor {
+                    label: Some("Position Validation Pass"),
+                    timestamp_writes: None,
+                }
+            );
+
+            compute_pass.set_pipeline(&self.position_pipeline);
+            compute_pass.set_bind_group(0, &self.position_bind_group, &[]);
+            
+            let workgroups = (self.num_nodes + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+            debug!("Dispatching position validation shader: {} workgroups", workgroups);
+            
+            compute_pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        // Copy validated positions and velocities to node buffer
+        encoder.copy_buffer_to_buffer(
+            &self.position_update_buffer,
+            0,
+            &self.nodes_buffer,
+            0,
+            (self.num_nodes as u64) * std::mem::size_of::<NodePositionVelocity>() as u64,
+        );
+
+        self.queue.submit(Some(encoder.finish()));
+        debug!("Position update complete");
+
+        Ok(())
+    }
+
     /// Fast path for position updates from client
-    pub async fn update_positions(&mut self, binary_data: &[u8]) -> Result<(), Error> {
+    pub async fn update_positions_binary(&mut self, binary_data: &[u8]) -> Result<(), Error> {
         // Verify data length (24 bytes per node - position + velocity, plus 4 bytes for header)
         let expected_size = self.num_nodes as usize * 24 + 4;
         if binary_data.len() != expected_size {
-            error!("Invalid position data length: expected {}, got {}", 
-                expected_size, binary_data.len());
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("Invalid position data length: expected {}, got {}", 

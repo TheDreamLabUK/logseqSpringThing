@@ -4,7 +4,7 @@ use actix_web::{web, Error, HttpRequest, HttpResponse};
 use bytemuck;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use std::time::{Duration, Instant};
 use serde_json;
 

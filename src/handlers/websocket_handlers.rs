@@ -159,9 +159,14 @@ impl WebSocketSession {
                 let mut graph_data = state.graph_data.write().await;
                 for node_pos in &msg.nodes {
                     if let Some(node) = graph_data.nodes.iter_mut().find(|n| n.id == node_pos.id) {
-                        node.position = Some(node_pos.position);
-                        // Reset velocity since this is a manual position update
-                        node.velocity = Some([0.0, 0.0, 0.0]);
+                        // Update x, y, z directly instead of using position method
+                        node.x = node_pos.position[0];
+                        node.y = node_pos.position[1];
+                        node.z = node_pos.position[2];
+                        // Reset velocity components directly
+                        node.vx = 0.0;
+                        node.vy = 0.0;
+                        node.vz = 0.0;
                     }
                 }
             }
@@ -170,8 +175,18 @@ impl WebSocketSession {
             if let Some(gpu_compute) = &state.gpu_compute {
                 let mut gpu = gpu_compute.write().await;
                 
-                // Update GPU node positions
-                if let Err(e) = gpu.update_node_positions(&msg.nodes).await {
+                // Convert node positions to NodePositionVelocity format
+                let positions: Vec<NodePositionVelocity> = msg.nodes.iter().map(|node| NodePositionVelocity {
+                    x: node.position[0],
+                    y: node.position[1],
+                    z: node.position[2],
+                    vx: 0.0,
+                    vy: 0.0,
+                    vz: 0.0,
+                }).collect();
+
+                // Update GPU node positions using the correct method name
+                if let Err(e) = gpu.update_positions(&positions).await {
                     error!("Failed to update GPU node positions: {}", e);
                     let error_message = ServerMessage::Error {
                         message: format!("Failed to update GPU node positions: {}", e),
@@ -348,7 +363,7 @@ pub trait WebSocketSessionHandler {
     fn handle_simulation_mode(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, mode: &str);
     fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, params: SimulationParams);
     fn handle_initial_data(&mut self, ctx: &mut WebsocketContext<WebSocketSession>);
-    fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32);
+    fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, _enabled: bool, _strength: f32, _focus_point: [f32; 3], _radius: f32);
 }
 
 // WebSocketSessionHandler Implementation
@@ -663,7 +678,7 @@ impl WebSocketSessionHandler for WebSocketSession {
         }
     }
 
-    fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, enabled: bool, strength: f32, focus_point: [f32; 3], radius: f32) {
+    fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, _enabled: bool, _strength: f32, _focus_point: [f32; 3], _radius: f32) {
         // TODO: Remove server-side fisheye handling
         // Fisheye effect should be purely client-side in the visualization layer
         // This handler is temporarily disabled until proper client-side implementation
@@ -678,3 +693,4 @@ impl WebSocketSessionHandler for WebSocketSession {
         }
     }
 }
+

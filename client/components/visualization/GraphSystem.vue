@@ -122,7 +122,8 @@ export default defineComponent({
         visualizationStore.mergeGraphData(newData);
         
         // Update graph system with merged data
-        updateGraphData(visualizationStore.getGraphData);
+        const graphDataToUpdate = visualizationStore.getGraphData || { nodes: [], edges: [], metadata: {} };
+        updateGraphData(graphDataToUpdate);
         
         // Trigger layout update if needed
         visualization.updateLayoutPositions();
