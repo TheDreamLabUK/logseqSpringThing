@@ -68,6 +68,7 @@ api_key = "default_openai_key"
 base_url = "wss://api.openai.com/v1/realtime"
 timeout = 30
 rate_limit = 100
+model = "gpt-4o-realtime-preview-2024-10-01"
 
 [default]
 max_concurrent_requests = 5
@@ -107,11 +108,6 @@ hologram_opacity = 0.15            # Slightly increased for better visibility
 edge_opacity = 0.4                 # Increased for better visibility
 label_font_size = 42               # Increased for better readability
 fog_density = 0.001                # Reduced for clearer distant nodes
-
-# Layout dimensions in meters
-target_radius = 250.0              # Increased target radius
-natural_length = 120.0             # Increased natural length
-boundary_limit = 600.0             # Increased boundary
 
 # Material properties - enhanced metallic look
 node_material_metalness = 0.7      # High metallic for better reflection
