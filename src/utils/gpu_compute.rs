@@ -1,11 +1,11 @@
 use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor};
 use wgpu::util::DeviceExt;
 use std::io::Error;
-use log::{debug, info, error};  // Removed unused warn import
+use log::{debug, info, error};
 use crate::models::graph::GraphData;
 use crate::models::edge::GPUEdge;
 use crate::models::node::GPUNode;
-use crate::models::simulation_params::SimulationParams;  // Removed unused SimulationMode
+use crate::models::simulation_params::{SimulationParams, GPUSimulationParams};
 use futures::channel::oneshot;
 
 // Constants for buffer management and computation
@@ -67,11 +67,6 @@ pub struct GPUCompute {
 }
 
 impl GPUCompute {
-    // Add public getter for num_nodes
-    pub fn get_num_nodes(&self) -> u32 {
-        self.num_nodes
-    }
-
     /// Creates a new instance of GPUCompute with initialized GPU resources
     pub async fn new(graph: &GraphData) -> Result<Self, Error> {
         debug!("Initializing GPU compute capabilities with {} nodes", graph.nodes.len());
@@ -246,9 +241,10 @@ impl GPUCompute {
         });
 
         let simulation_params = SimulationParams::default();
+        let gpu_params = simulation_params.to_gpu_params();
         let simulation_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Simulation Params Buffer"),
-            contents: bytemuck::cast_slice(&[simulation_params]),
+            contents: bytemuck::cast_slice(&[gpu_params]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -262,7 +258,7 @@ impl GPUCompute {
         // Create dedicated position buffers
         let position_update_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Position Update Buffer"),
-            size: (MAX_NODES as u64) * POSITION_BUFFER_SIZE,  // Increased size per node
+            size: (MAX_NODES as u64) * POSITION_BUFFER_SIZE,
             usage: wgpu::BufferUsages::STORAGE 
                 | wgpu::BufferUsages::COPY_DST 
                 | wgpu::BufferUsages::COPY_SRC,
@@ -271,7 +267,7 @@ impl GPUCompute {
 
         let position_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Position Staging Buffer"),
-            size: (MAX_NODES as u64) * POSITION_BUFFER_SIZE,  // Increased size per node
+            size: (MAX_NODES as u64) * POSITION_BUFFER_SIZE,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -383,7 +379,7 @@ impl GPUCompute {
             fisheye_bind_group,
             force_pipeline,
             fisheye_pipeline,
-            num_nodes,  // Initialize with actual node count
+            num_nodes,
             num_edges: graph.edges.len() as u32,
             simulation_params,
             fisheye_params,
@@ -400,59 +396,22 @@ impl GPUCompute {
         Ok(instance)
     }
 
-    /// Updates the graph data in GPU buffers
-    pub fn update_graph_data(&mut self, graph: &GraphData) -> Result<(), Error> {
-        debug!("Updating GPU graph data: {} nodes, {} edges", 
-            graph.nodes.len(), graph.edges.len());
-
-        // Validate buffer sizes
-        let required_node_size = (graph.nodes.len() as u64) * NODE_SIZE;
-        let required_edge_size = (graph.edges.len() as u64) * EDGE_SIZE;
-
-        if required_node_size > INITIAL_BUFFER_SIZE || required_edge_size > INITIAL_BUFFER_SIZE {
-            error!("Graph data exceeds buffer size limits: nodes={}, edges={}", 
-                required_node_size, required_edge_size);
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Graph data exceeds buffer size limits"
-            ));
-        }
-
-        let gpu_nodes: Vec<GPUNode> = graph.nodes.iter().map(|node| GPUNode {
-            x: node.x,
-            y: node.y,
-            z: node.z,
-            vx: node.vx,
-            vy: node.vy,
-            vz: node.vz,
-            mass: 127, // Default mass of 1.0
-            flags: 0,
-            padding: [0; 2],
-        }).collect();
-
-        debug!("Created GPU nodes. Sample positions: {:?}", 
-            gpu_nodes.iter().take(3).map(|n| (n.x, n.y, n.z)).collect::<Vec<_>>());
-
-        let gpu_edges: Vec<GPUEdge> = graph.edges.iter()
-            .map(|edge| edge.to_gpu_edge(&graph.nodes))
-            .collect();
-
-        debug!("Created GPU edges. Sample edges: {:?}",
-            gpu_edges.iter().take(3).collect::<Vec<_>>());
-
-        // Write data to GPU buffers with alignment
-        let aligned_node_size = (required_node_size + BUFFER_ALIGNMENT - 1) & !(BUFFER_ALIGNMENT - 1);
-        let aligned_edge_size = (required_edge_size + BUFFER_ALIGNMENT - 1) & !(BUFFER_ALIGNMENT - 1);
-
-        self.queue.write_buffer(&self.nodes_buffer, 0, bytemuck::cast_slice(&gpu_nodes));
-        self.queue.write_buffer(&self.edges_buffer, 0, bytemuck::cast_slice(&gpu_edges));
+    /// Updates the simulation parameters
+    pub fn update_simulation_params(&mut self, params: &SimulationParams) -> Result<(), Error> {
+        debug!("Updating simulation parameters: {:?}", params);
         
-        self.num_nodes = graph.nodes.len() as u32;
-        self.num_edges = graph.edges.len() as u32;
-
-        debug!("GPU buffers updated successfully: aligned_node_size={}, aligned_edge_size={}", 
-            aligned_node_size, aligned_edge_size);
+        self.simulation_params = params.clone();
         
+        // Convert to GPU-compatible parameters
+        let gpu_params = params.to_gpu_params();
+        
+        self.queue.write_buffer(
+            &self.simulation_params_buffer,
+            0,
+            bytemuck::cast_slice(&[gpu_params])
+        );
+
+        debug!("Simulation parameters updated successfully");
         Ok(())
     }
 
@@ -474,18 +433,19 @@ impl GPUCompute {
         let mut header_bytes = [0u8; 4];
         header_bytes.copy_from_slice(&binary_data[0..4]);
         let header_value = f32::from_le_bytes(header_bytes);
-        let is_initial_layout = header_value >= 1.0;
-
-        debug!("Processing position update: {} bytes, initial layout: {}", 
-            binary_data.len(), is_initial_layout);
-
-        // Update simulation params
-        let mut params = self.simulation_params;
-        params.is_initial_layout = is_initial_layout;
+        
+        // Update simulation params based on header value
+        let mut gpu_params = self.simulation_params.to_gpu_params();
+        if header_value >= 1.0 {
+            // Adjust parameters for initial layout if needed
+            gpu_params.spring_strength *= 2.0;
+            gpu_params.repulsion *= 2.0;
+        }
+        
         self.queue.write_buffer(
             &self.simulation_params_buffer,
             0,
-            bytemuck::cast_slice(&[params])
+            bytemuck::cast_slice(&[gpu_params])
         );
 
         // Write position data to buffer (skip header)
@@ -602,21 +562,6 @@ impl GPUCompute {
             nodes.iter().take(3).map(|n| (n.x, n.y, n.z)).collect::<Vec<_>>());
 
         Ok(nodes)
-    }
-
-    /// Updates simulation parameters
-    pub fn update_simulation_params(&mut self, params: &SimulationParams) -> Result<(), Error> {
-        debug!("Updating simulation parameters: {:?}", params);
-        
-        self.simulation_params = *params;
-        self.queue.write_buffer(
-            &self.simulation_params_buffer,
-            0,
-            bytemuck::cast_slice(&[self.simulation_params])
-        );
-
-        debug!("Simulation parameters updated successfully");
-        Ok(())
     }
 
     /// Updates fisheye distortion parameters

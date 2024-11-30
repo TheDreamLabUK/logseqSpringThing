@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 /// Represents the graph data structure containing nodes and edges.
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct GraphData {
     /// List of nodes in the graph.
     pub nodes: Vec<Node>,

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 /// Stores metadata about a processed file.
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Metadata {
     pub file_name: String,
     pub file_size: usize,

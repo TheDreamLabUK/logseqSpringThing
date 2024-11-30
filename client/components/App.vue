@@ -39,37 +39,9 @@ import GraphSystem from '@components/visualization/GraphSystem.vue'
 import { errorTracking } from '../services/errorTracking'
 import { useVisualization, SCENE_KEY } from '../composables/useVisualization'
 import { SERVER_MESSAGE_TYPES, MESSAGE_FIELDS, ENABLE_BINARY_DEBUG } from '../constants/websocket'
-import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge, BinaryMessage } from '../types/websocket'
-import type { Node as CoreNode, Edge as CoreEdge, GraphNode, GraphEdge, GraphData } from '../types/core'
+import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node, Edge, BinaryMessage } from '../types/websocket'
+import type { GraphNode, GraphEdge, GraphData } from '../types/core'
 import type { FisheyeConfig } from '../types/components'
-
-// Transform functions unchanged
-const transformNode = (wsNode: WSNode): CoreNode => ({
-  id: wsNode.id,
-  label: wsNode.label || wsNode.id,
-  position: wsNode.position,
-  velocity: wsNode.velocity,
-  size: wsNode.size,
-  color: wsNode.color,
-  type: wsNode.type,
-  metadata: wsNode.metadata || {},
-  userData: wsNode.userData || {},
-  weight: wsNode.weight || 1,
-  group: wsNode.group
-});
-
-const transformEdge = (wsEdge: WSEdge): CoreEdge => ({
-  id: `${wsEdge.source}-${wsEdge.target}`,
-  source: wsEdge.source,
-  target: wsEdge.target,
-  weight: wsEdge.weight || 1,
-  width: wsEdge.width,
-  color: wsEdge.color,
-  type: wsEdge.type,
-  metadata: wsEdge.metadata || {},
-  userData: wsEdge.userData || {},
-  directed: wsEdge.directed || false
-});
 
 export default defineComponent({
   name: 'App',
@@ -79,7 +51,6 @@ export default defineComponent({
     GraphSystem
   },
   setup() {
-    // Store initializations unchanged
     const settingsStore = useSettingsStore()
     const visualizationStore = useVisualizationStore()
     const websocketStore = useWebSocketStore()
@@ -92,7 +63,6 @@ export default defineComponent({
     const error = ref<string | null>(null)
     const isInitialDataRequested = ref(false)
 
-    // Visualization settings unchanged
     const visualSettings = computed(() => {
       const settings = settingsStore.getVisualizationSettings;
       console.debug('Visualization settings:', {
@@ -123,12 +93,10 @@ export default defineComponent({
         return;
       }
 
-      // Connection event handlers
       websocketStore.service.on('open', () => {
         console.log('WebSocket connected');
         error.value = null;
         
-        // Request initial data when connection is established
         if (!isInitialDataRequested.value) {
           console.debug('Requesting initial graph data');
           websocketStore.service?.send({
@@ -153,38 +121,33 @@ export default defineComponent({
         });
       });
 
-      // JSON message handler
       websocketStore.service.on('message', (message: BaseMessage) => {
         console.debug('Received message:', message);
         switch (message.type) {
           case SERVER_MESSAGE_TYPES.GRAPH_UPDATE:
             const graphMsg = message as GraphUpdateMessage;
-            const graphData = graphMsg.graphData || graphMsg[MESSAGE_FIELDS.GRAPH_DATA];
-            if (!graphData) {
+            if (!graphMsg.graphData) {
               console.warn('Received graph update with no data');
               return;
             }
 
             console.log('Received graph update:', {
-              nodes: graphData.nodes?.length || 0,
-              edges: graphData.edges?.length || 0,
-              metadata: graphData.metadata ? Object.keys(graphData.metadata).length : 0,
-              sampleNode: graphData.nodes?.[0] ? {
-                id: graphData.nodes[0].id,
-                position: graphData.nodes[0].position
+              nodes: graphMsg.graphData.nodes?.length || 0,
+              edges: graphMsg.graphData.edges?.length || 0,
+              metadata: graphMsg.graphData.metadata ? Object.keys(graphMsg.graphData.metadata).length : 0,
+              sampleNode: graphMsg.graphData.nodes?.[0] ? {
+                id: graphMsg.graphData.nodes[0].id,
+                position: graphMsg.graphData.nodes[0].position
               } : null
             });
-
-            const transformedNodes = (graphData.nodes || []).map(transformNode);
-            const transformedEdges = (graphData.edges || []).map(transformEdge);
             
             visualizationStore.setGraphData(
-              transformedNodes,
-              transformedEdges,
-              graphData.metadata || {}
+              graphMsg.graphData.nodes,
+              graphMsg.graphData.edges,
+              graphMsg.graphData.metadata || {}
             );
 
-            updateNodes(transformedNodes);
+            updateNodes(graphMsg.graphData.nodes);
 
             console.log('Graph data state after update:', {
               storeNodes: visualizationStore.nodes.length,
@@ -206,7 +169,6 @@ export default defineComponent({
         }
       });
 
-      // Binary message handler
       websocketStore.service.on('gpuPositions', (data: BinaryMessage) => {
         if (ENABLE_BINARY_DEBUG) {
           console.debug('Received GPU positions update:', {
@@ -215,20 +177,16 @@ export default defineComponent({
           });
         }
 
-        // Update binary store with raw ArrayBuffer data
         binaryUpdateStore.updateFromBinary(data);
 
-        // Get the processed TypedArrays from the store
         const positions = binaryUpdateStore.getAllPositions;
         const velocities = binaryUpdateStore.getAllVelocities;
         const nodeCount = visualizationStore.nodes.length;
 
-        // Update visualization with TypedArrays and node count
         updatePositions(positions, velocities, nodeCount);
       });
     };
 
-    // Rest of the component unchanged
     onMounted(async () => {
       try {
         settingsStore.applyServerSettings({});
@@ -312,7 +270,6 @@ export default defineComponent({
 </script>
 
 <style>
-/* Styles unchanged */
 body, html {
   margin: 0;
   padding: 0;

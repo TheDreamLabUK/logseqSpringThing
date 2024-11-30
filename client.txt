@@ -143,7 +143,6 @@ export interface GPUContext {
 }
 
 export interface PositionUpdate {
-  isInitialLayout: boolean;
   positions: NodePosition[];
 }
 
@@ -204,17 +203,16 @@ export async function initGPU(): Promise<GPUContext | null> {
 
 /**
  * Apply position updates received from server
- * @param buffer - Binary position data from server
+ * @param buffer - Binary position data from server (6 float32s per node: x,y,z,vx,vy,vz)
  * @returns Processed position data
  */
 export function processPositionUpdate(buffer: ArrayBuffer): PositionUpdate | null {
   try {
     const dataView = new Float32Array(buffer);
-    const isInitialLayout = dataView[0] === 1.0;
     const positions: NodePosition[] = [];
     
-    // Skip header (first float32)
-    for (let i = 1; i < dataView.length; i += 6) {
+    // Process 6 floats at a time (x,y,z,vx,vy,vz)
+    for (let i = 0; i < dataView.length; i += 6) {
       if (i + 5 < dataView.length) {
         positions.push({
           x: dataView[i],
@@ -227,10 +225,7 @@ export function processPositionUpdate(buffer: ArrayBuffer): PositionUpdate | nul
       }
     }
 
-    return {
-      isInitialLayout,
-      positions
-    };
+    return { positions };
   } catch (error) {
     console.error('Error processing position update:', error);
     return null;
@@ -343,6 +338,49 @@ export * from 'three';
 export { OrbitControls };
 // Export THREE as default
 export default THREE;
+
+----
+shaders/fisheye.glsl
+// TODO: Future client-side fisheye implementation
+// This shader will be used to apply fisheye distortion during rendering,
+// rather than modifying actual node positions.
+//
+// Implementation notes:
+// - Should be applied in the visualization layer only
+// - Operates on rendered positions, not data positions
+// - Allows for interactive distortion without affecting layout
+// - Can be toggled without impacting graph structure
+//
+// Example implementation (to be integrated later):
+/*
+uniform bool fisheyeEnabled;
+uniform float fisheyeStrength;
+uniform float fisheyeRadius;
+uniform vec3 fisheyeFocusPoint;
+
+vec3 applyFisheyeDistortion(vec3 position) {
+    if (!fisheyeEnabled) {
+        return position;
+    }
+
+    // Calculate distance from focus point
+    vec3 directionFromFocus = position - fisheyeFocusPoint;
+    float distance = length(directionFromFocus);
+    
+    if (distance > fisheyeRadius) {
+        return position;
+    }
+
+    // Normalize distance to [0,1] range
+    float normalizedDistance = distance / fisheyeRadius;
+    
+    // Calculate distortion factor
+    float distortionFactor = 1.0 - (1.0 - normalizedDistance) * fisheyeStrength;
+    
+    // Apply distortion
+    return fisheyeFocusPoint + directionFromFocus * distortionFactor;
+}
+*/
 
 ----
 xr/xrSetup.js
@@ -1817,11 +1855,10 @@ export const DEFAULT_MAX_QUEUE_SIZE = 1000;
 
 // Connection timeouts (matching server)
 export const CONNECTION_TIMEOUT = 10000;      // 10 seconds to establish connection
-export const HEARTBEAT_INTERVAL = 30000;      // 30 seconds between pings
-export const HEARTBEAT_TIMEOUT = 5000;        // 5 seconds to receive pong
+export const HEARTBEAT_INTERVAL = 15000;      // 15 seconds between pings (matching server)
+export const HEARTBEAT_TIMEOUT = 60000;       // 60 seconds to receive pong (matching server)
 
 // Binary protocol constants
-export const BINARY_UPDATE_HEADER_SIZE = 4;   // Float32 for initial layout flag
 export const BINARY_UPDATE_NODE_SIZE = 24;    // 6 float32s per node (position + velocity)
 export const FLOAT32_SIZE = 4;                // Size of Float32 in bytes
 
@@ -1847,19 +1884,19 @@ export const SERVER_MESSAGE_TYPES = {
     // Direct server message types from ServerMessage enum
     GRAPH_UPDATE: 'graphUpdate',
     ERROR: 'error',
-    POSITION_UPDATE_COMPLETE: 'position_update_complete',
-    SETTINGS_UPDATED: 'settings_updated',
-    SIMULATION_MODE_SET: 'simulation_mode_set',
-    FISHEYE_SETTINGS_UPDATED: 'fisheye_settings_updated',
+    POSITION_UPDATE_COMPLETE: 'positionUpdateComplete',
+    SETTINGS_UPDATED: 'settingsUpdated',
+    SIMULATION_MODE_SET: 'simulationModeSet',
+    FISHEYE_SETTINGS_UPDATED: 'fisheyeSettingsUpdated',
     
     // Additional client-side message types
-    INITIAL_DATA: 'initial_data',
-    GPU_STATE: 'gpu_state',
-    LAYOUT_STATE: 'layout_state',
+    INITIAL_DATA: 'initialData',
+    GPU_STATE: 'gpuState',
+    LAYOUT_STATE: 'layoutState',
     OPENAI_RESPONSE: 'openaiResponse',
     RAGFLOW_RESPONSE: 'ragflowResponse',
     COMPLETION: 'completion',
-    UPDATE_SETTINGS: 'updateSettings'  // Added for settings updates
+    UPDATE_SETTINGS: 'updateSettings'
 } as const;
 
 // Error codes (matching server error structure)
@@ -1889,7 +1926,7 @@ export const ERROR_CODES = {
 // Message field names (matching server struct fields)
 export const MESSAGE_FIELDS = {
     // GraphUpdate fields
-    GRAPH_DATA: 'graph_data',
+    GRAPH_DATA: 'graphData',
     
     // Error fields
     MESSAGE: 'message',
@@ -1898,16 +1935,15 @@ export const MESSAGE_FIELDS = {
     
     // PositionUpdateComplete fields
     STATUS: 'status',
-    IS_INITIAL_LAYOUT: 'is_initial_layout',
     
     // SimulationModeSet fields
     MODE: 'mode',
-    GPU_ENABLED: 'gpu_enabled',
+    GPU_ENABLED: 'gpuEnabled',
     
     // FisheyeSettingsUpdated fields
     ENABLED: 'enabled',
     STRENGTH: 'strength',
-    FOCUS_POINT: 'focus_point',
+    FOCUS_POINT: 'focusPoint',
     RADIUS: 'radius',
 
     // Settings fields
@@ -3209,22 +3245,12 @@ export function useGraphSystem() {
 
   // Computed states from WebSocket store
   const isGPUEnabled = computed(() => webSocketStore.isGPUEnabled);
-  const isInitialLayout = computed(() => webSocketStore.isInitialLayoutPhase);
 
   // Watch for GPU state changes
   watch(isGPUEnabled, (enabled) => {
     console.debug(`GPU acceleration ${enabled ? 'enabled' : 'disabled'}`);
     if (visualizationState?.value.scene) {
       visualizationState.value.scene.userData.gpuEnabled = enabled;
-      visualizationState.value.scene.userData.needsRender = true;
-    }
-  });
-
-  // Watch for layout phase changes
-  watch(isInitialLayout, (initial) => {
-    console.debug(`Layout phase: ${initial ? 'initial' : 'dynamic'}`);
-    if (visualizationState?.value.scene) {
-      visualizationState.value.scene.userData.initialLayout = initial;
       visualizationState.value.scene.userData.needsRender = true;
     }
   });
@@ -3328,8 +3354,7 @@ export function useGraphSystem() {
     console.debug('Node clicked:', { 
       id: node.id, 
       position,
-      gpuEnabled: isGPUEnabled.value,
-      layoutPhase: isInitialLayout.value ? 'initial' : 'dynamic'
+      gpuEnabled: isGPUEnabled.value
     });
   };
 
@@ -3341,7 +3366,7 @@ export function useGraphSystem() {
     }
   };
 
-  // Graph data management with GPU and layout phase awareness
+  // Graph data management with GPU awareness
   const updateGraphData = (graphData: { nodes: GraphNode[]; edges: GraphEdge[] }) => {
     if (isProcessingUpdate.value) return; // Prevent concurrent updates
     
@@ -3349,17 +3374,14 @@ export function useGraphSystem() {
     try {
       nodeCount.value = graphData.nodes.length;
       
-      // Create binary message with initial positions
-      const dataSize = 1 + (nodeCount.value * 6); // isInitialLayout flag + (x,y,z,vx,vy,vz) per node
+      // Create binary data for positions and velocities
+      const dataSize = nodeCount.value * 6; // (x,y,z,vx,vy,vz) per node
       const binaryData = new ArrayBuffer(dataSize * 4); // 4 bytes per float
       const dataView = new Float32Array(binaryData);
       
-      // Set isInitialLayout flag based on current state
-      dataView[0] = isInitialLayout.value ? 1 : 0;
-      
       // Fill position and velocity data
-      let offset = 1; // Start after flag
       graphData.nodes.forEach((node, index) => {
+        const offset = index * 6;
         // Set positions
         dataView[offset] = node.position?.[0] || 0;
         dataView[offset + 1] = node.position?.[1] || 0;
@@ -3369,14 +3391,22 @@ export function useGraphSystem() {
         dataView[offset + 3] = node.velocity?.[0] || 0;
         dataView[offset + 4] = node.velocity?.[1] || 0;
         dataView[offset + 5] = node.velocity?.[2] || 0;
-        
-        offset += 6;
       });
 
-      // Update binary store using the same format as websocket messages
+      // Update binary store
       binaryStore.updateFromBinary({
         data: binaryData,
-        isInitialLayout: isInitialLayout.value,
+        positions: graphData.nodes.map((node, index) => {
+          const offset = index * 6;
+          return {
+            x: dataView[offset],
+            y: dataView[offset + 1],
+            z: dataView[offset + 2],
+            vx: dataView[offset + 3],
+            vy: dataView[offset + 4],
+            vz: dataView[offset + 5]
+          };
+        }),
         nodeCount: nodeCount.value
       });
 
@@ -3385,7 +3415,6 @@ export function useGraphSystem() {
         visualizationState.value.scene.userData.needsRender = true;
         visualizationState.value.scene.userData.lastUpdate = performance.now();
         visualizationState.value.scene.userData.gpuEnabled = isGPUEnabled.value;
-        visualizationState.value.scene.userData.initialLayout = isInitialLayout.value;
       }
     } finally {
       isProcessingUpdate.value = false;
@@ -3405,7 +3434,6 @@ export function useGraphSystem() {
       visualizationState.value.scene.userData.nodesGroup = nodesGroup;
       visualizationState.value.scene.userData.edgesGroup = edgesGroup;
       visualizationState.value.scene.userData.gpuEnabled = isGPUEnabled.value;
-      visualizationState.value.scene.userData.initialLayout = isInitialLayout.value;
     }
   });
 
@@ -3419,7 +3447,6 @@ export function useGraphSystem() {
     hoveredNode,
     nodeCount,
     isGPUEnabled,
-    isInitialLayout,
     
     // Node helpers
     getNodePosition,
@@ -4959,35 +4986,39 @@ declare module 'three/*' {
 types/websocket.ts
 // Message Types (matching server's ServerMessage enum)
 export type MessageType = 
-  | 'graphUpdate'                  // From ServerMessage::GraphUpdate
-  | 'error'                        // From ServerMessage::Error
-  | 'position_update_complete'     // From ServerMessage::PositionUpdateComplete
-  | 'settings_updated'             // From ServerMessage::SettingsUpdated
-  | 'simulation_mode_set'          // From ServerMessage::SimulationModeSet
-  | 'fisheye_settings_updated'     // From ServerMessage::FisheyeSettingsUpdated
-  | 'initial_data'                 // Client-side types
-  | 'gpu_state'
-  | 'layout_state'
-  | 'audioData'                    // Additional message types
+  | 'graphUpdate'
+  | 'error'
+  | 'positionUpdateComplete'
+  | 'settingsUpdated'
+  | 'simulationModeSet'
+  | 'fisheyeSettingsUpdated'
+  | 'initialData'
+  | 'gpuState'
+  | 'layoutState'
+  | 'audioData'
   | 'updateSettings'
   | 'openaiResponse'
   | 'ragflowResponse'
-  | 'completion';
+  | 'completion'
+  | 'ping'
+  | 'pong';
 
 // Binary Protocol Types
 export interface BinaryMessage {
   data: ArrayBuffer;        // Raw binary data in format:
-                           // [isInitial(4)] + [x,y,z,vx,vy,vz](24) per node
+                           // [x,y,z,vx,vy,vz](24) per node
                            // Node index in array matches index in original graph data
-  isInitialLayout: boolean; // First 4 bytes flag
+  positions: NodePosition[];  // Processed position data
   nodeCount: number;        // Number of nodes in the update
 }
 
-// Node Position Update
-export interface NodePositionUpdate {
-  nodeIndex: number;      // Index in the nodes array
-  position: [number, number, number];
-  velocity?: [number, number, number];
+export interface NodePosition {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
 }
 
 // Graph Data (establishes node order for binary updates)
@@ -5002,20 +5033,32 @@ export interface Node {
   label?: string;
   position?: [number, number, number];
   velocity?: [number, number, number];
-  [key: string]: any;
+  size?: number;
+  color?: string;
+  type?: string;
+  metadata?: Record<string, any>;
+  userData?: Record<string, any>;
+  weight?: number;
+  group?: string;
 }
 
 export interface Edge {
+  id: string;  // Added to match core Edge type
   source: string;
   target: string;
-  [key: string]: any;
+  weight?: number;
+  width?: number;
+  color?: string;
+  type?: string;
+  metadata?: Record<string, any>;
+  userData?: Record<string, any>;
+  directed?: boolean;
 }
 
-// Update GraphUpdateMessage to handle both camelCase and snake_case
+// Graph Update Message
 export interface GraphUpdateMessage extends BaseMessage {
   type: 'graphUpdate';
-  graphData?: GraphData;     // camelCase version
-  graph_data?: GraphData;    // snake_case version from server
+  graphData: GraphData;
 }
 
 // Base Message Interface
@@ -5059,10 +5102,10 @@ export interface BloomSettings {
 
 // Message Type Interfaces (matching server's ServerMessage variants)
 export interface FisheyeUpdateMessage extends BaseMessage {
-  type: 'fisheye_settings_updated';
+  type: 'fisheyeSettingsUpdated';
   enabled: boolean;
   strength: number;
-  focus_point: [number, number, number];
+  focusPoint: [number, number, number];
   radius: number;
 }
 
@@ -5075,7 +5118,7 @@ export interface ErrorMessage extends BaseMessage {
 
 export interface AudioMessage extends BaseMessage {
   type: 'audioData';
-  audio_data: Blob;
+  audioData: Blob;
 }
 
 export interface RagflowResponse extends BaseMessage {
@@ -5085,9 +5128,9 @@ export interface RagflowResponse extends BaseMessage {
 }
 
 export interface SimulationModeMessage extends BaseMessage {
-  type: 'simulation_mode_set';
+  type: 'simulationModeSet';
   mode: string;
-  gpu_enabled: boolean;
+  gpuEnabled: boolean;
 }
 
 export interface SettingsUpdateMessage extends BaseMessage {
@@ -5101,13 +5144,22 @@ export interface SettingsUpdateMessage extends BaseMessage {
 }
 
 export interface SettingsUpdatedMessage extends BaseMessage {
-  type: 'settings_updated';
+  type: 'settingsUpdated';
   settings: {
     material?: MaterialSettings;
     physics?: PhysicsSettings;
     bloom?: BloomSettings;
     fisheye?: FisheyeSettings;
   };
+}
+
+// Heartbeat Messages
+export interface PingMessage extends BaseMessage {
+  type: 'ping';
+}
+
+export interface PongMessage extends BaseMessage {
+  type: 'pong';
 }
 
 // WebSocket Configuration
@@ -5363,29 +5415,122 @@ export interface BrowserPlatform {
 }
 
 ----
+services/fisheyeManager.ts
+// TODO: Future client-side fisheye implementation
+// This manager will handle fisheye visualization settings and shader uniforms,
+// keeping the effect purely in the visualization layer.
+//
+// Implementation notes:
+// - Fisheye should be a visualization-only effect
+// - No server communication needed for fisheye updates
+// - Settings affect only the rendering, not the data
+// - Can be enabled/disabled without impacting graph layout
+//
+// Example implementation (to be integrated later):
+/*
+import { ref, watch } from 'vue';
+
+export interface FisheyeSettings {
+    enabled: boolean;
+    strength: number;
+    radius: number;
+    focusPoint: [number, number, number];
+}
+
+export class FisheyeManager {
+    private enabled = ref(false);
+    private strength = ref(0.5);
+    private radius = ref(100.0);
+    private focusPoint = ref([0, 0, 0]);
+
+    // Shader uniforms that will be updated
+    private uniforms = {
+        fisheyeEnabled: { value: false },
+        fisheyeStrength: { value: 0.5 },
+        fisheyeRadius: { value: 100.0 },
+        fisheyeFocusPoint: { value: [0, 0, 0] }
+    };
+
+    constructor() {
+        // Watch for changes and update uniforms
+        watch(this.enabled, (value) => {
+            this.uniforms.fisheyeEnabled.value = value;
+        });
+
+        watch(this.strength, (value) => {
+            this.uniforms.fisheyeStrength.value = value;
+        });
+
+        watch(this.radius, (value) => {
+            this.uniforms.fisheyeRadius.value = value;
+        });
+
+        watch(this.focusPoint, (value) => {
+            this.uniforms.fisheyeFocusPoint.value = value;
+        });
+    }
+
+    // Update settings locally (no server communication needed)
+    updateSettings(settings: FisheyeSettings) {
+        this.enabled.value = settings.enabled;
+        this.strength.value = settings.strength;
+        this.radius.value = settings.radius;
+        this.focusPoint.value = settings.focusPoint;
+    }
+
+    // Get uniforms for shader
+    getUniforms() {
+        return this.uniforms;
+    }
+}
+
+// Singleton instance (commented out until implementation)
+// export const fisheyeManager = new FisheyeManager();
+*/
+
+----
 services/graphDataManager.ts
 import type WebsocketService from './websocketService'
 import type { GraphUpdateMessage, BinaryMessage, Node as WSNode, Edge as WSEdge } from '../types/websocket'
 import type { GraphNode, GraphEdge, GraphData } from '../types/core'
 
 // Transform websocket node to graph node
-const transformNode = (wsNode: WSNode): GraphNode => ({
-  id: wsNode.id,
-  label: wsNode.label || wsNode.id,
-  position: wsNode.position,
-  velocity: wsNode.velocity,
-  size: wsNode.size,
-  color: wsNode.color,
-  type: wsNode.type,
-  metadata: wsNode.metadata || {},
-  userData: wsNode.userData || {},
-  edges: [], // Will be populated after edges are transformed
-  weight: wsNode.weight || 1,
-  group: wsNode.group
-})
+const transformNode = (wsNode: WSNode): GraphNode => {
+  console.debug('[GraphDataManager] Transforming node:', {
+    id: wsNode.id,
+    hasPosition: !!wsNode.position,
+    position: wsNode.position,
+    hasVelocity: !!wsNode.velocity,
+    velocity: wsNode.velocity,
+    timestamp: new Date().toISOString()
+  });
+
+  return {
+    id: wsNode.id,
+    label: wsNode.label || wsNode.id,
+    position: wsNode.position,
+    velocity: wsNode.velocity,
+    size: wsNode.size,
+    color: wsNode.color,
+    type: wsNode.type,
+    metadata: wsNode.metadata || {},
+    userData: wsNode.userData || {},
+    edges: [], // Will be populated after edges are transformed
+    weight: wsNode.weight || 1,
+    group: wsNode.group
+  };
+}
 
 // Transform websocket edge to graph edge
 const transformEdge = (sourceNode: GraphNode, targetNode: GraphNode, wsEdge: WSEdge): GraphEdge => {
+  console.debug('[GraphDataManager] Transforming edge:', {
+    source: wsEdge.source,
+    target: wsEdge.target,
+    sourceHasPosition: !!sourceNode.position,
+    targetHasPosition: !!targetNode.position,
+    timestamp: new Date().toISOString()
+  });
+
   return {
     id: `${wsEdge.source}-${wsEdge.target}`,
     source: wsEdge.source,
@@ -5409,6 +5554,7 @@ export default class GraphDataManager {
   private nodeMap: Map<string, GraphNode> = new Map()
 
   constructor(websocketService: WebsocketService) {
+    console.debug('[GraphDataManager] Initializing with websocket service');
     this.websocketService = websocketService
     
     // Set up event listeners with proper types
@@ -5417,36 +5563,63 @@ export default class GraphDataManager {
 
     // Debug listener for websocket connection state
     this.websocketService.on('open', () => {
-      console.log('GraphDataManager detected websocket connection')
-      console.log('Requesting initial data')
+      console.debug('[GraphDataManager] WebSocket connected, requesting initial data');
       this.requestInitialData()
     })
   }
 
   private handleGraphUpdate(message: GraphUpdateMessage) {
-    if (!message.graphData) {
-      console.warn('Received graph update with no data')
+    console.debug('[GraphDataManager] Received graph update:', {
+      hasGraphData: !!message.graphData,
+      hasSnakeCaseData: !!message.graph_data,
+      timestamp: new Date().toISOString()
+    });
+
+    if (!message.graphData && !message.graph_data) {
+      console.warn('[GraphDataManager] Received graph update with no data');
       return
     }
 
-    console.log('Received graph update:', {
-      nodes: message.graphData.nodes?.length || 0,
-      edges: message.graphData.edges?.length || 0,
-      metadata: message.graphData.metadata ? Object.keys(message.graphData.metadata).length : 0
-    })
+    const graphData = message.graphData || message.graph_data;
+    if (!graphData) return;
+
+    console.debug('[GraphDataManager] Processing graph data:', {
+      nodes: graphData.nodes?.length || 0,
+      edges: graphData.edges?.length || 0,
+      metadata: graphData.metadata ? Object.keys(graphData.metadata).length : 0,
+      sampleNode: graphData.nodes?.[0] ? {
+        id: graphData.nodes[0].id,
+        hasPosition: !!graphData.nodes[0].position,
+        position: graphData.nodes[0].position
+      } : null
+    });
 
     // Transform nodes first
-    const nodes = (message.graphData.nodes || []).map(transformNode)
+    const nodes = (graphData.nodes || []).map(transformNode)
     
     // Create a map of nodes by ID for quick lookup
     this.nodeMap = new Map(nodes.map(node => [node.id, node]))
 
+    console.debug('[GraphDataManager] Node map created:', {
+      mapSize: this.nodeMap.size,
+      sampleEntries: Array.from(this.nodeMap.entries()).slice(0, 3).map(([id, node]) => ({
+        id,
+        hasPosition: !!node.position,
+        position: node.position
+      }))
+    });
+
     // Transform edges and link them to nodes
-    const edges = (message.graphData.edges || []).map(edge => {
+    const edges = (graphData.edges || []).map(edge => {
       const sourceNode = this.nodeMap.get(edge.source)
       const targetNode = this.nodeMap.get(edge.target)
       if (!sourceNode || !targetNode) {
-        console.warn(`Edge references missing node: ${edge.source} -> ${edge.target}`)
+        console.warn('[GraphDataManager] Edge references missing node:', {
+          edge: `${edge.source}-${edge.target}`,
+          hasSource: !!sourceNode,
+          hasTarget: !!targetNode,
+          timestamp: new Date().toISOString()
+        })
         return null
       }
       const graphEdge = transformEdge(sourceNode, targetNode, edge)
@@ -5459,14 +5632,18 @@ export default class GraphDataManager {
     this.graphData = {
       nodes,
       edges,
-      metadata: message.graphData.metadata || {}
+      metadata: graphData.metadata || {}
     }
 
-    console.log('Graph data transformed:', {
-      nodes: this.graphData.nodes.length,
-      edges: this.graphData.edges.length,
-      metadata: Object.keys(this.graphData.metadata).length
-    })
+    console.debug('[GraphDataManager] Graph data transformation complete:', {
+      originalNodes: graphData.nodes?.length || 0,
+      originalEdges: graphData.edges?.length || 0,
+      transformedNodes: nodes.length,
+      transformedEdges: edges.length,
+      nodesWithPositions: nodes.filter(n => !!n.position).length,
+      nodesWithVelocities: nodes.filter(n => !!n.velocity).length,
+      timestamp: new Date().toISOString()
+    });
 
     // Emit custom event for graph update
     window.dispatchEvent(new CustomEvent('graphData:update', {
@@ -5476,67 +5653,75 @@ export default class GraphDataManager {
 
   private handleBinaryPositionUpdate(data: BinaryMessage) {
     if (!this.graphData?.nodes) {
-      console.warn('Received binary update but no graph data exists')
+      console.warn('[GraphDataManager] Received binary update but no graph data exists');
       return
     }
+
+    console.debug('[GraphDataManager] Processing binary position update:', {
+      bufferSize: data.data.byteLength,
+      nodeCount: this.graphData.nodes.length,
+      numMappedNodes: this.nodeMap.size,
+      timestamp: new Date().toISOString()
+    });
 
     // Process binary data
     const dataView = new Float32Array(data.data)
     const nodeCount = this.graphData.nodes.length
     
-    // Log binary update stats
-    console.debug('Processing binary position update:', {
-      bufferSize: data.data.byteLength,
-      isInitialLayout: data.isInitialLayout,
-      nodeCount,
-      numMappedNodes: this.nodeMap.size
-    })
-
-    // Skip first float (isInitialLayout flag)
-    let offset = 1
-    
     // Update node positions from binary data
+    let updatedCount = 0;
+    let invalidCount = 0;
+
     for (let i = 0; i < nodeCount; i++) {
       const node = this.graphData.nodes[i]
       if (node) {
+        const offset = i * 6;
         // Each node has 6 floats: x,y,z,vx,vy,vz
-        node.position = [
-          dataView[offset],
-          dataView[offset + 1],
-          dataView[offset + 2]
-        ]
-        node.velocity = [
-          dataView[offset + 3],
-          dataView[offset + 4],
-          dataView[offset + 5]
-        ]
-        offset += 6
+        const x = dataView[offset];
+        const y = dataView[offset + 1];
+        const z = dataView[offset + 2];
+        const vx = dataView[offset + 3];
+        const vy = dataView[offset + 4];
+        const vz = dataView[offset + 5];
+
+        // Validate values
+        if (isNaN(x) || isNaN(y) || isNaN(z) || isNaN(vx) || isNaN(vy) || isNaN(vz)) {
+          console.warn('[GraphDataManager] Invalid position/velocity values for node:', {
+            id: node.id,
+            position: [x, y, z],
+            velocity: [vx, vy, vz]
+          });
+          invalidCount++;
+          continue;
+        }
+
+        node.position = [x, y, z];
+        node.velocity = [vx, vy, vz];
+        updatedCount++;
       }
     }
 
-    // Log sample of updated positions
-    if (nodeCount > 0) {
-      const sampleNode = this.graphData.nodes[0]
-      console.debug('Sample node update:', {
-        id: sampleNode.id,
-        position: sampleNode.position,
-        velocity: sampleNode.velocity
-      })
-    }
+    console.debug('[GraphDataManager] Binary update complete:', {
+      totalNodes: nodeCount,
+      updatedNodes: updatedCount,
+      invalidNodes: invalidCount,
+      timestamp: new Date().toISOString()
+    });
 
     // Emit custom event for position update
     window.dispatchEvent(new CustomEvent('graphData:positions', {
       detail: {
         data: data.data,
-        isInitialLayout: data.isInitialLayout,
-        nodeCount
+        nodeCount,
+        updatedCount,
+        invalidCount
       }
     }))
   }
 
   public requestInitialData(): void {
-    console.log('Requesting initial graph data')
-    this.websocketService.send({ type: 'getInitialData' })
+    console.debug('[GraphDataManager] Requesting initial graph data');
+    this.websocketService.send({ type: 'initial_data' })
   }
 
   public getGraphData(): GraphData | null {
@@ -5546,6 +5731,12 @@ export default class GraphDataManager {
   public updateNodePosition(nodeId: string, position: [number, number, number]) {
     const node = this.nodeMap.get(nodeId)
     if (node) {
+      console.debug('[GraphDataManager] Updating node position:', {
+        id: nodeId,
+        oldPosition: node.position,
+        newPosition: position,
+        timestamp: new Date().toISOString()
+      });
       node.position = position
       this.websocketService.send({
         type: 'updateNodePosition',
@@ -5558,6 +5749,12 @@ export default class GraphDataManager {
   public updateNodeVelocity(nodeId: string, velocity: [number, number, number]) {
     const node = this.nodeMap.get(nodeId)
     if (node) {
+      console.debug('[GraphDataManager] Updating node velocity:', {
+        id: nodeId,
+        oldVelocity: node.velocity,
+        newVelocity: velocity,
+        timestamp: new Date().toISOString()
+      });
       node.velocity = velocity
       this.websocketService.send({
         type: 'updateNodeVelocity',
@@ -5568,6 +5765,12 @@ export default class GraphDataManager {
   }
 
   public cleanup() {
+    console.debug('[GraphDataManager] Cleaning up:', {
+      hasGraphData: !!this.graphData,
+      mapSize: this.nodeMap.size,
+      timestamp: new Date().toISOString()
+    });
+
     if (this.websocketService) {
       this.websocketService.off('graphUpdate', this.handleGraphUpdate.bind(this))
       this.websocketService.off('gpuPositions', this.handleBinaryPositionUpdate.bind(this))
@@ -5585,14 +5788,12 @@ import type {
   WebSocketEventCallback,
   BaseMessage,
   ErrorMessage,
-  GraphUpdateMessage,
   BinaryMessage,
-  MessageType,
-  SimulationModeMessage,
-  SettingsUpdatedMessage,
-  FisheyeUpdateMessage,
-  RagflowResponse
+  GraphUpdateMessage,
+  NodePosition
 } from '../types/websocket'
+
+import { processPositionUpdate } from '../utils/gpuUtils'
 
 import {
   DEFAULT_RECONNECT_ATTEMPTS,
@@ -5602,11 +5803,8 @@ import {
   DEFAULT_MAX_MESSAGE_SIZE,
   DEFAULT_MAX_AUDIO_SIZE,
   DEFAULT_MAX_QUEUE_SIZE,
-  CONNECTION_TIMEOUT,
-  SERVER_MESSAGE_TYPES,
-  ERROR_CODES,
-  ENABLE_BINARY_DEBUG,
-  MESSAGE_FIELDS
+  HEARTBEAT_INTERVAL,
+  HEARTBEAT_TIMEOUT
 } from '../constants/websocket'
 
 const DEFAULT_CONFIG: WebSocketConfig = {
@@ -5627,70 +5825,97 @@ export default class WebsocketService {
   private lastMessageTime = 0;
   private reconnectAttempts = 0;
   private reconnectTimeout: number | null = null;
+  private heartbeatInterval: number | null = null;
+  private lastPongTime: number = Date.now();
   private eventListeners: Map<keyof WebSocketEventMap, Set<WebSocketEventCallback<any>>> = new Map();
   private url: string;
-  private isInitialDataReceived = false;
+  private nodeIdToIndex: Map<string, number> = new Map();
+  private indexToNodeId: string[] = [];
 
   constructor(config: Partial<WebSocketConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.url = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
-    console.debug('WebSocket URL:', this.url);
+    console.debug('[WebsocketService] Initialized with URL:', this.url);
+  }
+
+  private startHeartbeat() {
+    if (this.heartbeatInterval) {
+      window.clearInterval(this.heartbeatInterval);
+    }
+
+    this.heartbeatInterval = window.setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        // Check if we've received a pong within the timeout period
+        if (Date.now() - this.lastPongTime > HEARTBEAT_TIMEOUT) {
+          console.warn('[WebsocketService] Heartbeat timeout - no pong received');
+          this.ws.close();
+          return;
+        }
+
+        // Send ping message
+        console.debug('[WebsocketService] Sending ping');
+        this.ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, HEARTBEAT_INTERVAL);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      window.clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
   }
 
   public async connect(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      console.debug('WebSocket already connected');
+      console.debug('[WebsocketService] WebSocket already connected');
       return;
     }
 
     return new Promise((resolve, reject) => {
       try {
-        console.debug(`Attempting WebSocket connection (attempt ${this.reconnectAttempts + 1}/${this.config.maxRetries})...`);
+        console.debug(`[WebsocketService] Attempting WebSocket connection (attempt ${this.reconnectAttempts + 1}/${this.config.maxRetries})...`);
         
         this.ws = new WebSocket(this.url);
         this.ws.binaryType = 'arraybuffer';
 
+        // Set a connection timeout
         const connectionTimeout = setTimeout(() => {
           if (this.ws?.readyState !== WebSocket.OPEN) {
-            console.error('WebSocket connection timeout');
+            console.error('[WebsocketService] WebSocket connection timeout');
             this.ws?.close();
-            reject(new Error(ERROR_CODES.CONNECTION_FAILED));
+            reject(new Error('WebSocket connection timeout'));
           }
-        }, CONNECTION_TIMEOUT);
+        }, 10000);
 
         this.ws.onopen = () => {
           clearTimeout(connectionTimeout);
-          console.debug('WebSocket connection established');
+          console.debug('[WebsocketService] WebSocket connection established');
           this.reconnectAttempts = 0;
+          this.lastPongTime = Date.now();
+          this.startHeartbeat();
           this.emit('open');
-
-          // Request initial data immediately after connection
-          if (!this.isInitialDataReceived) {
-            console.debug('Requesting initial data');
-            this.send({ type: SERVER_MESSAGE_TYPES.INITIAL_DATA });
-          }
-
           this.processQueuedMessages();
           resolve();
         };
 
         this.ws.onclose = (event) => {
           clearTimeout(connectionTimeout);
-          console.debug('WebSocket connection closed:', {
+          this.stopHeartbeat();
+          console.debug('[WebsocketService] WebSocket connection closed:', {
             code: event.code,
             reason: event.reason,
             wasClean: event.wasClean
           });
-          this.handleConnectionClose(event.wasClean);
+          this.handleConnectionClose();
         };
 
         this.ws.onerror = (error) => {
           clearTimeout(connectionTimeout);
-          console.error('WebSocket connection error:', error);
+          console.error('[WebsocketService] WebSocket connection error:', error);
           const errorMsg: ErrorMessage = {
-            type: SERVER_MESSAGE_TYPES.ERROR,
-            message: 'WebSocket connection error',
-            code: ERROR_CODES.CONNECTION_FAILED
+            type: 'error',
+            message: 'WebSocket connection error'
           };
           this.emit('error', errorMsg);
           reject(error);
@@ -5699,7 +5924,7 @@ export default class WebsocketService {
         this.ws.onmessage = this.handleMessage.bind(this);
 
       } catch (error) {
-        console.error('Error creating WebSocket connection:', error);
+        console.error('[WebsocketService] Error creating WebSocket connection:', error);
         reject(error);
       }
     });
@@ -5708,173 +5933,141 @@ export default class WebsocketService {
   private handleMessage(event: MessageEvent): void {
     try {
       if (event.data instanceof ArrayBuffer) {
-        if (ENABLE_BINARY_DEBUG) {
-          console.debug('Received binary message:', {
-            size: event.data.byteLength,
+        // Handle binary message (position updates)
+        console.debug('[WebsocketService] Received binary message:', {
+          size: event.data.byteLength,
+          expectedSize: this.indexToNodeId.length * 24,
+          timestamp: new Date().toISOString()
+        });
+
+        const result = processPositionUpdate(event.data);
+        if (!result) {
+          throw new Error('Failed to process position update');
+        }
+
+        if (result.positions.length !== this.indexToNodeId.length) {
+          console.warn('[WebsocketService] Position update node count mismatch:', {
+            expected: this.indexToNodeId.length,
+            received: result.positions.length,
             timestamp: new Date().toISOString()
           });
         }
 
-        // Handle binary position updates
-        const dataView = new Float32Array(event.data);
-        const isInitialLayout = dataView[0] >= 1.0;
-        
-        // Calculate node count from buffer size
-        // Buffer contains: isInitialLayout(1) + (x,y,z,vx,vy,vz)(6) per node
-        const totalFloats = dataView.length - 1; // Subtract isInitialLayout flag
-        const nodeCount = totalFloats / 6; // 6 floats per node
-        
+        const positions = result.positions.map((pos, index) => {
+          const nodeId = this.indexToNodeId[index];
+          if (!nodeId) {
+            console.warn(`[WebsocketService] No stored ID for node index ${index}`);
+            return null;
+          }
+          return {
+            ...pos,
+            id: nodeId
+          };
+        }).filter((pos): pos is NodePosition & { id: string } => pos !== null);
+
         const binaryMessage: BinaryMessage = {
           data: event.data,
-          isInitialLayout,
-          nodeCount
+          positions,
+          nodeCount: this.indexToNodeId.length
         };
-        
+
         this.emit('gpuPositions', binaryMessage);
-        return;
-      }
 
-      // Handle JSON messages
-      const message = JSON.parse(event.data) as BaseMessage;
-      const type = message.type as MessageType;
+      } else {
+        // Handle JSON message
+        const message = JSON.parse(event.data) as BaseMessage;
+        console.debug('[WebsocketService] Received JSON message:', {
+          type: message.type,
+          timestamp: new Date().toISOString()
+        });
 
-      // Always emit the raw message
-      this.emit('message', message);
-
-      // Handle specific message types
-      switch (type) {
-        case SERVER_MESSAGE_TYPES.GRAPH_UPDATE:
-          const graphMsg = message as GraphUpdateMessage;
-          const graphData = graphMsg.graphData || graphMsg[MESSAGE_FIELDS.GRAPH_DATA];
-          if (graphData) {
-            this.emit('graphUpdate', {
-              type: SERVER_MESSAGE_TYPES.GRAPH_UPDATE,
-              graphData,
-              graph_data: graphData // Include both versions for compatibility
-            });
-            this.isInitialDataReceived = true;
-          }
-          break;
-
-        case SERVER_MESSAGE_TYPES.ERROR:
-          const errorMessage = message as ErrorMessage;
-          this.emit('error', {
-            type: SERVER_MESSAGE_TYPES.ERROR,
-            message: errorMessage[MESSAGE_FIELDS.MESSAGE],
-            details: errorMessage[MESSAGE_FIELDS.DETAILS],
-            code: errorMessage[MESSAGE_FIELDS.CODE]
+        // Handle pong messages
+        if (message.type === 'pong') {
+          console.debug('[WebsocketService] Received pong');
+          this.lastPongTime = Date.now();
+          return;
+        }
+        
+        // Handle graph updates and store node mappings
+        if (message.type === 'graphUpdate') {
+          const graphMessage = message as GraphUpdateMessage;
+          console.debug('[WebsocketService] Processing graph update:', {
+            hasGraphData: !!graphMessage.graphData,
+            nodeCount: graphMessage.graphData?.nodes?.length || 0,
+            timestamp: new Date().toISOString()
           });
-          break;
 
-        case SERVER_MESSAGE_TYPES.POSITION_UPDATE_COMPLETE:
-          this.emit('positionUpdateComplete', message[MESSAGE_FIELDS.STATUS] || 'complete');
-          // Also emit the is_initial_layout flag if present
-          if (MESSAGE_FIELDS.IS_INITIAL_LAYOUT in message) {
-            this.emit('message', {
-              type: SERVER_MESSAGE_TYPES.LAYOUT_STATE,
-              isInitial: message[MESSAGE_FIELDS.IS_INITIAL_LAYOUT]
+          if (graphMessage.graphData?.nodes) {
+            this.nodeIdToIndex.clear();
+            this.indexToNodeId = [];
+            
+            graphMessage.graphData.nodes.forEach((node, index) => {
+              this.nodeIdToIndex.set(node.id, index);
+              this.indexToNodeId[index] = node.id;
+            });
+            
+            console.debug('[WebsocketService] Node ID mappings updated:', {
+              count: this.indexToNodeId.length,
+              sampleIds: this.indexToNodeId.slice(0, 3),
+              sampleNodes: graphMessage.graphData.nodes.slice(0, 3).map(n => ({
+                id: n.id,
+                hasPosition: !!n.position,
+                position: n.position
+              })),
+              timestamp: new Date().toISOString()
             });
           }
-          break;
-
-        case SERVER_MESSAGE_TYPES.SIMULATION_MODE_SET:
-          const simMessage = message as SimulationModeMessage;
-          this.emit('simulationModeSet', simMessage[MESSAGE_FIELDS.MODE]);
-          // Also emit GPU state if present
-          if (MESSAGE_FIELDS.GPU_ENABLED in simMessage) {
-            this.emit('message', {
-              type: SERVER_MESSAGE_TYPES.GPU_STATE,
-              enabled: simMessage[MESSAGE_FIELDS.GPU_ENABLED]
-            });
-          }
-          break;
-
-        case SERVER_MESSAGE_TYPES.SETTINGS_UPDATED:
-          const settingsMessage = message as SettingsUpdatedMessage;
-          this.emit('serverSettings', settingsMessage.settings);
-          break;
-
-        case SERVER_MESSAGE_TYPES.FISHEYE_SETTINGS_UPDATED:
-          const fisheyeMessage = message as FisheyeUpdateMessage & { focus_point?: [number, number, number] };
-          // Handle both focus_point array and individual coordinates
-          const focusPoint = fisheyeMessage[MESSAGE_FIELDS.FOCUS_POINT] || [0, 0, 0];
           
-          this.emit('serverSettings', {
-            fisheye: {
-              enabled: fisheyeMessage[MESSAGE_FIELDS.ENABLED],
-              strength: fisheyeMessage[MESSAGE_FIELDS.STRENGTH],
-              focusPoint,
-              radius: fisheyeMessage[MESSAGE_FIELDS.RADIUS]
-            }
-          });
-          break;
-
-        case SERVER_MESSAGE_TYPES.RAGFLOW_RESPONSE:
-          const ragflowMessage = message as RagflowResponse;
-          this.emit('ragflowAnswer', ragflowMessage.answer);
-          break;
-
-        case SERVER_MESSAGE_TYPES.OPENAI_RESPONSE:
-          this.emit('openaiResponse', message.response);
-          break;
-
-        case SERVER_MESSAGE_TYPES.COMPLETION:
-          this.emit('completion', message.text);
-          break;
-
-        default:
-          console.debug('Unhandled message type:', type);
-          break;
+          this.emit('graphUpdate', graphMessage);
+        } else {
+          this.emit('message', message);
+          
+          if (message.type === 'error') {
+            console.error('[WebsocketService] Received error message:', message);
+            this.emit('error', message as ErrorMessage);
+          }
+        }
       }
     } catch (error) {
-      console.error('Error handling WebSocket message:', error);
+      console.error('[WebsocketService] Error handling WebSocket message:', error);
       const errorMsg: ErrorMessage = {
-        type: SERVER_MESSAGE_TYPES.ERROR,
-        message: 'Error processing message',
-        code: ERROR_CODES.INVALID_MESSAGE
+        type: 'error',
+        message: 'Error processing message'
       };
       this.emit('error', errorMsg);
     }
   }
 
-  private handleConnectionClose(wasClean: boolean): void {
+  private handleConnectionClose(): void {
     this.emit('close');
-    this.isInitialDataReceived = false;
     
-    if (!wasClean && this.reconnectAttempts < this.config.maxRetries) {
+    if (this.reconnectAttempts < this.config.maxRetries) {
       this.reconnectAttempts++;
-      const delay = this.calculateReconnectDelay();
-      console.debug(`Connection failed. Retrying in ${delay}ms...`);
+      const delay = this.config.retryDelay * Math.pow(2, this.reconnectAttempts - 1);
+      console.debug(`[WebsocketService] Connection failed. Retrying in ${delay}ms...`);
       
       this.reconnectTimeout = window.setTimeout(() => {
         this.connect().catch(error => {
-          console.error('Reconnection attempt failed:', error);
+          console.error('[WebsocketService] Reconnection attempt failed:', error);
         });
       }, delay);
-    } else if (!wasClean) {
-      console.error('Max reconnection attempts reached');
+    } else {
+      console.error('[WebsocketService] Max reconnection attempts reached');
       this.emit('maxReconnectAttemptsReached');
-      this.emit('error', {
-        type: SERVER_MESSAGE_TYPES.ERROR,
-        message: 'Maximum reconnection attempts reached',
-        code: ERROR_CODES.MAX_RETRIES_EXCEEDED
-      });
     }
-  }
-
-  private calculateReconnectDelay(): number {
-    const baseDelay = this.config.retryDelay;
-    const exponentialDelay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
-    const jitter = Math.random() * 1000; // Add up to 1 second of jitter
-    return Math.min(exponentialDelay + jitter, 30000); // Cap at 30 seconds
   }
 
   public send(data: any): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       if (this.messageQueue.length < this.config.maxQueueSize) {
         this.messageQueue.push(data);
+        console.debug('[WebsocketService] Message queued:', {
+          type: data.type,
+          queueSize: this.messageQueue.length,
+          timestamp: new Date().toISOString()
+        });
       } else {
-        console.warn('Message queue full, dropping message');
+        console.warn('[WebsocketService] Message queue full, dropping message');
       }
       return;
     }
@@ -5888,6 +6081,11 @@ export default class WebsocketService {
     if (this.messageCount >= this.config.messageRateLimit) {
       if (this.messageQueue.length < this.config.maxQueueSize) {
         this.messageQueue.push(data);
+        console.debug('[WebsocketService] Rate limited, message queued:', {
+          type: data.type,
+          queueSize: this.messageQueue.length,
+          timestamp: new Date().toISOString()
+        });
       }
       return;
     }
@@ -5895,21 +6093,25 @@ export default class WebsocketService {
     try {
       const message = JSON.stringify(data);
       if (message.length > this.config.maxMessageSize) {
-        throw new Error(ERROR_CODES.MESSAGE_TOO_LARGE);
+        throw new Error('Message exceeds maximum size');
       }
       
+      console.debug('[WebsocketService] Sending message:', {
+        type: data.type,
+        size: message.length,
+        timestamp: new Date().toISOString()
+      });
+
       this.ws.send(message);
       this.messageCount++;
       this.lastMessageTime = now;
+
       this.processQueue();
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('[WebsocketService] Error sending message:', error);
       const errorMsg: ErrorMessage = {
-        type: SERVER_MESSAGE_TYPES.ERROR,
-        message: 'Error sending message',
-        code: error instanceof Error && error.message === ERROR_CODES.MESSAGE_TOO_LARGE
-          ? ERROR_CODES.MESSAGE_TOO_LARGE
-          : ERROR_CODES.INVALID_MESSAGE
+        type: 'error',
+        message: 'Error sending message'
       };
       this.emit('error', errorMsg);
     }
@@ -5922,6 +6124,11 @@ export default class WebsocketService {
     ) {
       const data = this.messageQueue.shift();
       if (data) {
+        console.debug('[WebsocketService] Processing queued message:', {
+          type: data.type,
+          remainingQueue: this.messageQueue.length,
+          timestamp: new Date().toISOString()
+        });
         this.send(data);
       }
     }
@@ -5929,7 +6136,7 @@ export default class WebsocketService {
 
   private processQueuedMessages(): void {
     if (this.messageQueue.length > 0) {
-      console.debug(`Processing ${this.messageQueue.length} queued messages`);
+      console.debug(`[WebsocketService] Processing ${this.messageQueue.length} queued messages`);
       const messages = [...this.messageQueue];
       this.messageQueue = [];
       messages.forEach(message => this.send(message));
@@ -5967,6 +6174,9 @@ export default class WebsocketService {
   }
 
   public cleanup(): void {
+    console.debug('[WebsocketService] Cleaning up websocket service');
+    this.stopHeartbeat();
+    
     if (this.reconnectTimeout !== null) {
       window.clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -5983,7 +6193,8 @@ export default class WebsocketService {
     this.lastMessageTime = 0;
     this.reconnectAttempts = 0;
     this.eventListeners.clear();
-    this.isInitialDataReceived = false;
+    this.nodeIdToIndex.clear();
+    this.indexToNodeId = [];
   }
 }
 
@@ -6583,37 +6794,9 @@ import GraphSystem from '@components/visualization/GraphSystem.vue'
 import { errorTracking } from '../services/errorTracking'
 import { useVisualization, SCENE_KEY } from '../composables/useVisualization'
 import { SERVER_MESSAGE_TYPES, MESSAGE_FIELDS, ENABLE_BINARY_DEBUG } from '../constants/websocket'
-import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node as WSNode, Edge as WSEdge, BinaryMessage } from '../types/websocket'
-import type { Node as CoreNode, Edge as CoreEdge, GraphNode, GraphEdge, GraphData } from '../types/core'
+import type { BaseMessage, GraphUpdateMessage, ErrorMessage, Node, Edge, BinaryMessage } from '../types/websocket'
+import type { GraphNode, GraphEdge, GraphData } from '../types/core'
 import type { FisheyeConfig } from '../types/components'
-
-// Transform functions unchanged
-const transformNode = (wsNode: WSNode): CoreNode => ({
-  id: wsNode.id,
-  label: wsNode.label || wsNode.id,
-  position: wsNode.position,
-  velocity: wsNode.velocity,
-  size: wsNode.size,
-  color: wsNode.color,
-  type: wsNode.type,
-  metadata: wsNode.metadata || {},
-  userData: wsNode.userData || {},
-  weight: wsNode.weight || 1,
-  group: wsNode.group
-});
-
-const transformEdge = (wsEdge: WSEdge): CoreEdge => ({
-  id: `${wsEdge.source}-${wsEdge.target}`,
-  source: wsEdge.source,
-  target: wsEdge.target,
-  weight: wsEdge.weight || 1,
-  width: wsEdge.width,
-  color: wsEdge.color,
-  type: wsEdge.type,
-  metadata: wsEdge.metadata || {},
-  userData: wsEdge.userData || {},
-  directed: wsEdge.directed || false
-});
 
 export default defineComponent({
   name: 'App',
@@ -6623,7 +6806,6 @@ export default defineComponent({
     GraphSystem
   },
   setup() {
-    // Store initializations unchanged
     const settingsStore = useSettingsStore()
     const visualizationStore = useVisualizationStore()
     const websocketStore = useWebSocketStore()
@@ -6636,7 +6818,6 @@ export default defineComponent({
     const error = ref<string | null>(null)
     const isInitialDataRequested = ref(false)
 
-    // Visualization settings unchanged
     const visualSettings = computed(() => {
       const settings = settingsStore.getVisualizationSettings;
       console.debug('Visualization settings:', {
@@ -6667,12 +6848,10 @@ export default defineComponent({
         return;
       }
 
-      // Connection event handlers
       websocketStore.service.on('open', () => {
         console.log('WebSocket connected');
         error.value = null;
         
-        // Request initial data when connection is established
         if (!isInitialDataRequested.value) {
           console.debug('Requesting initial graph data');
           websocketStore.service?.send({
@@ -6697,38 +6876,33 @@ export default defineComponent({
         });
       });
 
-      // JSON message handler
       websocketStore.service.on('message', (message: BaseMessage) => {
         console.debug('Received message:', message);
         switch (message.type) {
           case SERVER_MESSAGE_TYPES.GRAPH_UPDATE:
             const graphMsg = message as GraphUpdateMessage;
-            const graphData = graphMsg.graphData || graphMsg[MESSAGE_FIELDS.GRAPH_DATA];
-            if (!graphData) {
+            if (!graphMsg.graphData) {
               console.warn('Received graph update with no data');
               return;
             }
 
             console.log('Received graph update:', {
-              nodes: graphData.nodes?.length || 0,
-              edges: graphData.edges?.length || 0,
-              metadata: graphData.metadata ? Object.keys(graphData.metadata).length : 0,
-              sampleNode: graphData.nodes?.[0] ? {
-                id: graphData.nodes[0].id,
-                position: graphData.nodes[0].position
+              nodes: graphMsg.graphData.nodes?.length || 0,
+              edges: graphMsg.graphData.edges?.length || 0,
+              metadata: graphMsg.graphData.metadata ? Object.keys(graphMsg.graphData.metadata).length : 0,
+              sampleNode: graphMsg.graphData.nodes?.[0] ? {
+                id: graphMsg.graphData.nodes[0].id,
+                position: graphMsg.graphData.nodes[0].position
               } : null
             });
-
-            const transformedNodes = (graphData.nodes || []).map(transformNode);
-            const transformedEdges = (graphData.edges || []).map(transformEdge);
             
             visualizationStore.setGraphData(
-              transformedNodes,
-              transformedEdges,
-              graphData.metadata || {}
+              graphMsg.graphData.nodes,
+              graphMsg.graphData.edges,
+              graphMsg.graphData.metadata || {}
             );
 
-            updateNodes(transformedNodes);
+            updateNodes(graphMsg.graphData.nodes);
 
             console.log('Graph data state after update:', {
               storeNodes: visualizationStore.nodes.length,
@@ -6750,30 +6924,24 @@ export default defineComponent({
         }
       });
 
-      // Binary message handler
       websocketStore.service.on('gpuPositions', (data: BinaryMessage) => {
         if (ENABLE_BINARY_DEBUG) {
           console.debug('Received GPU positions update:', {
             bufferSize: data.data.byteLength,
-            isInitial: data.isInitialLayout,
             nodeCount: visualizationStore.nodes.length
           });
         }
 
-        // Update binary store with raw ArrayBuffer data
         binaryUpdateStore.updateFromBinary(data);
 
-        // Get the processed TypedArrays from the store
         const positions = binaryUpdateStore.getAllPositions;
         const velocities = binaryUpdateStore.getAllVelocities;
         const nodeCount = visualizationStore.nodes.length;
 
-        // Update visualization with TypedArrays and node count
         updatePositions(positions, velocities, nodeCount);
       });
     };
 
-    // Rest of the component unchanged
     onMounted(async () => {
       try {
         settingsStore.applyServerSettings({});
@@ -6857,7 +7025,6 @@ export default defineComponent({
 </script>
 
 <style>
-/* Styles unchanged */
 body, html {
   margin: 0;
   padding: 0;
@@ -11482,7 +11649,6 @@ stores/binaryUpdate.ts
 import { defineStore } from 'pinia'
 import type { BinaryMessage } from '../types/websocket'
 import {
-  BINARY_UPDATE_HEADER_SIZE,
   BINARY_UPDATE_NODE_SIZE,
   FLOAT32_SIZE,
   MAX_VALID_POSITION,
@@ -11500,7 +11666,6 @@ interface BinaryUpdateState {
   nodeCount: number
   firstUpdateTime: number  // Track when updates started
   lastUpdateTime: number   // Track most recent update
-  isInitialLayout: boolean
   invalidUpdates: number   // Track number of invalid updates for monitoring
 }
 
@@ -11515,7 +11680,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     nodeCount: 0,
     firstUpdateTime: 0,
     lastUpdateTime: 0,
-    isInitialLayout: false,
     invalidUpdates: 0
   }),
 
@@ -11559,11 +11723,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
      * Get all velocities as Float32Array
      */
     getAllVelocities: (state): Float32Array => state.velocities,
-
-    /**
-     * Check if this is initial layout data
-     */
-    isInitial: (state): boolean => state.isInitialLayout,
 
     /**
      * Get percentage of invalid updates
@@ -11673,11 +11832,10 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
      */
     updateFromBinary(message: BinaryMessage): void {
       const dataView = new Float32Array(message.data);
-      const totalFloats = dataView.length - 1; // Subtract 1 for isInitialLayout flag
-      const nodeCount = totalFloats / 6; // 6 floats per node (x,y,z,vx,vy,vz)
+      const nodeCount = dataView.length / 6; // 6 floats per node (x,y,z,vx,vy,vz)
 
       // Validate buffer size
-      const expectedSize = BINARY_UPDATE_HEADER_SIZE + (nodeCount * BINARY_UPDATE_NODE_SIZE);
+      const expectedSize = nodeCount * BINARY_UPDATE_NODE_SIZE;
       if (message.data.byteLength !== expectedSize) {
         console.error('Invalid binary message size:', {
           received: message.data.byteLength,
@@ -11696,8 +11854,8 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       }
 
       // Process position and velocity data directly from binary
-      let srcOffset = 1; // Skip isInitialLayout flag
       for (let i = 0; i < nodeCount; i++) {
+        const srcOffset = i * 6;
         const posOffset = i * 3;
         const velOffset = i * 3;
 
@@ -11743,11 +11901,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         this.velocities[velOffset] = vx;
         this.velocities[velOffset + 1] = vy;
         this.velocities[velOffset + 2] = vz;
-
-        srcOffset += 6;
       }
-
-      this.isInitialLayout = message.isInitialLayout;
       
       // Update timing
       const now = Date.now();
@@ -11760,7 +11914,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       if (ENABLE_BINARY_DEBUG && nodeCount > 0) {
         console.debug('Binary update processed:', {
           nodeCount,
-          isInitial: this.isInitialLayout,
           invalidRate: this.invalidUpdateRate,
           updateFrequency: this.updateFrequency,
           sample: {
@@ -11789,7 +11942,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.nodeCount = 0;
       this.firstUpdateTime = 0;
       this.lastUpdateTime = 0;
-      this.isInitialLayout = false;
       this.invalidUpdates = 0;
     }
   }
@@ -11824,11 +11976,12 @@ interface VisualizationState {
   nodes: Node[]
   edges: Edge[]
   graphData: GraphData | null
-  selectedNode: Node | null
+  selectedNode: null | Node
   metadata: Record<string, any>
   visualConfig: VisualizationConfig
   bloomConfig: BloomConfig
   fisheyeConfig: FisheyeConfig
+  initialized: boolean
 }
 
 export const useVisualizationStore = defineStore('visualization', {
@@ -11840,7 +11993,8 @@ export const useVisualizationStore = defineStore('visualization', {
     metadata: {},
     visualConfig: { ...DEFAULT_VISUALIZATION_CONFIG },
     bloomConfig: { ...DEFAULT_BLOOM_CONFIG },
-    fisheyeConfig: { ...DEFAULT_FISHEYE_CONFIG }
+    fisheyeConfig: { ...DEFAULT_FISHEYE_CONFIG },
+    initialized: false
   }),
 
   getters: {
@@ -11858,21 +12012,35 @@ export const useVisualizationStore = defineStore('visualization', {
     getVisualizationSettings: (state): VisualizationConfig => state.visualConfig,
     getBloomSettings: (state): BloomConfig => state.bloomConfig,
     getFisheyeSettings: (state): FisheyeConfig => state.fisheyeConfig,
+    isInitialized: (state): boolean => state.initialized
   },
 
   actions: {
     setGraphData(nodes: Node[], edges: Edge[], metadata: Record<string, any> = {}) {
-      console.debug('Setting graph data:', {
+      console.debug('[VisualizationStore] Setting graph data:', {
         nodeCount: nodes.length,
         edgeCount: edges.length,
         metadataKeys: Object.keys(metadata),
         timestamp: new Date().toISOString(),
+        initialized: this.initialized,
         sampleNodes: nodes.slice(0, 3).map(n => ({
           id: n.id,
           position: n.position,
-          hasPosition: !!n.position
+          hasPosition: !!n.position,
+          velocity: n.velocity,
+          hasVelocity: !!n.velocity
         }))
       })
+
+      // Validate node positions
+      const nodesWithoutPosition = nodes.filter(n => !n.position)
+      if (nodesWithoutPosition.length > 0) {
+        console.warn('[VisualizationStore] Nodes missing position data:', {
+          count: nodesWithoutPosition.length,
+          sampleIds: nodesWithoutPosition.slice(0, 3).map(n => n.id),
+          timestamp: new Date().toISOString()
+        })
+      }
 
       // Convert to graph data structure
       const graphNodes = nodes.map(node => ({
@@ -11885,21 +12053,32 @@ export const useVisualizationStore = defineStore('visualization', {
       const nodeLookup = new Map<string, GraphNode>()
       graphNodes.forEach(node => nodeLookup.set(node.id, node))
 
-      console.debug('Node lookup created:', {
+      console.debug('[VisualizationStore] Node lookup created:', {
         lookupSize: nodeLookup.size,
         sampleEntries: Array.from(nodeLookup.entries()).slice(0, 3).map(([id, node]) => ({
           id,
           position: node.position,
-          hasPosition: !!node.position
+          hasPosition: !!node.position,
+          velocity: node.velocity,
+          hasVelocity: !!node.velocity
         }))
       })
+
+      // Track edge connection stats
+      let missingSourceCount = 0
+      let missingTargetCount = 0
+      let validEdgeCount = 0
 
       // Convert edges and link to nodes
       const graphEdges = edges.map(edge => {
         const sourceNode = nodeLookup.get(edge.source)
         const targetNode = nodeLookup.get(edge.target)
+        
         if (!sourceNode || !targetNode) {
-          console.warn('Edge references missing node:', {
+          if (!sourceNode) missingSourceCount++
+          if (!targetNode) missingTargetCount++
+          
+          console.warn('[VisualizationStore] Edge references missing node:', {
             edge: `${edge.source}-${edge.target}`,
             hasSource: !!sourceNode,
             hasTarget: !!targetNode,
@@ -11907,6 +12086,8 @@ export const useVisualizationStore = defineStore('visualization', {
           })
           return null
         }
+
+        validEdgeCount++
         const graphEdge: GraphEdge = {
           ...edge,
           sourceNode,
@@ -11918,16 +12099,27 @@ export const useVisualizationStore = defineStore('visualization', {
         return graphEdge
       }).filter((edge): edge is GraphEdge => edge !== null)
 
-      console.debug('Graph data transformation complete:', {
+      console.debug('[VisualizationStore] Edge processing complete:', {
+        totalEdges: edges.length,
+        validEdges: validEdgeCount,
+        missingSourceNodes: missingSourceCount,
+        missingTargetNodes: missingTargetCount,
+        timestamp: new Date().toISOString()
+      })
+
+      console.debug('[VisualizationStore] Graph data transformation complete:', {
         originalNodes: nodes.length,
         originalEdges: edges.length,
         transformedNodes: graphNodes.length,
         transformedEdges: graphEdges.length,
+        nodesWithoutPosition: nodesWithoutPosition.length,
         sampleGraphNode: graphNodes[0] ? {
           id: graphNodes[0].id,
           edgeCount: graphNodes[0].edges.length,
           position: graphNodes[0].position,
-          hasPosition: !!graphNodes[0].position
+          hasPosition: !!graphNodes[0].position,
+          velocity: graphNodes[0].velocity,
+          hasVelocity: !!graphNodes[0].velocity
         } : null,
         timestamp: new Date().toISOString()
       })
@@ -11941,22 +12133,25 @@ export const useVisualizationStore = defineStore('visualization', {
         edges: graphEdges,
         metadata
       }
+      this.initialized = true
 
       // Log final state
-      console.debug('Graph data state after update:', {
+      console.debug('[VisualizationStore] Graph data state after update:', {
         storeNodes: this.nodes.length,
         storeEdges: this.edges.length,
         graphDataNodes: this.graphData.nodes.length,
         graphDataEdges: this.graphData.edges.length,
+        initialized: this.initialized,
         timestamp: new Date().toISOString()
       })
     },
 
     updateNode(nodeId: string, updates: Partial<Node>) {
-      console.debug('Updating node:', {
+      console.debug('[VisualizationStore] Updating node:', {
         nodeId,
         updates,
         hasPosition: !!updates.position,
+        hasVelocity: !!updates.velocity,
         timestamp: new Date().toISOString()
       })
 
@@ -11975,16 +12170,19 @@ export const useVisualizationStore = defineStore('visualization', {
               edges: graphNode.edges // Preserve edges array
             } as GraphNode
 
-            console.debug('Graph node updated:', {
+            console.debug('[VisualizationStore] Graph node updated:', {
               nodeId,
               position: updates.position,
+              hasPosition: !!updates.position,
+              velocity: updates.velocity,
+              hasVelocity: !!updates.velocity,
               edgeCount: graphNode.edges.length,
               timestamp: new Date().toISOString()
             })
           }
         }
       } else {
-        console.warn('Node not found for update:', {
+        console.warn('[VisualizationStore] Node not found for update:', {
           nodeId,
           timestamp: new Date().toISOString()
         })
@@ -11992,7 +12190,7 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     updateNodePositions(updates: { id: string; position: [number, number, number]; velocity?: [number, number, number] }[]) {
-      console.debug('Batch updating node positions:', {
+      console.debug('[VisualizationStore] Batch updating node positions:', {
         updateCount: updates.length,
         timestamp: new Date().toISOString(),
         sampleUpdates: updates.slice(0, 3).map(u => ({
@@ -12004,8 +12202,14 @@ export const useVisualizationStore = defineStore('visualization', {
 
       let updatedCount = 0
       let skippedCount = 0
+      let missingPositionCount = 0
 
       updates.forEach(update => {
+        if (!update.position) {
+          missingPositionCount++
+          return
+        }
+
         const node = this.nodes.find(n => n.id === update.id)
         if (node) {
           // Update position and velocity directly (already scaled)
@@ -12030,16 +12234,17 @@ export const useVisualizationStore = defineStore('visualization', {
         }
       })
 
-      console.debug('Node position updates complete:', {
+      console.debug('[VisualizationStore] Node position updates complete:', {
         totalUpdates: updates.length,
         successfulUpdates: updatedCount,
         skippedUpdates: skippedCount,
+        missingPositions: missingPositionCount,
         timestamp: new Date().toISOString()
       })
     },
 
     updateVisualizationSettings(settings: Partial<VisualizationConfig>) {
-      console.debug('Updating visualization settings:', {
+      console.debug('[VisualizationStore] Updating visualization settings:', {
         oldSettings: this.visualConfig,
         newSettings: settings,
         timestamp: new Date().toISOString()
@@ -12051,7 +12256,7 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     updateBloomSettings(settings: Partial<BloomConfig>) {
-      console.debug('Updating bloom settings:', {
+      console.debug('[VisualizationStore] Updating bloom settings:', {
         oldSettings: this.bloomConfig,
         newSettings: settings,
         timestamp: new Date().toISOString()
@@ -12063,7 +12268,7 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     updateFisheyeSettings(settings: Partial<FisheyeConfig>) {
-      console.debug('Updating fisheye settings:', {
+      console.debug('[VisualizationStore] Updating fisheye settings:', {
         oldSettings: this.fisheyeConfig,
         newSettings: settings,
         timestamp: new Date().toISOString()
@@ -12087,10 +12292,11 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     clear() {
-      console.debug('Clearing visualization store:', {
+      console.debug('[VisualizationStore] Clearing visualization store:', {
         nodeCount: this.nodes.length,
         edgeCount: this.edges.length,
         hasGraphData: !!this.graphData,
+        wasInitialized: this.initialized,
         timestamp: new Date().toISOString()
       })
       
@@ -12099,6 +12305,7 @@ export const useVisualizationStore = defineStore('visualization', {
       this.graphData = null
       this.selectedNode = null
       this.metadata = {}
+      this.initialized = false
       
       // Reset settings to defaults
       this.visualConfig = { ...DEFAULT_VISUALIZATION_CONFIG }
@@ -12227,7 +12434,7 @@ interface WebSocketState {
   connectionAttempts: number
   lastReconnectTime: number
   gpuEnabled: boolean
-  isInitialLayout: boolean
+  initialDataRequested: boolean
   performanceMetrics: {
     avgMessageProcessingTime: number
     messageProcessingSamples: number[]
@@ -12251,7 +12458,7 @@ export const useWebSocketStore = defineStore('websocket', {
     connectionAttempts: 0,
     lastReconnectTime: 0,
     gpuEnabled: false,
-    isInitialLayout: true,
+    initialDataRequested: false,
     performanceMetrics: {
       avgMessageProcessingTime: 0,
       messageProcessingSamples: [],
@@ -12276,14 +12483,14 @@ export const useWebSocketStore = defineStore('websocket', {
       if (avgMessageProcessingTime > 50 || avgPositionUpdateTime > 8) return 'fair'
       return 'good'
     },
-    isGPUEnabled: (state) => state.gpuEnabled,
-    isInitialLayoutPhase: (state) => state.isInitialLayout
+    isGPUEnabled: (state) => state.gpuEnabled
   },
 
   actions: {
     async initialize() {
+      console.debug('[WebSocketStore] Initializing websocket store')
       if (this.service) {
-        console.log('WebSocket service already initialized')
+        console.log('[WebSocketStore] WebSocket service already initialized')
         return
       }
 
@@ -12295,6 +12502,7 @@ export const useWebSocketStore = defineStore('websocket', {
       this._setupEventHandlers(visualizationStore, binaryUpdateStore)
       
       try {
+        console.debug('[WebSocketStore] Attempting to connect websocket')
         await this.service.connect()
       } catch (error) {
         this._handleConnectionError(error)
@@ -12306,14 +12514,21 @@ export const useWebSocketStore = defineStore('websocket', {
       if (!this.service) return
 
       this.service.on('open', () => {
-        console.debug('WebSocket connected, requesting initial data')
+        console.debug('[WebSocketStore] WebSocket connected, connection state:', {
+          connected: this.connected,
+          initialDataRequested: this.initialDataRequested,
+          connectionAttempts: this.connectionAttempts
+        })
         this.connected = true
         this.error = null
         this.connectionAttempts = 0
-        this.requestInitialData()
+        if (!this.initialDataRequested) {
+          this.requestInitialData()
+        }
       })
 
       this.service.on('close', () => {
+        console.debug('[WebSocketStore] WebSocket closed')
         this.connected = false
         this._handleDisconnect()
       })
@@ -12328,11 +12543,16 @@ export const useWebSocketStore = defineStore('websocket', {
 
       this.service.on('graphUpdate', (message: GraphUpdateMessage) => {
         const startTime = performance.now()
+        console.debug('[WebSocketStore] Received graph update message:', {
+          type: message.type,
+          hasGraphData: !!message.graphData,
+          timestamp: new Date().toISOString()
+        })
         
         try {
           this._handleGraphUpdate(message, visualizationStore)
         } catch (error) {
-          console.error('Error processing graph update:', error)
+          console.error('[WebSocketStore] Error processing graph update:', error)
         }
 
         this._updateMessageProcessingMetrics(performance.now() - startTime)
@@ -12342,10 +12562,14 @@ export const useWebSocketStore = defineStore('websocket', {
         const startTime = performance.now()
         
         try {
-          this.isInitialLayout = message.isInitialLayout
-          binaryUpdateStore.updateFromBinary(message.data, message.isInitialLayout)
+          console.debug('[WebSocketStore] Processing GPU positions update:', {
+            dataSize: message.data.byteLength,
+            nodeCount: message.nodeCount,
+            timestamp: new Date().toISOString()
+          })
+          binaryUpdateStore.updateFromBinary(message)
         } catch (error) {
-          console.error('Error processing position update:', error)
+          console.error('[WebSocketStore] Error processing position update:', error)
         }
 
         this._updatePositionUpdateMetrics(performance.now() - startTime)
@@ -12353,50 +12577,57 @@ export const useWebSocketStore = defineStore('websocket', {
 
       // Handle simulation mode changes
       this.service.on('simulationModeSet', (mode: string) => {
+        console.debug('[WebSocketStore] Setting simulation mode:', mode)
         visualizationStore.setSimulationMode(mode)
       })
 
-      // Handle all messages to catch GPU and layout state updates
+      // Handle all messages to catch GPU state updates
       this.service.on('message', (message: BaseMessage) => {
-        if (message.type === 'gpu_state' && 'enabled' in message) {
+        console.debug('[WebSocketStore] Received message:', {
+          type: message.type,
+          timestamp: new Date().toISOString()
+        })
+        
+        if (message.type === 'gpuState' && 'enabled' in message) {
           this.gpuEnabled = message.enabled
-          console.debug(`GPU acceleration ${message.enabled ? 'enabled' : 'disabled'}`)
-        }
-        else if (message.type === 'layout_state' && 'isInitial' in message) {
-          this.isInitialLayout = message.isInitial
-          console.debug(`Layout phase: ${message.isInitial ? 'initial' : 'dynamic'}`)
+          console.debug(`[WebSocketStore] GPU acceleration ${message.enabled ? 'enabled' : 'disabled'}`)
         }
       })
     },
 
     _handleGraphUpdate(message: GraphUpdateMessage, visualizationStore: any) {
-      console.debug('Received graph update:', {
+      console.debug('[WebSocketStore] Processing graph update:', {
         nodeCount: message.graphData?.nodes?.length || 0,
         edgeCount: message.graphData?.edges?.length || 0,
+        hasMetadata: !!message.graphData?.metadata,
         timestamp: new Date().toISOString()
       })
 
-      if (!message.graphData && !message.graph_data) {
-        console.warn('No graph data found in message')
+      if (!message.graphData) {
+        console.warn('[WebSocketStore] No graph data found in message')
         return
       }
 
-      const graphData = message.graphData || message.graph_data
-      if (!graphData) return
+      console.debug('[WebSocketStore] Graph data details:', {
+        nodes: message.graphData.nodes?.map(n => ({ id: n.id, hasPosition: !!n.position })) || [],
+        edges: message.graphData.edges?.map(e => ({ source: e.source, target: e.target })) || [],
+        metadata: message.graphData.metadata
+      })
 
-      const edges: Edge[] = graphData.edges.map((edge: WsEdge) => ({
+      const edges: Edge[] = message.graphData.edges.map((edge: WsEdge) => ({
         ...edge,
         id: `${edge.source}-${edge.target}`
       }))
 
       visualizationStore.setGraphData(
-        graphData.nodes as Node[],
+        message.graphData.nodes as Node[],
         edges,
-        graphData.metadata
+        message.graphData.metadata
       )
     },
 
     _handleConnectionError(error: unknown) {
+      console.error('[WebSocketStore] Connection error:', error)
       this.error = error instanceof Error ? error.message : 'Unknown connection error'
       this.connectionAttempts++
       this.lastReconnectTime = Date.now()
@@ -12405,12 +12636,12 @@ export const useWebSocketStore = defineStore('websocket', {
     _handleError(error: ErrorMessage) {
       this.error = error.message || 'Unknown error'
       if (error.code) {
-        console.error(`WebSocket error [${error.code}]:`, this.error)
+        console.error(`[WebSocketStore] WebSocket error [${error.code}]:`, this.error)
       } else {
-        console.error('WebSocket error:', this.error)
+        console.error('[WebSocketStore] WebSocket error:', this.error)
       }
       if (error.details) {
-        console.debug('Error details:', error.details)
+        console.debug('[WebSocketStore] Error details:', error.details)
       }
     },
 
@@ -12422,11 +12653,16 @@ export const useWebSocketStore = defineStore('websocket', {
       }
       
       this.connectionAttempts++
+      console.debug('[WebSocketStore] Handling disconnect:', {
+        connectionAttempts: this.connectionAttempts,
+        timeSinceLastReconnect,
+        timestamp: new Date().toISOString()
+      })
     },
 
     _handleMaxReconnectAttempts() {
       this.error = 'Maximum reconnection attempts reached. Please refresh the page.'
-      console.error('WebSocket max reconnection attempts reached')
+      console.error('[WebSocketStore] Max reconnection attempts reached')
     },
 
     _updateMessageProcessingMetrics(processingTime: number) {
@@ -12469,20 +12705,26 @@ export const useWebSocketStore = defineStore('websocket', {
 
     send(data: any) {
       if (!this.service) {
-        console.error('Cannot send message: WebSocket service not initialized')
+        console.error('[WebSocketStore] Cannot send message: WebSocket service not initialized')
         return
       }
+      console.debug('[WebSocketStore] Sending message:', {
+        type: data.type,
+        timestamp: new Date().toISOString()
+      })
       this.messageCount++
       this.lastMessageTime = Date.now()
       this.service.send(data)
     },
 
     requestInitialData() {
-      console.debug('Requesting initial graph data')
-      this.send({ type: 'initial_data' })
+      console.debug('[WebSocketStore] Requesting initial graph data')
+      this.initialDataRequested = true
+      this.send({ type: 'initialData' })
     },
 
     async reconnect() {
+      console.debug('[WebSocketStore] Attempting reconnection')
       if (this.service) {
         this.service.cleanup()
         this.service = null
@@ -12491,6 +12733,7 @@ export const useWebSocketStore = defineStore('websocket', {
     },
 
     cleanup() {
+      console.debug('[WebSocketStore] Cleaning up websocket store')
       if (this.service) {
         this.service.cleanup()
         this.service = null
@@ -12503,7 +12746,7 @@ export const useWebSocketStore = defineStore('websocket', {
       this.connectionAttempts = 0
       this.lastReconnectTime = 0
       this.gpuEnabled = false
-      this.isInitialLayout = true
+      this.initialDataRequested = false
       this.performanceMetrics = {
         avgMessageProcessingTime: 0,
         messageProcessingSamples: [],

@@ -1,44 +1,39 @@
-use serde::{Serialize, Deserialize};
 use actix::prelude::*;
+use serde::{Serialize, Deserialize};
 use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
 pub enum ServerMessage {
-    #[serde(rename = "graphUpdate")]
     GraphUpdate {
-        graphData: Value,
+        graph_data: Value,
     },
-    #[serde(rename = "error")]
     Error {
         message: String,
         code: Option<String>,
         details: Option<String>,
     },
-    #[serde(rename = "positionUpdateComplete")]
     PositionUpdateComplete {
         status: String,
-        isInitialLayout: bool,
     },
-    #[serde(rename = "settingsUpdated")]
     SettingsUpdated {
         settings: Value,
     },
-    #[serde(rename = "simulationModeSet")]
     SimulationModeSet {
         mode: String,
-        gpuEnabled: bool,
+        gpu_enabled: bool,
     },
-    #[serde(rename = "fisheyeSettingsUpdated")]
     FisheyeSettingsUpdated {
         enabled: bool,
         strength: f32,
-        focusPoint: [f32; 3],
+        focus_point: [f32; 3],
         radius: f32,
     },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GraphData {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
@@ -46,6 +41,7 @@ pub struct GraphData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Node {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -59,11 +55,11 @@ pub struct Node {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub nodeType: Option<String>,
+    pub node_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub userData: Option<Value>,
+    pub user_data: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weight: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -71,6 +67,7 @@ pub struct Node {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Edge {
     pub source: String,
     pub target: String,
@@ -81,11 +78,11 @@ pub struct Edge {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub edgeType: Option<String>,
+    pub edge_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub userData: Option<Value>,
+    pub user_data: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub directed: Option<bool>,
 }

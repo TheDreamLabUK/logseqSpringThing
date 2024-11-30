@@ -209,18 +209,15 @@ export default class WebsocketService {
           const graphMessage = message as GraphUpdateMessage;
           console.debug('[WebsocketService] Processing graph update:', {
             hasGraphData: !!graphMessage.graphData,
-            hasSnakeCaseData: !!graphMessage.graph_data,
-            nodeCount: graphMessage.graphData?.nodes?.length || graphMessage.graph_data?.nodes?.length || 0,
+            nodeCount: graphMessage.graphData?.nodes?.length || 0,
             timestamp: new Date().toISOString()
           });
 
-          const graphData = graphMessage.graphData || graphMessage.graph_data;
-          
-          if (graphData?.nodes) {
+          if (graphMessage.graphData?.nodes) {
             this.nodeIdToIndex.clear();
             this.indexToNodeId = [];
             
-            graphData.nodes.forEach((node, index) => {
+            graphMessage.graphData.nodes.forEach((node, index) => {
               this.nodeIdToIndex.set(node.id, index);
               this.indexToNodeId[index] = node.id;
             });
@@ -228,7 +225,7 @@ export default class WebsocketService {
             console.debug('[WebsocketService] Node ID mappings updated:', {
               count: this.indexToNodeId.length,
               sampleIds: this.indexToNodeId.slice(0, 3),
-              sampleNodes: graphData.nodes.slice(0, 3).map(n => ({
+              sampleNodes: graphMessage.graphData.nodes.slice(0, 3).map(n => ({
                 id: n.id,
                 hasPosition: !!n.position,
                 position: n.position

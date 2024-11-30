@@ -24,46 +24,6 @@ use crate::utils::websocket_openai::OpenAIWebSocket;
 pub const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(16);
 
-// Helper function to parse color string into RGB float array
-fn parse_color(color_str: &str) -> Option<[f32; 3]> {
-    if color_str.starts_with("rgb(") && color_str.ends_with(")") {
-        let rgb = color_str
-            .trim_start_matches("rgb(")
-            .trim_end_matches(")")
-            .split(',')
-            .map(|s| s.trim().parse::<u8>().ok())
-            .collect::<Option<Vec<_>>>()?;
-        if rgb.len() == 3 {
-            return Some([
-                rgb[0] as f32 / 255.0,
-                rgb[1] as f32 / 255.0,
-                rgb[2] as f32 / 255.0,
-            ]);
-        }
-    } else if color_str.starts_with("0x") || color_str.starts_with("#") {
-        let hex = color_str.trim_start_matches("0x").trim_start_matches("#");
-        if hex.len() == 6 {
-            if let Ok(value) = u32::from_str_radix(hex, 16) {
-                return Some([
-                    ((value >> 16) & 0xFF) as f32 / 255.0,
-                    ((value >> 8) & 0xFF) as f32 / 255.0,
-                    (value & 0xFF) as f32 / 255.0,
-                ]);
-            }
-        }
-    }
-    None
-}
-
-// Helper function to format color values
-fn format_color(color: &[f32; 3]) -> String {
-    format!("rgb({}, {}, {})", 
-        (color[0] * 255.0) as u8,
-        (color[1] * 255.0) as u8,
-        (color[2] * 255.0) as u8
-    )
-}
-
 // Helper function to convert positions to binary data
 fn positions_to_binary(nodes: &[GPUNode]) -> Vec<u8> {
     let mut binary_data = Vec::with_capacity(nodes.len() * std::mem::size_of::<NodePositionVelocity>());
@@ -563,11 +523,6 @@ impl WebSocketSessionHandler for WebSocketSession {
                         data.edges.len(),
                         data.metadata.len()
                     );
-                    
-                    if !data.nodes.is_empty() {
-                        debug!("Sample node data: {:?}", &data.nodes[0]);
-                    }
-                    
                     data
                 },
                 Err(e) => {
@@ -588,43 +543,8 @@ impl WebSocketSessionHandler for WebSocketSession {
             };
 
             info!("Preparing graph update message");
-            let nodes_json = graph_data.nodes.iter().map(|node| {
-                json!({
-                    "id": node.id,
-                    "label": node.label,
-                    "position": [node.x, node.y, node.z],
-                    "velocity": [node.vx, node.vy, node.vz],
-                    "size": node.size,
-                    "color": node.color.as_ref().and_then(|c| parse_color(c)).map(|c| format_color(&c)),
-                    "type": node.node_type,
-                    "metadata": node.metadata,
-                    "userData": node.user_data,
-                    "weight": node.weight,
-                    "group": node.group
-                })
-            }).collect::<Vec<_>>();
-
-            let edges_json = graph_data.edges.iter().map(|edge| {
-                json!({
-                    "source": edge.source,
-                    "target": edge.target,
-                    "weight": edge.weight,
-                    "width": edge.width,
-                    "color": edge.color.as_ref().and_then(|c| parse_color(c)).map(|c| format_color(&c)),
-                    "type": edge.edge_type,
-                    "metadata": edge.metadata,
-                    "userData": edge.user_data,
-                    "directed": edge.directed.unwrap_or(false)
-                })
-            }).collect::<Vec<_>>();
-
-            // Create graph update message using ServerMessage enum
             let graph_update = ServerMessage::GraphUpdate {
-                graph_data: json!({
-                    "nodes": nodes_json,
-                    "edges": edges_json,
-                    "metadata": graph_data.metadata
-                })
+                graph_data: serde_json::to_value(&*graph_data).unwrap_or_default(),
             };
 
             info!("Sending graph data to client");
@@ -638,56 +558,7 @@ impl WebSocketSessionHandler for WebSocketSession {
             // Prepare and send settings update
             info!("Preparing settings update");
             let settings_update = ServerMessage::SettingsUpdated {
-                settings: json!({
-                    "visualization": {
-                        "nodeColor": parse_color(&settings.visualization.node_color).map(|c| format_color(&c)),
-                        "edgeColor": parse_color(&settings.visualization.edge_color).map(|c| format_color(&c)),
-                        "hologramColor": parse_color(&settings.visualization.hologram_color).map(|c| format_color(&c)),
-                        "minNodeSize": settings.visualization.min_node_size,
-                        "maxNodeSize": settings.visualization.max_node_size,
-                        "hologramScale": settings.visualization.hologram_scale,
-                        "hologramOpacity": settings.visualization.hologram_opacity,
-                        "edgeOpacity": settings.visualization.edge_opacity,
-                        "fogDensity": settings.visualization.fog_density,
-                        "nodeMaterial": {
-                            "metalness": settings.visualization.node_material_metalness,
-                            "roughness": settings.visualization.node_material_roughness,
-                            "clearcoat": settings.visualization.node_material_clearcoat,
-                            "clearcoatRoughness": settings.visualization.node_material_clearcoat_roughness,
-                            "opacity": settings.visualization.node_material_opacity,
-                            "emissiveMin": settings.visualization.node_emissive_min_intensity,
-                            "emissiveMax": settings.visualization.node_emissive_max_intensity
-                        },
-                        "physics": {
-                            "iterations": settings.visualization.force_directed_iterations,
-                            "spring": settings.visualization.force_directed_spring,
-                            "repulsion": settings.visualization.force_directed_repulsion,
-                            "attraction": settings.visualization.force_directed_attraction,
-                            "damping": settings.visualization.force_directed_damping
-                        },
-                        "bloom": {
-                            "nodeStrength": settings.bloom.node_bloom_strength,
-                            "nodeRadius": settings.bloom.node_bloom_radius,
-                            "nodeThreshold": settings.bloom.node_bloom_threshold,
-                            "edgeStrength": settings.bloom.edge_bloom_strength,
-                            "edgeRadius": settings.bloom.edge_bloom_radius,
-                            "edgeThreshold": settings.bloom.edge_bloom_threshold,
-                            "envStrength": settings.bloom.environment_bloom_strength,
-                            "envRadius": settings.bloom.environment_bloom_radius,
-                            "envThreshold": settings.bloom.environment_bloom_threshold
-                        }
-                    },
-                    "fisheye": {
-                        "enabled": settings.fisheye.enabled,
-                        "strength": settings.fisheye.strength,
-                        "radius": settings.fisheye.radius,
-                        "focusPoint": [
-                            settings.fisheye.focus_x,
-                            settings.fisheye.focus_y,
-                            settings.fisheye.focus_z
-                        ]
-                    }
-                })
+                settings: serde_json::to_value(&*settings).unwrap_or_default(),
             };
 
             info!("Sending settings to client");
