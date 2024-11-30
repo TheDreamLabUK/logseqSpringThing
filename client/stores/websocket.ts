@@ -15,6 +15,7 @@ interface WebSocketState {
   connectionAttempts: number
   lastReconnectTime: number
   gpuEnabled: boolean
+  initialDataRequested: boolean
   performanceMetrics: {
     avgMessageProcessingTime: number
     messageProcessingSamples: number[]
@@ -38,6 +39,7 @@ export const useWebSocketStore = defineStore('websocket', {
     connectionAttempts: 0,
     lastReconnectTime: 0,
     gpuEnabled: false,
+    initialDataRequested: false,
     performanceMetrics: {
       avgMessageProcessingTime: 0,
       messageProcessingSamples: [],
@@ -67,8 +69,9 @@ export const useWebSocketStore = defineStore('websocket', {
 
   actions: {
     async initialize() {
+      console.debug('[WebSocketStore] Initializing websocket store')
       if (this.service) {
-        console.log('WebSocket service already initialized')
+        console.log('[WebSocketStore] WebSocket service already initialized')
         return
       }
 
@@ -80,6 +83,7 @@ export const useWebSocketStore = defineStore('websocket', {
       this._setupEventHandlers(visualizationStore, binaryUpdateStore)
       
       try {
+        console.debug('[WebSocketStore] Attempting to connect websocket')
         await this.service.connect()
       } catch (error) {
         this._handleConnectionError(error)
@@ -91,14 +95,21 @@ export const useWebSocketStore = defineStore('websocket', {
       if (!this.service) return
 
       this.service.on('open', () => {
-        console.debug('WebSocket connected, requesting initial data')
+        console.debug('[WebSocketStore] WebSocket connected, connection state:', {
+          connected: this.connected,
+          initialDataRequested: this.initialDataRequested,
+          connectionAttempts: this.connectionAttempts
+        })
         this.connected = true
         this.error = null
         this.connectionAttempts = 0
-        this.requestInitialData()
+        if (!this.initialDataRequested) {
+          this.requestInitialData()
+        }
       })
 
       this.service.on('close', () => {
+        console.debug('[WebSocketStore] WebSocket closed')
         this.connected = false
         this._handleDisconnect()
       })
@@ -113,11 +124,17 @@ export const useWebSocketStore = defineStore('websocket', {
 
       this.service.on('graphUpdate', (message: GraphUpdateMessage) => {
         const startTime = performance.now()
+        console.debug('[WebSocketStore] Received graph update message:', {
+          type: message.type,
+          hasGraphData: !!message.graphData,
+          hasSnakeCaseData: !!message.graph_data,
+          timestamp: new Date().toISOString()
+        })
         
         try {
           this._handleGraphUpdate(message, visualizationStore)
         } catch (error) {
-          console.error('Error processing graph update:', error)
+          console.error('[WebSocketStore] Error processing graph update:', error)
         }
 
         this._updateMessageProcessingMetrics(performance.now() - startTime)
@@ -127,9 +144,14 @@ export const useWebSocketStore = defineStore('websocket', {
         const startTime = performance.now()
         
         try {
+          console.debug('[WebSocketStore] Processing GPU positions update:', {
+            dataSize: message.data.byteLength,
+            nodeCount: message.nodeCount,
+            timestamp: new Date().toISOString()
+          })
           binaryUpdateStore.updateFromBinary(message)
         } catch (error) {
-          console.error('Error processing position update:', error)
+          console.error('[WebSocketStore] Error processing position update:', error)
         }
 
         this._updatePositionUpdateMetrics(performance.now() - startTime)
@@ -137,32 +159,45 @@ export const useWebSocketStore = defineStore('websocket', {
 
       // Handle simulation mode changes
       this.service.on('simulationModeSet', (mode: string) => {
+        console.debug('[WebSocketStore] Setting simulation mode:', mode)
         visualizationStore.setSimulationMode(mode)
       })
 
       // Handle all messages to catch GPU state updates
       this.service.on('message', (message: BaseMessage) => {
+        console.debug('[WebSocketStore] Received message:', {
+          type: message.type,
+          timestamp: new Date().toISOString()
+        })
+        
         if (message.type === 'gpu_state' && 'enabled' in message) {
           this.gpuEnabled = message.enabled
-          console.debug(`GPU acceleration ${message.enabled ? 'enabled' : 'disabled'}`)
+          console.debug(`[WebSocketStore] GPU acceleration ${message.enabled ? 'enabled' : 'disabled'}`)
         }
       })
     },
 
     _handleGraphUpdate(message: GraphUpdateMessage, visualizationStore: any) {
-      console.debug('Received graph update:', {
+      console.debug('[WebSocketStore] Processing graph update:', {
         nodeCount: message.graphData?.nodes?.length || 0,
         edgeCount: message.graphData?.edges?.length || 0,
+        hasMetadata: !!(message.graphData?.metadata || message.graph_data?.metadata),
         timestamp: new Date().toISOString()
       })
 
       if (!message.graphData && !message.graph_data) {
-        console.warn('No graph data found in message')
+        console.warn('[WebSocketStore] No graph data found in message')
         return
       }
 
       const graphData = message.graphData || message.graph_data
       if (!graphData) return
+
+      console.debug('[WebSocketStore] Graph data details:', {
+        nodes: graphData.nodes?.map(n => ({ id: n.id, hasPosition: !!n.position })) || [],
+        edges: graphData.edges?.map(e => ({ source: e.source, target: e.target })) || [],
+        metadata: graphData.metadata
+      })
 
       const edges: Edge[] = graphData.edges.map((edge: WsEdge) => ({
         ...edge,
@@ -177,6 +212,7 @@ export const useWebSocketStore = defineStore('websocket', {
     },
 
     _handleConnectionError(error: unknown) {
+      console.error('[WebSocketStore] Connection error:', error)
       this.error = error instanceof Error ? error.message : 'Unknown connection error'
       this.connectionAttempts++
       this.lastReconnectTime = Date.now()
@@ -185,12 +221,12 @@ export const useWebSocketStore = defineStore('websocket', {
     _handleError(error: ErrorMessage) {
       this.error = error.message || 'Unknown error'
       if (error.code) {
-        console.error(`WebSocket error [${error.code}]:`, this.error)
+        console.error(`[WebSocketStore] WebSocket error [${error.code}]:`, this.error)
       } else {
-        console.error('WebSocket error:', this.error)
+        console.error('[WebSocketStore] WebSocket error:', this.error)
       }
       if (error.details) {
-        console.debug('Error details:', error.details)
+        console.debug('[WebSocketStore] Error details:', error.details)
       }
     },
 
@@ -202,11 +238,16 @@ export const useWebSocketStore = defineStore('websocket', {
       }
       
       this.connectionAttempts++
+      console.debug('[WebSocketStore] Handling disconnect:', {
+        connectionAttempts: this.connectionAttempts,
+        timeSinceLastReconnect,
+        timestamp: new Date().toISOString()
+      })
     },
 
     _handleMaxReconnectAttempts() {
       this.error = 'Maximum reconnection attempts reached. Please refresh the page.'
-      console.error('WebSocket max reconnection attempts reached')
+      console.error('[WebSocketStore] Max reconnection attempts reached')
     },
 
     _updateMessageProcessingMetrics(processingTime: number) {
@@ -249,20 +290,26 @@ export const useWebSocketStore = defineStore('websocket', {
 
     send(data: any) {
       if (!this.service) {
-        console.error('Cannot send message: WebSocket service not initialized')
+        console.error('[WebSocketStore] Cannot send message: WebSocket service not initialized')
         return
       }
+      console.debug('[WebSocketStore] Sending message:', {
+        type: data.type,
+        timestamp: new Date().toISOString()
+      })
       this.messageCount++
       this.lastMessageTime = Date.now()
       this.service.send(data)
     },
 
     requestInitialData() {
-      console.debug('Requesting initial graph data')
+      console.debug('[WebSocketStore] Requesting initial graph data')
+      this.initialDataRequested = true
       this.send({ type: 'initial_data' })
     },
 
     async reconnect() {
+      console.debug('[WebSocketStore] Attempting reconnection')
       if (this.service) {
         this.service.cleanup()
         this.service = null
@@ -271,6 +318,7 @@ export const useWebSocketStore = defineStore('websocket', {
     },
 
     cleanup() {
+      console.debug('[WebSocketStore] Cleaning up websocket store')
       if (this.service) {
         this.service.cleanup()
         this.service = null
@@ -283,6 +331,7 @@ export const useWebSocketStore = defineStore('websocket', {
       this.connectionAttempts = 0
       this.lastReconnectTime = 0
       this.gpuEnabled = false
+      this.initialDataRequested = false
       this.performanceMetrics = {
         avgMessageProcessingTime: 0,
         messageProcessingSamples: [],

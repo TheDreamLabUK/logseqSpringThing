@@ -245,6 +245,7 @@ async fn main() -> std::io::Result<()> {
     };
 
     let websocket_manager = Arc::new(WebSocketManager::new());
+    let websocket_data = web::Data::new(websocket_manager.clone());
     
     // Initialize GPU compute with default graph
     log::info!("Initializing GPU compute...");
@@ -304,6 +305,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
+            .app_data(websocket_data.clone()) // Add WebSocketManager as app data
             .wrap(middleware::Logger::default())
             .route("/health", web::get().to(health_check))
             .service(
