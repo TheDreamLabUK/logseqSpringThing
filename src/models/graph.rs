@@ -1,12 +1,10 @@
-// graph.rs
-
 use super::node::Node;
 use super::edge::Edge;
-use super::metadata::Metadata;
+use super::metadata::MetadataStore;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
-/// Represents the graph data structure containing nodes and edges.
+/// Represents the graph data structure containing nodes, edges, and metadata.
+/// All fields use camelCase serialization for client compatibility.
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphData {
@@ -14,8 +12,8 @@ pub struct GraphData {
     pub nodes: Vec<Node>,
     /// List of edges connecting the nodes.
     pub edges: Vec<Edge>,
-    /// Metadata associated with the graph.
-    pub metadata: HashMap<String, Metadata>,
+    /// Metadata associated with the graph, using camelCase keys.
+    pub metadata: MetadataStore,
 }
 
 impl GraphData {
@@ -23,7 +21,7 @@ impl GraphData {
         Self {
             nodes: Vec::new(),
             edges: Vec::new(),
-            metadata: HashMap::new(),
+            metadata: MetadataStore::new(),
         }
     }
 }

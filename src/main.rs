@@ -17,7 +17,7 @@ use crate::handlers::{
 };
 use crate::models::graph::GraphData;
 use crate::services::file_service::{GitHubService, RealGitHubService, FileService};
-use crate::services::perplexity_service::{PerplexityService, PerplexityServiceImpl};
+use crate::services::perplexity_service::PerplexityService;
 use crate::services::ragflow_service::RAGFlowService;
 use crate::services::speech_service::SpeechService;
 use crate::services::graph_service::GraphService;
@@ -53,7 +53,7 @@ async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::i
     log::info!("Building graph from cached metadata...");
     match GraphService::build_graph_from_metadata(&metadata_map).await {
         Ok(graph_data) => {
-            let mut graph = app_state.graph_data.write().await;
+            let mut graph = app_state.graph_service.graph_data.write().await;
             *graph = graph_data.clone(); // Clone before dropping the lock
             log::info!("Graph initialized from cache with {} nodes and {} edges", 
                 graph.nodes.len(), 
@@ -102,15 +102,8 @@ async fn update_graph_periodically(app_state: web::Data<AppState>) {
                 if !processed_files.is_empty() {
                     log::info!("Found {} updated files, updating graph", processed_files.len());
 
-                    // Update file cache with new/modified files
-                    let mut file_cache = app_state.file_cache.write().await;
-                    for processed_file in &processed_files {
-                        file_cache.insert(processed_file.file_name.clone(), processed_file.content.clone());
-                    }
-                    drop(file_cache);
-
                     // Update graph while preserving node positions
-                    let mut graph = app_state.graph_data.write().await;
+                    let mut graph = app_state.graph_service.graph_data.write().await;
                     let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
                         .map(|node| (node.id.clone(), (node.x, node.y, node.z)))
                         .collect();
@@ -187,10 +180,6 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // Initialize core data structures
-    let file_cache = Arc::new(RwLock::new(HashMap::new()));
-    let graph_data = Arc::new(RwLock::new(GraphData::default()));
-
     // Initialize GitHub service
     log::info!("Initializing GitHub service...");
     let github_service: Arc<dyn GitHubService + Send + Sync> = {
@@ -229,7 +218,14 @@ async fn main() -> std::io::Result<()> {
     };
 
     // Initialize services
-    let perplexity_service = Arc::new(PerplexityServiceImpl::new()) as Arc<dyn PerplexityService + Send + Sync>;
+    log::info!("Initializing Perplexity service...");
+    let perplexity_service = match PerplexityService::new(settings.clone()) {
+        Ok(service) => Arc::new(service),
+        Err(e) => {
+            log::error!("Failed to initialize PerplexityService: {:?}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize PerplexityService: {:?}", e)));
+        }
+    };
     
     log::info!("Initializing RAGFlow service...");
     let ragflow_service = match RAGFlowService::new(settings.clone()).await {
@@ -262,10 +258,9 @@ async fn main() -> std::io::Result<()> {
     
     // Initialize GPU compute with default graph
     log::info!("Initializing GPU compute...");
-    let initial_graph_data = graph_data.read().await;
-    let gpu_compute = match GPUCompute::new(&initial_graph_data).await {
+    let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
         Ok(gpu) => {
-            log::info!("GPU initialization successful with {} nodes", initial_graph_data.nodes.len());
+            log::info!("GPU initialization successful");
             Some(Arc::new(RwLock::new(gpu)))
         },
         Err(e) => {
@@ -273,7 +268,6 @@ async fn main() -> std::io::Result<()> {
             None
         }
     };
-    drop(initial_graph_data);
 
     // Initialize speech service
     log::info!("Initializing speech service...");
@@ -285,8 +279,6 @@ async fn main() -> std::io::Result<()> {
 
     // Create application state
     let app_state = web::Data::new(AppState::new(
-        graph_data,
-        file_cache,
         settings.clone(),
         github_service,
         perplexity_service,
@@ -340,7 +332,7 @@ async fn main() -> std::io::Result<()> {
             )
             .service(
                 web::scope("/api/perplexity")
-                    .route("/process", web::post().to(perplexity_handler::process_files))
+                    .service(perplexity_handler::handle_perplexity)
             )
             .route("/ws", web::get().to(|req: HttpRequest, stream: web::Payload, websocket_manager: web::Data<Arc<WebSocketManager>>| WebSocketManager::handle_websocket(req, stream, websocket_manager)))
             .route("/test_speech", web::get().to(test_speech_service))

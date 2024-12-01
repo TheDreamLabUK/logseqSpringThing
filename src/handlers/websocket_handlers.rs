@@ -12,7 +12,6 @@ use actix_web_actors::ws;
 use actix::StreamHandler;
 
 use crate::AppState;
-use crate::models::node::GPUNode;
 use crate::models::simulation_params::{SimulationMode, SimulationParams};
 use crate::models::position_update::NodePositionVelocity;
 use crate::utils::websocket_messages::{
@@ -25,18 +24,10 @@ pub const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(16);
 
 // Helper function to convert positions to binary data
-fn positions_to_binary(nodes: &[GPUNode]) -> Vec<u8> {
+fn positions_to_binary(nodes: &[NodePositionVelocity]) -> Vec<u8> {
     let mut binary_data = Vec::with_capacity(nodes.len() * std::mem::size_of::<NodePositionVelocity>());
     for node in nodes {
-        let position = NodePositionVelocity {
-            x: node.x,
-            y: node.y,
-            z: node.z,
-            vx: node.vx,
-            vy: node.vy,
-            vz: node.vz,
-        };
-        binary_data.extend_from_slice(bytemuck::bytes_of(&position));
+        binary_data.extend_from_slice(bytemuck::bytes_of(node));
     }
     binary_data
 }
@@ -76,18 +67,24 @@ impl Handler<GpuUpdate> for WebSocketSession {
     type Result = ();
 
     fn handle(&mut self, _: GpuUpdate, ctx: &mut Self::Context) {
-        if let Some(gpu_compute) = &self.state.gpu_compute {
-            let gpu_compute = gpu_compute.clone();
-            let ctx_addr = ctx.address();
+        // GPU updates are now handled through graph_service
+        let state = self.state.clone();
+        let ctx_addr = ctx.address();
+        
+        actix::spawn(async move {
+            let graph = state.graph_service.graph_data.read().await;
+            let nodes: Vec<NodePositionVelocity> = graph.nodes.iter().map(|node| NodePositionVelocity {
+                x: node.x,
+                y: node.y,
+                z: node.z,
+                vx: node.vx,
+                vy: node.vy,
+                vz: node.vz,
+            }).collect();
             
-            actix::spawn(async move {
-                let gpu = gpu_compute.read().await;
-                if let Ok(nodes) = gpu.get_node_positions().await {
-                    let binary_data = positions_to_binary(&nodes);
-                    ctx_addr.do_send(SendBinary(binary_data));
-                }
-            });
-        }
+            let binary_data = positions_to_binary(&nodes);
+            ctx_addr.do_send(SendBinary(binary_data));
+        });
     }
 }
 
@@ -130,15 +127,15 @@ impl WebSocketSession {
         let positions = positions.clone();
 
         actix::spawn(async move {
-            let mut graph_data = state.graph_data.write().await;
+            let mut graph = state.graph_service.graph_data.write().await;
             for (i, pos) in positions.iter().enumerate() {
-                if i < graph_data.nodes.len() {
-                    graph_data.nodes[i].x = pos.x;
-                    graph_data.nodes[i].y = pos.y;
-                    graph_data.nodes[i].z = pos.z;
-                    graph_data.nodes[i].vx = pos.vx;
-                    graph_data.nodes[i].vy = pos.vy;
-                    graph_data.nodes[i].vz = pos.vz;
+                if i < graph.nodes.len() {
+                    graph.nodes[i].x = pos.x;
+                    graph.nodes[i].y = pos.y;
+                    graph.nodes[i].z = pos.z;
+                    graph.nodes[i].vx = pos.vx;
+                    graph.nodes[i].vy = pos.vy;
+                    graph.nodes[i].vz = pos.vz;
                 }
             }
             debug!("Updated {} node positions", positions.len());
@@ -156,65 +153,15 @@ impl WebSocketSession {
 
             // Update graph data with new positions
             {
-                let mut graph_data = state.graph_data.write().await;
+                let mut graph = state.graph_service.graph_data.write().await;
                 for node_pos in &msg.nodes {
-                    if let Some(node) = graph_data.nodes.iter_mut().find(|n| n.id == node_pos.id) {
-                        // Update x, y, z directly instead of using position method
+                    if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == node_pos.id) {
                         node.x = node_pos.position[0];
                         node.y = node_pos.position[1];
                         node.z = node_pos.position[2];
-                        // Reset velocity components directly
                         node.vx = 0.0;
                         node.vy = 0.0;
                         node.vz = 0.0;
-                    }
-                }
-            }
-
-            // Update GPU compute if available
-            if let Some(gpu_compute) = &state.gpu_compute {
-                let mut gpu = gpu_compute.write().await;
-                
-                // Convert node positions to NodePositionVelocity format
-                let positions: Vec<NodePositionVelocity> = msg.nodes.iter().map(|node| NodePositionVelocity {
-                    x: node.position[0],
-                    y: node.position[1],
-                    z: node.position[2],
-                    vx: 0.0,
-                    vy: 0.0,
-                    vz: 0.0,
-                }).collect();
-
-                // Update GPU node positions using the correct method name
-                if let Err(e) = gpu.update_positions(&positions).await {
-                    error!("Failed to update GPU node positions: {}", e);
-                    let error_message = ServerMessage::Error {
-                        message: format!("Failed to update GPU node positions: {}", e),
-                        code: Some("GPU_UPDATE_ERROR".to_string()),
-                        details: Some("Error occurred while updating GPU node positions".to_string()),
-                    };
-                    if let Ok(error_str) = serde_json::to_string(&error_message) {
-                        ctx_addr.do_send(SendText(error_str));
-                    }
-                    return;
-                }
-
-                // Get updated positions from GPU
-                match gpu.get_node_positions().await {
-                    Ok(nodes) => {
-                        let binary_data = positions_to_binary(&nodes);
-                        ctx_addr.do_send(SendBinary(binary_data));
-                    },
-                    Err(e) => {
-                        error!("Failed to get GPU node positions: {}", e);
-                        let error_message = ServerMessage::Error {
-                            message: format!("Failed to get GPU node positions: {}", e),
-                            code: Some("GPU_POSITION_ERROR".to_string()),
-                            details: Some("Error occurred while retrieving node positions from GPU".to_string()),
-                        };
-                        if let Ok(error_str) = serde_json::to_string(&error_message) {
-                            ctx_addr.do_send(SendText(error_str));
-                        }
                     }
                 }
             }
@@ -265,7 +212,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                         }
                         Some("chat") => {
                             if let Some(message) = value.get("message").and_then(|m| m.as_str()) {
-                                let use_openai = value.get("useOpenAI")
+                                let use_openai = value.get("use_openai")
                                     .and_then(|o| o.as_bool())
                                     .unwrap_or(false);
                                 self.handle_chat_message(ctx, message.to_string(), use_openai);
@@ -280,26 +227,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                             if let Ok(params) = serde_json::from_value::<SimulationParams>(value["params"].clone()) {
                                 self.handle_layout(ctx, params);
                             }
-                        }
-                        Some("fisheye") => {
-                            let enabled = value.get("enabled").and_then(|e| e.as_bool()).unwrap_or(false);
-                            let strength = value.get("strength").and_then(|s| s.as_f64()).unwrap_or(1.0) as f32;
-                            let focus_point = value.get("focusPoint")
-                                .and_then(|f| f.as_array())
-                                .and_then(|arr| {
-                                    if arr.len() == 3 {
-                                        Some([
-                                            arr[0].as_f64().unwrap_or(0.0) as f32,
-                                            arr[1].as_f64().unwrap_or(0.0) as f32,
-                                            arr[2].as_f64().unwrap_or(0.0) as f32,
-                                        ])
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .unwrap_or([0.0, 0.0, 0.0]);
-                            let radius = value.get("radius").and_then(|r| r.as_f64()).unwrap_or(1.0) as f32;
-                            self.handle_fisheye_settings(ctx, enabled, strength, focus_point, radius);
                         }
                         Some("initial_data") => {
                             self.handle_initial_data(ctx);
@@ -361,9 +288,8 @@ pub trait WebSocketSessionHandler {
     fn start_gpu_updates(&self, ctx: &mut WebsocketContext<WebSocketSession>);
     fn handle_chat_message(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, message: String, use_openai: bool);
     fn handle_simulation_mode(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, mode: &str);
-    fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, params: SimulationParams);
+    fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, _params: SimulationParams);
     fn handle_initial_data(&mut self, ctx: &mut WebsocketContext<WebSocketSession>);
-    fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, _enabled: bool, _strength: f32, _focus_point: [f32; 3], _radius: f32);
 }
 
 // WebSocketSessionHandler Implementation
@@ -489,9 +415,7 @@ impl WebSocketSessionHandler for WebSocketSession {
         self.simulation_mode = match mode {
             "remote" => {
                 info!("Simulation mode set to Remote (GPU-accelerated)");
-                if self.state.gpu_compute.is_some() {
-                    self.start_gpu_updates(ctx);
-                }
+                self.start_gpu_updates(ctx);
                 SimulationMode::Remote
             },
             "gpu" => {
@@ -517,71 +441,26 @@ impl WebSocketSessionHandler for WebSocketSession {
         }
     }
 
-    fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, params: SimulationParams) {
+    fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, _params: SimulationParams) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
         let weak_addr = ctx.address().downgrade();
 
         let fut = async move {
-            if let Some(gpu_compute) = &state.gpu_compute {
-                let mut gpu = gpu_compute.write().await;
-                
-                if let Err(e) = gpu.update_simulation_params(&params) {
-                    error!("Failed to update simulation parameters: {}", e);
-                    let error_message = ServerMessage::Error {
-                        message: format!("Failed to update simulation parameters: {}", e),
-                        code: Some("SIMULATION_PARAMS_ERROR".to_string()),
-                        details: Some("Error occurred while updating GPU simulation parameters".to_string()),
-                    };
-                    if let Ok(error_str) = serde_json::to_string(&error_message) {
-                        ctx_addr.do_send(SendText(error_str));
-                    }
-                    return;
-                }
-
-                for _ in 0..params.iterations {
-                    if let Err(e) = gpu.step() {
-                        error!("GPU compute step failed: {}", e);
-                        let error_message = ServerMessage::Error {
-                            message: format!("GPU compute step failed: {}", e),
-                            code: Some("GPU_COMPUTE_ERROR".to_string()),
-                            details: Some("Error occurred during GPU computation step".to_string()),
-                        };
-                        if let Ok(error_str) = serde_json::to_string(&error_message) {
-                            ctx_addr.do_send(SendText(error_str));
-                        }
-                        return;
-                    }
-                }
-
-                match gpu.get_node_positions().await {
-                    Ok(nodes) => {
-                        let binary_data = positions_to_binary(&nodes);
-                        ctx_addr.do_send(SendBinary(binary_data));
-                    },
-                    Err(e) => {
-                        error!("Failed to get GPU node positions: {}", e);
-                        let error_message = ServerMessage::Error {
-                            message: format!("Failed to get GPU node positions: {}", e),
-                            code: Some("GPU_POSITION_ERROR".to_string()),
-                            details: Some("Error occurred while retrieving node positions from GPU".to_string()),
-                        };
-                        if let Ok(error_str) = serde_json::to_string(&error_message) {
-                            ctx_addr.do_send(SendText(error_str));
-                        }
-                    }
-                }
-            } else {
-                error!("GPU compute service not available");
-                let error_message = ServerMessage::Error {
-                    message: "GPU compute service not available".to_string(),
-                    code: Some("GPU_SERVICE_ERROR".to_string()),
-                    details: Some("The GPU compute service is not initialized or unavailable".to_string()),
-                };
-                if let Ok(error_str) = serde_json::to_string(&error_message) {
-                    ctx_addr.do_send(SendText(error_str));
-                }
-            }
+            let graph = state.graph_service.graph_data.write().await;
+            
+            // Update positions
+            let nodes: Vec<NodePositionVelocity> = graph.nodes.iter().map(|node| NodePositionVelocity {
+                x: node.x,
+                y: node.y,
+                z: node.z,
+                vx: node.vx,
+                vy: node.vy,
+                vz: node.vz,
+            }).collect();
+            
+            let binary_data = positions_to_binary(&nodes);
+            ctx_addr.do_send(SendBinary(binary_data));
 
             if let Some(addr) = weak_addr.upgrade() {
                 let completion = json!({
@@ -604,36 +483,12 @@ impl WebSocketSessionHandler for WebSocketSession {
         let fut = async move {
             info!("Handling initial_data request");
             
-            let graph_data = match state.graph_data.try_read() {
-                Ok(data) => {
-                    info!("Successfully acquired graph data read lock");
-                    info!("Current graph state: {} nodes, {} edges, {} metadata entries",
-                        data.nodes.len(),
-                        data.edges.len(),
-                        data.metadata.len()
-                    );
-                    data
-                },
-                Err(e) => {
-                    error!("Failed to acquire graph data read lock: {}", e);
-                    return;
-                }
-            };
-
-            let settings = match state.settings.try_read() {
-                Ok(s) => {
-                    info!("Successfully acquired settings read lock");
-                    s
-                },
-                Err(e) => {
-                    error!("Failed to acquire settings read lock: {}", e);
-                    return;
-                }
-            };
+            let graph = state.graph_service.graph_data.read().await;
+            let settings = state.settings.read().await;
 
             info!("Preparing graph update message");
             let graph_update = ServerMessage::GraphUpdate {
-                graph_data: (*graph_data).clone(),  // Use actual GraphData type instead of converting to Value
+                graph_data: (*graph).clone(),
             };
 
             info!("Sending graph data to client");
@@ -670,27 +525,6 @@ impl WebSocketSessionHandler for WebSocketSession {
         ctx.spawn(fut.into_actor(self));
 
         self.simulation_mode = SimulationMode::Remote;
-        if self.state.gpu_compute.is_some() {
-            info!("Starting GPU updates");
-            self.start_gpu_updates(ctx);
-        } else {
-            warn!("GPU compute not available");
-        }
-    }
-
-    fn handle_fisheye_settings(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, _enabled: bool, _strength: f32, _focus_point: [f32; 3], _radius: f32) {
-        // TODO: Remove server-side fisheye handling
-        // Fisheye effect should be purely client-side in the visualization layer
-        // This handler is temporarily disabled until proper client-side implementation
-        
-        let ctx_addr = ctx.address();
-        let completion = json!({
-            "type": "completion",
-            "message": "Fisheye settings acknowledged (to be handled client-side)"
-        });
-        if let Ok(completion_str) = serde_json::to_string(&completion) {
-            ctx_addr.do_send(SendText(completion_str));
-        }
+        self.start_gpu_updates(ctx);
     }
 }
-
