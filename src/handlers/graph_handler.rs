@@ -1,5 +1,3 @@
-// src/handlers/graph_handler.rs
-
 use actix_web::{web, HttpResponse, Responder};
 use crate::AppState;
 use serde::Serialize;
@@ -37,7 +35,7 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     info!("Received request for graph data");
 
     // Step 1: Acquire read access to the shared graph data.
-    let graph = state.graph_data.read().await;
+    let graph = state.graph_service.graph_data.read().await;
 
     debug!("Preparing graph response with {} nodes and {} edges",
         graph.nodes.len(),

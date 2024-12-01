@@ -1,7 +1,6 @@
-use crate::models::metadata::{Metadata, MetadataMap};  // Add MetadataMap
+use crate::models::metadata::{Metadata, MetadataStore, MetadataOps};
 use crate::models::graph::GraphData;
 use crate::config::Settings;
-use serde_json::ser::{PrettyFormatter, Serializer};
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -36,7 +35,7 @@ pub struct GithubFile {
     pub download_url: String,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct GithubFileMetadata {
     pub name: String,
     pub sha: String,
@@ -246,7 +245,7 @@ impl FileService {
         };
 
         // Update graph data
-        graph_data.metadata.insert(temp_filename, file_metadata);
+        graph_data.metadata.insert(temp_filename.clone(), file_metadata);
 
         // Clean up temporary file
         if let Err(e) = fs::remove_file(&temp_path) {
@@ -303,286 +302,14 @@ impl FileService {
     }
 
     /// Load metadata from file or create new if not exists
-    pub fn load_or_create_metadata() -> Result<HashMap<String, Metadata>, Box<dyn StdError + Send + Sync>> {
+    pub fn load_or_create_metadata() -> Result<MetadataStore, Box<dyn StdError + Send + Sync>> {
         if Path::new(METADATA_PATH).exists() {
             let content = fs::read_to_string(METADATA_PATH)?;
             if !content.trim().is_empty() {
-                // Try to parse as MetadataMap first
-                if let Ok(metadata_map) = serde_json::from_str::<MetadataMap>(&content) {
-                    return Ok(metadata_map.into());
-                }
-                
-                // If that fails, try parsing as legacy HashMap format
-                if let Ok(map) = serde_json::from_str::<HashMap<String, Metadata>>(&content) {
-                    // Convert to new format and save back
-                    let metadata_map = MetadataMap::from(map.clone());
-                    if let Ok(new_content) = serde_json::to_string_pretty(&metadata_map) {
-                        if let Err(e) = fs::write(METADATA_PATH, new_content) {
-                            error!("Failed to save converted metadata: {}", e);
-                        }
-                    }
-                    return Ok(map);
-                }
-                
-                error!("Failed to parse metadata file in either format");
+                return Ok(serde_json::from_str(&content)?);
             }
         }
-        Ok(HashMap::new())
-    }
-
-    /// Save metadata to file
-    pub fn save_metadata(metadata: &HashMap<String, Metadata>) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        // Wrap the HashMap in MetadataMap to ensure camelCase serialization
-        let metadata_map = MetadataMap::from(metadata.clone());
-        
-        // Create a pretty formatter that respects serde attributes
-        let formatter = PrettyFormatter::new();
-        let mut output = Vec::new();
-        let mut serializer = Serializer::with_formatter(&mut output, formatter);
-        
-        // Serialize with proper camelCase handling
-        metadata_map.serialize(&mut serializer)?;
-        
-        // Write to file
-        fs::write(METADATA_PATH, output)?;
-        Ok(())
-    }
-
-    /// Ensures all required directories exist
-    fn ensure_directories() -> Result<(), Box<dyn StdError + Send + Sync>> {
-        fs::create_dir_all(MARKDOWN_DIR)?;
-        Ok(())
-    }
-
-    /// Check if we have a valid local setup
-    fn has_valid_local_setup() -> bool {
-        // Check if metadata.json exists and is not empty
-        if let Ok(metadata_content) = fs::read_to_string(METADATA_PATH) {
-            if metadata_content.trim().is_empty() {
-                return false;
-            }
-            
-            // Try to parse metadata to ensure it's valid
-            if let Ok(metadata_map) = serde_json::from_str::<MetadataMap>(&metadata_content) {
-                if metadata_map.files.is_empty() {
-                    return false;
-                }
-                
-                // Check if the markdown files referenced in metadata actually exist
-                for (filename, _) in metadata_map.files {
-                    let file_path = format!("{}/{}", MARKDOWN_DIR, filename);
-                    if !Path::new(&file_path).exists() {
-                        return false;
-                    }
-                }
-                
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Initialize the local markdown directory and metadata structure.
-    pub async fn initialize_local_storage(
-        github_service: &dyn GitHubService,
-        _settings: Arc<RwLock<Settings>>,
-    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        info!("Checking local storage status");
-        
-        // Ensure required directories exist
-        Self::ensure_directories()?;
-
-        // Check if we already have a valid local setup
-        if Self::has_valid_local_setup() {
-            info!("Valid local setup found, skipping initialization");
-            return Ok(());
-        }
-
-        info!("Initializing local storage with files from GitHub");
-
-        // Step 1: Get all markdown files from GitHub
-        let github_files = github_service.fetch_file_metadata().await?;
-        info!("Found {} markdown files in GitHub", github_files.len());
-
-        let mut file_sizes = HashMap::new();
-        let mut file_contents = HashMap::new();
-        let mut file_metadata = HashMap::new();
-        
-        // Step 2: First pass - collect all files and their contents
-        for file_meta in github_files {
-            match github_service.fetch_file_content(&file_meta.download_url).await {
-                Ok(content) => {
-                    // Check if file starts with "public:: true"
-                    let first_line = content.lines().next().unwrap_or("").trim();
-                    if first_line != "public:: true" {
-                        debug!("Skipping non-public file: {}", file_meta.name);
-                        continue;
-                    }
-
-                    let node_name = file_meta.name.trim_end_matches(".md").to_string();
-                    file_sizes.insert(node_name.clone(), content.len());
-                    file_contents.insert(node_name, content);
-                    file_metadata.insert(file_meta.name.clone(), file_meta);
-                }
-                Err(e) => {
-                    error!("Failed to fetch content for {}: {}", file_meta.name, e);
-                }
-            }
-            sleep(GITHUB_API_DELAY).await;
-        }
-
-        // Get list of valid node names (filenames without .md)
-        let valid_nodes: Vec<String> = file_contents.keys().cloned().collect();
-
-        // Step 3: Second pass - extract references and create metadata
-        let mut metadata_map = HashMap::new();
-        
-        for (node_name, content) in &file_contents {
-            let file_name = format!("{}.md", node_name);
-            let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
-            
-            // Calculate SHA1 of content
-            let local_sha1 = Self::calculate_sha1(content);
-            
-            // Save file content
-            fs::write(&file_path, content)?;
-
-            // Extract references
-            let references = Self::extract_references(content, &valid_nodes);
-            let topic_counts = Self::convert_references_to_topic_counts(references);
-
-            // Get GitHub metadata
-            let github_meta = file_metadata.get(&file_name).unwrap();
-            let last_modified = github_meta.last_modified.unwrap_or_else(|| Utc::now());
-
-            // Calculate node size
-            let file_size = *file_sizes.get(node_name).unwrap();
-            let node_size = Self::calculate_node_size(file_size);
-
-            // Create metadata entry
-            let metadata = Metadata {
-                file_name: file_name.clone(),
-                file_size,
-                node_size,
-                hyperlink_count: Self::count_hyperlinks(content),
-                sha1: local_sha1,
-                last_modified,
-                perplexity_link: String::new(),
-                last_perplexity_process: None,
-                topic_counts,
-            };
-
-            metadata_map.insert(file_name, metadata);
-        }
-
-        // Step 4: Save metadata
-        info!("Saving metadata for {} public files", metadata_map.len());
-        Self::save_metadata(&metadata_map)?;
-
-        info!("Initialization complete. Processed {} public files", metadata_map.len());
-
-        Ok(())
-    }
-
-    /// Handles incremental updates after initial setup
-    pub async fn fetch_and_process_files(
-        github_service: &dyn GitHubService,
-        _settings: Arc<RwLock<Settings>>,
-        metadata_map: &mut HashMap<String, Metadata>,
-    ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
-        // Ensure directories exist before any operations
-        Self::ensure_directories()?;
-
-        // Get metadata for markdown files in target directory
-        let github_files_metadata = github_service.fetch_file_metadata().await?;
-        debug!("Fetched metadata for {} markdown files", github_files_metadata.len());
-
-        let mut processed_files = Vec::new();
-
-        // Save current metadata
-        Self::save_metadata(metadata_map)?;
-
-        // Clean up local files that no longer exist in GitHub
-        let github_files: HashSet<_> = github_files_metadata.iter()
-            .map(|meta| meta.name.clone())
-            .collect();
-
-        let local_files: HashSet<_> = metadata_map.keys().cloned().collect();
-        let removed_files: Vec<_> = local_files.difference(&github_files).collect();
-
-        for file_name in removed_files {
-            let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
-            if let Err(e) = fs::remove_file(&file_path) {
-                error!("Failed to remove file {}: {}", file_path, e);
-            }
-            metadata_map.remove(file_name);
-        }
-
-        // Get list of valid node names (filenames without .md)
-        let valid_nodes: Vec<String> = github_files_metadata.iter()
-            .map(|f| f.name.trim_end_matches(".md").to_string())
-            .collect();
-
-        // Process files that need updating
-        let files_to_process: Vec<_> = github_files_metadata.into_iter()
-            .filter(|file_meta| {
-                let local_meta = metadata_map.get(&file_meta.name);
-                local_meta.map_or(true, |meta| meta.sha1 != file_meta.sha)
-            })
-            .collect();
-
-        // Process each file
-        for file_meta in files_to_process {
-            match github_service.fetch_file_content(&file_meta.download_url).await {
-                Ok(content) => {
-                    let first_line = content.lines().next().unwrap_or("").trim();
-                    if first_line != "public:: true" {
-                        debug!("Skipping non-public file: {}", file_meta.name);
-                        continue;
-                    }
-
-                    let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
-                    fs::write(&file_path, &content)?;
-
-                    // Extract references
-                    let references = Self::extract_references(&content, &valid_nodes);
-                    let topic_counts = Self::convert_references_to_topic_counts(references);
-
-                    // Calculate node size
-                    let file_size = content.len();
-                    let node_size = Self::calculate_node_size(file_size);
-
-                    let new_metadata = Metadata {
-                        file_name: file_meta.name.clone(),
-                        file_size,
-                        node_size,
-                        hyperlink_count: Self::count_hyperlinks(&content),
-                        sha1: Self::calculate_sha1(&content),
-                        last_modified: file_meta.last_modified.unwrap_or_else(|| Utc::now()),
-                        perplexity_link: String::new(),
-                        last_perplexity_process: None,
-                        topic_counts,
-                    };
-
-                    metadata_map.insert(file_meta.name.clone(), new_metadata.clone());
-                    processed_files.push(ProcessedFile {
-                        file_name: file_meta.name,
-                        content,
-                        is_public: true,
-                        metadata: new_metadata,
-                    });
-                }
-                Err(e) => {
-                    error!("Failed to fetch content: {}", e);
-                }
-            }
-            sleep(GITHUB_API_DELAY).await;
-        }
-
-        // Save updated metadata
-        Self::save_metadata(metadata_map)?;
-
-        Ok(processed_files)
+        Ok(MetadataStore::new())
     }
 
     /// Calculate node size based on file size
@@ -638,6 +365,236 @@ impl FileService {
             .collect()
     }
 
+    /// Initialize the local markdown directory and metadata structure.
+    pub async fn initialize_local_storage(
+        github_service: &dyn GitHubService,
+        _settings: Arc<RwLock<Settings>>,
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
+        info!("Checking local storage status");
+        
+        // Ensure required directories exist
+        Self::ensure_directories()?;
+
+        // Check if we already have a valid local setup
+        if Self::has_valid_local_setup() {
+            info!("Valid local setup found, skipping initialization");
+            return Ok(());
+        }
+
+        info!("Initializing local storage with files from GitHub");
+
+        // Step 1: Get all markdown files from GitHub
+        let github_files = github_service.fetch_file_metadata().await?;
+        info!("Found {} markdown files in GitHub", github_files.len());
+
+        let mut file_sizes = HashMap::new();
+        let mut file_contents = HashMap::new();
+        let mut file_metadata = HashMap::new();
+        let mut metadata_store = MetadataStore::new();
+        
+        // Step 2: First pass - collect all files and their contents
+        for file_meta in github_files {
+            match github_service.fetch_file_content(&file_meta.download_url).await {
+                Ok(content) => {
+                    // Check if file starts with "public:: true"
+                    let first_line = content.lines().next().unwrap_or("").trim();
+                    if first_line != "public:: true" {
+                        debug!("Skipping non-public file: {}", file_meta.name);
+                        continue;
+                    }
+
+                    let node_name = file_meta.name.trim_end_matches(".md").to_string();
+                    file_sizes.insert(node_name.clone(), content.len());
+                    file_contents.insert(node_name, content);
+                    file_metadata.insert(file_meta.name.clone(), file_meta);
+                }
+                Err(e) => {
+                    error!("Failed to fetch content for {}: {}", file_meta.name, e);
+                }
+            }
+            sleep(GITHUB_API_DELAY).await;
+        }
+
+        // Get list of valid node names (filenames without .md)
+        let valid_nodes: Vec<String> = file_contents.keys().cloned().collect();
+
+        // Step 3: Second pass - extract references and create metadata
+        for (node_name, content) in &file_contents {
+            let file_name = format!("{}.md", node_name);
+            let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
+            
+            // Calculate SHA1 of content
+            let local_sha1 = Self::calculate_sha1(content);
+            
+            // Save file content
+            fs::write(&file_path, content)?;
+
+            // Extract references
+            let references = Self::extract_references(content, &valid_nodes);
+            let topic_counts = Self::convert_references_to_topic_counts(references);
+
+            // Get GitHub metadata
+            let github_meta = file_metadata.get(&file_name).unwrap();
+            let last_modified = github_meta.last_modified.unwrap_or_else(|| Utc::now());
+
+            // Calculate node size
+            let file_size = *file_sizes.get(node_name).unwrap();
+            let node_size = Self::calculate_node_size(file_size);
+
+            // Create metadata entry
+            let metadata = Metadata {
+                file_name: file_name.clone(),
+                file_size,
+                node_size,
+                hyperlink_count: Self::count_hyperlinks(content),
+                sha1: local_sha1,
+                last_modified,
+                perplexity_link: String::new(),
+                last_perplexity_process: None,
+                topic_counts,
+            };
+
+            metadata_store.insert(file_name, metadata);
+        }
+
+        // Step 4: Save metadata
+        info!("Saving metadata for {} public files", metadata_store.len());
+        Self::save_metadata(&metadata_store)?;
+
+        info!("Initialization complete. Processed {} public files", metadata_store.len());
+
+        Ok(())
+    }
+
+    /// Check if we have a valid local setup
+    fn has_valid_local_setup() -> bool {
+        if let Ok(metadata_content) = fs::read_to_string(METADATA_PATH) {
+            if metadata_content.trim().is_empty() {
+                return false;
+            }
+            
+            if let Ok(metadata) = serde_json::from_str::<MetadataStore>(&metadata_content) {
+                return metadata.validate_files(MARKDOWN_DIR);
+            }
+        }
+        false
+    }
+
+    /// Ensures all required directories exist
+    fn ensure_directories() -> Result<(), Box<dyn StdError + Send + Sync>> {
+        fs::create_dir_all(MARKDOWN_DIR)?;
+        Ok(())
+    }
+
+    /// Handles incremental updates after initial setup
+    pub async fn fetch_and_process_files(
+        github_service: &dyn GitHubService,
+        _settings: Arc<RwLock<Settings>>,
+        metadata_store: &mut MetadataStore,
+    ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
+        // Ensure directories exist before any operations
+        Self::ensure_directories()?;
+
+        // Get metadata for markdown files in target directory
+        let github_files_metadata = github_service.fetch_file_metadata().await?;
+        debug!("Fetched metadata for {} markdown files", github_files_metadata.len());
+
+        let mut processed_files = Vec::new();
+
+        // Save current metadata
+        Self::save_metadata(metadata_store)?;
+
+        // Clean up local files that no longer exist in GitHub
+        let github_files: HashSet<_> = github_files_metadata.iter()
+            .map(|meta| meta.name.clone())
+            .collect();
+
+        let local_files: HashSet<_> = metadata_store.keys().cloned().collect();
+        let removed_files: Vec<_> = local_files.difference(&github_files).collect();
+
+        for file_name in removed_files {
+            let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
+            if let Err(e) = fs::remove_file(&file_path) {
+                error!("Failed to remove file {}: {}", file_path, e);
+            }
+            metadata_store.remove(file_name);
+        }
+
+        // Get list of valid node names (filenames without .md)
+        let valid_nodes: Vec<String> = github_files_metadata.iter()
+            .map(|f| f.name.trim_end_matches(".md").to_string())
+            .collect();
+
+        // Process files that need updating
+        let files_to_process: Vec<_> = github_files_metadata.into_iter()
+            .filter(|file_meta| {
+                let local_meta = metadata_store.get(&file_meta.name);
+                local_meta.map_or(true, |meta| meta.sha1 != file_meta.sha)
+            })
+            .collect();
+
+        // Process each file
+        for file_meta in files_to_process {
+            match github_service.fetch_file_content(&file_meta.download_url).await {
+                Ok(content) => {
+                    let first_line = content.lines().next().unwrap_or("").trim();
+                    if first_line != "public:: true" {
+                        debug!("Skipping non-public file: {}", file_meta.name);
+                        continue;
+                    }
+
+                    let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
+                    fs::write(&file_path, &content)?;
+
+                    // Extract references
+                    let references = Self::extract_references(&content, &valid_nodes);
+                    let topic_counts = Self::convert_references_to_topic_counts(references);
+
+                    // Calculate node size
+                    let file_size = content.len();
+                    let node_size = Self::calculate_node_size(file_size);
+
+                    let new_metadata = Metadata {
+                        file_name: file_meta.name.clone(),
+                        file_size,
+                        node_size,
+                        hyperlink_count: Self::count_hyperlinks(&content),
+                        sha1: Self::calculate_sha1(&content),
+                        last_modified: file_meta.last_modified.unwrap_or_else(|| Utc::now()),
+                        perplexity_link: String::new(),
+                        last_perplexity_process: None,
+                        topic_counts,
+                    };
+
+                    metadata_store.insert(file_meta.name.clone(), new_metadata.clone());
+                    processed_files.push(ProcessedFile {
+                        file_name: file_meta.name,
+                        content,
+                        is_public: true,
+                        metadata: new_metadata,
+                    });
+                }
+                Err(e) => {
+                    error!("Failed to fetch content: {}", e);
+                }
+            }
+            sleep(GITHUB_API_DELAY).await;
+        }
+
+        // Save updated metadata
+        Self::save_metadata(metadata_store)?;
+
+        Ok(processed_files)
+    }
+
+    /// Save metadata to file
+    pub fn save_metadata(metadata: &MetadataStore) -> Result<(), Box<dyn StdError + Send + Sync>> {
+        let json = serde_json::to_string_pretty(metadata)?;
+        fs::write(METADATA_PATH, json)?;
+        Ok(())
+    }
+
+    /// Calculate SHA1 hash of content
     fn calculate_sha1(content: &str) -> String {
         use sha1::{Sha1, Digest};
         let mut hasher = Sha1::new();
@@ -645,8 +602,8 @@ impl FileService {
         format!("{:x}", hasher.finalize())
     }
 
+    /// Count hyperlinks in content
     fn count_hyperlinks(content: &str) -> usize {
-        // Simple regex to count markdown links
         let re = Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").unwrap();
         re.find_iter(content).count()
     }

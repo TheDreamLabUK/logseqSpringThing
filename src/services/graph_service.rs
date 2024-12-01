@@ -7,7 +7,7 @@ use rand::Rng;
 use crate::models::graph::GraphData;
 use crate::models::node::Node;
 use crate::models::edge::Edge;
-use crate::models::metadata::Metadata;
+use crate::models::metadata::MetadataStore;
 use crate::models::simulation_params::SimulationParams;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::AppState;
@@ -24,7 +24,7 @@ impl GraphService {
     }
 
     pub async fn build_graph(state: &web::Data<AppState>) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
-        let current_graph = state.graph_data.read().await;
+        let current_graph = state.graph_service.graph_data.read().await;
         let mut graph = GraphData::new();
 
         // Copy metadata from current graph
@@ -58,7 +58,7 @@ impl GraphService {
         debug!("Created {} nodes", graph.nodes.len());
 
         // Create edges from metadata topic counts
-        for (source_file, metadata) in &graph.metadata {
+        for (source_file, metadata) in graph.metadata.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
             
             debug!("Processing outbound links for {} with {} topic counts", 
@@ -249,7 +249,7 @@ impl GraphService {
     }
 
     pub async fn build_graph_from_metadata(
-        metadata: &HashMap<String, Metadata>
+        metadata: &MetadataStore
     ) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
         let mut graph = GraphData::new();
         let mut edge_map = HashMap::new();
@@ -281,7 +281,7 @@ impl GraphService {
         graph.metadata = metadata.clone();
 
         // Second pass: Create edges from topic counts
-        for (source_file, metadata) in metadata {
+        for (source_file, metadata) in metadata.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
             
             for (target_file, count) in &metadata.topic_counts {

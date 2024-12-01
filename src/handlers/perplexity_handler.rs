@@ -1,77 +1,54 @@
-use actix_web::{web, HttpResponse};
-use log::{info, error};
-use chrono::Utc;
-use std::collections::HashMap;
 use crate::app_state::AppState;
-use crate::services::perplexity_service::ApiClientImpl;
+use crate::models::metadata::MetadataStore;
 use crate::services::file_service::ProcessedFile;
-use crate::models::metadata::Metadata;
+use crate::services::perplexity_service::PerplexityService;
+use actix_web::{post, web, HttpResponse, Responder};
+use log::{error, info};
+use serde::{Deserialize, Serialize};
+use std::error::Error as StdError;
 
-pub async fn process_files(app_state: web::Data<AppState>) -> HttpResponse {
-    info!("Starting Perplexity processing for all files");
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PerplexityRequest {
+    pub file_name: String,
+}
+
+pub struct PerplexityHandler;
+
+impl PerplexityHandler {
+    pub async fn process_file(
+        file_name: String,
+        perplexity_service: &PerplexityService,
+        metadata_store: &mut MetadataStore,
+    ) -> Result<ProcessedFile, Box<dyn StdError + Send + Sync>> {
+        info!("Processing file with Perplexity: {}", file_name);
+        
+        let processed_file = perplexity_service.process_file(&file_name).await?;
+        
+        // Update metadata store with processed file's metadata
+        metadata_store.insert(file_name.clone(), processed_file.metadata.clone());
+        
+        Ok(processed_file)
+    }
+}
+
+#[post("")]
+pub async fn handle_perplexity(
+    data: web::Json<PerplexityRequest>,
+    app_state: web::Data<AppState>,
+) -> impl Responder {
+    let file_name = data.file_name.clone();
     
-    let settings = app_state.settings.read().await;
-    let api_client = ApiClientImpl::new();
-    let file_cache = app_state.file_cache.read().await;
-    let graph_data = app_state.graph_data.read().await;
+    let mut metadata_store = app_state.metadata.write().await;
     
-    let mut processed_count = 0;
-    let mut error_count = 0;
-    let mut pr_urls = Vec::new();
-
-    for (file_name, content) in file_cache.iter() {
-        let metadata = graph_data.metadata.get(file_name).cloned().unwrap_or_else(|| {
-            error!("No metadata found for file: {}", file_name);
-            Metadata {
-                file_name: file_name.clone(),
-                last_modified: Utc::now(),
-                topic_counts: HashMap::new(),
-                ..Default::default()
-            }
-        });
-
-        let processed_file = ProcessedFile {
-            file_name: file_name.clone(),
-            content: content.clone(),
-            is_public: true,
-            metadata: metadata.clone(),
-        };
-
-        match app_state.perplexity_service.process_file(processed_file, &settings, &api_client).await {
-            Ok(processed) => {
-                // Update file cache with processed content
-                let mut file_cache = app_state.file_cache.write().await;
-                file_cache.insert(file_name.clone(), processed.content.clone());
-                
-                // Create GitHub PR for the processed file
-                match app_state.github_pr_service.create_pull_request(
-                    file_name,
-                    &processed.content,
-                    &metadata.sha1,
-                ).await {
-                    Ok(pr_url) => {
-                        info!("Created PR for {}: {}", file_name, pr_url);
-                        pr_urls.push((file_name.clone(), pr_url));
-                    }
-                    Err(e) => {
-                        error!("Failed to create PR for {}: {}", file_name, e);
-                    }
-                }
-                
-                processed_count += 1;
-                info!("Successfully processed file: {}", file_name);
-            }
-            Err(e) => {
-                error!("Error processing file {}: {}", file_name, e);
-                error_count += 1;
-            }
+    match PerplexityHandler::process_file(
+        file_name,
+        &app_state.perplexity_service,
+        &mut metadata_store,
+    ).await {
+        Ok(processed_file) => HttpResponse::Ok().json(processed_file),
+        Err(e) => {
+            error!("Failed to process file with Perplexity: {}", e);
+            HttpResponse::InternalServerError().json("Failed to process file")
         }
     }
-
-    HttpResponse::Ok().json(serde_json::json!({
-        "status": "completed",
-        "processed_files": processed_count,
-        "errors": error_count,
-        "pull_requests": pr_urls.into_iter().collect::<HashMap<_, _>>()
-    }))
 }

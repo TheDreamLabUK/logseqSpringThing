@@ -11,7 +11,6 @@ use serde_json::{self, Value};
 use crate::models::node::GPUNode;
 use crate::models::graph::GraphData;
 use crate::utils::websocket_messages::{SendBinary, SendText, ServerMessage};
-use crate::utils::debug_logging::{ws_debug, WsDebugData};
 
 // Constants for binary protocol
 const FLOAT32_SIZE: usize = std::mem::size_of::<f32>();
@@ -83,6 +82,15 @@ impl WebSocketManager {
         debug_log!(self.debug_mode, "[WebSocketManager] WebSocket connection removed. Connections: {} -> {}", before_len, connections.len());
     }
 
+    pub async fn broadcast_message(&self, message: String) -> Result<(), Box<dyn std::error::Error>> {
+        let connections = self.connections.lock().await;
+        for addr in connections.iter() {
+            addr.do_send(SendText(message.clone()));
+        }
+        Ok(())
+    }
+
+    /// Broadcast binary position/velocity updates to all connected clients
     pub async fn broadcast_binary(&self, nodes: &[GPUNode], is_initial: bool) -> Result<(), Box<dyn std::error::Error>> {
         debug_log!(self.debug_mode, "[WebSocketManager] Broadcasting binary update for {} nodes", nodes.len());
         let mut buffer = self.binary_buffer.lock().await;
@@ -108,7 +116,7 @@ impl WebSocketManager {
             new_buffer.extend_from_slice(bytemuck::cast_slice(&node_data));
             
             if self.debug_mode && i < 3 {  // Log first 3 nodes as sample
-                trace!("[WebSocketManager] Node {}: pos=({},{},{}), vel=({},{},{})",
+                trace!("[WebSocketSession] Node {}: pos=({},{},{}), vel=({},{},{})",
                     i, node.x, node.y, node.z, node.vx, node.vy, node.vz);
             }
         }
@@ -129,21 +137,7 @@ impl WebSocketManager {
         Ok(())
     }
 
-    pub async fn broadcast_message(&self, message: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let connections = self.connections.lock().await;
-        debug_log!(self.debug_mode, "[WebSocketManager] Broadcasting message ({} bytes) to {} connections", 
-            message.len(), connections.len());
-        
-        if self.debug_mode {
-            trace!("[WebSocketManager] Message content: {}", message);
-        }
-
-        for addr in connections.iter() {
-            addr.do_send(SendText(message.to_string()));
-        }
-        Ok(())
-    }
-
+    /// Broadcast graph updates (includes metadata) to all connected clients
     pub async fn broadcast_graph_update(&self, graph: &GraphData) -> Result<(), Box<dyn std::error::Error>> {
         debug_log!(self.debug_mode, "[WebSocketManager] Broadcasting graph update with {} nodes and {} edges", 
             graph.nodes.len(), graph.edges.len());
@@ -161,7 +155,7 @@ impl WebSocketManager {
 
         // Create message using ServerMessage enum
         let message = ServerMessage::GraphUpdate {
-            graph_data: serde_json::to_value(graph)?
+            graph_data: graph.clone()
         };
 
         // Serialize to string and broadcast
@@ -290,59 +284,16 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 }
             }
             Ok(ws::Message::Binary(bin)) => {
-                // Direct binary position/velocity updates
-                if bin.len() >= HEADER_SIZE {
-                    let mut header_bytes = [0u8; 4];
-                    header_bytes.copy_from_slice(&bin[0..4]);
-                    let is_initial = f32::from_le_bytes(header_bytes) >= 1.0;
-
-                    let num_nodes = (bin.len() - HEADER_SIZE) / NODE_SIZE;
-                    debug_log!(self.manager.debug_mode, "[WebSocketSession] Received binary update: {} nodes, initial={}", 
-                        num_nodes, is_initial);
-
-                    if self.manager.debug_mode {
-                        // Log first few nodes as sample
-                        for i in 0..std::cmp::min(3, num_nodes) {
-                            let offset = HEADER_SIZE + i * NODE_SIZE;
-                            let mut pos = [0.0f32; 3];
-                            let mut vel = [0.0f32; 3];
-                            for j in 0..3 {
-                                pos[j] = f32::from_le_bytes([
-                                    bin[offset + j*4],
-                                    bin[offset + j*4 + 1],
-                                    bin[offset + j*4 + 2],
-                                    bin[offset + j*4 + 3]
-                                ]);
-                                vel[j] = f32::from_le_bytes([
-                                    bin[offset + (j+3)*4],
-                                    bin[offset + (j+3)*4 + 1],
-                                    bin[offset + (j+3)*4 + 2],
-                                    bin[offset + (j+3)*4 + 3]
-                                ]);
-                            }
-                            trace!("[WebSocketSession] Node {}: pos=({:.3},{:.3},{:.3}), vel=({:.3},{:.3},{:.3})",
-                                i, pos[0], pos[1], pos[2], vel[0], vel[1], vel[2]);
-                        }
-
-                        // Show hex dump of first 32 bytes
-                        let hex_dump: String = bin.iter()
-                            .take(32)
-                            .map(|b| format!("{:02x}", b))
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        trace!("[WebSocketSession] Binary header (first 32 bytes): {}", hex_dump);
+                debug_log!(self.manager.debug_mode, "[WebSocketSession] Binary message received: {} bytes", bin.len());
+                // Forward binary data to other clients
+                let connections = self.manager.connections.clone();
+                let bin_data = bin.to_vec();
+                actix::spawn(async move {
+                    let connections = connections.lock().await;
+                    for addr in connections.iter() {
+                        addr.do_send(SendBinary(bin_data.clone()));
                     }
-
-                    // Forward binary data to other clients
-                    let connections = self.manager.connections.clone();
-                    let bin_data = bin.to_vec();
-                    actix::spawn(async move {
-                        let connections = connections.lock().await;
-                        for addr in connections.iter() {
-                            addr.do_send(SendBinary(bin_data.clone()));
-                        }
-                    });
-                }
+                });
             }
             Ok(ws::Message::Close(reason)) => {
                 debug_log!(self.manager.debug_mode, "[WebSocketSession] Close message received: {:?}", reason);

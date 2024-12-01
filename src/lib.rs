@@ -1,5 +1,3 @@
-#![recursion_limit = "1024"]
-
 pub mod app_state;
 pub mod config;
 pub mod handlers;
@@ -7,30 +5,19 @@ pub mod models;
 pub mod services;
 pub mod utils;
 
-// Re-export commonly used types
 pub use app_state::AppState;
-pub use models::graph::GraphData;
-pub use models::edge::Edge;
-pub use models::node::Node;
-pub use models::metadata::Metadata;
-pub use services::file_service::{FileService, GitHubService, GithubFile, ProcessedFile};
-pub use services::perplexity_service::{
-    PerplexityRequest,
-    PerplexityError,
-    call_perplexity_api,
-    PerplexityService,
-    clean_logseq_links,
-    process_markdown_block,
-    select_context_blocks,
-    PerplexityResponse,
-    Message as PerplexityMessage,
-    Choice,
-    Delta,
-    Usage,
-};
-
-// Re-export config
 pub use config::Settings;
-
-// Re-export GPUCompute
-pub use utils::gpu_compute::GPUCompute;
+pub use handlers::websocket_handlers::WebSocketSession;
+pub use models::edge::Edge;
+pub use models::graph::GraphData;
+pub use models::metadata::{Metadata, MetadataStore};
+pub use models::node::Node;
+pub use models::position_update::PositionUpdate;
+pub use models::simulation_params::SimulationParams;
+pub use services::file_service::{FileService, GitHubService, GithubFileMetadata, ProcessedFile, RealGitHubService};
+pub use services::github_service::{GitHubPRService, RealGitHubPRService};
+pub use services::graph_service::GraphService;
+pub use services::perplexity_service::PerplexityService;
+pub use services::ragflow_service::RAGFlowService;
+pub use services::speech_service::SpeechService;
+pub use utils::websocket_manager::WebSocketManager;

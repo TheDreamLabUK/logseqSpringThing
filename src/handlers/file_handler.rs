@@ -1,6 +1,6 @@
 use actix_web::{web, Error as ActixError, HttpResponse};
 use serde_json::json;
-use log::{info, error, debug};
+use log::{info, error};
 
 use crate::AppState;
 use crate::services::file_service::FileService;
@@ -9,9 +9,9 @@ use crate::services::graph_service::GraphService;
 pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse {
     info!("Initiating optimized file fetch and processing");
 
-    // Load or create metadata, which now ensures directories exist
-    let mut metadata_map = match FileService::load_or_create_metadata() {
-        Ok(map) => map,
+    // Load or create metadata
+    let mut metadata_store = match FileService::load_or_create_metadata() {
+        Ok(store) => store,
         Err(e) => {
             error!("Failed to load or create metadata: {}", e);
             return HttpResponse::InternalServerError().json(json!({
@@ -22,7 +22,7 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
     };
     
     // Process files with optimized approach
-    match FileService::fetch_and_process_files(&*state.github_service, state.settings.clone(), &mut metadata_map).await {
+    match FileService::fetch_and_process_files(&*state.github_service, state.settings.clone(), &mut metadata_store).await {
         Ok(processed_files) => {
             let file_names: Vec<String> = processed_files.iter()
                 .map(|pf| pf.file_name.clone())
@@ -30,55 +30,18 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
 
             info!("Successfully processed {} public markdown files", processed_files.len());
 
-            // Update file cache and graph metadata with processed files
+            // Update metadata store
             {
-                let mut file_cache = state.file_cache.write().await;
-                let mut graph = state.graph_data.write().await;
-                for processed_file in &processed_files {
-                    // Only public files reach this point due to optimization
-                    metadata_map.insert(processed_file.file_name.clone(), processed_file.metadata.clone());
-                    file_cache.insert(processed_file.file_name.clone(), processed_file.content.clone());
-                    debug!("Updated file cache with: {}", processed_file.file_name);
-                }
-                // Update graph metadata
-                graph.metadata = metadata_map.clone();
-            }
-
-            // Save the updated metadata
-            if let Err(e) = FileService::save_metadata(&metadata_map) {
-                error!("Failed to save metadata: {}", e);
-                return HttpResponse::InternalServerError().json(json!({
-                    "status": "error",
-                    "message": format!("Failed to save metadata: {}", e)
-                }));
+                let mut metadata = state.metadata.write().await;
+                *metadata = metadata_store;
             }
 
             // Update graph with processed files
             match GraphService::build_graph(&state).await {
                 Ok(graph_data) => {
-                    let mut graph = state.graph_data.write().await;
-                    *graph = graph_data.clone();
-                    info!("Graph data structure updated successfully");
-
-                    // Send binary position update to clients
-                    if let Some(gpu) = &state.gpu_compute {
-                        let gpu = gpu.clone();
-                        let gpu_write = gpu.write().await;
-                        if let Ok(nodes) = gpu_write.get_node_positions().await {
-                            if let Err(e) = state.websocket_manager.broadcast_binary(&nodes, true).await {
-                                error!("Failed to broadcast binary update: {}", e);
-                            }
-                        }
-                    }
-
-                    // Send metadata update separately as JSON
-                    let metadata_msg = json!({
-                        "type": "metadata_update",
-                        "metadata": graph_data.metadata
-                    });
-
-                    if let Err(e) = state.websocket_manager.broadcast_message(&metadata_msg.to_string()).await {
-                        error!("Failed to broadcast metadata update: {}", e);
+                    // Send graph update (includes metadata)
+                    if let Err(e) = state.websocket_manager.broadcast_graph_update(&graph_data).await {
+                        error!("Failed to broadcast graph update: {}", e);
                     }
 
                     HttpResponse::Ok().json(json!({
@@ -105,13 +68,13 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
     }
 }
 
-pub async fn get_file_content(state: web::Data<AppState>, file_name: web::Path<String>) -> HttpResponse {
-    let file_cache = state.file_cache.read().await;
-    
-    match file_cache.get(file_name.as_str()) {
-        Some(content) => HttpResponse::Ok().body(content.clone()),
-        None => {
-            error!("File not found in cache: {}", file_name);
+pub async fn get_file_content(_state: web::Data<AppState>, file_name: web::Path<String>) -> HttpResponse {
+    // Read file directly from disk instead of cache
+    let file_path = format!("data/markdown/{}", file_name);
+    match std::fs::read_to_string(&file_path) {
+        Ok(content) => HttpResponse::Ok().body(content),
+        Err(e) => {
+            error!("Failed to read file {}: {}", file_name, e);
             HttpResponse::NotFound().json(json!({
                 "status": "error",
                 "message": format!("File not found: {}", file_name)
@@ -124,8 +87,8 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
     info!("Manually triggering graph refresh");
 
     // Load metadata from file
-    let metadata_map = match FileService::load_or_create_metadata() {
-        Ok(map) => map,
+    let metadata_store = match FileService::load_or_create_metadata() {
+        Ok(store) => store,
         Err(e) => {
             error!("Failed to load metadata: {}", e);
             return HttpResponse::InternalServerError().json(json!({
@@ -136,31 +99,11 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
     };
 
     // Build graph directly from metadata
-    match GraphService::build_graph_from_metadata(&metadata_map).await {
+    match GraphService::build_graph_from_metadata(&metadata_store).await {
         Ok(graph_data) => {
-            let mut graph = state.graph_data.write().await;
-            *graph = graph_data.clone();
-            info!("Graph data structure refreshed successfully");
-
-            // Send binary position update to clients
-            if let Some(gpu) = &state.gpu_compute {
-                let gpu = gpu.clone();
-                let gpu_write = gpu.write().await;
-                if let Ok(nodes) = gpu_write.get_node_positions().await {
-                    if let Err(e) = state.websocket_manager.broadcast_binary(&nodes, true).await {
-                        error!("Failed to broadcast binary update: {}", e);
-                    }
-                }
-            }
-
-            // Send metadata update separately as JSON
-            let metadata_msg = json!({
-                "type": "metadata_update",
-                "metadata": graph_data.metadata
-            });
-
-            if let Err(e) = state.websocket_manager.broadcast_message(&metadata_msg.to_string()).await {
-                error!("Failed to broadcast metadata update: {}", e);
+            // Send graph update (includes metadata)
+            if let Err(e) = state.websocket_manager.broadcast_graph_update(&graph_data).await {
+                error!("Failed to broadcast graph update: {}", e);
             }
 
             HttpResponse::Ok().json(json!({
@@ -180,8 +123,8 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
 
 pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, ActixError> {
     // Load metadata from file
-    let metadata_map = match FileService::load_or_create_metadata() {
-        Ok(map) => map,
+    let metadata_store = match FileService::load_or_create_metadata() {
+        Ok(store) => store,
         Err(e) => {
             error!("Failed to load metadata: {}", e);
             return Ok(HttpResponse::InternalServerError().json(json!({
@@ -192,30 +135,11 @@ pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, Ac
     };
 
     // Build graph directly from metadata
-    match GraphService::build_graph_from_metadata(&metadata_map).await {
-        Ok(graph) => {
-            // Update graph data
-            *state.graph_data.write().await = graph.clone();
-            
-            // Send binary position update to clients
-            if let Some(gpu) = &state.gpu_compute {
-                let gpu = gpu.clone();
-                let gpu_write = gpu.write().await;
-                if let Ok(nodes) = gpu_write.get_node_positions().await {
-                    if let Err(e) = state.websocket_manager.broadcast_binary(&nodes, true).await {
-                        error!("Failed to broadcast binary update: {}", e);
-                    }
-                }
-            }
-
-            // Send metadata update separately as JSON
-            let metadata_msg = json!({
-                "type": "metadata_update",
-                "metadata": graph.metadata
-            });
-
-            if let Err(e) = state.websocket_manager.broadcast_message(&metadata_msg.to_string()).await {
-                error!("Failed to broadcast metadata update: {}", e);
+    match GraphService::build_graph_from_metadata(&metadata_store).await {
+        Ok(graph_data) => {
+            // Send graph update (includes metadata)
+            if let Err(e) = state.websocket_manager.broadcast_graph_update(&graph_data).await {
+                error!("Failed to broadcast graph update: {}", e);
             }
             
             Ok(HttpResponse::Ok().json(json!({

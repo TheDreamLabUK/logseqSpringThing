@@ -10,6 +10,7 @@ use log::{info, error, debug};
 use futures::{SinkExt, StreamExt};
 use std::error::Error;
 use crate::utils::websocket_manager::WebSocketManager;
+use crate::utils::websocket_messages::{ServerMessage};
 use tokio::net::TcpStream;
 use url::Url;
 use actix_web::{web, Error as ActixError, HttpRequest, HttpResponse};
@@ -163,16 +164,15 @@ impl SpeechService {
                                                                         if let Some(audio_data) = item["audio"].as_str() {
                                                                             // Decode base64 audio data
                                                                             if let Ok(audio_bytes) = BASE64.decode(audio_data) {
-                                                                                // Create a JSON wrapper for the binary data
-                                                                                let audio_message = json!({
-                                                                                    "type": "audio",
-                                                                                    "data": audio_bytes
-                                                                                });
+                                                                                // Create audio message
+                                                                                let audio_message = ServerMessage::AudioData {
+                                                                                    audio_data: BASE64.encode(&audio_bytes),
+                                                                                };
                                                                                 
-                                                                                if let Err(e) = websocket_manager.broadcast_message(
-                                                                                    &serde_json::to_string(&audio_message).unwrap()
-                                                                                ).await {
-                                                                                    error!("Failed to broadcast audio: {}", e);
+                                                                                if let Ok(msg_str) = serde_json::to_string(&audio_message) {
+                                                                                    if let Err(e) = websocket_manager.broadcast_message(msg_str).await {
+                                                                                        error!("Failed to broadcast message: {}", e);
+                                                                                    }
                                                                                 }
                                                                             }
                                                                         }
@@ -222,16 +222,15 @@ impl SpeechService {
                                 match child.wait_with_output() {
                                     Ok(output) => {
                                         if output.status.success() {
-                                            // Create a JSON wrapper for the binary data
-                                            let audio_message = json!({
-                                                "type": "audio",
-                                                "data": output.stdout
-                                            });
+                                            // Create audio message
+                                            let audio_message = ServerMessage::AudioData {
+                                                audio_data: BASE64.encode(&output.stdout),
+                                            };
                                             
-                                            if let Err(e) = websocket_manager.broadcast_message(
-                                                &serde_json::to_string(&audio_message).unwrap()
-                                            ).await {
-                                                error!("Failed to broadcast audio: {}", e);
+                                            if let Ok(msg_str) = serde_json::to_string(&audio_message) {
+                                                if let Err(e) = websocket_manager.broadcast_message(msg_str).await {
+                                                    error!("Failed to broadcast message: {}", e);
+                                                }
                                             }
                                         } else {
                                             error!("Sonata TTS failed: {}", String::from_utf8_lossy(&output.stderr));
