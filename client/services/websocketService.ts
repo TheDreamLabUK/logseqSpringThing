@@ -44,24 +44,28 @@ const debugLog = (message: string, data?: any) => {
         Total Size: ${data.byteLength} bytes
         Header Bytes: ${Array.from(new Uint8Array(data.slice(0, 16))).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
     } else if (data instanceof Event) {
-      // For WebSocket events, show relevant properties
+      // For WebSocket events, show detailed event info
       const eventDetails = {
         type: data.type,
         timeStamp: data.timeStamp,
         isTrusted: data.isTrusted,
-        // Add other known Event properties as needed
-        ...(data instanceof CloseEvent ? {
+        target: data instanceof CloseEvent ? {
           code: data.code,
           reason: data.reason,
           wasClean: data.wasClean
-        } : {}),
-        ...(data instanceof MessageEvent ? {
-          data: data.data,
-          origin: data.origin,
-          lastEventId: data.lastEventId
-        } : {})
+        } : undefined,
+        readyState: (data.target as WebSocket)?.readyState,
+        url: (data.target as WebSocket)?.url
       };
       console.debug(`${logPrefix} Event Details:`, eventDetails);
+    } else if (data instanceof Error) {
+      // For Error objects, show full error details
+      console.debug(`${logPrefix} Error Details:`, {
+        name: data.name,
+        message: data.message,
+        stack: data.stack,
+        cause: data.cause
+      });
     } else if (typeof data === 'object') {
       // For JSON data, show full structure with type information
       console.debug(`${logPrefix} Data (${data?.constructor?.name || typeof data}):`, JSON.stringify(data, null, 2));
@@ -214,7 +218,8 @@ export default class WebsocketService {
           if (this.ws?.readyState !== WebSocket.OPEN) {
             debugLog('Connection timeout', {
               readyState: this.ws?.readyState,
-              timeout: CONNECTION_TIMEOUT
+              timeout: CONNECTION_TIMEOUT,
+              url: this.url
             });
             this.ws?.close();
             reject(new Error('WebSocket connection timeout'));
@@ -222,11 +227,12 @@ export default class WebsocketService {
           }
         }, CONNECTION_TIMEOUT);
 
-        this.ws.onopen = () => {
+        this.ws.onopen = (event) => {
           clearTimeout(connectionTimeout);
           debugLog('WebSocket connection established', {
             readyState: this.ws?.readyState,
-            url: this.url
+            url: this.url,
+            event
           });
           this.reconnectAttempts = 0;
           this.lastPongTime = Date.now();
@@ -243,8 +249,8 @@ export default class WebsocketService {
             code: event.code,
             reason: event.reason,
             wasClean: event.wasClean,
-            timestamp: new Date().toISOString(),
-            readyState: this.ws?.readyState
+            readyState: this.ws?.readyState,
+            event
           });
           
           if (!this.forceClose) {
@@ -254,23 +260,35 @@ export default class WebsocketService {
           this.emit('close', event);
         };
 
-        this.ws.onerror = (error) => {
+        this.ws.onerror = (event) => {
           clearTimeout(connectionTimeout);
           debugLog('WebSocket error occurred', {
-            error: error,
             readyState: this.ws?.readyState,
             url: this.url,
-            timestamp: new Date().toISOString()
+            event
           });
+
+          // Try to get more error details from the event
+          let errorDetails = 'Unknown error';
+          if (event instanceof ErrorEvent) {
+            errorDetails = event.message;
+          } else if ('error' in event && event.error instanceof Error) {
+            errorDetails = event.error.message;
+          } else if (event instanceof Event && event.target instanceof WebSocket) {
+            // Try to get information from WebSocket state
+            errorDetails = `WebSocket error (readyState: ${event.target.readyState})`;
+          }
+
           const errorMsg: ErrorMessage = {
             type: 'error',
             message: 'WebSocket connection error',
-            details: JSON.stringify(error)
+            details: errorDetails,
+            code: 'CONNECTION_ERROR'
           };
           this.emit('error', errorMsg);
           
           if (this.ws?.readyState !== WebSocket.OPEN) {
-            reject(error);
+            reject(new Error(`WebSocket connection failed: ${errorDetails}`));
           }
         };
 
@@ -279,8 +297,7 @@ export default class WebsocketService {
       } catch (error) {
         debugLog('Error creating WebSocket connection', {
           error,
-          url: this.url,
-          timestamp: new Date().toISOString()
+          url: this.url
         });
         reject(error);
         this.reconnect();

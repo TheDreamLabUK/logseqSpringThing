@@ -7,11 +7,9 @@ services:
     container_name: logseq-xr-webxr
     read_only: false
     networks:
-      logseq_net:
-        aliases:
-          - logseq-xr-webxr
       docker_ragflow:
         aliases:
+          - logseq-xr-webxr
           - webxr-client
     deploy:
       resources:
@@ -31,7 +29,6 @@ services:
       - BIND_ADDRESS=0.0.0.0
       - NVIDIA_VISIBLE_DEVICES=0
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - RAGFLOW_BASE_URL=http://ragflow-server/v1/
       - NODE_ENV=production
     env_file:
       - .env
@@ -45,12 +42,6 @@ services:
         tmpfs:
           size: 4G
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
-      interval: 5s
-      timeout: 3s
-      retries: 2
-      start_period: 5s
     logging:
       driver: "json-file"
       options:
@@ -60,6 +51,10 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared-tunnel
+    networks:
+      docker_ragflow:
+        aliases:
+          - cloudflared
     volumes:
       - ./config.yml:/etc/cloudflared/config.yml:ro
     command: tunnel --loglevel info --config /etc/cloudflared/config.yml run
@@ -70,20 +65,7 @@ services:
       - TUNNEL_DNS_UPSTREAM=https://1.1.1.1/dns-query,https://1.0.0.1/dns-query
     env_file:
       - .env
-    networks:
-      logseq_net:
-        aliases:
-          - cloudflared
-    healthcheck:
-      test: ["CMD", "cloudflared", "tunnel", "info"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
 
 networks:
-  logseq_net:
-    name: logseq-xr_logseq_net
-    driver: bridge
   docker_ragflow:
     external: true

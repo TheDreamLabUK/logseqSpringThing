@@ -46,7 +46,7 @@ rate_limit_enabled = true
 
 [ragflow]
 api_key = "default_ragflow_key"
-base_url = "http://192.168.0.51/v1/"
+base_url = "http://ragflow-server/v1/"  # Use Docker service name
 timeout = 30
 max_retries = 3
 
