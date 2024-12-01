@@ -2,7 +2,7 @@ tunnel: 9a59e21c-7e0d-4cac-8502-59bc66436e0f
 
 ingress:
   - hostname: www.visionflow.info
-    service: http://logseq-xr-webxr:3000  # Use Docker service name on docker_ragflow network
+    service: http://logseq-xr-webxr:4000
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s
@@ -10,10 +10,6 @@ ingress:
       keepAliveTimeout: 2m
       keepAliveConnections: 100
       httpHostHeader: www.visionflow.info
-      # WebSocket-specific settings
-      disableChunkedEncoding: false
-      tcpKeepAliveConnections: 100
-      http2Origin: true
   - service: http_status:404
 
 # Connection settings
@@ -26,5 +22,4 @@ loglevel: debug
 # Metrics settings
 metrics: 0.0.0.0:2000
 
-warp-routing:
-  enabled: true
+warp-routing: {}

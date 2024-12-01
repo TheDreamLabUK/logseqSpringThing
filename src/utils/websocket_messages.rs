@@ -1,13 +1,14 @@
 use actix::prelude::*;
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
+use crate::models::graph::GraphData;  // Import the proper GraphData struct
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 pub enum ServerMessage {
     GraphUpdate {
-        graph_data: Value,
+        graph_data: GraphData,  // Use actual GraphData instead of Value
     },
     Error {
         message: String,
@@ -31,7 +32,7 @@ pub enum ServerMessage {
         radius: f32,
     },
     InitialData {
-        graph_data: Value,
+        graph_data: GraphData,  // Use actual GraphData here too
         settings: Value,
     },
     GpuState {
@@ -60,14 +61,6 @@ pub enum ServerMessage {
     },
     Ping,
     Pong,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GraphData {
-    pub nodes: Vec<Node>,
-    pub edges: Vec<Edge>,
-    pub metadata: Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
