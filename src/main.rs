@@ -253,7 +253,11 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    let websocket_manager = Arc::new(WebSocketManager::new());
+    // Get debug mode from environment
+    let debug_mode = env::var("DEBUG_MODE").unwrap_or_else(|_| "false".to_string()) == "true";
+    log::info!("Debug mode: {}", debug_mode);
+
+    let websocket_manager = Arc::new(WebSocketManager::new(debug_mode));
     let websocket_data = web::Data::new(websocket_manager.clone());
     
     // Initialize GPU compute with default graph
