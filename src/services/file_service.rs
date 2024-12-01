@@ -20,7 +20,7 @@ use actix_web::web;
 
 // Constants
 const METADATA_PATH: &str = "data/markdown/metadata.json";
-const MARKDOWN_DIR: &str = "data/markdown";
+pub const MARKDOWN_DIR: &str = "data/markdown";
 const GITHUB_API_DELAY: Duration = Duration::from_millis(100); // Rate limiting delay
 const MIN_NODE_SIZE: f64 = 5.0;
 const MAX_NODE_SIZE: f64 = 50.0;
@@ -109,13 +109,46 @@ impl GitHubService for RealGitHubService {
             "https://api.github.com/repos/{}/{}/contents/{}",
             self.owner, self.repo, self.base_path
         );
+        
+        debug!("Fetching GitHub metadata from URL: {}", url);
 
+        // Use token format for GitHub API
         let response = self.client.get(&url)
             .header("Authorization", format!("token {}", self.token))
             .send()
             .await?;
 
-        let contents: Vec<serde_json::Value> = response.json().await?;
+        // Log response status and headers
+        debug!("GitHub API response status: {}", response.status());
+        debug!("GitHub API response headers: {:?}", response.headers());
+
+        // Get response body as text first for debugging
+        let body = response.text().await?;
+        debug!("GitHub API response body: {}", body);
+
+        // Check for error response first
+        if !response.status().is_success() {
+            let error_msg = match serde_json::from_str::<serde_json::Value>(&body) {
+                Ok(error_json) => {
+                    let msg = error_json["message"].as_str().unwrap_or("Unknown error");
+                    format!("GitHub API error: {} - {}", response.status(), msg)
+                },
+                Err(_) => format!("GitHub API error: {}", response.status())
+            };
+            error!("{}", error_msg);
+            return Err(error_msg.into());
+        }
+
+        // Parse response text as array
+        let contents: Vec<serde_json::Value> = match serde_json::from_str(&body) {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                error!("Failed to parse GitHub API response: {}", e);
+                error!("Response body was: {}", body);
+                return Err(Box::new(e));
+            }
+        };
+
         let settings = self.settings.read().await;
         let debug_mode = settings.debug_mode;
         
@@ -131,7 +164,15 @@ impl GitHubService for RealGitHubService {
                     continue;
                 }
                 
-                let last_modified = self.get_file_last_modified(&format!("{}/{}", self.base_path, name)).await?;
+                debug!("Processing markdown file: {}", name);
+                
+                let last_modified = match self.get_file_last_modified(&format!("{}/{}", self.base_path, name)).await {
+                    Ok(time) => Some(time),
+                    Err(e) => {
+                        error!("Failed to get last modified time for {}: {}", name, e);
+                        None
+                    }
+                };
                 
                 markdown_files.push(GithubFileMetadata {
                     name,
@@ -139,7 +180,7 @@ impl GitHubService for RealGitHubService {
                     download_url: item["download_url"].as_str().unwrap_or("").to_string(),
                     etag: None,
                     last_checked: Some(Utc::now()),
-                    last_modified: Some(last_modified),
+                    last_modified,
                 });
             }
         }
@@ -148,6 +189,7 @@ impl GitHubService for RealGitHubService {
             info!("Debug mode: Processing only debug test files");
         }
 
+        debug!("Found {} markdown files", markdown_files.len());
         Ok(markdown_files)
     }
 
