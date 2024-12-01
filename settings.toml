@@ -1,5 +1,6 @@
 # Debug mode - when true only processes Debug Test Page.md and debug linked node.md
 debug_mode = false
+prompt = "You are an AI assistant building summaries of web links and text. You will visit any web links found in the text and integrate a summary with web citations aiming for up to two citations explicitly returned in context as raw web hyperlinks. Ensure to return web links as citations separated by new lines. You should aim to select one or more of these topics in this form appropriate to the created summary embedding the topic in Logseq double square brackets once in the returned text."
 
 # Debug settings for websocket and data exchange
 [debug]
@@ -8,38 +9,29 @@ enable_data_debug = true         # Enable data exchange debugging
 log_binary_headers = true         # Log binary message headers
 log_full_json = true             # Log complete JSON payloads
 
-# Prompt for the AI assistant
-prompt = """
-You are an AI assistant building summaries of web links and text. You will visit any web links found in the text and integrate
-a summary with web citations aiming for up to two citations explicitly returned in context as raw web hyperlinks.
-Ensure to return web links as citations separated by new lines.
-You should aim to select one or more of these topics in this form appropriate to the created summary
-embedding the topic in Logseq double square brackets once in the returned text.
-"""
-
 [network]
-domain = "localhost"  # Default domain override in .env for production
+domain = "localhost"  # Production domain is in dotenv
 port = 3000          # Port for Rust backend (nginx proxies from 4000 to this)
-bind_address = "0.0.0.0"  # should bind to localhost for security
-enable_tls = true
-min_tls_version = "TLS1.3"
-enable_http2 = true
+bind_address = "0.0.0.0"  # bind to all interfaces for docker
+enable_tls = false    # TLS is handled by Cloudflare tunnel
+min_tls_version = ""  # Not needed since TLS is handled by Cloudflare
+enable_http2 = false  # HTTP/2 is handled by Cloudflare
 max_request_size = 10485760  # 10MB in bytes
 enable_rate_limiting = true
 rate_limit_requests = 100
 rate_limit_window = 60
-tunnel_id = ""  # Cloudflare tunnel ID set in .env for production
+tunnel_id = "dummy"  # Cloudflare tunnel ID handled in dotenv
 
 [security]
 enable_cors = false
 allowed_origins = []
-enable_csrf = true
+enable_csrf = false  # CSRF is handled by Cloudflare
 csrf_token_timeout = 3600
 session_timeout = 3600
 cookie_secure = true
 cookie_httponly = true
 cookie_samesite = "Strict"
-enable_security_headers = true
+enable_security_headers = false  # Security headers are handled by Cloudflare
 enable_request_validation = true
 enable_audit_logging = true
 audit_log_path = "/app/logs/audit.log"

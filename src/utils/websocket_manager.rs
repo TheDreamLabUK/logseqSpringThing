@@ -6,11 +6,12 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use log::{debug, info, warn, trace};
 use std::time::{Duration, Instant};
-use serde_json;
+use serde_json::{self, Value};
 
 use crate::models::node::GPUNode;
 use crate::models::graph::GraphData;
 use crate::utils::websocket_messages::{SendBinary, SendText, ServerMessage};
+use crate::utils::debug_logging::{ws_debug, WsDebugData};
 
 // Constants for binary protocol
 const FLOAT32_SIZE: usize = std::mem::size_of::<f32>();
@@ -261,24 +262,6 @@ impl Actor for WebSocketSession {
     }
 }
 
-impl Handler<SendBinary> for WebSocketSession {
-    type Result = ();
-
-    fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
-        debug_log!(self.manager.debug_mode, "[WebSocketSession] Sending binary message of size {}", msg.0.len());
-        ctx.binary(msg.0);
-    }
-}
-
-impl Handler<SendText> for WebSocketSession {
-    type Result = ();
-
-    fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
-        debug_log!(self.manager.debug_mode, "[WebSocketSession] Sending text message: {}", msg.0);
-        ctx.text(msg.0);
-    }
-}
-
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
@@ -292,7 +275,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 self.last_pong = Instant::now();
             }
             Ok(ws::Message::Text(text)) => {
-                debug_log!(self.manager.debug_mode, "[WebSocketSession] Text message received: {}", text);
+                // Try to parse as JSON for better debug output
+                if let Ok(json) = serde_json::from_str::<Value>(&text) {
+                    debug_log!(self.manager.debug_mode, "[WebSocketSession] Text message received: {}", 
+                        serde_json::to_string_pretty(&json).unwrap_or_default());
+                } else {
+                    debug_log!(self.manager.debug_mode, "[WebSocketSession] Raw text message received: {}", text);
+                }
+
                 if text.contains("\"type\":\"ping\"") {
                     ctx.text("{\"type\":\"pong\"}");
                 } else {
@@ -330,9 +320,17 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                                     bin[offset + (j+3)*4 + 3]
                                 ]);
                             }
-                            trace!("[WebSocketSession] Node {}: pos=({},{},{}), vel=({},{},{})",
+                            trace!("[WebSocketSession] Node {}: pos=({:.3},{:.3},{:.3}), vel=({:.3},{:.3},{:.3})",
                                 i, pos[0], pos[1], pos[2], vel[0], vel[1], vel[2]);
                         }
+
+                        // Show hex dump of first 32 bytes
+                        let hex_dump: String = bin.iter()
+                            .take(32)
+                            .map(|b| format!("{:02x}", b))
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        trace!("[WebSocketSession] Binary header (first 32 bytes): {}", hex_dump);
                     }
 
                     // Forward binary data to other clients
@@ -353,5 +351,48 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
             }
             _ => (),
         }
+    }
+}
+
+impl Handler<SendBinary> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
+        let data = &msg.0;
+        if data.len() >= HEADER_SIZE {
+            let mut header_bytes = [0u8; 4];
+            header_bytes.copy_from_slice(&data[0..4]);
+            let is_initial = f32::from_le_bytes(header_bytes) >= 1.0;
+            let num_nodes = (data.len() - HEADER_SIZE) / NODE_SIZE;
+
+            debug_log!(self.manager.debug_mode, "[WebSocketSession] Sending binary message: {} nodes, initial={}, size={} bytes", 
+                num_nodes, is_initial, data.len());
+
+            if self.manager.debug_mode {
+                // Show hex dump of first 32 bytes
+                let hex_dump: String = data.iter()
+                    .take(32)
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                trace!("[WebSocketSession] Binary header (first 32 bytes): {}", hex_dump);
+            }
+        }
+        ctx.binary(msg.0);
+    }
+}
+
+impl Handler<SendText> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
+        // Try to parse as JSON for better debug output
+        if let Ok(json) = serde_json::from_str::<Value>(&msg.0) {
+            debug_log!(self.manager.debug_mode, "[WebSocketSession] Sending JSON message: {}", 
+                serde_json::to_string_pretty(&json).unwrap_or_default());
+        } else {
+            debug_log!(self.manager.debug_mode, "[WebSocketSession] Sending raw text message: {}", msg.0);
+        }
+        ctx.text(msg.0);
     }
 }
