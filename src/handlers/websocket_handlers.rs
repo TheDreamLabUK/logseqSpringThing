@@ -633,7 +633,7 @@ impl WebSocketSessionHandler for WebSocketSession {
 
             info!("Preparing graph update message");
             let graph_update = ServerMessage::GraphUpdate {
-                graph_data: serde_json::to_value(&*graph_data).unwrap_or_default(),
+                graph_data: (*graph_data).clone(),  // Use actual GraphData type instead of converting to Value
             };
 
             info!("Sending graph data to client");

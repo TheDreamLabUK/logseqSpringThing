@@ -43,8 +43,16 @@ impl GraphService {
 
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
-            debug!("Creating node for file: {}", node_id);
-            graph.nodes.push(Node::new(node_id.clone()));
+            let mut node = Node::new(node_id.clone());
+            
+            // Get metadata for this node
+            if let Some(metadata) = graph.metadata.get(&format!("{}.md", node_id)) {
+                node.size = Some(metadata.node_size as f32);
+                node.file_size = metadata.file_size as u64;
+            }
+            
+            debug!("Creating node for file: {} with size: {:?}", node_id, node.size);
+            graph.nodes.push(node);
         }
 
         debug!("Created {} nodes", graph.nodes.len());
@@ -255,8 +263,16 @@ impl GraphService {
 
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
-            debug!("Creating node for file: {}", node_id);
-            graph.nodes.push(Node::new(node_id.clone()));
+            let mut node = Node::new(node_id.clone());
+            
+            // Get metadata for this node
+            if let Some(metadata) = metadata.get(&format!("{}.md", node_id)) {
+                node.size = Some(metadata.node_size as f32);
+                node.file_size = metadata.file_size as u64;
+            }
+            
+            debug!("Creating node for file: {} with size: {:?}", node_id, node.size);
+            graph.nodes.push(node);
         }
 
         debug!("Created {} nodes", valid_nodes.len());

@@ -1,6 +1,7 @@
-use crate::models::metadata::Metadata;
+use crate::models::metadata::{Metadata, MetadataMap};  // Add MetadataMap
 use crate::models::graph::GraphData;
 use crate::config::Settings;
+use serde_json::ser::{PrettyFormatter, Serializer};
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -306,63 +307,79 @@ impl FileService {
         if Path::new(METADATA_PATH).exists() {
             let content = fs::read_to_string(METADATA_PATH)?;
             if !content.trim().is_empty() {
-                return Ok(serde_json::from_str(&content)?);
+                // Try to parse as MetadataMap first
+                if let Ok(metadata_map) = serde_json::from_str::<MetadataMap>(&content) {
+                    return Ok(metadata_map.into());
+                }
+                
+                // If that fails, try parsing as legacy HashMap format
+                if let Ok(map) = serde_json::from_str::<HashMap<String, Metadata>>(&content) {
+                    // Convert to new format and save back
+                    let metadata_map = MetadataMap::from(map.clone());
+                    if let Ok(new_content) = serde_json::to_string_pretty(&metadata_map) {
+                        if let Err(e) = fs::write(METADATA_PATH, new_content) {
+                            error!("Failed to save converted metadata: {}", e);
+                        }
+                    }
+                    return Ok(map);
+                }
+                
+                error!("Failed to parse metadata file in either format");
             }
         }
         Ok(HashMap::new())
     }
 
-    /// Calculate node size based on file size
-    fn calculate_node_size(file_size: usize) -> f64 {
-        // Use logarithmic scaling for node size
-        let size = if file_size == 0 {
-            MIN_NODE_SIZE
-        } else {
-            let log_size = (file_size as f64).ln();
-            let min_log = 0f64;
-            let max_log = (100_000f64).ln(); // Assuming 100KB as max expected size
-            
-            let normalized = (log_size - min_log) / (max_log - min_log);
-            MIN_NODE_SIZE + normalized * (MAX_NODE_SIZE - MIN_NODE_SIZE)
-        };
+    /// Save metadata to file
+    pub fn save_metadata(metadata: &HashMap<String, Metadata>) -> Result<(), Box<dyn StdError + Send + Sync>> {
+        // Wrap the HashMap in MetadataMap to ensure camelCase serialization
+        let metadata_map = MetadataMap::from(metadata.clone());
         
-        size.max(MIN_NODE_SIZE).min(MAX_NODE_SIZE)
+        // Create a pretty formatter that respects serde attributes
+        let formatter = PrettyFormatter::new();
+        let mut output = Vec::new();
+        let mut serializer = Serializer::with_formatter(&mut output, formatter);
+        
+        // Serialize with proper camelCase handling
+        metadata_map.serialize(&mut serializer)?;
+        
+        // Write to file
+        fs::write(METADATA_PATH, output)?;
+        Ok(())
     }
 
-    /// Extract references to other files based on their names (case insensitive)
-    fn extract_references(content: &str, valid_nodes: &[String]) -> HashMap<String, ReferenceInfo> {
-        let mut references = HashMap::new();
-        let content_lower = content.to_lowercase();
-        
-        for node_name in valid_nodes {
-            let mut ref_info = ReferenceInfo::default();
-            let node_name_lower = node_name.to_lowercase();
+    /// Ensures all required directories exist
+    fn ensure_directories() -> Result<(), Box<dyn StdError + Send + Sync>> {
+        fs::create_dir_all(MARKDOWN_DIR)?;
+        Ok(())
+    }
+
+    /// Check if we have a valid local setup
+    fn has_valid_local_setup() -> bool {
+        // Check if metadata.json exists and is not empty
+        if let Ok(metadata_content) = fs::read_to_string(METADATA_PATH) {
+            if metadata_content.trim().is_empty() {
+                return false;
+            }
             
-            // Create a regex pattern with word boundaries
-            let pattern = format!(r"\b{}\b", regex::escape(&node_name_lower));
-            if let Ok(re) = Regex::new(&pattern) {
-                // Count case-insensitive matches of the filename
-                let count = re.find_iter(&content_lower).count();
-                
-                // If we found any references, add them to the map
-                if count > 0 {
-                    debug!("Found {} references to {} in content", count, node_name);
-                    ref_info.direct_mentions = count;
-                    references.insert(format!("{}.md", node_name), ref_info);
+            // Try to parse metadata to ensure it's valid
+            if let Ok(metadata_map) = serde_json::from_str::<MetadataMap>(&metadata_content) {
+                if metadata_map.files.is_empty() {
+                    return false;
                 }
+                
+                // Check if the markdown files referenced in metadata actually exist
+                for (filename, _) in metadata_map.files {
+                    let file_path = format!("{}/{}", MARKDOWN_DIR, filename);
+                    if !Path::new(&file_path).exists() {
+                        return false;
+                    }
+                }
+                
+                return true;
             }
         }
-        
-        references
-    }
-
-    fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>) -> HashMap<String, usize> {
-        references.into_iter()
-            .map(|(name, info)| {
-                debug!("Converting reference for {} with {} mentions", name, info.direct_mentions);
-                (name, info.direct_mentions)
-            })
-            .collect()
+        false
     }
 
     /// Initialize the local markdown directory and metadata structure.
@@ -467,40 +484,6 @@ impl FileService {
         Ok(())
     }
 
-    /// Check if we have a valid local setup
-    fn has_valid_local_setup() -> bool {
-        // Check if metadata.json exists and is not empty
-        if let Ok(metadata_content) = fs::read_to_string(METADATA_PATH) {
-            if metadata_content.trim().is_empty() {
-                return false;
-            }
-            
-            // Try to parse metadata to ensure it's valid
-            if let Ok(metadata_map) = serde_json::from_str::<HashMap<String, Metadata>>(&metadata_content) {
-                if metadata_map.is_empty() {
-                    return false;
-                }
-                
-                // Check if the markdown files referenced in metadata actually exist
-                for (filename, _) in metadata_map {
-                    let file_path = format!("{}/{}", MARKDOWN_DIR, filename);
-                    if !Path::new(&file_path).exists() {
-                        return false;
-                    }
-                }
-                
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Ensures all required directories exist
-    fn ensure_directories() -> Result<(), Box<dyn StdError + Send + Sync>> {
-        fs::create_dir_all(MARKDOWN_DIR)?;
-        Ok(())
-    }
-
     /// Handles incremental updates after initial setup
     pub async fn fetch_and_process_files(
         github_service: &dyn GitHubService,
@@ -602,14 +585,59 @@ impl FileService {
         Ok(processed_files)
     }
 
-    /// Save metadata to file
-    pub fn save_metadata(metadata: &HashMap<String, Metadata>) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        let json = serde_json::to_string_pretty(metadata)?;
-        fs::write(METADATA_PATH, json)?;
-        Ok(())
+    /// Calculate node size based on file size
+    fn calculate_node_size(file_size: usize) -> f64 {
+        // Use logarithmic scaling for node size
+        let size = if file_size == 0 {
+            MIN_NODE_SIZE
+        } else {
+            let log_size = (file_size as f64).ln();
+            let min_log = 0f64;
+            let max_log = (100_000f64).ln(); // Assuming 100KB as max expected size
+            
+            let normalized = (log_size - min_log) / (max_log - min_log);
+            MIN_NODE_SIZE + normalized * (MAX_NODE_SIZE - MIN_NODE_SIZE)
+        };
+        
+        size.max(MIN_NODE_SIZE).min(MAX_NODE_SIZE)
     }
 
-    /// Calculate SHA1 hash of content
+    /// Extract references to other files based on their names (case insensitive)
+    fn extract_references(content: &str, valid_nodes: &[String]) -> HashMap<String, ReferenceInfo> {
+        let mut references = HashMap::new();
+        let content_lower = content.to_lowercase();
+        
+        for node_name in valid_nodes {
+            let mut ref_info = ReferenceInfo::default();
+            let node_name_lower = node_name.to_lowercase();
+            
+            // Create a regex pattern with word boundaries
+            let pattern = format!(r"\b{}\b", regex::escape(&node_name_lower));
+            if let Ok(re) = Regex::new(&pattern) {
+                // Count case-insensitive matches of the filename
+                let count = re.find_iter(&content_lower).count();
+                
+                // If we found any references, add them to the map
+                if count > 0 {
+                    debug!("Found {} references to {} in content", count, node_name);
+                    ref_info.direct_mentions = count;
+                    references.insert(format!("{}.md", node_name), ref_info);
+                }
+            }
+        }
+        
+        references
+    }
+
+    fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>) -> HashMap<String, usize> {
+        references.into_iter()
+            .map(|(name, info)| {
+                debug!("Converting reference for {} with {} mentions", name, info.direct_mentions);
+                (name, info.direct_mentions)
+            })
+            .collect()
+    }
+
     fn calculate_sha1(content: &str) -> String {
         use sha1::{Sha1, Digest};
         let mut hasher = Sha1::new();
@@ -617,8 +645,8 @@ impl FileService {
         format!("{:x}", hasher.finalize())
     }
 
-    /// Count hyperlinks in content
     fn count_hyperlinks(content: &str) -> usize {
+        // Simple regex to count markdown links
         let re = Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").unwrap();
         re.find_iter(content).count()
     }
