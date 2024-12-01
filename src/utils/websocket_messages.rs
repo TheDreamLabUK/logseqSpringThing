@@ -30,6 +30,36 @@ pub enum ServerMessage {
         focus_point: [f32; 3],
         radius: f32,
     },
+    InitialData {
+        graph_data: Value,
+        settings: Value,
+    },
+    GpuState {
+        enabled: bool,
+        node_count: usize,
+        frame_time: f32,
+    },
+    LayoutState {
+        iteration: usize,
+        energy: f32,
+        stable: bool,
+    },
+    AudioData {
+        audio_data: String,
+    },
+    OpenAIResponse {
+        text: String,
+        audio: Option<String>,
+    },
+    RagflowResponse {
+        answer: String,
+        audio: Option<String>,
+    },
+    Completion {
+        message: String,
+    },
+    Ping,
+    Pong,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,6 +84,7 @@ pub struct Node {
     pub size: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    #[serde(rename = "type")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,6 +108,7 @@ pub struct Edge {
     pub width: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    #[serde(rename = "type")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edge_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

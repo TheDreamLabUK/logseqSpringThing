@@ -24,29 +24,49 @@ import {
   CONNECTION_TIMEOUT
 } from '../constants/websocket'
 
-// Debug utility function
+// Enhanced debug logging
 const debugLog = (message: string, data?: any) => {
-  // Check if debug mode is enabled via environment variable
-  if (process.env.DEBUG_MODE === 'true') {
-    const timestamp = new Date().toISOString();
-    console.debug(`[WebsocketService ${timestamp}] ${message}`);
-    
-    if (data) {
-      if (data instanceof ArrayBuffer) {
-        // For binary data, show header info
-        const view = new DataView(data);
-        const isInitial = view.getFloat32(0, true);
-        const nodeCount = (data.byteLength - 4) / 24; // 24 bytes per node (6 float32s)
-        console.debug(`Binary Data Header:
-          Is Initial: ${isInitial}
-          Node Count: ${nodeCount}
-          Total Size: ${data.byteLength} bytes`);
-      } else if (typeof data === 'object') {
-        // For JSON data, show full structure
-        console.debug('Data:', JSON.stringify(data, null, 2));
-      } else {
-        console.debug('Data:', data);
-      }
+  const timestamp = new Date().toISOString();
+  const logPrefix = `[WebsocketService ${timestamp}]`;
+  
+  // Always log the message
+  console.debug(`${logPrefix} ${message}`);
+  
+  if (data) {
+    if (data instanceof ArrayBuffer) {
+      // For binary data, show detailed header info
+      const view = new DataView(data);
+      const isInitial = view.getFloat32(0, true);
+      const nodeCount = (data.byteLength - 4) / 24;
+      console.debug(`${logPrefix} Binary Data Analysis:
+        Is Initial: ${isInitial}
+        Node Count: ${nodeCount}
+        Total Size: ${data.byteLength} bytes
+        Header Bytes: ${Array.from(new Uint8Array(data.slice(0, 16))).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+    } else if (data instanceof Event) {
+      // For WebSocket events, show relevant properties
+      const eventDetails = {
+        type: data.type,
+        timeStamp: data.timeStamp,
+        isTrusted: data.isTrusted,
+        // Add other known Event properties as needed
+        ...(data instanceof CloseEvent ? {
+          code: data.code,
+          reason: data.reason,
+          wasClean: data.wasClean
+        } : {}),
+        ...(data instanceof MessageEvent ? {
+          data: data.data,
+          origin: data.origin,
+          lastEventId: data.lastEventId
+        } : {})
+      };
+      console.debug(`${logPrefix} Event Details:`, eventDetails);
+    } else if (typeof data === 'object') {
+      // For JSON data, show full structure with type information
+      console.debug(`${logPrefix} Data (${data?.constructor?.name || typeof data}):`, JSON.stringify(data, null, 2));
+    } else {
+      console.debug(`${logPrefix} Data (${typeof data}):`, data);
     }
   }
 };
@@ -81,11 +101,16 @@ export default class WebsocketService {
   constructor(config: Partial<WebSocketConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // Use wss:// for production
     const hostname = window.location.hostname;
-    this.url = `${protocol}//${hostname}/ws`;
+    this.url = `wss://${hostname}/ws`;
     
-    debugLog('Initialized with URL:', this.url);
+    debugLog('WebSocket service initialized', {
+      url: this.url,
+      config: this.config,
+      protocol: window.location.protocol,
+      hostname: hostname
+    });
   }
 
   private startHeartbeat() {
@@ -96,7 +121,11 @@ export default class WebsocketService {
     this.heartbeatInterval = window.setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
         if (Date.now() - this.lastPongTime > HEARTBEAT_TIMEOUT) {
-          debugLog('Heartbeat timeout - no pong received');
+          debugLog('Heartbeat timeout - no pong received', {
+            lastPongTime: new Date(this.lastPongTime).toISOString(),
+            timeout: HEARTBEAT_TIMEOUT,
+            timeSinceLastPong: Date.now() - this.lastPongTime
+          });
           this.reconnect();
           return;
         }
@@ -105,22 +134,34 @@ export default class WebsocketService {
           debugLog('Sending ping');
           this.ws.send(JSON.stringify({ type: 'ping' }));
         } catch (error) {
-          debugLog('Error sending heartbeat:', error);
+          debugLog('Error sending heartbeat', error);
           this.reconnect();
         }
       }
     }, HEARTBEAT_INTERVAL);
+
+    debugLog('Heartbeat started', {
+      interval: HEARTBEAT_INTERVAL,
+      timeout: HEARTBEAT_TIMEOUT
+    });
   }
 
   private stopHeartbeat() {
     if (this.heartbeatInterval) {
       window.clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
+      debugLog('Heartbeat stopped');
     }
   }
 
   private reconnect() {
-    if (this.isReconnecting || this.forceClose) return;
+    if (this.isReconnecting || this.forceClose) {
+      debugLog('Reconnect skipped', {
+        isReconnecting: this.isReconnecting,
+        forceClose: this.forceClose
+      });
+      return;
+    }
     
     this.isReconnecting = true;
     this.cleanup(false);
@@ -128,18 +169,25 @@ export default class WebsocketService {
     if (this.reconnectAttempts < this.config.maxRetries) {
       this.reconnectAttempts++;
       const delay = this.config.retryDelay * Math.pow(2, this.reconnectAttempts - 1);
-      debugLog(`Connection failed. Retrying in ${delay}ms...`);
+      debugLog('Scheduling reconnection', {
+        attempt: this.reconnectAttempts,
+        maxRetries: this.config.maxRetries,
+        delay: delay
+      });
       
       this.reconnectTimeout = window.setTimeout(() => {
         this.connect().catch(error => {
-          debugLog('Reconnection attempt failed:', error);
+          debugLog('Reconnection attempt failed', error);
           this.reconnect();
         }).finally(() => {
           this.isReconnecting = false;
         });
       }, delay);
     } else {
-      debugLog('Max reconnection attempts reached');
+      debugLog('Max reconnection attempts reached', {
+        attempts: this.reconnectAttempts,
+        maxRetries: this.config.maxRetries
+      });
       this.emit('maxReconnectAttemptsReached');
       this.isReconnecting = false;
     }
@@ -153,14 +201,21 @@ export default class WebsocketService {
 
     return new Promise((resolve, reject) => {
       try {
-        debugLog(`Attempting WebSocket connection (attempt ${this.reconnectAttempts + 1}/${this.config.maxRetries})`);
+        debugLog('Initiating WebSocket connection', {
+          attempt: this.reconnectAttempts + 1,
+          maxRetries: this.config.maxRetries,
+          url: this.url
+        });
         
         this.ws = new WebSocket(this.url);
         this.ws.binaryType = 'arraybuffer';
 
         const connectionTimeout = setTimeout(() => {
           if (this.ws?.readyState !== WebSocket.OPEN) {
-            debugLog('WebSocket connection timeout');
+            debugLog('Connection timeout', {
+              readyState: this.ws?.readyState,
+              timeout: CONNECTION_TIMEOUT
+            });
             this.ws?.close();
             reject(new Error('WebSocket connection timeout'));
             this.reconnect();
@@ -169,7 +224,10 @@ export default class WebsocketService {
 
         this.ws.onopen = () => {
           clearTimeout(connectionTimeout);
-          debugLog('WebSocket connection established');
+          debugLog('WebSocket connection established', {
+            readyState: this.ws?.readyState,
+            url: this.url
+          });
           this.reconnectAttempts = 0;
           this.lastPongTime = Date.now();
           this.startHeartbeat();
@@ -181,10 +239,12 @@ export default class WebsocketService {
         this.ws.onclose = (event) => {
           clearTimeout(connectionTimeout);
           this.stopHeartbeat();
-          debugLog('WebSocket connection closed:', {
+          debugLog('WebSocket connection closed', {
             code: event.code,
             reason: event.reason,
-            wasClean: event.wasClean
+            wasClean: event.wasClean,
+            timestamp: new Date().toISOString(),
+            readyState: this.ws?.readyState
           });
           
           if (!this.forceClose) {
@@ -196,10 +256,16 @@ export default class WebsocketService {
 
         this.ws.onerror = (error) => {
           clearTimeout(connectionTimeout);
-          debugLog('WebSocket connection error:', error);
+          debugLog('WebSocket error occurred', {
+            error: error,
+            readyState: this.ws?.readyState,
+            url: this.url,
+            timestamp: new Date().toISOString()
+          });
           const errorMsg: ErrorMessage = {
             type: 'error',
-            message: 'WebSocket connection error'
+            message: 'WebSocket connection error',
+            details: JSON.stringify(error)
           };
           this.emit('error', errorMsg);
           
@@ -211,7 +277,11 @@ export default class WebsocketService {
         this.ws.onmessage = this.handleMessage.bind(this);
 
       } catch (error) {
-        debugLog('Error creating WebSocket connection:', error);
+        debugLog('Error creating WebSocket connection', {
+          error,
+          url: this.url,
+          timestamp: new Date().toISOString()
+        });
         reject(error);
         this.reconnect();
       }
@@ -220,17 +290,21 @@ export default class WebsocketService {
 
   private handleMessage(event: MessageEvent): void {
     try {
+      debugLog('Received WebSocket message', {
+        type: event.type,
+        dataType: event.data instanceof ArrayBuffer ? 'ArrayBuffer' : typeof event.data,
+        dataSize: event.data?.length || 0
+      });
+
       if (event.data instanceof ArrayBuffer) {
         // Handle binary message (position updates)
-        debugLog('Received binary message', event.data);
-
         const result = processPositionUpdate(event.data);
         if (!result) {
           throw new Error('Failed to process position update');
         }
 
         if (result.positions.length !== this.indexToNodeId.length) {
-          debugLog('Position update node count mismatch:', {
+          debugLog('Position update node count mismatch', {
             expected: this.indexToNodeId.length,
             received: result.positions.length
           });
@@ -239,7 +313,7 @@ export default class WebsocketService {
         const positions = result.positions.map((pos, index) => {
           const nodeId = this.indexToNodeId[index];
           if (!nodeId) {
-            debugLog(`No stored ID for node index ${index}`);
+            debugLog('Missing node ID mapping', { index });
             return null;
           }
           return {
@@ -254,12 +328,17 @@ export default class WebsocketService {
           nodeCount: this.indexToNodeId.length
         };
 
+        debugLog('Processed binary message', {
+          nodeCount: positions.length,
+          samplePositions: positions.slice(0, 3)
+        });
+
         this.emit('gpuPositions', binaryMessage);
 
       } else {
         // Handle JSON message
         const message = JSON.parse(event.data) as BaseMessage;
-        debugLog('Received JSON message', message);
+        debugLog('Parsed JSON message', message);
 
         // Handle pong messages
         if (message.type === 'pong') {
@@ -273,7 +352,8 @@ export default class WebsocketService {
           const graphMessage = message as GraphUpdateMessage;
           debugLog('Processing graph update', {
             hasGraphData: !!graphMessage.graphData,
-            nodeCount: graphMessage.graphData?.nodes?.length || 0
+            nodeCount: graphMessage.graphData?.nodes?.length || 0,
+            sampleNodes: graphMessage.graphData?.nodes?.slice(0, 3)
           });
 
           if (graphMessage.graphData?.nodes) {
@@ -286,12 +366,10 @@ export default class WebsocketService {
             });
             
             debugLog('Node ID mappings updated', {
-              count: this.indexToNodeId.length,
-              sampleIds: this.indexToNodeId.slice(0, 3),
-              sampleNodes: graphMessage.graphData.nodes.slice(0, 3).map(n => ({
-                id: n.id,
-                hasPosition: !!n.position,
-                position: n.position
+              mappingCount: this.indexToNodeId.length,
+              sampleMappings: this.indexToNodeId.slice(0, 3).map(id => ({
+                id,
+                index: this.nodeIdToIndex.get(id)
               }))
             });
           }
@@ -301,16 +379,21 @@ export default class WebsocketService {
           this.emit('message', message);
           
           if (message.type === 'error') {
-            debugLog('Received error message:', message);
+            debugLog('Received error message', message);
             this.emit('error', message as ErrorMessage);
           }
         }
       }
     } catch (error) {
-      debugLog('Error handling WebSocket message:', error);
+      debugLog('Error handling WebSocket message', {
+        error,
+        eventType: event.type,
+        dataType: typeof event.data
+      });
       const errorMsg: ErrorMessage = {
         type: 'error',
-        message: 'Error processing message'
+        message: 'Error processing message',
+        details: error instanceof Error ? error.message : String(error)
       };
       this.emit('error', errorMsg);
     }
@@ -322,10 +405,14 @@ export default class WebsocketService {
         this.messageQueue.push(data);
         debugLog('Message queued', {
           type: data.type,
-          queueSize: this.messageQueue.length
+          queueSize: this.messageQueue.length,
+          maxQueueSize: this.config.maxQueueSize
         });
       } else {
-        debugLog('Message queue full, dropping message');
+        debugLog('Message queue full, dropping message', {
+          type: data.type,
+          queueSize: this.messageQueue.length
+        });
       }
       return;
     }
@@ -341,7 +428,9 @@ export default class WebsocketService {
         this.messageQueue.push(data);
         debugLog('Rate limited, message queued', {
           type: data.type,
-          queueSize: this.messageQueue.length
+          queueSize: this.messageQueue.length,
+          messageCount: this.messageCount,
+          rateLimit: this.config.messageRateLimit
         });
       }
       return;
@@ -355,7 +444,8 @@ export default class WebsocketService {
       
       debugLog('Sending message', {
         type: data.type,
-        size: message.length
+        size: message.length,
+        maxSize: this.config.maxMessageSize
       });
 
       this.ws.send(message);
@@ -364,10 +454,14 @@ export default class WebsocketService {
 
       this.processQueue();
     } catch (error) {
-      debugLog('Error sending message:', error);
+      debugLog('Error sending message', {
+        error,
+        data: data
+      });
       const errorMsg: ErrorMessage = {
         type: 'error',
-        message: 'Error sending message'
+        message: 'Error sending message',
+        details: error instanceof Error ? error.message : String(error)
       };
       this.emit('error', errorMsg);
     }
@@ -375,18 +469,28 @@ export default class WebsocketService {
 
   public sendBinary(data: ArrayBuffer): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      debugLog('Cannot send binary data: WebSocket not open');
+      debugLog('Cannot send binary data: WebSocket not open', {
+        readyState: this.ws?.readyState,
+        dataSize: data.byteLength
+      });
       return;
     }
 
     try {
-      debugLog('Sending binary data', data);
+      debugLog('Sending binary data', {
+        size: data.byteLength,
+        header: Array.from(new Uint8Array(data.slice(0, 16))).map(b => b.toString(16).padStart(2, '0')).join(' ')
+      });
       this.ws.send(data);
     } catch (error) {
-      debugLog('Error sending binary data:', error);
+      debugLog('Error sending binary data', {
+        error,
+        dataSize: data.byteLength
+      });
       const errorMsg: ErrorMessage = {
         type: 'error',
-        message: 'Error sending binary data'
+        message: 'Error sending binary data',
+        details: error instanceof Error ? error.message : String(error)
       };
       this.emit('error', errorMsg);
     }
@@ -401,7 +505,8 @@ export default class WebsocketService {
       if (data) {
         debugLog('Processing queued message', {
           type: data.type,
-          remainingQueue: this.messageQueue.length
+          remainingQueue: this.messageQueue.length,
+          messageCount: this.messageCount
         });
         this.send(data);
       }
@@ -410,7 +515,9 @@ export default class WebsocketService {
 
   private processQueuedMessages(): void {
     if (this.messageQueue.length > 0) {
-      debugLog(`Processing ${this.messageQueue.length} queued messages`);
+      debugLog('Processing queued messages', {
+        count: this.messageQueue.length
+      });
       const messages = [...this.messageQueue];
       this.messageQueue = [];
       messages.forEach(message => this.send(message));
@@ -425,6 +532,7 @@ export default class WebsocketService {
       this.eventListeners.set(event, new Set());
     }
     this.eventListeners.get(event)!.add(callback);
+    debugLog('Event listener added', { event });
   }
 
   public off<K extends keyof WebSocketEventMap>(
@@ -434,6 +542,7 @@ export default class WebsocketService {
     const listeners = this.eventListeners.get(event);
     if (listeners) {
       listeners.delete(callback);
+      debugLog('Event listener removed', { event });
     }
   }
 
@@ -443,12 +552,22 @@ export default class WebsocketService {
   ): void {
     const listeners = this.eventListeners.get(event);
     if (listeners) {
+      debugLog('Emitting event', {
+        event,
+        listenerCount: listeners.size,
+        data: data
+      });
       listeners.forEach(callback => callback(data));
     }
   }
 
   public cleanup(force: boolean = true): void {
-    debugLog('Cleaning up websocket service');
+    debugLog('Cleaning up websocket service', {
+      force,
+      isReconnecting: this.isReconnecting,
+      hasActiveConnection: !!this.ws
+    });
+    
     this.stopHeartbeat();
     
     if (this.reconnectTimeout !== null) {

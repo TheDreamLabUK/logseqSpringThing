@@ -4,6 +4,7 @@ use config::{ConfigBuilder, ConfigError, Environment, File};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
     pub debug_mode: bool,
+    pub debug: DebugSettings,  // Add debug settings section
     pub prompt: String,
     pub network: NetworkSettings,
     pub security: SecuritySettings,
@@ -11,10 +12,18 @@ pub struct Settings {
     pub ragflow: RagFlowSettings,
     pub perplexity: PerplexitySettings,
     pub openai: OpenAISettings,
-    pub default: DefaultSettings,  // Changed from defaults to default to match settings.toml
+    pub default: DefaultSettings,
     pub visualization: VisualizationSettings,
     pub bloom: BloomSettings,
     pub fisheye: FisheyeSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DebugSettings {
+    pub enable_websocket_debug: bool,
+    pub enable_data_debug: bool,
+    pub log_binary_headers: bool,
+    pub log_full_json: bool,
 }
 
 impl Settings {
@@ -111,10 +120,8 @@ pub struct OpenAISettings {
     pub base_url: String,
     pub timeout: u64,
     pub rate_limit: u32,
-    pub model: String,  // Added model field
+    pub model: String,
 }
-
-// Rest of the code remains the same...
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DefaultSettings {
