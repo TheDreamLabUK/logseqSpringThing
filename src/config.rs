@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use config::{ConfigBuilder, ConfigError, Environment, File};
+use log::debug;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
     pub debug_mode: bool,
-    pub debug: DebugSettings,  // Add debug settings section
+    pub debug: DebugSettings,
     pub prompt: String,
     pub network: NetworkSettings,
     pub security: SecuritySettings,
@@ -26,28 +27,107 @@ pub struct DebugSettings {
     pub log_full_json: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GitHubSettings {
+    #[serde(default = "default_token")]
+    #[serde(rename(deserialize = "GITHUB_TOKEN"))]
+    pub token: String,
+    
+    #[serde(default = "default_owner")]
+    #[serde(rename(deserialize = "GITHUB_OWNER"))]
+    pub owner: String,
+    
+    #[serde(default = "default_repo")]
+    #[serde(rename(deserialize = "GITHUB_REPO"))]
+    pub repo: String,
+    
+    #[serde(default = "default_path")]
+    #[serde(rename(deserialize = "GITHUB_BASE_PATH"))]
+    pub base_path: String,
+    
+    #[serde(default = "default_version")]
+    #[serde(rename(deserialize = "GITHUB_VERSION"))]
+    pub version: String,
+    
+    #[serde(default = "default_rate_limit")]
+    #[serde(rename(deserialize = "GITHUB_RATE_LIMIT"))]
+    pub rate_limit: bool,
+}
+
+fn default_token() -> String { "".to_string() }
+fn default_owner() -> String { "".to_string() }
+fn default_repo() -> String { "".to_string() }
+fn default_path() -> String { "".to_string() }
+fn default_version() -> String { "2022-11-28".to_string() }
+fn default_rate_limit() -> bool { true }
+
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
+        debug!("Loading settings from settings.toml");
         let builder = ConfigBuilder::<config::builder::DefaultState>::default();
         let config = builder
-            // Start with defaults from settings.toml
+            // First load defaults from settings.toml
             .add_source(File::with_name("settings.toml"))
-            // Layer on environment variables
-            .add_source(Environment::with_prefix("APP"))
+            // Then override with environment variables
+            .add_source(
+                Environment::default()
+                    .separator("_")
+                    .try_parsing(true)
+            )
             .build()?;
 
+        // Log GitHub settings for debugging
+        debug!("Environment variables:");
+        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+            debug!("GITHUB_TOKEN from env is set");
+        }
+        if let Ok(owner) = std::env::var("GITHUB_OWNER") {
+            debug!("GITHUB_OWNER from env: {}", owner);
+        }
+        if let Ok(repo) = std::env::var("GITHUB_REPO") {
+            debug!("GITHUB_REPO from env: {}", repo);
+        }
+        if let Ok(dir) = std::env::var("GITHUB_BASE_PATH") {
+            debug!("GITHUB_BASE_PATH from env: {}", dir);
+        }
+
+        // Log config values
+        debug!("Config values:");
+        if let Ok(owner) = config.get_string("github.owner") {
+            debug!("github.owner from config: {}", owner);
+        }
+        if let Ok(repo) = config.get_string("github.repo") {
+            debug!("github.repo from config: {}", repo);
+        }
+        if let Ok(dir) = config.get_string("github.base_path") {
+            debug!("github.base_path from config: {}", dir);
+        }
+
         // Try to convert it into our Settings type
-        config.try_deserialize()
+        let settings: Settings = config.try_deserialize()?;
+        
+        // Log final non-sensitive settings
+        let settings_clone = settings.clone();
+        debug!("GitHub settings loaded: owner={}, repo={}, base_path={}", 
+            settings_clone.github.owner,
+            settings_clone.github.repo,
+            settings_clone.github.base_path
+        );
+
+        Ok(settings)
     }
 
     pub fn from_env() -> Result<Self, ConfigError> {
         let builder = ConfigBuilder::<config::builder::DefaultState>::default();
         let config = builder
-            .add_source(Environment::with_prefix("APP"))
+            .add_source(
+                Environment::default()
+                    .separator("_")
+                    .try_parsing(true)
+            )
             .build()?;
 
-        // Try to convert it into our Settings type
-        config.try_deserialize()
+        config.try_deserialize::<Settings>()
     }
 }
 
@@ -80,16 +160,6 @@ pub struct SecuritySettings {
     pub enable_request_validation: bool,
     pub enable_audit_logging: bool,
     pub audit_log_path: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GitHubSettings {
-    pub access_token: String,
-    pub owner: String,
-    pub repo: String,
-    pub directory: String,
-    pub api_version: String,
-    pub rate_limit_enabled: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

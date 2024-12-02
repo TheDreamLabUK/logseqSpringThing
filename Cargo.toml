@@ -48,6 +48,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # Environment Configuration
 envy = "0.4"
 config = { version = "0.14", features = ["toml"] }
+dotenv = "0.15"  # Added for .env file loading
 
 # Regular Expressions
 regex = "1.11"

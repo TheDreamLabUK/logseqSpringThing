@@ -52,9 +52,10 @@ impl PerplexityService {
             .send()
             .await?;
 
-        if !response.status().is_success() {
+        let status = response.status();
+        if !status.is_success() {
             let error_text = response.text().await?;
-            error!("Perplexity API error: {}", error_text);
+            error!("Perplexity API error: Status: {}, Error: {}", status, error_text);
             return Err(format!("Perplexity API error: {}", error_text).into());
         }
 

@@ -76,15 +76,22 @@ impl RealGitHubPRService {
             self.owner, self.repo
         );
 
-        let response: serde_json::Value = self.client
+        let response = self.client
             .get(&url)
-            .header("Authorization", format!("token {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
             .send()
-            .await?
-            .json()
             .await?;
 
-        Ok(response["object"]["sha"]
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            error!("Failed to get main branch SHA: {}", error_text);
+            return Err(format!("Failed to get main branch SHA: {}", error_text).into());
+        }
+
+        let response_json: serde_json::Value = response.json().await?;
+        Ok(response_json["object"]["sha"]
             .as_str()
             .ok_or("SHA not found")?
             .to_string())
@@ -103,7 +110,9 @@ impl RealGitHubPRService {
 
         let response = self.client
             .post(&url)
-            .header("Authorization", format!("token {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
             .json(&body)
             .send()
             .await?;
@@ -140,7 +149,9 @@ impl RealGitHubPRService {
 
         let response = self.client
             .put(&url)
-            .header("Authorization", format!("token {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
             .json(&body)
             .send()
             .await?;
@@ -195,7 +206,9 @@ impl GitHubPRService for RealGitHubPRService {
 
         let response = self.client
             .post(&url)
-            .header("Authorization", format!("token {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
             .json(&pr_body)
             .send()
             .await?;
