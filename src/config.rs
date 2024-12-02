@@ -30,27 +30,21 @@ pub struct DebugSettings {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GitHubSettings {
     #[serde(default = "default_token")]
-    #[serde(rename(deserialize = "GITHUB_TOKEN"))]
     pub token: String,
     
     #[serde(default = "default_owner")]
-    #[serde(rename(deserialize = "GITHUB_OWNER"))]
     pub owner: String,
     
     #[serde(default = "default_repo")]
-    #[serde(rename(deserialize = "GITHUB_REPO"))]
     pub repo: String,
     
     #[serde(default = "default_path")]
-    #[serde(rename(deserialize = "GITHUB_BASE_PATH"))]
     pub base_path: String,
     
     #[serde(default = "default_version")]
-    #[serde(rename(deserialize = "GITHUB_VERSION"))]
     pub version: String,
     
     #[serde(default = "default_rate_limit")]
-    #[serde(rename(deserialize = "GITHUB_RATE_LIMIT"))]
     pub rate_limit: bool,
 }
 
@@ -76,42 +70,37 @@ impl Settings {
             )
             .build()?;
 
-        // Log GitHub settings for debugging
-        debug!("Environment variables:");
+        // Try to convert it into our Settings type
+        let mut settings: Settings = config.try_deserialize()?;
+        
+        // Override GitHub settings with environment variables if they exist
         if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            debug!("GITHUB_TOKEN from env is set");
+            debug!("Found GITHUB_TOKEN in environment");
+            settings.github.token = token;
         }
         if let Ok(owner) = std::env::var("GITHUB_OWNER") {
-            debug!("GITHUB_OWNER from env: {}", owner);
+            debug!("Found GITHUB_OWNER in environment: {}", owner);
+            settings.github.owner = owner;
         }
         if let Ok(repo) = std::env::var("GITHUB_REPO") {
-            debug!("GITHUB_REPO from env: {}", repo);
+            debug!("Found GITHUB_REPO in environment: {}", repo);
+            settings.github.repo = repo;
         }
-        if let Ok(dir) = std::env::var("GITHUB_BASE_PATH") {
-            debug!("GITHUB_BASE_PATH from env: {}", dir);
+        if let Ok(path) = std::env::var("GITHUB_PATH") {
+            debug!("Found GITHUB_PATH in environment: {}", path);
+            settings.github.base_path = path;
         }
-
-        // Log config values
-        debug!("Config values:");
-        if let Ok(owner) = config.get_string("github.owner") {
-            debug!("github.owner from config: {}", owner);
+        if let Ok(version) = std::env::var("GITHUB_VERSION") {
+            debug!("Found GITHUB_VERSION in environment: {}", version);
+            settings.github.version = version;
         }
-        if let Ok(repo) = config.get_string("github.repo") {
-            debug!("github.repo from config: {}", repo);
-        }
-        if let Ok(dir) = config.get_string("github.base_path") {
-            debug!("github.base_path from config: {}", dir);
-        }
-
-        // Try to convert it into our Settings type
-        let settings: Settings = config.try_deserialize()?;
         
         // Log final non-sensitive settings
-        let settings_clone = settings.clone();
-        debug!("GitHub settings loaded: owner={}, repo={}, base_path={}", 
-            settings_clone.github.owner,
-            settings_clone.github.repo,
-            settings_clone.github.base_path
+        debug!("GitHub settings loaded: owner={}, repo={}, base_path={}, version={}", 
+            settings.github.owner,
+            settings.github.repo,
+            settings.github.base_path,
+            settings.github.version
         );
 
         Ok(settings)
@@ -127,7 +116,26 @@ impl Settings {
             )
             .build()?;
 
-        config.try_deserialize::<Settings>()
+        let mut settings: Settings = config.try_deserialize()?;
+        
+        // Override GitHub settings with environment variables if they exist
+        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+            settings.github.token = token;
+        }
+        if let Ok(owner) = std::env::var("GITHUB_OWNER") {
+            settings.github.owner = owner;
+        }
+        if let Ok(repo) = std::env::var("GITHUB_REPO") {
+            settings.github.repo = repo;
+        }
+        if let Ok(path) = std::env::var("GITHUB_PATH") {
+            settings.github.base_path = path;
+        }
+        if let Ok(version) = std::env::var("GITHUB_VERSION") {
+            settings.github.version = version;
+        }
+
+        Ok(settings)
     }
 }
 
