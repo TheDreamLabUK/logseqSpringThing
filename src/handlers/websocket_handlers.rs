@@ -6,7 +6,7 @@ use bytemuck;
 use futures::StreamExt;
 use log::{debug, error, info, warn};
 use serde_json::json;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::time::Duration;
 use actix_web_actors::ws;
 use actix::StreamHandler;
@@ -42,50 +42,6 @@ pub struct WebSocketSession {
     pub openai_ws: Option<Addr<OpenAIWebSocket>>,
     pub simulation_mode: SimulationMode,
     pub conversation_id: Option<Arc<Mutex<Option<String>>>>,
-}
-
-// Implement Handler for SendText
-impl Handler<SendText> for WebSocketSession {
-    type Result = ();
-
-    fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
-        ctx.text(msg.0);
-    }
-}
-
-// Implement Handler for SendBinary
-impl Handler<SendBinary> for WebSocketSession {
-    type Result = ();
-
-    fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
-        ctx.binary(msg.0);
-    }
-}
-
-// Implement Handler for GpuUpdate
-impl Handler<GpuUpdate> for WebSocketSession {
-    type Result = ();
-
-    fn handle(&mut self, _: GpuUpdate, ctx: &mut Self::Context) {
-        // GPU updates are now handled through graph_service
-        let state = self.state.clone();
-        let ctx_addr = ctx.address();
-        
-        actix::spawn(async move {
-            let graph = state.graph_service.graph_data.read().await;
-            let nodes: Vec<NodePositionVelocity> = graph.nodes.iter().map(|node| NodePositionVelocity {
-                x: node.x,
-                y: node.y,
-                z: node.z,
-                vx: node.vx,
-                vy: node.vy,
-                vz: node.vz,
-            }).collect();
-            
-            let binary_data = positions_to_binary(&nodes);
-            ctx_addr.do_send(SendBinary(binary_data));
-        });
-    }
 }
 
 impl WebSocketSession {
@@ -136,6 +92,7 @@ impl WebSocketSession {
                     graph.nodes[i].vx = pos.vx;
                     graph.nodes[i].vy = pos.vy;
                     graph.nodes[i].vz = pos.vz;
+                    graph.nodes[i].position = Some([pos.x, pos.y, pos.z]);
                 }
             }
             debug!("Updated {} node positions", positions.len());
@@ -162,6 +119,7 @@ impl WebSocketSession {
                         node.vx = 0.0;
                         node.vy = 0.0;
                         node.vz = 0.0;
+                        node.position = Some(node_pos.position);
                     }
                 }
             }
@@ -176,129 +134,6 @@ impl WebSocketSession {
         };
 
         ctx.spawn(fut.into_actor(self));
-    }
-}
-
-impl Actor for WebSocketSession {
-    type Context = WebsocketContext<Self>;
-
-    fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("WebSocket session started");
-    }
-
-    fn stopped(&mut self, _: &mut Self::Context) {
-        info!("WebSocket session stopped");
-    }
-}
-
-impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
-    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
-        match msg {
-            Ok(ws::Message::Ping(msg)) => {
-                debug!("Ping received");
-                ctx.pong(&msg);
-            }
-            Ok(ws::Message::Pong(_)) => {
-                debug!("Pong received");
-            }
-            Ok(ws::Message::Text(text)) => {
-                debug!("Text message received: {}", text);
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-                    match value.get("type").and_then(|t| t.as_str()) {
-                        Some("updatePositions") => {
-                            if let Ok(update_msg) = serde_json::from_value::<UpdatePositionsMessage>(value) {
-                                self.handle_position_update(ctx, update_msg);
-                            }
-                        }
-                        Some("chat") => {
-                            if let Some(message) = value.get("message").and_then(|m| m.as_str()) {
-                                let use_openai = value.get("use_openai")
-                                    .and_then(|o| o.as_bool())
-                                    .unwrap_or(false);
-                                self.handle_chat_message(ctx, message.to_string(), use_openai);
-                            }
-                        }
-                        Some("simulation_mode") => {
-                            if let Some(mode) = value.get("mode").and_then(|m| m.as_str()) {
-                                self.handle_simulation_mode(ctx, mode);
-                            }
-                        }
-                        Some("layout") => {
-                            if let Ok(params) = serde_json::from_value::<SimulationParams>(value["params"].clone()) {
-                                self.handle_layout(ctx, params);
-                            }
-                        }
-                        Some("initial_data") => {
-                            self.handle_initial_data(ctx);
-                        }
-                        _ => {
-                            error!("Unknown message type received");
-                            let error_message = ServerMessage::Error {
-                                message: "Unknown message type".to_string(),
-                                code: Some("UNKNOWN_MESSAGE_TYPE".to_string()),
-                                details: Some("The received message type is not recognized by the server".to_string()),
-                            };
-                            if let Ok(error_str) = serde_json::to_string(&error_message) {
-                                ctx.text(ByteString::from(error_str));
-                            }
-                        }
-                    }
-                }
-            }
-            Ok(ws::Message::Binary(bin)) => {
-                debug!("Binary message received: {} bytes", bin.len());
-                match self.process_binary_update(&bin) {
-                    Ok(_) => {
-                        debug!("Binary update processed successfully");
-                    },
-                    Err(e) => {
-                        error!("Failed to process binary update: {}", e);
-                        let error_message = ServerMessage::Error {
-                            message: format!("Binary update processing failed: {}", e),
-                            code: Some("BINARY_UPDATE_ERROR".to_string()),
-                            details: Some("Error occurred while processing binary position update data".to_string()),
-                        };
-                        if let Ok(error_str) = serde_json::to_string(&error_message) {
-                            ctx.text(ByteString::from(error_str));
-                        }
-                    }
-                }
-            }
-            Ok(ws::Message::Close(reason)) => {
-                info!("Client disconnected: {:?}", reason);
-                ctx.close(reason);
-                ctx.stop();
-            }
-            Ok(ws::Message::Continuation(_)) => {
-                debug!("Continuation frame received");
-            }
-            Ok(ws::Message::Nop) => {
-                debug!("Nop frame received");
-            }
-            Err(e) => {
-                error!("Error in WebSocket message handling: {}", e);
-                ctx.stop();
-            }
-        }
-    }
-}
-
-// WebSocketSessionHandler Trait
-pub trait WebSocketSessionHandler {
-    fn start_gpu_updates(&self, ctx: &mut WebsocketContext<WebSocketSession>);
-    fn handle_chat_message(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, message: String, use_openai: bool);
-    fn handle_simulation_mode(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, mode: &str);
-    fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, _params: SimulationParams);
-    fn handle_initial_data(&mut self, ctx: &mut WebsocketContext<WebSocketSession>);
-}
-
-// WebSocketSessionHandler Implementation
-impl WebSocketSessionHandler for WebSocketSession {
-    fn start_gpu_updates(&self, ctx: &mut WebsocketContext<WebSocketSession>) {
-        let addr = ctx.address();
-        ctx.run_interval(GPU_UPDATE_INTERVAL, move |_, _| {
-            addr.do_send(GpuUpdate);
-        });
     }
 
     fn handle_chat_message(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, message: String, use_openai: bool) {
@@ -476,55 +311,171 @@ impl WebSocketSessionHandler for WebSocketSession {
         ctx.spawn(fut.into_actor(self));
     }
 
-    fn handle_initial_data(&mut self, ctx: &mut WebsocketContext<WebSocketSession>) {
+    fn start_gpu_updates(&self, ctx: &mut WebsocketContext<WebSocketSession>) {
+        let addr = ctx.address();
+        ctx.run_interval(GPU_UPDATE_INTERVAL, move |_, _| {
+            addr.do_send(GpuUpdate);
+        });
+    }
+}
+
+impl Actor for WebSocketSession {
+    type Context = WebsocketContext<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        info!("WebSocket session started");
+    }
+
+    fn stopped(&mut self, _: &mut Self::Context) {
+        info!("WebSocket session stopped");
+    }
+}
+
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        match msg {
+            Ok(ws::Message::Ping(msg)) => {
+                debug!("Ping received");
+                ctx.pong(&msg);
+            }
+            Ok(ws::Message::Pong(_)) => {
+                debug!("Pong received");
+            }
+            Ok(ws::Message::Text(text)) => {
+                debug!("Text message received: {}", text);
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                    match value.get("type").and_then(|t| t.as_str()) {
+                        Some("updatePositions") => {
+                            if let Ok(update_msg) = serde_json::from_value::<UpdatePositionsMessage>(value) {
+                                self.handle_position_update(ctx, update_msg);
+                            }
+                        }
+                        Some("chat") => {
+                            if let Some(message) = value.get("message").and_then(|m| m.as_str()) {
+                                let use_openai = value.get("use_openai")
+                                    .and_then(|o| o.as_bool())
+                                    .unwrap_or(false);
+                                self.handle_chat_message(ctx, message.to_string(), use_openai);
+                            }
+                        }
+                        Some("simulation_mode") => {
+                            if let Some(mode) = value.get("mode").and_then(|m| m.as_str()) {
+                                self.handle_simulation_mode(ctx, mode);
+                            }
+                        }
+                        Some("layout") => {
+                            if let Ok(params) = serde_json::from_value::<SimulationParams>(value["params"].clone()) {
+                                self.handle_layout(ctx, params);
+                            }
+                        }
+                        Some("initial_data") => {
+                            let addr = ctx.address();
+                            let state = self.state.clone();
+                            actix::spawn(async move {
+                                let graph = state.graph_service.graph_data.read().await;
+                                let settings = state.settings.read().await;
+
+                                let initial_data = ServerMessage::InitialData {
+                                    graph_data: (*graph).clone(),
+                                    settings: serde_json::to_value(&*settings).unwrap_or_default(),
+                                };
+
+                                if let Ok(initial_data_str) = serde_json::to_string(&initial_data) {
+                                    addr.do_send(SendText(initial_data_str));
+                                }
+                            });
+
+                            self.simulation_mode = SimulationMode::Remote;
+                            self.start_gpu_updates(ctx);
+                        }
+                        _ => {
+                            error!("Unknown message type received");
+                            let error_message = ServerMessage::Error {
+                                message: "Unknown message type".to_string(),
+                                code: Some("UNKNOWN_MESSAGE_TYPE".to_string()),
+                                details: Some("The received message type is not recognized by the server".to_string()),
+                            };
+                            if let Ok(error_str) = serde_json::to_string(&error_message) {
+                                ctx.text(ByteString::from(error_str));
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(ws::Message::Binary(bin)) => {
+                debug!("Binary message received: {} bytes", bin.len());
+                match self.process_binary_update(&bin) {
+                    Ok(_) => {
+                        debug!("Binary update processed successfully");
+                    },
+                    Err(e) => {
+                        error!("Failed to process binary update: {}", e);
+                        let error_message = ServerMessage::Error {
+                            message: format!("Binary update processing failed: {}", e),
+                            code: Some("BINARY_UPDATE_ERROR".to_string()),
+                            details: Some("Error occurred while processing binary position update data".to_string()),
+                        };
+                        if let Ok(error_str) = serde_json::to_string(&error_message) {
+                            ctx.text(ByteString::from(error_str));
+                        }
+                    }
+                }
+            }
+            Ok(ws::Message::Close(reason)) => {
+                info!("Client disconnected: {:?}", reason);
+                ctx.close(reason);
+                ctx.stop();
+            }
+            Ok(ws::Message::Continuation(_)) => {
+                debug!("Continuation frame received");
+            }
+            Ok(ws::Message::Nop) => {
+                debug!("Nop frame received");
+            }
+            Err(e) => {
+                error!("Error in WebSocket message handling: {}", e);
+                ctx.stop();
+            }
+        }
+    }
+}
+
+impl Handler<SendBinary> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
+        ctx.binary(msg.0);
+    }
+}
+
+impl Handler<SendText> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
+        ctx.text(msg.0);
+    }
+}
+
+impl Handler<GpuUpdate> for WebSocketSession {
+    type Result = ();
+
+    fn handle(&mut self, _: GpuUpdate, ctx: &mut Self::Context) {
         let state = self.state.clone();
         let ctx_addr = ctx.address();
-
-        let fut = async move {
-            info!("Handling initial_data request");
-            
+        
+        actix::spawn(async move {
             let graph = state.graph_service.graph_data.read().await;
-            let settings = state.settings.read().await;
-
-            info!("Preparing graph update message");
-            let graph_update = ServerMessage::GraphUpdate {
-                graph_data: (*graph).clone(),
-            };
-
-            info!("Sending graph data to client");
-            if let Ok(graph_str) = serde_json::to_string(&graph_update) {
-                debug!("Graph data JSON size: {} bytes", graph_str.len());
-                ctx_addr.do_send(SendText(graph_str));
-            } else {
-                error!("Failed to serialize graph data");
-            }
-
-            // Prepare and send settings update
-            info!("Preparing settings update");
-            let settings_update = ServerMessage::SettingsUpdated {
-                settings: serde_json::to_value(&*settings).unwrap_or_default(),
-            };
-
-            info!("Sending settings to client");
-            if let Ok(settings_str) = serde_json::to_string(&settings_update) {
-                debug!("Settings JSON size: {} bytes", settings_str.len());
-                ctx_addr.do_send(SendText(settings_str));
-            } else {
-                error!("Failed to serialize settings");
-            }
-
-            let completion = json!({
-                "type": "completion",
-                "message": "Initial data sent"
-            });
-            if let Ok(completion_str) = serde_json::to_string(&completion) {
-                ctx_addr.do_send(SendText(completion_str));
-            }
-        };
-
-        ctx.spawn(fut.into_actor(self));
-
-        self.simulation_mode = SimulationMode::Remote;
-        self.start_gpu_updates(ctx);
+            let nodes: Vec<NodePositionVelocity> = graph.nodes.iter().map(|node| NodePositionVelocity {
+                x: node.x,
+                y: node.y,
+                z: node.z,
+                vx: node.vx,
+                vy: node.vy,
+                vz: node.vz,
+            }).collect();
+            
+            let binary_data = positions_to_binary(&nodes);
+            ctx_addr.do_send(SendBinary(binary_data));
+        });
     }
 }

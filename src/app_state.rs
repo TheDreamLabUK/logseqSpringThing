@@ -10,6 +10,7 @@ use crate::utils::websocket_manager::WebSocketManager;
 use crate::utils::gpu_compute::GPUCompute;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use actix_web::web;
 
 pub struct AppState {
     pub settings: Arc<RwLock<Settings>>,
@@ -18,7 +19,7 @@ pub struct AppState {
     pub perplexity_service: Arc<PerplexityService>,
     pub ragflow_service: Arc<RAGFlowService>,
     pub speech_service: Arc<SpeechService>,
-    pub websocket_manager: Arc<WebSocketManager>,
+    pub websocket_manager: Arc<RwLock<Option<Arc<WebSocketManager>>>>,
     pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     pub ragflow_conversation_id: String,
     pub github_pr_service: Arc<dyn GitHubPRService + Send + Sync>,
@@ -32,13 +33,13 @@ impl AppState {
         perplexity_service: Arc<PerplexityService>,
         ragflow_service: Arc<RAGFlowService>,
         speech_service: Arc<SpeechService>,
-        websocket_manager: Arc<WebSocketManager>,
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_conversation_id: String,
         github_pr_service: Arc<dyn GitHubPRService + Send + Sync>,
     ) -> Self {
         let graph_service = Arc::new(GraphService::new());
         let metadata = Arc::new(RwLock::new(MetadataStore::new()));
+        let websocket_manager = Arc::new(RwLock::new(None));
         
         Self {
             settings,
@@ -53,5 +54,14 @@ impl AppState {
             github_pr_service,
             graph_service,
         }
+    }
+
+    pub async fn set_websocket_manager(&self, manager: Arc<WebSocketManager>) {
+        let mut ws_manager = self.websocket_manager.write().await;
+        *ws_manager = Some(manager);
+    }
+
+    pub async fn get_websocket_manager(&self) -> Option<Arc<WebSocketManager>> {
+        self.websocket_manager.read().await.clone()
     }
 }

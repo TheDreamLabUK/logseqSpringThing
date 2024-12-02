@@ -33,7 +33,6 @@ mod services;
 mod utils;
 
 /// Initialize graph data from cached metadata
-/// This is called at startup to quickly get the graph running before GitHub updates
 async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::io::Result<()> {
     log::info!("Loading cached graph data...");
     
@@ -49,25 +48,26 @@ async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::i
         }
     };
 
+    // Store metadata in app state
+    {
+        let mut app_metadata = app_state.metadata.write().await;
+        *app_metadata = metadata_map.clone();
+    }
+
     // Build initial graph from cached metadata
     log::info!("Building graph from cached metadata...");
     match GraphService::build_graph_from_metadata(&metadata_map).await {
         Ok(graph_data) => {
             let mut graph = app_state.graph_service.graph_data.write().await;
-            *graph = graph_data.clone(); // Clone before dropping the lock
+            *graph = graph_data.clone();
+            
+            // Ensure metadata is stored in graph_data
+            graph.metadata = metadata_map;
+            
             log::info!("Graph initialized from cache with {} nodes and {} edges", 
                 graph.nodes.len(), 
                 graph.edges.len()
             );
-            drop(graph); // Release the lock before broadcasting
-
-            // Broadcast initial graph data to any connected clients
-            if let Err(e) = app_state.websocket_manager.broadcast_graph_update(&graph_data).await {
-                log::error!("Failed to broadcast initial graph data: {}", e);
-            } else {
-                log::info!("Successfully broadcast initial graph data");
-            }
-            
             Ok(())
         },
         Err(e) => {
@@ -78,7 +78,6 @@ async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::i
 }
 
 /// Periodic graph update function
-/// Checks for GitHub updates every 12 hours while preserving node positions
 async fn update_graph_periodically(app_state: web::Data<AppState>) {
     let mut interval = interval(Duration::from_secs(43200)); // 12 hour interval
 
@@ -102,6 +101,12 @@ async fn update_graph_periodically(app_state: web::Data<AppState>) {
                 if !processed_files.is_empty() {
                     log::info!("Found {} updated files, updating graph", processed_files.len());
 
+                    // Update metadata in app state
+                    {
+                        let mut app_metadata = app_state.metadata.write().await;
+                        *app_metadata = metadata_map.clone();
+                    }
+
                     // Update graph while preserving node positions
                     let mut graph = app_state.graph_service.graph_data.write().await;
                     let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
@@ -119,14 +124,17 @@ async fn update_graph_periodically(app_state: web::Data<AppState>) {
                                 node.x = x;
                                 node.y = y;
                                 node.z = z;
+                                node.position = Some([x, y, z]);
                             }
                         }
                         *graph = new_graph.clone();
                         drop(graph); // Release the write lock before broadcasting
 
-                        // Notify clients of the update
-                        if let Err(e) = app_state.websocket_manager.broadcast_graph_update(&new_graph).await {
-                            log::error!("Failed to broadcast graph update: {}", e);
+                        // Only broadcast if websocket manager is initialized
+                        if let Some(ws_manager) = app_state.get_websocket_manager().await {
+                            if let Err(e) = ws_manager.broadcast_graph_update(&new_graph).await {
+                                log::error!("Failed to broadcast graph update: {}", e);
+                            }
                         }
                     }
                 } else {
@@ -176,81 +184,36 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // Initialize GitHub service
-    log::info!("Initializing GitHub service...");
-    let github_service: Arc<dyn GitHubService + Send + Sync> = {
+    // Initialize services
+    log::info!("Initializing services...");
+    let github_service = {
         let settings_read = settings.read().await;
-        match RealGitHubService::new(
+        Arc::new(RealGitHubService::new(
             settings_read.github.token.clone(),
             settings_read.github.owner.clone(),
             settings_read.github.repo.clone(),
             settings_read.github.base_path.clone(),
             settings.clone(),
-        ) {
-            Ok(service) => Arc::new(service),
-            Err(e) => {
-                log::error!("Failed to initialize GitHubService: {:?}", e);
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHubService: {:?}", e)));
-            }
-        }
+        )?)
     };
 
-    // Initialize GitHub PR service
-    log::info!("Initializing GitHub PR service...");
-    let github_pr_service: Arc<dyn GitHubPRService + Send + Sync> = {
+    let github_pr_service = {
         let settings_read = settings.read().await;
-        match RealGitHubPRService::new(
+        Arc::new(RealGitHubPRService::new(
             settings_read.github.token.clone(),
             settings_read.github.owner.clone(),
             settings_read.github.repo.clone(),
             settings_read.github.base_path.clone(),
-        ) {
-            Ok(service) => Arc::new(service),
-            Err(e) => {
-                log::error!("Failed to initialize GitHubPRService: {:?}", e);
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHubPRService: {:?}", e)));
-            }
-        }
+        )?)
     };
 
-    // Initialize services
-    log::info!("Initializing Perplexity service...");
-    let perplexity_service = match PerplexityService::new(settings.clone()) {
-        Ok(service) => Arc::new(service),
-        Err(e) => {
-            log::error!("Failed to initialize PerplexityService: {:?}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize PerplexityService: {:?}", e)));
-        }
-    };
-    
-    log::info!("Initializing RAGFlow service...");
-    let ragflow_service = match RAGFlowService::new(settings.clone()).await {
-        Ok(service) => Arc::new(service),
-        Err(e) => {
-            log::error!("Failed to initialize RAGFlowService: {:?}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize RAGFlowService: {:?}", e)));
-        }
-    };
+    let perplexity_service = Arc::new(PerplexityService::new(settings.clone())?);
+    let ragflow_service = Arc::new(RAGFlowService::new(settings.clone()).await?);
+    let speech_service = Arc::new(SpeechService::new(settings.clone()));
 
     // Create RAGFlow conversation
     log::info!("Creating RAGFlow conversation...");
-    let ragflow_conversation_id = match ragflow_service.create_conversation("default_user".to_string()).await {
-        Ok(id) => {
-            log::info!("Created RAGFlow conversation with ID: {}", id);
-            id
-        },
-        Err(e) => {
-            log::error!("Failed to create RAGFlow conversation: {:?}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to create RAGFlow conversation: {:?}", e)));
-        }
-    };
-
-    // Initialize WebSocket manager with debug settings
-    let websocket_manager = {
-        let settings_read = settings.read().await;
-        Arc::new(WebSocketManager::new(settings_read.debug.enable_websocket_debug))
-    };
-    let websocket_data = web::Data::new(websocket_manager.clone());
+    let ragflow_conversation_id = ragflow_service.create_conversation("default_user".to_string()).await?;
     
     // Initialize GPU compute with default graph
     log::info!("Initializing GPU compute...");
@@ -265,22 +228,13 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // Initialize speech service
-    log::info!("Initializing speech service...");
-    let speech_service = Arc::new(SpeechService::new(websocket_manager.clone(), settings.clone()));
-    if let Err(e) = speech_service.initialize().await {
-        log::error!("Failed to initialize SpeechService: {:?}", e);
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize SpeechService: {:?}", e)));
-    }
-
-    // Create application state
+    // Create application state without websocket manager
     let app_state = web::Data::new(AppState::new(
         settings.clone(),
         github_service,
         perplexity_service,
-        ragflow_service.clone(),
+        ragflow_service,
         speech_service,
-        websocket_manager.clone(),
         gpu_compute,
         ragflow_conversation_id,
         github_pr_service,
@@ -292,6 +246,19 @@ async fn main() -> std::io::Result<()> {
         log::warn!("Failed to initialize from cache: {:?}, proceeding with empty graph", e);
     }
 
+    // Initialize WebSocket manager with debug settings and app_state after graph is initialized
+    let websocket_manager = {
+        let settings_read = settings.read().await;
+        Arc::new(WebSocketManager::new(
+            settings_read.debug.enable_websocket_debug,
+            app_state.clone(),
+        ))
+    };
+
+    // Set websocket manager in app state
+    app_state.set_websocket_manager(websocket_manager.clone()).await;
+    let websocket_data = web::Data::new(websocket_manager.clone());
+
     // Start periodic update task
     let update_state = app_state.clone();
     tokio::spawn(async move {
@@ -299,13 +266,13 @@ async fn main() -> std::io::Result<()> {
     });
 
     // Start HTTP server
-    let bind_address = "0.0.0.0:3000"; // Hardcode to port 3000 for nginx proxy
+    let bind_address = "0.0.0.0:3000";
     log::info!("Starting HTTP server on {}", bind_address);
 
     HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
-            .app_data(websocket_data.clone()) // Add WebSocketManager as app data
+            .app_data(websocket_data.clone())
             .wrap(middleware::Logger::default())
             .route("/health", web::get().to(health_check))
             .service(
