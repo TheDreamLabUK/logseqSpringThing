@@ -90,6 +90,11 @@ impl RealGitHubService {
             .timeout(Duration::from_secs(30))
             .build()?;
 
+        // Trim any leading/trailing slashes from base_path
+        let base_path = base_path.trim_matches('/').to_string();
+
+        debug!("Initializing GitHub service with base_path: {}", base_path);
+
         Ok(Self {
             client,
             token,
@@ -104,10 +109,17 @@ impl RealGitHubService {
 #[async_trait]
 impl GitHubService for RealGitHubService {
     async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/contents/{}",
-            self.owner, self.repo, self.base_path
-        );
+        let url = if self.base_path.is_empty() {
+            format!(
+                "https://api.github.com/repos/{}/{}/contents",
+                self.owner, self.repo
+            )
+        } else {
+            format!(
+                "https://api.github.com/repos/{}/{}/contents/{}",
+                self.owner, self.repo, self.base_path
+            )
+        };
         
         debug!("Fetching GitHub metadata from URL: {}", url);
 
@@ -200,8 +212,13 @@ impl GitHubService for RealGitHubService {
     }
 
     async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>> {
-        let url = format!("https://api.github.com/repos/{}/{}/contents/{}/{}", 
-            self.owner, self.repo, self.base_path, file_name);
+        let url = if self.base_path.is_empty() {
+            format!("https://api.github.com/repos/{}/{}/contents/{}", 
+                self.owner, self.repo, file_name)
+        } else {
+            format!("https://api.github.com/repos/{}/{}/contents/{}/{}", 
+                self.owner, self.repo, self.base_path, file_name)
+        };
 
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
@@ -392,7 +409,7 @@ impl FileService {
         };
         
         size.max(MIN_NODE_SIZE).min(MAX_NODE_SIZE)
-    }
+}
 
     /// Extract references to other files based on their names (case insensitive)
     fn extract_references(content: &str, valid_nodes: &[String]) -> HashMap<String, ReferenceInfo> {
