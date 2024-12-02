@@ -3,7 +3,6 @@ use crate::models::graph::GraphData;
 use crate::config::Settings;
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
-use reqwest::header::{HeaderMap, HeaderValue};
 use async_trait::async_trait;
 use log::{info, debug, error};
 use regex::Regex;
@@ -112,39 +111,46 @@ impl GitHubService for RealGitHubService {
         
         debug!("Fetching GitHub metadata from URL: {}", url);
 
-        // Use token format for GitHub API
+        // Set headers exactly as in the working curl command
         let response = self.client.get(&url)
-            .header("Authorization", format!("token {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
             .send()
             .await?;
 
-        // Log response status and headers
-        debug!("GitHub API response status: {}", response.status());
-        debug!("GitHub API response headers: {:?}", response.headers());
+        // Get status and headers for debugging
+        let status = response.status();
+        let headers = response.headers().clone();
+        
+        debug!("GitHub API response status: {}", status);
+        debug!("GitHub API response headers: {:?}", headers);
 
-        // Get response body as text first for debugging
+        // Get response body
         let body = response.text().await?;
-        debug!("GitHub API response body: {}", body);
+        
+        // Log the first 1000 characters of the response for debugging
+        debug!("GitHub API response preview: {}", &body[..body.len().min(1000)]);
 
-        // Check for error response first
-        if !response.status().is_success() {
+        // Check for error response
+        if !status.is_success() {
             let error_msg = match serde_json::from_str::<serde_json::Value>(&body) {
                 Ok(error_json) => {
                     let msg = error_json["message"].as_str().unwrap_or("Unknown error");
-                    format!("GitHub API error: {} - {}", response.status(), msg)
+                    format!("GitHub API error: {} - {}", status, msg)
                 },
-                Err(_) => format!("GitHub API error: {}", response.status())
+                Err(_) => format!("GitHub API error: {} - {}", status, body)
             };
             error!("{}", error_msg);
             return Err(error_msg.into());
         }
 
-        // Parse response text as array
+        // Parse response as array
         let contents: Vec<serde_json::Value> = match serde_json::from_str(&body) {
             Ok(parsed) => parsed,
             Err(e) => {
                 error!("Failed to parse GitHub API response: {}", e);
-                error!("Response body was: {}", body);
+                error!("Response body: {}", body);
                 return Err(Box::new(e));
             }
         };
@@ -198,7 +204,9 @@ impl GitHubService for RealGitHubService {
             self.owner, self.repo, self.base_path, file_name);
 
         let response = self.client.get(&url)
-            .header("Authorization", format!("token {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
             .send()
             .await?;
 
@@ -211,13 +219,19 @@ impl GitHubService for RealGitHubService {
     }
 
     async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
-        let mut headers = HeaderMap::new();
-        headers.insert("Authorization", HeaderValue::from_str(&format!("token {}", self.token))?);
-
         let response = self.client.get(download_url)
-            .headers(headers)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
             .send()
             .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            error!("Failed to fetch file content. Status: {}, Error: {}", status, error_text);
+            return Err(format!("Failed to fetch file content: {}", error_text).into());
+        }
 
         let content = response.text().await?;
         Ok(content)
@@ -230,10 +244,19 @@ impl GitHubService for RealGitHubService {
         );
 
         let response = self.client.get(&url)
-            .header("Authorization", format!("token {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
             .query(&[("path", file_path), ("per_page", "1")])
             .send()
             .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            error!("Failed to get last modified time. Status: {}, Error: {}", status, error_text);
+            return Ok(Utc::now()); // Fallback to current time
+        }
 
         let commits: Vec<serde_json::Value> = response.json().await?;
         

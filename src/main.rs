@@ -3,8 +3,8 @@ use actix_web::{web, App, HttpServer, middleware, HttpResponse, HttpRequest};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
-use std::env;
 use tokio::time::{interval, Duration};
+use dotenv::dotenv;
 
 use crate::app_state::AppState;
 use crate::config::Settings;
@@ -155,12 +155,8 @@ async fn test_speech_service(app_state: web::Data<AppState>) -> HttpResponse {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // Load environment variables
-    if let Ok(vars) = envy::from_env::<HashMap<String, String>>() {
-        for (key, value) in vars {
-            env::set_var(key, value);
-        }
-    }
+    // Load .env file first
+    dotenv().ok();
 
     // Initialize logging
     std::env::set_var("RUST_LOG", "debug");
@@ -185,10 +181,10 @@ async fn main() -> std::io::Result<()> {
     let github_service: Arc<dyn GitHubService + Send + Sync> = {
         let settings_read = settings.read().await;
         match RealGitHubService::new(
-            settings_read.github.access_token.clone(),
+            settings_read.github.token.clone(),
             settings_read.github.owner.clone(),
             settings_read.github.repo.clone(),
-            settings_read.github.directory.clone(),
+            settings_read.github.base_path.clone(),
             settings.clone(),
         ) {
             Ok(service) => Arc::new(service),
@@ -204,10 +200,10 @@ async fn main() -> std::io::Result<()> {
     let github_pr_service: Arc<dyn GitHubPRService + Send + Sync> = {
         let settings_read = settings.read().await;
         match RealGitHubPRService::new(
-            settings_read.github.access_token.clone(),
+            settings_read.github.token.clone(),
             settings_read.github.owner.clone(),
             settings_read.github.repo.clone(),
-            settings_read.github.directory.clone(),
+            settings_read.github.base_path.clone(),
         ) {
             Ok(service) => Arc::new(service),
             Err(e) => {

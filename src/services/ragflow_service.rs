@@ -70,14 +70,14 @@ impl RAGFlowService {
             .send()
             .await?;
 
-        info!("Response status: {}", response.status());
+        let status = response.status();
+        info!("Response status: {}", status);
 
-        if response.status().is_success() {
+        if status.is_success() {
             let result: serde_json::Value = response.json().await?;
             info!("Successful response: {:?}", result);
             Ok(result["data"]["id"].as_str().unwrap_or("").to_string())
         } else {
-            let status = response.status();
             let error_message = response.text().await?;
             error!("Failed to create conversation. Status: {}, Error: {}", status, error_message);
             Err(RAGFlowError::StatusError(status, error_message))
@@ -116,9 +116,10 @@ impl RAGFlowService {
             .send()
             .await?;
 
-        info!("Response status: {}", response.status());
+        let status = response.status();
+        info!("Response status: {}", status);
        
-        if response.status().is_success() {
+        if status.is_success() {
             let stream = response.bytes_stream().map(move |chunk_result| {
                 match chunk_result {
                     Ok(chunk) => {
@@ -140,7 +141,6 @@ impl RAGFlowService {
 
             Ok(Box::pin(stream))
         } else {
-            let status = response.status();
             let error_message = response.text().await?;
             error!("Failed to send message. Status: {}, Error: {}", status, error_message);
             Err(RAGFlowError::StatusError(status, error_message))
@@ -154,11 +154,11 @@ impl RAGFlowService {
             .send()
             .await?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        if status.is_success() {
             let history: serde_json::Value = response.json().await?;
             Ok(history)
         } else {
-            let status = response.status();
             let error_message = response.text().await?;
             error!("Failed to get conversation history. Status: {}, Error: {}", status, error_message);
             Err(RAGFlowError::StatusError(status, error_message))
