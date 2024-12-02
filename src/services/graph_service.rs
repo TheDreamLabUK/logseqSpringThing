@@ -49,6 +49,12 @@ impl GraphService {
             if let Some(metadata) = graph.metadata.get(&format!("{}.md", node_id)) {
                 node.size = Some(metadata.node_size as f32);
                 node.file_size = metadata.file_size as u64;
+                node.label = node_id.clone(); // Set label to node ID (filename without .md)
+                
+                // Add metadata fields to node's metadata map
+                node.metadata.insert("fileSize".to_string(), metadata.file_size.to_string());
+                node.metadata.insert("hyperlinkCount".to_string(), metadata.hyperlink_count.to_string());
+                node.metadata.insert("lastModified".to_string(), metadata.last_modified.to_string());
             }
             
             debug!("Creating node for file: {} with size: {:?}", node_id, node.size);
@@ -117,7 +123,86 @@ impl GraphService {
             node.vx = 0.0;
             node.vy = 0.0;
             node.vz = 0.0;
+            node.position = Some([node.x, node.y, node.z]);
         }
+    }
+
+    pub async fn build_graph_from_metadata(
+        metadata: &MetadataStore
+    ) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
+        let mut graph = GraphData::new();
+        let mut edge_map = HashMap::new();
+
+        // First pass: Create nodes from files in metadata
+        let mut valid_nodes = HashSet::new();
+        for file_name in metadata.keys() {
+            let node_id = file_name.trim_end_matches(".md").to_string();
+            valid_nodes.insert(node_id);
+        }
+
+        // Create nodes for all valid node IDs
+        for node_id in &valid_nodes {
+            let mut node = Node::new(node_id.clone());
+            
+            // Get metadata for this node
+            if let Some(metadata) = metadata.get(&format!("{}.md", node_id)) {
+                node.size = Some(metadata.node_size as f32);
+                node.file_size = metadata.file_size as u64;
+                node.label = node_id.clone(); // Set label to node ID (filename without .md)
+                
+                // Add metadata fields to node's metadata map
+                node.metadata.insert("fileSize".to_string(), metadata.file_size.to_string());
+                node.metadata.insert("hyperlinkCount".to_string(), metadata.hyperlink_count.to_string());
+                node.metadata.insert("lastModified".to_string(), metadata.last_modified.to_string());
+            }
+            
+            debug!("Creating node for file: {} with size: {:?}", node_id, node.size);
+            graph.nodes.push(node);
+        }
+
+        debug!("Created {} nodes", valid_nodes.len());
+
+        // Store metadata in graph
+        graph.metadata = metadata.clone();
+
+        // Second pass: Create edges from topic counts
+        for (source_file, metadata) in metadata.iter() {
+            let source_id = source_file.trim_end_matches(".md").to_string();
+            
+            for (target_file, count) in &metadata.topic_counts {
+                let target_id = target_file.trim_end_matches(".md").to_string();
+                
+                // Only create edge if both nodes exist and they're different
+                if source_id != target_id && valid_nodes.contains(&target_id) {
+                    let edge_key = if source_id < target_id {
+                        (source_id.clone(), target_id.clone())
+                    } else {
+                        (target_id.clone(), source_id.clone())
+                    };
+
+                    debug!("Creating edge between {} and {} with weight {}", 
+                          edge_key.0, edge_key.1, count);
+
+                    edge_map.entry(edge_key)
+                        .and_modify(|weight| *weight += *count as f32)
+                        .or_insert(*count as f32);
+                }
+            }
+        }
+
+        // Convert edge map to edges
+        graph.edges = edge_map.into_iter()
+            .map(|((source, target), weight)| {
+                debug!("Adding edge: {} -> {} (weight: {})", source, target, weight);
+                Edge::new(source, target, weight)
+            })
+            .collect();
+
+        // Initialize random positions
+        Self::initialize_random_positions(&mut graph);
+
+        info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
+        Ok(graph)
     }
 
     pub async fn calculate_layout(
@@ -152,6 +237,7 @@ impl GraphService {
                         node.x = node.x.clamp(-max_coord, max_coord);
                         node.y = node.y.clamp(-max_coord, max_coord);
                         node.z = node.z.clamp(-max_coord, max_coord);
+                        node.position = Some([node.x, node.y, node.z]);
                     }
                 }
                 Ok(())
@@ -244,79 +330,9 @@ impl GraphService {
                 node.vx *= damping;
                 node.vy *= damping;
                 node.vz *= damping;
+
+                node.position = Some([node.x, node.y, node.z]);
             }
         }
-    }
-
-    pub async fn build_graph_from_metadata(
-        metadata: &MetadataStore
-    ) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
-        let mut graph = GraphData::new();
-        let mut edge_map = HashMap::new();
-
-        // First pass: Create nodes from files in metadata
-        let mut valid_nodes = HashSet::new();
-        for file_name in metadata.keys() {
-            let node_id = file_name.trim_end_matches(".md").to_string();
-            valid_nodes.insert(node_id);
-        }
-
-        // Create nodes for all valid node IDs
-        for node_id in &valid_nodes {
-            let mut node = Node::new(node_id.clone());
-            
-            // Get metadata for this node
-            if let Some(metadata) = metadata.get(&format!("{}.md", node_id)) {
-                node.size = Some(metadata.node_size as f32);
-                node.file_size = metadata.file_size as u64;
-            }
-            
-            debug!("Creating node for file: {} with size: {:?}", node_id, node.size);
-            graph.nodes.push(node);
-        }
-
-        debug!("Created {} nodes", valid_nodes.len());
-
-        // Store metadata in graph
-        graph.metadata = metadata.clone();
-
-        // Second pass: Create edges from topic counts
-        for (source_file, metadata) in metadata.iter() {
-            let source_id = source_file.trim_end_matches(".md").to_string();
-            
-            for (target_file, count) in &metadata.topic_counts {
-                let target_id = target_file.trim_end_matches(".md").to_string();
-                
-                // Only create edge if both nodes exist and they're different
-                if source_id != target_id && valid_nodes.contains(&target_id) {
-                    let edge_key = if source_id < target_id {
-                        (source_id.clone(), target_id.clone())
-                    } else {
-                        (target_id.clone(), source_id.clone())
-                    };
-
-                    debug!("Creating edge between {} and {} with weight {}", 
-                          edge_key.0, edge_key.1, count);
-
-                    edge_map.entry(edge_key)
-                        .and_modify(|weight| *weight += *count as f32)
-                        .or_insert(*count as f32);
-                }
-            }
-        }
-
-        // Convert edge map to edges
-        graph.edges = edge_map.into_iter()
-            .map(|((source, target), weight)| {
-                debug!("Adding edge: {} -> {} (weight: {})", source, target, weight);
-                Edge::new(source, target, weight)
-            })
-            .collect();
-
-        // Initialize random positions
-        Self::initialize_random_positions(&mut graph);
-
-        info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
-        Ok(graph)
     }
 }

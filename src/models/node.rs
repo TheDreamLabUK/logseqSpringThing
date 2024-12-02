@@ -8,9 +8,14 @@ use crate::models::position_update::NodePositionVelocity;
 pub struct Node {
     pub id: String,
     pub label: String,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, String>,
+    pub position: Option<[f32; 3]>,
+    #[serde(skip)]
     pub x: f32,
+    #[serde(skip)]
     pub y: f32,
+    #[serde(skip)]
     pub z: f32,
     #[serde(skip)]
     pub vx: f32,
@@ -21,20 +26,27 @@ pub struct Node {
     #[serde(skip)]
     pub file_size: u64, // Used to calculate mass
     #[serde(rename = "type")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub node_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub weight: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub user_data: Option<HashMap<String, String>>,
 }
 
 impl Node {
     pub fn new(id: String) -> Self {
-        Self {
+        let mut node = Self {
             id: id.clone(),
             label: id,
             metadata: HashMap::new(),
+            position: Some([0.0, 0.0, 0.0]),
             x: 0.0,
             y: 0.0,
             z: 0.0,
@@ -48,7 +60,9 @@ impl Node {
             weight: None,
             group: None,
             user_data: None,
-        }
+        };
+        node.update_position();
+        node
     }
 
     pub fn position(&self) -> [f32; 3] {
@@ -57,6 +71,10 @@ impl Node {
 
     pub fn velocity(&self) -> [f32; 3] {
         [self.vx, self.vy, self.vz]
+    }
+
+    fn update_position(&mut self) {
+        self.position = Some([self.x, self.y, self.z]);
     }
 
     /// Convert file size to quantized mass value (0-255)
@@ -93,6 +111,7 @@ impl Node {
         self.vx = gpu_node.vx;
         self.vy = gpu_node.vy;
         self.vz = gpu_node.vz;
+        self.update_position();
     }
 
     pub fn to_position_update(&self) -> NodePositionVelocity {
@@ -113,6 +132,7 @@ impl Node {
         self.vx = update.vx;
         self.vy = update.vy;
         self.vz = update.vz;
+        self.update_position();
     }
 }
 
@@ -122,6 +142,7 @@ impl Default for Node {
             id: String::new(),
             label: String::new(),
             metadata: HashMap::new(),
+            position: Some([0.0, 0.0, 0.0]),
             x: 0.0,
             y: 0.0,
             z: 0.0,
