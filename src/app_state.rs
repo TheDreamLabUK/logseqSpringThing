@@ -10,7 +10,6 @@ use crate::utils::websocket_manager::WebSocketManager;
 use crate::utils::gpu_compute::GPUCompute;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use actix_web::web;
 
 pub struct AppState {
     pub settings: Arc<RwLock<Settings>>,
@@ -18,7 +17,7 @@ pub struct AppState {
     pub github_service: Arc<dyn GitHubService + Send + Sync>,
     pub perplexity_service: Arc<PerplexityService>,
     pub ragflow_service: Arc<RAGFlowService>,
-    pub speech_service: Arc<SpeechService>,
+    pub speech_service: Arc<RwLock<Option<Arc<SpeechService>>>>,
     pub websocket_manager: Arc<RwLock<Option<Arc<WebSocketManager>>>>,
     pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     pub ragflow_conversation_id: String,
@@ -32,7 +31,7 @@ impl AppState {
         github_service: Arc<dyn GitHubService + Send + Sync>,
         perplexity_service: Arc<PerplexityService>,
         ragflow_service: Arc<RAGFlowService>,
-        speech_service: Arc<SpeechService>,
+        speech_service: Option<Arc<SpeechService>>,
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_conversation_id: String,
         github_pr_service: Arc<dyn GitHubPRService + Send + Sync>,
@@ -40,6 +39,7 @@ impl AppState {
         let graph_service = Arc::new(GraphService::new());
         let metadata = Arc::new(RwLock::new(MetadataStore::new()));
         let websocket_manager = Arc::new(RwLock::new(None));
+        let speech_service = Arc::new(RwLock::new(speech_service));
         
         Self {
             settings,
@@ -63,5 +63,14 @@ impl AppState {
 
     pub async fn get_websocket_manager(&self) -> Option<Arc<WebSocketManager>> {
         self.websocket_manager.read().await.clone()
+    }
+
+    pub async fn set_speech_service(&self, service: Arc<SpeechService>) {
+        let mut speech_service = self.speech_service.write().await;
+        *speech_service = Some(service);
+    }
+
+    pub async fn get_speech_service(&self) -> Option<Arc<SpeechService>> {
+        self.speech_service.read().await.clone()
     }
 }

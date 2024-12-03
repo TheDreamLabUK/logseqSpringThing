@@ -3,10 +3,11 @@ use actix_web_actors::ws;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use bytemuck;
 use std::sync::Arc;
-use tokio::sync::RwLock;
-use log::{debug, info, warn, trace};
+use log::{debug, info, warn, trace, error};
 use std::time::{Duration, Instant};
 use serde_json::{self, Value};
+use std::sync::Mutex;
+use std::error::Error as StdError;
 
 use crate::models::node::GPUNode;
 use crate::models::graph::GraphData;
@@ -14,9 +15,9 @@ use crate::utils::websocket_messages::{SendBinary, SendText, ServerMessage};
 use crate::AppState;
 
 // Constants for binary protocol
-const FLOAT32_SIZE: usize = std::mem::size_of::<f32>();
-const HEADER_SIZE: usize = FLOAT32_SIZE; // isInitialLayout flag
-const NODE_SIZE: usize = 6 * FLOAT32_SIZE; // x, y, z, vx, vy, vz
+pub(crate) const FLOAT32_SIZE: usize = std::mem::size_of::<f32>();
+pub(crate) const HEADER_SIZE: usize = FLOAT32_SIZE; // isInitialLayout flag
+pub(crate) const NODE_SIZE: usize = 6 * FLOAT32_SIZE; // x, y, z, vx, vy, vz
 
 // Constants for heartbeat
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15); // Send ping every 15 seconds
@@ -73,29 +74,29 @@ impl WebSocketManager {
     }
 
     pub async fn add_connection(&self, addr: Addr<WebSocketSession>) {
-        let mut connections = self.connections.lock().await;
+        let mut connections = self.connections.lock().unwrap();
         connections.push(addr);
         debug_log!(self.debug_mode, "[WebSocketManager] New WebSocket connection added. Total connections: {}", connections.len());
     }
 
     pub async fn remove_connection(&self, addr: &Addr<WebSocketSession>) {
-        let mut connections = self.connections.lock().await;
+        let mut connections = self.connections.lock().unwrap();
         let before_len = connections.len();
         connections.retain(|x| x != addr);
         debug_log!(self.debug_mode, "[WebSocketManager] WebSocket connection removed. Connections: {} -> {}", before_len, connections.len());
     }
 
-    pub async fn broadcast_message(&self, message: String) -> Result<(), Box<dyn std::error::Error>> {
-        let connections = self.connections.lock().await;
+    pub async fn broadcast_message(&self, message: String) -> Result<(), Box<dyn StdError>> {
+        let connections = self.connections.lock().unwrap();
         for addr in connections.iter() {
             addr.do_send(SendText(message.clone()));
         }
         Ok(())
     }
 
-    pub async fn broadcast_binary(&self, nodes: &[GPUNode], is_initial: bool) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn broadcast_binary(&self, nodes: &[GPUNode], is_initial: bool) -> Result<(), Box<dyn StdError>> {
         debug_log!(self.debug_mode, "[WebSocketManager] Broadcasting binary update for {} nodes", nodes.len());
-        let mut buffer = self.binary_buffer.lock().await;
+        let mut buffer = self.binary_buffer.lock().unwrap();
         let total_size = HEADER_SIZE + nodes.len() * NODE_SIZE;
         
         let mut new_buffer = Vec::with_capacity(total_size);
@@ -123,7 +124,7 @@ impl WebSocketManager {
         *buffer = new_buffer;
 
         let binary_data = buffer.clone();
-        let connections = self.connections.lock().await;
+        let connections = self.connections.lock().unwrap();
         debug_log!(self.debug_mode, "[WebSocketManager] Broadcasting binary data ({} bytes) to {} connections", 
             binary_data.len(), connections.len());
         
@@ -134,7 +135,7 @@ impl WebSocketManager {
         Ok(())
     }
 
-    pub async fn broadcast_graph_update(&self, graph: &GraphData) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn broadcast_graph_update(&self, graph: &GraphData) -> Result<(), Box<dyn StdError>> {
         debug_log!(self.debug_mode, "[WebSocketManager] Broadcasting graph update with {} nodes and {} edges", 
             graph.nodes.len(), graph.edges.len());
 
@@ -155,7 +156,7 @@ impl WebSocketManager {
         let message_str = serde_json::to_string(&message)?;
         debug_log!(self.debug_mode, "[WebSocketManager] Graph update message size: {} bytes", message_str.len());
         
-        let connections = self.connections.lock().await;
+        let connections = self.connections.lock().unwrap();
         debug_log!(self.debug_mode, "[WebSocketManager] Broadcasting to {} connections", connections.len());
         for addr in connections.iter() {
             addr.do_send(SendText(message_str.clone()));
@@ -176,7 +177,7 @@ impl WebSocketManager {
         ws::start(ws, &req, stream)
     }
 
-    pub async fn send_initial_data(&self, addr: &Addr<WebSocketSession>) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn send_initial_data(&self, addr: &Addr<WebSocketSession>) -> Result<(), Box<dyn StdError>> {
         let graph = self.app_state.graph_service.graph_data.read().await;
         let settings = self.app_state.settings.read().await;
         
@@ -303,7 +304,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 let connections = self.manager.connections.clone();
                 let bin_data = bin.to_vec();
                 actix::spawn(async move {
-                    let connections = connections.lock().await;
+                    let connections = connections.lock().unwrap();
                     for addr in connections.iter() {
                         addr.do_send(SendBinary(bin_data.clone()));
                     }
