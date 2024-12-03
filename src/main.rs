@@ -5,6 +5,7 @@ use tokio::sync::RwLock;
 use std::collections::HashMap;
 use tokio::time::{interval, Duration};
 use dotenv::dotenv;
+use std::error::Error as StdError;
 
 use crate::app_state::AppState;
 use crate::config::Settings;
@@ -16,12 +17,12 @@ use crate::handlers::{
     perplexity_handler,
 };
 use crate::models::graph::GraphData;
-use crate::services::file_service::{GitHubService, RealGitHubService, FileService};
+use crate::services::file_service::{RealGitHubService, FileService};
 use crate::services::perplexity_service::PerplexityService;
-use crate::services::ragflow_service::RAGFlowService;
+use crate::services::ragflow_service::{RAGFlowService, RAGFlowError};
 use crate::services::speech_service::SpeechService;
 use crate::services::graph_service::GraphService;
-use crate::services::github_service::{GitHubPRService, RealGitHubPRService};
+use crate::services::github_service::RealGitHubPRService;
 use crate::utils::websocket_manager::WebSocketManager;
 use crate::utils::gpu_compute::GPUCompute;
 
@@ -31,6 +32,28 @@ mod handlers;
 mod models;
 mod services;
 mod utils;
+
+// Custom error wrapper
+#[derive(Debug)]
+pub struct AppError(Box<dyn StdError + Send + Sync>);
+
+impl From<Box<dyn StdError + Send + Sync>> for AppError {
+    fn from(err: Box<dyn StdError + Send + Sync>) -> Self {
+        AppError(err)
+    }
+}
+
+impl From<RAGFlowError> for AppError {
+    fn from(err: RAGFlowError) -> Self {
+        AppError(Box::new(err))
+    }
+}
+
+impl From<AppError> for std::io::Error {
+    fn from(err: AppError) -> Self {
+        std::io::Error::new(std::io::ErrorKind::Other, err.0.to_string())
+    }
+}
 
 /// Initialize graph data from cached metadata
 async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::io::Result<()> {
@@ -155,9 +178,13 @@ async fn health_check() -> HttpResponse {
 
 /// Test endpoint for speech service
 async fn test_speech_service(app_state: web::Data<AppState>) -> HttpResponse {
-    match app_state.speech_service.send_message("Hello, OpenAI!".to_string()).await {
-        Ok(_) => HttpResponse::Ok().body("Message sent successfully"),
-        Err(e) => HttpResponse::InternalServerError().body(format!("Error: {}", e)),
+    if let Some(speech_service) = app_state.get_speech_service().await {
+        match speech_service.send_message("Hello, OpenAI!".to_string()).await {
+            Ok(_) => HttpResponse::Ok().body("Message sent successfully"),
+            Err(e) => HttpResponse::InternalServerError().body(format!("Error: {}", e)),
+        }
+    } else {
+        HttpResponse::ServiceUnavailable().body("Speech service not initialized")
     }
 }
 
@@ -194,7 +221,7 @@ async fn main() -> std::io::Result<()> {
             settings_read.github.repo.clone(),
             settings_read.github.base_path.clone(),
             settings.clone(),
-        )?)
+        ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?)
     };
 
     let github_pr_service = {
@@ -204,16 +231,20 @@ async fn main() -> std::io::Result<()> {
             settings_read.github.owner.clone(),
             settings_read.github.repo.clone(),
             settings_read.github.base_path.clone(),
-        )?)
+        ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?)
     };
 
-    let perplexity_service = Arc::new(PerplexityService::new(settings.clone())?);
-    let ragflow_service = Arc::new(RAGFlowService::new(settings.clone()).await?);
-    let speech_service = Arc::new(SpeechService::new(settings.clone()));
+    let perplexity_service = Arc::new(PerplexityService::new(settings.clone())
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?);
+    
+    // Initialize RAGFlow service and handle errors through AppError
+    let ragflow_service = Arc::new(RAGFlowService::new(settings.clone()).await
+        .map_err(AppError::from)?);
 
-    // Create RAGFlow conversation
+    // Create RAGFlow conversation and handle errors through AppError
     log::info!("Creating RAGFlow conversation...");
-    let ragflow_conversation_id = ragflow_service.create_conversation("default_user".to_string()).await?;
+    let ragflow_conversation_id = ragflow_service.create_conversation("default_user".to_string()).await
+        .map_err(AppError::from)?;
     
     // Initialize GPU compute with default graph
     log::info!("Initializing GPU compute...");
@@ -228,13 +259,13 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // Create application state without websocket manager
+    // Create initial application state without websocket manager and speech service
     let app_state = web::Data::new(AppState::new(
         settings.clone(),
         github_service,
         perplexity_service,
         ragflow_service,
-        speech_service,
+        None, // speech_service will be set later
         gpu_compute,
         ragflow_conversation_id,
         github_pr_service,
@@ -254,6 +285,15 @@ async fn main() -> std::io::Result<()> {
             app_state.clone(),
         ))
     };
+
+    // Now create speech service with the initialized websocket manager
+    let speech_service = Arc::new(SpeechService::new(
+        websocket_manager.clone(),
+        settings.clone(),
+    ));
+
+    // Update app state with speech service
+    app_state.set_speech_service(speech_service).await;
 
     // Set websocket manager in app state
     app_state.set_websocket_manager(websocket_manager.clone()).await;

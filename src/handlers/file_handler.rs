@@ -61,8 +61,10 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
                         let gpu = gpu.clone();
                         let gpu_write = gpu.write().await;
                         if let Ok(nodes) = gpu_write.get_node_positions().await {
-                            if let Err(e) = state.websocket_manager.broadcast_binary(&nodes, true).await {
-                                error!("Failed to broadcast binary update: {}", e);
+                            if let Some(ws_manager) = state.get_websocket_manager().await {
+                                if let Err(e) = ws_manager.broadcast_binary(&nodes, true).await {
+                                    error!("Failed to broadcast binary update: {}", e);
+                                }
                             }
                         }
                     }
@@ -73,8 +75,10 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
                         "metadata": graph_data.metadata
                     });
 
-                    if let Err(e) = state.websocket_manager.broadcast_message(metadata_msg.to_string()).await {
-                        error!("Failed to broadcast metadata update: {}", e);
+                    if let Some(ws_manager) = state.get_websocket_manager().await {
+                        if let Err(e) = ws_manager.broadcast_message(metadata_msg.to_string()).await {
+                            error!("Failed to broadcast metadata update: {}", e);
+                        }
                     }
 
                     HttpResponse::Ok().json(json!({
@@ -143,8 +147,10 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
                 let gpu = gpu.clone();
                 let gpu_write = gpu.write().await;
                 if let Ok(nodes) = gpu_write.get_node_positions().await {
-                    if let Err(e) = state.websocket_manager.broadcast_binary(&nodes, true).await {
-                        error!("Failed to broadcast binary update: {}", e);
+                    if let Some(ws_manager) = state.get_websocket_manager().await {
+                        if let Err(e) = ws_manager.broadcast_binary(&nodes, true).await {
+                            error!("Failed to broadcast binary update: {}", e);
+                        }
                     }
                 }
             }
@@ -155,8 +161,10 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
                 "metadata": graph_data.metadata
             });
 
-            if let Err(e) = state.websocket_manager.broadcast_message(metadata_msg.to_string()).await {
-                error!("Failed to broadcast metadata update: {}", e);
+            if let Some(ws_manager) = state.get_websocket_manager().await {
+                if let Err(e) = ws_manager.broadcast_message(metadata_msg.to_string()).await {
+                    error!("Failed to broadcast metadata update: {}", e);
+                }
             }
 
             HttpResponse::Ok().json(json!({
@@ -198,8 +206,10 @@ pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, Ac
                 let gpu = gpu.clone();
                 let gpu_write = gpu.write().await;
                 if let Ok(nodes) = gpu_write.get_node_positions().await {
-                    if let Err(e) = state.websocket_manager.broadcast_binary(&nodes, true).await {
-                        error!("Failed to broadcast binary update: {}", e);
+                    if let Some(ws_manager) = state.get_websocket_manager().await {
+                        if let Err(e) = ws_manager.broadcast_binary(&nodes, true).await {
+                            error!("Failed to broadcast binary update: {}", e);
+                        }
                     }
                 }
             }
@@ -210,8 +220,10 @@ pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, Ac
                 "metadata": graph.metadata
             });
 
-            if let Err(e) = state.websocket_manager.broadcast_message(metadata_msg.to_string()).await {
-                error!("Failed to broadcast metadata update: {}", e);
+            if let Some(ws_manager) = state.get_websocket_manager().await {
+                if let Err(e) = ws_manager.broadcast_message(metadata_msg.to_string()).await {
+                    error!("Failed to broadcast metadata update: {}", e);
+                }
             }
             
             Ok(HttpResponse::Ok().json(json!({

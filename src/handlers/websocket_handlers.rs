@@ -6,7 +6,7 @@ use bytemuck;
 use futures::StreamExt;
 use log::{debug, error, info, warn};
 use serde_json::json;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::time::Duration;
 use actix_web_actors::ws;
 use actix::StreamHandler;
@@ -22,6 +22,11 @@ use crate::utils::websocket_openai::OpenAIWebSocket;
 
 pub const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(16);
+
+// Constants for binary protocol
+const FLOAT32_SIZE: usize = std::mem::size_of::<f32>();
+const HEADER_SIZE: usize = FLOAT32_SIZE; // isInitialLayout flag
+const NODE_SIZE: usize = 6 * FLOAT32_SIZE; // x, y, z, vx, vy, vz
 
 // Helper function to convert positions to binary data
 fn positions_to_binary(nodes: &[NodePositionVelocity]) -> Vec<u8> {
@@ -192,12 +197,25 @@ impl WebSocketSession {
                                     addr.do_send(OpenAIMessage(text));
                                 } else {
                                     debug!("Using local TTS service");
-                                    if let Err(e) = state.speech_service.send_message(text).await {
-                                        error!("Failed to generate speech: {}", e);
+                                    // Get read lock on speech service
+                                    if let Some(speech_service) = state.get_speech_service().await {
+                                        if let Err(e) = speech_service.send_message(text).await {
+                                            error!("Failed to generate speech: {}", e);
+                                            let error_message = ServerMessage::Error {
+                                                message: format!("Failed to generate speech: {}", e),
+                                                code: Some("SPEECH_GENERATION_ERROR".to_string()),
+                                                details: Some("Error occurred while generating speech using local TTS service".to_string()),
+                                            };
+                                            if let Ok(error_str) = serde_json::to_string(&error_message) {
+                                                ctx_addr.do_send(SendText(error_str));
+                                            }
+                                        }
+                                    } else {
+                                        error!("Speech service not initialized");
                                         let error_message = ServerMessage::Error {
-                                            message: format!("Failed to generate speech: {}", e),
-                                            code: Some("SPEECH_GENERATION_ERROR".to_string()),
-                                            details: Some("Error occurred while generating speech using local TTS service".to_string()),
+                                            message: "Speech service not initialized".to_string(),
+                                            code: Some("SPEECH_SERVICE_ERROR".to_string()),
+                                            details: Some("Speech service is not available".to_string()),
                                         };
                                         if let Ok(error_str) = serde_json::to_string(&error_message) {
                                             ctx_addr.do_send(SendText(error_str));
@@ -322,7 +340,7 @@ impl WebSocketSession {
 impl Actor for WebSocketSession {
     type Context = WebsocketContext<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
+    fn started(&mut self, _ctx: &mut Self::Context) {
         info!("WebSocket session started");
     }
 
@@ -444,6 +462,16 @@ impl Handler<SendBinary> for WebSocketSession {
     type Result = ();
 
     fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
+        let data = &msg.0;
+        if data.len() >= HEADER_SIZE {
+            let mut header_bytes = [0u8; 4];
+            header_bytes.copy_from_slice(&data[0..4]);
+            let is_initial = f32::from_le_bytes(header_bytes) >= 1.0;
+            let num_nodes = (data.len() - HEADER_SIZE) / NODE_SIZE;
+
+            debug!("[WebSocketSession] Sending binary message: {} nodes, initial={}, size={} bytes", 
+                num_nodes, is_initial, data.len());
+        }
         ctx.binary(msg.0);
     }
 }
