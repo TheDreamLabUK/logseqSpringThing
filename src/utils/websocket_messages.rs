@@ -8,6 +8,7 @@ use crate::models::graph::GraphData;  // Import the proper GraphData struct
 #[serde(rename_all = "camelCase")]
 pub enum ServerMessage {
     GraphUpdate {
+        #[serde(rename = "graphData")]
         graph_data: GraphData,  // Use actual GraphData instead of Value
     },
     Error {
@@ -32,6 +33,7 @@ pub enum ServerMessage {
         radius: f32,
     },
     InitialData {
+        #[serde(rename = "graphData")]
         graph_data: GraphData,  // Use actual GraphData here too
         settings: Value,
     },
