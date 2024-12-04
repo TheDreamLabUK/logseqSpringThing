@@ -34,15 +34,11 @@ const debugLog = (message: string, data?: any) => {
   
   if (data) {
     if (data instanceof ArrayBuffer) {
-      // For binary data, show detailed header info
-      const view = new DataView(data);
-      const isInitial = view.getFloat32(0, true);
-      const nodeCount = (data.byteLength - 4) / 24;
+      // For binary data, show size and node count
+      const nodeCount = data.byteLength / 24;
       console.debug(`${logPrefix} Binary Data Analysis:
-        Is Initial: ${isInitial}
         Node Count: ${nodeCount}
-        Total Size: ${data.byteLength} bytes
-        Header Bytes: ${Array.from(new Uint8Array(data.slice(0, 16))).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+        Total Size: ${data.byteLength} bytes`);
     } else if (data instanceof Event) {
       // For WebSocket events, show detailed event info
       const eventDetails = {
@@ -101,6 +97,8 @@ export default class WebsocketService {
   private indexToNodeId: string[] = [];
   private isReconnecting: boolean = false;
   private forceClose: boolean = false;
+  private pendingBinaryUpdate: boolean = false;
+  private isInitialLayout: boolean = false;
 
   constructor(config: Partial<WebSocketConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -314,6 +312,11 @@ export default class WebsocketService {
       });
 
       if (event.data instanceof ArrayBuffer) {
+        if (!this.pendingBinaryUpdate) {
+          debugLog('Received unexpected binary data without type information');
+          return;
+        }
+
         // Handle binary message (position updates)
         const result = processPositionUpdate(event.data);
         if (!result) {
@@ -340,17 +343,21 @@ export default class WebsocketService {
         }).filter((pos): pos is NodePosition & { id: string } => pos !== null);
 
         const binaryMessage: BinaryMessage = {
+          type: 'binaryPositionUpdate',
           data: event.data,
           positions,
-          nodeCount: this.indexToNodeId.length
+          nodeCount: this.indexToNodeId.length,
+          isInitialLayout: this.isInitialLayout
         };
 
         debugLog('Processed binary message', {
           nodeCount: positions.length,
+          isInitialLayout: this.isInitialLayout,
           samplePositions: positions.slice(0, 3)
         });
 
         this.emit('gpuPositions', binaryMessage);
+        this.pendingBinaryUpdate = false;
 
       } else {
         // Handle JSON message
@@ -361,6 +368,13 @@ export default class WebsocketService {
         if (message.type === 'pong') {
           debugLog('Received pong');
           this.lastPongTime = Date.now();
+          return;
+        }
+
+        // Handle binary position update type
+        if (message.type === 'binaryPositionUpdate') {
+          this.pendingBinaryUpdate = true;
+          this.isInitialLayout = message.isInitialLayout;
           return;
         }
         

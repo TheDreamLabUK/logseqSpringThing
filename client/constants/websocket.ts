@@ -46,6 +46,7 @@ export const SERVER_MESSAGE_TYPES = {
     SETTINGS_UPDATED: 'settingsUpdated',
     SIMULATION_MODE_SET: 'simulationModeSet',
     FISHEYE_SETTINGS_UPDATED: 'fisheyeSettingsUpdated',
+    BINARY_POSITION_UPDATE: 'binaryPositionUpdate',
     
     // Additional client-side message types
     INITIAL_DATA: 'initialData',
@@ -108,5 +109,8 @@ export const MESSAGE_FIELDS = {
     SETTINGS: 'settings',
     MATERIAL: 'material',
     BLOOM: 'bloom',
-    FISHEYE: 'fisheye'
+    FISHEYE: 'fisheye',
+
+    // Binary update fields
+    IS_INITIAL_LAYOUT: 'isInitialLayout'
 } as const;

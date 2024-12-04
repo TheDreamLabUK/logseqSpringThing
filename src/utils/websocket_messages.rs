@@ -59,6 +59,9 @@ pub enum ServerMessage {
     Completion {
         message: String,
     },
+    BinaryPositionUpdate {
+        is_initial_layout: bool,
+    },
     Ping,
     Pong,
 }

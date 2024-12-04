@@ -24,9 +24,7 @@ pub const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(16);
 
 // Constants for binary protocol
-const FLOAT32_SIZE: usize = std::mem::size_of::<f32>();
-const HEADER_SIZE: usize = FLOAT32_SIZE; // isInitialLayout flag
-const NODE_SIZE: usize = 6 * FLOAT32_SIZE; // x, y, z, vx, vy, vz
+const NODE_SIZE: usize = 6 * std::mem::size_of::<f32>(); // x, y, z, vx, vy, vz
 
 // Helper function to convert positions to binary data
 fn positions_to_binary(nodes: &[NodePositionVelocity]) -> Vec<u8> {
@@ -35,6 +33,21 @@ fn positions_to_binary(nodes: &[NodePositionVelocity]) -> Vec<u8> {
         binary_data.extend_from_slice(bytemuck::bytes_of(node));
     }
     binary_data
+}
+
+// Helper function to send binary position update
+fn send_binary_update(ctx: &mut WebsocketContext<WebSocketSession>, binary_data: Vec<u8>, is_initial: bool) {
+    // Send message indicating binary update type
+    let update_type = ServerMessage::BinaryPositionUpdate {
+        is_initial_layout: is_initial
+    };
+    
+    if let Ok(type_str) = serde_json::to_string(&update_type) {
+        ctx.text(ByteString::from(type_str));
+    }
+    
+    // Send the binary data
+    ctx.binary(binary_data);
 }
 
 #[derive(Message)]
@@ -133,6 +146,50 @@ impl WebSocketSession {
             let completion = ServerMessage::PositionUpdateComplete {
                 status: "success".to_string(),
             };
+            if let Ok(completion_str) = serde_json::to_string(&completion) {
+                ctx_addr.do_send(SendText(completion_str));
+            }
+        };
+
+        ctx.spawn(fut.into_actor(self));
+    }
+
+    fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, _params: SimulationParams) {
+        let state = self.state.clone();
+        let ctx_addr = ctx.address();
+
+        let fut = async move {
+            let graph = state.graph_service.graph_data.write().await;
+            
+            // Update positions
+            let nodes: Vec<NodePositionVelocity> = graph.nodes.iter().map(|node| NodePositionVelocity {
+                x: node.x,
+                y: node.y,
+                z: node.z,
+                vx: node.vx,
+                vy: node.vy,
+                vz: node.vz,
+            }).collect();
+            
+            let binary_data = positions_to_binary(&nodes);
+            
+            // Send binary update type first
+            let update_type = ServerMessage::BinaryPositionUpdate {
+                is_initial_layout: true
+            };
+            
+            if let Ok(type_str) = serde_json::to_string(&update_type) {
+                ctx_addr.do_send(SendText(type_str));
+            }
+            
+            // Then send binary data
+            ctx_addr.do_send(SendBinary(binary_data));
+
+            // Send completion message
+            let completion = json!({
+                "type": "completion",
+                "message": "Layout update complete"
+            });
             if let Ok(completion_str) = serde_json::to_string(&completion) {
                 ctx_addr.do_send(SendText(completion_str));
             }
@@ -294,41 +351,6 @@ impl WebSocketSession {
         }
     }
 
-    fn handle_layout(&mut self, ctx: &mut WebsocketContext<WebSocketSession>, _params: SimulationParams) {
-        let state = self.state.clone();
-        let ctx_addr = ctx.address();
-        let weak_addr = ctx.address().downgrade();
-
-        let fut = async move {
-            let graph = state.graph_service.graph_data.write().await;
-            
-            // Update positions
-            let nodes: Vec<NodePositionVelocity> = graph.nodes.iter().map(|node| NodePositionVelocity {
-                x: node.x,
-                y: node.y,
-                z: node.z,
-                vx: node.vx,
-                vy: node.vy,
-                vz: node.vz,
-            }).collect();
-            
-            let binary_data = positions_to_binary(&nodes);
-            ctx_addr.do_send(SendBinary(binary_data));
-
-            if let Some(addr) = weak_addr.upgrade() {
-                let completion = json!({
-                    "type": "completion",
-                    "message": "Layout update complete"
-                });
-                if let Ok(completion_str) = serde_json::to_string(&completion) {
-                    addr.do_send(SendText(completion_str));
-                }
-            }
-        };
-
-        ctx.spawn(fut.into_actor(self));
-    }
-
     fn start_gpu_updates(&self, ctx: &mut WebsocketContext<WebSocketSession>) {
         let addr = ctx.address();
         ctx.run_interval(GPU_UPDATE_INTERVAL, move |_, _| {
@@ -462,16 +484,20 @@ impl Handler<SendBinary> for WebSocketSession {
     type Result = ();
 
     fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
-        let data = &msg.0;
-        if data.len() >= HEADER_SIZE {
-            let mut header_bytes = [0u8; 4];
-            header_bytes.copy_from_slice(&data[0..4]);
-            let is_initial = f32::from_le_bytes(header_bytes) >= 1.0;
-            let num_nodes = (data.len() - HEADER_SIZE) / NODE_SIZE;
-
-            debug!("[WebSocketSession] Sending binary message: {} nodes, initial={}, size={} bytes", 
-                num_nodes, is_initial, data.len());
+        let num_nodes = msg.0.len() / NODE_SIZE;
+        debug!("[WebSocketSession] Sending binary message: {} nodes, size={} bytes", 
+            num_nodes, msg.0.len());
+        
+        // Send binary update type first
+        let update_type = ServerMessage::BinaryPositionUpdate {
+            is_initial_layout: false
+        };
+        
+        if let Ok(type_str) = serde_json::to_string(&update_type) {
+            ctx.text(ByteString::from(type_str));
         }
+        
+        // Then send binary data
         ctx.binary(msg.0);
     }
 }
