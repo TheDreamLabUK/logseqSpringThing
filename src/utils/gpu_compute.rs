@@ -492,9 +492,9 @@ impl GPUCompute {
     }
 
     /// Fast path for position updates from client
-    pub async fn update_positions_binary(&mut self, binary_data: &[u8]) -> Result<(), Error> {
-        // Verify data length (24 bytes per node - position + velocity, plus 4 bytes for header)
-        let expected_size = self.num_nodes as usize * 24 + 4;
+    pub async fn update_positions_binary(&mut self, binary_data: &[u8], is_initial_layout: bool) -> Result<(), Error> {
+        // Verify data length (24 bytes per node - position + velocity)
+        let expected_size = self.num_nodes as usize * 24;
         if binary_data.len() != expected_size {
             return Err(Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -503,15 +503,10 @@ impl GPUCompute {
             ));
         }
 
-        // Extract header value as f32
-        let mut header_bytes = [0u8; 4];
-        header_bytes.copy_from_slice(&binary_data[0..4]);
-        let header_value = f32::from_le_bytes(header_bytes);
-        
-        // Update simulation params based on header value
+        // Update simulation params based on layout type
         let mut gpu_params = self.simulation_params.to_gpu_params();
-        if header_value >= 1.0 {
-            // Adjust parameters for initial layout if needed
+        if is_initial_layout {
+            // Adjust parameters for initial layout
             gpu_params.spring_strength *= 2.0;
             gpu_params.repulsion *= 2.0;
         }
@@ -522,11 +517,11 @@ impl GPUCompute {
             bytemuck::cast_slice(&[gpu_params])
         );
 
-        // Write position data to buffer (skip header)
+        // Write position data to buffer
         self.queue.write_buffer(
             &self.position_update_buffer,
             0,
-            &binary_data[4..]
+            binary_data
         );
 
         debug!("Position data written to GPU buffer");

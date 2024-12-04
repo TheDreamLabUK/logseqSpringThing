@@ -6,6 +6,7 @@ import { useWebSocketStore } from '../stores/websocket';
 import type { GraphNode, GraphEdge } from '../types/core';
 import type { VisualizationConfig } from '../types/components';
 import type { CoreState } from '../types/core';
+import type { BinaryMessage } from '../types/websocket';
 
 export function useGraphSystem() {
   const visualizationStore = useVisualizationStore();
@@ -179,8 +180,9 @@ export function useGraphSystem() {
         dataView[offset + 5] = node.velocity?.[2] || 0;
       });
 
-      // Update binary store
-      binaryStore.updateFromBinary({
+      // Create binary message with required type information
+      const binaryMessage: BinaryMessage = {
+        type: 'binaryPositionUpdate',
         data: binaryData,
         positions: graphData.nodes.map((node, index) => {
           const offset = index * 6;
@@ -193,8 +195,12 @@ export function useGraphSystem() {
             vz: dataView[offset + 5]
           };
         }),
-        nodeCount: nodeCount.value
-      });
+        nodeCount: nodeCount.value,
+        isInitialLayout: true // Initial layout since this is a full graph update
+      };
+
+      // Update binary store
+      binaryStore.updateFromBinary(binaryMessage);
 
       // Mark scene for update
       if (visualizationState?.value.scene) {

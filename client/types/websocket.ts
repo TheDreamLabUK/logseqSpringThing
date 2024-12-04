@@ -16,15 +16,18 @@ export type MessageType =
   | 'completion'
   | 'ping'
   | 'pong'
-  | 'updatePositions';  // Added for client-side force simulation updates
+  | 'updatePositions'
+  | 'binaryPositionUpdate';  // Added for binary position updates
 
 // Binary Protocol Types
 export interface BinaryMessage {
+  type: 'binaryPositionUpdate';
   data: ArrayBuffer;        // Raw binary data in format:
                            // [x,y,z,vx,vy,vz](24) per node
                            // Node index in array matches index in original graph data
   positions: NodePosition[];  // Processed position data
   nodeCount: number;        // Number of nodes in the update
+  isInitialLayout: boolean; // Whether this is an initial layout update
 }
 
 export interface NodePosition {
@@ -206,7 +209,7 @@ export interface WebSocketConfig {
 // Event System Types
 export type WebSocketEventMap = {
   open: void;
-  close: CloseEvent;  // Updated to use CloseEvent type
+  close: CloseEvent;
   error: ErrorMessage;
   message: BaseMessage;
   graphUpdate: GraphUpdateMessage;
