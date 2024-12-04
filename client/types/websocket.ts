@@ -94,6 +94,18 @@ export interface GraphUpdateMessage extends BaseMessage {
   graphData: GraphData;
 }
 
+// Initial Data Message
+export interface InitialDataMessage extends BaseMessage {
+  type: 'initialData';
+  graphData: GraphData;
+  settings: {
+    material?: MaterialSettings;
+    physics?: PhysicsSettings;
+    bloom?: BloomSettings;
+    fisheye?: FisheyeSettings;
+  };
+}
+
 // Base Message Interface
 export interface BaseMessage {
   type: MessageType;
@@ -213,6 +225,7 @@ export type WebSocketEventMap = {
   error: ErrorMessage;
   message: BaseMessage;
   graphUpdate: GraphUpdateMessage;
+  initialData: InitialDataMessage;  // Add initialData event type
   serverSettings: Record<string, any>;
   ragflowAnswer: string;
   openaiResponse: string;

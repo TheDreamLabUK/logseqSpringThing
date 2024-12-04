@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import WebsocketService from '../services/websocketService'
 import { useVisualizationStore } from './visualization'
 import { useBinaryUpdateStore } from './binaryUpdate'
-import type { BaseMessage, ErrorMessage, GraphUpdateMessage, BinaryMessage, Edge as WsEdge, SimulationModeMessage } from '../types/websocket'
+import type { BaseMessage, ErrorMessage, GraphUpdateMessage, BinaryMessage, Edge as WsEdge, SimulationModeMessage, InitialDataMessage } from '../types/websocket'
 import type { Node, Edge } from '../types/core'
 
 interface WebSocketState {
@@ -122,6 +122,27 @@ export const useWebSocketStore = defineStore('websocket', {
         this._handleMaxReconnectAttempts()
       })
 
+      this.service.on('initialData', (message: InitialDataMessage) => {
+        const startTime = performance.now()
+        console.debug('[WebSocketStore] Received initial data message:', {
+          type: message.type,
+          hasGraphData: !!message.graphData,
+          hasSettings: !!message.settings,
+          timestamp: new Date().toISOString()
+        })
+        
+        try {
+          this._handleGraphUpdate(message, visualizationStore)
+          if (message.settings) {
+            visualizationStore.updateVisualizationSettings(message.settings)
+          }
+        } catch (error) {
+          console.error('[WebSocketStore] Error processing initial data:', error)
+        }
+
+        this._updateMessageProcessingMetrics(performance.now() - startTime)
+      })
+
       this.service.on('graphUpdate', (message: GraphUpdateMessage) => {
         const startTime = performance.now()
         console.debug('[WebSocketStore] Received graph update message:', {
@@ -176,7 +197,7 @@ export const useWebSocketStore = defineStore('websocket', {
       })
     },
 
-    _handleGraphUpdate(message: GraphUpdateMessage, visualizationStore: any) {
+    _handleGraphUpdate(message: GraphUpdateMessage | InitialDataMessage, visualizationStore: any) {
       console.debug('[WebSocketStore] Processing graph update:', {
         nodeCount: message.graphData?.nodes?.length || 0,
         edgeCount: message.graphData?.edges?.length || 0,
@@ -320,6 +341,8 @@ export const useWebSocketStore = defineStore('websocket', {
 
     async reconnect() {
       console.debug('[WebSocketStore] Attempting reconnection')
+      // Reset initialDataRequested before cleanup
+      this.initialDataRequested = false
       if (this.service) {
         this.service.cleanup()
         this.service = null
@@ -341,6 +364,7 @@ export const useWebSocketStore = defineStore('websocket', {
       this.connectionAttempts = 0
       this.lastReconnectTime = 0
       this.gpuEnabled = false
+      // Reset initialDataRequested to ensure we request data on reconnect
       this.initialDataRequested = false
       this.performanceMetrics = {
         avgMessageProcessingTime: 0,

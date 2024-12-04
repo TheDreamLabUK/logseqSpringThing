@@ -178,19 +178,50 @@ impl WebSocketManager {
     }
 
     pub async fn send_initial_data(&self, addr: &Addr<WebSocketSession>) -> Result<(), Box<dyn StdError>> {
+        info!("[WebSocketManager] Starting send_initial_data");
+        
         let graph = self.app_state.graph_service.graph_data.read().await;
         let settings = self.app_state.settings.read().await;
         
-        debug_log!(self.debug_mode, "[WebSocketManager] Sending initial data: {} nodes, {} edges",
+        info!("[WebSocketManager] Preparing initial data: {} nodes, {} edges",
             graph.nodes.len(), graph.edges.len());
+
+        // Log sample of nodes and edges
+        if !graph.nodes.is_empty() {
+            let sample_node = &graph.nodes[0];
+            info!("[WebSocketManager] Sample node: id={}, position={:?}", 
+                sample_node.id, sample_node.position);
+        }
+        if !graph.edges.is_empty() {
+            let sample_edge = &graph.edges[0];
+            info!("[WebSocketManager] Sample edge: source={}, target={}", 
+                sample_edge.source, sample_edge.target);
+        }
 
         let initial_data = ServerMessage::InitialData {
             graph_data: (*graph).clone(),
             settings: serde_json::to_value(&*settings).unwrap_or_default(),
         };
 
-        if let Ok(initial_data_str) = serde_json::to_string(&initial_data) {
-            addr.do_send(SendText(initial_data_str));
+        match serde_json::to_string(&initial_data) {
+            Ok(initial_data_str) => {
+                info!("[WebSocketManager] Serialized initial data size: {} bytes", initial_data_str.len());
+                
+                // Log a preview of the JSON (first 200 chars)
+                let preview = if initial_data_str.len() > 200 {
+                    format!("{}...", &initial_data_str[..200])
+                } else {
+                    initial_data_str.clone()
+                };
+                info!("[WebSocketManager] Initial data preview: {}", preview);
+                
+                addr.do_send(SendText(initial_data_str));
+                info!("[WebSocketManager] Initial data sent successfully");
+            }
+            Err(e) => {
+                error!("[WebSocketManager] Failed to serialize initial data: {}", e);
+                return Err(Box::new(e));
+            }
         }
 
         Ok(())
@@ -244,7 +275,7 @@ impl Actor for WebSocketSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        debug_log!(self.manager.debug_mode, "[WebSocketSession] Session started");
+        info!("[WebSocketSession] Session started");
         self.start_heartbeat(ctx);
         
         let addr = ctx.address();
@@ -255,7 +286,7 @@ impl Actor for WebSocketSession {
     }
 
     fn stopped(&mut self, ctx: &mut Self::Context) {
-        debug_log!(self.manager.debug_mode, "[WebSocketSession] Session stopped");
+        info!("[WebSocketSession] Session stopped");
         
         let addr = ctx.address();
         let manager = self.manager.clone();
@@ -278,21 +309,19 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 self.last_pong = Instant::now();
             }
             Ok(ws::Message::Text(text)) => {
+                info!("[WebSocketSession] Text message received: {}", text);
                 if let Ok(json) = serde_json::from_str::<Value>(&text) {
-                    debug_log!(self.manager.debug_mode, "[WebSocketSession] Text message received: {}", 
-                        serde_json::to_string_pretty(&json).unwrap_or_default());
-
                     if json["type"] == "initial_data" {
+                        info!("[WebSocketSession] Initial data request received");
                         let addr = ctx.address();
                         let manager = self.manager.clone();
                         actix::spawn(async move {
-                            if let Err(e) = manager.send_initial_data(&addr).await {
-                                error!("[WebSocketSession] Failed to send initial data: {}", e);
+                            match manager.send_initial_data(&addr).await {
+                                Ok(_) => info!("[WebSocketSession] Initial data sent successfully"),
+                                Err(e) => error!("[WebSocketSession] Failed to send initial data: {}", e),
                             }
                         });
                     }
-                } else {
-                    debug_log!(self.manager.debug_mode, "[WebSocketSession] Raw text message received: {}", text);
                 }
 
                 if text.contains("\"type\":\"ping\"") {
@@ -311,7 +340,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 });
             }
             Ok(ws::Message::Close(reason)) => {
-                debug_log!(self.manager.debug_mode, "[WebSocketSession] Close message received: {:?}", reason);
+                info!("[WebSocketSession] Close message received: {:?}", reason);
                 ctx.close(reason);
                 ctx.stop();
             }
@@ -351,12 +380,7 @@ impl Handler<SendText> for WebSocketSession {
     type Result = ();
 
     fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
-        if let Ok(json) = serde_json::from_str::<Value>(&msg.0) {
-            debug_log!(self.manager.debug_mode, "[WebSocketSession] Sending JSON message: {}", 
-                serde_json::to_string_pretty(&json).unwrap_or_default());
-        } else {
-            debug_log!(self.manager.debug_mode, "[WebSocketSession] Sending raw text message: {}", msg.0);
-        }
+        info!("[WebSocketSession] Sending text message: {}", msg.0);
         ctx.text(msg.0);
     }
 }

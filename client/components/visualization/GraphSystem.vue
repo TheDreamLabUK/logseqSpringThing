@@ -104,6 +104,14 @@ export default defineComponent({
       return data;
     });
 
+    // Watch for ready state and request initial data
+    watch(isReady, (ready) => {
+      if (ready && !websocketStore.initialDataRequested) {
+        console.debug('Graph system ready, requesting initial data');
+        websocketStore.requestInitialData();
+      }
+    });
+
     // Watch for graph data changes with enhanced logging
     watch(() => graphData.value, (newData) => {
       if (newData && newData.nodes.length > 0) {
@@ -276,7 +284,13 @@ export default defineComponent({
 
     // Update graph data when component mounts
     onMounted(() => {
-      console.debug('GraphSystem mounted');
+      console.debug('GraphSystem mounted, initialization state:', {
+        isReady: isReady.value,
+        hasGraphData: !!graphData.value,
+        initialDataRequested: websocketStore.initialDataRequested,
+        timestamp: new Date().toISOString()
+      });
+      
       if (graphData.value) {
         console.debug('Initial graph data update:', {
           nodes: graphData.value.nodes.length,
