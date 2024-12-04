@@ -6,7 +6,9 @@ import type {
   ErrorMessage,
   BinaryMessage,
   GraphUpdateMessage,
-  NodePosition
+  NodePosition,
+  InitialDataMessage,
+  Node
 } from '../types/websocket'
 
 import { processPositionUpdate } from '../utils/gpuUtils'
@@ -24,23 +26,20 @@ import {
   CONNECTION_TIMEOUT
 } from '../constants/websocket'
 
-// Enhanced debug logging
+// Enhanced debug logging with data validation
 const debugLog = (message: string, data?: any) => {
   const timestamp = new Date().toISOString();
   const logPrefix = `[WebsocketService ${timestamp}]`;
   
-  // Always log the message
   console.debug(`${logPrefix} ${message}`);
   
   if (data) {
     if (data instanceof ArrayBuffer) {
-      // For binary data, show size and node count
       const nodeCount = data.byteLength / 24;
       console.debug(`${logPrefix} Binary Data Analysis:
         Node Count: ${nodeCount}
         Total Size: ${data.byteLength} bytes`);
     } else if (data instanceof Event) {
-      // For WebSocket events, show detailed event info
       const eventDetails = {
         type: data.type,
         timeStamp: data.timeStamp,
@@ -55,16 +54,56 @@ const debugLog = (message: string, data?: any) => {
       };
       console.debug(`${logPrefix} Event Details:`, eventDetails);
     } else if (data instanceof Error) {
-      // For Error objects, show full error details
       console.debug(`${logPrefix} Error Details:`, {
         name: data.name,
         message: data.message,
         stack: data.stack,
         cause: data.cause
       });
+    } else if (typeof data === 'object' && data.type === 'initialData') {
+      // Special handling for initialData messages
+      console.debug(`${logPrefix} Initial Data Message:`, {
+        type: data.type,
+        graphData: {
+          nodeCount: data.graphData?.nodes?.length || 0,
+          edgeCount: data.graphData?.edges?.length || 0,
+          sampleNodes: data.graphData?.nodes?.slice(0, 3).map((n: { id: string; position?: [number, number, number]; label?: string }) => ({
+            id: n.id,
+            hasPosition: !!n.position,
+            position: n.position,
+            label: n.label
+          })),
+          sampleEdges: data.graphData?.edges?.slice(0, 3).map((e: { source: string; target: string }) => ({
+            source: e.source,
+            target: e.target
+          }))
+        },
+        hasSettings: !!data.settings,
+        timestamp: new Date().toISOString()
+      });
+    } else if (typeof data === 'object' && data.type === 'graphUpdate') {
+      // Special handling for graphUpdate messages
+      console.debug(`${logPrefix} Graph Update Message:`, {
+        type: data.type,
+        graphData: {
+          nodeCount: data.graphData?.nodes?.length || 0,
+          edgeCount: data.graphData?.edges?.length || 0,
+          sampleNodes: data.graphData?.nodes?.slice(0, 3).map((n: { id: string; position?: [number, number, number]; label?: string }) => ({
+            id: n.id,
+            hasPosition: !!n.position,
+            position: n.position,
+            label: n.label
+          })),
+          sampleEdges: data.graphData?.edges?.slice(0, 3).map((e: { source: string; target: string }) => ({
+            source: e.source,
+            target: e.target
+          }))
+        },
+        timestamp: new Date().toISOString()
+      });
     } else if (typeof data === 'object') {
-      // For JSON data, show full structure with type information
-      console.debug(`${logPrefix} Data (${data?.constructor?.name || typeof data}):`, JSON.stringify(data, null, 2));
+      console.debug(`${logPrefix} Data (${data?.constructor?.name || typeof data}):`, 
+        JSON.stringify(data, null, 2));
     } else {
       console.debug(`${logPrefix} Data (${typeof data}):`, data);
     }
@@ -303,132 +342,146 @@ export default class WebsocketService {
     });
   }
 
-  private handleMessage(event: MessageEvent): void {
-    try {
-      debugLog('Received WebSocket message', {
-        type: event.type,
-        dataType: event.data instanceof ArrayBuffer ? 'ArrayBuffer' : typeof event.data,
-        dataSize: event.data?.length || 0
+private handleMessage(event: MessageEvent): void {
+  try {
+    debugLog('Received WebSocket message', {
+      type: event.type,
+      dataType: event.data instanceof ArrayBuffer ? 'ArrayBuffer' : typeof event.data,
+      dataSize: event.data?.length || 0
+    });
+
+    if (event.data instanceof ArrayBuffer) {
+      if (!this.pendingBinaryUpdate) {
+        debugLog('Received unexpected binary data without type information');
+        return;
+      }
+
+      // Handle binary message (position updates)
+      const result = processPositionUpdate(event.data);
+      if (!result) {
+        throw new Error('Failed to process position update');
+      }
+
+      if (result.positions.length !== this.indexToNodeId.length) {
+        debugLog('Position update node count mismatch', {
+          expected: this.indexToNodeId.length,
+          received: result.positions.length
+        });
+      }
+
+      const positions = result.positions.map((pos, index) => {
+        const nodeId = this.indexToNodeId[index];
+        if (!nodeId) {
+          debugLog('Missing node ID mapping', { index });
+          return null;
+        }
+        return {
+          ...pos,
+          id: nodeId
+        };
+      }).filter((pos): pos is NodePosition & { id: string } => pos !== null);
+
+      const binaryMessage: BinaryMessage = {
+        type: 'binaryPositionUpdate',
+        data: event.data,
+        positions,
+        nodeCount: this.indexToNodeId.length,
+        isInitialLayout: this.isInitialLayout
+      };
+
+      debugLog('Processed binary message', {
+        nodeCount: positions.length,
+        isInitialLayout: this.isInitialLayout,
+        samplePositions: positions.slice(0, 3)
       });
 
-      if (event.data instanceof ArrayBuffer) {
-        if (!this.pendingBinaryUpdate) {
-          debugLog('Received unexpected binary data without type information');
-          return;
-        }
+      this.emit('gpuPositions', binaryMessage);
+      this.pendingBinaryUpdate = false;
 
-        // Handle binary message (position updates)
-        const result = processPositionUpdate(event.data);
-        if (!result) {
-          throw new Error('Failed to process position update');
-        }
+    } else {
+      // Handle JSON message
+      const message = JSON.parse(event.data) as BaseMessage;
+      debugLog('Parsed JSON message', message);
 
-        if (result.positions.length !== this.indexToNodeId.length) {
-          debugLog('Position update node count mismatch', {
-            expected: this.indexToNodeId.length,
-            received: result.positions.length
-          });
-        }
+      // Handle pong messages
+      if (message.type === 'pong') {
+        debugLog('Received pong');
+        this.lastPongTime = Date.now();
+        return;
+      }
 
-        const positions = result.positions.map((pos, index) => {
-          const nodeId = this.indexToNodeId[index];
-          if (!nodeId) {
-            debugLog('Missing node ID mapping', { index });
-            return null;
-          }
-          return {
-            ...pos,
-            id: nodeId
-          };
-        }).filter((pos): pos is NodePosition & { id: string } => pos !== null);
-
-        const binaryMessage: BinaryMessage = {
-          type: 'binaryPositionUpdate',
-          data: event.data,
-          positions,
-          nodeCount: this.indexToNodeId.length,
-          isInitialLayout: this.isInitialLayout
-        };
-
-        debugLog('Processed binary message', {
-          nodeCount: positions.length,
-          isInitialLayout: this.isInitialLayout,
-          samplePositions: positions.slice(0, 3)
+      // Handle binary position update type
+      if (message.type === 'binaryPositionUpdate') {
+        this.pendingBinaryUpdate = true;
+        this.isInitialLayout = message.isInitialLayout;
+        return;
+      }
+      
+      // Handle graph updates and store node mappings
+      if (message.type === 'graphUpdate' || message.type === 'initialData') {
+        const graphMessage = message as GraphUpdateMessage | InitialDataMessage;
+        debugLog(`Processing ${message.type}`, {
+          hasGraphData: !!graphMessage.graphData,
+          nodeCount: graphMessage.graphData?.nodes?.length || 0,
+          edgeCount: graphMessage.graphData?.edges?.length || 0,
+          sampleNodes: graphMessage.graphData?.nodes?.slice(0, 3).map((n: Node) => ({
+            id: n.id,
+            hasPosition: !!n.position,
+            position: n.position,
+            label: n.label
+          }))
         });
 
-        this.emit('gpuPositions', binaryMessage);
-        this.pendingBinaryUpdate = false;
-
-      } else {
-        // Handle JSON message
-        const message = JSON.parse(event.data) as BaseMessage;
-        debugLog('Parsed JSON message', message);
-
-        // Handle pong messages
-        if (message.type === 'pong') {
-          debugLog('Received pong');
-          this.lastPongTime = Date.now();
-          return;
-        }
-
-        // Handle binary position update type
-        if (message.type === 'binaryPositionUpdate') {
-          this.pendingBinaryUpdate = true;
-          this.isInitialLayout = message.isInitialLayout;
-          return;
+        if (graphMessage.graphData?.nodes) {
+          this.nodeIdToIndex.clear();
+          this.indexToNodeId = [];
+          
+          graphMessage.graphData.nodes.forEach((node: Node, index: number) => {
+            this.nodeIdToIndex.set(node.id, index);
+            this.indexToNodeId[index] = node.id;
+          });
+          
+          debugLog('Node ID mappings updated', {
+            mappingCount: this.indexToNodeId.length,
+            sampleMappings: this.indexToNodeId.slice(0, 3).map(id => ({
+              id,
+              index: this.nodeIdToIndex.get(id)
+            }))
+          });
         }
         
-        // Handle graph updates and store node mappings
-        if (message.type === 'graphUpdate') {
-          const graphMessage = message as GraphUpdateMessage;
-          debugLog('Processing graph update', {
-            hasGraphData: !!graphMessage.graphData,
-            nodeCount: graphMessage.graphData?.nodes?.length || 0,
-            sampleNodes: graphMessage.graphData?.nodes?.slice(0, 3)
-          });
-
-          if (graphMessage.graphData?.nodes) {
-            this.nodeIdToIndex.clear();
-            this.indexToNodeId = [];
-            
-            graphMessage.graphData.nodes.forEach((node, index) => {
-              this.nodeIdToIndex.set(node.id, index);
-              this.indexToNodeId[index] = node.id;
-            });
-            
-            debugLog('Node ID mappings updated', {
-              mappingCount: this.indexToNodeId.length,
-              sampleMappings: this.indexToNodeId.slice(0, 3).map(id => ({
-                id,
-                index: this.nodeIdToIndex.get(id)
-              }))
-            });
-          }
-          
-          this.emit('graphUpdate', graphMessage);
+        // Emit the appropriate event based on message type
+        if (message.type === 'initialData') {
+          this.emit('initialData', message as InitialDataMessage);
         } else {
-          this.emit('message', message);
-          
-          if (message.type === 'error') {
-            debugLog('Received error message', message);
-            this.emit('error', message as ErrorMessage);
-          }
+          this.emit('graphUpdate', message as GraphUpdateMessage);
+        }
+        
+        // Also emit the message for any other handlers
+        this.emit('message', message);
+      } else {
+        this.emit('message', message);
+        
+        if (message.type === 'error') {
+          debugLog('Received error message', message);
+          this.emit('error', message as ErrorMessage);
         }
       }
-    } catch (error) {
-      debugLog('Error handling WebSocket message', {
-        error,
-        eventType: event.type,
-        dataType: typeof event.data
-      });
-      const errorMsg: ErrorMessage = {
-        type: 'error',
-        message: 'Error processing message',
-        details: error instanceof Error ? error.message : String(error)
-      };
-      this.emit('error', errorMsg);
     }
+  } catch (error) {
+    debugLog('Error handling WebSocket message', {
+      error,
+      eventType: event.type,
+      dataType: typeof event.data
+    });
+    const errorMsg: ErrorMessage = {
+      type: 'error',
+      message: 'Error processing message',
+      details: error instanceof Error ? error.message : String(error)
+    };
+    this.emit('error', errorMsg);
   }
+}
 
   public send(data: any): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
