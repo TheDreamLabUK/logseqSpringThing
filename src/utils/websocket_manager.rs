@@ -311,16 +311,20 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
             Ok(ws::Message::Text(text)) => {
                 info!("[WebSocketSession] Text message received: {}", text);
                 if let Ok(json) = serde_json::from_str::<Value>(&text) {
-                    if json["type"] == "initial_data" {
-                        info!("[WebSocketSession] Initial data request received");
-                        let addr = ctx.address();
-                        let manager = self.manager.clone();
-                        actix::spawn(async move {
-                            match manager.send_initial_data(&addr).await {
-                                Ok(_) => info!("[WebSocketSession] Initial data sent successfully"),
-                                Err(e) => error!("[WebSocketSession] Failed to send initial data: {}", e),
-                            }
-                        });
+                    // Convert camelCase to snake_case for type comparison
+                    if let Some(msg_type) = json["type"].as_str() {
+                        let snake_type = msg_type.replace("initialData", "initial_data");
+                        if snake_type == "initial_data" {
+                            info!("[WebSocketSession] Initial data request received");
+                            let addr = ctx.address();
+                            let manager = self.manager.clone();
+                            actix::spawn(async move {
+                                match manager.send_initial_data(&addr).await {
+                                    Ok(_) => info!("[WebSocketSession] Initial data sent successfully"),
+                                    Err(e) => error!("[WebSocketSession] Failed to send initial data: {}", e),
+                                }
+                            });
+                        }
                     }
                 }
 
