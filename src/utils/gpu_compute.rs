@@ -19,6 +19,10 @@ const MAX_NODES: u32 = 1_000_000;  // Safety limit for number of nodes
 // Position update constants
 const POSITION_BUFFER_SIZE: u64 = 32;  // Increased from 24 to 32 for better alignment
 
+// Shader entry points
+const COMPUTE_MAIN: &'static str = "compute_main";
+const UPDATE_POSITIONS: &'static str = "update_positions";
+
 /// Parameters for fisheye distortion effect
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -71,7 +75,7 @@ impl GPUCompute {
     pub async fn new(graph: &GraphData) -> Result<Self, Error> {
         debug!("Initializing GPU compute capabilities with {} nodes", graph.nodes.len());
         
-        // Initialize GPU instance with Vulkan backend only
+        // Initialize GPU instance with Vulkan backend
         let instance = wgpu::Instance::new(InstanceDescriptor {
             backends: wgpu::Backends::VULKAN,
             flags: wgpu::InstanceFlags::empty(),
@@ -193,7 +197,7 @@ impl GPUCompute {
                 push_constant_ranges: &[],
             })),
             module: &force_module,
-            entry_point: Some("compute_main"),
+            entry_point: Some(COMPUTE_MAIN),
             cache: None,
             compilation_options: Default::default(),
         });
@@ -206,7 +210,7 @@ impl GPUCompute {
                 push_constant_ranges: &[],
             })),
             module: &fisheye_module,
-            entry_point: Some("compute_main"),
+            entry_point: Some(COMPUTE_MAIN),
             cache: None,
             compilation_options: Default::default(),
         });
@@ -311,7 +315,7 @@ impl GPUCompute {
                 push_constant_ranges: &[],
             })),
             module: &position_module,
-            entry_point: Some("update_positions"),
+            entry_point: Some(UPDATE_POSITIONS),
             cache: None,
             compilation_options: Default::default(),
         });
