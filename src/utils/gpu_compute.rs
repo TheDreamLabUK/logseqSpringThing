@@ -1,4 +1,4 @@
-use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor};
+use wgpu::{Device, Queue, Buffer, BindGroup, ComputePipeline, InstanceDescriptor, Gles3MinorVersion};
 use wgpu::util::DeviceExt;
 use std::io::Error;
 use log::{debug, info};
@@ -71,24 +71,31 @@ impl GPUCompute {
     pub async fn new(graph: &GraphData) -> Result<Self, Error> {
         debug!("Initializing GPU compute capabilities with {} nodes", graph.nodes.len());
         
-        // Initialize GPU instance with high performance preference
-        let instance = wgpu::Instance::new(InstanceDescriptor::default());
+        // Initialize GPU instance with Vulkan backend only
+        let instance = wgpu::Instance::new(InstanceDescriptor {
+            backends: wgpu::Backends::VULKAN,
+            flags: wgpu::InstanceFlags::empty(),
+            gles_minor_version: Gles3MinorVersion::Version0,
+            dx12_shader_compiler: Default::default(),
+        });
+
+        // Request high-performance GPU adapter only
         let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
+            .enumerate_adapters(wgpu::Backends::VULKAN)
+            .into_iter()
+            .find(|adapter| {
+                // Only accept actual GPU adapters, reject software renderers
+                matches!(adapter.get_info().device_type, wgpu::DeviceType::DiscreteGpu | wgpu::DeviceType::IntegratedGpu)
             })
-            .await
-            .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "Failed to find an appropriate GPU adapter"))?;
+            .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "No hardware GPU found. Hardware GPU is required."))?;
 
         info!("Selected GPU adapter: {:?}", adapter.get_info().name);
 
-        // Request device with default limits
+        // Request device with high-performance settings
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    label: Some("Primary Device"),
+                    label: Some("Primary GPU Device"),
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::default(),
                     memory_hints: Default::default(),
@@ -96,7 +103,7 @@ impl GPUCompute {
                 None,
             )
             .await
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GPU device: {}", e)))?;
 
         // Create shader modules
         let force_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {

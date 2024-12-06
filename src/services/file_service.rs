@@ -127,7 +127,6 @@ impl GitHubService for RealGitHubService {
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
             .send()
             .await?;
 
@@ -223,7 +222,6 @@ impl GitHubService for RealGitHubService {
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
             .send()
             .await?;
 
@@ -239,7 +237,6 @@ impl GitHubService for RealGitHubService {
         let response = self.client.get(download_url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
             .send()
             .await?;
 
@@ -263,7 +260,6 @@ impl GitHubService for RealGitHubService {
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
             .query(&[("path", file_path), ("per_page", "1")])
             .send()
             .await?;

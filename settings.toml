@@ -41,9 +41,7 @@ token = "default_token"
 owner = "default_owner"
 repo = "default_repo"
 base_path = "default_path"
-version = "2022-11-28"
 rate_limit = true
-
 
 [ragflow]
 api_key = "default_ragflow_key"

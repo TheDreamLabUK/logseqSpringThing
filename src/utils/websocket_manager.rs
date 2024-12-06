@@ -23,16 +23,6 @@ pub(crate) const NODE_SIZE: usize = 6 * FLOAT32_SIZE; // x, y, z, vx, vy, vz
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15); // Send ping every 15 seconds
 const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(60); // Wait 60 seconds for pong response
 
-// Debug logging helper
-macro_rules! debug_log {
-    ($debug_mode:expr, $fmt:expr $(, $($arg:tt)*)?) => {
-        if $debug_mode {
-            debug!($fmt $(, $($arg)*)?);
-            trace!("Raw data: {:?}", format!($fmt $(, $($arg)*)?));
-        }
-    };
-}
-
 pub struct WebSocketManager {
     binary_buffer: Arc<Mutex<Vec<u8>>>,
     connections: Arc<Mutex<Vec<Addr<WebSocketSession>>>>,
@@ -46,7 +36,6 @@ impl Actor for WebSocketManager {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         self.addr = Some(ctx.address());
-        debug_log!(self.debug_mode, "[WebSocketManager] Actor started");
     }
 }
 
@@ -63,7 +52,6 @@ impl WebSocketManager {
     }
 
     pub fn start(mut self) -> Addr<Self> {
-        debug_log!(self.debug_mode, "[WebSocketManager] Starting actor");
         let addr = Actor::start(self.clone());
         self.addr = Some(addr.clone());
         addr
@@ -76,14 +64,12 @@ impl WebSocketManager {
     pub async fn add_connection(&self, addr: Addr<WebSocketSession>) {
         let mut connections = self.connections.lock().unwrap();
         connections.push(addr);
-        debug_log!(self.debug_mode, "[WebSocketManager] New WebSocket connection added. Total connections: {}", connections.len());
     }
 
     pub async fn remove_connection(&self, addr: &Addr<WebSocketSession>) {
         let mut connections = self.connections.lock().unwrap();
         let before_len = connections.len();
         connections.retain(|x| x != addr);
-        debug_log!(self.debug_mode, "[WebSocketManager] WebSocket connection removed. Connections: {} -> {}", before_len, connections.len());
     }
 
     pub async fn broadcast_message(&self, message: String) -> Result<(), Box<dyn StdError>> {
@@ -95,7 +81,6 @@ impl WebSocketManager {
     }
 
     pub async fn broadcast_binary(&self, nodes: &[GPUNode], is_initial: bool) -> Result<(), Box<dyn StdError>> {
-        debug_log!(self.debug_mode, "[WebSocketManager] Broadcasting binary update for {} nodes", nodes.len());
         let mut buffer = self.binary_buffer.lock().unwrap();
         let total_size = HEADER_SIZE + nodes.len() * NODE_SIZE;
         
@@ -104,29 +89,18 @@ impl WebSocketManager {
         let initial_flag: f32 = if is_initial { 1.0 } else { 0.0 };
         new_buffer.extend_from_slice(bytemuck::bytes_of(&initial_flag));
 
-        if self.debug_mode {
-            trace!("[WebSocketManager] Binary header: initial_flag={}", initial_flag);
-        }
-
         for (i, node) in nodes.iter().enumerate() {
             let node_data: [f32; 6] = [
                 node.x, node.y, node.z,
                 node.vx, node.vy, node.vz
             ];
             new_buffer.extend_from_slice(bytemuck::cast_slice(&node_data));
-            
-            if self.debug_mode && i < 3 {
-                trace!("[WebSocketSession] Node {}: pos=({},{},{}), vel=({},{},{})",
-                    i, node.x, node.y, node.z, node.vx, node.vy, node.vz);
-            }
         }
 
         *buffer = new_buffer;
 
         let binary_data = buffer.clone();
         let connections = self.connections.lock().unwrap();
-        debug_log!(self.debug_mode, "[WebSocketManager] Broadcasting binary data ({} bytes) to {} connections", 
-            binary_data.len(), connections.len());
         
         for addr in connections.iter() {
             addr.do_send(SendBinary(binary_data.clone()));
@@ -136,9 +110,6 @@ impl WebSocketManager {
     }
 
     pub async fn broadcast_graph_update(&self, graph: &GraphData) -> Result<(), Box<dyn StdError>> {
-        debug_log!(self.debug_mode, "[WebSocketManager] Broadcasting graph update with {} nodes and {} edges", 
-            graph.nodes.len(), graph.edges.len());
-
         if self.debug_mode {
             for (i, node) in graph.nodes.iter().take(3).enumerate() {
                 trace!("[WebSocketManager] Sample node {}: id={}", i, node.id);
@@ -154,10 +125,9 @@ impl WebSocketManager {
         };
 
         let message_str = serde_json::to_string(&message)?;
-        debug_log!(self.debug_mode, "[WebSocketManager] Graph update message size: {} bytes", message_str.len());
         
         let connections = self.connections.lock().unwrap();
-        debug_log!(self.debug_mode, "[WebSocketManager] Broadcasting to {} connections", connections.len());
+        
         for addr in connections.iter() {
             addr.do_send(SendText(message_str.clone()));
         }
@@ -170,9 +140,6 @@ impl WebSocketManager {
         stream: web::Payload,
         websocket_manager: web::Data<Arc<WebSocketManager>>,
     ) -> Result<HttpResponse, Error> {
-        debug_log!(websocket_manager.debug_mode, "[WebSocketManager] New websocket connection request from {:?}", 
-            req.peer_addr().unwrap_or_else(|| std::net::SocketAddr::from(([0, 0, 0, 0], 0))));
-        
         let ws = WebSocketSession::new(Arc::clone(&websocket_manager));
         ws::start(ws, &req, stream)
     }
@@ -248,7 +215,6 @@ pub struct WebSocketSession {
 
 impl WebSocketSession {
     pub fn new(manager: Arc<WebSocketManager>) -> Self {
-        debug_log!(manager.debug_mode, "[WebSocketSession] Creating new session");
         Self {
             manager,
             hb: Instant::now(),
@@ -257,7 +223,6 @@ impl WebSocketSession {
     }
 
     fn start_heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        debug_log!(self.manager.debug_mode, "[WebSocketSession] Starting heartbeat checks");
         ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
             if Instant::now().duration_since(act.last_pong) > HEARTBEAT_TIMEOUT {
                 warn!("[WebSocketSession] Client heartbeat failed, disconnecting!");
@@ -265,7 +230,6 @@ impl WebSocketSession {
                 return;
             }
 
-            debug_log!(act.manager.debug_mode, "[WebSocketSession] Sending ping");
             ctx.ping(b"");
         });
     }
@@ -300,12 +264,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Ping(msg)) => {
-                debug_log!(self.manager.debug_mode, "[WebSocketSession] Ping received");
                 self.hb = Instant::now();
                 ctx.pong(&msg);
             }
             Ok(ws::Message::Pong(_)) => {
-                debug_log!(self.manager.debug_mode, "[WebSocketSession] Pong received");
                 self.last_pong = Instant::now();
             }
             Ok(ws::Message::Text(text)) => {
@@ -333,7 +295,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 }
             }
             Ok(ws::Message::Binary(bin)) => {
-                debug_log!(self.manager.debug_mode, "[WebSocketSession] Binary message received: {} bytes", bin.len());
                 let connections = self.manager.connections.clone();
                 let bin_data = bin.to_vec();
                 actix::spawn(async move {
@@ -363,9 +324,6 @@ impl Handler<SendBinary> for WebSocketSession {
             header_bytes.copy_from_slice(&data[0..4]);
             let is_initial = f32::from_le_bytes(header_bytes) >= 1.0;
             let num_nodes = (data.len() - HEADER_SIZE) / NODE_SIZE;
-
-            debug_log!(self.manager.debug_mode, "[WebSocketSession] Sending binary message: {} nodes, initial={}, size={} bytes", 
-                num_nodes, is_initial, data.len());
 
             if self.manager.debug_mode {
                 let hex_dump: String = data.iter()

@@ -80,7 +80,6 @@ impl RealGitHubPRService {
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
             .send()
             .await?;
 
@@ -112,7 +111,6 @@ impl RealGitHubPRService {
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
             .json(&body)
             .send()
             .await?;
@@ -151,7 +149,6 @@ impl RealGitHubPRService {
             .put(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
             .json(&body)
             .send()
             .await?;
@@ -208,7 +205,6 @@ impl GitHubPRService for RealGitHubPRService {
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
             .json(&pr_body)
             .send()
             .await?;

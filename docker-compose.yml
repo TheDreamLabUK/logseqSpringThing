@@ -27,7 +27,7 @@ services:
       - RUST_LOG=info
       - RUST_BACKTRACE=1
       - BIND_ADDRESS=0.0.0.0
-      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=2
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NODE_ENV=production
     env_file:

@@ -82,7 +82,7 @@ FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PATH="/app/venv/bin:${PATH}" \
-    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_VISIBLE_DEVICES=2 \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     RUST_LOG=info \
     RUST_BACKTRACE=0 \
@@ -96,6 +96,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl3 \
     nginx \
     libvulkan1 \
+    vulkan-tools \
     libegl1-mesa \
     libasound2 \
     python3.10-minimal \
@@ -111,11 +112,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /usr/share/doc/* \
     && rm -rf /usr/share/man/*
 
-# Create nginx group and non-root user
-RUN groupadd -r nginx -g 101 && \
-    groupadd -r appuser -g 1000 && \
-    useradd -r -g appuser -G nginx -u 1000 -m -d /home/appuser appuser
-
 # Set up nginx directories and permissions
 RUN mkdir -p /var/lib/nginx/client_temp \
              /var/lib/nginx/proxy_temp \
@@ -125,48 +121,41 @@ RUN mkdir -p /var/lib/nginx/client_temp \
              /var/log/nginx \
              /var/run/nginx \
              /var/cache/nginx && \
-    chown -R appuser:nginx /var/lib/nginx \
-                          /var/log/nginx \
-                          /var/run/nginx \
-                          /var/cache/nginx \
-                          /etc/nginx && \
-    chmod -R 770 /var/lib/nginx \
+    chmod -R 777 /var/lib/nginx \
                  /var/log/nginx \
                  /var/run/nginx \
                  /var/cache/nginx \
                  /etc/nginx && \
     touch /var/log/nginx/error.log \
           /var/log/nginx/access.log && \
-    chown appuser:nginx /var/log/nginx/*.log && \
-    chmod 660 /var/log/nginx/*.log && \
+    chmod 666 /var/log/nginx/*.log && \
     touch /var/run/nginx/nginx.pid && \
-    chown appuser:nginx /var/run/nginx/nginx.pid && \
-    chmod 660 /var/run/nginx/nginx.pid
+    chmod 666 /var/run/nginx/nginx.pid
 
 # Set up directory structure
 WORKDIR /app
 
-# Create required directories with correct permissions
+# Create required directories with root permissions
 RUN mkdir -p /app/data/public/dist \
              /app/data/markdown \
              /app/data/runtime \
              /app/src \
-             /app/data/piper && \
-    chown -R appuser:appuser /app && \
-    chmod -R 755 /app
+             /app/data/piper \
+             /tmp/runtime && \
+    chmod -R 777 /app /tmp/runtime
 
 # Copy Python virtual environment
-COPY --from=python-builder --chown=appuser:appuser /app/venv /app/venv
+COPY --from=python-builder /app/venv /app/venv
 
 # Copy built artifacts
-COPY --from=rust-builder --chown=appuser:appuser /usr/src/app/target/release/webxr /app/
-COPY --from=rust-builder --chown=appuser:appuser /usr/src/app/settings.toml /app/
-COPY --from=frontend-builder --chown=appuser:appuser /app/dist /app/data/public/dist
+COPY --from=rust-builder /usr/src/app/target/release/webxr /app/
+COPY --from=rust-builder /usr/src/app/settings.toml /app/
+COPY --from=frontend-builder /app/dist /app/data/public/dist
 
 # Copy configuration and scripts
-COPY --chown=appuser:appuser src/generate_audio.py /app/src/
-COPY --chown=appuser:nginx nginx.conf /etc/nginx/nginx.conf
-COPY --chown=appuser:appuser start.sh /app/start.sh
+COPY src/generate_audio.py /app/src/
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY start.sh /app/start.sh
 RUN chmod 755 /app/start.sh && \
     chmod 644 /etc/nginx/nginx.conf
 
@@ -177,9 +166,6 @@ LABEL org.opencontainers.image.source="https://github.com/yourusername/logseq-xr
       security.capabilities="cap_net_bind_service" \
       security.privileged="false" \
       security.allow-privilege-escalation="false"
-
-# Switch to non-root user
-USER appuser
 
 # Expose port
 EXPOSE 4000

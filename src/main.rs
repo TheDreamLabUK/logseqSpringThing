@@ -33,7 +33,6 @@ mod models;
 mod services;
 mod utils;
 
-// Custom error wrapper
 #[derive(Debug)]
 pub struct AppError(Box<dyn StdError + Send + Sync>);
 
@@ -55,11 +54,9 @@ impl From<AppError> for std::io::Error {
     }
 }
 
-/// Initialize graph data from cached metadata
 async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::io::Result<()> {
     log::info!("Loading cached graph data...");
     
-    // Load existing metadata from disk
     let metadata_map = match FileService::load_or_create_metadata() {
         Ok(map) => {
             log::info!("Loaded existing metadata with {} entries", map.len());
@@ -71,23 +68,18 @@ async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::i
         }
     };
 
-    // Store metadata in app state
     {
         let mut app_metadata = app_state.metadata.write().await;
         *app_metadata = metadata_map.clone();
     }
 
-    // Build initial graph from cached metadata
-    log::info!("Building graph from cached metadata...");
     match GraphService::build_graph_from_metadata(&metadata_map).await {
         Ok(graph_data) => {
             let mut graph = app_state.graph_service.graph_data.write().await;
             *graph = graph_data.clone();
-            
-            // Ensure metadata is stored in graph_data
             graph.metadata = metadata_map;
             
-            log::info!("Graph initialized from cache with {} nodes and {} edges", 
+            log::info!("Graph initialized with {} nodes and {} edges", 
                 graph.nodes.len(), 
                 graph.edges.len()
             );
@@ -100,16 +92,12 @@ async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::i
     }
 }
 
-/// Periodic graph update function
 async fn update_graph_periodically(app_state: web::Data<AppState>) {
-    let mut interval = interval(Duration::from_secs(43200)); // 12 hour interval
+    let mut interval = interval(Duration::from_secs(43200));
 
     loop {
         interval.tick().await;
         
-        log::debug!("Starting periodic graph update...");
-        
-        // Load current metadata
         let mut metadata_map = match FileService::load_or_create_metadata() {
             Ok(map) => map,
             Err(e) => {
@@ -118,30 +106,24 @@ async fn update_graph_periodically(app_state: web::Data<AppState>) {
             }
         };
 
-        // Check for GitHub updates
         match FileService::fetch_and_process_files(&*app_state.github_service, app_state.settings.clone(), &mut metadata_map).await {
             Ok(processed_files) => {
                 if !processed_files.is_empty() {
                     log::info!("Found {} updated files, updating graph", processed_files.len());
 
-                    // Update metadata in app state
                     {
                         let mut app_metadata = app_state.metadata.write().await;
                         *app_metadata = metadata_map.clone();
                     }
 
-                    // Update graph while preserving node positions
                     let mut graph = app_state.graph_service.graph_data.write().await;
                     let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
                         .map(|node| (node.id.clone(), (node.x, node.y, node.z)))
                         .collect();
                     
-                    // Update metadata
                     graph.metadata = metadata_map.clone();
 
-                    // Build new graph preserving positions
                     if let Ok(mut new_graph) = GraphService::build_graph_from_metadata(&metadata_map).await {
-                        // Preserve positions for existing nodes
                         for node in &mut new_graph.nodes {
                             if let Some(&(x, y, z)) = old_positions.get(&node.id) {
                                 node.x = x;
@@ -151,32 +133,25 @@ async fn update_graph_periodically(app_state: web::Data<AppState>) {
                             }
                         }
                         *graph = new_graph.clone();
-                        drop(graph); // Release the write lock before broadcasting
+                        drop(graph);
 
-                        // Only broadcast if websocket manager is initialized
                         if let Some(ws_manager) = app_state.get_websocket_manager().await {
                             if let Err(e) = ws_manager.broadcast_graph_update(&new_graph).await {
                                 log::error!("Failed to broadcast graph update: {}", e);
                             }
                         }
                     }
-                } else {
-                    log::debug!("No updates found");
                 }
             },
             Err(e) => log::error!("Failed to check for updates: {}", e)
         }
-
-        log::debug!("Completed periodic graph update");
     }
 }
 
-/// Simple health check endpoint
 async fn health_check() -> HttpResponse {
     HttpResponse::Ok().finish()
 }
 
-/// Test endpoint for speech service
 async fn test_speech_service(app_state: web::Data<AppState>) -> HttpResponse {
     if let Some(speech_service) = app_state.get_speech_service().await {
         match speech_service.send_message("Hello, OpenAI!".to_string()).await {
@@ -190,19 +165,15 @@ async fn test_speech_service(app_state: web::Data<AppState>) -> HttpResponse {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // Load .env file first
     dotenv().ok();
 
-    // Initialize logging
-    std::env::set_var("RUST_LOG", "debug");
+    std::env::set_var("RUST_LOG", "info");
     env_logger::init();
     log::info!("Starting WebXR Graph Server");
 
-    // Load configuration
-    log::info!("Loading settings...");
     let settings = match Settings::new() {
         Ok(s) => {
-            log::info!("Successfully loaded settings");
+            log::info!("Settings loaded successfully");
             Arc::new(RwLock::new(s))
         },
         Err(e) => {
@@ -211,7 +182,6 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // Initialize services
     log::info!("Initializing services...");
     let github_service = {
         let settings_read = settings.read().await;
@@ -237,16 +207,13 @@ async fn main() -> std::io::Result<()> {
     let perplexity_service = Arc::new(PerplexityService::new(settings.clone())
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?);
     
-    // Initialize RAGFlow service and handle errors through AppError
     let ragflow_service = Arc::new(RAGFlowService::new(settings.clone()).await
         .map_err(AppError::from)?);
 
-    // Create RAGFlow conversation and handle errors through AppError
     log::info!("Creating RAGFlow conversation...");
     let ragflow_conversation_id = ragflow_service.create_conversation("default_user".to_string()).await
         .map_err(AppError::from)?;
     
-    // Initialize GPU compute with default graph
     log::info!("Initializing GPU compute...");
     let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
         Ok(gpu) => {
@@ -259,25 +226,22 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // Create initial application state without websocket manager and speech service
     let app_state = web::Data::new(AppState::new(
         settings.clone(),
         github_service,
         perplexity_service,
         ragflow_service,
-        None, // speech_service will be set later
+        None,
         gpu_compute,
         ragflow_conversation_id,
         github_pr_service,
     ));
 
-    // Initialize graph from cache for fast startup
     log::info!("Initializing graph with cached data...");
     if let Err(e) = initialize_cached_graph_data(&app_state).await {
         log::warn!("Failed to initialize from cache: {:?}, proceeding with empty graph", e);
     }
 
-    // Initialize WebSocket manager with debug settings and app_state after graph is initialized
     let websocket_manager = {
         let settings_read = settings.read().await;
         Arc::new(WebSocketManager::new(
@@ -286,26 +250,20 @@ async fn main() -> std::io::Result<()> {
         ))
     };
 
-    // Now create speech service with the initialized websocket manager
     let speech_service = Arc::new(SpeechService::new(
         websocket_manager.clone(),
         settings.clone(),
     ));
 
-    // Update app state with speech service
     app_state.set_speech_service(speech_service).await;
-
-    // Set websocket manager in app state
     app_state.set_websocket_manager(websocket_manager.clone()).await;
     let websocket_data = web::Data::new(websocket_manager.clone());
 
-    // Start periodic update task
     let update_state = app_state.clone();
     tokio::spawn(async move {
         update_graph_periodically(update_state).await;
     });
 
-    // Start HTTP server
     let bind_address = "0.0.0.0:3000";
     log::info!("Starting HTTP server on {}", bind_address);
 

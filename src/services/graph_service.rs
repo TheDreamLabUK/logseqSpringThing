@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use actix_web::web;
-use log::{info, warn, debug};
+use log::{info, warn};
 use rand::Rng;
 use crate::models::graph::GraphData;
 use crate::models::node::Node;
@@ -30,8 +30,6 @@ impl GraphService {
         // Copy metadata from current graph
         graph.metadata = current_graph.metadata.clone();
 
-        debug!("Building graph from {} metadata entries", graph.metadata.len());
-
         let mut edge_map = HashMap::new();
 
         // Create nodes from metadata entries
@@ -57,18 +55,12 @@ impl GraphService {
                 node.metadata.insert("lastModified".to_string(), metadata.last_modified.to_string());
             }
             
-            debug!("Creating node for file: {} with size: {:?}", node_id, node.size);
             graph.nodes.push(node);
         }
-
-        debug!("Created {} nodes", graph.nodes.len());
 
         // Create edges from metadata topic counts
         for (source_file, metadata) in graph.metadata.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
-            
-            debug!("Processing outbound links for {} with {} topic counts", 
-                  source_id, metadata.topic_counts.len());
             
             // Process outbound links from this file to other topics
             for (target_file, count) in &metadata.topic_counts {
@@ -82,9 +74,6 @@ impl GraphService {
                         (target_id.clone(), source_id.clone())
                     };
 
-                    debug!("Creating edge between {} and {} with weight {}", 
-                          edge_key.0, edge_key.1, count);
-
                     // Sum the weights for bi-directional references
                     edge_map.entry(edge_key)
                         .and_modify(|w| *w += *count as f32)
@@ -96,7 +85,6 @@ impl GraphService {
         // Convert edge map to edges
         graph.edges = edge_map.into_iter()
             .map(|((source, target), weight)| {
-                debug!("Adding edge: {} -> {} (weight: {})", source, target, weight);
                 Edge::new(source, target, weight)
             })
             .collect();
@@ -156,11 +144,8 @@ impl GraphService {
                 node.metadata.insert("lastModified".to_string(), metadata.last_modified.to_string());
             }
             
-            debug!("Creating node for file: {} with size: {:?}", node_id, node.size);
             graph.nodes.push(node);
         }
-
-        debug!("Created {} nodes", valid_nodes.len());
 
         // Store metadata in graph
         graph.metadata = metadata.clone();
@@ -180,9 +165,6 @@ impl GraphService {
                         (target_id.clone(), source_id.clone())
                     };
 
-                    debug!("Creating edge between {} and {} with weight {}", 
-                          edge_key.0, edge_key.1, count);
-
                     edge_map.entry(edge_key)
                         .and_modify(|weight| *weight += *count as f32)
                         .or_insert(*count as f32);
@@ -193,7 +175,6 @@ impl GraphService {
         // Convert edge map to edges
         graph.edges = edge_map.into_iter()
             .map(|((source, target), weight)| {
-                debug!("Adding edge: {} -> {} (weight: {})", source, target, weight);
                 Edge::new(source, target, weight)
             })
             .collect();
