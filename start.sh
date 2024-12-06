@@ -53,6 +53,44 @@ verify_build() {
     return 0
 }
 
+# Set up GPU runtime environment
+setup_gpu_runtime() {
+    log "Setting up GPU runtime environment..."
+
+    # Verify GPU is available
+    if ! command -v nvidia-smi &> /dev/null; then
+        log "Error: nvidia-smi not found. GPU support is required."
+        return 1
+    fi
+
+    # Check GPU is accessible
+    if ! nvidia-smi &> /dev/null; then
+        log "Error: Cannot access NVIDIA GPU. Check device is properly passed to container."
+        return 1
+    fi
+
+    # Verify Vulkan support
+    if ! command -v vulkaninfo &> /dev/null; then
+        log "Error: Vulkan tools not found. Vulkan support is required."
+        return 1
+    fi
+
+    # Create runtime directory if needed
+    if [ ! -d "/tmp/runtime" ]; then
+        mkdir -p /tmp/runtime
+        chmod 700 /tmp/runtime
+    fi
+
+    log "GPU runtime environment configured successfully"
+    return 0
+}
+
+# Set up GPU environment first
+if ! setup_gpu_runtime; then
+    log "Failed to set up GPU environment"
+    exit 1
+fi
+
 # Wait for RAGFlow to be available
 log "Waiting for RAGFlow server..."
 retries=24
@@ -76,7 +114,7 @@ fi
 # Update nginx configuration with environment variables
 log "Configuring nginx..."
 cat > /etc/nginx/nginx.conf << 'EOF'
-user appuser nginx;
+user root;
 worker_processes auto;
 error_log /var/log/nginx/error.log warn;
 pid /var/run/nginx/nginx.pid;

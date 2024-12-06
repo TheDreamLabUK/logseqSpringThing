@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use config::{ConfigBuilder, ConfigError, Environment, File};
-use log::debug;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
@@ -41,9 +40,6 @@ pub struct GitHubSettings {
     #[serde(default = "default_path")]
     pub base_path: String,
     
-    #[serde(default = "default_version")]
-    pub version: String,
-    
     #[serde(default = "default_rate_limit")]
     pub rate_limit: bool,
 }
@@ -52,17 +48,13 @@ fn default_token() -> String { "".to_string() }
 fn default_owner() -> String { "".to_string() }
 fn default_repo() -> String { "".to_string() }
 fn default_path() -> String { "".to_string() }
-fn default_version() -> String { "2022-11-28".to_string() }
 fn default_rate_limit() -> bool { true }
 
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
-        debug!("Loading settings from settings.toml");
         let builder = ConfigBuilder::<config::builder::DefaultState>::default();
         let config = builder
-            // First load defaults from settings.toml
             .add_source(File::with_name("settings.toml"))
-            // Then override with environment variables
             .add_source(
                 Environment::default()
                     .separator("_")
@@ -70,38 +62,20 @@ impl Settings {
             )
             .build()?;
 
-        // Try to convert it into our Settings type
         let mut settings: Settings = config.try_deserialize()?;
         
-        // Override GitHub settings with environment variables if they exist
         if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            debug!("Found GITHUB_TOKEN in environment");
             settings.github.token = token;
         }
         if let Ok(owner) = std::env::var("GITHUB_OWNER") {
-            debug!("Found GITHUB_OWNER in environment: {}", owner);
             settings.github.owner = owner;
         }
         if let Ok(repo) = std::env::var("GITHUB_REPO") {
-            debug!("Found GITHUB_REPO in environment: {}", repo);
             settings.github.repo = repo;
         }
         if let Ok(path) = std::env::var("GITHUB_PATH") {
-            debug!("Found GITHUB_PATH in environment: {}", path);
             settings.github.base_path = path;
         }
-        if let Ok(version) = std::env::var("GITHUB_VERSION") {
-            debug!("Found GITHUB_VERSION in environment: {}", version);
-            settings.github.version = version;
-        }
-        
-        // Log final non-sensitive settings
-        debug!("GitHub settings loaded: owner={}, repo={}, base_path={}, version={}", 
-            settings.github.owner,
-            settings.github.repo,
-            settings.github.base_path,
-            settings.github.version
-        );
 
         Ok(settings)
     }
@@ -118,7 +92,6 @@ impl Settings {
 
         let mut settings: Settings = config.try_deserialize()?;
         
-        // Override GitHub settings with environment variables if they exist
         if let Ok(token) = std::env::var("GITHUB_TOKEN") {
             settings.github.token = token;
         }
@@ -130,9 +103,6 @@ impl Settings {
         }
         if let Ok(path) = std::env::var("GITHUB_PATH") {
             settings.github.base_path = path;
-        }
-        if let Ok(version) = std::env::var("GITHUB_VERSION") {
-            settings.github.version = version;
         }
 
         Ok(settings)
@@ -217,36 +187,23 @@ pub struct DefaultSettings {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VisualizationSettings {
-    // Colors
     pub node_color: String,
     pub edge_color: String,
     pub hologram_color: String,
-
-    // Node age-based colors
     pub node_color_new: String,
     pub node_color_recent: String,
     pub node_color_medium: String,
     pub node_color_old: String,
     pub node_age_max_days: u32,
-
-    // Node type colors
     pub node_color_core: String,
     pub node_color_secondary: String,
     pub node_color_default: String,
-
-    // Sizes and scales
     pub min_node_size: f32,
     pub max_node_size: f32,
     pub hologram_scale: f32,
-
-    // Opacity settings
     pub hologram_opacity: f32,
     pub edge_opacity: f32,
-
-    // Environment settings
     pub fog_density: f32,
-
-    // Node material properties
     pub node_material_metalness: f32,
     pub node_material_roughness: f32,
     pub node_material_clearcoat: f32,
@@ -254,8 +211,6 @@ pub struct VisualizationSettings {
     pub node_material_opacity: f32,
     pub node_emissive_min_intensity: f32,
     pub node_emissive_max_intensity: f32,
-
-    // Label properties
     pub label_font_size: u32,
     pub label_font_family: String,
     pub label_padding: u32,
@@ -265,22 +220,14 @@ pub struct VisualizationSettings {
     pub label_text_color: String,
     pub label_info_text_color: String,
     pub label_xr_font_size: u32,
-
-    // Edge properties
     pub edge_weight_normalization: f32,
     pub edge_min_width: f32,
     pub edge_max_width: f32,
-
-    // Geometry properties
     pub geometry_min_segments: u32,
     pub geometry_max_segments: u32,
     pub geometry_segment_per_hyperlink: f32,
-
-    // Interaction properties
     pub click_emissive_boost: f32,
     pub click_feedback_duration: u32,
-
-    // Force-directed layout parameters
     pub force_directed_iterations: u32,
     pub force_directed_spring: f32,
     pub force_directed_repulsion: f32,
