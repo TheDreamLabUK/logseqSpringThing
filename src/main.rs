@@ -55,11 +55,9 @@ impl From<AppError> for std::io::Error {
 }
 
 async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::io::Result<()> {
-    log::info!("Loading cached graph data...");
-    
     let metadata_map = match FileService::load_or_create_metadata() {
         Ok(map) => {
-            log::info!("Loaded existing metadata with {} entries", map.len());
+            log::debug!("Loaded existing metadata with {} entries", map.len());
             map
         },
         Err(e) => {
@@ -79,7 +77,7 @@ async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::i
             *graph = graph_data.clone();
             graph.metadata = metadata_map;
             
-            log::info!("Graph initialized with {} nodes and {} edges", 
+            log::debug!("Graph initialized with {} nodes and {} edges", 
                 graph.nodes.len(), 
                 graph.edges.len()
             );
@@ -109,7 +107,7 @@ async fn update_graph_periodically(app_state: web::Data<AppState>) {
         match FileService::fetch_and_process_files(&*app_state.github_service, app_state.settings.clone(), &mut metadata_map).await {
             Ok(processed_files) => {
                 if !processed_files.is_empty() {
-                    log::info!("Found {} updated files, updating graph", processed_files.len());
+                    log::debug!("Found {} updated files, updating graph", processed_files.len());
 
                     {
                         let mut app_metadata = app_state.metadata.write().await;
@@ -167,22 +165,24 @@ async fn test_speech_service(app_state: web::Data<AppState>) -> HttpResponse {
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
 
-    std::env::set_var("RUST_LOG", "info");
-    env_logger::init();
-    log::info!("Starting WebXR Graph Server");
-
+    // Load settings first to get the log level
     let settings = match Settings::new() {
-        Ok(s) => {
-            log::info!("Settings loaded successfully");
-            Arc::new(RwLock::new(s))
-        },
+        Ok(s) => Arc::new(RwLock::new(s)),
         Err(e) => {
-            log::error!("Failed to load settings: {:?}", e);
+            eprintln!("Failed to load settings: {:?}", e);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize settings: {:?}", e)));
         }
     };
 
-    log::info!("Initializing services...");
+    // Set log level from settings
+    let log_level = {
+        let settings_read = settings.read().await;
+        settings_read.default.log_level.clone()
+    };
+    std::env::set_var("RUST_LOG", log_level);
+    env_logger::init();
+
+    log::debug!("Initializing services...");
     let github_service = {
         let settings_read = settings.read().await;
         Arc::new(RealGitHubService::new(
@@ -210,14 +210,14 @@ async fn main() -> std::io::Result<()> {
     let ragflow_service = Arc::new(RAGFlowService::new(settings.clone()).await
         .map_err(AppError::from)?);
 
-    log::info!("Creating RAGFlow conversation...");
+    log::debug!("Creating RAGFlow conversation...");
     let ragflow_conversation_id = ragflow_service.create_conversation("default_user".to_string()).await
         .map_err(AppError::from)?;
     
-    log::info!("Initializing GPU compute...");
+    log::debug!("Initializing GPU compute...");
     let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
         Ok(gpu) => {
-            log::info!("GPU initialization successful");
+            log::debug!("GPU initialization successful");
             Some(Arc::new(RwLock::new(gpu)))
         },
         Err(e) => {
@@ -237,7 +237,7 @@ async fn main() -> std::io::Result<()> {
         github_pr_service,
     ));
 
-    log::info!("Initializing graph with cached data...");
+    log::debug!("Initializing graph with cached data...");
     if let Err(e) = initialize_cached_graph_data(&app_state).await {
         log::warn!("Failed to initialize from cache: {:?}, proceeding with empty graph", e);
     }
@@ -265,7 +265,7 @@ async fn main() -> std::io::Result<()> {
     });
 
     let bind_address = "0.0.0.0:3000";
-    log::info!("Starting HTTP server on {}", bind_address);
+    log::debug!("Starting HTTP server on {}", bind_address);
 
     HttpServer::new(move || {
         App::new()

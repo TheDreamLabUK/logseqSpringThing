@@ -41,7 +41,9 @@ impl Actor for WebSocketManager {
 
 impl WebSocketManager {
     pub fn new(debug_mode: bool, app_state: web::Data<AppState>) -> Self {
-        info!("[WebSocketManager] Creating new instance with debug_mode={}", debug_mode);
+        if debug_mode {
+            debug!("[WebSocketManager] Creating new instance with debug_mode={}", debug_mode);
+        }
         Self {
             binary_buffer: Arc::new(Mutex::new(Vec::with_capacity(1024 * 1024))), // 1MB initial capacity
             connections: Arc::new(Mutex::new(Vec::new())),
@@ -68,7 +70,6 @@ impl WebSocketManager {
 
     pub async fn remove_connection(&self, addr: &Addr<WebSocketSession>) {
         let mut connections = self.connections.lock().unwrap();
-        let before_len = connections.len();
         connections.retain(|x| x != addr);
     }
 
@@ -89,7 +90,7 @@ impl WebSocketManager {
         let initial_flag: f32 = if is_initial { 1.0 } else { 0.0 };
         new_buffer.extend_from_slice(bytemuck::bytes_of(&initial_flag));
 
-        for (i, node) in nodes.iter().enumerate() {
+        for node in nodes.iter() {
             let node_data: [f32; 6] = [
                 node.x, node.y, node.z,
                 node.vx, node.vy, node.vz
@@ -145,25 +146,12 @@ impl WebSocketManager {
     }
 
     pub async fn send_initial_data(&self, addr: &Addr<WebSocketSession>) -> Result<(), Box<dyn StdError>> {
-        info!("[WebSocketManager] Starting send_initial_data");
+        if self.debug_mode {
+            debug!("[WebSocketManager] Starting send_initial_data");
+        }
         
         let graph = self.app_state.graph_service.graph_data.read().await;
         let settings = self.app_state.settings.read().await;
-        
-        info!("[WebSocketManager] Preparing initial data: {} nodes, {} edges",
-            graph.nodes.len(), graph.edges.len());
-
-        // Log sample of nodes and edges
-        if !graph.nodes.is_empty() {
-            let sample_node = &graph.nodes[0];
-            info!("[WebSocketManager] Sample node: id={}, position={:?}", 
-                sample_node.id, sample_node.position);
-        }
-        if !graph.edges.is_empty() {
-            let sample_edge = &graph.edges[0];
-            info!("[WebSocketManager] Sample edge: source={}, target={}", 
-                sample_edge.source, sample_edge.target);
-        }
 
         let initial_data = ServerMessage::InitialData {
             graph_data: (*graph).clone(),
@@ -172,26 +160,17 @@ impl WebSocketManager {
 
         match serde_json::to_string(&initial_data) {
             Ok(initial_data_str) => {
-                info!("[WebSocketManager] Serialized initial data size: {} bytes", initial_data_str.len());
-                
-                // Log a preview of the JSON (first 200 chars)
-                let preview = if initial_data_str.len() > 200 {
-                    format!("{}...", &initial_data_str[..200])
-                } else {
-                    initial_data_str.clone()
-                };
-                info!("[WebSocketManager] Initial data preview: {}", preview);
-                
+                if self.debug_mode {
+                    debug!("[WebSocketManager] Serialized initial data size: {} bytes", initial_data_str.len());
+                }
                 addr.do_send(SendText(initial_data_str));
-                info!("[WebSocketManager] Initial data sent successfully");
+                Ok(())
             }
             Err(e) => {
                 error!("[WebSocketManager] Failed to serialize initial data: {}", e);
-                return Err(Box::new(e));
+                Err(Box::new(e))
             }
         }
-
-        Ok(())
     }
 }
 
@@ -239,7 +218,9 @@ impl Actor for WebSocketSession {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("[WebSocketSession] Session started");
+        if self.manager.debug_mode {
+            debug!("[WebSocketSession] Session started");
+        }
         self.start_heartbeat(ctx);
         
         let addr = ctx.address();
@@ -250,7 +231,9 @@ impl Actor for WebSocketSession {
     }
 
     fn stopped(&mut self, ctx: &mut Self::Context) {
-        info!("[WebSocketSession] Session stopped");
+        if self.manager.debug_mode {
+            debug!("[WebSocketSession] Session stopped");
+        }
         
         let addr = ctx.address();
         let manager = self.manager.clone();
@@ -271,19 +254,21 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 self.last_pong = Instant::now();
             }
             Ok(ws::Message::Text(text)) => {
-                info!("[WebSocketSession] Text message received: {}", text);
+                if self.manager.debug_mode {
+                    debug!("[WebSocketSession] Text message received: {}", text);
+                }
                 if let Ok(json) = serde_json::from_str::<Value>(&text) {
-                    // Convert camelCase to snake_case for type comparison
                     if let Some(msg_type) = json["type"].as_str() {
                         let snake_type = msg_type.replace("initialData", "initial_data");
                         if snake_type == "initial_data" {
-                            info!("[WebSocketSession] Initial data request received");
+                            if self.manager.debug_mode {
+                                debug!("[WebSocketSession] Initial data request received");
+                            }
                             let addr = ctx.address();
                             let manager = self.manager.clone();
                             actix::spawn(async move {
-                                match manager.send_initial_data(&addr).await {
-                                    Ok(_) => info!("[WebSocketSession] Initial data sent successfully"),
-                                    Err(e) => error!("[WebSocketSession] Failed to send initial data: {}", e),
+                                if let Err(e) = manager.send_initial_data(&addr).await {
+                                    error!("[WebSocketSession] Failed to send initial data: {}", e);
                                 }
                             });
                         }
@@ -305,7 +290,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 });
             }
             Ok(ws::Message::Close(reason)) => {
-                info!("[WebSocketSession] Close message received: {:?}", reason);
+                if self.manager.debug_mode {
+                    debug!("[WebSocketSession] Close message received: {:?}", reason);
+                }
                 ctx.close(reason);
                 ctx.stop();
             }
@@ -319,20 +306,18 @@ impl Handler<SendBinary> for WebSocketSession {
 
     fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
         let data = &msg.0;
-        if data.len() >= HEADER_SIZE {
+        if data.len() >= HEADER_SIZE && self.manager.debug_mode {
             let mut header_bytes = [0u8; 4];
             header_bytes.copy_from_slice(&data[0..4]);
             let is_initial = f32::from_le_bytes(header_bytes) >= 1.0;
             let num_nodes = (data.len() - HEADER_SIZE) / NODE_SIZE;
 
-            if self.manager.debug_mode {
-                let hex_dump: String = data.iter()
-                    .take(32)
-                    .map(|b| format!("{:02x}", b))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                trace!("[WebSocketSession] Binary header (first 32 bytes): {}", hex_dump);
-            }
+            let hex_dump: String = data.iter()
+                .take(32)
+                .map(|b| format!("{:02x}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
+            trace!("[WebSocketSession] Binary header (first 32 bytes): {}", hex_dump);
         }
         ctx.binary(msg.0);
     }
@@ -342,7 +327,9 @@ impl Handler<SendText> for WebSocketSession {
     type Result = ();
 
     fn handle(&mut self, msg: SendText, ctx: &mut Self::Context) {
-        info!("[WebSocketSession] Sending text message: {}", msg.0);
+        if self.manager.debug_mode {
+            debug!("[WebSocketSession] Sending text message: {}", msg.0);
+        }
         ctx.text(msg.0);
     }
 }
