@@ -4,10 +4,10 @@ prompt = "You are an AI assistant building summaries of web links and text. You 
 
 # Debug settings for websocket and data exchange
 [debug]
-enable_websocket_debug = true     # Enable detailed websocket debugging
-enable_data_debug = true         # Enable data exchange debugging
-log_binary_headers = true         # Log binary message headers
-log_full_json = true             # Log complete JSON payloads
+enable_websocket_debug = false     # Enable detailed websocket debugging
+enable_data_debug = false         # Enable data exchange debugging
+log_binary_headers = false         # Log binary message headers
+log_full_json = false             # Log complete JSON payloads
 
 [network]
 domain = "localhost"  # Production domain is in dotenv
@@ -77,7 +77,7 @@ max_payload_size = 5242880  # 5MB in bytes
 enable_request_logging = false
 enable_metrics = true
 metrics_port = 9090
-log_level = "info"
+log_level = "warn"         # Changed from "info" to "warn" to reduce logging
 log_format = "json"
 
 [visualization]
