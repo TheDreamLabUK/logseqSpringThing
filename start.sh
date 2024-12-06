@@ -53,9 +53,19 @@ verify_build() {
     return 0
 }
 
-# Set up GPU runtime environment
-setup_gpu_runtime() {
-    log "Setting up GPU runtime environment..."
+# Set up runtime environment
+setup_runtime() {
+    log "Setting up runtime environment..."
+
+    # Set up XDG_RUNTIME_DIR with proper permissions
+    export XDG_RUNTIME_DIR="/tmp/runtime"
+    mkdir -p "$XDG_RUNTIME_DIR"
+    chmod 700 "$XDG_RUNTIME_DIR"
+    chown "$(id -u)" "$XDG_RUNTIME_DIR"
+
+    # Set up Vulkan ICD and layer paths
+    export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+    export VK_LAYER_PATH=/usr/share/vulkan/explicit_layer.d
 
     # Verify GPU is available
     if ! command -v nvidia-smi &> /dev/null; then
@@ -75,19 +85,19 @@ setup_gpu_runtime() {
         return 1
     fi
 
-    # Create runtime directory if needed
-    if [ ! -d "/tmp/runtime" ]; then
-        mkdir -p /tmp/runtime
-        chmod 700 /tmp/runtime
+    # Test Vulkan initialization
+    if ! vulkaninfo &> /dev/null; then
+        log "Error: Failed to initialize Vulkan. Check GPU drivers and permissions."
+        return 1
     fi
 
-    log "GPU runtime environment configured successfully"
+    log "Runtime environment configured successfully"
     return 0
 }
 
-# Set up GPU environment first
-if ! setup_gpu_runtime; then
-    log "Failed to set up GPU environment"
+# Set up runtime environment first
+if ! setup_runtime; then
+    log "Failed to set up runtime environment"
     exit 1
 fi
 
