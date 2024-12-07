@@ -5,7 +5,8 @@ use tokio::sync::RwLock;
 use std::collections::HashMap;
 use tokio::time::{interval, Duration};
 use dotenv::dotenv;
-use std::error::Error as StdError;
+use std::error::Error;
+use cudarc::driver::DriverError;
 
 use crate::app_state::AppState;
 use crate::config::Settings;
@@ -34,10 +35,10 @@ mod services;
 mod utils;
 
 #[derive(Debug)]
-pub struct AppError(Box<dyn StdError + Send + Sync>);
+pub struct AppError(Box<dyn Error + Send + Sync>);
 
-impl From<Box<dyn StdError + Send + Sync>> for AppError {
-    fn from(err: Box<dyn StdError + Send + Sync>) -> Self {
+impl From<Box<dyn Error + Send + Sync>> for AppError {
+    fn from(err: Box<dyn Error + Send + Sync>) -> Self {
         AppError(err)
     }
 }
@@ -50,44 +51,53 @@ impl From<RAGFlowError> for AppError {
 
 impl From<AppError> for std::io::Error {
     fn from(err: AppError) -> Self {
-        std::io::Error::new(std::io::ErrorKind::Other, err.0.to_string())
+        if let Some(io_err) = err.0.downcast_ref::<std::io::Error>() {
+            std::io::Error::new(io_err.kind(), io_err.to_string())
+        } else if let Some(driver_err) = err.0.downcast_ref::<DriverError>() {
+            std::io::Error::new(std::io::ErrorKind::Other, driver_err.to_string())
+        } else {
+            std::io::Error::new(std::io::ErrorKind::Other, err.0.to_string())
+        }
     }
 }
 
-async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> std::io::Result<()> {
-    let metadata_map = match FileService::load_or_create_metadata() {
-        Ok(map) => {
-            log::debug!("Loaded existing metadata with {} entries", map.len());
-            map
-        },
-        Err(e) => {
-            log::error!("Failed to load metadata: {}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to load metadata: {}", e)));
-        }
-    };
+fn to_io_error(e: impl std::fmt::Display) -> Box<dyn Error + Send + Sync> {
+    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+}
 
+async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> Result<(), Box<dyn Error + Send + Sync>> {
+    log::debug!("Loading metadata...");
+    let metadata_map = FileService::load_or_create_metadata()
+        .map_err(|e| {
+            log::error!("Failed to load metadata: {}", e);
+            to_io_error(e)
+        })?;
+
+    log::debug!("Loaded metadata with {} entries", metadata_map.len());
     {
         let mut app_metadata = app_state.metadata.write().await;
         *app_metadata = metadata_map.clone();
     }
 
-    match GraphService::build_graph_from_metadata(&metadata_map).await {
-        Ok(graph_data) => {
-            let mut graph = app_state.graph_service.graph_data.write().await;
-            *graph = graph_data.clone();
-            graph.metadata = metadata_map;
-            
-            log::debug!("Graph initialized with {} nodes and {} edges", 
-                graph.nodes.len(), 
-                graph.edges.len()
-            );
-            Ok(())
-        },
-        Err(e) => {
-            log::error!("Failed to build graph from cache: {}", e);
-            Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-        }
+    log::debug!("Building graph from metadata...");
+    let graph_data = GraphService::build_graph_from_metadata(&metadata_map).await
+        .map_err(|e| {
+            log::error!("Failed to build graph from metadata: {}", e);
+            to_io_error(e)
+        })?;
+
+    {
+        let mut graph = app_state.graph_service.graph_data.write().await;
+        *graph = graph_data.clone();
+        graph.metadata = metadata_map;
+        
+        log::debug!("Graph initialized with {} nodes and {} edges", 
+            graph.nodes.len(), 
+            graph.edges.len()
+        );
     }
+
+    Ok(())
 }
 
 async fn update_graph_periodically(app_state: web::Data<AppState>) {
@@ -239,7 +249,8 @@ async fn main() -> std::io::Result<()> {
 
     log::debug!("Initializing graph with cached data...");
     if let Err(e) = initialize_cached_graph_data(&app_state).await {
-        log::warn!("Failed to initialize from cache: {:?}, proceeding with empty graph", e);
+        log::error!("Failed to initialize graph from cache: {}", e);
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize graph: {}", e)));
     }
 
     let websocket_manager = {

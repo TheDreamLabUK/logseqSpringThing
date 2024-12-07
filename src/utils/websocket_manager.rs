@@ -3,7 +3,7 @@ use actix_web_actors::ws;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use bytemuck;
 use std::sync::Arc;
-use log::{debug, info, warn, trace, error};
+use log::{debug, warn, trace, error};
 use std::time::{Duration, Instant};
 use serde_json::{self, Value};
 use std::sync::Mutex;
@@ -66,15 +66,26 @@ impl WebSocketManager {
     pub async fn add_connection(&self, addr: Addr<WebSocketSession>) {
         let mut connections = self.connections.lock().unwrap();
         connections.push(addr);
+        if self.debug_mode {
+            debug!("[WebSocketManager] New connection added. Total connections: {}", connections.len());
+        }
     }
 
     pub async fn remove_connection(&self, addr: &Addr<WebSocketSession>) {
         let mut connections = self.connections.lock().unwrap();
+        let before_len = connections.len();
         connections.retain(|x| x != addr);
+        if self.debug_mode && before_len != connections.len() {
+            debug!("[WebSocketManager] Connection removed. Total connections: {}", connections.len());
+        }
     }
 
     pub async fn broadcast_message(&self, message: String) -> Result<(), Box<dyn StdError>> {
-        let connections = self.connections.lock().unwrap();
+        let connections = self.connections.lock().map_err(|e| {
+            error!("[WebSocketManager] Failed to lock connections mutex: {}", e);
+            Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn StdError>
+        })?;
+        
         for addr in connections.iter() {
             addr.do_send(SendText(message.clone()));
         }
@@ -82,14 +93,18 @@ impl WebSocketManager {
     }
 
     pub async fn broadcast_binary(&self, nodes: &[GPUNode], is_initial: bool) -> Result<(), Box<dyn StdError>> {
-        let mut buffer = self.binary_buffer.lock().unwrap();
+        if self.debug_mode {
+            debug!("[WebSocketManager] Broadcasting binary update for {} nodes, is_initial={}", nodes.len(), is_initial);
+        }
+
         let total_size = HEADER_SIZE + nodes.len() * NODE_SIZE;
-        
         let mut new_buffer = Vec::with_capacity(total_size);
         
+        // Add initial layout flag
         let initial_flag: f32 = if is_initial { 1.0 } else { 0.0 };
         new_buffer.extend_from_slice(bytemuck::bytes_of(&initial_flag));
 
+        // Add node data
         for node in nodes.iter() {
             let node_data: [f32; 6] = [
                 node.x, node.y, node.z,
@@ -98,13 +113,34 @@ impl WebSocketManager {
             new_buffer.extend_from_slice(bytemuck::cast_slice(&node_data));
         }
 
-        *buffer = new_buffer;
+        if self.debug_mode {
+            trace!("[WebSocketManager] Binary message size: {} bytes", new_buffer.len());
+            if !new_buffer.is_empty() {
+                let hex_dump: String = new_buffer.iter()
+                    .take(32)
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                trace!("[WebSocketManager] Binary header (first 32 bytes): {}", hex_dump);
+            }
+        }
 
-        let binary_data = buffer.clone();
-        let connections = self.connections.lock().unwrap();
+        // Update buffer and broadcast
+        {
+            let mut buffer = self.binary_buffer.lock().map_err(|e| {
+                error!("[WebSocketManager] Failed to lock binary buffer mutex: {}", e);
+                Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn StdError>
+            })?;
+            *buffer = new_buffer.clone();
+        }
+
+        let connections = self.connections.lock().map_err(|e| {
+            error!("[WebSocketManager] Failed to lock connections mutex: {}", e);
+            Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn StdError>
+        })?;
         
         for addr in connections.iter() {
-            addr.do_send(SendBinary(binary_data.clone()));
+            addr.do_send(SendBinary(new_buffer.clone()));
         }
 
         Ok(())
@@ -112,6 +148,9 @@ impl WebSocketManager {
 
     pub async fn broadcast_graph_update(&self, graph: &GraphData) -> Result<(), Box<dyn StdError>> {
         if self.debug_mode {
+            debug!("[WebSocketManager] Broadcasting graph update with {} nodes and {} edges", 
+                graph.nodes.len(), graph.edges.len());
+            
             for (i, node) in graph.nodes.iter().take(3).enumerate() {
                 trace!("[WebSocketManager] Sample node {}: id={}", i, node.id);
             }
@@ -125,9 +164,15 @@ impl WebSocketManager {
             graph_data: graph.clone()
         };
 
-        let message_str = serde_json::to_string(&message)?;
+        let message_str = serde_json::to_string(&message).map_err(|e| {
+            error!("[WebSocketManager] Failed to serialize graph update: {}", e);
+            Box::new(e) as Box<dyn StdError>
+        })?;
         
-        let connections = self.connections.lock().unwrap();
+        let connections = self.connections.lock().map_err(|e| {
+            error!("[WebSocketManager] Failed to lock connections mutex: {}", e);
+            Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn StdError>
+        })?;
         
         for addr in connections.iter() {
             addr.do_send(SendText(message_str.clone()));
@@ -155,22 +200,23 @@ impl WebSocketManager {
 
         let initial_data = ServerMessage::InitialData {
             graph_data: (*graph).clone(),
-            settings: serde_json::to_value(&*settings).unwrap_or_default(),
+            settings: serde_json::to_value(&*settings).map_err(|e| {
+                error!("[WebSocketManager] Failed to serialize settings: {}", e);
+                Box::new(e) as Box<dyn StdError>
+            })?,
         };
 
-        match serde_json::to_string(&initial_data) {
-            Ok(initial_data_str) => {
-                if self.debug_mode {
-                    debug!("[WebSocketManager] Serialized initial data size: {} bytes", initial_data_str.len());
-                }
-                addr.do_send(SendText(initial_data_str));
-                Ok(())
-            }
-            Err(e) => {
-                error!("[WebSocketManager] Failed to serialize initial data: {}", e);
-                Err(Box::new(e))
-            }
+        let initial_data_str = serde_json::to_string(&initial_data).map_err(|e| {
+            error!("[WebSocketManager] Failed to serialize initial data: {}", e);
+            Box::new(e) as Box<dyn StdError>
+        })?;
+
+        if self.debug_mode {
+            debug!("[WebSocketManager] Serialized initial data size: {} bytes", initial_data_str.len());
         }
+        
+        addr.do_send(SendText(initial_data_str));
+        Ok(())
     }
 }
 
@@ -280,12 +326,16 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                 }
             }
             Ok(ws::Message::Binary(bin)) => {
+                if self.manager.debug_mode {
+                    debug!("[WebSocketSession] Binary message received: {} bytes", bin.len());
+                }
                 let connections = self.manager.connections.clone();
                 let bin_data = bin.to_vec();
                 actix::spawn(async move {
-                    let connections = connections.lock().unwrap();
-                    for addr in connections.iter() {
-                        addr.do_send(SendBinary(bin_data.clone()));
+                    if let Ok(connections) = connections.lock() {
+                        for addr in connections.iter() {
+                            addr.do_send(SendBinary(bin_data.clone()));
+                        }
                     }
                 });
             }
@@ -294,6 +344,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketSession 
                     debug!("[WebSocketSession] Close message received: {:?}", reason);
                 }
                 ctx.close(reason);
+                ctx.stop();
+            }
+            Err(e) => {
+                error!("[WebSocketSession] Error in websocket message: {}", e);
                 ctx.stop();
             }
             _ => (),
@@ -312,6 +366,8 @@ impl Handler<SendBinary> for WebSocketSession {
             let is_initial = f32::from_le_bytes(header_bytes) >= 1.0;
             let num_nodes = (data.len() - HEADER_SIZE) / NODE_SIZE;
 
+            trace!("[WebSocketSession] Sending binary update: is_initial={}, num_nodes={}", is_initial, num_nodes);
+            
             let hex_dump: String = data.iter()
                 .take(32)
                 .map(|b| format!("{:02x}", b))

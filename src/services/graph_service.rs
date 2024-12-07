@@ -209,7 +209,7 @@ impl GraphService {
                     gpu_compute.step()?;
                     
                     // Update positions every iteration for smoother motion
-                    let updated_nodes = gpu_compute.get_node_positions().await?;
+                    let updated_nodes = gpu_compute.get_node_positions()?;
                     for (i, node) in graph.nodes.iter_mut().enumerate() {
                         node.update_from_gpu_node(&updated_nodes[i]);
                         

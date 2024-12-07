@@ -5,6 +5,47 @@ use log::{info, error};
 use std::error::Error;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
+#[derive(Debug)]
+pub enum GitHubError {
+    ApiError(String),
+    NetworkError(reqwest::Error),
+    SerializationError(serde_json::Error),
+    ValidationError(String),
+    Base64Error(base64::DecodeError),
+}
+
+impl std::fmt::Display for GitHubError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GitHubError::ApiError(msg) => write!(f, "GitHub API error: {}", msg),
+            GitHubError::NetworkError(e) => write!(f, "Network error: {}", e),
+            GitHubError::SerializationError(e) => write!(f, "Serialization error: {}", e),
+            GitHubError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
+            GitHubError::Base64Error(e) => write!(f, "Base64 encoding error: {}", e),
+        }
+    }
+}
+
+impl Error for GitHubError {}
+
+impl From<reqwest::Error> for GitHubError {
+    fn from(err: reqwest::Error) -> Self {
+        GitHubError::NetworkError(err)
+    }
+}
+
+impl From<serde_json::Error> for GitHubError {
+    fn from(err: serde_json::Error) -> Self {
+        GitHubError::SerializationError(err)
+    }
+}
+
+impl From<base64::DecodeError> for GitHubError {
+    fn from(err: base64::DecodeError) -> Self {
+        GitHubError::Base64Error(err)
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct CreateBranchRequest {
     pub ref_name: String,
@@ -59,7 +100,8 @@ impl RealGitHubPRService {
     ) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let client = Client::builder()
             .user_agent("rust-github-api")
-            .build()?;
+            .build()
+            .map_err(GitHubError::from)?;
 
         Ok(Self {
             client,
@@ -81,18 +123,19 @@ impl RealGitHubPRService {
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
             .send()
-            .await?;
+            .await
+            .map_err(GitHubError::from)?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await?;
+            let error_text = response.text().await.map_err(GitHubError::from)?;
             error!("Failed to get main branch SHA: {}", error_text);
-            return Err(format!("Failed to get main branch SHA: {}", error_text).into());
+            return Err(GitHubError::ApiError(error_text).into());
         }
 
-        let response_json: serde_json::Value = response.json().await?;
+        let response_json: serde_json::Value = response.json().await.map_err(GitHubError::from)?;
         Ok(response_json["object"]["sha"]
             .as_str()
-            .ok_or("SHA not found")?
+            .ok_or_else(|| GitHubError::ValidationError("SHA not found".to_string()))?
             .to_string())
     }
 
@@ -113,12 +156,13 @@ impl RealGitHubPRService {
             .header("Accept", "application/vnd.github+json")
             .json(&body)
             .send()
-            .await?;
+            .await
+            .map_err(GitHubError::from)?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await?;
+            let error_text = response.text().await.map_err(GitHubError::from)?;
             error!("Failed to create branch: {}", error_text);
-            return Err(format!("Failed to create branch: {}", error_text).into());
+            return Err(GitHubError::ApiError(error_text).into());
         }
 
         Ok(())
@@ -151,15 +195,16 @@ impl RealGitHubPRService {
             .header("Accept", "application/vnd.github+json")
             .json(&body)
             .send()
-            .await?;
+            .await
+            .map_err(GitHubError::from)?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await?;
+            let error_text = response.text().await.map_err(GitHubError::from)?;
             error!("Failed to update file: {}", error_text);
-            return Err(format!("Failed to update file: {}", error_text).into());
+            return Err(GitHubError::ApiError(error_text).into());
         }
 
-        let file_response: FileResponse = response.json().await?;
+        let file_response: FileResponse = response.json().await.map_err(GitHubError::from)?;
         Ok(file_response.sha)
     }
 }
@@ -175,17 +220,12 @@ impl GitHubPRService for RealGitHubPRService {
         let timestamp = chrono::Utc::now().timestamp();
         let branch_name = format!("perplexity-update-{}-{}", file_name.replace(".md", ""), timestamp);
         
-        // Get main branch SHA
         let main_sha = self.get_main_branch_sha().await?;
-        
-        // Create new branch
         self.create_branch(&branch_name, &main_sha).await?;
         
-        // Update file in new branch
         let file_path = format!("{}/{}", self.base_path, file_name);
         let new_sha = self.update_file(&file_path, content, &branch_name, original_sha).await?;
         
-        // Create pull request
         let url = format!(
             "https://api.github.com/repos/{}/{}/pulls",
             self.owner, self.repo
@@ -207,18 +247,19 @@ impl GitHubPRService for RealGitHubPRService {
             .header("Accept", "application/vnd.github+json")
             .json(&pr_body)
             .send()
-            .await?;
+            .await
+            .map_err(GitHubError::from)?;
 
         if !response.status().is_success() {
-            let error_text = response.text().await?;
+            let error_text = response.text().await.map_err(GitHubError::from)?;
             error!("Failed to create PR: {}", error_text);
-            return Err(format!("Failed to create PR: {}", error_text).into());
+            return Err(GitHubError::ApiError(error_text).into());
         }
 
-        let pr_response: serde_json::Value = response.json().await?;
+        let pr_response: serde_json::Value = response.json().await.map_err(GitHubError::from)?;
         let pr_url = pr_response["html_url"]
             .as_str()
-            .ok_or("PR URL not found")?
+            .ok_or_else(|| GitHubError::ValidationError("PR URL not found".to_string()))?
             .to_string();
 
         info!("Created PR: {}", pr_url);
