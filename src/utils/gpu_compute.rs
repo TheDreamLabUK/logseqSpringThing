@@ -119,9 +119,8 @@ impl GPUCompute {
         }
 
         debug!("Initializing CUDA device");
-        let device = CudaDevice::new(0)
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-        let device = Arc::new(device);
+        let device = Arc::new(CudaDevice::new(0)
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?);
 
         debug!("Compiling and loading force computation kernel");
         let ptx = Ptx::from_src(FORCE_KERNEL);
@@ -136,8 +135,9 @@ impl GPUCompute {
         let masses = device.alloc_zeros::<u8>(num_nodes as usize)
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
+        debug!("Creating GPU compute instance");
         let mut instance = Self {
-            device,
+            device: Arc::clone(&device),
             force_kernel,
             positions,
             velocities,
@@ -192,7 +192,7 @@ impl GPUCompute {
 
         let params = &self.simulation_params;
         unsafe {
-            self.force_kernel.clone().launch(cfg, (
+            self.force_kernel.launch(cfg, (
                 &mut self.positions,
                 &mut self.velocities,
                 &mut self.masses,
