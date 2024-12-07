@@ -228,7 +228,7 @@ async fn main() -> std::io::Result<()> {
     let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
         Ok(gpu) => {
             log::debug!("GPU initialization successful");
-            Some(Arc::new(RwLock::new(gpu)))
+            Some(gpu) // gpu is already Arc<RwLock<GPUCompute>>
         },
         Err(e) => {
             log::warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
