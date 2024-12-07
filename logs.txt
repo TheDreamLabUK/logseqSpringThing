@@ -69,3 +69,106 @@ CPU Fallback: While the server falls back to CPU, this might impact performance,
 Large Initial Data: The serialized initial graph data is relatively large (331777 bytes, then 327533 bytes after update). Consider ways to optimize this if you have many clients connecting simultaneously, as sending this much data to each client can become a bottleneck.
 
 This information gives you a detailed picture of how the GitHub data is processed. If you have further questions based on other parts of the application or its design, feel free to ask! For example, knowing what the clients do with this graph data would be helpful in understanding the bigger picture.
+
+The provided code has a recurring issue with double wrapping the CudaDevice in an Arc. This is the primary cause of the mismatched types error you're seeing. Additionally, there are some logic errors in how the initial graph data is loaded and how binary updates are handled. Let's address these.
+
+1. Fix Double Arc Wrapping in gpu_compute.rs:
+
+This is the most critical fix. Make sure device is wrapped in Arc only once.
+
+// utils/gpu_compute.rs
+impl GPUCompute {
+    pub async fn new(graph: &GraphData) -> Result<Self, Box<dyn Error + Send + Sync>> {
+        // ... (other code)
+
+        // Initialize CUDA device - wrap in Arc only ONCE
+        let device = Arc::new(CudaDevice::new(0).map_err(to_io_error)?);
+
+        // ... (rest of the function, using device without further Arc::new)
+    }
+
+    // ... other functions
+}
+Use code with caution.
+Rust
+2. Address force_kernel Initialization:
+
+The () you're getting for force_kernel means the initialization is failing. Make absolutely sure the kernel compiles and loads correctly. Add more specific error handling to pinpoint the problem:
+
+// utils/gpu_compute.rs
+        // Create PTX and load kernel
+        let ptx = Ptx::from_src(FORCE_KERNEL);
+        let force_kernel = device
+            .load_ptx(ptx, "compute_forces", &["compute_forces"])
+            .map_err(|e| {
+                error!("Failed to load kernel: {}", e);  // Log the error!
+                to_io_error(e)
+            })?;
+Use code with caution.
+Rust
+3. Graph Initialization and Binary Updates:
+
+initialize_cached_graph_data in main.rs: This function attempts to load metadata and build a graph. If it fails, it logs the error but doesn't return an error to main, so the application continues with potentially invalid data. Propagate the error up:
+
+// main.rs
+    log::debug!("Initializing graph with cached data...");
+    initialize_cached_graph_data(&app_state).await?; // Propagate the error
+Use code with caution.
+Rust
+WebSocketManager::broadcast_binary: The is_initial flag isn't being used correctly. It should be part of the binary message, not just printed in debug logs. The client-side code expects the first 4 bytes of the binary message to be this flag (as a float). Include it in the buffer:
+
+// utils/websocket_manager.rs
+    pub async fn broadcast_binary(&self, nodes: &[GPUNode], is_initial: bool) -> Result<(), Box<dyn StdError>> {
+        // ...
+
+        let initial_flag: f32 = if is_initial { 1.0 } else { 0.0 };
+        new_buffer.extend_from_slice(bytemuck::bytes_of(&initial_flag)); // Add to buffer
+
+        for node in nodes.iter() { // ... } // Rest of your code
+    }
+Use code with caution.
+Rust
+WebSocketService::handleMessage in services/websocketService.ts: This function handles binary data before checking the message type. It should check for the binaryPositionUpdate message first, then process the binary data:
+
+// services/websocketService.ts
+handleMessage(event: MessageEvent): void {
+  // ...
+
+  if (typeof event.data === 'string') {  // Check if it's a string message first
+    const message = JSON.parse(event.data) as BaseMessage;
+
+    if (message.type === 'binaryPositionUpdate') { // Check for the binary update type
+      this.pendingBinaryUpdate = true;
+      this.isInitialLayout = message.isInitialLayout;
+
+      // Now that we know we're expecting binary, handle the next message as binary
+      this.ws!.onmessage = (binaryEvent: MessageEvent) => {
+        if (binaryEvent.data instanceof ArrayBuffer) {
+          // ... (process binary data here)
+        }
+      };
+      return; // Important: Return here to avoid processing the current message as text
+    }
+
+    // ... (handle other message types)
+  } else if (event.data instanceof ArrayBuffer && this.pendingBinaryUpdate) {
+    // ... (handle pending binary data here)
+  }
+
+  // ... (rest of your handleMessage function)
+}
+Use code with caution.
+TypeScript
+4. Clean Up Warnings:
+
+After fixing the errors, address the warnings:
+
+src/handlers/visualization_handler.rs: Remove the unused Deserialize and Serialize imports.
+
+src/utils/websocket_manager.rs: Remove the unused info import or use it.
+
+src/utils/websocket_manager.rs: Prefix is_initial and num_nodes with _ if they are intentionally unused.
+
+Testing:
+
+After making these changes, thoroughly test your application. Start by running cargo test and then test the application in your browser to verify the graph visualization works correctly with GPU acceleration. Pay close attention to the console logs for any remaining errors or warnings. If you still encounter problems, please provide the updated error messages and relevant code snippets, and I'll do my best to assist further!

@@ -60,12 +60,15 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
                     if let Some(gpu) = &state.gpu_compute {
                         let gpu = gpu.clone();
                         let gpu_write = gpu.write().await;
-                        if let Ok(nodes) = gpu_write.get_node_positions().await {
-                            if let Some(ws_manager) = state.get_websocket_manager().await {
-                                if let Err(e) = ws_manager.broadcast_binary(&nodes, true).await {
-                                    error!("Failed to broadcast binary update: {}", e);
+                        match gpu_write.get_node_positions() {
+                            Ok(nodes) => {
+                                if let Some(ws_manager) = state.get_websocket_manager().await {
+                                    if let Err(e) = ws_manager.broadcast_binary(&nodes, true).await {
+                                        error!("Failed to broadcast binary update: {}", e);
+                                    }
                                 }
-                            }
+                            },
+                            Err(e) => error!("Failed to get node positions: {}", e)
                         }
                     }
 
@@ -146,12 +149,15 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
             if let Some(gpu) = &state.gpu_compute {
                 let gpu = gpu.clone();
                 let gpu_write = gpu.write().await;
-                if let Ok(nodes) = gpu_write.get_node_positions().await {
-                    if let Some(ws_manager) = state.get_websocket_manager().await {
-                        if let Err(e) = ws_manager.broadcast_binary(&nodes, true).await {
-                            error!("Failed to broadcast binary update: {}", e);
+                match gpu_write.get_node_positions() {
+                    Ok(nodes) => {
+                        if let Some(ws_manager) = state.get_websocket_manager().await {
+                            if let Err(e) = ws_manager.broadcast_binary(&nodes, true).await {
+                                error!("Failed to broadcast binary update: {}", e);
+                            }
                         }
-                    }
+                    },
+                    Err(e) => error!("Failed to get node positions: {}", e)
                 }
             }
 
@@ -205,12 +211,15 @@ pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, Ac
             if let Some(gpu) = &state.gpu_compute {
                 let gpu = gpu.clone();
                 let gpu_write = gpu.write().await;
-                if let Ok(nodes) = gpu_write.get_node_positions().await {
-                    if let Some(ws_manager) = state.get_websocket_manager().await {
-                        if let Err(e) = ws_manager.broadcast_binary(&nodes, true).await {
-                            error!("Failed to broadcast binary update: {}", e);
+                match gpu_write.get_node_positions() {
+                    Ok(nodes) => {
+                        if let Some(ws_manager) = state.get_websocket_manager().await {
+                            if let Err(e) = ws_manager.broadcast_binary(&nodes, true).await {
+                                error!("Failed to broadcast binary update: {}", e);
+                            }
                         }
-                    }
+                    },
+                    Err(e) => error!("Failed to get node positions: {}", e)
                 }
             }
 

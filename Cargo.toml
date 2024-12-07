@@ -71,7 +71,7 @@ bytes = "1.8"
 sha1 = "0.10.6"
 
 # GPU Computing
-wgpu = "23.0"
+cudarc = { version = "0.12.1", features = ["cuda-12060"] }
 bytemuck = { version = "1.19", features = ["derive"] }
 
 # Intrusive Futures
