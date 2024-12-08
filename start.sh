@@ -63,9 +63,6 @@ setup_runtime() {
     chmod 700 "$XDG_RUNTIME_DIR"
     chown "$(id -u)" "$XDG_RUNTIME_DIR"
 
-    # Set up Vulkan ICD and layer paths
-    export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
-    export VK_LAYER_PATH=/usr/share/vulkan/explicit_layer.d
 
     # Verify GPU is available
     if ! command -v nvidia-smi &> /dev/null; then
@@ -76,18 +73,6 @@ setup_runtime() {
     # Check GPU is accessible
     if ! nvidia-smi &> /dev/null; then
         log "Error: Cannot access NVIDIA GPU. Check device is properly passed to container."
-        return 1
-    fi
-
-    # Verify Vulkan support
-    if ! command -v vulkaninfo &> /dev/null; then
-        log "Error: Vulkan tools not found. Vulkan support is required."
-        return 1
-    fi
-
-    # Test Vulkan initialization
-    if ! vulkaninfo &> /dev/null; then
-        log "Error: Failed to initialize Vulkan. Check GPU drivers and permissions."
         return 1
     fi
 

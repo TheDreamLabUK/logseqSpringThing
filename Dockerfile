@@ -25,9 +25,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libssl-dev \
     pkg-config \
-    libvulkan1 \
-    libvulkan-dev \
-    vulkan-tools \
     libegl1-mesa-dev \
     libasound2-dev \
     ca-certificates \
@@ -95,14 +92,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libssl3 \
     nginx \
-    libvulkan1 \
-    vulkan-tools \
     libegl1-mesa \
     libasound2 \
     python3.10-minimal \
     python3.10-venv \
     ca-certificates \
-    mesa-vulkan-drivers \
     mesa-utils \
     libgl1-mesa-dri \
     libgl1-mesa-glx \
