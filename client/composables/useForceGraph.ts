@@ -1,4 +1,4 @@
-import { ref, onBeforeUnmount } from 'vue';
+import { ref, onBeforeUnmount, markRaw } from 'vue';
 import * as THREE from 'three';
 import { useSettingsStore } from '../stores/settings';
 import { useBinaryUpdateStore } from '../stores/binaryUpdate';
@@ -83,10 +83,10 @@ const isPerspectiveCamera = (camera: Camera): camera is PerspectiveCamera => {
 
 // Create object pool
 const createObjectPool = () => ({
-  vector3: Array(OBJECT_POOL_SIZE).fill(null).map(() => new THREE.Vector3()),
-  matrix4: Array(OBJECT_POOL_SIZE).fill(null).map(() => new THREE.Matrix4()),
-  color: Array(OBJECT_POOL_SIZE).fill(null).map(() => new THREE.Color()),
-  quaternion: Array(OBJECT_POOL_SIZE).fill(null).map(() => new THREE.Quaternion())
+  vector3: Array(OBJECT_POOL_SIZE).fill(null).map(() => markRaw(new THREE.Vector3())),
+  matrix4: Array(OBJECT_POOL_SIZE).fill(null).map(() => markRaw(new THREE.Matrix4())),
+  color: Array(OBJECT_POOL_SIZE).fill(null).map(() => markRaw(new THREE.Color())),
+  quaternion: Array(OBJECT_POOL_SIZE).fill(null).map(() => markRaw(new THREE.Quaternion()))
 });
 
 // Helper to get grid cell key
@@ -103,11 +103,11 @@ export function useForceGraph(scene: Scene) {
   const resources = ref<ForceGraphResources | null>(null);
   
   // Temporary objects for matrix calculations
-  const tempMatrix = new THREE.Matrix4();
-  const tempColor = new THREE.Color();
-  const tempVector = new THREE.Vector3();
-  const tempQuaternion = new THREE.Quaternion();
-  const tempScale = new THREE.Vector3();
+  const tempMatrix = markRaw(new THREE.Matrix4());
+  const tempColor = markRaw(new THREE.Color());
+  const tempVector = markRaw(new THREE.Vector3());
+  const tempQuaternion = markRaw(new THREE.Quaternion());
+  const tempScale = markRaw(new THREE.Vector3());
 
   // Data
   const nodes = ref<NodeInstance[]>([]);
@@ -115,25 +115,25 @@ export function useForceGraph(scene: Scene) {
 
   // Initialize node colors from settings
   const nodeColors: NodeColors = {
-    NEW: new THREE.Color(settingsStore.getVisualizationSettings.node_color_new),
-    RECENT: new THREE.Color(settingsStore.getVisualizationSettings.node_color_recent),
-    MEDIUM: new THREE.Color(settingsStore.getVisualizationSettings.node_color_medium),
-    OLD: new THREE.Color(settingsStore.getVisualizationSettings.node_color_old),
-    CORE: new THREE.Color(settingsStore.getVisualizationSettings.node_color_core),
-    SECONDARY: new THREE.Color(settingsStore.getVisualizationSettings.node_color_secondary),
-    DEFAULT: new THREE.Color(settingsStore.getVisualizationSettings.node_color)
+    NEW: markRaw(new THREE.Color(settingsStore.getVisualizationSettings.node_color_new)),
+    RECENT: markRaw(new THREE.Color(settingsStore.getVisualizationSettings.node_color_recent)),
+    MEDIUM: markRaw(new THREE.Color(settingsStore.getVisualizationSettings.node_color_medium)),
+    OLD: markRaw(new THREE.Color(settingsStore.getVisualizationSettings.node_color_old)),
+    CORE: markRaw(new THREE.Color(settingsStore.getVisualizationSettings.node_color_core)),
+    SECONDARY: markRaw(new THREE.Color(settingsStore.getVisualizationSettings.node_color_secondary)),
+    DEFAULT: markRaw(new THREE.Color(settingsStore.getVisualizationSettings.node_color))
   };
 
   const initInstancedMeshes = () => {
     // Create optimized geometries
-    const highDetailGeometry = new THREE.SphereGeometry(1, 32, 32).toNonIndexed();
-    const mediumDetailGeometry = new THREE.SphereGeometry(1, 16, 16).toNonIndexed();
-    const lowDetailGeometry = new THREE.SphereGeometry(1, 8, 8).toNonIndexed();
+    const highDetailGeometry = markRaw(new THREE.SphereGeometry(1, 32, 32).toNonIndexed());
+    const mediumDetailGeometry = markRaw(new THREE.SphereGeometry(1, 16, 16).toNonIndexed());
+    const lowDetailGeometry = markRaw(new THREE.SphereGeometry(1, 8, 8).toNonIndexed());
 
     const settings = settingsStore.getVisualizationSettings;
 
     // Create optimized material
-    const nodeMaterial = new THREE.MeshPhysicalMaterial({
+    const nodeMaterial = markRaw(new THREE.MeshPhysicalMaterial({
       metalness: settings.material.node_material_metalness,
       roughness: settings.material.node_material_roughness,
       transparent: true,
@@ -144,13 +144,13 @@ export function useForceGraph(scene: Scene) {
       side: THREE.FrontSide,
       flatShading: true,
       vertexColors: true
-    });
+    }));
 
     // Create instanced meshes with optimizations
     const nodeInstancedMeshes: NodeInstancedMeshes = {
-      high: new THREE.InstancedMesh(highDetailGeometry, nodeMaterial.clone(), MAX_INSTANCES),
-      medium: new THREE.InstancedMesh(mediumDetailGeometry, nodeMaterial.clone(), MAX_INSTANCES),
-      low: new THREE.InstancedMesh(lowDetailGeometry, nodeMaterial.clone(), MAX_INSTANCES)
+      high: markRaw(new THREE.InstancedMesh(highDetailGeometry, nodeMaterial.clone(), MAX_INSTANCES)),
+      medium: markRaw(new THREE.InstancedMesh(mediumDetailGeometry, nodeMaterial.clone(), MAX_INSTANCES)),
+      low: markRaw(new THREE.InstancedMesh(lowDetailGeometry, nodeMaterial.clone(), MAX_INSTANCES))
     };
 
     // Configure meshes for performance
@@ -162,32 +162,32 @@ export function useForceGraph(scene: Scene) {
     });
 
     // Create LOD with optimized distances
-    const lod = new THREE.LOD();
+    const lod = markRaw(new THREE.LOD());
     lod.addLevel(nodeInstancedMeshes.high, 0);
     lod.addLevel(nodeInstancedMeshes.medium, 50);
     lod.addLevel(nodeInstancedMeshes.low, 150);
     scene.add(lod);
 
     // Create optimized link geometry
-    const linkGeometry = new THREE.CylinderGeometry(0.01, 0.01, 1, 6, 1).toNonIndexed();
+    const linkGeometry = markRaw(new THREE.CylinderGeometry(0.01, 0.01, 1, 6, 1).toNonIndexed());
     linkGeometry.rotateX(Math.PI / 2);
 
     // Create optimized link material
-    const linkMaterial = new THREE.MeshBasicMaterial({
+    const linkMaterial = markRaw(new THREE.MeshBasicMaterial({
       color: settings.edge_color,
       transparent: true,
       opacity: settings.edge_opacity,
       depthWrite: false,
       side: THREE.FrontSide,
       vertexColors: true
-    });
+    }));
 
     // Create optimized link mesh
-    const linkInstancedMesh = new THREE.InstancedMesh(
+    const linkInstancedMesh = markRaw(new THREE.InstancedMesh(
       linkGeometry,
       linkMaterial,
       MAX_INSTANCES
-    );
+    ));
     linkInstancedMesh.frustumCulled = true;
     linkInstancedMesh.matrixAutoUpdate = false;
     linkInstancedMesh.castShadow = false;
@@ -202,7 +202,7 @@ export function useForceGraph(scene: Scene) {
       linkInstances: new Map(),
       nodeInstanceCount: 0,
       linkInstanceCount: 0,
-      frustum: new THREE.Frustum(),
+      frustum: markRaw(new THREE.Frustum()),
       objectPool: createObjectPool(),
       frameCount: 0,
       lastUpdateTime: 0,
@@ -231,7 +231,7 @@ export function useForceGraph(scene: Scene) {
         
         cell = {
           nodes: [],
-          center: new THREE.Vector3(centerX, centerY, centerZ)
+          center: markRaw(new THREE.Vector3(centerX, centerY, centerZ))
         };
         res.spatialGrid.set(key, cell);
       }
@@ -433,14 +433,14 @@ export function useForceGraph(scene: Scene) {
       const distance = sourcePos.distanceTo(targetPos);
       tempVector.subVectors(targetPos, sourcePos);
       quaternion.setFromUnitVectors(
-        new THREE.Vector3(0, 0, 1),
+        markRaw(new THREE.Vector3(0, 0, 1)),
         tempVector.normalize()
       );
 
       matrix.compose(
         sourcePos.lerp(targetPos, 0.5),
         quaternion,
-        new THREE.Vector3(1, 1, distance)
+        markRaw(new THREE.Vector3(1, 1, distance))
       );
 
       // Update link instance

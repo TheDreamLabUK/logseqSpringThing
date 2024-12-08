@@ -172,3 +172,203 @@ src/utils/websocket_manager.rs: Prefix is_initial and num_nodes with _ if they a
 Testing:
 
 After making these changes, thoroughly test your application. Start by running cargo test and then test the application in your browser to verify the graph visualization works correctly with GPU acceleration. Pay close attention to the console logs for any remaining errors or warnings. If you still encounter problems, please provide the updated error messages and relevant code snippets, and I'll do my best to assist further!
+
+The most likely culprit for a client crashing without even showing developer console errors is an out-of-memory issue, likely caused by the rapid updates from the force-directed graph layout, especially if it's running locally on the client. The sheer number of position updates being sent to the visualization can overwhelm the browser.
+
+Here's a breakdown of how to diagnose and fix this, along with targeted improvements to the provided code:
+
+Diagnosis Steps:
+
+Simplify: Temporarily reduce the number of nodes and edges in your graph to a very small number. If the problem goes away, it confirms the graph size is related.
+
+Profile: If you can get the developer tools open even for a short time before the crash, use the Performance tab to profile memory usage. Look for rapidly growing memory consumption.
+
+Logging: Add more logging to your client-side updatePositions function and the WebSocket message handler. Log the size of the incoming data and how long it takes to process. This helps pinpoint the bottleneck.
+
+Code Improvements (Client-Side):
+
+Binary Updates (Critical): You are already using binary updates, which is good, but there are areas for improvement:
+
+Efficient Decoding: Use Float32Array directly on the incoming ArrayBuffer instead of converting to a regular array. This avoids unnecessary memory allocation and copying. See the updated useBinaryUpdateStore and useGraphSystem examples below.
+
+Update Throttling (Very Important): Implement a mechanism to throttle the application of position updates. Don't apply every single update from the server. Instead, accumulate updates and apply them at a fixed interval (e.g., every frame or every few frames). The provided useBinaryUpdateStore now includes a basic example of throttling.
+
+Change Detection: Only update node positions if they have actually changed significantly. This reduces unnecessary Three.js updates. See the improved useBinaryUpdateStore and useGraphSystem for an example.
+
+Instancing (Essential): Use Three.js's InstancedMesh for rendering nodes and edges. This dramatically reduces the number of draw calls and improves performance. I've provided updated code for useForceGraph that uses instancing.
+
+Level of Detail (LOD): Implement Level of Detail (LOD) for your nodes. Render simpler geometries for nodes that are far away. The updated useForceGraph includes an example of LOD.
+
+Reduce Complexity: Simplify node and edge geometries if possible.
+
+Memory Management: Dispose of Three.js geometries and materials when they are no longer needed. The provided code has been updated with more robust disposal logic in several components.
+
+Code Improvements (Server-Side):
+
+Update Frequency: Reduce the frequency of updates from the server. Instead of sending updates every iteration of the force-directed layout, send them at a lower, fixed rate (e.g., 20 or 30 updates per second). This gives the client more time to process the updates. See the modified GraphService::calculate_layout and WebSocketManager::broadcast_binary for examples.
+
+Delta Updates: Instead of sending the full positions of all nodes in every update, send only the nodes that have moved significantly since the last update. This reduces the amount of data sent over the WebSocket.
+
+Check Client Readiness: Implement a mechanism on the server to check if the client is ready to receive more updates. This prevents the server from overwhelming the client.
+
+Example Code Changes (Client):
+
+// stores/binaryUpdate.ts
+// ... (other code)
+actions: {
+  // ... (other actions)
+  updateFromBinary(message: BinaryMessage): void {
+    // ... (validation and resizing logic)
+
+    // Efficiently copy data using subarray
+    const positionsData = new Float32Array(message.data, 0, this.nodeCount * 3);
+    const velocitiesData = new Float32Array(message.data, this.nodeCount * 3 * FLOAT32_SIZE, this.nodeCount * 3);
+
+    this.positions.set(positionsData);
+    this.velocities.set(velocitiesData);
+
+    // ... (rest of the code)
+  }
+},
+// ... (rest of the store)
+
+// composables/useForceGraph.ts
+// ... (other code)
+const updateNodes = () => {
+  const res = resources.value;
+  if (!res) return;
+
+  // ... (other logic)
+
+  // Use InstancedMesh for efficient rendering
+  nodes.value.forEach((node, index) => {
+    // ... (matrix and color calculations)
+
+    // Update the correct LOD mesh based on distance
+    const distance = camera.position.distanceTo(new THREE.Vector3(node.x, node.y, node.z));
+    let mesh;
+    if (distance < 50) {
+      mesh = res.nodeInstancedMeshes.high;
+    } else if (distance < 150) {
+      mesh = res.nodeInstancedMeshes.medium;
+    } else {
+      mesh = res.nodeInstancedMeshes.low;
+    }
+
+    mesh.setMatrixAt(index, tempMatrix);
+    mesh.setColorAt(index, color);
+
+    // ... (rest of the logic)
+  });
+
+  // ... (instance count and update logic)
+};
+// ... (rest of the composable)
+
+// composables/useGraphSystem.ts
+// ... other imports
+import { throttle } from 'lodash-es' // Import lodash throttle
+
+// ... other code
+
+export function useGraphSystem() {
+  // ... other state
+
+  const throttledUpdatePositions = throttle((positions, velocities, nodeCount) => {
+    visualization.updatePositions(positions, velocities, nodeCount)
+    visualizationState?.value.scene?.userData.needsRender = true
+  }, 16) // Throttle to roughly 60fps
+
+  // ... other code
+
+  // Watch for binary updates
+  watch(() => binaryUpdateStore.getAllPositions, (positions) => {
+    // ... (node count check)
+
+    const velocities = binaryUpdateStore.getAllVelocities
+    const nodeCount = visualizationStore.nodes.length
+
+    throttledUpdatePositions(positions, velocities, nodeCount)
+  }, { deep: true })
+
+  // ... other code
+}
+Use code with caution.
+TypeScript
+Example Code Changes (Server):
+
+// services/graph_service.rs
+// ... (other code)
+pub async fn calculate_layout(
+    // ... other parameters
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // ... (GPU or CPU calculation)
+    
+    // Throttle updates (server-side)
+    let mut last_update_time = Instant::now();
+    let update_interval = Duration::from_millis(50); // 20 updates per second
+
+    for _ in 0..params.iterations {
+        // ... (force calculation logic)
+
+        if last_update_time.elapsed() >= update_interval {
+            // ... (update positions and send to client)
+            last_update_time = Instant::now();
+        }
+    }
+    // ... (rest of the function)
+}
+
+// utils/websocket_manager.rs
+// ... (other code)
+impl WebSocketManager {
+    // ... (other methods)
+
+    pub async fn broadcast_binary(&self, nodes: &[GPUNode], is_initial: bool) -> Result<(), Box<dyn StdError>> {
+        // ... (binary data creation)
+
+        // Check if any positions have changed before sending update
+        if !is_initial && self.has_significant_position_changes(nodes) {
+            // ... (send binary update)
+        } else if is_initial {
+            // Always send initial layout
+            // ... (send binary update)
+        } else {
+            debug!("[WebSocketManager] Skipping binary update - no significant changes");
+        }
+
+        Ok(())
+    }
+
+    fn has_significant_position_changes(&self, nodes: &[GPUNode]) -> bool {
+        // Check against previously sent positions
+        let prev_positions = { // Get previous positions from buffer
+            let buffer = self.binary_buffer.lock().unwrap();
+            buffer.clone()
+        };
+
+        if prev_positions.len() != nodes.len() * NODE_SIZE + HEADER_SIZE {
+            return true; // Node count changed
+        }
+
+        // Check for significant changes in position or velocity
+        for (i, node) in nodes.iter().enumerate() {
+            let offset = i * NODE_SIZE + HEADER_SIZE;
+            let prev_x = f32::from_le_bytes([prev_positions[offset], prev_positions[offset+1], prev_positions[offset+2], prev_positions[offset+3]]);
+            let prev_y = f32::from_le_bytes([prev_positions[offset+4], prev_positions[offset+5], prev_positions[offset+6], prev_positions[offset+7]]);
+            let prev_z = f32::from_le_bytes([prev_positions[offset+8], prev_positions[offset+9], prev_positions[offset+10], prev_positions[offset+11]]);
+            
+            if (node.x - prev_x).abs() > 0.01 || (node.y - prev_y).abs() > 0.01 || (node.z - prev_z).abs() > 0.01 {
+                return true;
+            }
+            // Add similar check for velocity if needed
+        }
+
+        false // No significant changes
+    }
+
+    // ... (other methods)
+}
+Use code with caution.
+Rust
+These changes, especially the throttling and instancing, should significantly improve performance and prevent the browser from crashing. Remember to test thoroughly after each change to isolate the most effective improvements for your specific scenario. If you still have issues, provide more details about the size and complexity of your graph, and any remaining error messages you encounter.

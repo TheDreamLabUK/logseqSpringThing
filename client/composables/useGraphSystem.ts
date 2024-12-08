@@ -1,4 +1,4 @@
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref, watch, onBeforeUnmount, markRaw } from 'vue'
 import { useVisualizationStore } from '../stores/visualization'
 import { useBinaryUpdateStore } from '../stores/binaryUpdate'
 import { useSettingsStore } from '../stores/settings'
@@ -42,6 +42,11 @@ interface GraphSystemState {
   performanceMetrics: PerformanceMetrics
 }
 
+// Helper function to safely handle OrbitControls
+const createNonReactiveControls = (controls: OrbitControls | null): OrbitControls | null => {
+  return controls ? markRaw(controls) : null;
+};
+
 export function useGraphSystem() {
   // Stores
   const visualizationStore = useVisualizationStore()
@@ -53,9 +58,9 @@ export function useGraphSystem() {
   const { resources, initScene, dispose: disposeScene } = useThreeScene()
 
   // Graph groups
-  const graphGroup = new Group()
-  const nodesGroup = new Group()
-  const edgesGroup = new Group()
+  const graphGroup = markRaw(new Group())
+  const nodesGroup = markRaw(new Group())
+  const edgesGroup = markRaw(new Group())
   graphGroup.add(nodesGroup)
   graphGroup.add(edgesGroup)
 
@@ -102,8 +107,8 @@ export function useGraphSystem() {
   const getNodePosition = (node: Node | string): Vector3 => {
     const id = typeof node === 'object' ? node.id : node
     const nodeData = visualizationStore.nodes.find(n => n.id === id)
-    if (!nodeData?.position) return new Vector3()
-    return new Vector3(nodeData.position[0], nodeData.position[1], nodeData.position[2])
+    if (!nodeData?.position) return markRaw(new Vector3())
+    return markRaw(new Vector3(nodeData.position[0], nodeData.position[1], nodeData.position[2]))
   }
 
   const getNodeScale = (node: Node): number => {
@@ -298,16 +303,19 @@ export function useGraphSystem() {
         throw new Error('Failed to initialize Three.js scene')
       }
 
-      // Update visualization state
+      // Handle controls separately to maintain type safety
+      const controls = createNonReactiveControls(sceneResources.controls as OrbitControls | null);
+      
+      // Update visualization state with raw THREE.js objects
       visualizationState.value = {
         initialized: true,
         pendingInitialization: false,
-        scene: sceneResources.scene,
-        camera: sceneResources.camera,
-        renderer: sceneResources.renderer,
-        controls: sceneResources.controls as OrbitControls | null,
+        scene: markRaw(sceneResources.scene),
+        camera: markRaw(sceneResources.camera),
+        renderer: markRaw(sceneResources.renderer),
+        controls,
         xrSessionManager: null,
-        canvas: sceneResources.renderer.domElement
+        canvas: markRaw(sceneResources.renderer.domElement)
       }
       
       // Initialize force graph
