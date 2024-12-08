@@ -16,8 +16,10 @@ check_pnpm_security() {
     local audit_output=$(pnpm audit 2>&1)
     local audit_exit=$?
     
-    # Count critical vulnerabilities
-    local critical_count=$(echo "$audit_output" | grep -i "critical" | grep -o '[0-9]\+ vulnerabilities' | awk '{print $1}' || echo "0")
+    # Count critical vulnerabilities, ensuring we have a valid integer
+    local critical_count
+    critical_count=$(echo "$audit_output" | grep -i "critical" | grep -o '[0-9]\+ vulnerabilities' | awk '{print $1}')
+    critical_count=${critical_count:-0}  # Default to 0 if empty
     
     echo "$audit_output"
     
@@ -51,8 +53,10 @@ check_rust_security() {
     local audit_output=$(cargo audit 2>&1)
     local audit_exit=$?
     
-    # Count critical vulnerabilities
-    local critical_count=$(echo "$audit_output" | grep -i "critical" | wc -l || echo "0")
+    # Count critical vulnerabilities, ensuring we have a valid integer
+    local critical_count
+    critical_count=$(echo "$audit_output" | grep -i "critical" | wc -l)
+    critical_count=${critical_count:-0}  # Default to 0 if empty
     
     echo "$audit_output"
     
@@ -79,28 +83,14 @@ read_settings() {
     fi
 }
 
-# Function to check system resources and get GPU0 UUID
+# Function to check system resources
 check_system_resources() {
     echo -e "${YELLOW}Checking GPU availability...${NC}"
     if ! command -v nvidia-smi &> /dev/null; then
         echo -e "${RED}Error: nvidia-smi not found${NC}"
         exit 1
     fi
-
-    # Get GPU 0's UUID
-    GPU_UUID=$(nvidia-smi -i 0 --query-gpu=uuid --format=csv,noheader)
-    if [ -z "$GPU_UUID" ]; then
-        echo -e "${RED}Error: Could not get GPU 0 UUID${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}Using GPU: ${GPU_UUID}${NC}"
-    
-    # Check GPU 0's memory
-    nvidia-smi -i 0 --query-gpu=memory.used,memory.total --format=csv,noheader
-
-    # Export GPU UUID for docker-compose
-    export NVIDIA_VISIBLE_DEVICES=$GPU_UUID
-    export NVIDIA_GPU_UUID=$GPU_UUID
+    nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader
 }
 
 # Function to check Docker setup
@@ -116,12 +106,6 @@ check_docker() {
         DOCKER_COMPOSE="docker-compose"
     else
         echo -e "${RED}Error: Docker Compose not found${NC}"
-        exit 1
-    fi
-
-    # Verify nvidia-docker runtime
-    if ! docker info | grep -q "nvidia"; then
-        echo -e "${RED}Error: NVIDIA Docker runtime not found${NC}"
         exit 1
     fi
 }
@@ -346,7 +330,6 @@ fi
 
 # Print final status
 echo -e "\n${GREEN}🚀 Services are running!${NC}"
-echo -e "${GREEN}Using GPU: ${NVIDIA_GPU_UUID}${NC}"
 
 echo -e "\nResource Usage:"
 docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
