@@ -124,8 +124,13 @@ impl GPUCompute {
 
         debug!("Compiling and loading force computation kernel");
         let ptx = Ptx::from_src(FORCE_KERNEL);
-        let force_kernel = device.load_ptx(ptx, "compute_forces", &["compute_forces"])
+
+        device.load_ptx(ptx, "compute_forces", &["compute_forces"])
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+    
+        let force_kernel = device.get_func("compute_forces", "compute_forces")
+            .ok_or_else(|| Error::new(std::io::ErrorKind::Other, "Function compute_forces not found"))?;
+    
 
         debug!("Allocating device memory for {} nodes", num_nodes);
         let positions = device.alloc_zeros::<f32>((num_nodes * 3) as usize)
@@ -192,7 +197,7 @@ impl GPUCompute {
 
         let params = &self.simulation_params;
         unsafe {
-            self.force_kernel.launch(cfg, (
+            self.force_kernel.clone().launch(cfg, (
                 &mut self.positions,
                 &mut self.velocities,
                 &mut self.masses,
@@ -200,9 +205,8 @@ impl GPUCompute {
                 params.spring_strength,
                 params.repulsion,
                 params.damping,
-            )).map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            )).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         }
-
         Ok(())
     }
 
