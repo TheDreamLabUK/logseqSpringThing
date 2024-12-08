@@ -308,7 +308,7 @@ docker image prune -f
 # Build and start services
 echo -e "${YELLOW}Building and starting services...${NC}"
 $DOCKER_COMPOSE build --pull --no-cache
-$DOCKER_COMPOSE up -d $(docker compose ps --services | grep -v cloudflared)
+$DOCKER_COMPOSE up -d
 
 # Check health and readiness
 if ! check_container_health "webxr"; then
