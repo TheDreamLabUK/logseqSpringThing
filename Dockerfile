@@ -17,7 +17,7 @@ RUN pnpm install --frozen-lockfile && \
     pnpm run build
 
 # Stage 2: Rust Dependencies Cache
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04 AS rust-deps-builder
+FROM nvidia/cuda:12.2.0-devel-ubuntu22.04 AS rust-deps-builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -74,7 +74,7 @@ RUN pip install --no-cache-dir --upgrade pip==23.3.1 wheel==0.41.3 && \
     onnxruntime-gpu==1.16.3
 
 # Stage 5: Final Runtime Image
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -145,6 +145,8 @@ COPY --from=python-builder /app/venv /app/venv
 COPY --from=rust-builder /usr/src/app/target/release/webxr /app/
 COPY --from=rust-builder /usr/src/app/settings.toml /app/
 COPY --from=frontend-builder /app/dist /app/data/public/dist
+COPY compute_forces.ptx /app/
+
 
 # Copy configuration and scripts
 COPY src/generate_audio.py /app/src/
