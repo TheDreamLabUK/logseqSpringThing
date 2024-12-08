@@ -21,13 +21,14 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+              device_ids: ['0']  # Explicitly use GPU 0
     ports:
       - "4000:3000"  # Map container port 3000 to host port 4000
     environment:
       - RUST_LOG=info
       - RUST_BACKTRACE=1
       - BIND_ADDRESS=0.0.0.0
-      - NVIDIA_VISIBLE_DEVICES=2
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_GPU_UUID:-0}  # Use GPU UUID from launch script
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NODE_ENV=production
     env_file:
