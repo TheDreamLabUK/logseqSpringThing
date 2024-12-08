@@ -19,8 +19,11 @@ dist-ssr
 *.local
 build
 out
-data/markdown
-client/data
+
+# Data directories
+data/markdown/
+data/runtime/
+data/piper/*.onnx
 
 # Editor directories and files
 .vscode/*
@@ -88,7 +91,6 @@ components.d.ts
 *.gltf
 *.hdr
 *.exr
-data/markdown/metadata.json
-data/markdown/metadata.json
-data/markdown/metadata.json
-data/markdown/metadata.json
+
+# AI assistant
+.aider*
