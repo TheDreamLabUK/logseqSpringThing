@@ -50,7 +50,7 @@ RUN mkdir src && \
 # Stage 3: Rust Application Build
 FROM rust-deps-builder AS rust-builder
 
-# Copy actual source code
+# Copy actual source code and PTX file
 COPY src ./src
 COPY settings.toml ./settings.toml
 
@@ -133,7 +133,7 @@ WORKDIR /app
 RUN mkdir -p /app/data/public/dist \
              /app/data/markdown \
              /app/data/runtime \
-             /app/src \
+             /app/src/utils \
              /app/data/piper \
              /tmp/runtime && \
     chmod -R 777 /app /tmp/runtime
@@ -144,9 +144,8 @@ COPY --from=python-builder /app/venv /app/venv
 # Copy built artifacts
 COPY --from=rust-builder /usr/src/app/target/release/webxr /app/
 COPY --from=rust-builder /usr/src/app/settings.toml /app/
+COPY --from=rust-builder /usr/src/app/src/utils/compute_forces.ptx /app/compute_forces.ptx
 COPY --from=frontend-builder /app/dist /app/data/public/dist
-COPY compute_forces.ptx /app/
-
 
 # Copy configuration and scripts
 COPY src/generate_audio.py /app/src/
