@@ -50,9 +50,13 @@ RUN mkdir src && \
 # Stage 3: Rust Application Build
 FROM rust-deps-builder AS rust-builder
 
-# Copy actual source code and PTX file
+# Copy actual source code
 COPY src ./src
 COPY settings.toml ./settings.toml
+
+# Compile CUDA to PTX
+RUN cd src/utils && \
+    nvcc -arch=sm_86 -ptx compute_forces.cu -o compute_forces.ptx
 
 # Build the application
 RUN cargo build --release
@@ -79,8 +83,7 @@ FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PATH="/app/venv/bin:${PATH}" \
-    NVIDIA_VISIBLE_DEVICES=2 \
-    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    NVIDIA_DRIVER_CAPABILITIES=all \
     RUST_LOG=info \
     RUST_BACKTRACE=0 \
     PORT=4000 \

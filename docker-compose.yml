@@ -19,9 +19,8 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
-              capabilities: [gpu]
               device_ids: ['0']  # Explicitly use GPU 0
+              capabilities: [gpu]
     ports:
       - "4000:3000"  # Map container port 3000 to host port 4000
     environment:
