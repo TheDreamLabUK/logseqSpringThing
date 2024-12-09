@@ -9,9 +9,9 @@ import type {
   NodePosition,
   InitialDataMessage,
   Node
-} from '../types/websocket'
+} from '../types/websocket';
 
-import { processPositionUpdate } from '../utils/gpuUtils'
+import { processPositionUpdate } from '../utils/gpuUtils';
 
 import {
   DEFAULT_RECONNECT_ATTEMPTS,
@@ -23,8 +23,19 @@ import {
   DEFAULT_MAX_QUEUE_SIZE,
   HEARTBEAT_INTERVAL,
   HEARTBEAT_TIMEOUT,
-  CONNECTION_TIMEOUT
-} from '../constants/websocket'
+  CONNECTION_TIMEOUT,
+  UPDATE_THROTTLE_MS
+} from '../constants/websocket';
+
+// Add performance monitoring
+const measurePerformance = (label: string, fn: () => void) => {
+  const start = performance.now();
+  fn();
+  const duration = performance.now() - start;
+  debugLog(`Performance [${label}]`, {
+    duration: `${duration.toFixed(2)}ms`
+  });
+};
 
 // Enhanced debug logging with data validation
 const debugLog = (message: string, data?: any) => {
@@ -35,10 +46,14 @@ const debugLog = (message: string, data?: any) => {
   
   if (data) {
     if (data instanceof ArrayBuffer) {
-      const nodeCount = data.byteLength / 24;
+      const nodeCount = data.byteLength / 24; // 24 bytes per node (position + velocity)
+      const dataView = new Float32Array(data);
+      
       console.debug(`${logPrefix} Binary Data Analysis:
         Node Count: ${nodeCount}
-        Total Size: ${data.byteLength} bytes`);
+        Total Size: ${data.byteLength} bytes
+        Expected Size: ${nodeCount * 24} bytes
+        Sample Node Data: ${Array.from(dataView.slice(0, 6)).map(v => v.toFixed(2))}`);
     } else if (data instanceof Event) {
       const eventDetails = {
         type: data.type,
@@ -118,26 +133,27 @@ const DEFAULT_CONFIG: WebSocketConfig = {
   maxQueueSize: DEFAULT_MAX_QUEUE_SIZE,
   maxRetries: DEFAULT_RECONNECT_ATTEMPTS,
   retryDelay: DEFAULT_RECONNECT_DELAY
-}
+};
 
 export default class WebsocketService {
-  private ws: WebSocket | null = null;
-  private config: WebSocketConfig;
-  private messageQueue: any[] = [];
-  private messageCount = 0;
-  private lastMessageTime = 0;
-  private reconnectAttempts = 0;
-  private reconnectTimeout: number | null = null;
-  private heartbeatInterval: number | null = null;
-  private lastPongTime: number = Date.now();
-  private eventListeners: Map<keyof WebSocketEventMap, Set<WebSocketEventCallback<any>>> = new Map();
-  private url: string;
-  private nodeIdToIndex: Map<string, number> = new Map();
-  private indexToNodeId: string[] = [];
-  private isReconnecting: boolean = false;
-  private forceClose: boolean = false;
-  private pendingBinaryUpdate: boolean = false;
-  private isInitialLayout: boolean = false;
+    private ws: WebSocket | null = null;
+    private config: WebSocketConfig;
+    private messageQueue: any[] = [];
+    private messageCount = 0;
+    private lastMessageTime = 0;
+    private lastBinaryUpdateTime = 0;  // Track binary update timing
+    private reconnectAttempts = 0;
+    private reconnectTimeout: number | null = null;
+    private heartbeatInterval: number | null = null;
+    private lastPongTime: number = Date.now();
+    private eventListeners: Map<keyof WebSocketEventMap, Set<WebSocketEventCallback<any>>> = new Map();
+    private url: string;
+    private nodeIdToIndex: Map<string, number> = new Map();
+    private indexToNodeId: string[] = [];
+    private isReconnecting: boolean = false;
+    private forceClose: boolean = false;
+    private pendingBinaryUpdate: boolean = false;
+    private pendingBinaryBuffer: ArrayBuffer | null = null;  // Store pending binary update
 
   constructor(config: Partial<WebSocketConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -154,7 +170,7 @@ export default class WebsocketService {
     });
   }
 
-  private startHeartbeat() {
+  private startHeartbeat(): void {
     if (this.heartbeatInterval) {
       window.clearInterval(this.heartbeatInterval);
     }
@@ -187,7 +203,7 @@ export default class WebsocketService {
     });
   }
 
-  private stopHeartbeat() {
+  private stopHeartbeat(): void {
     if (this.heartbeatInterval) {
       window.clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
@@ -195,7 +211,7 @@ export default class WebsocketService {
     }
   }
 
-  private reconnect() {
+  private reconnect(): void {
     if (this.isReconnecting || this.forceClose) {
       debugLog('Reconnect skipped', {
         isReconnecting: this.isReconnecting,
@@ -264,7 +280,7 @@ export default class WebsocketService {
           }
         }, CONNECTION_TIMEOUT);
 
-        this.ws.onopen = (event) => {
+        this.ws.onopen = (event: Event) => {
           clearTimeout(connectionTimeout);
           debugLog('WebSocket connection established', {
             readyState: this.ws?.readyState,
@@ -279,7 +295,7 @@ export default class WebsocketService {
           resolve();
         };
 
-        this.ws.onclose = (event) => {
+        this.ws.onclose = (event: CloseEvent) => {
           clearTimeout(connectionTimeout);
           this.stopHeartbeat();
           debugLog('WebSocket connection closed', {
@@ -297,7 +313,7 @@ export default class WebsocketService {
           this.emit('close', event);
         };
 
-        this.ws.onerror = (event) => {
+        this.ws.onerror = (event: Event) => {
           clearTimeout(connectionTimeout);
           debugLog('WebSocket error occurred', {
             readyState: this.ws?.readyState,
@@ -342,146 +358,190 @@ export default class WebsocketService {
     });
   }
 
-private handleMessage(event: MessageEvent): void {
-  try {
-    debugLog('Received WebSocket message', {
-      type: event.type,
-      dataType: event.data instanceof ArrayBuffer ? 'ArrayBuffer' : typeof event.data,
-      dataSize: event.data?.length || 0
+  private handleMessage(event: MessageEvent): void {
+    try {
+      measurePerformance('handleMessage', () => {
+        debugLog('Received WebSocket message', {
+          type: event.type,
+          dataType: event.data instanceof ArrayBuffer ? 'ArrayBuffer' : typeof event.data,
+          dataSize: event.data?.length || 0
+        });
+
+        if (event.data instanceof ArrayBuffer) {
+          this.handleBinaryMessage(event.data);
+        } else {
+          this.handleJsonMessage(event.data);
+        }
+      });
+    } catch (error) {
+      debugLog('Error handling WebSocket message', {
+        error,
+        eventType: event.type,
+        dataType: typeof event.data
+      });
+      const errorMsg: ErrorMessage = {
+        type: 'error',
+        message: 'Error processing message',
+        details: error instanceof Error ? error.message : String(error)
+      };
+      this.emit('error', errorMsg);
+    }
+  }
+
+    private handleBinaryMessage(data: ArrayBuffer): void {
+        if (!this.pendingBinaryUpdate) {
+            debugLog('Received unexpected binary data without type information');
+            return;
+        }
+
+        // Validate buffer size (24 bytes per node)
+        const expectedSize = this.indexToNodeId.length * 24;
+        if (data.byteLength !== expectedSize) {
+            debugLog('Binary message size mismatch', {
+                expected: expectedSize,
+                received: data.byteLength,
+                nodeCount: this.indexToNodeId.length
+            });
+            return;
+        }
+
+        measurePerformance('processPositionUpdate', () => {
+            const result = processPositionUpdate(data);
+            if (!result) {
+                throw new Error('Failed to process position update');
+            }
+
+            if (result.positions.length !== this.indexToNodeId.length) {
+                debugLog('Position update node count mismatch', {
+                    expected: this.indexToNodeId.length,
+                    received: result.positions.length
+                });
+                return;
+            }
+
+            // Validate position values
+            const positions = result.positions.map((pos, index) => {
+                const nodeId = this.indexToNodeId[index];
+                if (!nodeId) {
+                    debugLog('Missing node ID mapping', { index });
+                    return null;
+                }
+
+                // Check for invalid values
+                const values = [pos.x, pos.y, pos.z, pos.vx, pos.vy, pos.vz];
+                const invalidValues = values.map((v, i) => {
+                    if (isNaN(v) || !isFinite(v)) {
+                        return {
+                            index: i,
+                            value: v,
+                            type: i < 3 ? 'position' : 'velocity',
+                            axis: ['x', 'y', 'z'][i % 3]
+                        };
+                    }
+                    return null;
+                }).filter(v => v !== null);
+
+                if (invalidValues.length > 0) {
+                    debugLog('Invalid position/velocity values', {
+                        nodeId,
+                        invalidValues,
+                        position: pos
+                    });
+                    return null;
+                }
+
+                return {
+                    ...pos,
+                    id: nodeId
+                };
+            }).filter((pos): pos is NodePosition & { id: string } => pos !== null);
+
+            const binaryMessage: BinaryMessage = {
+                type: 'binaryPositionUpdate',
+                data,
+                positions,
+                nodeCount: this.indexToNodeId.length
+            };
+
+            debugLog('Processed binary message', {
+                nodeCount: positions.length,
+                samplePositions: positions.slice(0, 3).map(pos => ({
+                    id: pos.id,
+                    position: [pos.x, pos.y, pos.z],
+                    velocity: [pos.vx, pos.vy, pos.vz]
+                })),
+                processingTime: performance.now()
+            });
+
+            this.emit('gpuPositions', binaryMessage);
+            this.pendingBinaryUpdate = false;
+        });
+    }
+
+    private handleJsonMessage(data: string): void {
+        measurePerformance('handleJsonMessage', () => {
+            const message = JSON.parse(data) as BaseMessage;
+            debugLog('Parsed JSON message', message);
+
+            if (message.type === 'pong') {
+                debugLog('Received pong');
+                this.lastPongTime = Date.now();
+                return;
+            }
+
+            if (message.type === 'binaryPositionUpdate') {
+                this.pendingBinaryUpdate = true;
+                return;
+            }
+            
+            if (message.type === 'graphUpdate' || message.type === 'initialData') {
+                this.handleGraphMessage(message as GraphUpdateMessage | InitialDataMessage);
+            } else {
+                this.emit('message', message);
+                
+                if (message.type === 'error') {
+                    debugLog('Received error message', message);
+                    this.emit('error', message as ErrorMessage);
+                }
+            }
+        });
+    }
+
+  private handleGraphMessage(message: GraphUpdateMessage | InitialDataMessage): void {
+    debugLog(`Processing ${message.type}`, {
+      hasGraphData: !!message.graphData,
+      nodeCount: message.graphData?.nodes?.length || 0,
+      edgeCount: message.graphData?.edges?.length || 0
     });
 
-    if (event.data instanceof ArrayBuffer) {
-      if (!this.pendingBinaryUpdate) {
-        debugLog('Received unexpected binary data without type information');
-        return;
-      }
-
-      // Handle binary message (position updates)
-      const result = processPositionUpdate(event.data);
-      if (!result) {
-        throw new Error('Failed to process position update');
-      }
-
-      if (result.positions.length !== this.indexToNodeId.length) {
-        debugLog('Position update node count mismatch', {
-          expected: this.indexToNodeId.length,
-          received: result.positions.length
+    if (message.graphData?.nodes) {
+      measurePerformance('updateNodeMappings', () => {
+        this.nodeIdToIndex.clear();
+        this.indexToNodeId = [];
+        
+        message.graphData.nodes.forEach((node: Node, index: number) => {
+          this.nodeIdToIndex.set(node.id, index);
+          this.indexToNodeId[index] = node.id;
         });
-      }
-
-      const positions = result.positions.map((pos, index) => {
-        const nodeId = this.indexToNodeId[index];
-        if (!nodeId) {
-          debugLog('Missing node ID mapping', { index });
-          return null;
-        }
-        return {
-          ...pos,
-          id: nodeId
-        };
-      }).filter((pos): pos is NodePosition & { id: string } => pos !== null);
-
-      const binaryMessage: BinaryMessage = {
-        type: 'binaryPositionUpdate',
-        data: event.data,
-        positions,
-        nodeCount: this.indexToNodeId.length,
-        isInitialLayout: this.isInitialLayout
-      };
-
-      debugLog('Processed binary message', {
-        nodeCount: positions.length,
-        isInitialLayout: this.isInitialLayout,
-        samplePositions: positions.slice(0, 3)
-      });
-
-      this.emit('gpuPositions', binaryMessage);
-      this.pendingBinaryUpdate = false;
-
-    } else {
-      // Handle JSON message
-      const message = JSON.parse(event.data) as BaseMessage;
-      debugLog('Parsed JSON message', message);
-
-      // Handle pong messages
-      if (message.type === 'pong') {
-        debugLog('Received pong');
-        this.lastPongTime = Date.now();
-        return;
-      }
-
-      // Handle binary position update type
-      if (message.type === 'binaryPositionUpdate') {
-        this.pendingBinaryUpdate = true;
-        this.isInitialLayout = message.isInitialLayout;
-        return;
-      }
-      
-      // Handle graph updates and store node mappings
-      if (message.type === 'graphUpdate' || message.type === 'initialData') {
-        const graphMessage = message as GraphUpdateMessage | InitialDataMessage;
-        debugLog(`Processing ${message.type}`, {
-          hasGraphData: !!graphMessage.graphData,
-          nodeCount: graphMessage.graphData?.nodes?.length || 0,
-          edgeCount: graphMessage.graphData?.edges?.length || 0,
-          sampleNodes: graphMessage.graphData?.nodes?.slice(0, 3).map((n: Node) => ({
-            id: n.id,
-            hasPosition: !!n.position,
-            position: n.position,
-            label: n.label
+        
+        debugLog('Node ID mappings updated', {
+          mappingCount: this.indexToNodeId.length,
+          sampleMappings: this.indexToNodeId.slice(0, 3).map(id => ({
+            id,
+            index: this.nodeIdToIndex.get(id)
           }))
         });
-
-        if (graphMessage.graphData?.nodes) {
-          this.nodeIdToIndex.clear();
-          this.indexToNodeId = [];
-          
-          graphMessage.graphData.nodes.forEach((node: Node, index: number) => {
-            this.nodeIdToIndex.set(node.id, index);
-            this.indexToNodeId[index] = node.id;
-          });
-          
-          debugLog('Node ID mappings updated', {
-            mappingCount: this.indexToNodeId.length,
-            sampleMappings: this.indexToNodeId.slice(0, 3).map(id => ({
-              id,
-              index: this.nodeIdToIndex.get(id)
-            }))
-          });
-        }
-        
-        // Emit the appropriate event based on message type
-        if (message.type === 'initialData') {
-          this.emit('initialData', message as InitialDataMessage);
-        } else {
-          this.emit('graphUpdate', message as GraphUpdateMessage);
-        }
-        
-        // Also emit the message for any other handlers
-        this.emit('message', message);
-      } else {
-        this.emit('message', message);
-        
-        if (message.type === 'error') {
-          debugLog('Received error message', message);
-          this.emit('error', message as ErrorMessage);
-        }
-      }
+      });
     }
-  } catch (error) {
-    debugLog('Error handling WebSocket message', {
-      error,
-      eventType: event.type,
-      dataType: typeof event.data
-    });
-    const errorMsg: ErrorMessage = {
-      type: 'error',
-      message: 'Error processing message',
-      details: error instanceof Error ? error.message : String(error)
-    };
-    this.emit('error', errorMsg);
+    
+    if (message.type === 'initialData') {
+      this.emit('initialData', message as InitialDataMessage);
+    } else {
+      this.emit('graphUpdate', message as GraphUpdateMessage);
+    }
+    
+    this.emit('message', message);
   }
-}
 
   public send(data: any): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -551,34 +611,59 @@ private handleMessage(event: MessageEvent): void {
     }
   }
 
-  public sendBinary(data: ArrayBuffer): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      debugLog('Cannot send binary data: WebSocket not open', {
-        readyState: this.ws?.readyState,
-        dataSize: data.byteLength
-      });
-      return;
-    }
+    public sendBinary(data: ArrayBuffer): void {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            debugLog('Cannot send binary data: WebSocket not open', {
+                readyState: this.ws?.readyState,
+                dataSize: data.byteLength
+            });
+            return;
+        }
 
-    try {
-      debugLog('Sending binary data', {
-        size: data.byteLength,
-        header: Array.from(new Uint8Array(data.slice(0, 16))).map(b => b.toString(16).padStart(2, '0')).join(' ')
-      });
-      this.ws.send(data);
-    } catch (error) {
-      debugLog('Error sending binary data', {
-        error,
-        dataSize: data.byteLength
-      });
-      const errorMsg: ErrorMessage = {
-        type: 'error',
-        message: 'Error sending binary data',
-        details: error instanceof Error ? error.message : String(error)
-      };
-      this.emit('error', errorMsg);
+        const now = Date.now();
+        
+        // Rate limit to 60fps (16.67ms)
+        if (now - this.lastBinaryUpdateTime < UPDATE_THROTTLE_MS) {
+            // Store the latest update if we're throttled
+            this.pendingBinaryBuffer = data;
+            debugLog('Binary update throttled', {
+                timeSinceLastUpdate: now - this.lastBinaryUpdateTime,
+                throttleMs: UPDATE_THROTTLE_MS
+            });
+            return;
+        }
+
+        try {
+            debugLog('Sending binary data', {
+                size: data.byteLength,
+                timeSinceLastUpdate: now - this.lastBinaryUpdateTime
+            });
+            
+            this.ws.send(data);
+            this.lastBinaryUpdateTime = now;
+            this.pendingBinaryBuffer = null;  // Clear any pending update
+
+            // Schedule processing of any pending update
+            if (this.pendingBinaryBuffer) {
+                setTimeout(() => {
+                    if (this.pendingBinaryBuffer) {
+                        this.sendBinary(this.pendingBinaryBuffer);
+                    }
+                }, UPDATE_THROTTLE_MS);
+            }
+        } catch (error) {
+            debugLog('Error sending binary data', {
+                error,
+                dataSize: data.byteLength
+            });
+            const errorMsg: ErrorMessage = {
+                type: 'error',
+                message: 'Error sending binary data',
+                details: error instanceof Error ? error.message : String(error)
+            };
+            this.emit('error', errorMsg);
+        }
     }
-  }
 
   private processQueue(): void {
     while (

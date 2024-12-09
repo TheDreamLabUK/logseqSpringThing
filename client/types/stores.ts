@@ -12,7 +12,6 @@ export type { Node, Edge };
 
 // Binary message format types (no state storage needed)
 export type BinaryMessageHeader = {
-  isInitialLayout: boolean;
   timeStep: number;
   nodeCount: number;
 };

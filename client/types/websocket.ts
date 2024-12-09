@@ -27,7 +27,6 @@ export interface BinaryMessage {
                            // Node index in array matches index in original graph data
   positions: NodePosition[];  // Processed position data
   nodeCount: number;        // Number of nodes in the update
-  isInitialLayout: boolean; // Whether this is an initial layout update
 }
 
 export interface NodePosition {

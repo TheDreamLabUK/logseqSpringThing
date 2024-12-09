@@ -54,7 +54,7 @@ export class WebXRVisualization {
     handleBinaryUpdate(event) {
         if (!this.initialized || !this.nodeManager) return;
 
-        const { positions, isInitialLayout } = event.detail;
+        const { positions } = event.detail;
         
         // Update position cache
         this.nodeManager.nodes.forEach((node, index) => {
@@ -73,39 +73,6 @@ export class WebXRVisualization {
         // Update edges if needed (they might need to follow node positions)
         if (this.nodeManager.updateEdgePositions) {
             this.nodeManager.updateEdgePositions();
-        }
-
-        // If this is an initial layout, center the camera
-        if (isInitialLayout) {
-            this.centerCamera();
-        }
-    }
-
-    centerCamera() {
-        if (!this.nodeManager || !this.camera || this.nodeManager.nodes.length === 0) return;
-
-        // Calculate bounding box
-        const bbox = new THREE.Box3();
-        this.nodeManager.nodes.forEach(node => {
-            bbox.expandByPoint(node.position);
-        });
-
-        // Get center and size
-        const center = new THREE.Vector3();
-        bbox.getCenter(center);
-        const size = new THREE.Vector3();
-        bbox.getSize(size);
-
-        // Calculate optimal camera position
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const fov = this.camera.fov * (Math.PI / 180);
-        const cameraZ = Math.abs(maxDim / Math.sin(fov / 2));
-
-        // Update camera and controls
-        this.camera.position.set(center.x, center.y, center.z + cameraZ);
-        if (this.controls) {
-            this.controls.target.copy(center);
-            this.controls.update();
         }
     }
 

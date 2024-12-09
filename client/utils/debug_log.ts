@@ -2,7 +2,8 @@
 export enum LogLevel {
   ERROR = 'ERROR',
   WARN = 'WARN',
-  DEBUG = 'DEBUG'
+  DEBUG = 'DEBUG',
+  PERF = 'PERF'  // Added performance logging level
 }
 
 // Debug settings interface matching settings.toml
@@ -10,6 +11,7 @@ interface ClientDebugSettings {
   enabled: boolean;
   enable_websocket_debug: boolean;
   enable_data_debug: boolean;
+  enable_performance_debug: boolean;  // Added performance debug setting
   log_binary_headers: boolean;
   log_full_json: boolean;
 }
@@ -18,6 +20,7 @@ let debugSettings: ClientDebugSettings = {
   enabled: false,
   enable_websocket_debug: false,
   enable_data_debug: false,
+  enable_performance_debug: false,  // Added performance debug setting
   log_binary_headers: false,
   log_full_json: false
 };
@@ -54,6 +57,40 @@ function formatData(data: any): string {
   return String(data);
 }
 
+// Format performance data
+function formatPerformanceData(data: any): string {
+  if (!data) return '';
+
+  const formatted: Record<string, string> = {};
+  
+  // Format timing values
+  if (data.processingTime !== undefined) {
+    formatted.processingTime = `${data.processingTime.toFixed(2)}ms`;
+  }
+  if (data.averageProcessingTime !== undefined) {
+    formatted.averageProcessingTime = `${data.averageProcessingTime.toFixed(2)}ms`;
+  }
+  
+  // Format memory values
+  if (data.memoryUsageMB !== undefined) {
+    formatted.memoryUsage = `${data.memoryUsageMB.toFixed(2)}MB`;
+  }
+  
+  // Format counts and rates
+  if (data.nodeCount !== undefined) {
+    formatted.nodeCount = data.nodeCount.toString();
+  }
+  if (data.updateFrequency !== undefined) {
+    formatted.updateFrequency = `${data.updateFrequency.toFixed(1)}Hz`;
+  }
+  
+  try {
+    return JSON.stringify(formatted, null, 2);
+  } catch {
+    return String(data);
+  }
+}
+
 // Base logging function
 function log(level: LogLevel, context: string, message: string, data?: any) {
   const timestamp = new Date().toISOString();
@@ -66,6 +103,11 @@ function log(level: LogLevel, context: string, message: string, data?: any) {
     case LogLevel.WARN:
       if (debugSettings.enabled) {
         console.warn(`${prefix} ${message}`, data ? '\n' + formatData(data) : '');
+      }
+      break;
+    case LogLevel.PERF:
+      if (debugSettings.enabled || debugSettings.enable_performance_debug) {
+        console.debug(`${prefix} ${message}`, data ? '\n' + formatPerformanceData(data) : '');
       }
       break;
     case LogLevel.DEBUG:
@@ -82,6 +124,7 @@ function log(level: LogLevel, context: string, message: string, data?: any) {
 export const logError = (message: string, data?: any) => log(LogLevel.ERROR, 'APP', message, data);
 export const logWarn = (message: string, data?: any) => log(LogLevel.WARN, 'APP', message, data);
 export const logDebug = (message: string, data?: any) => log(LogLevel.DEBUG, 'APP', message, data);
+export const logPerformance = (message: string, data?: any) => log(LogLevel.PERF, 'PERF', message, data);
 
 // Context-specific logging
 export const logWebsocket = (message: string, data?: any) => log(LogLevel.DEBUG, 'WS', message, data);
@@ -131,6 +174,7 @@ export function resetDebugSettings() {
     enabled: false,
     enable_websocket_debug: false,
     enable_data_debug: false,
+    enable_performance_debug: false,
     log_binary_headers: false,
     log_full_json: false
   };
