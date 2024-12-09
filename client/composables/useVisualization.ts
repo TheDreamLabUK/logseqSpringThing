@@ -1,58 +1,37 @@
 import { ref, computed, onBeforeUnmount, provide, markRaw, shallowRef, watch } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls as ThreeOrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { 
-  forceSimulation, 
-  forceLink, 
-  forceManyBody, 
-  forceCenter,
-  Simulation,
-  SimulationNodeDatum,
-  SimulationLinkDatum,
-  ForceLink
-} from 'd3-force-3d';
 import { useSettingsStore } from '../stores/settings';
 import { useVisualizationStore } from '../stores/visualization';
 import { useBinaryUpdateStore } from '../stores/binaryUpdate';
 import { useWebSocketStore } from '../stores/websocket';
 import type { Node, Edge, CoreState, InitializationOptions, GraphNode, GraphEdge, GraphData } from '../types/core';
 import { POSITION_SCALE } from '../constants/websocket';
-import { VISUALIZATION_CONSTANTS as CONSTANTS, LIGHT_SETTINGS, SCENE_SETTINGS, FORCE_SETTINGS, CAMERA_SETTINGS } from '../constants/visualization';
+import { VISUALIZATION_CONSTANTS as CONSTANTS, LIGHT_SETTINGS, SCENE_SETTINGS, CAMERA_SETTINGS } from '../constants/visualization';
 
 // Symbol for providing scene to components
 export const SCENE_KEY = Symbol('three-scene');
 
-// Extend SimulationNodeDatum to include our node properties
-interface ForceNode extends SimulationNodeDatum {
-  id: string;
-  x?: number;
-  y?: number;
-  z?: number;
-  position?: [number, number, number];
-  velocity?: [number, number, number];
-  fx?: number | null;
-  fy?: number | null;
-  fz?: number | null;
-}
-
 // Add binary data helper
-function createBinaryPositionData(nodes: ForceNode[]): ArrayBuffer {
+function createBinaryPositionData(nodes: Node[]): ArrayBuffer {
   // 4 bytes for header + 24 bytes per node (x,y,z,vx,vy,vz as f32)
   const buffer = new ArrayBuffer(4 + nodes.length * 24);
   const view = new DataView(buffer);
   
-  // Write header (1.0 to indicate client-side force update)
+  // Write header (1.0 to indicate client-side update)
   view.setFloat32(0, 1.0, true);
   
   // Write node positions and velocities
   nodes.forEach((node, i) => {
     const offset = 4 + i * 24;
-    view.setFloat32(offset, node.x || 0, true);
-    view.setFloat32(offset + 4, node.y || 0, true);
-    view.setFloat32(offset + 8, node.z || 0, true);
-    view.setFloat32(offset + 12, node.vx || 0, true);
-    view.setFloat32(offset + 16, node.vy || 0, true);
-    view.setFloat32(offset + 20, node.vz || 0, true);
+    const position = node.position || [0, 0, 0];
+    view.setFloat32(offset, position[0], true);
+    view.setFloat32(offset + 4, position[1], true);
+    view.setFloat32(offset + 8, position[2], true);
+    // Set velocities to 0 since we're not calculating forces
+    view.setFloat32(offset + 12, 0, true);
+    view.setFloat32(offset + 16, 0, true);
+    view.setFloat32(offset + 20, 0, true);
   });
   
   return buffer;
@@ -95,32 +74,6 @@ export function useVisualization() {
   // Track animation frame for cleanup
   let animationFrameId: number | null = null;
   let controls: ThreeOrbitControls | null = null;
-
-  // Initialize force simulation (only used during interactions)
-  const simulation = forceSimulation<ForceNode>()
-    .stop() // Initially stopped since we use server updates by default
-    .alpha(FORCE_SETTINGS.alpha)
-    .alphaDecay(FORCE_SETTINGS.alphaDecay)
-    .velocityDecay(FORCE_SETTINGS.velocityDecay)
-    .force('link', forceLink<ForceNode>()
-      .id((d: ForceNode) => d.id)
-      .distance(FORCE_SETTINGS.linkDistance)
-      .strength(FORCE_SETTINGS.linkStrength))
-    .force('charge', forceManyBody<ForceNode>()
-      .strength(FORCE_SETTINGS.charge))
-    .force('center', forceCenter());
-
-  // Public method to trigger immediate layout updates
-  const updateLayoutPositions = () => {
-    if (!isInteracting.value) {
-      startInteraction();
-    }
-    
-    // Reheat the simulation for immediate updates
-    simulation
-      .alpha(FORCE_SETTINGS.alpha)
-      .restart();
-  };
 
   // Create or update node mesh with efficient caching
   const createNodeMesh = (node: Node): THREE.Mesh => {
@@ -243,7 +196,7 @@ export function useVisualization() {
     };
   };
 
-  // Animation loop with optimized updates and continuous server sync
+  // Animation loop with optimized updates
   const animate = () => {
     if (!state.value.isInitialized) return;
 
@@ -251,47 +204,23 @@ export function useVisualization() {
     if (renderer && scene && camera) {
       controls?.update();
 
-      // Update positions based on interaction state
-      if (isInteracting.value) {
-        // Use local force simulation during interaction
-        simulation.tick();
-        
-        // Update mesh positions
-        simulation.nodes().forEach((node: ForceNode) => {
-          const mesh = meshCache.nodes.get(node.id);
-          if (mesh && typeof node.x === 'number' && typeof node.y === 'number' && typeof node.z === 'number') {
-            mesh.position.set(
-              node.x / POSITION_SCALE,
-              node.y / POSITION_SCALE,
-              node.z / POSITION_SCALE
-            );
-          }
-        });
+      // Use server-provided positions
+      const positions = binaryStore.getAllPositions;
+      const nodeCount = binaryStore.nodeCount;
+      
+      for (let i = 0; i < nodeCount; i++) {
+        const nodeId = visualizationStore.graphData?.nodes[i]?.id;
+        if (!nodeId) continue;
 
-        // Send binary update to server
-        const binaryData = createBinaryPositionData(simulation.nodes());
-        webSocketStore.sendBinary(binaryData);
+        const mesh = meshCache.nodes.get(nodeId);
+        if (!mesh) continue;
 
-        scene.userData.needsRender = true;
-      } else {
-        // Use server-provided positions when not interacting
-        const positions = binaryStore.getAllPositions;
-        const nodeCount = binaryStore.nodeCount;
-        
-        for (let i = 0; i < nodeCount; i++) {
-          const node = simulation.nodes()[i] as ForceNode;
-          if (!node) continue;
-
-          const mesh = meshCache.nodes.get(node.id);
-          if (!mesh) continue;
-
-          const posOffset = i * 3;
-          mesh.position.set(
-            positions[posOffset] / POSITION_SCALE,
-            positions[posOffset + 1] / POSITION_SCALE,
-            positions[posOffset + 2] / POSITION_SCALE
-          );
-        }
+        const posOffset = i * 3;
+        mesh.position.set(
+          positions[posOffset] / POSITION_SCALE,
+          positions[posOffset + 1] / POSITION_SCALE,
+          positions[posOffset + 2] / POSITION_SCALE
+        );
       }
 
       const currentTime = performance.now();
@@ -336,23 +265,8 @@ export function useVisualization() {
       // Watch for graph data changes
       watch(() => visualizationStore.graphData, (graphData: GraphData | null) => {
         if (!graphData) return;
-
-        // Update simulation data (but don't start it unless interacting)
-        const forceNodes = graphData.nodes.map((node: GraphNode): ForceNode => ({
-          ...node,
-          x: node.position?.[0] || 0,
-          y: node.position?.[1] || 0,
-          z: node.position?.[2] || 0
-        }));
-
-        const forceLinks = graphData.edges.map((edge: GraphEdge) => ({
-          ...edge,
-          source: edge.source,
-          target: edge.target
-        }));
-
-        simulation.nodes(forceNodes);
-        simulation.force<ForceLink<ForceNode>>('link')?.links(forceLinks);
+        // Update nodes with server-provided positions
+        updateNodes(graphData.nodes);
       }, { deep: true });
 
       animate();
@@ -369,34 +283,6 @@ export function useVisualization() {
       console.error('Failed to initialize visualization:', error);
       throw error;
     }
-  };
-
-  // Start interaction mode (local force simulation)
-  const startInteraction = () => {
-    if (isInteracting.value) return;
-    
-    isInteracting.value = true;
-    
-    // Copy current positions to simulation
-    const positions = binaryStore.getAllPositions;
-    simulation.nodes().forEach((node: ForceNode, i: number) => {
-      const posOffset = i * 3;
-      node.x = positions[posOffset];
-      node.y = positions[posOffset + 1];
-      node.z = positions[posOffset + 2];
-    });
-
-    simulation
-      .alpha(FORCE_SETTINGS.alpha)
-      .restart();
-  };
-
-  // End interaction mode (return to server updates)
-  const endInteraction = () => {
-    if (!isInteracting.value) return;
-    
-    isInteracting.value = false;
-    simulation.stop();
   };
 
   // Event handlers
@@ -469,34 +355,24 @@ export function useVisualization() {
 
   // Update positions from binary data
   const updatePositions = (positions: Float32Array, velocities: Float32Array, nodeCount: number) => {
-    if (!state.value.scene || !state.value.isInitialized || isProcessingUpdate.value || isInteracting.value) return;
+    if (!state.value.scene || !state.value.isInitialized || isProcessingUpdate.value) return;
 
     isProcessingUpdate.value = true;
     try {
-      const nodes = simulation.nodes();
+      const nodes = visualizationStore.graphData?.nodes || [];
       for (let i = 0; i < nodeCount; i++) {
-        const node = nodes[i] as ForceNode;
+        const node = nodes[i];
         if (!node) continue;
 
         const mesh = meshCache.nodes.get(node.id);
         if (!mesh) continue;
 
         const posOffset = i * 3;
-        const velOffset = i * 3;
-
         mesh.position.set(
           positions[posOffset] / POSITION_SCALE,
           positions[posOffset + 1] / POSITION_SCALE,
           positions[posOffset + 2] / POSITION_SCALE
         );
-
-        // Update node data
-        node.x = positions[posOffset];
-        node.y = positions[posOffset + 1];
-        node.z = positions[posOffset + 2];
-        node.vx = velocities[velOffset];
-        node.vy = velocities[velOffset + 1];
-        node.vz = velocities[velOffset + 2];
       }
 
       if (state.value.scene) {
@@ -516,8 +392,6 @@ export function useVisualization() {
     if (controls) {
       controls.dispose();
     }
-
-    simulation.stop();
 
     // Clean up meshes
     meshCache.nodes.forEach(mesh => {
@@ -551,9 +425,6 @@ export function useVisualization() {
     initialize,
     updateNodes,
     updatePositions,
-    updateLayoutPositions,
-    startInteraction,
-    endInteraction,
     handleNodeHover,
     handleNodeSelect,
     hoveredNode: computed(() => hoveredNode.value),

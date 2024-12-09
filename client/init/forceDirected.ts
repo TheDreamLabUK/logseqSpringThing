@@ -1,26 +1,18 @@
 /**
- * Force-directed graph initialization
- * 
- * This script ensures the client-side force-directed graph is disabled by default
- * to prevent CPU/memory issues. It can be enabled via the settings panel if needed.
- * 
- * Location: client/init/forceDirected.ts
+ * Force-directed graph functionality is permanently disabled in favor of server-side calculations.
+ * This file remains as a placeholder to maintain compatibility with existing code that may check
+ * these values, but the functionality cannot be enabled.
  */
 
-import { VISUALIZATION_CONSTANTS } from '../constants/visualization';
-
-// Override the force-directed setting to ensure it starts disabled
+// Force-directed is permanently disabled
 (window as any).__FORCE_DIRECTED_CLIENT = false;
 
-// Export a function to check if force-directed is enabled
+// Always returns false since force-directed is permanently disabled
 export function isForceDirectedEnabled(): boolean {
-    return (window as any).__FORCE_DIRECTED_CLIENT && VISUALIZATION_CONSTANTS.FORCE_DIRECTED_CLIENT;
+  return false;
 }
 
-// Export a function to toggle force-directed state
-export function setForceDirected(enabled: boolean): void {
-    (window as any).__FORCE_DIRECTED_CLIENT = enabled;
+// No-op since force-directed cannot be enabled
+export function setForceDirected(_enabled: boolean): void {
+  console.warn('Force-directed graph is permanently disabled in favor of server-side calculations.');
 }
-
-// Initialize with force-directed disabled
-setForceDirected(false);
