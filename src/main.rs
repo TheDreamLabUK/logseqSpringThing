@@ -27,7 +27,7 @@ use crate::services::graph_service::GraphService;
 use crate::services::github_service::RealGitHubPRService;
 use crate::utils::websocket_manager::WebSocketManager;
 use crate::utils::gpu_compute::GPUCompute;
-use crate::utils::debug_logging::{init_debug_settings, log_error, log_warn, log_websocket, log_data};
+use crate::utils::debug_logging::init_debug_settings;
 
 mod app_state;
 mod config;
@@ -68,7 +68,6 @@ fn to_io_error(e: impl std::fmt::Display) -> Box<dyn Error + Send + Sync> {
 }
 
 async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let settings = app_state.settings.read().await;
     let metadata_map = FileService::load_or_create_metadata()
         .map_err(|e| {
             log_error!("Failed to load metadata: {}", e);
@@ -188,13 +187,13 @@ async fn main() -> std::io::Result<()> {
     };
 
     // Set log level from settings and initialize debug settings
-    let (log_level, debug_mode, websocket_debug, data_debug) = {
+    let (log_level, debug_enabled, websocket_debug, data_debug) = {
         let settings_read = settings.read().await;
         (
             settings_read.default.log_level.clone(),
-            settings_read.debug_mode,
-            settings_read.debug.enable_websocket_debug,
-            settings_read.debug.enable_data_debug
+            settings_read.server_debug.enabled,
+            settings_read.server_debug.enable_websocket_debug,
+            settings_read.server_debug.enable_data_debug
         )
     };
     
@@ -202,7 +201,7 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
     
     // Initialize our debug logging system
-    init_debug_settings(debug_mode, websocket_debug, data_debug);
+    init_debug_settings(debug_enabled, websocket_debug, data_debug);
 
     log_data!("Initializing services...");
     
@@ -266,7 +265,7 @@ async fn main() -> std::io::Result<()> {
     }
 
     let websocket_manager = Arc::new(WebSocketManager::new(
-        settings_read.debug.enable_websocket_debug,
+        settings_read.server_debug.enable_websocket_debug,
         app_state.clone(),
     ));
 

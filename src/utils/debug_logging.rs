@@ -1,11 +1,11 @@
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
-use log::{error, warn, debug};
+use log::debug;
 
 // Global debug state
-static DEBUG_MODE: AtomicBool = AtomicBool::new(false);
-static WEBSOCKET_DEBUG: AtomicBool = AtomicBool::new(false);
-static DATA_DEBUG: AtomicBool = AtomicBool::new(false);
+pub(crate) static DEBUG_MODE: AtomicBool = AtomicBool::new(false);
+pub(crate) static WEBSOCKET_DEBUG: AtomicBool = AtomicBool::new(false);
+pub(crate) static DATA_DEBUG: AtomicBool = AtomicBool::new(false);
 
 // Initialize debug settings
 pub fn init_debug_settings(debug_mode: bool, websocket_debug: bool, data_debug: bool) {
@@ -26,39 +26,63 @@ pub enum WsDebugData<'a> {
     Text(String),
 }
 
+impl<'a> std::fmt::Display for WsDebugData<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WsDebugData::Binary { data, is_initial, node_count } => {
+                write!(f, "Binary message: {} bytes, initial: {}, nodes: {}", 
+                    data.len(), is_initial, node_count)
+            },
+            WsDebugData::Json(value) => {
+                write!(f, "JSON message: {}", value)
+            },
+            WsDebugData::Text(text) => {
+                write!(f, "Text message: {}", text)
+            }
+        }
+    }
+}
+
 // Logging macros with different levels
 #[macro_export]
 macro_rules! log_error {
-    ($($arg:tt)*) => {
+    ($($arg:tt)*) => {{
+        use log::error;
         error!($($arg)*);
-    }
+    }}
 }
 
 #[macro_export]
 macro_rules! log_warn {
-    ($($arg:tt)*) => {
-        if DEBUG_MODE.load(Ordering::SeqCst) {
+    ($($arg:tt)*) => {{
+        use log::warn;
+        use std::sync::atomic::Ordering;
+        if crate::utils::debug_logging::DEBUG_MODE.load(Ordering::SeqCst) {
             warn!($($arg)*);
         }
-    }
+    }}
 }
 
 #[macro_export]
 macro_rules! log_websocket {
-    ($($arg:tt)*) => {
-        if WEBSOCKET_DEBUG.load(Ordering::SeqCst) {
+    ($($arg:tt)*) => {{
+        use log::debug;
+        use std::sync::atomic::Ordering;
+        if crate::utils::debug_logging::WEBSOCKET_DEBUG.load(Ordering::SeqCst) {
             debug!("[WS] {}", format!($($arg)*));
         }
-    }
+    }}
 }
 
 #[macro_export]
 macro_rules! log_data {
-    ($($arg:tt)*) => {
-        if DATA_DEBUG.load(Ordering::SeqCst) {
+    ($($arg:tt)*) => {{
+        use log::debug;
+        use std::sync::atomic::Ordering;
+        if crate::utils::debug_logging::DATA_DEBUG.load(Ordering::SeqCst) {
             debug!("[DATA] {}", format!($($arg)*));
         }
-    }
+    }}
 }
 
 // Helper functions for common debug scenarios

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import type { BinaryMessage } from '../types/websocket'
-import { logError, logWarn, logData, logBinaryHeader } from '../../debug_log'
+import { logError, logWarn, logData, logBinaryHeader } from '../utils/debug_log'
 import {
   BINARY_UPDATE_NODE_SIZE,
   FLOAT32_SIZE,
@@ -237,10 +237,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
 
       // Log binary header for debugging
       logBinaryHeader(message.data);
-
-      // Create views for direct access to avoid copying
-      const positionsView = new Float32Array(message.data, 0, nodeCount * 3);
-      const velocitiesView = new Float32Array(message.data, nodeCount * 3 * FLOAT32_SIZE, nodeCount * 3);
 
       // Process position and velocity data
       for (let i = 0; i < nodeCount; i++) {

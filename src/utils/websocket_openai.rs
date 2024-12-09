@@ -16,7 +16,7 @@ use std::time::Instant;
 use crate::config::Settings;
 use crate::utils::websocket_messages::{OpenAIMessage, OpenAIConnected, OpenAIConnectionFailed, SendText};
 use crate::handlers::WebSocketSession;
-use crate::utils::debug_logging::{log_error, log_warn, log_websocket, WsDebugData};
+use crate::{log_error, log_warn, log_websocket};
 
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
 const CONNECTION_WAIT: Duration = Duration::from_millis(500);
@@ -69,7 +69,7 @@ impl OpenAIWebSocket {
         let settings_clone = settings.clone();
         let debug_enabled = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(async { settings_clone.read().await.debug.enable_websocket_debug });
+            .block_on(async { settings_clone.read().await.server_debug.enable_websocket_debug });
         
         log_websocket!("Creating new OpenAIWebSocket instance");
         
@@ -84,7 +84,7 @@ impl OpenAIWebSocket {
     }
 
     async fn is_debug_enabled(&self) -> bool {
-        self.settings.read().await.debug.enable_websocket_debug
+        self.settings.read().await.server_debug.enable_websocket_debug
     }
 
     async fn connect_to_openai(&mut self) -> Result<(), Box<dyn StdError + Send + Sync>> {

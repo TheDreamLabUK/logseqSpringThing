@@ -1,5 +1,4 @@
 <template>
-  <!-- Template remains unchanged -->
   <div id="control-panel" :class="{ hidden: isHidden }">
     <button class="toggle-button" @click="togglePanel">
       {{ isHidden ? 'Show Controls' : 'Hide Controls' }}

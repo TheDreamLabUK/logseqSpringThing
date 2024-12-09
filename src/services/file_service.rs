@@ -167,7 +167,7 @@ impl GitHubService for RealGitHubService {
         };
 
         let settings = self.settings.read().await;
-        let debug_mode = settings.debug_mode;
+        let debug_enabled = settings.server_debug.enabled;
         
         let mut markdown_files = Vec::new();
         
@@ -177,7 +177,7 @@ impl GitHubService for RealGitHubService {
                 let name = item["name"].as_str().unwrap_or("").to_string();
                 
                 // In debug mode, only process Debug Test Page.md and debug linked node.md
-                if debug_mode && !name.contains("Debug Test Page") && !name.contains("debug linked node") {
+                if debug_enabled && !name.contains("Debug Test Page") && !name.contains("debug linked node") {
                     continue;
                 }
                 
@@ -202,7 +202,7 @@ impl GitHubService for RealGitHubService {
             }
         }
 
-        if debug_mode {
+        if debug_enabled {
             info!("Debug mode: Processing only debug test files");
         }
 

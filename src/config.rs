@@ -3,9 +3,8 @@ use config::{ConfigBuilder, ConfigError, Environment, File};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
-    pub debug_mode: bool,
-    pub debug: DebugSettings,
-    pub prompt: String,
+    pub server_debug: DebugSettings,
+    pub client_debug: DebugSettings,
     pub network: NetworkSettings,
     pub security: SecuritySettings,
     pub github: GitHubSettings,
@@ -20,6 +19,7 @@ pub struct Settings {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DebugSettings {
+    pub enabled: bool,
     pub enable_websocket_debug: bool,
     pub enable_data_debug: bool,
     pub log_binary_headers: bool,
@@ -151,6 +151,7 @@ pub struct RagFlowSettings {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PerplexitySettings {
     pub api_key: String,
+    pub prompt: String,
     pub model: String,
     pub api_url: String,
     pub max_tokens: u32,

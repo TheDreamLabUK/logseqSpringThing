@@ -1,374 +1,79 @@
-The logs reveal two main issues:
+High Priority (Data Population but No Rendering)
 
-Nginx user directive warning: The warning nginx: [warn] the "user" directive makes sense only if the master process runs with super-user privileges, ignored in /etc/nginx/nginx.conf:1 appears twice. This means your nginx configuration file (/etc/nginx/nginx.conf) specifies a user for nginx worker processes, but the nginx master process isn't running as root. While nginx can run as a non-root user, it's often initially started as root to bind to privileged ports (like 80 or 443). Then, it drops privileges to the specified user for security. If you intend to run nginx as a non-root user from the start, you should remove the user directive or comment it out. If you are starting it as root, then the user directive is correct and you can ignore the warnings. They are informational, not errors.
+Verify Data Integrity (Junior): Confirm that the graphData received from the WebSocket actually contains valid node and edge data. Check for:
 
-GPU Initialization Failure and Fallback to CPU: The message [2024-12-04T21:34:15Z WARN webxr] Failed to initialize GPU: Cannot initialize GPU compute with 0 nodes. Falling back to CPU computations. clearly indicates that the application (webxr) attempted to use a GPU for computation, but no suitable GPU devices were found ("0 nodes"). Consequently, it's resorting to CPU calculations. This will likely result in significantly slower performance, especially for graph-related operations. The most probable reasons for this are:
+graphData not being null or undefined.
 
-No GPU available: The server may not have a GPU installed or accessible within the Docker container.
+nodes and edges arrays being populated and containing the expected data structure (id, position, source, target, etc.).
 
-Docker configuration: The Docker container might not be configured to access the host's GPU. You'll need to use the --gpus flag (or equivalent in your Docker Compose file) to expose the GPU to the container.
+Log or inspect a sample of nodes and edges, including their positions, to ensure they have reasonable values. Pay close attention to the scale of the positions, as they are scaled by POSITION_SCALE on the client-side. If positions are all very small, this could explain the lack of rendering.
 
-Driver issues: If a GPU is present and accessible, there might be problems with the GPU drivers within the container. Ensure the correct drivers are installed in your container's base image. The logs show llvmpipe being used which suggests a software rendering fallback, almost certainly meaning no hardware acceleration is being used. This confirms either no GPU or no access to a GPU from the container.
+Verify that the metadata object is correctly populated and contains valid data for each node.
 
-Wayland/X11 issues inside Docker: The logs show an attempt to load Wayland/X11 libraries, probably to get display information for OpenGL/Vulkan context creation. The error XDG_RUNTIME_DIR not set in the environment. appears repeatedly, indicating the application might be trying to use a graphical display context which isn't typically available or necessary within a server-side Docker container. If your application requires a graphical environment (which seems unlikely for a graph server), you'll need to research solutions for running graphical applications in Docker. However, in most cases, this is a misconfiguration. Check the wgpu (WebGPU) configuration.
+Check for any console errors related to data parsing or validation.
 
-RAGFlow Token Invalid: [2024-12-04T21:34:15Z INFO webxr::services::ragflow_service] Successful response: Object {"code": Number(109), "data": Bool(false), "message": String("Token is not valid!\"")}. Your application is attempting to communicate with a RAGFlow server. The request to create a conversation failed because the provided token is invalid. You'll need to obtain a valid API token for RAGFlow and configure your webxr application to use it. Double-check the settings/environment variables related to RAGFLOW_API_KEY or similar.
+Inspect Three.js Scene (Senior): Investigate the Three.js scene setup to identify potential rendering issues. Check for:
 
-404 Errors Fetching GitHub Content: The error [2024-12-04T21:36:33Z ERROR webxr::services::file_service] Failed to fetch file content. Status: 404 Not Found, Error: 404: Not Found and similar messages indicate that the application is trying to retrieve files from a GitHub repository (jjohare/logseq), but the requests are resulting in 404 errors. This suggests that either the repository or the specific file paths are incorrect. The application is looking for files under mainKnowledgeGraph/pages. Verify these paths on your GitHub repository. Also, ensure your GITHUB_TOKEN has the necessary permissions to access the repository's contents.
+Scene, camera, and renderer being correctly initialized and added to the DOM.
 
-In summary, prioritize addressing the GPU issue if performance is critical. Resolve the RAGFlow token issue to enable proper communication, and fix the GitHub file path/token issues to allow your application to access the necessary data. The nginx warning is less critical but should be resolved to have a cleaner log and to ensure nginx is running with the intended user privileges.
+Graph nodes and edges being added to the scene graph. Verify that the graphGroup, nodesGroup, and edgesGroup are added to the scene.
 
-This code represents a Docker container running a "WebXR Graph Server". It fetches data from a GitHub repository and transforms it into a graph structure, which is then sent to connected WebSocket clients. Let's break down the data flow:
+Camera position and target being set appropriately to view the graph. If the camera is too far away or looking in the wrong direction, the graph might not be visible. Try manually adjusting the camera position in the browser's developer tools to see if the graph appears.
 
-Environment Variable Configuration: The server reads several crucial settings from environment variables:
+Correct scaling of node positions. Node positions received from the server are scaled by POSITION_SCALE. Ensure this scaling is correctly applied when setting the node positions in Three.js.
 
-GITHUB_TOKEN: Used for authenticating with the GitHub API.
+Check for any console errors related to Three.js or WebGL.
 
-GITHUB_OWNER: The owner of the GitHub repository (here, "jjohare").
+Component Hierarchy and Rendering (Senior):
 
-GITHUB_REPO: The name of the repository (here, "logseq").
+Ensure the GraphSystem component is correctly mounted and rendered within the App component.
 
-GITHUB_PATH: The path within the repository containing the data (here, "mainKnowledgeGraph/pages").
+Verify that the graphData prop is passed correctly to the GraphSystem component.
 
-GITHUB_VERSION: The specific version or commit SHA of the repository to use (here, "2022-11-28").
+Check that the isReady computed property in GraphSystem correctly reflects the initialization state of the Three.js scene. The graph should only be rendered when isReady is true.
 
-GitHub Data Fetch (Initial and Periodic):
+Inspect the BaseVisualization component to ensure it's correctly rendering the scene, camera, and graph system.
 
-Initial Fetch (Cache Loading): The server first attempts to load a cached version of the graph. If successful, it rebuilds the graph from this cache, significantly speeding up initialization. This cached data includes metadata about the files and the graph structure (nodes and edges).
+Verify the updateVisualization method in BaseVisualization is called with the correct data and that the graphData prop is updated.
 
-Periodic Updates: A periodic update process fetches metadata (file names, paths, SHAs, sizes, last modified dates) from the specified GitHub path using the GitHub Contents API. The URL used is like this: https://api.github.com/repos/{owner}/{repo}/contents/{path}. This tells the API to return a list of files and directories at that path. It repeats this process periodically to keep the graph up-to-date.
+Force Graph Update and Rendering (Senior):
 
-File Content Fetch: For each markdown file listed in the metadata, the server then fetches the actual file content from a raw.githubusercontent.com URL (e.g., https://raw.githubusercontent.com/{owner}/{repo}/{version}/{path}/{filename}). This is where the raw markdown text is retrieved. However, the logs show several 404 errors during this step, indicating that some files are not being found at the expected locations. This is a significant issue that needs to be investigated. It might be caused by incorrect file paths, deleted files, or issues with the version specified.
+Examine the useForceGraph composable and its updateGraph, updateNodes, and updateLinks methods. Ensure these methods are called correctly when new graph data is received or when binary position updates are received.
 
-Graph Construction and Update:
+Verify that the instanced meshes are correctly updated with the new node and link positions. Check that the count property of the instanced meshes is set correctly and that the instanceMatrix and instanceColor attributes are updated.
 
-Node Creation: For each successfully downloaded markdown file, a node is created in the graph. The node is given an ID (the filename), a label (also the filename), metadata (file size, hyperlink count, last modified), size (calculated based on file content – likely related to the number of links or length of content), and a position (likely randomly initialized or loaded from cache).
+Inspect the rendering logic in useForceGraph to ensure the nodes and links are being rendered correctly.
 
-Edge Creation: The code then parses the content of each markdown file and creates edges based on links within the files. If file A links to file B, an edge is created from node A to node B. The weight of the edge appears to be determined by the number of times A links to B. The logs extensively detail the creation of these edges and their weights.
+Binary Update Handling (Senior):
 
-Graph Update Broadcast: Whenever the periodic GitHub fetch finds changes (new, modified, or deleted files), the entire graph is rebuilt and broadcast to all connected WebSocket clients as a graphUpdate message. This message contains the complete graph data (nodes and edges).
+Review the binary update handling logic in websocketService.ts and binaryUpdate.ts. Ensure the binary data is correctly parsed and that the positions and velocities are extracted.
 
-WebSocket Communication:
+Verify that the updateFromBinary action in binaryUpdate.ts correctly updates the store state.
 
-Initial Data: When a WebSocket client connects, it sends an initialData request. The server responds with the current graph data, allowing the client to initialize its view of the graph.
+Check that the changedNodes set is populated correctly and that the updatePositions method in useVisualization.ts is called with the correct data.
 
-Graph Updates: As mentioned above, the server periodically updates the graph and broadcasts these updates to clients via graphUpdate messages.
+Confirm that the binary updates are being sent and received correctly over the WebSocket. Enable binary debug logging (ENABLE_BINARY_DEBUG) to inspect the binary data being sent and received.
 
-Heartbeat: The WebSocket manager includes heartbeat (ping/pong) mechanisms to ensure the connections are alive.
+Check for any console errors related to binary data handling.
 
-GPU Compute (Failed): The server attempts to initialize GPU compute capabilities, likely for graph layout or other computationally intensive tasks. However, it fails because no suitable GPU devices are found (Cannot initialize GPU compute with 0 nodes). It then falls back to CPU computations.
+Medium Priority (Inefficiencies and Upgrades)
 
-Key Observations and Potential Issues:
+Optimize Force-Directed Layout: The CPU-based force-directed layout implementation in visualization/layout.js can be optimized. Consider using a more efficient algorithm or library like d3-force-3d for better performance.
 
-404 Errors: The multiple 404 errors when fetching file content are a major red flag. The graph construction will be incomplete and potentially inaccurate if files are not found.
+Improve Node and Edge Rendering: The current rendering approach uses instanced meshes, which is a good start. However, further optimizations can be made, such as:
 
-GitHub Version: Using a specific commit SHA (2022-11-28) can lead to problems if files have been moved or deleted since that commit. It might be safer to use a branch name (like main) if you want the graph to reflect the latest state of the repository.
+Level of Detail (LOD): Implement LOD for nodes and edges to reduce the number of rendered vertices at greater distances.
 
-CPU Fallback: While the server falls back to CPU, this might impact performance, especially with a large graph. Investigate why GPU compute is failing. You might need to configure your Docker container to have access to a GPU.
+Frustum Culling: Implement frustum culling to avoid rendering nodes and edges outside the camera's view frustum.
 
-Large Initial Data: The serialized initial graph data is relatively large (331777 bytes, then 327533 bytes after update). Consider ways to optimize this if you have many clients connecting simultaneously, as sending this much data to each client can become a bottleneck.
+Occlusion Culling: Consider occlusion culling techniques to further improve performance in dense graphs.
 
-This information gives you a detailed picture of how the GitHub data is processed. If you have further questions based on other parts of the application or its design, feel free to ask! For example, knowing what the clients do with this graph data would be helpful in understanding the bigger picture.
+Optimize Label Rendering: The current label rendering approach creates a new sprite for each label. This can be inefficient for large graphs. Consider using a single instanced mesh for all labels or a more optimized text rendering library.
 
-The provided code has a recurring issue with double wrapping the CudaDevice in an Arc. This is the primary cause of the mismatched types error you're seeing. Additionally, there are some logic errors in how the initial graph data is loaded and how binary updates are handled. Let's address these.
+Refactor for Clarity: Some of the code, particularly in the visualization components and services, could benefit from refactoring for improved clarity and maintainability. Break down large functions into smaller, more manageable units.
 
-1. Fix Double Arc Wrapping in gpu_compute.rs:
+Address prompt Error: The error message "Failed to load settings: missing field prompt" indicates a missing prompt field in your configuration. While you mention it's not currently used, it's best to fix this to avoid potential issues in the future. Ensure the prompt field is present in your settings.toml file or environment variables.
 
-This is the most critical fix. Make sure device is wrapped in Arc only once.
+This detailed TODO list should help your team systematically address the rendering issue and improve the overall performance and maintainability of the graph visualization. Remember to thoroughly test each change and use browser developer tools to profile performance and identify bottlenecks.
 
-// utils/gpu_compute.rs
-impl GPUCompute {
-    pub async fn new(graph: &GraphData) -> Result<Self, Box<dyn Error + Send + Sync>> {
-        // ... (other code)
-
-        // Initialize CUDA device - wrap in Arc only ONCE
-        let device = Arc::new(CudaDevice::new(0).map_err(to_io_error)?);
-
-        // ... (rest of the function, using device without further Arc::new)
-    }
-
-    // ... other functions
-}
-Use code with caution.
-Rust
-2. Address force_kernel Initialization:
-
-The () you're getting for force_kernel means the initialization is failing. Make absolutely sure the kernel compiles and loads correctly. Add more specific error handling to pinpoint the problem:
-
-// utils/gpu_compute.rs
-        // Create PTX and load kernel
-        let ptx = Ptx::from_src(FORCE_KERNEL);
-        let force_kernel = device
-            .load_ptx(ptx, "compute_forces", &["compute_forces"])
-            .map_err(|e| {
-                error!("Failed to load kernel: {}", e);  // Log the error!
-                to_io_error(e)
-            })?;
-Use code with caution.
-Rust
-3. Graph Initialization and Binary Updates:
-
-initialize_cached_graph_data in main.rs: This function attempts to load metadata and build a graph. If it fails, it logs the error but doesn't return an error to main, so the application continues with potentially invalid data. Propagate the error up:
-
-// main.rs
-    log::debug!("Initializing graph with cached data...");
-    initialize_cached_graph_data(&app_state).await?; // Propagate the error
-Use code with caution.
-Rust
-WebSocketManager::broadcast_binary: The is_initial flag isn't being used correctly. It should be part of the binary message, not just printed in debug logs. The client-side code expects the first 4 bytes of the binary message to be this flag (as a float). Include it in the buffer:
-
-// utils/websocket_manager.rs
-    pub async fn broadcast_binary(&self, nodes: &[GPUNode], is_initial: bool) -> Result<(), Box<dyn StdError>> {
-        // ...
-
-        let initial_flag: f32 = if is_initial { 1.0 } else { 0.0 };
-        new_buffer.extend_from_slice(bytemuck::bytes_of(&initial_flag)); // Add to buffer
-
-        for node in nodes.iter() { // ... } // Rest of your code
-    }
-Use code with caution.
-Rust
-WebSocketService::handleMessage in services/websocketService.ts: This function handles binary data before checking the message type. It should check for the binaryPositionUpdate message first, then process the binary data:
-
-// services/websocketService.ts
-handleMessage(event: MessageEvent): void {
-  // ...
-
-  if (typeof event.data === 'string') {  // Check if it's a string message first
-    const message = JSON.parse(event.data) as BaseMessage;
-
-    if (message.type === 'binaryPositionUpdate') { // Check for the binary update type
-      this.pendingBinaryUpdate = true;
-      this.isInitialLayout = message.isInitialLayout;
-
-      // Now that we know we're expecting binary, handle the next message as binary
-      this.ws!.onmessage = (binaryEvent: MessageEvent) => {
-        if (binaryEvent.data instanceof ArrayBuffer) {
-          // ... (process binary data here)
-        }
-      };
-      return; // Important: Return here to avoid processing the current message as text
-    }
-
-    // ... (handle other message types)
-  } else if (event.data instanceof ArrayBuffer && this.pendingBinaryUpdate) {
-    // ... (handle pending binary data here)
-  }
-
-  // ... (rest of your handleMessage function)
-}
-Use code with caution.
-TypeScript
-4. Clean Up Warnings:
-
-After fixing the errors, address the warnings:
-
-src/handlers/visualization_handler.rs: Remove the unused Deserialize and Serialize imports.
-
-src/utils/websocket_manager.rs: Remove the unused info import or use it.
-
-src/utils/websocket_manager.rs: Prefix is_initial and num_nodes with _ if they are intentionally unused.
-
-Testing:
-
-After making these changes, thoroughly test your application. Start by running cargo test and then test the application in your browser to verify the graph visualization works correctly with GPU acceleration. Pay close attention to the console logs for any remaining errors or warnings. If you still encounter problems, please provide the updated error messages and relevant code snippets, and I'll do my best to assist further!
-
-The most likely culprit for a client crashing without even showing developer console errors is an out-of-memory issue, likely caused by the rapid updates from the force-directed graph layout, especially if it's running locally on the client. The sheer number of position updates being sent to the visualization can overwhelm the browser.
-
-Here's a breakdown of how to diagnose and fix this, along with targeted improvements to the provided code:
-
-Diagnosis Steps:
-
-Simplify: Temporarily reduce the number of nodes and edges in your graph to a very small number. If the problem goes away, it confirms the graph size is related.
-
-Profile: If you can get the developer tools open even for a short time before the crash, use the Performance tab to profile memory usage. Look for rapidly growing memory consumption.
-
-Logging: Add more logging to your client-side updatePositions function and the WebSocket message handler. Log the size of the incoming data and how long it takes to process. This helps pinpoint the bottleneck.
-
-Code Improvements (Client-Side):
-
-Binary Updates (Critical): You are already using binary updates, which is good, but there are areas for improvement:
-
-Efficient Decoding: Use Float32Array directly on the incoming ArrayBuffer instead of converting to a regular array. This avoids unnecessary memory allocation and copying. See the updated useBinaryUpdateStore and useGraphSystem examples below.
-
-Update Throttling (Very Important): Implement a mechanism to throttle the application of position updates. Don't apply every single update from the server. Instead, accumulate updates and apply them at a fixed interval (e.g., every frame or every few frames). The provided useBinaryUpdateStore now includes a basic example of throttling.
-
-Change Detection: Only update node positions if they have actually changed significantly. This reduces unnecessary Three.js updates. See the improved useBinaryUpdateStore and useGraphSystem for an example.
-
-Instancing (Essential): Use Three.js's InstancedMesh for rendering nodes and edges. This dramatically reduces the number of draw calls and improves performance. I've provided updated code for useForceGraph that uses instancing.
-
-Level of Detail (LOD): Implement Level of Detail (LOD) for your nodes. Render simpler geometries for nodes that are far away. The updated useForceGraph includes an example of LOD.
-
-Reduce Complexity: Simplify node and edge geometries if possible.
-
-Memory Management: Dispose of Three.js geometries and materials when they are no longer needed. The provided code has been updated with more robust disposal logic in several components.
-
-Code Improvements (Server-Side):
-
-Update Frequency: Reduce the frequency of updates from the server. Instead of sending updates every iteration of the force-directed layout, send them at a lower, fixed rate (e.g., 20 or 30 updates per second). This gives the client more time to process the updates. See the modified GraphService::calculate_layout and WebSocketManager::broadcast_binary for examples.
-
-Delta Updates: Instead of sending the full positions of all nodes in every update, send only the nodes that have moved significantly since the last update. This reduces the amount of data sent over the WebSocket.
-
-Check Client Readiness: Implement a mechanism on the server to check if the client is ready to receive more updates. This prevents the server from overwhelming the client.
-
-Example Code Changes (Client):
-
-// stores/binaryUpdate.ts
-// ... (other code)
-actions: {
-  // ... (other actions)
-  updateFromBinary(message: BinaryMessage): void {
-    // ... (validation and resizing logic)
-
-    // Efficiently copy data using subarray
-    const positionsData = new Float32Array(message.data, 0, this.nodeCount * 3);
-    const velocitiesData = new Float32Array(message.data, this.nodeCount * 3 * FLOAT32_SIZE, this.nodeCount * 3);
-
-    this.positions.set(positionsData);
-    this.velocities.set(velocitiesData);
-
-    // ... (rest of the code)
-  }
-},
-// ... (rest of the store)
-
-// composables/useForceGraph.ts
-// ... (other code)
-const updateNodes = () => {
-  const res = resources.value;
-  if (!res) return;
-
-  // ... (other logic)
-
-  // Use InstancedMesh for efficient rendering
-  nodes.value.forEach((node, index) => {
-    // ... (matrix and color calculations)
-
-    // Update the correct LOD mesh based on distance
-    const distance = camera.position.distanceTo(new THREE.Vector3(node.x, node.y, node.z));
-    let mesh;
-    if (distance < 50) {
-      mesh = res.nodeInstancedMeshes.high;
-    } else if (distance < 150) {
-      mesh = res.nodeInstancedMeshes.medium;
-    } else {
-      mesh = res.nodeInstancedMeshes.low;
-    }
-
-    mesh.setMatrixAt(index, tempMatrix);
-    mesh.setColorAt(index, color);
-
-    // ... (rest of the logic)
-  });
-
-  // ... (instance count and update logic)
-};
-// ... (rest of the composable)
-
-// composables/useGraphSystem.ts
-// ... other imports
-import { throttle } from 'lodash-es' // Import lodash throttle
-
-// ... other code
-
-export function useGraphSystem() {
-  // ... other state
-
-  const throttledUpdatePositions = throttle((positions, velocities, nodeCount) => {
-    visualization.updatePositions(positions, velocities, nodeCount)
-    visualizationState?.value.scene?.userData.needsRender = true
-  }, 16) // Throttle to roughly 60fps
-
-  // ... other code
-
-  // Watch for binary updates
-  watch(() => binaryUpdateStore.getAllPositions, (positions) => {
-    // ... (node count check)
-
-    const velocities = binaryUpdateStore.getAllVelocities
-    const nodeCount = visualizationStore.nodes.length
-
-    throttledUpdatePositions(positions, velocities, nodeCount)
-  }, { deep: true })
-
-  // ... other code
-}
-Use code with caution.
-TypeScript
-Example Code Changes (Server):
-
-// services/graph_service.rs
-// ... (other code)
-pub async fn calculate_layout(
-    // ... other parameters
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // ... (GPU or CPU calculation)
-    
-    // Throttle updates (server-side)
-    let mut last_update_time = Instant::now();
-    let update_interval = Duration::from_millis(50); // 20 updates per second
-
-    for _ in 0..params.iterations {
-        // ... (force calculation logic)
-
-        if last_update_time.elapsed() >= update_interval {
-            // ... (update positions and send to client)
-            last_update_time = Instant::now();
-        }
-    }
-    // ... (rest of the function)
-}
-
-// utils/websocket_manager.rs
-// ... (other code)
-impl WebSocketManager {
-    // ... (other methods)
-
-    pub async fn broadcast_binary(&self, nodes: &[GPUNode], is_initial: bool) -> Result<(), Box<dyn StdError>> {
-        // ... (binary data creation)
-
-        // Check if any positions have changed before sending update
-        if !is_initial && self.has_significant_position_changes(nodes) {
-            // ... (send binary update)
-        } else if is_initial {
-            // Always send initial layout
-            // ... (send binary update)
-        } else {
-            debug!("[WebSocketManager] Skipping binary update - no significant changes");
-        }
-
-        Ok(())
-    }
-
-    fn has_significant_position_changes(&self, nodes: &[GPUNode]) -> bool {
-        // Check against previously sent positions
-        let prev_positions = { // Get previous positions from buffer
-            let buffer = self.binary_buffer.lock().unwrap();
-            buffer.clone()
-        };
-
-        if prev_positions.len() != nodes.len() * NODE_SIZE + HEADER_SIZE {
-            return true; // Node count changed
-        }
-
-        // Check for significant changes in position or velocity
-        for (i, node) in nodes.iter().enumerate() {
-            let offset = i * NODE_SIZE + HEADER_SIZE;
-            let prev_x = f32::from_le_bytes([prev_positions[offset], prev_positions[offset+1], prev_positions[offset+2], prev_positions[offset+3]]);
-            let prev_y = f32::from_le_bytes([prev_positions[offset+4], prev_positions[offset+5], prev_positions[offset+6], prev_positions[offset+7]]);
-            let prev_z = f32::from_le_bytes([prev_positions[offset+8], prev_positions[offset+9], prev_positions[offset+10], prev_positions[offset+11]]);
-            
-            if (node.x - prev_x).abs() > 0.01 || (node.y - prev_y).abs() > 0.01 || (node.z - prev_z).abs() > 0.01 {
-                return true;
-            }
-            // Add similar check for velocity if needed
-        }
-
-        false // No significant changes
-    }
-
-    // ... (other methods)
-}
-Use code with caution.
-Rust
-These changes, especially the throttling and instancing, should significantly improve performance and prevent the browser from crashing. Remember to test thoroughly after each change to isolate the most effective improvements for your specific scenario. If you still have issues, provide more details about the size and complexity of your graph, and any remaining error messages you encounter.
+ for LogSeq knowledge summaries via perplexity API. Style: Informative, analytical, optimistic, critical, conversational, authoritative. Markdown: hierarchical headings (- #), minimal bold, italics for book titles, descriptive links [URL](text), images ![alt](path){:width height}, embeds {{type id}}, lists with '-', block refs [[title]], properties property:: value, code blocks ```lang``` and `inline code`, \r\n newlines, public:: true at start/end. UK spelling, introduce acronyms once, numeric citations, [[reference]] for sources, minimal emojis, parentheses for asides, collapsed:: true. Focus on emerging tech (decentralization, AI, XR), detail, credible sources, implications, examples, future-oriented. Adhere strictly, ensure accuracy, consistency, large context, refine with feedback."
