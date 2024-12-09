@@ -6,6 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+debug_log.txt
 
 # Dependencies
 node_modules
@@ -19,11 +20,26 @@ dist-ssr
 *.local
 build
 out
+/codebase.txt
 
 # Data directories
 data/markdown/
 data/runtime/
 data/piper/*.onnx
+data/public/dist/
+
+# Documentation and assets
+docs/*.gif
+docs/*.png
+*.mp4
+*.webm
+*.mov
+*.wav
+*.mp3
+*.glb
+*.gltf
+*.hdr
+*.exr
 
 # Editor directories and files
 .vscode/*
@@ -38,59 +54,60 @@ data/piper/*.onnx
 .DS_Store
 *.pem
 
-# Environment files
+# Environment and configuration
 .env
 .env.*
 !.env.example
+!.env_template
+settings.local.toml
 
 # TypeScript
 *.tsbuildinfo
+auto-imports.d.ts
+components.d.ts
 
-# Testing
+# Testing and coverage
 coverage
 .nyc_output
 
-# Cache
+# Cache and temporary
 .cache
 .temp
 .eslintcache
 .stylelintcache
+*.tmp
+*.temp
+.tmp
+.temp
 
 # Rust/Cargo
 target/
 **/*.rs.bk
 Cargo.lock
 
-# Platform-specific
+# Platform and deployment
 .vercel
 .netlify
 .cloudflare
 
-# Debug
+# Debug and profiling
 chrome-profiler-events*.json
 speed-measure-plugin*.json
 
-# Temporary files
-*.tmp
-*.temp
-.tmp
-.temp
-
 # Generated files
 generated
-auto-imports.d.ts
-components.d.ts
+optimized-output.gif
 
-# Assets
-*.mp4
-*.webm
-*.mov
-*.wav
-*.mp3
-*.glb
-*.gltf
-*.hdr
-*.exr
+# Docker
+.docker/
+docker-compose.override.yml
 
-# AI assistant
+# AI and tools
 .aider*
+.hypothesis/
+__pycache__/
+*.pyc
+
+# Project specific
+scripts/local/
+client/visualization/effects/custom/

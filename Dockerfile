@@ -9,7 +9,6 @@ RUN npm install -g pnpm@9.14.2
 # Copy package files and configuration
 COPY package.json pnpm-lock.yaml ./
 COPY tsconfig.json tsconfig.node.json vite.config.ts ./
-COPY index.html ./
 COPY client ./client
 
 # Install dependencies and build
@@ -153,7 +152,7 @@ COPY --from=frontend-builder /app/dist /app/data/public/dist
 # Copy configuration and scripts
 COPY src/generate_audio.py /app/src/
 COPY nginx.conf /etc/nginx/nginx.conf
-COPY start.sh /app/start.sh
+COPY scripts/start.sh /app/start.sh
 RUN chmod 755 /app/start.sh && \
     chmod 644 /etc/nginx/nginx.conf
 
