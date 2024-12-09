@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { BinaryMessage } from '../types/websocket'
+import { logError, logWarn, logData, logBinaryHeader } from '../../debug_log'
 import {
   BINARY_UPDATE_NODE_SIZE,
   FLOAT32_SIZE,
@@ -154,7 +155,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
 
           if (!positionsValid || !velocitiesValid) {
             this.invalidUpdates++;
-            console.warn('Invalid position/velocity values detected:', {
+            logWarn('Invalid position/velocity values detected:', {
               index,
               position: [x, y, z],
               velocity: [vx, vy, vz]
@@ -211,7 +212,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
 
       const expectedSize = nodeCount * BINARY_UPDATE_NODE_SIZE;
       if (message.data.byteLength !== expectedSize) {
-        console.error('Invalid binary message size:', {
+        logError('Invalid binary message size:', {
           received: message.data.byteLength,
           expected: expectedSize,
           nodeCount,
@@ -233,6 +234,9 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.previousPositions.set(this.positions);
       this.previousVelocities.set(this.velocities);
       this.changedNodes.clear();
+
+      // Log binary header for debugging
+      logBinaryHeader(message.data);
 
       // Create views for direct access to avoid copying
       const positionsView = new Float32Array(message.data, 0, nodeCount * 3);
@@ -257,14 +261,12 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
 
           if (!positionsValid || !velocitiesValid) {
             this.invalidUpdates++;
-            if (ENABLE_BINARY_DEBUG) {
-              console.warn('Invalid values in binary update:', {
-                index: i,
-                position: [x, y, z],
-                velocity: [vx, vy, vz],
-                timestamp: new Date().toISOString()
-              });
-            }
+            logWarn('Invalid values in binary update:', {
+              index: i,
+              position: [x, y, z],
+              velocity: [vx, vy, vz],
+              timestamp: new Date().toISOString()
+            });
 
             x = this._clampPosition(x);
             y = this._clampPosition(y);
@@ -313,27 +315,25 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.lastThrottledUpdate = now;
       this.pendingUpdate = false;
 
-      if (ENABLE_BINARY_DEBUG && nodeCount > 0) {
-        console.debug('Binary update processed:', {
-          nodeCount,
-          changedNodes: this.changedNodes.size,
-          invalidRate: this.invalidUpdateRate,
-          updateFrequency: this.updateFrequency,
-          sample: {
-            position: [
-              this.positions[0],
-              this.positions[1],
-              this.positions[2]
-            ],
-            velocity: [
-              this.velocities[0],
-              this.velocities[1],
-              this.velocities[2]
-            ]
-          },
-          timestamp: new Date().toISOString()
-        });
-      }
+      logData('Binary update processed:', {
+        nodeCount,
+        changedNodes: this.changedNodes.size,
+        invalidRate: this.invalidUpdateRate,
+        updateFrequency: this.updateFrequency,
+        sample: {
+          position: [
+            this.positions[0],
+            this.positions[1],
+            this.positions[2]
+          ],
+          velocity: [
+            this.velocities[0],
+            this.velocities[1],
+            this.velocities[2]
+          ]
+        },
+        timestamp: new Date().toISOString()
+      });
     },
 
     clear(): void {
@@ -348,6 +348,8 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.pendingUpdate = false;
       this.lastThrottledUpdate = 0;
       this.changedNodes.clear();
+      
+      logData('Binary update store cleared');
     }
   }
 })
