@@ -1,9 +1,13 @@
-# Debug mode - when true only processes Debug Test Page.md and debug linked node.md
-debug_mode = false
-prompt = "You are an AI assistant building summaries of web links and text. You will visit any web links found in the text and integrate a summary with web citations aiming for up to two citations explicitly returned in context as raw web hyperlinks. Ensure to return web links as citations separated by new lines. You should aim to select one or more of these topics in this form appropriate to the created summary embedding the topic in Logseq double square brackets once in the returned text."
+# Debug settings
+[server_debug]
+enabled = false                    # Master switch for server debug logging
+enable_websocket_debug = false     # Enable detailed websocket debugging
+enable_data_debug = false         # Enable data exchange debugging
+log_binary_headers = false         # Log binary message headers
+log_full_json = false             # Log complete JSON payloads
 
-# Debug settings for websocket and data exchange
-[debug]
+[client_debug]
+enabled = false                    # Master switch for client debug logging
 enable_websocket_debug = false     # Enable detailed websocket debugging
 enable_data_debug = false         # Enable data exchange debugging
 log_binary_headers = false         # Log binary message headers

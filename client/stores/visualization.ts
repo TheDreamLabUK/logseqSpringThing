@@ -20,6 +20,7 @@ import {
   DEFAULT_BLOOM_CONFIG,
   DEFAULT_FISHEYE_CONFIG
 } from '../types/components'
+import { logData, logWarn } from '../../debug_log'
 
 interface VisualizationState {
   nodes: Node[]
@@ -66,7 +67,7 @@ export const useVisualizationStore = defineStore('visualization', {
 
   actions: {
     mergeGraphData(serverData: GraphData) {
-      console.debug('[VisualizationStore] Merging server graph data:', {
+      logData('Merging server graph data:', {
         serverNodes: serverData.nodes.length,
         serverEdges: serverData.edges.length,
         localNodes: this.nodes.length,
@@ -101,7 +102,7 @@ export const useVisualizationStore = defineStore('visualization', {
       // Update store with merged data
       this.setGraphData(mergedNodes, mergedEdges, serverData.metadata);
 
-      console.debug('[VisualizationStore] Graph data merge complete:', {
+      logData('Graph data merge complete:', {
         mergedNodes: mergedNodes.length,
         mergedEdges: mergedEdges.length,
         timestamp: new Date().toISOString()
@@ -109,7 +110,7 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     setGraphData(nodes: Node[], edges: Edge[], metadata: Record<string, any> = {}) {
-      console.debug('[VisualizationStore] Setting graph data:', {
+      logData('Setting graph data:', {
         nodeCount: nodes.length,
         edgeCount: edges.length,
         metadataKeys: Object.keys(metadata),
@@ -122,16 +123,16 @@ export const useVisualizationStore = defineStore('visualization', {
           velocity: n.velocity,
           hasVelocity: !!n.velocity
         }))
-      })
+      });
 
       // Validate node positions
       const nodesWithoutPosition = nodes.filter(n => !n.position)
       if (nodesWithoutPosition.length > 0) {
-        console.warn('[VisualizationStore] Nodes missing position data:', {
+        logWarn('Nodes missing position data:', {
           count: nodesWithoutPosition.length,
           sampleIds: nodesWithoutPosition.slice(0, 3).map(n => n.id),
           timestamp: new Date().toISOString()
-        })
+        });
       }
 
       // Convert to graph data structure
@@ -145,7 +146,7 @@ export const useVisualizationStore = defineStore('visualization', {
       const nodeLookup = new Map<string, GraphNode>()
       graphNodes.forEach(node => nodeLookup.set(node.id, node))
 
-      console.debug('[VisualizationStore] Node lookup created:', {
+      logData('Node lookup created:', {
         lookupSize: nodeLookup.size,
         sampleEntries: Array.from(nodeLookup.entries()).slice(0, 3).map(([id, node]) => ({
           id,
@@ -154,7 +155,7 @@ export const useVisualizationStore = defineStore('visualization', {
           velocity: node.velocity,
           hasVelocity: !!node.velocity
         }))
-      })
+      });
 
       // Track edge connection stats
       let missingSourceCount = 0
@@ -170,12 +171,12 @@ export const useVisualizationStore = defineStore('visualization', {
           if (!sourceNode) missingSourceCount++
           if (!targetNode) missingTargetCount++
           
-          console.warn('[VisualizationStore] Edge references missing node:', {
+          logWarn('Edge references missing node:', {
             edge: `${edge.source}-${edge.target}`,
             hasSource: !!sourceNode,
             hasTarget: !!targetNode,
             timestamp: new Date().toISOString()
-          })
+          });
           return null
         }
 
@@ -191,15 +192,15 @@ export const useVisualizationStore = defineStore('visualization', {
         return graphEdge
       }).filter((edge): edge is GraphEdge => edge !== null)
 
-      console.debug('[VisualizationStore] Edge processing complete:', {
+      logData('Edge processing complete:', {
         totalEdges: edges.length,
         validEdges: validEdgeCount,
         missingSourceNodes: missingSourceCount,
         missingTargetNodes: missingTargetCount,
         timestamp: new Date().toISOString()
-      })
+      });
 
-      console.debug('[VisualizationStore] Graph data transformation complete:', {
+      logData('Graph data transformation complete:', {
         originalNodes: nodes.length,
         originalEdges: edges.length,
         transformedNodes: graphNodes.length,
@@ -214,7 +215,7 @@ export const useVisualizationStore = defineStore('visualization', {
           hasVelocity: !!graphNodes[0].velocity
         } : null,
         timestamp: new Date().toISOString()
-      })
+      });
 
       // Store the data
       this.nodes = nodes
@@ -228,24 +229,24 @@ export const useVisualizationStore = defineStore('visualization', {
       this.initialized = true
 
       // Log final state
-      console.debug('[VisualizationStore] Graph data state after update:', {
+      logData('Graph data state after update:', {
         storeNodes: this.nodes.length,
         storeEdges: this.edges.length,
         graphDataNodes: this.graphData.nodes.length,
         graphDataEdges: this.graphData.edges.length,
         initialized: this.initialized,
         timestamp: new Date().toISOString()
-      })
+      });
     },
 
     updateNode(nodeId: string, updates: Partial<Node>) {
-      console.debug('[VisualizationStore] Updating node:', {
+      logData('Updating node:', {
         nodeId,
         updates,
         hasPosition: !!updates.position,
         hasVelocity: !!updates.velocity,
         timestamp: new Date().toISOString()
-      })
+      });
 
       const index = this.nodes.findIndex(n => n.id === nodeId)
       if (index !== -1) {
@@ -262,7 +263,7 @@ export const useVisualizationStore = defineStore('visualization', {
               edges: graphNode.edges // Preserve edges array
             } as GraphNode
 
-            console.debug('[VisualizationStore] Graph node updated:', {
+            logData('Graph node updated:', {
               nodeId,
               position: updates.position,
               hasPosition: !!updates.position,
@@ -270,19 +271,19 @@ export const useVisualizationStore = defineStore('visualization', {
               hasVelocity: !!updates.velocity,
               edgeCount: graphNode.edges.length,
               timestamp: new Date().toISOString()
-            })
+            });
           }
         }
       } else {
-        console.warn('[VisualizationStore] Node not found for update:', {
+        logWarn('Node not found for update:', {
           nodeId,
           timestamp: new Date().toISOString()
-        })
+        });
       }
     },
 
     updateNodePositions(updates: { id: string; position: [number, number, number]; velocity?: [number, number, number] }[]) {
-      console.debug('[VisualizationStore] Batch updating node positions:', {
+      logData('Batch updating node positions:', {
         updateCount: updates.length,
         timestamp: new Date().toISOString(),
         sampleUpdates: updates.slice(0, 3).map(u => ({
@@ -290,7 +291,7 @@ export const useVisualizationStore = defineStore('visualization', {
           position: u.position,
           hasVelocity: !!u.velocity
         }))
-      })
+      });
 
       let updatedCount = 0
       let skippedCount = 0
@@ -326,21 +327,21 @@ export const useVisualizationStore = defineStore('visualization', {
         }
       })
 
-      console.debug('[VisualizationStore] Node position updates complete:', {
+      logData('Node position updates complete:', {
         totalUpdates: updates.length,
         successfulUpdates: updatedCount,
         skippedUpdates: skippedCount,
         missingPositions: missingPositionCount,
         timestamp: new Date().toISOString()
-      })
+      });
     },
 
     updateVisualizationSettings(settings: Partial<VisualizationConfig>) {
-      console.debug('[VisualizationStore] Updating visualization settings:', {
+      logData('Updating visualization settings:', {
         oldSettings: this.visualConfig,
         newSettings: settings,
         timestamp: new Date().toISOString()
-      })
+      });
       this.visualConfig = {
         ...this.visualConfig,
         ...settings
@@ -348,11 +349,11 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     updateBloomSettings(settings: Partial<BloomConfig>) {
-      console.debug('[VisualizationStore] Updating bloom settings:', {
+      logData('Updating bloom settings:', {
         oldSettings: this.bloomConfig,
         newSettings: settings,
         timestamp: new Date().toISOString()
-      })
+      });
       this.bloomConfig = {
         ...this.bloomConfig,
         ...settings
@@ -360,11 +361,11 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     updateFisheyeSettings(settings: Partial<FisheyeConfig>) {
-      console.debug('[VisualizationStore] Updating fisheye settings:', {
+      logData('Updating fisheye settings:', {
         oldSettings: this.fisheyeConfig,
         newSettings: settings,
         timestamp: new Date().toISOString()
-      })
+      });
       
       if ('focusPoint' in settings) {
         const [focus_x, focus_y, focus_z] = settings.focusPoint as [number, number, number]
@@ -384,13 +385,13 @@ export const useVisualizationStore = defineStore('visualization', {
     },
 
     clear() {
-      console.debug('[VisualizationStore] Clearing visualization store:', {
+      logData('Clearing visualization store:', {
         nodeCount: this.nodes.length,
         edgeCount: this.edges.length,
         hasGraphData: !!this.graphData,
         wasInitialized: this.initialized,
         timestamp: new Date().toISOString()
-      })
+      });
       
       this.nodes = []
       this.edges = []

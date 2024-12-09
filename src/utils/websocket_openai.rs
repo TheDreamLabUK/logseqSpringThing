@@ -1,5 +1,4 @@
 use actix::prelude::*;
-use log::{info, error, debug, warn};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_tungstenite::WebSocketStream;
@@ -17,6 +16,7 @@ use std::time::Instant;
 use crate::config::Settings;
 use crate::utils::websocket_messages::{OpenAIMessage, OpenAIConnected, OpenAIConnectionFailed, SendText};
 use crate::handlers::WebSocketSession;
+use crate::utils::debug_logging::{log_error, log_warn, log_websocket, WsDebugData};
 
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
 const CONNECTION_WAIT: Duration = Duration::from_millis(500);
@@ -71,9 +71,7 @@ impl OpenAIWebSocket {
             .unwrap()
             .block_on(async { settings_clone.read().await.debug.enable_websocket_debug });
         
-        if debug_enabled {
-            debug!("Creating new OpenAIWebSocket instance");
-        }
+        log_websocket!("Creating new OpenAIWebSocket instance");
         
         OpenAIWebSocket {
             client_addr,
@@ -91,11 +89,8 @@ impl OpenAIWebSocket {
 
     async fn connect_to_openai(&mut self) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let start_time = Instant::now();
-        let debug_enabled = self.is_debug_enabled().await;
         
-        if debug_enabled {
-            debug!("Starting OpenAI WebSocket connection process");
-        }
+        log_websocket!("Starting OpenAI WebSocket connection process");
 
         let settings = self.settings.read().await;
         let api_key = settings.openai.api_key.clone();
@@ -103,12 +98,10 @@ impl OpenAIWebSocket {
         
         if !url.starts_with("wss://") && !url.starts_with("ws://") {
             url = format!("wss://{}", url.trim_start_matches("https://").trim_start_matches("http://"));
-            if debug_enabled {
-                debug!("Adjusted WebSocket URL: {}", url);
-            }
+            log_websocket!("Adjusted WebSocket URL: {}", url);
         }
         
-        info!("Connecting to OpenAI WebSocket at URL: {}", url);
+        log_websocket!("Connecting to OpenAI WebSocket at URL: {}", url);
 
         let client = RealtimeClient::new(
             api_key.clone(),
@@ -121,22 +114,18 @@ impl OpenAIWebSocket {
 
         let client_guard = self.client.lock().await;
         if let Some(ref client) = *client_guard {
-            if debug_enabled {
-                debug!("Attempting to establish WebSocket connection");
-            }
+            log_websocket!("Attempting to establish WebSocket connection");
             
             match client.connect().await {
                 Ok((mut write, read)) => {
                     let connection_duration = start_time.elapsed();
-                    info!("Connected to OpenAI WebSocket (took {}ms)", connection_duration.as_millis());
+                    log_websocket!("Connected to OpenAI WebSocket (took {}ms)", connection_duration.as_millis());
                     
                     let mut time_guard = self.connection_time.lock().await;
                     *time_guard = Some(Instant::now());
                     drop(time_guard);
 
-                    if debug_enabled {
-                        debug!("Sending initial configuration");
-                    }
+                    log_websocket!("Sending initial configuration");
                     
                     let config = json!({
                         "type": "response.create",
@@ -149,9 +138,7 @@ impl OpenAIWebSocket {
                     let message = Message::Text(config.to_string());
                     match write.send(message).await {
                         Ok(_) => {
-                            if debug_enabled {
-                                debug!("Initial configuration sent successfully");
-                            }
+                            log_websocket!("Initial configuration sent successfully");
                             
                             let mut stream_guard = self.stream.lock().await;
                             *stream_guard = Some((write, read));
@@ -161,9 +148,7 @@ impl OpenAIWebSocket {
                             let mut ready_guard = self.ready.lock().await;
                             *ready_guard = true;
                             
-                            if debug_enabled {
-                                debug!("OpenAI WebSocket ready for messages");
-                            }
+                            log_websocket!("OpenAI WebSocket ready for messages");
 
                             let stream_clone = self.stream.clone();
                             let ready_clone = self.ready.clone();
@@ -176,17 +161,14 @@ impl OpenAIWebSocket {
                                     let mut stream_guard = stream_clone.lock().await;
                                     if let Some((ref mut write, _)) = *stream_guard {
                                         ping_count += 1;
-                                        let debug_enabled = settings_clone.read().await.debug.enable_websocket_debug;
-                                        if debug_enabled {
-                                            debug!("Sending keepalive ping #{}", ping_count);
-                                        }
+                                        log_websocket!("Sending keepalive ping #{}", ping_count);
                                         let message = Message::Ping(vec![]);
                                         if let Err(e) = write.send(message).await {
-                                            error!("Failed to send keepalive ping #{}: {}", ping_count, e);
+                                            log_error!("Failed to send keepalive ping #{}: {}", ping_count, e);
                                             break;
                                         }
                                     } else {
-                                        warn!("WebSocket stream no longer available, stopping keepalive");
+                                        log_warn!("WebSocket stream no longer available, stopping keepalive");
                                         break;
                                     }
                                 }
@@ -195,7 +177,7 @@ impl OpenAIWebSocket {
                             Ok(())
                         },
                         Err(e) => {
-                            error!("Failed to send initial configuration: {}", e);
+                            log_error!("Failed to send initial configuration: {}", e);
                             Err(Box::new(WebSocketError::SendFailed(format!(
                                 "Failed to send initial configuration: {}", e
                             ))))
@@ -203,7 +185,7 @@ impl OpenAIWebSocket {
                     }
                 },
                 Err(e) => {
-                    error!("Failed to connect to OpenAI WebSocket at {}: {}", url, e);
+                    log_error!("Failed to connect to OpenAI WebSocket at {}: {}", url, e);
                     Err(Box::new(WebSocketError::ConnectionFailed(format!(
                         "Failed to connect to OpenAI WebSocket: {}", e
                     ))))
@@ -218,11 +200,8 @@ impl OpenAIWebSocket {
 
     async fn send_audio_to_client(&self, audio_data: &str) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let start_time = Instant::now();
-        let debug_enabled = self.is_debug_enabled().await;
         
-        if debug_enabled {
-            debug!("Preparing to send audio data to client");
-        }
+        log_websocket!("Preparing to send audio data to client");
 
         let audio_message = json!({
             "type": "audio",
@@ -231,26 +210,20 @@ impl OpenAIWebSocket {
 
         let message_str = audio_message.to_string();
         if let Err(e) = self.client_addr.try_send(SendText(message_str)) {
-            error!("Failed to send audio data to client: {}", e);
+            log_error!("Failed to send audio data to client: {}", e);
             return Err(Box::new(WebSocketError::SendFailed(format!(
                 "Failed to send audio data to client: {}", e
             ))));
         }
 
-        if debug_enabled {
-            let duration = start_time.elapsed();
-            debug!("Audio data sent to client (took {}ms)", duration.as_millis());
-        }
+        let duration = start_time.elapsed();
+        log_websocket!("Audio data sent to client (took {}ms)", duration.as_millis());
         
         Ok(())
     }
 
     async fn send_error_to_client(&self, error_msg: &str) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        let debug_enabled = self.is_debug_enabled().await;
-        
-        if debug_enabled {
-            debug!("Preparing to send error message to client: {}", error_msg);
-        }
+        log_websocket!("Preparing to send error message to client: {}", error_msg);
         
         let error_message = json!({
             "type": "error",
@@ -259,28 +232,22 @@ impl OpenAIWebSocket {
 
         let message_str = error_message.to_string();
         if let Err(e) = self.client_addr.try_send(SendText(message_str)) {
-            error!("Failed to send error message to client: {}", e);
+            log_error!("Failed to send error message to client: {}", e);
             return Err(Box::new(WebSocketError::SendFailed(format!(
                 "Failed to send error message to client: {}", e
             ))));
         }
 
-        if debug_enabled {
-            debug!("Error message sent to client successfully");
-        }
+        log_websocket!("Error message sent to client successfully");
         
         Ok(())
     }
 
     async fn log_connection_status(&self) {
-        if !self.is_debug_enabled().await {
-            return;
-        }
-        
         if let Ok(time_guard) = self.connection_time.try_lock() {
             if let Some(connection_time) = *time_guard {
                 let uptime = connection_time.elapsed();
-                debug!(
+                log_websocket!(
                     "WebSocket connection status - Uptime: {}s {}ms",
                     uptime.as_secs(),
                     uptime.subsec_millis()
@@ -294,15 +261,12 @@ impl OpenAIWebSocket {
 impl OpenAIRealtimeHandler for OpenAIWebSocket {
     async fn send_text_message(&self, text: &str) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let start_time = Instant::now();
-        let debug_enabled = self.is_debug_enabled().await;
         
-        if debug_enabled {
-            debug!("Preparing to send text message to OpenAI: {}", text);
-        }
+        log_websocket!("Preparing to send text message to OpenAI: {}", text);
 
         let ready = self.ready.lock().await;
         if !*ready {
-            error!("OpenAI WebSocket not ready to send messages");
+            log_error!("OpenAI WebSocket not ready to send messages");
             return Err(Box::new(WebSocketError::ConnectionFailed("WebSocket not ready".to_string())));
         }
         drop(ready);
@@ -326,21 +290,17 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
             }
         });
         
-        if debug_enabled {
-            debug!("Sending request to OpenAI: {}", request.to_string());
-        }
+        log_websocket!("Sending request to OpenAI: {}", request.to_string());
         
         let message = Message::Text(request.to_string());
         match write.send(message).await {
             Ok(_) => {
-                if debug_enabled {
-                    let duration = start_time.elapsed();
-                    debug!("Text message sent successfully to OpenAI (took {}ms)", duration.as_millis());
-                }
+                let duration = start_time.elapsed();
+                log_websocket!("Text message sent successfully to OpenAI (took {}ms)", duration.as_millis());
                 Ok(())
             },
             Err(e) => {
-                error!("Error sending message to OpenAI: {}", e);
+                log_error!("Error sending message to OpenAI: {}", e);
                 Err(Box::new(WebSocketError::SendFailed(format!(
                     "Failed to send message to OpenAI: {}", e
                 ))))
@@ -349,11 +309,7 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
     }
 
     async fn handle_openai_responses(&self) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        let debug_enabled = self.is_debug_enabled().await;
-        
-        if debug_enabled {
-            debug!("Starting to handle OpenAI responses");
-        }
+        log_websocket!("Starting to handle OpenAI responses");
         
         let start_time = Instant::now();
         let mut message_count: u128 = 0;
@@ -367,30 +323,24 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
             message_count += 1;
             match response {
                 Ok(Message::Text(text)) => {
-                    if debug_enabled {
-                        debug!("Received text message #{} from OpenAI: {}", message_count, text);
-                    }
+                    log_websocket!("Received text message #{} from OpenAI: {}", message_count, text);
                     match serde_json::from_str::<serde_json::Value>(&text) {
                         Ok(json_msg) => {
                             if let Some(audio_data) = json_msg["delta"]["audio"].as_str() {
-                                if debug_enabled {
-                                    debug!("Processing audio data from message #{}", message_count);
-                                }
+                                log_websocket!("Processing audio data from message #{}", message_count);
                                 if let Err(e) = self.send_audio_to_client(audio_data).await {
-                                    error!("Failed to send audio to client: {}", e);
+                                    log_error!("Failed to send audio to client: {}", e);
                                     continue;
                                 }
                             } else if json_msg["type"].as_str() == Some("response.text.done") {
-                                if debug_enabled {
-                                    debug!("Received completion signal after {} messages", message_count);
-                                }
+                                log_websocket!("Received completion signal after {} messages", message_count);
                                 break;
                             }
                         },
                         Err(e) => {
-                            error!("Error parsing JSON response from OpenAI: {}", e);
+                            log_error!("Error parsing JSON response from OpenAI: {}", e);
                             if let Err(e) = self.send_error_to_client(&format!("Error parsing JSON response from OpenAI: {}", e)).await {
-                                error!("Failed to send error message: {}", e);
+                                log_error!("Failed to send error message: {}", e);
                             }
                             return Err(Box::new(WebSocketError::InvalidMessage(format!(
                                 "Invalid JSON response from OpenAI: {}", e
@@ -399,60 +349,52 @@ impl OpenAIRealtimeHandler for OpenAIWebSocket {
                     }
                 },
                 Ok(Message::Close(reason)) => {
-                    info!("OpenAI WebSocket connection closed by server: {:?}", reason);
+                    log_websocket!("OpenAI WebSocket connection closed by server: {:?}", reason);
                     return Err(Box::new(WebSocketError::StreamClosed(format!(
                         "Connection closed by server: {:?}", reason
                     ))));
                 },
                 Ok(Message::Ping(_)) => {
-                    if debug_enabled {
-                        debug!("Received ping from server");
-                    }
+                    log_websocket!("Received ping from server");
                     let message = Message::Pong(vec![]);
                     if let Err(e) = write.send(message).await {
-                        error!("Failed to send pong response: {}", e);
-                    } else if debug_enabled {
-                        debug!("Sent pong response");
+                        log_error!("Failed to send pong response: {}", e);
+                    } else {
+                        log_websocket!("Sent pong response");
                     }
                 },
                 Ok(Message::Pong(_)) => {
-                    if debug_enabled {
-                        debug!("Received pong from OpenAI WebSocket");
-                    }
+                    log_websocket!("Received pong from OpenAI WebSocket");
                 },
                 Err(e) => {
-                    error!("Error receiving message from OpenAI: {}", e);
+                    log_error!("Error receiving message from OpenAI: {}", e);
                     if let Err(e) = self.send_error_to_client(&format!("Error receiving message from OpenAI: {}", e)).await {
-                        error!("Failed to send error message: {}", e);
+                        log_error!("Failed to send error message: {}", e);
                     }
                     return Err(Box::new(WebSocketError::ReceiveFailed(format!(
                         "Failed to receive message from OpenAI: {}", e
                     ))));
                 },
                 _ => {
-                    if debug_enabled {
-                        debug!("Received unhandled message type");
-                    }
+                    log_websocket!("Received unhandled message type");
                     continue;
                 }
             }
         }
 
-        if debug_enabled {
-            let duration = start_time.elapsed();
-            let avg_time = if message_count > 0 {
-                duration.as_millis() / message_count
-            } else {
-                0
-            };
-            
-            info!(
-                "Finished handling responses - Processed {} messages in {}ms (avg {}ms per message)",
-                message_count,
-                duration.as_millis(),
-                avg_time
-            );
-        }
+        let duration = start_time.elapsed();
+        let avg_time = if message_count > 0 {
+            duration.as_millis() / message_count
+        } else {
+            0
+        };
+        
+        log_websocket!(
+            "Finished handling responses - Processed {} messages in {}ms (avg {}ms per message)",
+            message_count,
+            duration.as_millis(),
+            avg_time
+        );
         
         Ok(())
     }
@@ -462,22 +404,19 @@ impl Actor for OpenAIWebSocket {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("OpenAI WebSocket actor started");
+        log_websocket!("OpenAI WebSocket actor started");
         let addr = ctx.address();
         let mut this = self.clone();
         
         ctx.spawn(async move {
-            let debug_enabled = this.is_debug_enabled().await;
-            if debug_enabled {
-                debug!("Initiating connection process");
-            }
+            log_websocket!("Initiating connection process");
             match this.connect_to_openai().await {
                 Ok(_) => {
-                    info!("Successfully connected to OpenAI WebSocket");
+                    log_websocket!("Successfully connected to OpenAI WebSocket");
                     addr.do_send(OpenAIConnected);
                 }
                 Err(e) => {
-                    error!("Failed to connect to OpenAI WebSocket: {}", e);
+                    log_error!("Failed to connect to OpenAI WebSocket: {}", e);
                     addr.do_send(OpenAIConnectionFailed);
                 }
             }
@@ -485,11 +424,6 @@ impl Actor for OpenAIWebSocket {
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
-        let settings_clone = self.settings.clone();
-        let debug_enabled = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(async { settings_clone.read().await.debug.enable_websocket_debug });
-
         if let Ok(mut ready_guard) = self.ready.try_lock() {
             *ready_guard = false;
         }
@@ -497,15 +431,13 @@ impl Actor for OpenAIWebSocket {
         if let Ok(time_guard) = self.connection_time.try_lock() {
             if let Some(connection_time) = *time_guard {
                 let uptime = connection_time.elapsed();
-                if debug_enabled {
-                    info!(
-                        "OpenAI WebSocket actor stopped - Total uptime: {}s {}ms",
-                        uptime.as_secs(),
-                        uptime.subsec_millis()
-                    );
-                }
-            } else if debug_enabled {
-                info!("OpenAI WebSocket actor stopped - No connection was established");
+                log_websocket!(
+                    "OpenAI WebSocket actor stopped - Total uptime: {}s {}ms",
+                    uptime.as_secs(),
+                    uptime.subsec_millis()
+                );
+            } else {
+                log_websocket!("OpenAI WebSocket actor stopped - No connection was established");
             }
         }
     }
@@ -519,15 +451,12 @@ impl Handler<OpenAIMessage> for OpenAIWebSocket {
         let this = self.clone();
 
         Box::pin(async move {
-            let debug_enabled = this.is_debug_enabled().await;
-            if debug_enabled {
-                debug!("Handling new message for OpenAI TTS: {}", text_message);
-            }
+            log_websocket!("Handling new message for OpenAI TTS: {}", text_message);
             if let Err(e) = this.send_text_message(&text_message).await {
-                error!("Error sending message to OpenAI: {}", e);
+                log_error!("Error sending message to OpenAI: {}", e);
             }
             if let Err(e) = this.handle_openai_responses().await {
-                error!("Error handling OpenAI responses: {}", e);
+                log_error!("Error handling OpenAI responses: {}", e);
             }
             this.log_connection_status().await;
         }.into_actor(self))
@@ -538,14 +467,7 @@ impl Handler<OpenAIConnected> for OpenAIWebSocket {
     type Result = ();
 
     fn handle(&mut self, _msg: OpenAIConnected, _ctx: &mut Self::Context) {
-        let settings_clone = self.settings.clone();
-        let debug_enabled = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(async { settings_clone.read().await.debug.enable_websocket_debug });
-            
-        if debug_enabled {
-            debug!("Handling OpenAIConnected message");
-        }
+        log_websocket!("Handling OpenAIConnected message");
     }
 }
 
@@ -553,7 +475,7 @@ impl Handler<OpenAIConnectionFailed> for OpenAIWebSocket {
     type Result = ();
 
     fn handle(&mut self, _msg: OpenAIConnectionFailed, ctx: &mut Self::Context) {
-        error!("Handling OpenAIConnectionFailed message - stopping actor");
+        log_error!("Handling OpenAIConnectionFailed message - stopping actor");
         ctx.stop();
     }
 }
