@@ -1,125 +1,36 @@
-import type { Vector3 } from 'three';
+// This file is kept as a placeholder for future GPU-specific utilities.
+// Position updates are now handled directly in the binaryUpdate store.
 
-export interface GPUContext {
-  initialized: boolean;
-  webgl2: boolean;
+export function isGPUAvailable(): boolean {
+    return 'gpu' in navigator;
 }
 
-export interface PositionUpdate {
-  positions: NodePosition[];
-}
+export function getGPUTier(): number {
+    // Simple GPU tier detection
+    // Returns:
+    // 0 = no GPU/unknown
+    // 1 = integrated GPU
+    // 2 = discrete GPU
+    if (!isGPUAvailable()) return 0;
 
-export interface NodePosition {
-  x: number;
-  y: number;
-  z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-}
-
-/**
- * Check if GPU/WebGL is available for rendering
- * @returns Promise that resolves to true if GPU rendering is available
- */
-export async function isGPUAvailable(): Promise<boolean> {
-  try {
     const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl2') || 
-               canvas.getContext('webgl') || 
-               canvas.getContext('experimental-webgl');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) return 0;
+
+    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+    if (!debugInfo) return 1;
+
+    const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL).toLowerCase();
     
-    if (!gl) {
-      console.warn('WebGL not available, rendering may be limited');
-      return false;
-    }
+    // Check for common discrete GPU identifiers
+    const discreteGPUIdentifiers = [
+        'nvidia',
+        'radeon',
+        'geforce',
+        'rx',
+        'rtx',
+        'gtx'
+    ];
 
-    // Check if it's WebGL 2
-    if (gl instanceof WebGL2RenderingContext) {
-      console.log('WebGL 2 available');
-    } else {
-      console.log('WebGL 1 available');
-    }
-
-    return true;
-  } catch (error) {
-    console.error('Error checking GPU availability:', error);
-    return false;
-  }
-}
-
-/**
- * Initialize GPU/WebGL context
- * @returns Promise that resolves to GPU context if available
- */
-export async function initGPU(): Promise<GPUContext | null> {
-  const available = await isGPUAvailable();
-  if (available) {
-    return {
-      initialized: true,
-      webgl2: typeof WebGL2RenderingContext !== 'undefined' && 
-              document.createElement('canvas').getContext('webgl2') instanceof WebGL2RenderingContext
-    };
-  }
-  return null;
-}
-
-/**
- * Apply position updates received from server
- * @param buffer - Binary position data from server (6 float32s per node: x,y,z,vx,vy,vz)
- * @returns Processed position data
- */
-export function processPositionUpdate(buffer: ArrayBuffer): PositionUpdate | null {
-  try {
-    const dataView = new Float32Array(buffer);
-    const positions: NodePosition[] = [];
-    
-    // Process 6 floats at a time (x,y,z,vx,vy,vz)
-    for (let i = 0; i < dataView.length; i += 6) {
-      if (i + 5 < dataView.length) {
-        positions.push({
-          x: dataView[i],
-          y: dataView[i + 1],
-          z: dataView[i + 2],
-          vx: dataView[i + 3],
-          vy: dataView[i + 4],
-          vz: dataView[i + 5]
-        });
-      }
-    }
-
-    return { positions };
-  } catch (error) {
-    console.error('Error processing position update:', error);
-    return null;
-  }
-}
-
-/**
- * Convert NodePosition to Vector3
- * @param position - Node position data
- * @returns THREE.Vector3 position
- */
-export function positionToVector3(position: NodePosition): Vector3 {
-  return {
-    x: position.x,
-    y: position.y,
-    z: position.z
-  } as Vector3;
-}
-
-/**
- * Convert Vector3 to NodePosition
- * @param vector - THREE.Vector3 position
- * @returns Node position data
- */
-export function vector3ToPosition(vector: Vector3): NodePosition {
-  return {
-    x: vector.x,
-    y: vector.y,
-    z: vector.z,
-    vx: 0,
-    vy: 0,
-    vz: 0
-  };
+    return discreteGPUIdentifiers.some(id => renderer.includes(id)) ? 2 : 1;
 }

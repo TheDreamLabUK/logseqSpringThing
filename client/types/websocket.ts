@@ -39,10 +39,8 @@ export type MessageType =
 export interface BinaryMessage {
   type: 'binaryPositionUpdate';
   data: ArrayBuffer;        // Raw binary data in format:
-                           // [x,y,z,vx,vy,vz](24) per node
+                           // [x,y,z,vx,vy,vz](24 bytes) per node
                            // Node index in array matches index in original graph data
-  positions: NodePosition[];  // Processed position data
-  nodeCount: number;        // Number of nodes in the update
 }
 
 export interface NodePosition {

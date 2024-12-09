@@ -4,6 +4,7 @@ import { useVisualizationStore } from './visualization'
 import { useBinaryUpdateStore } from './binaryUpdate'
 import type { BaseMessage, ErrorMessage, GraphUpdateMessage, BinaryMessage, Edge as WsEdge, SimulationModeMessage, InitialDataMessage } from '../types/websocket'
 import type { Node, Edge } from '../types/core'
+import { BINARY_UPDATE_NODE_SIZE } from '../constants/websocket'
 
 interface WebSocketState {
   connected: boolean
@@ -164,9 +165,10 @@ export const useWebSocketStore = defineStore('websocket', {
         const startTime = performance.now()
         
         try {
+          const nodeCount = message.data.byteLength / BINARY_UPDATE_NODE_SIZE;
           console.debug('[WebSocketStore] Processing GPU positions update:', {
             dataSize: message.data.byteLength,
-            nodeCount: message.nodeCount,
+            nodeCount,
             timestamp: new Date().toISOString()
           })
           binaryUpdateStore.updateFromBinary(message)

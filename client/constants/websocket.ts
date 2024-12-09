@@ -19,7 +19,6 @@ export const HEARTBEAT_TIMEOUT = 60000;       // 60 seconds to receive pong (mat
 // Binary protocol constants
 export const BINARY_UPDATE_NODE_SIZE = 24;    // 6 float32s per node (position + velocity)
 export const FLOAT32_SIZE = 4;                // Size of Float32 in bytes
-export const BINARY_HEADER_SIZE = 4;          // Size of binary message header in bytes
 export const MAX_BINARY_MESSAGE_SIZE = 100 * 1024 * 1024; // 100MB maximum binary message size
 
 // Validation constants

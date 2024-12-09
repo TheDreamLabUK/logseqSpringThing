@@ -6,13 +6,10 @@ import type {
   ErrorMessage,
   BinaryMessage,
   GraphUpdateMessage,
-  NodePosition,
   InitialDataMessage,
-  Node,
-  ForceNode
+  Node
 } from '../types/websocket';
 
-import { processPositionUpdate } from '../utils/gpuUtils';
 import { DebugLogger } from '../utils/validation';
 
 import {
@@ -27,13 +24,6 @@ import {
   HEARTBEAT_TIMEOUT,
   CONNECTION_TIMEOUT,
   UPDATE_THROTTLE_MS,
-  POSITION_SCALE,
-  VELOCITY_SCALE,
-  MAX_VALID_POSITION,
-  MIN_VALID_POSITION,
-  MAX_VALID_VELOCITY,
-  MIN_VALID_VELOCITY,
-  POSITION_CHANGE_THRESHOLD,
   BINARY_UPDATE_NODE_SIZE,
   ERROR_CODES
 } from '../constants/websocket';
@@ -49,31 +39,6 @@ const DEFAULT_CONFIG: WebSocketConfig = {
 };
 
 const logger = DebugLogger.getInstance();
-
-// Validation helpers
-function isValidPosition(value: number): boolean {
-  return !isNaN(value) && isFinite(value) && 
-         value >= MIN_VALID_POSITION && value <= MAX_VALID_POSITION;
-}
-
-function isValidVelocity(value: number): boolean {
-  return !isNaN(value) && isFinite(value) && 
-         value >= MIN_VALID_VELOCITY && value <= MAX_VALID_VELOCITY;
-}
-
-function hasSignificantChange(oldValue: number, newValue: number): boolean {
-  return Math.abs(oldValue - newValue) > POSITION_CHANGE_THRESHOLD;
-}
-
-function clampPosition(value: number): number {
-  if (!isFinite(value) || isNaN(value)) return 0;
-  return Math.max(MIN_VALID_POSITION, Math.min(MAX_VALID_POSITION, value));
-}
-
-function clampVelocity(value: number): number {
-  if (!isFinite(value) || isNaN(value)) return 0;
-  return Math.max(MIN_VALID_VELOCITY, Math.min(MAX_VALID_VELOCITY, value));
-}
 
 // Rate limiting helper
 class UpdateThrottler {
@@ -262,33 +227,10 @@ export default class WebSocketService {
         const expectedSize = this.indexToNodeId.length * BINARY_UPDATE_NODE_SIZE;
         if (data.byteLength !== expectedSize) return;
 
-        const result = processPositionUpdate(data);
-        if (!result) return;
-
-        if (result.positions.length !== this.indexToNodeId.length) return;
-
-        // Process and validate positions
-        const positions = result.positions.map((pos, index) => {
-            const nodeId = this.indexToNodeId[index];
-            if (!nodeId) return null;
-
-            // Validate all values
-            if (!isValidPosition(pos.x) || !isValidPosition(pos.y) || !isValidPosition(pos.z) ||
-                !isValidVelocity(pos.vx) || !isValidVelocity(pos.vy) || !isValidVelocity(pos.vz)) {
-                return null;
-            }
-
-            return {
-                ...pos,
-                id: nodeId
-            };
-        }).filter((pos): pos is NodePosition & { id: string } => pos !== null);
-
+        // Forward binary data directly to subscribers
         const binaryMessage: BinaryMessage = {
             type: 'binaryPositionUpdate',
-            data,
-            positions,
-            nodeCount: this.indexToNodeId.length
+            data
         };
 
         this.emit('gpuPositions', binaryMessage);

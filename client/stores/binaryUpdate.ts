@@ -79,40 +79,24 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
   },
 
   actions: {
-    _validatePosition(value: number): boolean {
-      return !isNaN(value) && isFinite(value) && 
-             value >= MIN_VALID_POSITION && value <= MAX_VALID_POSITION;
+    _validateValue(value: number, min: number, max: number): boolean {
+      return !isNaN(value) && isFinite(value) && value >= min && value <= max;
     },
 
-    _validateVelocity(value: number): boolean {
-      return !isNaN(value) && isFinite(value) &&
-             value >= MIN_VALID_VELOCITY && value <= MAX_VALID_VELOCITY;
-    },
-
-    _clampPosition(value: number): number {
+    _clampValue(value: number, min: number, max: number): number {
       if (isNaN(value) || !isFinite(value)) return 0;
-      return Math.max(MIN_VALID_POSITION, Math.min(MAX_VALID_POSITION, value));
-    },
-
-    _clampVelocity(value: number): number {
-      if (isNaN(value) || !isFinite(value)) return 0;
-      return Math.max(MIN_VALID_VELOCITY, Math.min(MAX_VALID_VELOCITY, value));
+      return Math.max(min, Math.min(max, value));
     },
 
     _hasSignificantChange(
-      newPos: [number, number, number],
-      oldPos: [number, number, number],
-      newVel: [number, number, number],
-      oldVel: [number, number, number]
+      newValues: Float32Array,
+      oldValues: Float32Array,
+      offset: number,
+      threshold: number
     ): boolean {
-      return (
-        Math.abs(newPos[0] - oldPos[0]) > this.positionChangeThreshold ||
-        Math.abs(newPos[1] - oldPos[1]) > this.positionChangeThreshold ||
-        Math.abs(newPos[2] - oldPos[2]) > this.positionChangeThreshold ||
-        Math.abs(newVel[0] - oldVel[0]) > this.velocityChangeThreshold ||
-        Math.abs(newVel[1] - oldVel[1]) > this.velocityChangeThreshold ||
-        Math.abs(newVel[2] - oldVel[2]) > this.velocityChangeThreshold
-      )
+      return Math.abs(newValues[offset] - oldValues[offset]) > threshold ||
+             Math.abs(newValues[offset + 1] - oldValues[offset + 1]) > threshold ||
+             Math.abs(newValues[offset + 2] - oldValues[offset + 2]) > threshold;
     },
 
     _validateBuffer(buffer: ArrayBuffer): boolean {
@@ -133,88 +117,11 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         return false;
       }
 
-      try {
-        new Float32Array(buffer);
-      } catch (error) {
-        logError('Failed to create Float32Array view:', error);
-        return false;
-      }
-
       return true;
     },
 
-    updateNodePosition(
-      index: number,
-      x: number, y: number, z: number,
-      vx: number, vy: number, vz: number
-    ): void {
-      const now = Date.now();
-      
-      // Throttle updates to 5 FPS
-      if (now - this.lastThrottledUpdate < UPDATE_THROTTLE_MS) {
-        this.pendingUpdate = true;
-        return;
-      }
-
-      if (index >= 0 && index < this.nodeCount) {
-        const posIndex = index * 3;
-        const velIndex = index * 3;
-
-        const oldPos: [number, number, number] = [
-          this.previousPositions[posIndex],
-          this.previousPositions[posIndex + 1],
-          this.previousPositions[posIndex + 2]
-        ];
-        const oldVel: [number, number, number] = [
-          this.previousVelocities[velIndex],
-          this.previousVelocities[velIndex + 1],
-          this.previousVelocities[velIndex + 2]
-        ];
-
-        if (ENABLE_POSITION_VALIDATION) {
-          const positionsValid = [x, y, z].every(v => this._validatePosition(v));
-          const velocitiesValid = [vx, vy, vz].every(v => this._validateVelocity(v));
-
-          if (!positionsValid || !velocitiesValid) {
-            this.invalidUpdates++;
-            logWarn('Invalid position/velocity values detected:', {
-              index,
-              position: [x, y, z],
-              velocity: [vx, vy, vz]
-            });
-
-            x = this._clampPosition(x);
-            y = this._clampPosition(y);
-            z = this._clampPosition(z);
-            vx = this._clampVelocity(vx);
-            vy = this._clampVelocity(vy);
-            vz = this._clampVelocity(vz);
-          }
-        }
-
-        const newPos: [number, number, number] = [x, y, z];
-        const newVel: [number, number, number] = [vx, vy, vz];
-
-        if (this._hasSignificantChange(newPos, oldPos, newVel, oldVel)) {
-          this.positions[posIndex] = x;
-          this.positions[posIndex + 1] = y;
-          this.positions[posIndex + 2] = z;
-
-          this.velocities[velIndex] = vx;
-          this.velocities[velIndex + 1] = vy;
-          this.velocities[velIndex + 2] = vz;
-
-          this.changedNodes.add(index);
-        }
-
-        this.lastUpdateTime = now;
-        this.lastThrottledUpdate = now;
-        this.pendingUpdate = false;
-      }
-    },
-
     updateFromBinary(message: BinaryMessage): void {
-      const now = Date.now();
+      const now = performance.now();
       
       // Throttle updates to 5 FPS
       if (now - this.lastThrottledUpdate < UPDATE_THROTTLE_MS) {
@@ -226,17 +133,8 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         return;
       }
 
-      const dataView = new Float32Array(message.data);
-      const nodeCount = dataView.length / 6;
-
-      if (nodeCount * BINARY_UPDATE_NODE_SIZE !== message.data.byteLength) {
-        logError('Binary message size mismatch:', {
-          received: message.data.byteLength,
-          expected: nodeCount * BINARY_UPDATE_NODE_SIZE,
-          nodeCount
-        });
-        return;
-      }
+      const dataView = new DataView(message.data);
+      const nodeCount = message.data.byteLength / BINARY_UPDATE_NODE_SIZE;
 
       if (nodeCount > MAX_ARRAY_SIZE / 6) {
         logError('Excessive node count:', {
@@ -246,6 +144,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         return;
       }
 
+      // Resize arrays if needed
       if (this.nodeCount !== nodeCount) {
         try {
           this.positions = new Float32Array(nodeCount * 3);
@@ -262,65 +161,71 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         }
       }
 
+      // Store current values as previous
       this.previousPositions.set(this.positions);
       this.previousVelocities.set(this.velocities);
       this.changedNodes.clear();
 
+      // Process position and velocity data using DataView for direct access
+      let offset = 0;
       for (let i = 0; i < nodeCount; i++) {
-        const srcOffset = i * 6;
         const posOffset = i * 3;
         const velOffset = i * 3;
 
-        let x = dataView[srcOffset];
-        let y = dataView[srcOffset + 1];
-        let z = dataView[srcOffset + 2];
-        let vx = dataView[srcOffset + 3];
-        let vy = dataView[srcOffset + 4];
-        let vz = dataView[srcOffset + 5];
+        // Read values directly from DataView
+        let x = dataView.getFloat32(offset, true);
+        let y = dataView.getFloat32(offset + 4, true);
+        let z = dataView.getFloat32(offset + 8, true);
+        let vx = dataView.getFloat32(offset + 12, true);
+        let vy = dataView.getFloat32(offset + 16, true);
+        let vz = dataView.getFloat32(offset + 20, true);
+        offset += 24;
 
         if (ENABLE_POSITION_VALIDATION) {
-          const positionsValid = [x, y, z].every(v => this._validatePosition(v));
-          const velocitiesValid = [vx, vy, vz].every(v => this._validateVelocity(v));
-
-          if (!positionsValid || !velocitiesValid) {
+          // Validate and clamp values
+          if (!this._validateValue(x, MIN_VALID_POSITION, MAX_VALID_POSITION) ||
+              !this._validateValue(y, MIN_VALID_POSITION, MAX_VALID_POSITION) ||
+              !this._validateValue(z, MIN_VALID_POSITION, MAX_VALID_POSITION) ||
+              !this._validateValue(vx, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY) ||
+              !this._validateValue(vy, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY) ||
+              !this._validateValue(vz, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY)) {
             this.invalidUpdates++;
-            logWarn('Invalid values in binary update:', {
-              index: i,
-              position: [x, y, z],
-              velocity: [vx, vy, vz]
-            });
-
-            x = this._clampPosition(x);
-            y = this._clampPosition(y);
-            z = this._clampPosition(z);
-            vx = this._clampVelocity(vx);
-            vy = this._clampVelocity(vy);
-            vz = this._clampVelocity(vz);
+            x = this._clampValue(x, MIN_VALID_POSITION, MAX_VALID_POSITION);
+            y = this._clampValue(y, MIN_VALID_POSITION, MAX_VALID_POSITION);
+            z = this._clampValue(z, MIN_VALID_POSITION, MAX_VALID_POSITION);
+            vx = this._clampValue(vx, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY);
+            vy = this._clampValue(vy, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY);
+            vz = this._clampValue(vz, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY);
           }
         }
 
-        const oldPos: [number, number, number] = [
-          this.previousPositions[posOffset],
-          this.previousPositions[posOffset + 1],
-          this.previousPositions[posOffset + 2]
-        ];
-        const oldVel: [number, number, number] = [
-          this.previousVelocities[velOffset],
-          this.previousVelocities[velOffset + 1],
-          this.previousVelocities[velOffset + 2]
-        ];
-        const newPos: [number, number, number] = [x, y, z];
-        const newVel: [number, number, number] = [vx, vy, vz];
+        // Check if position or velocity has changed significantly
+        const hasPositionChange = this._hasSignificantChange(
+          new Float32Array([x, y, z]),
+          this.previousPositions,
+          posOffset,
+          this.positionChangeThreshold
+        );
 
-        if (this._hasSignificantChange(newPos, oldPos, newVel, oldVel)) {
+        const hasVelocityChange = this._hasSignificantChange(
+          new Float32Array([vx, vy, vz]),
+          this.previousVelocities,
+          velOffset,
+          this.velocityChangeThreshold
+        );
+
+        if (hasPositionChange || hasVelocityChange) {
+          // Update positions
           this.positions[posOffset] = x;
           this.positions[posOffset + 1] = y;
           this.positions[posOffset + 2] = z;
 
+          // Update velocities
           this.velocities[velOffset] = vx;
           this.velocities[velOffset + 1] = vy;
           this.velocities[velOffset + 2] = vz;
 
+          // Mark node as changed
           this.changedNodes.add(i);
         }
       }

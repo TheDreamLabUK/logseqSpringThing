@@ -86,6 +86,8 @@ export default defineComponent({
     const dragStartPosition = ref<Vector3 | null>(null);
     const dragPlane = ref<Plane | null>(null);
     const dragIntersection = new Vector3();
+    const lastUpdateTime = ref(0);
+    const UPDATE_INTERVAL = 200; // 5 FPS
 
     // Graph data from store with enhanced debug logging
     const graphData = computed<GraphData>(() => {
@@ -132,23 +134,26 @@ export default defineComponent({
         // Update graph system with merged data
         const graphDataToUpdate = visualizationStore.getGraphData || { nodes: [], edges: [], metadata: {} };
         updateGraphData(graphDataToUpdate);
-        
-        // Trigger layout update if needed
-        visualization.updateLayoutPositions();
       }
     }, { deep: true });
 
     // Watch for binary updates with enhanced logging
     watch(() => binaryUpdateStore.getAllPositions, (positions) => {
       const nodeCount = positions.length / 3;
-      if (nodeCount > 0 && !visualization.isInteracting.value) {
+      if (nodeCount > 0 && !isDragging.value) {
         console.debug('Processing binary position update:', {
           nodeCount,
           timestamp: new Date().toISOString()
         });
         
-        // Update node positions using array indices
-        graphData.value.nodes.forEach((node, index) => {
+        // Get changed nodes from binary store
+        const changedNodes = binaryUpdateStore.getChangedNodes;
+        
+        // Update only changed nodes, preserving metadata
+        changedNodes.forEach(index => {
+          const node = graphData.value.nodes[index];
+          if (!node) return;
+
           const position = binaryUpdateStore.getNodePosition(index);
           const velocity = binaryUpdateStore.getNodeVelocity(index);
           
@@ -157,10 +162,14 @@ export default defineComponent({
             const pos = new Vector3(position[0], position[1], position[2]);
             const vel = new Vector3(velocity[0], velocity[1], velocity[2]);
             
-            // Update both the graph system and the node data
+            // Update node position in graph system
             updateNodePosition(node.id, pos, vel);
-            node.position = position;
-            node.velocity = velocity;
+
+            // Update position and velocity while preserving other metadata
+            visualizationStore.updateNode(node.id, {
+              position,
+              velocity
+            });
           }
         });
 
@@ -171,7 +180,28 @@ export default defineComponent({
       }
     }, { deep: true });
 
-    // Drag handlers with enhanced logging
+    // Create binary update for server
+    const createBinaryUpdate = (node: GraphNode, position: Vector3): ArrayBuffer => {
+      const nodeIndex = graphData.value.nodes.findIndex(n => n.id === node.id);
+      if (nodeIndex === -1) return new ArrayBuffer(0);
+
+      const buffer = new ArrayBuffer(24); // 6 float32s (x,y,z,vx,vy,vz)
+      const view = new Float32Array(buffer);
+
+      // Set position
+      view[0] = position.x;
+      view[1] = position.y;
+      view[2] = position.z;
+
+      // Set velocity to 0
+      view[3] = 0;
+      view[4] = 0;
+      view[5] = 0;
+
+      return buffer;
+    };
+
+    // Drag handlers with enhanced logging and server sync
     const onDragStart = (event: PointerEvent, node: GraphNode) => {
       console.debug('Starting node drag:', {
         nodeId: node.id,
@@ -189,9 +219,6 @@ export default defineComponent({
       normal.applyQuaternion(camera.quaternion);
       dragPlane.value = new Plane(normal, 0);
       dragStartPosition.value = getNodePosition(node).clone();
-
-      // Start local force simulation
-      visualization.startInteraction();
 
       if (visualizationState?.value.scene) {
         visualizationState.value.scene.userData.needsRender = true;
@@ -215,16 +242,17 @@ export default defineComponent({
 
       if (raycaster.ray.intersectPlane(dragPlane.value, dragIntersection)) {
         const node = draggedNode.value;
-        const position = getNodePosition(node);
-        position.copy(dragIntersection);
+        updateNodePosition(node.id, dragIntersection);
 
-        // Update node position in visualization store
-        visualizationStore.updateNode(node.id, {
-          position: [position.x, position.y, position.z]
-        });
-
-        // Trigger layout update
-        visualization.updateLayoutPositions();
+        // Send position update to server at 5 FPS
+        const now = performance.now();
+        if (now - lastUpdateTime.value >= UPDATE_INTERVAL) {
+          const binaryUpdate = createBinaryUpdate(node, dragIntersection);
+          if (binaryUpdate.byteLength > 0) {
+            websocketStore.sendBinary(binaryUpdate);
+          }
+          lastUpdateTime.value = now;
+        }
 
         if (visualizationState?.value.scene) {
           visualizationState.value.scene.userData.needsRender = true;
@@ -244,8 +272,11 @@ export default defineComponent({
         timestamp: new Date().toISOString()
       });
 
-      // End local force simulation
-      visualization.endInteraction();
+      // Send final position to server
+      const binaryUpdate = createBinaryUpdate(draggedNode.value, finalPosition);
+      if (binaryUpdate.byteLength > 0) {
+        websocketStore.sendBinary(binaryUpdate);
+      }
 
       isDragging.value = false;
       draggedNode.value = null;
