@@ -20,7 +20,7 @@ import {
   DEFAULT_BLOOM_CONFIG,
   DEFAULT_FISHEYE_CONFIG
 } from '../types/components'
-import { logData, logWarn } from '../../debug_log'
+import { logData, logWarn } from '../utils/debug_log'
 
 interface VisualizationState {
   nodes: Node[]

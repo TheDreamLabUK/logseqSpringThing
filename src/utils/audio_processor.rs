@@ -3,7 +3,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::config::Settings;
-use crate::utils::debug_logging::{log_error, log_warn, log_data};
+use crate::{log_error, log_warn, log_data};
 
 pub struct AudioProcessor {
     settings: Arc<RwLock<Settings>>,

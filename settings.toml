@@ -1,15 +1,15 @@
 # Debug settings
 [server_debug]
-enabled = false                    # Master switch for server debug logging
-enable_websocket_debug = false     # Enable detailed websocket debugging
-enable_data_debug = false         # Enable data exchange debugging
-log_binary_headers = false         # Log binary message headers
-log_full_json = false             # Log complete JSON payloads
+enabled = true                     # Master switch for server debug logging
+enable_websocket_debug = true      # Enable detailed websocket debugging
+enable_data_debug = true          # Enable data exchange debugging
+log_binary_headers = true         # Log binary message headers
+log_full_json = true             # Log complete JSON payloads
 
 [client_debug]
-enabled = false                    # Master switch for client debug logging
-enable_websocket_debug = false     # Enable detailed websocket debugging
-enable_data_debug = false         # Enable data exchange debugging
+enabled = false                     # Master switch for client debug logging
+enable_websocket_debug = false      # Enable detailed websocket debugging
+enable_data_debug = false          # Enable data exchange debugging
 log_binary_headers = false         # Log binary message headers
 log_full_json = false             # Log complete JSON payloads
 
@@ -55,6 +55,7 @@ max_retries = 3
 
 [perplexity]
 api_key = "default_perplexity_key"
+prompt = "You are an AI assistant for LogSeq knowledge summaries via perplexity API. Style: Informative, analytical, optimistic, critical, conversational, authoritative. Markdown: hierarchical headings (- #), minimal bold, italics for book titles, descriptive links [URL](text), images ![alt](path){:width height}, embeds {{type id}}, lists with '-', block refs [[title]], properties property:: value, code blocks ```lang``` and `inline code`, \r\n newlines, public:: true at start/end. UK spelling, introduce acronyms once, numeric citations, [[reference]] for sources, minimal emojis, parentheses for asides, collapsed:: true. Focus on emerging tech (decentralization, AI, XR), detail, credible sources, implications, examples, future-oriented. Adhere strictly, ensure accuracy, consistency, large context, refine with feedback."
 model = "llama-3.1-sonar-small-128k-online"
 api_url = "https://api.perplexity.ai/chat/completions"
 max_tokens = 4096
@@ -78,10 +79,10 @@ max_retries = 3
 retry_delay = 5
 api_client_timeout = 30
 max_payload_size = 5242880  # 5MB in bytes
-enable_request_logging = false
+enable_request_logging = true  # Enable request logging for debugging
 enable_metrics = true
 metrics_port = 9090
-log_level = "warn"         # Changed from "info" to "warn" to reduce logging
+log_level = "debug"         # Changed to debug for more verbose logging
 log_format = "json"
 
 [visualization]

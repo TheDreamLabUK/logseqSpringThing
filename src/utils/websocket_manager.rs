@@ -11,7 +11,8 @@ use std::error::Error as StdError;
 use crate::models::node::GPUNode;
 use crate::models::graph::GraphData;
 use crate::utils::websocket_messages::{SendBinary, SendText, ServerMessage};
-use crate::utils::debug_logging::{log_error, log_warn, log_websocket, WsDebugData};
+use crate::utils::debug_logging::WsDebugData;
+use crate::{log_error, log_warn, log_websocket};
 use crate::AppState;
 
 // Constants for binary protocol
