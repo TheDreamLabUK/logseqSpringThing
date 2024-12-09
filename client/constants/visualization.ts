@@ -8,7 +8,7 @@ export const VALIDATION = {
   MIN_VELOCITY: -50,
   POSITION_CHANGE_THRESHOLD: 0.01,
   EXPECTED_BINARY_SIZE: 24,
-  UPDATE_INTERVAL: 16.67,
+  UPDATE_INTERVAL: 200, // Increased to 200ms (5 FPS)
   BATCH_SIZE: 100
 };
 
@@ -23,10 +23,10 @@ export const VISUALIZATION_CONSTANTS = {
   FAR_PLANE: 2000,
   DEFAULT_CAMERA_POSITION: [0, 75, 200] as [number, number, number],
   DEFAULT_CAMERA_TARGET: [0, 0, 0] as [number, number, number],
-  TARGET_FRAMERATE: 60,
-  MIN_FRAME_TIME: 1000 / 60,  // 16.67ms for 60fps
-  POSITION_UPDATE_INTERVAL: 100,  // Send position updates every 100ms
-  FORCE_DIRECTED_CLIENT: false  // Force-directed graph disabled by default
+  TARGET_FRAMERATE: 5, // Reduced to 5 FPS
+  MIN_FRAME_TIME: 200, // Increased to 200ms for 5 FPS
+  POSITION_UPDATE_INTERVAL: 200, // Increased to 200ms (5 FPS)
+  FORCE_DIRECTED_CLIENT: false // Force-directed graph permanently disabled
 };
 
 export const SCENE_SETTINGS = {
@@ -34,16 +34,6 @@ export const SCENE_SETTINGS = {
   fogFar: 5,
   gridSize: 2,
   gridDivisions: 20
-};
-
-export const FORCE_SETTINGS = {
-  linkDistance: 0.3,
-  linkStrength: 0.8,    // Reduced from 1
-  charge: -20,          // Reduced from -30
-  alpha: 0.5,           // Reduced from 1
-  alphaDecay: 0.1,      // Increased from 0.02
-  velocityDecay: 0.7,   // Increased from 0.4
-  updateThrottle: 100   // Minimum ms between force updates
 };
 
 export const CAMERA_SETTINGS = {

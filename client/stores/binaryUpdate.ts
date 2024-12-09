@@ -8,16 +8,14 @@ import {
   MIN_VALID_POSITION,
   MAX_VALID_VELOCITY,
   MIN_VALID_VELOCITY,
-  ENABLE_POSITION_VALIDATION
+  ENABLE_POSITION_VALIDATION,
+  UPDATE_THROTTLE_MS,
+  POSITION_CHANGE_THRESHOLD,
+  VELOCITY_CHANGE_THRESHOLD
 } from '../constants/websocket'
 
-// Enhanced change detection thresholds
-const BASE_POSITION_CHANGE_THRESHOLD = 0.01
-const BASE_VELOCITY_CHANGE_THRESHOLD = 0.001
-
-// Update throttling configuration
-const UPDATE_THROTTLE_MS = 16 // ~60fps
-const MAX_ARRAY_SIZE = 1000000 // Prevent allocation of extremely large arrays
+// Maximum array size to prevent memory issues
+const MAX_ARRAY_SIZE = 1000000
 
 interface BinaryUpdateState {
   positions: Float32Array
@@ -46,8 +44,8 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     pendingUpdate: false,
     lastThrottledUpdate: 0,
     changedNodes: new Set(),
-    positionChangeThreshold: BASE_POSITION_CHANGE_THRESHOLD,
-    velocityChangeThreshold: BASE_VELOCITY_CHANGE_THRESHOLD
+    positionChangeThreshold: POSITION_CHANGE_THRESHOLD,
+    velocityChangeThreshold: VELOCITY_CHANGE_THRESHOLD
   }),
 
   getters: {
@@ -118,7 +116,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     },
 
     _validateBuffer(buffer: ArrayBuffer): boolean {
-      // Check buffer alignment
       if (buffer.byteLength % FLOAT32_SIZE !== 0) {
         logError('Buffer not aligned to float32:', {
           byteLength: buffer.byteLength,
@@ -127,7 +124,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         return false;
       }
 
-      // Check for reasonable size
       const floatCount = buffer.byteLength / FLOAT32_SIZE;
       if (floatCount > MAX_ARRAY_SIZE) {
         logError('Buffer exceeds maximum size:', {
@@ -137,7 +133,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         return false;
       }
 
-      // Validate data view creation
       try {
         new Float32Array(buffer);
       } catch (error) {
@@ -153,11 +148,18 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       x: number, y: number, z: number,
       vx: number, vy: number, vz: number
     ): void {
+      const now = Date.now();
+      
+      // Throttle updates to 5 FPS
+      if (now - this.lastThrottledUpdate < UPDATE_THROTTLE_MS) {
+        this.pendingUpdate = true;
+        return;
+      }
+
       if (index >= 0 && index < this.nodeCount) {
         const posIndex = index * 3;
         const velIndex = index * 3;
 
-        // Get previous values for change detection
         const oldPos: [number, number, number] = [
           this.previousPositions[posIndex],
           this.previousPositions[posIndex + 1],
@@ -190,39 +192,36 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
           }
         }
 
-        // Check if the change is significant
         const newPos: [number, number, number] = [x, y, z];
         const newVel: [number, number, number] = [vx, vy, vz];
 
         if (this._hasSignificantChange(newPos, oldPos, newVel, oldVel)) {
-          // Update position
           this.positions[posIndex] = x;
           this.positions[posIndex + 1] = y;
           this.positions[posIndex + 2] = z;
 
-          // Update velocity
           this.velocities[velIndex] = vx;
           this.velocities[velIndex + 1] = vy;
           this.velocities[velIndex + 2] = vz;
 
-          // Mark node as changed
           this.changedNodes.add(index);
         }
 
-        this.lastUpdateTime = Date.now();
+        this.lastUpdateTime = now;
+        this.lastThrottledUpdate = now;
+        this.pendingUpdate = false;
       }
     },
 
     updateFromBinary(message: BinaryMessage): void {
       const now = Date.now();
       
-      // Throttle updates
+      // Throttle updates to 5 FPS
       if (now - this.lastThrottledUpdate < UPDATE_THROTTLE_MS) {
         this.pendingUpdate = true;
         return;
       }
 
-      // Validate buffer
       if (!this._validateBuffer(message.data)) {
         return;
       }
@@ -230,7 +229,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       const dataView = new Float32Array(message.data);
       const nodeCount = dataView.length / 6;
 
-      // Validate node count
       if (nodeCount * BINARY_UPDATE_NODE_SIZE !== message.data.byteLength) {
         logError('Binary message size mismatch:', {
           received: message.data.byteLength,
@@ -240,7 +238,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         return;
       }
 
-      // Check for reasonable node count
       if (nodeCount > MAX_ARRAY_SIZE / 6) {
         logError('Excessive node count:', {
           nodeCount,
@@ -249,7 +246,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         return;
       }
 
-      // Resize arrays if needed
       if (this.nodeCount !== nodeCount) {
         try {
           this.positions = new Float32Array(nodeCount * 3);
@@ -266,12 +262,10 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         }
       }
 
-      // Store current values as previous
       this.previousPositions.set(this.positions);
       this.previousVelocities.set(this.velocities);
       this.changedNodes.clear();
 
-      // Process position and velocity data
       for (let i = 0; i < nodeCount; i++) {
         const srcOffset = i * 6;
         const posOffset = i * 3;
@@ -305,7 +299,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
           }
         }
 
-        // Check if the change is significant
         const oldPos: [number, number, number] = [
           this.previousPositions[posOffset],
           this.previousPositions[posOffset + 1],
@@ -320,25 +313,28 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         const newVel: [number, number, number] = [vx, vy, vz];
 
         if (this._hasSignificantChange(newPos, oldPos, newVel, oldVel)) {
-          // Copy positions
           this.positions[posOffset] = x;
           this.positions[posOffset + 1] = y;
           this.positions[posOffset + 2] = z;
 
-          // Copy velocities
           this.velocities[velOffset] = vx;
           this.velocities[velOffset + 1] = vy;
           this.velocities[velOffset + 2] = vz;
 
-          // Mark node as changed
           this.changedNodes.add(i);
         }
       }
 
-      // Update timing and state
       this.lastUpdateTime = now;
       this.lastThrottledUpdate = now;
       this.pendingUpdate = false;
+
+      logData('Binary update processed:', {
+        nodeCount,
+        changedNodes: this.changedNodes.size,
+        timeSinceLastUpdate: now - this.lastUpdateTime,
+        timestamp: new Date().toISOString()
+      });
     },
 
     clear(): void {
@@ -352,8 +348,8 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.pendingUpdate = false;
       this.lastThrottledUpdate = 0;
       this.changedNodes.clear();
-      this.positionChangeThreshold = BASE_POSITION_CHANGE_THRESHOLD;
-      this.velocityChangeThreshold = BASE_VELOCITY_CHANGE_THRESHOLD;
+      this.positionChangeThreshold = POSITION_CHANGE_THRESHOLD;
+      this.velocityChangeThreshold = VELOCITY_CHANGE_THRESHOLD;
       
       logData('Binary update store cleared');
     }
