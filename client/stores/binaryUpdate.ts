@@ -89,14 +89,17 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     },
 
     _hasSignificantChange(
-      newValues: Float32Array,
-      oldValues: Float32Array,
-      offset: number,
+      newValue1: number,
+      newValue2: number,
+      newValue3: number,
+      oldValue1: number,
+      oldValue2: number,
+      oldValue3: number,
       threshold: number
     ): boolean {
-      return Math.abs(newValues[offset] - oldValues[offset]) > threshold ||
-             Math.abs(newValues[offset + 1] - oldValues[offset + 1]) > threshold ||
-             Math.abs(newValues[offset + 2] - oldValues[offset + 2]) > threshold;
+      return Math.abs(newValue1 - oldValue1) > threshold ||
+             Math.abs(newValue2 - oldValue2) > threshold ||
+             Math.abs(newValue3 - oldValue3) > threshold;
     },
 
     _validateBuffer(buffer: ArrayBuffer): boolean {
@@ -147,10 +150,20 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       // Resize arrays if needed
       if (this.nodeCount !== nodeCount) {
         try {
-          this.positions = new Float32Array(nodeCount * 3);
-          this.velocities = new Float32Array(nodeCount * 3);
-          this.previousPositions = new Float32Array(nodeCount * 3);
-          this.previousVelocities = new Float32Array(nodeCount * 3);
+          // Create new arrays with exact size needed
+          const newPositions = new Float32Array(nodeCount * 3);
+          const newVelocities = new Float32Array(nodeCount * 3);
+          
+          // Copy existing data if any
+          if (this.nodeCount > 0) {
+            newPositions.set(this.positions.subarray(0, Math.min(this.positions.length, newPositions.length)));
+            newVelocities.set(this.velocities.subarray(0, Math.min(this.velocities.length, newVelocities.length)));
+          }
+          
+          this.positions = newPositions;
+          this.velocities = newVelocities;
+          this.previousPositions = new Float32Array(this.positions);
+          this.previousVelocities = new Float32Array(this.velocities);
           this.nodeCount = nodeCount;
         } catch (error) {
           logError('Failed to allocate arrays:', {
@@ -159,30 +172,41 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
           });
           return;
         }
+      } else {
+        // Store current values as previous
+        this.previousPositions.set(this.positions);
+        this.previousVelocities.set(this.velocities);
       }
 
-      // Store current values as previous
-      this.previousPositions.set(this.positions);
-      this.previousVelocities.set(this.velocities);
       this.changedNodes.clear();
 
-      // Process position and velocity data using DataView for direct access
-      let offset = 0;
+      // Process data directly from DataView
+      let byteOffset = 0;
+      const positionStride = 3;
+      const velocityStride = 3;
+
       for (let i = 0; i < nodeCount; i++) {
-        const posOffset = i * 3;
-        const velOffset = i * 3;
+        const positionIndex = i * positionStride;
+        const velocityIndex = i * velocityStride;
 
         // Read values directly from DataView
-        let x = dataView.getFloat32(offset, true);
-        let y = dataView.getFloat32(offset + 4, true);
-        let z = dataView.getFloat32(offset + 8, true);
-        let vx = dataView.getFloat32(offset + 12, true);
-        let vy = dataView.getFloat32(offset + 16, true);
-        let vz = dataView.getFloat32(offset + 20, true);
-        offset += 24;
+        const x = dataView.getFloat32(byteOffset, true);
+        const y = dataView.getFloat32(byteOffset + 4, true);
+        const z = dataView.getFloat32(byteOffset + 8, true);
+        const vx = dataView.getFloat32(byteOffset + 12, true);
+        const vy = dataView.getFloat32(byteOffset + 16, true);
+        const vz = dataView.getFloat32(byteOffset + 20, true);
+        byteOffset += 24;
+
+        let finalX = x;
+        let finalY = y;
+        let finalZ = z;
+        let finalVX = vx;
+        let finalVY = vy;
+        let finalVZ = vz;
 
         if (ENABLE_POSITION_VALIDATION) {
-          // Validate and clamp values
+          // Validate and clamp values in-place
           if (!this._validateValue(x, MIN_VALID_POSITION, MAX_VALID_POSITION) ||
               !this._validateValue(y, MIN_VALID_POSITION, MAX_VALID_POSITION) ||
               !this._validateValue(z, MIN_VALID_POSITION, MAX_VALID_POSITION) ||
@@ -190,40 +214,40 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
               !this._validateValue(vy, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY) ||
               !this._validateValue(vz, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY)) {
             this.invalidUpdates++;
-            x = this._clampValue(x, MIN_VALID_POSITION, MAX_VALID_POSITION);
-            y = this._clampValue(y, MIN_VALID_POSITION, MAX_VALID_POSITION);
-            z = this._clampValue(z, MIN_VALID_POSITION, MAX_VALID_POSITION);
-            vx = this._clampValue(vx, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY);
-            vy = this._clampValue(vy, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY);
-            vz = this._clampValue(vz, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY);
+            finalX = this._clampValue(x, MIN_VALID_POSITION, MAX_VALID_POSITION);
+            finalY = this._clampValue(y, MIN_VALID_POSITION, MAX_VALID_POSITION);
+            finalZ = this._clampValue(z, MIN_VALID_POSITION, MAX_VALID_POSITION);
+            finalVX = this._clampValue(vx, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY);
+            finalVY = this._clampValue(vy, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY);
+            finalVZ = this._clampValue(vz, MIN_VALID_VELOCITY, MAX_VALID_VELOCITY);
           }
         }
 
-        // Check if position or velocity has changed significantly
+        // Check for significant changes using direct value comparison
         const hasPositionChange = this._hasSignificantChange(
-          new Float32Array([x, y, z]),
-          this.previousPositions,
-          posOffset,
+          finalX, finalY, finalZ,
+          this.previousPositions[positionIndex],
+          this.previousPositions[positionIndex + 1],
+          this.previousPositions[positionIndex + 2],
           this.positionChangeThreshold
         );
 
         const hasVelocityChange = this._hasSignificantChange(
-          new Float32Array([vx, vy, vz]),
-          this.previousVelocities,
-          velOffset,
+          finalVX, finalVY, finalVZ,
+          this.previousVelocities[velocityIndex],
+          this.previousVelocities[velocityIndex + 1],
+          this.previousVelocities[velocityIndex + 2],
           this.velocityChangeThreshold
         );
 
         if (hasPositionChange || hasVelocityChange) {
-          // Update positions
-          this.positions[posOffset] = x;
-          this.positions[posOffset + 1] = y;
-          this.positions[posOffset + 2] = z;
-
-          // Update velocities
-          this.velocities[velOffset] = vx;
-          this.velocities[velOffset + 1] = vy;
-          this.velocities[velOffset + 2] = vz;
+          // Update values directly in the typed arrays
+          this.positions[positionIndex] = finalX;
+          this.positions[positionIndex + 1] = finalY;
+          this.positions[positionIndex + 2] = finalZ;
+          this.velocities[velocityIndex] = finalVX;
+          this.velocities[velocityIndex + 1] = finalVY;
+          this.velocities[velocityIndex + 2] = finalVZ;
 
           // Mark node as changed
           this.changedNodes.add(i);
