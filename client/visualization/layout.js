@@ -22,10 +22,23 @@ export class LayoutManager {
         this.edges = [];                 // Store computed edges
         this.nodeCount = 0;              // Track number of nodes
         this.waitingForInitialData = true; // Wait for initial data before sending updates
+
+        // Debug logging
+        console.debug('[LayoutManager] Initialized with settings:', {
+            iterations: this.initialIterations,
+            attraction: this.attraction,
+            repulsion: this.repulsion,
+            spring: this.spring,
+            damping: this.damping
+        });
     }
 
     initializePositions(nodes) {
-        console.log('Initializing positions for nodes:', nodes);
+        console.debug('[LayoutManager] Initializing positions for nodes:', {
+            nodeCount: nodes.length,
+            sample: nodes.slice(0, 3).map(n => ({ id: n.id, hasPosition: !isNaN(n.x) && !isNaN(n.y) && !isNaN(n.z) }))
+        });
+        
         this.nodeCount = nodes.length;
         nodes.forEach(node => {
             // Initialize only if positions are invalid
@@ -37,6 +50,10 @@ export class LayoutManager {
                 node.x = r * Math.sin(phi) * Math.cos(theta);
                 node.y = r * Math.sin(phi) * Math.sin(theta);
                 node.z = r * Math.cos(phi);
+
+                console.debug(`[LayoutManager] Initialized position for node ${node.id}:`, {
+                    x: node.x, y: node.y, z: node.z
+                });
             }
             // Always ensure velocities are initialized
             if (!node.vx) node.vx = 0;
@@ -56,24 +73,30 @@ export class LayoutManager {
 
         this.isInitialized = true;
         this.waitingForInitialData = false; // Initial data received
-        console.log('Position initialization complete');
+        console.debug('[LayoutManager] Position initialization complete');
 
         // Send initial positions to server
-        this.sendPositionUpdates(nodes, true);
+        this.sendPositionUpdates(nodes);
     }
 
     applyForceDirectedLayout(nodes, edges) {
         if (!nodes || !Array.isArray(nodes) || nodes.length === 0) {
-            console.warn('Invalid nodes array provided to force-directed layout');
+            console.warn('[LayoutManager] Invalid nodes array provided to force-directed layout');
             return;
         }
 
         if (!this.isInitialized || this.waitingForInitialData) {
-            console.warn('Layout manager not initialized or waiting for initial data');
+            console.warn('[LayoutManager] Layout manager not initialized or waiting for initial data');
             return;
         }
 
-        console.log('Applying force-directed layout to', nodes.length, 'nodes');
+        console.debug('[LayoutManager] Applying force-directed layout:', {
+            nodeCount: nodes.length,
+            edgeCount: edges.length,
+            isInitialized: this.isInitialized,
+            waitingForInitialData: this.waitingForInitialData
+        });
+
         const dt = 0.1;
 
         // Apply forces based on edges (topic counts)
@@ -144,16 +167,25 @@ export class LayoutManager {
             node.vy *= this.damping;
             node.vz *= this.damping;
 
-            // Bound checking
+            // Bound checking with detailed logging for out-of-bounds
             const bound = 500;
-            if (Math.abs(node.x) > bound) node.vx *= -0.5;
-            if (Math.abs(node.y) > bound) node.vy *= -0.5;
-            if (Math.abs(node.z) > bound) node.vz *= -0.5;
+            if (Math.abs(node.x) > bound) {
+                console.debug(`[LayoutManager] Node ${node.id} X position out of bounds:`, node.x);
+                node.vx *= -0.5;
+            }
+            if (Math.abs(node.y) > bound) {
+                console.debug(`[LayoutManager] Node ${node.id} Y position out of bounds:`, node.y);
+                node.vy *= -0.5;
+            }
+            if (Math.abs(node.z) > bound) {
+                console.debug(`[LayoutManager] Node ${node.id} Z position out of bounds:`, node.z);
+                node.vz *= -0.5;
+            }
         });
     }
 
     updateFeature(control, value) {
-        console.log(`Updating layout feature: ${control} = ${value}`);
+        console.debug(`[LayoutManager] Updating layout feature: ${control} = ${value}`);
         
         // Convert from forceDirected prefixed names to internal parameter names
         const paramMap = {
@@ -182,12 +214,12 @@ export class LayoutManager {
                 this.damping = value;
                 break;
             default:
-                console.warn(`Unknown layout parameter: ${control}`);
+                console.warn(`[LayoutManager] Unknown layout parameter: ${control}`);
         }
     }
 
     updatePhysics(settings) {
-        console.log('Updating physics settings:', settings);
+        console.debug('[LayoutManager] Updating physics settings:', settings);
         
         // Update all physics parameters at once
         if (settings.iterations !== undefined) {
@@ -208,13 +240,17 @@ export class LayoutManager {
 
         // If simulation is running, apply new settings immediately
         if (this.isSimulating) {
-            console.log('Applying new physics settings to running simulation');
+            console.debug('[LayoutManager] Applying new physics settings to running simulation');
         }
     }
 
     performLayout(graphData) {
         if (!this.isInitialized || !graphData || this.waitingForInitialData) {
-            console.warn('Cannot perform layout: not initialized, no graph data, or waiting for initial data');
+            console.warn('[LayoutManager] Cannot perform layout:', {
+                isInitialized: this.isInitialized,
+                hasGraphData: !!graphData,
+                waitingForInitialData: this.waitingForInitialData
+            });
             return;
         }
 
@@ -224,39 +260,73 @@ export class LayoutManager {
             this.applyForceDirectedLayout(graphData.nodes, graphData.edges);
             
             // Send position updates
-            this.sendPositionUpdates(graphData.nodes, false);
+            this.sendPositionUpdates(graphData.nodes);
             this.lastUpdateTime = now;
         }
     }
 
-    sendPositionUpdates(nodes, isInitialLayout = false) {
-        if (!this.lastPositions || !this.isInitialized || nodes.length !== this.nodeCount || this.waitingForInitialData) {
-            console.warn('Cannot send position updates: not initialized, node count mismatch, or waiting for initial data');
+    sendPositionUpdates(nodes) {
+        // Validate node count consistency
+        if (nodes.length !== this.nodeCount) {
+            console.error('[LayoutManager] Node count mismatch:', {
+                expected: this.nodeCount,
+                received: nodes.length
+            });
+            return;
+        }
+
+        // Validate initialization state
+        if (!this.lastPositions || !this.isInitialized || this.waitingForInitialData) {
+            console.warn('[LayoutManager] Cannot send position updates:', {
+                hasLastPositions: !!this.lastPositions,
+                isInitialized: this.isInitialized,
+                waitingForInitialData: this.waitingForInitialData
+            });
             return;
         }
 
         // Create binary buffer for all node positions and velocities (24 bytes per node)
-        const buffer = new ArrayBuffer(nodes.length * 24 + 4); // Extra 4 bytes for is_initial_layout flag
+        const buffer = new ArrayBuffer(nodes.length * 24);
         const dataView = new Float32Array(buffer);
         let hasChanges = false;
 
-        // Set is_initial_layout flag (1.0 for true, 0.0 for false)
-        dataView[0] = isInitialLayout ? 1.0 : 0.0;
+        // Debug log for buffer initialization
+        console.debug('[LayoutManager] Initializing position update buffer:', {
+            totalSize: buffer.byteLength,
+            nodeCount: nodes.length,
+            bytesPerNode: 24
+        });
 
         nodes.forEach((node, index) => {
-            const offset = index * 6 + 1; // +1 to account for is_initial_layout flag
+            // Validate node position values
+            if (isNaN(node.x) || isNaN(node.y) || isNaN(node.z)) {
+                console.error(`[LayoutManager] Invalid position values for node ${node.id}:`, {
+                    x: node.x, y: node.y, z: node.z
+                });
+                return;
+            }
+
+            const offset = index * 6;
             const lastPos = this.lastPositions[index];
 
-            if (!lastPos || 
+            // Position change detection
+            const positionChanged = !lastPos || 
                 Math.abs(node.x - lastPos.x) > this.updateThreshold ||
                 Math.abs(node.y - lastPos.y) > this.updateThreshold ||
                 Math.abs(node.z - lastPos.z) > this.updateThreshold ||
                 Math.abs(node.vx - lastPos.vx) > this.updateThreshold ||
                 Math.abs(node.vy - lastPos.vy) > this.updateThreshold ||
-                Math.abs(node.vz - lastPos.vz) > this.updateThreshold) {
-                
+                Math.abs(node.vz - lastPos.vz) > this.updateThreshold;
+
+            if (positionChanged) {
                 hasChanges = true;
                 
+                // Log significant position changes
+                console.debug(`[LayoutManager] Significant position change for node ${node.id}:`, {
+                    current: { x: node.x, y: node.y, z: node.z, vx: node.vx, vy: node.vy, vz: node.vz },
+                    previous: lastPos ? { x: lastPos.x, y: lastPos.y, z: lastPos.z, vx: lastPos.vx, vy: lastPos.vy, vz: lastPos.vz } : null
+                });
+
                 // Update last position and velocity
                 if (lastPos) {
                     lastPos.x = node.x;
@@ -279,9 +349,13 @@ export class LayoutManager {
             }
         });
 
-        if (hasChanges || isInitialLayout) {
-            // Log the buffer size before sending
-            console.log(`Sending position update buffer of size: ${buffer.byteLength} bytes for ${nodes.length} nodes (isInitialLayout: ${isInitialLayout})`);
+        if (hasChanges) {
+            // Log the final buffer state
+            console.debug('[LayoutManager] Sending position update:', {
+                bufferSize: buffer.byteLength,
+                nodeCount: nodes.length,
+                hasChanges
+            });
             
             // Dispatch binary data event
             window.dispatchEvent(new CustomEvent('positionUpdate', {
@@ -293,7 +367,11 @@ export class LayoutManager {
     startContinuousSimulation(graphData) {
         if (this.isSimulating) return;
         
-        console.log('Starting continuous simulation');
+        console.debug('[LayoutManager] Starting continuous simulation:', {
+            nodeCount: graphData.nodes.length,
+            edgeCount: graphData.edges.length
+        });
+        
         this.isSimulating = true;
         const animate = () => {
             if (!this.isSimulating) return;
@@ -307,7 +385,7 @@ export class LayoutManager {
     }
 
     stopSimulation() {
-        console.log('Stopping simulation');
+        console.debug('[LayoutManager] Stopping simulation');
         this.isSimulating = false;
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);

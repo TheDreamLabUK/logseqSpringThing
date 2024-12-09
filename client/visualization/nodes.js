@@ -131,7 +131,7 @@ export class NodeManager {
     /**
      * Handles binary position updates from WebSocket
      */
-    updateNodePositions(positions, isInitialLayout = false) {
+    updateNodePositions(positions) {
         if (!this.nodeInstancedMeshes) return;
 
         const matrix = this.matrix;
@@ -197,11 +197,6 @@ export class NodeManager {
         if (updatedNodes.size > 0) {
             this.updateEdgesForNodes(updatedNodes);
             this.throttledLabelUpdate(updatedNodes);
-        }
-
-        // Center camera on initial layout
-        if (isInitialLayout) {
-            this.centerCamera();
         }
     }
 

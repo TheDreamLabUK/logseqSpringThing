@@ -17,7 +17,6 @@ use crate::AppState;
 
 // Constants for binary protocol
 pub(crate) const FLOAT32_SIZE: usize = std::mem::size_of::<f32>();
-pub(crate) const HEADER_SIZE: usize = FLOAT32_SIZE; // isInitialLayout flag
 pub(crate) const NODE_SIZE: usize = 6 * FLOAT32_SIZE; // x, y, z, vx, vy, vz
 
 // Constants for heartbeat
@@ -89,15 +88,11 @@ impl WebSocketManager {
         Ok(())
     }
 
-    pub async fn broadcast_binary(&self, nodes: &[GPUNode], is_initial: bool) -> Result<(), Box<dyn StdError>> {
-        log_websocket!("Broadcasting binary update for {} nodes, is_initial={}", nodes.len(), is_initial);
+    pub async fn broadcast_binary(&self, nodes: &[GPUNode], _is_initial: bool) -> Result<(), Box<dyn StdError>> {
+        log_websocket!("Broadcasting binary update for {} nodes", nodes.len());
 
-        let total_size = HEADER_SIZE + nodes.len() * NODE_SIZE;
+        let total_size = nodes.len() * NODE_SIZE;
         let mut new_buffer = Vec::with_capacity(total_size);
-        
-        // Add initial layout flag
-        let initial_flag: f32 = if is_initial { 1.0 } else { 0.0 };
-        new_buffer.extend_from_slice(bytemuck::bytes_of(&initial_flag));
 
         // Add node data
         for node in nodes.iter() {
@@ -110,7 +105,7 @@ impl WebSocketManager {
 
         log_websocket!("Binary message: {}", WsDebugData::Binary {
             data: &new_buffer,
-            is_initial,
+            is_initial: false,
             node_count: nodes.len()
         });
 
@@ -323,18 +318,14 @@ impl Handler<SendBinary> for WebSocketSession {
 
     fn handle(&mut self, msg: SendBinary, ctx: &mut Self::Context) {
         let data = &msg.0;
-        if data.len() >= HEADER_SIZE {
-            let mut header_bytes = [0u8; 4];
-            header_bytes.copy_from_slice(&data[0..4]);
-            let is_initial = f32::from_le_bytes(header_bytes) >= 1.0;
-            let num_nodes = (data.len() - HEADER_SIZE) / NODE_SIZE;
+        let num_nodes = data.len() / NODE_SIZE;
 
-            log_websocket!("Binary message: {}", WsDebugData::Binary {
-                data,
-                is_initial,
-                node_count: num_nodes
-            });
-        }
+        log_websocket!("Binary message: {}", WsDebugData::Binary {
+            data,
+            is_initial: false,
+            node_count: num_nodes
+        });
+        
         ctx.binary(msg.0);
     }
 }
