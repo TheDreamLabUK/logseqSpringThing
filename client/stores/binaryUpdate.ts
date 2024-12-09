@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import type { BinaryMessage } from '../types/websocket'
-import { logError, logWarn, logData, logBinaryHeader, logPerformance } from '../utils/debug_log'
+import { logError, logWarn, logData } from '../utils/debug_log'
 import {
   BINARY_UPDATE_NODE_SIZE,
   FLOAT32_SIZE,
@@ -8,21 +8,15 @@ import {
   MIN_VALID_POSITION,
   MAX_VALID_VELOCITY,
   MIN_VALID_VELOCITY,
-  ENABLE_BINARY_DEBUG,
   ENABLE_POSITION_VALIDATION
 } from '../constants/websocket'
 
-// Enhanced change detection thresholds with dynamic adjustment
+// Enhanced change detection thresholds
 const BASE_POSITION_CHANGE_THRESHOLD = 0.01
 const BASE_VELOCITY_CHANGE_THRESHOLD = 0.001
-const THRESHOLD_ADJUSTMENT_FACTOR = 1.5 // Increase threshold when high update frequency detected
 
 // Update throttling configuration
 const UPDATE_THROTTLE_MS = 16 // ~60fps
-const MAX_UPDATES_PER_SECOND = 120 // Prevent excessive updates
-
-// Memory monitoring thresholds
-const MEMORY_WARNING_THRESHOLD = 100 * 1024 * 1024 // 100MB
 const MAX_ARRAY_SIZE = 1000000 // Prevent allocation of extremely large arrays
 
 interface BinaryUpdateState {
@@ -31,23 +25,15 @@ interface BinaryUpdateState {
   previousPositions: Float32Array
   previousVelocities: Float32Array
   nodeCount: number
-  firstUpdateTime: number
   lastUpdateTime: number
   invalidUpdates: number
   pendingUpdate: boolean
   lastThrottledUpdate: number
   changedNodes: Set<number>
-  updateCount: number // Track total number of updates
-  memoryUsage: number // Track approximate memory usage
-  positionChangeThreshold: number // Dynamic threshold
-  velocityChangeThreshold: number // Dynamic threshold
-  processingTimes: number[] // Track update processing times
+  positionChangeThreshold: number
+  velocityChangeThreshold: number
 }
 
-/**
- * Store for handling binary position/velocity updates
- * Optimized for high-frequency updates in force-directed graph
- */
 export const useBinaryUpdateStore = defineStore('binaryUpdate', {
   state: (): BinaryUpdateState => ({
     positions: new Float32Array(0),
@@ -55,17 +41,13 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     previousPositions: new Float32Array(0),
     previousVelocities: new Float32Array(0),
     nodeCount: 0,
-    firstUpdateTime: 0,
     lastUpdateTime: 0,
     invalidUpdates: 0,
     pendingUpdate: false,
     lastThrottledUpdate: 0,
     changedNodes: new Set(),
-    updateCount: 0,
-    memoryUsage: 0,
     positionChangeThreshold: BASE_POSITION_CHANGE_THRESHOLD,
-    velocityChangeThreshold: BASE_VELOCITY_CHANGE_THRESHOLD,
-    processingTimes: []
+    velocityChangeThreshold: BASE_VELOCITY_CHANGE_THRESHOLD
   }),
 
   getters: {
@@ -95,30 +77,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
 
     getAllPositions: (state): Float32Array => state.positions,
     getAllVelocities: (state): Float32Array => state.velocities,
-    getChangedNodes: (state): Set<number> => state.changedNodes,
-
-    invalidUpdateRate: (state): number => {
-      if (state.firstUpdateTime === 0) return 0;
-      const timeSpan = (state.lastUpdateTime - state.firstUpdateTime) / 1000;
-      const totalUpdates = Math.max(1, state.updateCount);
-      return (state.invalidUpdates / totalUpdates) * 100;
-    },
-
-    updateFrequency: (state): number => {
-      if (state.firstUpdateTime === 0) return 0;
-      const timeSpan = (state.lastUpdateTime - state.firstUpdateTime) / 1000;
-      return timeSpan > 0 ? state.updateCount / timeSpan : 0;
-    },
-
-    averageProcessingTime: (state): number => {
-      if (state.processingTimes.length === 0) return 0;
-      const sum = state.processingTimes.reduce((a, b) => a + b, 0);
-      return sum / state.processingTimes.length;
-    },
-
-    memoryUsageMB: (state): number => {
-      return state.memoryUsage / (1024 * 1024);
-    }
+    getChangedNodes: (state): Set<number> => state.changedNodes
   },
 
   actions: {
@@ -140,37 +99,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
     _clampVelocity(value: number): number {
       if (isNaN(value) || !isFinite(value)) return 0;
       return Math.max(MIN_VALID_VELOCITY, Math.min(MAX_VALID_VELOCITY, value));
-    },
-
-    _updateMemoryUsage(): void {
-      // Calculate approximate memory usage
-      const arrayBytes = (this.nodeCount * 3 * 4) * 4; // 4 Float32Arrays, 4 bytes per float
-      const setBytes = this.changedNodes.size * 4; // Approximate Set memory usage
-      this.memoryUsage = arrayBytes + setBytes;
-
-      if (this.memoryUsage > MEMORY_WARNING_THRESHOLD) {
-        logWarn('High memory usage detected:', {
-          usageMB: this.memoryUsageMB,
-          nodeCount: this.nodeCount,
-          changedNodesCount: this.changedNodes.size
-        });
-      }
-    },
-
-    _adjustThresholds(): void {
-      const frequency = this.updateFrequency;
-      if (frequency > MAX_UPDATES_PER_SECOND) {
-        this.positionChangeThreshold = BASE_POSITION_CHANGE_THRESHOLD * THRESHOLD_ADJUSTMENT_FACTOR;
-        this.velocityChangeThreshold = BASE_VELOCITY_CHANGE_THRESHOLD * THRESHOLD_ADJUSTMENT_FACTOR;
-        logData('Thresholds adjusted for high frequency:', {
-          frequency,
-          positionThreshold: this.positionChangeThreshold,
-          velocityThreshold: this.velocityChangeThreshold
-        });
-      } else {
-        this.positionChangeThreshold = BASE_POSITION_CHANGE_THRESHOLD;
-        this.velocityChangeThreshold = BASE_VELOCITY_CHANGE_THRESHOLD;
-      }
     },
 
     _hasSignificantChange(
@@ -225,8 +153,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       x: number, y: number, z: number,
       vx: number, vy: number, vz: number
     ): void {
-      const startTime = performance.now();
-
       if (index >= 0 && index < this.nodeCount) {
         const posIndex = index * 3;
         const velIndex = index * 3;
@@ -252,8 +178,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
             logWarn('Invalid position/velocity values detected:', {
               index,
               position: [x, y, z],
-              velocity: [vx, vy, vz],
-              timestamp: new Date().toISOString()
+              velocity: [vx, vy, vz]
             });
 
             x = this._clampPosition(x);
@@ -284,28 +209,11 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
           this.changedNodes.add(index);
         }
 
-        // Update timing and counters
-        const now = Date.now();
-        if (this.firstUpdateTime === 0) {
-          this.firstUpdateTime = now;
-        }
-        this.lastUpdateTime = now;
-        this.updateCount++;
-
-        // Track processing time
-        const processingTime = performance.now() - startTime;
-        this.processingTimes.push(processingTime);
-        if (this.processingTimes.length > 100) {
-          this.processingTimes.shift(); // Keep only last 100 measurements
-        }
-
-        this._updateMemoryUsage();
-        this._adjustThresholds();
+        this.lastUpdateTime = Date.now();
       }
     },
 
     updateFromBinary(message: BinaryMessage): void {
-      const startTime = performance.now();
       const now = Date.now();
       
       // Throttle updates
@@ -327,8 +235,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
         logError('Binary message size mismatch:', {
           received: message.data.byteLength,
           expected: nodeCount * BINARY_UPDATE_NODE_SIZE,
-          nodeCount,
-          timestamp: new Date().toISOString()
+          nodeCount
         });
         return;
       }
@@ -364,11 +271,6 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.previousVelocities.set(this.velocities);
       this.changedNodes.clear();
 
-      // Log binary header for debugging
-      if (ENABLE_BINARY_DEBUG) {
-        logBinaryHeader(message.data);
-      }
-
       // Process position and velocity data
       for (let i = 0; i < nodeCount; i++) {
         const srcOffset = i * 6;
@@ -391,8 +293,7 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
             logWarn('Invalid values in binary update:', {
               index: i,
               position: [x, y, z],
-              velocity: [vx, vy, vz],
-              timestamp: new Date().toISOString()
+              velocity: [vx, vy, vz]
             });
 
             x = this._clampPosition(x);
@@ -435,47 +336,9 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       }
 
       // Update timing and state
-      if (this.firstUpdateTime === 0) {
-        this.firstUpdateTime = now;
-      }
       this.lastUpdateTime = now;
       this.lastThrottledUpdate = now;
       this.pendingUpdate = false;
-      this.updateCount++;
-
-      // Track processing time
-      const processingTime = performance.now() - startTime;
-      this.processingTimes.push(processingTime);
-      if (this.processingTimes.length > 100) {
-        this.processingTimes.shift(); // Keep only last 100 measurements
-      }
-
-      // Update memory usage and thresholds
-      this._updateMemoryUsage();
-      this._adjustThresholds();
-
-      logPerformance('Binary update processed:', {
-        nodeCount,
-        changedNodes: this.changedNodes.size,
-        invalidRate: this.invalidUpdateRate,
-        updateFrequency: this.updateFrequency,
-        processingTime,
-        averageProcessingTime: this.averageProcessingTime,
-        memoryUsageMB: this.memoryUsageMB,
-        sample: {
-          position: [
-            this.positions[0],
-            this.positions[1],
-            this.positions[2]
-          ],
-          velocity: [
-            this.velocities[0],
-            this.velocities[1],
-            this.velocities[2]
-          ]
-        },
-        timestamp: new Date().toISOString()
-      });
     },
 
     clear(): void {
@@ -484,17 +347,13 @@ export const useBinaryUpdateStore = defineStore('binaryUpdate', {
       this.previousPositions = new Float32Array(0);
       this.previousVelocities = new Float32Array(0);
       this.nodeCount = 0;
-      this.firstUpdateTime = 0;
       this.lastUpdateTime = 0;
       this.invalidUpdates = 0;
       this.pendingUpdate = false;
       this.lastThrottledUpdate = 0;
       this.changedNodes.clear();
-      this.updateCount = 0;
-      this.memoryUsage = 0;
       this.positionChangeThreshold = BASE_POSITION_CHANGE_THRESHOLD;
       this.velocityChangeThreshold = BASE_VELOCITY_CHANGE_THRESHOLD;
-      this.processingTimes = [];
       
       logData('Binary update store cleared');
     }
