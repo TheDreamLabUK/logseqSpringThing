@@ -6,10 +6,10 @@ export const VALIDATION = {
   MIN_POSITION: -1000,
   MAX_VELOCITY: 50,
   MIN_VELOCITY: -50,
-  POSITION_CHANGE_THRESHOLD: 0.01, // Minimum change to trigger update
-  EXPECTED_BINARY_SIZE: 24, // 6 floats * 4 bytes per float
-  UPDATE_INTERVAL: 16.67, // ~60fps in milliseconds
-  BATCH_SIZE: 100 // Number of updates to batch before sending
+  POSITION_CHANGE_THRESHOLD: 0.01,
+  EXPECTED_BINARY_SIZE: 24,
+  UPDATE_INTERVAL: 16.67,
+  BATCH_SIZE: 100
 };
 
 export const VISUALIZATION_CONSTANTS = {
@@ -25,7 +25,8 @@ export const VISUALIZATION_CONSTANTS = {
   DEFAULT_CAMERA_TARGET: [0, 0, 0] as [number, number, number],
   TARGET_FRAMERATE: 60,
   MIN_FRAME_TIME: 1000 / 60,  // 16.67ms for 60fps
-  POSITION_UPDATE_INTERVAL: 100  // Send position updates every 100ms
+  POSITION_UPDATE_INTERVAL: 100,  // Send position updates every 100ms
+  FORCE_DIRECTED_CLIENT: false  // Force-directed graph disabled by default
 };
 
 export const SCENE_SETTINGS = {

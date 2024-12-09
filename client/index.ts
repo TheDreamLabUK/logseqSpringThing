@@ -1,3 +1,6 @@
+// Force-directed initialization must come first
+import './init/forceDirected';
+
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './components/App.vue'
@@ -48,5 +51,6 @@ app.mount('#app')
 // Log successful initialization
 console.info('Application initialized', {
   context: 'App Initialization',
-  environment: process.env.NODE_ENV
+  environment: process.env.NODE_ENV,
+  forceDirected: false // Log that force-directed is disabled
 })
