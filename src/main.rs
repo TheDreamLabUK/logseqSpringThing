@@ -66,20 +66,27 @@ fn to_io_error(e: impl std::fmt::Display) -> Box<dyn Error + Send + Sync> {
 }
 
 async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> Result<(), Box<dyn Error + Send + Sync>> {
-    log::debug!("Loading metadata...");
+    let settings = app_state.settings.read().await;
+    if settings.debug.enable_data_debug {
+        log::debug!("Loading metadata...");
+    }
     let metadata_map = FileService::load_or_create_metadata()
         .map_err(|e| {
             log::error!("Failed to load metadata: {}", e);
             to_io_error(e)
         })?;
 
-    log::debug!("Loaded metadata with {} entries", metadata_map.len());
+    if settings.debug.enable_data_debug {
+        log::debug!("Loaded metadata with {} entries", metadata_map.len());
+    }
     {
         let mut app_metadata = app_state.metadata.write().await;
         *app_metadata = metadata_map.clone();
     }
 
-    log::debug!("Building graph from metadata...");
+    if settings.debug.enable_data_debug {
+        log::debug!("Building graph from metadata...");
+    }
     let graph_data = GraphService::build_graph_from_metadata(&metadata_map).await
         .map_err(|e| {
             log::error!("Failed to build graph from metadata: {}", e);
@@ -91,10 +98,12 @@ async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> Result
         *graph = graph_data.clone();
         graph.metadata = metadata_map;
         
-        log::debug!("Graph initialized with {} nodes and {} edges", 
-            graph.nodes.len(), 
-            graph.edges.len()
-        );
+        if settings.debug.enable_data_debug {
+            log::debug!("Graph initialized with {} nodes and {} edges", 
+                graph.nodes.len(), 
+                graph.edges.len()
+            );
+        }
     }
 
     Ok(())
@@ -117,7 +126,10 @@ async fn update_graph_periodically(app_state: web::Data<AppState>) {
         match FileService::fetch_and_process_files(&*app_state.github_service, app_state.settings.clone(), &mut metadata_map).await {
             Ok(processed_files) => {
                 if !processed_files.is_empty() {
-                    log::debug!("Found {} updated files, updating graph", processed_files.len());
+                    let settings = app_state.settings.read().await;
+                    if settings.debug.enable_data_debug {
+                        log::debug!("Found {} updated files, updating graph", processed_files.len());
+                    }
 
                     {
                         let mut app_metadata = app_state.metadata.write().await;
@@ -192,9 +204,11 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", log_level);
     env_logger::init();
 
-    log::debug!("Initializing services...");
+    let settings_read = settings.read().await;
+    if settings_read.debug.enable_data_debug {
+        log::debug!("Initializing services...");
+    }
     let github_service = {
-        let settings_read = settings.read().await;
         Arc::new(RealGitHubService::new(
             settings_read.github.token.clone(),
             settings_read.github.owner.clone(),
@@ -205,7 +219,6 @@ async fn main() -> std::io::Result<()> {
     };
 
     let github_pr_service = {
-        let settings_read = settings.read().await;
         Arc::new(RealGitHubPRService::new(
             settings_read.github.token.clone(),
             settings_read.github.owner.clone(),
@@ -220,15 +233,21 @@ async fn main() -> std::io::Result<()> {
     let ragflow_service = Arc::new(RAGFlowService::new(settings.clone()).await
         .map_err(AppError::from)?);
 
-    log::debug!("Creating RAGFlow conversation...");
+    if settings_read.debug.enable_data_debug {
+        log::debug!("Creating RAGFlow conversation...");
+    }
     let ragflow_conversation_id = ragflow_service.create_conversation("default_user".to_string()).await
         .map_err(AppError::from)?;
     
-    log::debug!("Initializing GPU compute...");
+    if settings_read.debug.enable_data_debug {
+        log::debug!("Initializing GPU compute...");
+    }
     let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
         Ok(gpu) => {
-            log::debug!("GPU initialization successful");
-            Some(gpu) // gpu is already Arc<RwLock<GPUCompute>>
+            if settings_read.debug.enable_data_debug {
+                log::debug!("GPU initialization successful");
+            }
+            Some(gpu)
         },
         Err(e) => {
             log::warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
@@ -247,19 +266,18 @@ async fn main() -> std::io::Result<()> {
         github_pr_service,
     ));
 
-    log::debug!("Initializing graph with cached data...");
+    if settings_read.debug.enable_data_debug {
+        log::debug!("Initializing graph with cached data...");
+    }
     if let Err(e) = initialize_cached_graph_data(&app_state).await {
         log::error!("Failed to initialize graph from cache: {}", e);
         return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize graph: {}", e)));
     }
 
-    let websocket_manager = {
-        let settings_read = settings.read().await;
-        Arc::new(WebSocketManager::new(
-            settings_read.debug.enable_websocket_debug,
-            app_state.clone(),
-        ))
-    };
+    let websocket_manager = Arc::new(WebSocketManager::new(
+        settings_read.debug.enable_websocket_debug,
+        app_state.clone(),
+    ));
 
     let speech_service = Arc::new(SpeechService::new(
         websocket_manager.clone(),
@@ -276,7 +294,9 @@ async fn main() -> std::io::Result<()> {
     });
 
     let bind_address = "0.0.0.0:3000";
-    log::debug!("Starting HTTP server on {}", bind_address);
+    if settings_read.debug.enable_data_debug {
+        log::debug!("Starting HTTP server on {}", bind_address);
+    }
 
     HttpServer::new(move || {
         App::new()

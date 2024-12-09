@@ -1,17 +1,30 @@
 use log::{info, error, warn, debug};
 use serde_json::Value;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use crate::config::Settings;
 
-pub struct AudioProcessor;
+pub struct AudioProcessor {
+    settings: Arc<RwLock<Settings>>,
+}
 
 impl AudioProcessor {
-    pub fn process_json_response(response_data: &[u8]) -> Result<(String, Vec<u8>), String> {
+    pub fn new(settings: Arc<RwLock<Settings>>) -> Self {
+        Self { settings }
+    }
+
+    pub async fn process_json_response(&self, response_data: &[u8]) -> Result<(String, Vec<u8>), String> {
+        let settings = self.settings.read().await;
+        
         // Parse the JSON response
         let json_response: Value = serde_json::from_slice(response_data)
             .map_err(|e| format!("Failed to parse JSON response: {}", e))?;
         
-        // Log the entire JSON response at debug level
-        debug!("Received JSON response: {}", serde_json::to_string_pretty(&json_response).unwrap_or_else(|_| "Unable to prettify JSON".to_string()));
+        // Log the entire JSON response at debug level if debug mode is enabled
+        if settings.debug.enable_data_debug {
+            debug!("Received JSON response: {}", serde_json::to_string_pretty(&json_response).unwrap_or_else(|_| "Unable to prettify JSON".to_string()));
+        }
         
         // Check if the response contains an error message
         if let Some(error_msg) = json_response["error"].as_str() {
@@ -31,10 +44,14 @@ impl AudioProcessor {
 
         // Try to extract the audio data from different possible locations with detailed logging
         let audio_data = if let Some(audio) = json_response["data"]["audio"].as_str() {
-            debug!("Found audio data in data.audio");
+            if settings.debug.enable_data_debug {
+                debug!("Found audio data in data.audio");
+            }
             BASE64.decode(audio).map_err(|e| format!("Failed to decode base64 audio data from data.audio: {}", e))?
         } else if let Some(audio) = json_response["audio"].as_str() {
-            debug!("Found audio data in root.audio");
+            if settings.debug.enable_data_debug {
+                debug!("Found audio data in root.audio");
+            }
             BASE64.decode(audio).map_err(|e| format!("Failed to decode base64 audio data from root.audio: {}", e))?
         } else {
             // Log available paths in the JSON for debugging
@@ -58,7 +75,9 @@ impl AudioProcessor {
         
         // Validate WAV header
         if audio_data.len() >= 44 {
-            debug!("WAV header: {:?}", &audio_data[..44]);
+            if settings.debug.enable_data_debug {
+                debug!("WAV header: {:?}", &audio_data[..44]);
+            }
             
             if &audio_data[..4] != b"RIFF" || &audio_data[8..12] != b"WAVE" {
                 error!("Invalid WAV header detected");
@@ -70,8 +89,10 @@ impl AudioProcessor {
             let sample_rate = u32::from_le_bytes([audio_data[24], audio_data[25], audio_data[26], audio_data[27]]);
             let bits_per_sample = u16::from_le_bytes([audio_data[34], audio_data[35]]);
             
-            debug!("WAV format: {} channels, {} Hz, {} bits per sample", 
-                  channels, sample_rate, bits_per_sample);
+            if settings.debug.enable_data_debug {
+                debug!("WAV format: {} channels, {} Hz, {} bits per sample", 
+                      channels, sample_rate, bits_per_sample);
+            }
         } else {
             error!("Audio data too short to contain WAV header: {} bytes", audio_data.len());
             return Err("Audio data too short".to_string());
@@ -80,7 +101,9 @@ impl AudioProcessor {
         Ok((answer, audio_data))
     }
 
-    pub fn validate_wav_header(audio_data: &[u8]) -> Result<(), String> {
+    pub async fn validate_wav_header(&self, audio_data: &[u8]) -> Result<(), String> {
+        let settings = self.settings.read().await;
+
         if audio_data.len() < 44 {
             return Err("Audio data too short for WAV header".to_string());
         }
@@ -97,8 +120,10 @@ impl AudioProcessor {
         let sample_rate = u32::from_le_bytes([audio_data[24], audio_data[25], audio_data[26], audio_data[27]]);
         let bits_per_sample = u16::from_le_bytes([audio_data[34], audio_data[35]]);
 
-        debug!("Validated WAV format: {} channels, {} Hz, {} bits per sample",
-              channels, sample_rate, bits_per_sample);
+        if settings.debug.enable_data_debug {
+            debug!("Validated WAV format: {} channels, {} Hz, {} bits per sample",
+                  channels, sample_rate, bits_per_sample);
+        }
 
         Ok(())
     }
@@ -108,9 +133,29 @@ impl AudioProcessor {
 mod tests {
     use super::*;
     use serde_json::json;
+    use tokio::runtime::Runtime;
+
+    fn create_test_settings() -> Arc<RwLock<Settings>> {
+        let settings = Settings {
+            debug_mode: false,
+            debug: crate::config::DebugSettings {
+                enable_websocket_debug: false,
+                enable_data_debug: false,
+                log_binary_headers: false,
+                log_full_json: false,
+            },
+            // Add other required fields with default values
+            ..Default::default()
+        };
+        Arc::new(RwLock::new(settings))
+    }
 
     #[test]
     fn test_process_json_response_valid() {
+        let rt = Runtime::new().unwrap();
+        let settings = create_test_settings();
+        let processor = AudioProcessor::new(settings);
+
         let test_wav = vec![
             b'R', b'I', b'F', b'F', // ChunkID
             0x24, 0x00, 0x00, 0x00, // ChunkSize
@@ -134,9 +179,9 @@ mod tests {
             }
         });
 
-        let result = AudioProcessor::process_json_response(
+        let result = rt.block_on(processor.process_json_response(
             serde_json::to_vec(&json_data).unwrap().as_slice()
-        );
+        ));
 
         assert!(result.is_ok());
         let (answer, audio) = result.unwrap();
@@ -146,6 +191,10 @@ mod tests {
 
     #[test]
     fn test_process_json_response_invalid_wav() {
+        let rt = Runtime::new().unwrap();
+        let settings = create_test_settings();
+        let processor = AudioProcessor::new(settings);
+
         let invalid_wav = vec![0x00; 44]; // Invalid WAV header
         let json_data = json!({
             "data": {
@@ -154,9 +203,9 @@ mod tests {
             }
         });
 
-        let result = AudioProcessor::process_json_response(
+        let result = rt.block_on(processor.process_json_response(
             serde_json::to_vec(&json_data).unwrap().as_slice()
-        );
+        ));
 
         assert!(result.is_err());
     }
