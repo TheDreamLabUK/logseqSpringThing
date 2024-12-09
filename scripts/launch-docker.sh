@@ -2,6 +2,10 @@
 
 set -e
 
+# Determine script location and project root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -73,9 +77,10 @@ check_rust_security() {
 
 # Function to read settings from TOML file
 read_settings() {
+    local settings_file="$PROJECT_ROOT/settings.toml"
     # Extract domain and port from settings.toml
-    export DOMAIN=$(grep "domain = " settings.toml | cut -d'"' -f2)
-    export PORT=$(grep "port = " settings.toml | awk '{print $3}')
+    export DOMAIN=$(grep "domain = " "$settings_file" | cut -d'"' -f2)
+    export PORT=$(grep "port = " "$settings_file" | awk '{print $3}')
     
     if [ -z "$DOMAIN" ] || [ -z "$PORT" ]; then
         echo -e "${RED}Error: DOMAIN or PORT not set in settings.toml. Please check your configuration.${NC}"
@@ -115,13 +120,13 @@ verify_client_structure() {
     echo -e "${YELLOW}Verifying client directory structure...${NC}"
     
     local required_files=(
-        "client/index.ts"
-        "client/components/App.vue"
-        "client/stores/visualization.ts"
-        "client/types/core.ts"
-        "client/composables/useVisualization.ts"
-        "tsconfig.json"
-        "vite.config.ts"
+        "$PROJECT_ROOT/client/index.ts"
+        "$PROJECT_ROOT/client/components/App.vue"
+        "$PROJECT_ROOT/client/stores/visualization.ts"
+        "$PROJECT_ROOT/client/types/core.ts"
+        "$PROJECT_ROOT/client/composables/useVisualization.ts"
+        "$PROJECT_ROOT/tsconfig.json"
+        "$PROJECT_ROOT/vite.config.ts"
     )
     
     for file in "${required_files[@]}"; do
@@ -268,9 +273,12 @@ ensure_cloudflared() {
     fi
 }
 
+# Change to project root directory
+cd "$PROJECT_ROOT"
+
 # Check environment
 if [ ! -f .env ]; then
-    echo -e "${RED}Error: .env file not found${NC}"
+    echo -e "${RED}Error: .env file not found in $PROJECT_ROOT${NC}"
     exit 1
 fi
 

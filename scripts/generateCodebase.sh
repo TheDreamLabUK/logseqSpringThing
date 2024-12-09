@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Path to the export repository relative to this script
-EXPORT_REPO="../export-repository-to-prompt-for-llm"
+EXPORT_REPO="../../export-repository-to-prompt-for-llm"
 
 # Activate virtual environment and ensure we deactivate it even if script fails
 activate_venv() {
@@ -11,11 +11,11 @@ activate_venv() {
 # Export both directories and combine them
 export_and_combine() {
     # Export server (src) code
-    python "$EXPORT_REPO/export-repository-to-file.py" "./src"
+    python "$EXPORT_REPO/export-repository-to-file.py" "../src"
     mv output.txt server.txt
 
     # Export client code
-    python "$EXPORT_REPO/export-repository-to-file.py" "./client"
+    python "$EXPORT_REPO/export-repository-to-file.py" "../client"
     mv output.txt client.txt
 
     # Combine files and cleanup
