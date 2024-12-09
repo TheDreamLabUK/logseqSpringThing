@@ -219,7 +219,7 @@ export function useForceGraph(scene: Scene) {
     // Clear previous grid
     res.spatialGrid.clear();
 
-    // Add nodes to grid
+    // Add nodes to grid - only track position for frustum culling
     nodes.value.forEach((node) => {
       const key = getGridKey(node.x, node.y, node.z);
       let cell = res.spatialGrid.get(key);
@@ -236,6 +236,7 @@ export function useForceGraph(scene: Scene) {
         res.spatialGrid.set(key, cell);
       }
       
+      // Only store node reference, no additional processing
       cell.nodes.push(node);
     });
   };
@@ -254,19 +255,20 @@ export function useForceGraph(scene: Scene) {
       return false;
     }
 
-    // Check spatial grid for nearby nodes
+    // Use spatial grid only for broad-phase frustum culling
     const key = getGridKey(node.x, node.y, node.z);
     const cell = res.spatialGrid.get(key);
-    if (cell && cell.nodes.length > 1) {
-      // If there are other nodes in the same cell, only show the closest one to camera
-      const closestNode = cell.nodes.reduce((closest: NodeInstance, current: NodeInstance) => {
-        const currentDist = camera.position.distanceTo(new THREE.Vector3(current.x, current.y, current.z));
-        const closestDist = camera.position.distanceTo(new THREE.Vector3(closest.x, closest.y, closest.z));
-        return currentDist < closestDist ? current : closest;
-      });
-      if (closestNode !== node) return false;
+    
+    // If cell is completely outside frustum, cull all nodes in it
+    if (cell && !res.frustum.containsPoint(cell.center)) {
+      const cornerDistance = Math.sqrt(3) * SPATIAL_GRID_SIZE / 2;
+      // Only cull if cell is completely outside frustum (including margin)
+      if (isPerspectiveCamera(camera) && camera.position.distanceTo(cell.center) > camera.far * FRUSTUM_CULL_MARGIN + cornerDistance) {
+        return false;
+      }
     }
 
+    // Final per-node frustum check
     return res.frustum.containsPoint(nodePos);
   };
 
@@ -317,25 +319,38 @@ export function useForceGraph(scene: Scene) {
     // Get changed nodes from binary update store
     const changedNodes = binaryUpdateStore.getChangedNodes;
     
-    // Update spatial grid if nodes have changed
+    // Only update spatial grid if we have changed nodes
     if (changedNodes.size > 0) {
       updateSpatialGrid();
     }
 
-    // Clear previous visible nodes
-    res.visibleNodes.clear();
-
-    // Reset visible instance count
+    // Track current visible nodes for efficient updates
+    const newVisibleNodes = new Set<number>();
     let visibleCount = 0;
 
-    // Update only changed nodes that are visible
-    nodes.value.forEach((node: NodeInstance, index: number) => {
-      // Skip if node hasn't changed and was recently updated
-      if (!changedNodes.has(index) && 
-          node.lastUpdateFrame === res.frameCount - 1) return;
+    // First pass: Update changed nodes and their neighbors
+    const nodesToUpdate = new Set<number>();
+    changedNodes.forEach(index => {
+      nodesToUpdate.add(index);
+      // Add neighboring nodes that might be affected
+      links.value.forEach(link => {
+        const sourceIndex = nodes.value.findIndex(n => n.id === link.source);
+        const targetIndex = nodes.value.findIndex(n => n.id === link.target);
+        if (sourceIndex === index) nodesToUpdate.add(targetIndex);
+        if (targetIndex === index) nodesToUpdate.add(sourceIndex);
+      });
+    });
 
-      // Update visibility
-      node.visible = isNodeVisible(node, camera);
+    // Second pass: Process nodes that need updating
+    nodes.value.forEach((node: NodeInstance, index: number) => {
+      const needsUpdate = nodesToUpdate.has(index) || 
+                         node.lastUpdateFrame !== res.frameCount - 1;
+      
+      if (needsUpdate) {
+        // Update visibility
+        node.visible = isNodeVisible(node, camera);
+      }
+
       if (!node.visible) return;
 
       // Skip if we've hit max visible nodes
@@ -347,39 +362,46 @@ export function useForceGraph(scene: Scene) {
       const position = res.objectPool.vector3[poolIndex];
       const quaternion = res.objectPool.quaternion[poolIndex];
 
-      const size = getNodeSize(node);
-      const color = getNodeColor(node);
-      const emissiveIntensity = calculateEmissiveIntensity(node);
+      // Only recalculate these if the node needs updating
+      if (needsUpdate) {
+        const size = getNodeSize(node);
+        const color = getNodeColor(node);
+        const emissiveIntensity = calculateEmissiveIntensity(node);
 
-      // Update transform
-      position.set(node.x, node.y, node.z);
-      matrix.compose(
-        position,
-        quaternion,
-        tempScale.set(size, size, size)
-      );
+        // Update transform
+        position.set(node.x, node.y, node.z);
+        matrix.compose(
+          position,
+          quaternion,
+          tempScale.set(size, size, size)
+        );
 
-      // Update instances for each LOD level
-      Object.values(res.nodeInstancedMeshes).forEach(instancedMesh => {
-        instancedMesh.setMatrixAt(visibleCount, matrix);
-        instancedMesh.setColorAt(visibleCount, color);
-        (instancedMesh.material as THREE.MeshPhysicalMaterial).emissiveIntensity = emissiveIntensity;
-      });
+        // Update instances for each LOD level
+        Object.values(res.nodeInstancedMeshes).forEach(instancedMesh => {
+          instancedMesh.setMatrixAt(visibleCount, matrix);
+          instancedMesh.setColorAt(visibleCount, color);
+          (instancedMesh.material as THREE.MeshPhysicalMaterial).emissiveIntensity = emissiveIntensity;
+        });
+
+        node.lastUpdateFrame = res.frameCount;
+      }
 
       // Update tracking
       res.nodeInstances.set(node.id, visibleCount);
-      res.visibleNodes.add(index);
-      node.lastUpdateFrame = res.frameCount;
+      newVisibleNodes.add(index);
       visibleCount++;
     });
 
-    // Update instance meshes
-    Object.values(res.nodeInstancedMeshes).forEach(instancedMesh => {
-      instancedMesh.count = visibleCount;
-      instancedMesh.instanceMatrix.needsUpdate = true;
-      if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
-    });
+    // Update instance meshes only if we have changes
+    if (nodesToUpdate.size > 0) {
+      Object.values(res.nodeInstancedMeshes).forEach(instancedMesh => {
+        instancedMesh.count = visibleCount;
+        instancedMesh.instanceMatrix.needsUpdate = true;
+        if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
+      });
+    }
 
+    res.visibleNodes = newVisibleNodes;
     res.nodeInstanceCount = visibleCount;
     res.lastUpdateTime = now;
     res.frameCount++;
@@ -389,26 +411,31 @@ export function useForceGraph(scene: Scene) {
     const res = resources.value;
     if (!res) return;
 
-    // Skip if no nodes have changed
+    // Get changed nodes from binary update store
     const changedNodes = binaryUpdateStore.getChangedNodes;
     if (changedNodes.size === 0) return;
 
-    // Clear previous visible links
-    res.visibleLinks.clear();
-
+    // Track current visible links for efficient updates
+    const newVisibleLinks = new Set<string>();
     let visibleCount = 0;
 
-    // Update only links connected to changed nodes that are visible
-    links.value.forEach((link: LinkInstance, index: number) => {
+    // Create a map of affected links for efficient lookup
+    const affectedLinks = new Map<string, LinkInstance>();
+    links.value.forEach((link, index) => {
+      const sourceIndex = nodes.value.findIndex(n => n.id === link.source);
+      const targetIndex = nodes.value.findIndex(n => n.id === link.target);
+      
+      if (changedNodes.has(sourceIndex) || changedNodes.has(targetIndex)) {
+        affectedLinks.set(`${link.source}-${link.target}`, link);
+      }
+    });
+
+    // Only process affected links
+    affectedLinks.forEach((link, linkId) => {
       const sourceIndex = res.nodeInstances.get(link.source);
       const targetIndex = res.nodeInstances.get(link.target);
 
       if (sourceIndex === undefined || targetIndex === undefined) return;
-
-      // Skip if neither node has changed and link was recently updated
-      if (!changedNodes.has(sourceIndex) && 
-          !changedNodes.has(targetIndex) &&
-          link.lastUpdateFrame === res.frameCount - 1) return;
 
       // Skip if either node is not visible
       if (!res.visibleNodes.has(sourceIndex) || !res.visibleNodes.has(targetIndex)) return;
@@ -455,45 +482,89 @@ export function useForceGraph(scene: Scene) {
       res.linkInstancedMesh.setColorAt(visibleCount, res.objectPool.color[poolIndex]);
 
       // Update tracking
-      res.linkInstances.set(`${link.source}-${link.target}`, visibleCount);
-      res.visibleLinks.add(`${link.source}-${link.target}`);
+      res.linkInstances.set(linkId, visibleCount);
+      newVisibleLinks.add(linkId);
       link.lastUpdateFrame = res.frameCount;
       visibleCount++;
     });
 
-    // Update link instance mesh
-    res.linkInstancedMesh.count = visibleCount;
-    res.linkInstancedMesh.instanceMatrix.needsUpdate = true;
-    if (res.linkInstancedMesh.instanceColor) {
-      res.linkInstancedMesh.instanceColor.needsUpdate = true;
+    // Update link instance mesh only if we have changes
+    if (affectedLinks.size > 0) {
+      res.linkInstancedMesh.count = visibleCount;
+      res.linkInstancedMesh.instanceMatrix.needsUpdate = true;
+      if (res.linkInstancedMesh.instanceColor) {
+        res.linkInstancedMesh.instanceColor.needsUpdate = true;
+      }
     }
 
+    res.visibleLinks = newVisibleLinks;
     res.linkInstanceCount = visibleCount;
   };
 
   const updateGraph = (graphNodes: Node[], graphEdges: Edge[]) => {
-    // Convert graph data to internal format
-    nodes.value = graphNodes.map((node, index) => ({
-      id: node.id,
-      index,
-      x: node.position?.[0] || 0,
-      y: node.position?.[1] || 0,
-      z: node.position?.[2] || 0,
-      visible: true,
-      lastUpdateFrame: -1,
-      metadata: node.metadata
-    }));
+    const res = resources.value;
+    if (!res) return;
 
-    links.value = graphEdges.map(edge => ({
-      source: edge.source,
-      target: edge.target,
-      visible: true,
-      lastUpdateFrame: -1,
-      weight: edge.weight
-    }));
+    // Reuse existing arrays if possible
+    const newNodeCount = graphNodes.length;
+    const existingNodeCount = nodes.value.length;
+
+    if (newNodeCount <= existingNodeCount) {
+      // Update existing nodes
+      graphNodes.forEach((node, index) => {
+        const existingNode = nodes.value[index];
+        existingNode.id = node.id;
+        existingNode.x = node.position?.[0] || 0;
+        existingNode.y = node.position?.[1] || 0;
+        existingNode.z = node.position?.[2] || 0;
+        existingNode.metadata = node.metadata;
+        existingNode.lastUpdateFrame = -1;
+      });
+      // Truncate if new count is smaller
+      nodes.value.length = newNodeCount;
+    } else {
+      // Need to create new nodes for the additional ones
+      const newNodes = graphNodes.slice(existingNodeCount).map((node, index) => ({
+        id: node.id,
+        index: existingNodeCount + index,
+        x: node.position?.[0] || 0,
+        y: node.position?.[1] || 0,
+        z: node.position?.[2] || 0,
+        visible: true,
+        lastUpdateFrame: -1,
+        metadata: node.metadata
+      }));
+      nodes.value.push(...newNodes);
+    }
+
+    // Similar approach for links
+    const newLinkCount = graphEdges.length;
+    const existingLinkCount = links.value.length;
+
+    if (newLinkCount <= existingLinkCount) {
+      // Update existing links
+      graphEdges.forEach((edge, index) => {
+        const existingLink = links.value[index];
+        existingLink.source = edge.source;
+        existingLink.target = edge.target;
+        existingLink.weight = edge.weight;
+        existingLink.lastUpdateFrame = -1;
+      });
+      // Truncate if new count is smaller
+      links.value.length = newLinkCount;
+    } else {
+      // Need to create new links for the additional ones
+      const newLinks = graphEdges.slice(existingLinkCount).map(edge => ({
+        source: edge.source,
+        target: edge.target,
+        visible: true,
+        lastUpdateFrame: -1,
+        weight: edge.weight
+      }));
+      links.value.push(...newLinks);
+    }
 
     // Force full update
-    const res = resources.value;
     if (res) {
       res.frameCount++;
       res.lastUpdateTime = 0;
