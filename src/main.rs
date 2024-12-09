@@ -235,18 +235,22 @@ async fn main() -> std::io::Result<()> {
     let ragflow_conversation_id = ragflow_service.create_conversation("default_user".to_string()).await
         .map_err(AppError::from)?;
     
-    log_data!("Initializing GPU compute...");
-    let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
-        Ok(gpu) => {
-            log_data!("GPU initialization successful");
-            Some(gpu)
-        },
-        Err(e) => {
-            log_warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
-            None
-        }
-    };
+    // Temporarily disable GPU compute
+    log_data!("GPU compute temporarily disabled for testing");
+    let gpu_compute = None;
 
+    // 
+ //   log_data!("Initializing GPU compute...");
+  //  let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
+  //      Ok(gpu) => {
+   //         log_data!("GPU initialization successful");
+    //        Some(gpu)
+    //    },
+    //    Err(e) => {
+    //        log_warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
+    //        None
+    //    }
+   // };
     let app_state = web::Data::new(AppState::new(
         settings.clone(),
         github_service,

@@ -1,3 +1,19 @@
+// Add ForceNode interface for force simulation
+export interface ForceNode {
+    id: string;
+    x?: number;
+    y?: number;
+    z?: number;
+    vx?: number;
+    vy?: number;
+    vz?: number;
+    position?: [number, number, number];
+    velocity?: [number, number, number];
+    fx?: number | null;
+    fy?: number | null;
+    fz?: number | null;
+}
+
 // Message Types (matching server's ServerMessage enum)
 export type MessageType = 
   | 'graphUpdate'

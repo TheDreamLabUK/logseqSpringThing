@@ -22,6 +22,10 @@ extern "C" __global__ void compute_forces(
     __shared__ float3 shared_positions[256];
     __shared__ float shared_masses[256];
 
+    // Constants for clamping
+    const float MAX_FORCE = 1000.0f;
+    const float MAX_VELOCITY = 50.0f;
+
     for (int tile = 0; tile < (num_nodes + 256 - 1) / 256; tile++) {
         int shared_idx = tile * 256 + threadIdx.x;
         if (shared_idx < num_nodes) {
@@ -47,10 +51,19 @@ extern "C" __global__ void compute_forces(
             );
 
             float dist = fmaxf(sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z), 0.0001f);
-            float force_mag = repulsion * mass_i * mass_j / (dist * dist);
-            force.x += force_mag * diff.x / dist;
-            force.y += force_mag * diff.y / dist;
-            force.z += force_mag * diff.z / dist;
+            float force_mag = fminf(repulsion * mass_i * mass_j / (dist * dist), MAX_FORCE);
+            
+            // Normalize direction vector
+            float inv_dist = 1.0f / dist;
+            float3 dir = make_float3(
+                diff.x * inv_dist,
+                diff.y * inv_dist,
+                diff.z * inv_dist
+            );
+            
+            force.x += force_mag * dir.x;
+            force.y += force_mag * dir.y;
+            force.z += force_mag * dir.z;
         }
         __syncthreads();
     }
@@ -62,9 +75,10 @@ extern "C" __global__ void compute_forces(
         velocities[vel_idx + 2]
     );
 
-    vel.x = (vel.x + force.x) * damping;
-    vel.y = (vel.y + force.y) * damping;
-    vel.z = (vel.z + force.z) * damping;
+    // Apply damping and clamp velocities
+    vel.x = fminf(fmaxf((vel.x + force.x) * damping, -MAX_VELOCITY), MAX_VELOCITY);
+    vel.y = fminf(fmaxf((vel.y + force.y) * damping, -MAX_VELOCITY), MAX_VELOCITY);
+    vel.z = fminf(fmaxf((vel.z + force.z) * damping, -MAX_VELOCITY), MAX_VELOCITY);
 
     pos_i.x += vel.x;
     pos_i.y += vel.y;
