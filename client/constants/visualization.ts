@@ -1,5 +1,17 @@
 import * as THREE from 'three';
 
+// Position validation constants
+export const VALIDATION = {
+  MAX_POSITION: 1000,
+  MIN_POSITION: -1000,
+  MAX_VELOCITY: 50,
+  MIN_VELOCITY: -50,
+  POSITION_CHANGE_THRESHOLD: 0.01, // Minimum change to trigger update
+  EXPECTED_BINARY_SIZE: 24, // 6 floats * 4 bytes per float
+  UPDATE_INTERVAL: 16.67, // ~60fps in milliseconds
+  BATCH_SIZE: 100 // Number of updates to batch before sending
+};
+
 export const VISUALIZATION_CONSTANTS = {
   TRANSLATION_SPEED: 0.01,
   ROTATION_SPEED: 0.01,
@@ -10,7 +22,10 @@ export const VISUALIZATION_CONSTANTS = {
   NEAR_PLANE: 0.1,
   FAR_PLANE: 2000,
   DEFAULT_CAMERA_POSITION: [0, 75, 200] as [number, number, number],
-  DEFAULT_CAMERA_TARGET: [0, 0, 0] as [number, number, number]
+  DEFAULT_CAMERA_TARGET: [0, 0, 0] as [number, number, number],
+  TARGET_FRAMERATE: 60,
+  MIN_FRAME_TIME: 1000 / 60,  // 16.67ms for 60fps
+  POSITION_UPDATE_INTERVAL: 100  // Send position updates every 100ms
 };
 
 export const SCENE_SETTINGS = {
@@ -22,11 +37,12 @@ export const SCENE_SETTINGS = {
 
 export const FORCE_SETTINGS = {
   linkDistance: 0.3,
-  linkStrength: 1,
-  charge: -30,
-  alpha: 1,
-  alphaDecay: 0.02,
-  velocityDecay: 0.4
+  linkStrength: 0.8,    // Reduced from 1
+  charge: -20,          // Reduced from -30
+  alpha: 0.5,           // Reduced from 1
+  alphaDecay: 0.1,      // Increased from 0.02
+  velocityDecay: 0.7,   // Increased from 0.4
+  updateThrottle: 100   // Minimum ms between force updates
 };
 
 export const CAMERA_SETTINGS = {

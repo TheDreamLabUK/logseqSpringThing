@@ -75,12 +75,12 @@ impl SimulationParams {
     pub fn with_phase(phase: SimulationPhase) -> Self {
         match phase {
             SimulationPhase::Initial => Self {
-                iterations: 500,
+                iterations: 300,           // Reduced from 500
                 spring_length: 100.0,
-                spring_strength: 1.0,
-                repulsion: 200.0,
-                attraction: 2.0,
-                damping: 0.9,
+                spring_strength: 0.5,      // Reduced from 1.0
+                repulsion: 100.0,          // Reduced from 200.0
+                attraction: 1.0,           // Reduced from 2.0
+                damping: 0.95,            // Increased from 0.9
                 time_step: 0.016,
                 phase,
                 mode: SimulationMode::Remote,
