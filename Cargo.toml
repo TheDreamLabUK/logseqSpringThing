@@ -17,7 +17,7 @@ actix-tls = { version = "3.4", features = ["rustls"] }
 actix-rt = "2.9"
 
 # TLS Dependencies
-rustls = "0.23.17"
+rustls = "0.23.18"
 rustls-pemfile = "2.2"
 tokio-rustls = "0.24"
 rustls-native-certs = "0.8"
@@ -48,7 +48,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # Environment Configuration
 envy = "0.4"
 config = { version = "0.14", features = ["toml"] }
-dotenv = "0.15"  # Added for .env file loading
+dotenvy = "0.15"  # Replaced dotenv with dotenvy
 
 # Regular Expressions
 regex = "1.11"
@@ -86,7 +86,7 @@ tungstenite = { version = "0.24", features = ["rustls"], default-features = fals
 rodio = "0.20"
 
 # URL Parsing
-url = "2.5"
+url = "2.5.0"  # Pinned to a specific version to avoid yanked versions
 
 # Base64 Encoding/Decoding
 base64 = "0.22"

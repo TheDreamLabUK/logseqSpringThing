@@ -10,6 +10,7 @@ use crate::services::speech_service::SpeechService;
 use crate::services::graph_service::GraphService;
 use crate::services::github_service::RealGitHubPRService;
 use crate::utils::gpu_compute::GPUCompute;
+use crate::models::metadata::Metadata;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -18,9 +19,9 @@ pub struct AppState {
     pub perplexity_service: Arc<PerplexityService>,
     pub ragflow_service: Arc<RAGFlowService>,
     pub speech_service: Arc<RwLock<Option<Arc<SpeechService>>>>,
-    pub gpu_compute: Option<GPUCompute>,
+    pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     pub graph_service: GraphService,
-    pub metadata: Arc<RwLock<HashMap<String, String>>>,
+    pub metadata: Arc<RwLock<HashMap<String, Metadata>>>,
     pub ragflow_conversation_id: String,
     pub github_pr_service: Arc<RealGitHubPRService>,
 }
@@ -32,7 +33,7 @@ impl AppState {
         perplexity_service: Arc<PerplexityService>,
         ragflow_service: Arc<RAGFlowService>,
         speech_service: Option<Arc<SpeechService>>,
-        gpu_compute: Option<GPUCompute>,
+        gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_conversation_id: String,
         github_pr_service: Arc<RealGitHubPRService>,
     ) -> Self {

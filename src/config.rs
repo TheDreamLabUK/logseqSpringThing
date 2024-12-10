@@ -14,8 +14,7 @@ pub struct Settings {
     pub default: DefaultSettings,
     pub visualization: VisualizationSettings,
     pub bloom: BloomSettings,
-    pub fisheye: FisheyeSettings,
-    pub websocket: WebSocketSettings,  // Added WebSocket settings
+    pub websocket: WebSocketSettings,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -284,14 +283,4 @@ pub struct BloomSettings {
     pub environment_bloom_strength: f32,
     pub environment_bloom_radius: f32,
     pub environment_bloom_threshold: f32,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct FisheyeSettings {
-    pub enabled: bool,
-    pub strength: f32,
-    pub radius: f32,
-    pub focus_x: f32,
-    pub focus_y: f32,
-    pub focus_z: f32,
 }

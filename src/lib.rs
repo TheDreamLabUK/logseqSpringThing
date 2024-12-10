@@ -7,7 +7,6 @@ pub mod utils;
 
 pub use app_state::AppState;
 pub use config::Settings;
-pub use handlers::websocket_handlers::WebSocketSession;
 pub use models::edge::Edge;
 pub use models::graph::GraphData;
 pub use models::metadata::{Metadata, MetadataStore};
@@ -20,4 +19,4 @@ pub use services::graph_service::GraphService;
 pub use services::perplexity_service::PerplexityService;
 pub use services::ragflow_service::RAGFlowService;
 pub use services::speech_service::SpeechService;
-pub use utils::websocket_manager::WebSocketManager;
+pub use utils::socket_flow_handler::SocketFlowServer;
