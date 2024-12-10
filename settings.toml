@@ -1,41 +1,53 @@
 # Debug settings
 [server_debug]
 enabled = true                     # Master switch for server debug logging
-enable_websocket_debug = false      # Enable detailed websocket debugging
+enable_websocket_debug = false     # Enable detailed websocket debugging
 enable_data_debug = false          # Enable data exchange debugging
 log_binary_headers = false         # Log binary message headers
-log_full_json = true             # Log complete JSON payloads
+log_full_json = false             # Log complete JSON payloads
 
 [client_debug]
-enabled = true                     # Master switch for client debug logging
-enable_websocket_debug = false      # Enable detailed websocket debugging
+enabled = false                    # Master switch for client debug logging
+enable_websocket_debug = false     # Enable detailed websocket debugging
 enable_data_debug = false          # Enable data exchange debugging
 log_binary_headers = false         # Log binary message headers
-log_full_json = true             # Log complete JSON payloads
+log_full_json = false             # Log complete JSON payloads
 
 [network]
-domain = "localhost"  # Production domain is in dotenv
-port = 3000          # Port for Rust backend (nginx proxies from 4000 to this)
-bind_address = "0.0.0.0"  # bind to all interfaces for docker
-enable_tls = false    # TLS is handled by Cloudflare tunnel
-min_tls_version = ""  # Not needed since TLS is handled by Cloudflare
-enable_http2 = false  # HTTP/2 is handled by Cloudflare
-max_request_size = 10485760  # 10MB in bytes
+domain = "localhost"               # Production domain is in dotenv
+port = 3000                       # Port for backend server
+bind_address = "0.0.0.0"          # bind to all interfaces for docker
+enable_tls = false                # TLS is handled by Cloudflare tunnel
+min_tls_version = ""              # Not needed since TLS is handled by Cloudflare
+enable_http2 = false              # HTTP/2 is handled by Cloudflare
+max_request_size = 10485760       # 10MB in bytes
 enable_rate_limiting = true
 rate_limit_requests = 100
 rate_limit_window = 60
-tunnel_id = "dummy"  # Cloudflare tunnel ID handled in dotenv
+tunnel_id = "dummy"               # Cloudflare tunnel ID handled in dotenv
+
+[websocket]
+compression_enabled = true         # Enable WebSocket compression
+compression_threshold = 1024       # Compress messages larger than 1KB
+max_message_size = 100485760      # Maximum WebSocket message size (100MB)
+update_rate = 5                   # Update rate in FPS (5fps)
+heartbeat_interval = 15000        # Heartbeat interval in milliseconds
+heartbeat_timeout = 60000         # Heartbeat timeout in milliseconds
+max_connections = 1000            # Maximum concurrent WebSocket connections
+reconnect_attempts = 3            # Number of reconnection attempts
+reconnect_delay = 5000           # Delay between reconnection attempts (ms)
+binary_chunk_size = 65536        # Size of binary message chunks (64KB)
 
 [security]
 enable_cors = false
 allowed_origins = []
-enable_csrf = false  # CSRF is handled by Cloudflare
+enable_csrf = false               # CSRF is handled by Cloudflare
 csrf_token_timeout = 3600
 session_timeout = 3600
 cookie_secure = true
 cookie_httponly = true
 cookie_samesite = "Strict"
-enable_security_headers = false  # Security headers are handled by Cloudflare
+enable_security_headers = false    # Security headers are handled by Cloudflare
 enable_request_validation = true
 enable_audit_logging = true
 audit_log_path = "/app/logs/audit.log"
@@ -78,11 +90,11 @@ max_concurrent_requests = 5
 max_retries = 3
 retry_delay = 5
 api_client_timeout = 30
-max_payload_size = 5242880  # 5MB in bytes
-enable_request_logging = true  # Enable request logging for debugging
+max_payload_size = 5242880       # 5MB in bytes
+enable_request_logging = true     # Enable request logging for debugging
 enable_metrics = true
 metrics_port = 9090
-log_level = "debug"         # Changed to debug for more verbose logging
+log_level = "debug"              # Changed to debug for more verbose logging
 log_format = "json"
 
 [visualization]

@@ -15,7 +15,44 @@ pub struct Settings {
     pub visualization: VisualizationSettings,
     pub bloom: BloomSettings,
     pub fisheye: FisheyeSettings,
+    pub websocket: WebSocketSettings,  // Added WebSocket settings
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WebSocketSettings {
+    #[serde(default = "default_compression_enabled")]
+    pub compression_enabled: bool,
+    #[serde(default = "default_compression_threshold")]
+    pub compression_threshold: usize,
+    #[serde(default = "default_max_message_size")]
+    pub max_message_size: usize,
+    #[serde(default = "default_update_rate")]
+    pub update_rate: u32,
+    #[serde(default = "default_heartbeat_interval")]
+    pub heartbeat_interval: u64,
+    #[serde(default = "default_heartbeat_timeout")]
+    pub heartbeat_timeout: u64,
+    #[serde(default = "default_max_connections")]
+    pub max_connections: usize,
+    #[serde(default = "default_reconnect_attempts")]
+    pub reconnect_attempts: u32,
+    #[serde(default = "default_reconnect_delay")]
+    pub reconnect_delay: u64,
+    #[serde(default = "default_binary_chunk_size")]
+    pub binary_chunk_size: usize,
+}
+
+// Default functions for WebSocket settings
+fn default_compression_enabled() -> bool { true }
+fn default_compression_threshold() -> usize { 1024 }  // 1KB
+fn default_max_message_size() -> usize { 100 * 1024 * 1024 }  // 100MB
+fn default_update_rate() -> u32 { 5 }  // 5fps
+fn default_heartbeat_interval() -> u64 { 15000 }  // 15 seconds
+fn default_heartbeat_timeout() -> u64 { 60000 }  // 60 seconds
+fn default_max_connections() -> usize { 1000 }
+fn default_reconnect_attempts() -> u32 { 3 }
+fn default_reconnect_delay() -> u64 { 5000 }  // 5 seconds
+fn default_binary_chunk_size() -> usize { 64 * 1024 }  // 64KB
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DebugSettings {
