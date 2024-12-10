@@ -15,7 +15,7 @@ impl AudioProcessor {
     }
 
     pub async fn process_json_response(&self, response_data: &[u8]) -> Result<(String, Vec<u8>), String> {
-        let settings = self.settings.read().await;
+        let _settings = self.settings.read().await;
         
         // Parse the JSON response
         let json_response: Value = serde_json::from_slice(response_data)

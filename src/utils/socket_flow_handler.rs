@@ -7,9 +7,9 @@ use log::{error, info, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::utils::websocket_messages::{ServerMessage, UpdatePositionsMessage};
+use crate::utils::socket_flow_messages::{ServerMessage, UpdatePositionsMessage};
 use crate::models::position_update::NodePositionVelocity;
-use crate::utils::websocket_manager::NODE_SIZE;
+use crate::utils::socket_flow_constants::{NODE_SIZE, BINARY_CHUNK_SIZE};
 use crate::AppState;
 
 pub struct SocketFlowServer {
@@ -76,13 +76,11 @@ impl SocketFlowServer {
                                                 vz: 0.0,
                                             }).collect();
 
-                                            let settings = self.app_state.settings.read().await;
-                                            let chunk_size = settings.websocket.binary_chunk_size;
-                                            let nodes_per_chunk = chunk_size / NODE_SIZE;
+                                            let nodes_per_chunk = BINARY_CHUNK_SIZE / NODE_SIZE as usize;
 
                                             for writer in clients.values_mut() {
                                                 for chunk in nodes.chunks(nodes_per_chunk) {
-                                                    let mut binary_data = Vec::with_capacity(chunk.len() * NODE_SIZE);
+                                                    let mut binary_data = Vec::with_capacity(chunk.len() * NODE_SIZE as usize);
                                                     for node in chunk {
                                                         binary_data.extend_from_slice(bytemuck::bytes_of(node));
                                                     }
@@ -117,15 +115,13 @@ impl SocketFlowServer {
                             }
                         }
                         Message::Binary(data) => {
-                            if data.len() % NODE_SIZE != 0 {
+                            if data.len() % NODE_SIZE as usize != 0 {
                                 error!("Invalid binary data length");
                                 continue;
                             }
 
                             // Process binary update and broadcast to other clients
-                            let settings = self.app_state.settings.read().await;
-                            let chunk_size = settings.websocket.binary_chunk_size;
-                            let nodes_per_chunk = chunk_size / NODE_SIZE;
+                            let nodes_per_chunk = BINARY_CHUNK_SIZE / NODE_SIZE as usize;
 
                             let graph = self.app_state.graph_service.graph_data.read().await;
                             let nodes: Vec<NodePositionVelocity> = graph.nodes.iter().map(|node| NodePositionVelocity {
@@ -139,7 +135,7 @@ impl SocketFlowServer {
 
                             for writer in clients.values_mut() {
                                 for chunk in nodes.chunks(nodes_per_chunk) {
-                                    let mut binary_data = Vec::with_capacity(chunk.len() * NODE_SIZE);
+                                    let mut binary_data = Vec::with_capacity(chunk.len() * NODE_SIZE as usize);
                                     for node in chunk {
                                         binary_data.extend_from_slice(bytemuck::bytes_of(node));
                                     }

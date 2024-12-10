@@ -10,21 +10,12 @@ use log::{info, error, debug};
 use futures::{SinkExt, StreamExt};
 use std::error::Error;
 use std::fmt;
-use crate::utils::websocket_manager::WebSocketManager;
-use crate::utils::websocket_messages::{ServerMessage};
 use tokio::net::TcpStream;
 use url::Url;
-use actix_web::{web, Error as ActixError, HttpRequest, HttpResponse};
-use actix_web_actors::ws;
-use std::time::{Duration, Instant};
-use actix::{StreamHandler, AsyncContext, Actor};
 use std::process::{Command, Stdio};
 use std::io::Write;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
-const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
 pub enum SpeechError {
@@ -101,19 +92,17 @@ enum SpeechCommand {
 
 pub struct SpeechService {
     sender: Arc<Mutex<mpsc::Sender<SpeechCommand>>>,
-    websocket_manager: Arc<WebSocketManager>,
     settings: Arc<RwLock<Settings>>,
     tts_provider: Arc<RwLock<TTSProvider>>,
 }
 
 impl SpeechService {
-    pub fn new(websocket_manager: Arc<WebSocketManager>, settings: Arc<RwLock<Settings>>) -> Self {
+    pub fn new(settings: Arc<RwLock<Settings>>) -> Self {
         let (tx, rx) = mpsc::channel(100);
         let sender = Arc::new(Mutex::new(tx));
 
         let service = SpeechService {
             sender,
-            websocket_manager,
             settings,
             tts_provider: Arc::new(RwLock::new(TTSProvider::Sonata)),
         };
@@ -123,7 +112,6 @@ impl SpeechService {
     }
 
     fn start(&self, mut receiver: mpsc::Receiver<SpeechCommand>) {
-        let websocket_manager = Arc::clone(&self.websocket_manager);
         let settings = Arc::clone(&self.settings);
         let tts_provider = Arc::clone(&self.tts_provider);
 
@@ -239,15 +227,8 @@ impl SpeechService {
                                                                     if let Some(audio_data) = item["audio"].as_str() {
                                                                         match BASE64.decode(audio_data) {
                                                                             Ok(audio_bytes) => {
-                                                                                let audio_message = ServerMessage::AudioData {
-                                                                                    audio_data: BASE64.encode(&audio_bytes),
-                                                                                };
-                                                                                
-                                                                                if let Ok(msg_str) = serde_json::to_string(&audio_message) {
-                                                                                    if let Err(e) = websocket_manager.broadcast_message(msg_str).await {
-                                                                                        error!("Failed to broadcast message: {}", e);
-                                                                                    }
-                                                                                }
+                                                                                // Note: Audio data will be handled by socket-flow server
+                                                                                debug!("Received audio data of size: {}", audio_bytes.len());
                                                                             },
                                                                             Err(e) => error!("Failed to decode audio data: {}", e),
                                                                         }
@@ -300,15 +281,8 @@ impl SpeechService {
                                 match child.wait_with_output() {
                                     Ok(output) => {
                                         if output.status.success() {
-                                            let audio_message = ServerMessage::AudioData {
-                                                audio_data: BASE64.encode(&output.stdout),
-                                            };
-                                            
-                                            if let Ok(msg_str) = serde_json::to_string(&audio_message) {
-                                                if let Err(e) = websocket_manager.broadcast_message(msg_str).await {
-                                                    error!("Failed to broadcast message: {}", e);
-                                                }
-                                            }
+                                            // Note: Audio data will be handled by socket-flow server
+                                            debug!("Generated audio data of size: {}", output.stdout.len());
                                         } else {
                                             error!("Sonata TTS failed: {}", String::from_utf8_lossy(&output.stderr));
                                         }
@@ -364,100 +338,4 @@ impl SpeechService {
         self.sender.lock().await.send(command).await.map_err(|e| Box::new(SpeechError::from(e)))?;
         Ok(())
     }
-}
-
-pub struct SpeechWs {
-    hb: Instant,
-    websocket_manager: Arc<WebSocketManager>,
-    settings: Arc<RwLock<Settings>>,
-}
-
-impl SpeechWs {
-    pub fn new(websocket_manager: Arc<WebSocketManager>, settings: Arc<RwLock<Settings>>) -> Self {
-        Self {
-            hb: Instant::now(),
-            websocket_manager,
-            settings,
-        }
-    }
-
-    fn hb(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        ctx.run_later(Duration::from_secs(0), |act, ctx| {
-            act.check_heartbeat(ctx);
-            ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
-                act.check_heartbeat(ctx);
-            });
-        });
-    }
-
-    fn check_heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        if Instant::now().duration_since(self.hb) > CLIENT_TIMEOUT {
-            info!("Websocket Client heartbeat failed, disconnecting!");
-            ctx.close(None);
-            return;
-        }
-        ctx.ping(b"");
-    }
-}
-
-impl Actor for SpeechWs {
-    type Context = ws::WebsocketContext<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        self.hb(ctx);
-    }
-}
-
-impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpeechWs {
-    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
-        match msg {
-            Ok(ws::Message::Ping(msg)) => {
-                self.hb = Instant::now();
-                ctx.pong(&msg);
-            }
-            Ok(ws::Message::Pong(_)) => {
-                self.hb = Instant::now();
-            }
-            Ok(ws::Message::Text(text)) => {
-                debug!("Received text message: {}", text);
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                    if let (Some(message), Some(use_openai)) = (json["message"].as_str(), json["useOpenAI"].as_bool()) {
-                        let speech_service = SpeechService::new(
-                            Arc::clone(&self.websocket_manager),
-                            Arc::clone(&self.settings)
-                        );
-                        let message = message.to_string();
-                        actix::spawn(async move {
-                            if let Err(e) = speech_service.set_tts_provider(use_openai).await {
-                                error!("Failed to set TTS provider: {}", e);
-                            }
-                            if let Err(e) = speech_service.send_message(message).await {
-                                error!("Failed to send message: {}", e);
-                            }
-                        });
-                    }
-                }
-            }
-            Ok(ws::Message::Binary(bin)) => {
-                debug!("Received binary message of {} bytes", bin.len());
-                ctx.binary(bin);
-            }
-            Ok(ws::Message::Close(reason)) => {
-                info!("Closing websocket connection: {:?}", reason);
-                ctx.close(reason);
-                return;
-            }
-            _ => (),
-        }
-    }
-}
-
-pub async fn start_websocket(
-    req: HttpRequest,
-    stream: web::Payload,
-    websocket_manager: web::Data<Arc<WebSocketManager>>,
-    settings: web::Data<Arc<RwLock<Settings>>>,
-) -> Result<HttpResponse, ActixError> {
-    let ws = SpeechWs::new(Arc::clone(&websocket_manager), Arc::clone(&settings));
-    ws::start(ws, &req, stream)
 }

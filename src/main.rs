@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
 use tokio::time::{interval, Duration};
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use std::error::Error;
 use cudarc::driver::DriverError;
 use log::{error, warn, debug};
@@ -22,13 +22,11 @@ use crate::models::graph::GraphData;
 use crate::services::file_service::{RealGitHubService, FileService};
 use crate::services::perplexity_service::PerplexityService;
 use crate::services::ragflow_service::{RAGFlowService, RAGFlowError};
-use crate::services::speech_service::SpeechService;
 use crate::services::graph_service::GraphService;
 use crate::services::github_service::RealGitHubPRService;
 use crate::utils::socket_flow_handler::SocketFlowServer;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::utils::debug_logging::init_debug_settings;
-use crate::utils::websocket_manager::WebSocketManager;
 
 mod app_state;
 mod config;
@@ -156,17 +154,6 @@ async fn health_check() -> HttpResponse {
     HttpResponse::Ok().finish()
 }
 
-async fn test_speech_service(app_state: web::Data<AppState>) -> HttpResponse {
-    if let Some(speech_service) = app_state.get_speech_service().await {
-        match speech_service.send_message("Hello, OpenAI!".to_string()).await {
-            Ok(_) => HttpResponse::Ok().body("Message sent successfully"),
-            Err(e) => HttpResponse::InternalServerError().body(format!("Error: {}", e)),
-        }
-    } else {
-        HttpResponse::ServiceUnavailable().body("Speech service not initialized")
-    }
-}
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
@@ -258,17 +245,9 @@ async fn main() -> std::io::Result<()> {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize graph: {}", e)));
     }
 
-    // Create WebSocketManager before SpeechService
-    let websocket_manager = Arc::new(WebSocketManager::new(
-        websocket_debug, // From settings
-        app_state.clone()
-    ));
-    let speech_service = Arc::new(SpeechService::new(websocket_manager.clone(), settings.clone()));
-    app_state.set_speech_service(speech_service).await;
-
     // Initialize socket-flow server
     log_data!("Initializing socket-flow server...");
-    let socket_flow = SocketFlowServer::new(app_state.as_ref().clone());
+    let socket_flow = SocketFlowServer::new(Arc::new(app_state.as_ref().clone()));
     let socket_flow_handle = tokio::spawn(async move {
         if let Err(e) = socket_flow.start(3000).await {
             error!("Socket-flow server error: {}", e);
@@ -310,7 +289,6 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api/perplexity")
                     .service(perplexity_handler::handle_perplexity)
             )
-            .route("/test_speech", web::get().to(test_speech_service))
             .service(
                 Files::new("/", "/app/data/public/dist").index_file("index.html")
             )

@@ -58,29 +58,11 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
 
                     // Send binary position update to clients
                     if let Some(gpu) = &state.gpu_compute {
-                        let gpu = gpu.clone();
-                        let gpu_write = gpu.write().await;
-                        match gpu_write.get_node_positions() {
-                            Ok(nodes) => {
-                                if let Some(ws_manager) = state.get_websocket_manager().await {
-                                    if let Err(e) = ws_manager.broadcast_binary(&nodes, true).await {
-                                        error!("Failed to broadcast binary update: {}", e);
-                                    }
-                                }
-                            },
-                            Err(e) => error!("Failed to get node positions: {}", e)
-                        }
-                    }
-
-                    // Send metadata update separately as JSON
-                    let metadata_msg = json!({
-                        "type": "metadata_update",
-                        "metadata": graph_data.metadata
-                    });
-
-                    if let Some(ws_manager) = state.get_websocket_manager().await {
-                        if let Err(e) = ws_manager.broadcast_message(metadata_msg.to_string()).await {
-                            error!("Failed to broadcast metadata update: {}", e);
+                        if let Ok(_nodes) = gpu.read().await.get_node_positions() {
+                            // Note: Socket-flow server will handle broadcasting
+                            debug!("GPU node positions updated successfully");
+                        } else {
+                            error!("Failed to get node positions from GPU");
                         }
                     }
 
@@ -147,29 +129,11 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
 
             // Send binary position update to clients
             if let Some(gpu) = &state.gpu_compute {
-                let gpu = gpu.clone();
-                let gpu_write = gpu.write().await;
-                match gpu_write.get_node_positions() {
-                    Ok(nodes) => {
-                        if let Some(ws_manager) = state.get_websocket_manager().await {
-                            if let Err(e) = ws_manager.broadcast_binary(&nodes, true).await {
-                                error!("Failed to broadcast binary update: {}", e);
-                            }
-                        }
-                    },
-                    Err(e) => error!("Failed to get node positions: {}", e)
-                }
-            }
-
-            // Send metadata update separately as JSON
-            let metadata_msg = json!({
-                "type": "metadata_update",
-                "metadata": graph_data.metadata
-            });
-
-            if let Some(ws_manager) = state.get_websocket_manager().await {
-                if let Err(e) = ws_manager.broadcast_message(metadata_msg.to_string()).await {
-                    error!("Failed to broadcast metadata update: {}", e);
+                if let Ok(_nodes) = gpu.read().await.get_node_positions() {
+                    // Note: Socket-flow server will handle broadcasting
+                    debug!("GPU node positions updated successfully");
+                } else {
+                    error!("Failed to get node positions from GPU");
                 }
             }
 
@@ -209,29 +173,11 @@ pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, Ac
             
             // Send binary position update to clients
             if let Some(gpu) = &state.gpu_compute {
-                let gpu = gpu.clone();
-                let gpu_write = gpu.write().await;
-                match gpu_write.get_node_positions() {
-                    Ok(nodes) => {
-                        if let Some(ws_manager) = state.get_websocket_manager().await {
-                            if let Err(e) = ws_manager.broadcast_binary(&nodes, true).await {
-                                error!("Failed to broadcast binary update: {}", e);
-                            }
-                        }
-                    },
-                    Err(e) => error!("Failed to get node positions: {}", e)
-                }
-            }
-
-            // Send metadata update separately as JSON
-            let metadata_msg = json!({
-                "type": "metadata_update",
-                "metadata": graph.metadata
-            });
-
-            if let Some(ws_manager) = state.get_websocket_manager().await {
-                if let Err(e) = ws_manager.broadcast_message(metadata_msg.to_string()).await {
-                    error!("Failed to broadcast metadata update: {}", e);
+                if let Ok(_nodes) = gpu.read().await.get_node_positions() {
+                    // Note: Socket-flow server will handle broadcasting
+                    debug!("GPU node positions updated successfully");
+                } else {
+                    error!("Failed to get node positions from GPU");
                 }
             }
             

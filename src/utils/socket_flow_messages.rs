@@ -1,7 +1,6 @@
-use actix::prelude::*;
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
-use crate::models::graph::GraphData;  // Import the proper GraphData struct
+use crate::models::graph::GraphData;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -9,7 +8,7 @@ use crate::models::graph::GraphData;  // Import the proper GraphData struct
 pub enum ServerMessage {
     GraphUpdate {
         #[serde(rename = "graphData")]
-        graph_data: GraphData,  // Use actual GraphData instead of Value
+        graph_data: GraphData,
     },
     Error {
         message: String,
@@ -26,15 +25,9 @@ pub enum ServerMessage {
         mode: String,
         gpu_enabled: bool,
     },
-    FisheyeSettingsUpdated {
-        enabled: bool,
-        strength: f32,
-        focus_point: [f32; 3],
-        radius: f32,
-    },
     InitialData {
         #[serde(rename = "graphData")]
-        graph_data: GraphData,  // Use actual GraphData here too
+        graph_data: GraphData,
         settings: Value,
     },
     GpuState {
@@ -130,36 +123,9 @@ pub struct UpdatePositionsMessage {
     pub nodes: Vec<NodePosition>,
 }
 
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct BroadcastGraph {
-    pub graph: GraphData,
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientMessage {
+    pub message_type: String,
+    pub data: Value,
 }
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct BroadcastError {
-    pub message: String,
-}
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct OpenAIMessage(pub String);
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct OpenAIConnected;
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct OpenAIConnectionFailed;
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct SendText(pub String);
-
-#[derive(Message)]
-#[rtype(result = "()")]
-pub struct SendBinary(pub Vec<u8>);
-
-pub trait MessageHandler {}
