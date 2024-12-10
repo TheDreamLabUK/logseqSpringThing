@@ -24,7 +24,7 @@ use crate::services::perplexity_service::PerplexityService;
 use crate::services::ragflow_service::{RAGFlowService, RAGFlowError};
 use crate::services::graph_service::GraphService;
 use crate::services::github_service::RealGitHubPRService;
-use crate::utils::socket_flow_handler::SocketFlowServer;
+use crate::utils::socket_flow_handler::ws_handler;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::utils::debug_logging::init_debug_settings;
 
@@ -245,15 +245,6 @@ async fn main() -> std::io::Result<()> {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize graph: {}", e)));
     }
 
-    // Initialize socket-flow server
-    log_data!("Initializing socket-flow server...");
-    let socket_flow = SocketFlowServer::new(Arc::new(app_state.as_ref().clone()));
-    let socket_flow_handle = tokio::spawn(async move {
-        if let Err(e) = socket_flow.start(3000).await {
-            error!("Socket-flow server error: {}", e);
-        }
-    });
-
     let update_state = app_state.clone();
     let update_handle = tokio::spawn(async move {
         update_graph_periodically(update_state).await;
@@ -267,6 +258,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state.clone())
             .wrap(middleware::Logger::default())
             .route("/health", web::get().to(health_check))
+            .route("/ws", web::get().to(ws_handler))  // WebSocket handler
             .service(
                 web::scope("/api/files")
                     .route("/fetch", web::get().to(file_handler::fetch_and_process_files))
@@ -300,9 +292,6 @@ async fn main() -> std::io::Result<()> {
     tokio::select! {
         _ = server => {
             log_data!("HTTP server stopped");
-        }
-        _ = socket_flow_handle => {
-            log_data!("Socket-flow server stopped");
         }
         _ = update_handle => {
             log_data!("Update task stopped");
