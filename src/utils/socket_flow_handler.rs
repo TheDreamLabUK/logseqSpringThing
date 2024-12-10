@@ -1,4 +1,4 @@
-use actix::{Actor, ActorContext, AsyncContext, StreamHandler, WrapFuture};
+use actix::{Actor, ActorContext, AsyncContext, StreamHandler, WrapFuture, ActorFutureExt};
 use actix_web_actors::ws;
 use log::{error, info, warn};
 use std::sync::Arc;
@@ -31,11 +31,12 @@ impl Actor for SocketFlowServer {
             serde_json::to_string(&initial_data)
         };
 
-        ctx.spawn(Box::pin(async move {
-            if let Ok(message) = fut.await.unwrap_or_default() {
+        let fut = fut.into_actor(self).map(|res, _actor, ctx| {
+            if let Ok(message) = res {
                 ctx.text(message);
             }
-        }.into_actor(self)));
+        });
+        ctx.spawn(fut);
     }
 }
 
@@ -77,10 +78,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     binary_data
                                 };
 
-                                ctx.spawn(Box::pin(async move {
-                                    let binary_data = fut.await;
+                                let fut = fut.into_actor(self).map(|binary_data, _actor, ctx| {
                                     ctx.binary(binary_data);
-                                }.into_actor(self)));
+                                });
+                                ctx.spawn(fut);
                             }
                         }
                         Some("simulation_mode") => {
@@ -127,10 +128,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                     binary_data
                 };
 
-                ctx.spawn(Box::pin(async move {
-                    let binary_data = fut.await;
+                let fut = fut.into_actor(self).map(|binary_data, _actor, ctx| {
                     ctx.binary(binary_data);
-                }.into_actor(self)));
+                });
+                ctx.spawn(fut);
             }
             Ok(ws::Message::Close(reason)) => {
                 info!("Client disconnected: {:?}", reason);
