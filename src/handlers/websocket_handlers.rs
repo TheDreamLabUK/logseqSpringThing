@@ -21,7 +21,8 @@ use crate::utils::websocket_messages::{
 use crate::utils::websocket_openai::OpenAIWebSocket;
 
 pub const OPENAI_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-pub const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(16);
+// Changed from 16ms (60fps) to 200ms (5fps) to match client rate limiting
+pub const GPU_UPDATE_INTERVAL: Duration = Duration::from_millis(200);
 
 // Constants for binary protocol
 const NODE_SIZE: usize = 6 * std::mem::size_of::<f32>(); // x, y, z, vx, vy, vz

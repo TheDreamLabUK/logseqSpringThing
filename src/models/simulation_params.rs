@@ -52,7 +52,7 @@ pub struct SimulationParams {
     pub repulsion: f32,           // Range: 1-1000, Default: 100
     pub attraction: f32,          // Range: 0.1-10, Default: 1.0
     pub damping: f32,             // Range: 0-1, Default: 0.5
-    pub time_step: f32,           // Range: 0.01-1, Default: 0.016 (60fps)
+    pub time_step: f32,           // Range: 0.01-1, Default: 0.2 (5fps)
     pub phase: SimulationPhase,   // Current simulation phase
     pub mode: SimulationMode,     // Computation mode
 }
@@ -66,7 +66,7 @@ impl SimulationParams {
             repulsion: 100.0,
             attraction: 1.0,
             damping: 0.5,
-            time_step: 0.016,
+            time_step: 0.2,        // Updated to 5fps
             phase: SimulationPhase::Initial,
             mode: SimulationMode::Remote,
         }
@@ -81,7 +81,7 @@ impl SimulationParams {
                 repulsion: 100.0,          // Reduced from 200.0
                 attraction: 1.0,           // Reduced from 2.0
                 damping: 0.95,            // Increased from 0.9
-                time_step: 0.016,
+                time_step: 0.2,           // Updated to 5fps
                 phase,
                 mode: SimulationMode::Remote,
             },
@@ -92,7 +92,7 @@ impl SimulationParams {
                 repulsion: 100.0,
                 attraction: 1.0,
                 damping: 0.5,
-                time_step: 0.016,
+                time_step: 0.2,           // Updated to 5fps
                 phase,
                 mode: SimulationMode::Remote,
             },
@@ -103,7 +103,7 @@ impl SimulationParams {
                 repulsion: 50.0,
                 attraction: 0.5,
                 damping: 0.95,
-                time_step: 0.016,
+                time_step: 0.2,           // Updated to 5fps
                 phase,
                 mode: SimulationMode::Remote,
             },

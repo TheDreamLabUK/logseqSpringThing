@@ -1,5 +1,5 @@
 use actix_files::Files;
-use actix_web::{web, App, HttpServer, middleware, HttpResponse, HttpRequest};
+use actix_web::{web, App, HttpServer, middleware, HttpResponse};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
@@ -25,9 +25,10 @@ use crate::services::ragflow_service::{RAGFlowService, RAGFlowError};
 use crate::services::speech_service::SpeechService;
 use crate::services::graph_service::GraphService;
 use crate::services::github_service::RealGitHubPRService;
-use crate::utils::websocket_manager::WebSocketManager;
+use crate::utils::socket_flow_handler::SocketFlowServer;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::utils::debug_logging::init_debug_settings;
+use crate::utils::websocket_manager::WebSocketManager;
 
 mod app_state;
 mod config;
@@ -143,13 +144,6 @@ async fn update_graph_periodically(app_state: web::Data<AppState>) {
                             }
                         }
                         *graph = new_graph.clone();
-                        drop(graph);
-
-                        if let Some(ws_manager) = app_state.get_websocket_manager().await {
-                            if let Err(e) = ws_manager.broadcast_graph_update(&new_graph).await {
-                                log_error!("Failed to broadcast graph update: {}", e);
-                            }
-                        }
                     }
                 }
             },
@@ -234,7 +228,6 @@ async fn main() -> std::io::Result<()> {
     log_data!("Creating RAGFlow conversation...");
     let ragflow_conversation_id = ragflow_service.create_conversation("default_user".to_string()).await
         .map_err(AppError::from)?;
-    
 
     log_data!("Initializing GPU compute...");
     let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
@@ -247,6 +240,7 @@ async fn main() -> std::io::Result<()> {
             None
         }
     };
+
     let app_state = web::Data::new(AppState::new(
         settings.clone(),
         github_service,
@@ -264,32 +258,34 @@ async fn main() -> std::io::Result<()> {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize graph: {}", e)));
     }
 
+    // Create WebSocketManager before SpeechService
     let websocket_manager = Arc::new(WebSocketManager::new(
-        settings_read.server_debug.enable_websocket_debug,
-        app_state.clone(),
+        websocket_debug, // From settings
+        app_state.clone()
     ));
-
-    let speech_service = Arc::new(SpeechService::new(
-        websocket_manager.clone(),
-        settings.clone(),
-    ));
-
+    let speech_service = Arc::new(SpeechService::new(websocket_manager.clone(), settings.clone()));
     app_state.set_speech_service(speech_service).await;
-    app_state.set_websocket_manager(websocket_manager.clone()).await;
-    let websocket_data = web::Data::new(websocket_manager.clone());
+
+    // Initialize socket-flow server
+    log_data!("Initializing socket-flow server...");
+    let socket_flow = SocketFlowServer::new(app_state.as_ref().clone());
+    let socket_flow_handle = tokio::spawn(async move {
+        if let Err(e) = socket_flow.start(3000).await {
+            error!("Socket-flow server error: {}", e);
+        }
+    });
 
     let update_state = app_state.clone();
-    tokio::spawn(async move {
+    let update_handle = tokio::spawn(async move {
         update_graph_periodically(update_state).await;
     });
 
     let bind_address = "0.0.0.0:3000";
     log_data!("Starting HTTP server on {}", bind_address);
 
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
-            .app_data(websocket_data.clone())
             .wrap(middleware::Logger::default())
             .route("/health", web::get().to(health_check))
             .service(
@@ -314,13 +310,26 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api/perplexity")
                     .service(perplexity_handler::handle_perplexity)
             )
-            .route("/ws", web::get().to(|req: HttpRequest, stream: web::Payload, websocket_manager: web::Data<Arc<WebSocketManager>>| WebSocketManager::handle_websocket(req, stream, websocket_manager)))
             .route("/test_speech", web::get().to(test_speech_service))
             .service(
                 Files::new("/", "/app/data/public/dist").index_file("index.html")
             )
     })
     .bind(bind_address)?
-    .run()
-    .await
+    .run();
+
+    // Run both servers and handle shutdown
+    tokio::select! {
+        _ = server => {
+            log_data!("HTTP server stopped");
+        }
+        _ = socket_flow_handle => {
+            log_data!("Socket-flow server stopped");
+        }
+        _ = update_handle => {
+            log_data!("Update task stopped");
+        }
+    }
+
+    Ok(())
 }
