@@ -2,152 +2,117 @@
 
 ## Overview
 
-This document details the network architecture and configuration for the LogseqXR system, specifically focusing on the WebSocket connection chain and service communication.
+This document details the network architecture and configuration for the LogseqXR system, specifically focusing on the WebSocket connection chain and service communication. The system uses Cloudflare's tunnel for secure external access while leveraging Docker's internal networking for efficient container-to-container communication.
 
 ## Network Chain
 
 ```mermaid
 graph LR
-    A[External Client] -->|Port 4000| B[Cloudflare]
-    B -->|Tunnel| C[cloudflared container]
-    C -->|logseq_net| D[nginx container]
-    D -->|docker_ragflow| E[webxr container]
-    E -->|Port 3000| F[Rust Backend]
+    A[External Client] -->|HTTPS| B[Cloudflare]
+    B -->|Secure Tunnel| C[cloudflared container]
+    C -->|Direct Docker Network| D[webxr container]
+    D -->|Internal| E[Rust Backend]
 ```
 
-## Docker Networks
+## Docker Network Architecture
 
-### 1. logseq_net Network (172.18.0.0/16)
-- Primary network for external communication
+### docker_ragflow Network (172.19.0.0/16)
+- Primary network for all service communication
+- Enables direct container-to-container communication
 - Connected containers:
-  - cloudflared-tunnel (172.18.0.2)
-  - logseq-xr-webxr (172.18.0.3)
-- Handles tunnel traffic and initial request routing
+  - cloudflared-tunnel
+  - logseq-xr-webxr
+  - Other supporting services (redis, mysql, etc.)
 
-### 2. docker_ragflow Network (172.19.0.0/16)
-- Internal service network
-- Connected containers:
-  - logseq-xr-webxr (172.19.0.7)
-  - ragflow-server and other backend services
-- Handles internal service communication
+## Access Patterns
 
-## Port Forwarding Chain
+### 1. External Access (Production)
+- URL: https://www.visionflow.info
+- Flow: Client → Cloudflare → cloudflared tunnel → webxr
+- Features:
+  - SSL/TLS encryption
+  - DDoS protection
+  - Proper WebSocket protocol handling
+  - Security headers
 
-1. External Access:
-   - Client connects to port 4000
-   - Cloudflare tunnels this through cloudflared
-
-2. Internal Routing:
-   - cloudflared → nginx (port 4000)
-   - nginx → webxr service (port 3000)
-   - webxr internal Rust service listens on port 3000
+### 2. Direct Local Access (Development Only)
+- URL: http://192.168.0.51:4000
+- Not recommended for production use
+- Will show WebSocket connection errors due to:
+  - Missing Cloudflare security layer
+  - No SSL/TLS
+  - Incomplete protocol upgrades
 
 ## Critical Configurations
 
 ### 1. config.yml (cloudflared)
 ```yaml
+tunnel: 9a59e21c-7e0d-4cac-8502-59bc66436e0f
 ingress:
   - hostname: www.visionflow.info
-    service: http://logseq-xr-webxr:4000  # Points to nginx
+    service: http://logseq-xr-webxr:4000
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s
       tcpKeepAlive: 30s
       keepAliveTimeout: 2m
       keepAliveConnections: 100
-      idleTimeout: 3600s        # Matches nginx timeout
-      streamTimeout: 3600s      # Matches nginx timeout
       httpHostHeader: www.visionflow.info
+      idleTimeout: 3600s
+      streamTimeout: 3600s
 ```
 
-### 2. nginx.conf
-```nginx
-upstream backend {
-    server logseq-xr-webxr:3000;  # Points to Rust service
-    keepalive 32;
-}
-
-server {
-    listen 4000 default_server;  # External port
-
-    # WebSocket Configuration
-    location /ws {
-        proxy_pass http://backend;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-}
-```
-
-### 3. docker-compose.yml Network Configuration
+### 2. docker-compose.yml Network Configuration
 ```yaml
 services:
   webxr:
     networks:
-      logseq_net:
-        aliases:
-          - logseq-xr-webxr
       docker_ragflow:
         aliases:
+          - logseq-xr-webxr
           - webxr-client
     ports:
       - "4000:3000"
 
   cloudflared:
     networks:
-      logseq_net:
+      docker_ragflow:
         aliases:
           - cloudflared
 ```
 
-## WebSocket Handling
+## WebSocket Communication
 
-The system uses a multi-layer approach for WebSocket connections:
+The system uses a streamlined approach for WebSocket connections:
 
-1. Cloudflared Layer:
-   - Handles tunnel connection
-   - Maintains long-lived connections
-   - Manages connection timeouts
+1. External Client:
+   - Connects via wss:// (secure WebSocket)
+   - Handled by Cloudflare's infrastructure
+   - Full SSL/TLS encryption
 
-2. Nginx Layer:
-   - Upgrades HTTP to WebSocket
-   - Manages WebSocket headers
-   - Handles proxy settings
-   - Controls timeouts and keepalive
-
-3. Application Layer:
-   - Rust backend handles WebSocket logic
-   - Manages application-level protocols
-   - Handles data streaming
-
-## Timeout Synchronization
-
-All timeout values should be aligned across the stack:
-- Cloudflared: idleTimeout and streamTimeout set to 3600s
-- Nginx: proxy_read_timeout and proxy_send_timeout set to 3600s
-- Application: Should handle timeouts accordingly
+2. Internal Communication:
+   - Direct container-to-container through docker_ragflow network
+   - No additional proxy layers needed
+   - Efficient and low-latency
 
 ## Security Considerations
 
-1. Network Isolation:
-   - cloudflared only on logseq_net
-   - webxr service bridges networks
-   - Backend services isolated on docker_ragflow
+1. Network Security:
+   - All external traffic must pass through Cloudflare
+   - Internal communication isolated within docker_ragflow
+   - No direct external access to internal services
 
-2. Port Exposure:
-   - Only port 4000 exposed externally
-   - Internal communication uses Docker networks
-   - No direct external access to port 3000
+2. Protocol Security:
+   - Forced HTTPS for all external connections
+   - Secure WebSocket (wss://) for real-time communication
+   - Cloudflare provides additional security layers
 
 ## Troubleshooting
 
 1. Connection Issues:
    ```bash
-   # Check network connectivity
-   docker network inspect docker_ragflow logseq_net
+   # Check docker network
+   docker network inspect docker_ragflow
    
    # Verify container communication
    docker exec -it cloudflared-tunnel ping logseq-xr-webxr
@@ -158,14 +123,18 @@ All timeout values should be aligned across the stack:
    ```
 
 2. WebSocket Issues:
-   - Check nginx error logs for connection problems
-   - Verify WebSocket upgrade headers in nginx access logs
-   - Confirm timeouts are properly synchronized
+   - Ensure accessing via https://www.visionflow.info
+   - Check browser console for connection errors
+   - Verify Cloudflare tunnel status
 
 ## Maintenance Notes
 
-When making changes:
-1. Always maintain timeout synchronization across services
-2. Test WebSocket connectivity after configuration changes
-3. Verify network isolation is maintained
-4. Check logs across all services for any connection issues
+1. Network Changes:
+   - Always test through Cloudflare tunnel
+   - Don't rely on direct local access for testing
+   - Maintain container aliases in docker-compose.yml
+
+2. Security Updates:
+   - Keep cloudflared container updated
+   - Monitor Cloudflare tunnel status
+   - Review security headers and policies regularly
