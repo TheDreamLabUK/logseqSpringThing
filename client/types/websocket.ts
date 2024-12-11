@@ -14,6 +14,15 @@ export interface ForceNode {
     fz?: number | null;
 }
 
+// Debug settings interface
+export interface ClientDebugSettings {
+  enabled: boolean;
+  enable_websocket_debug: boolean;
+  enable_data_debug: boolean;
+  log_binary_headers: boolean;
+  log_full_json: boolean;
+}
+
 // Message Types (matching server's ServerMessage enum)
 export type MessageType = 
   | 'graphUpdate'
@@ -116,6 +125,7 @@ export interface InitialDataMessage extends BaseMessage {
     physics?: PhysicsSettings;
     bloom?: BloomSettings;
     fisheye?: FisheyeSettings;
+    client_debug?: ClientDebugSettings;  // Added client debug settings
   };
 }
 

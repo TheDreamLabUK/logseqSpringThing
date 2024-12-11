@@ -2,7 +2,17 @@ import { defineStore } from 'pinia'
 import WebsocketService from '../services/websocketService'
 import { useVisualizationStore } from './visualization'
 import { useBinaryUpdateStore } from './binaryUpdate'
-import type { BaseMessage, ErrorMessage, GraphUpdateMessage, BinaryMessage, Edge as WsEdge, SimulationModeMessage, InitialDataMessage } from '../types/websocket'
+import { initDebugSettings } from '../utils/debug_log'
+import type { 
+  BaseMessage, 
+  ErrorMessage, 
+  GraphUpdateMessage, 
+  BinaryMessage, 
+  Edge as WsEdge, 
+  SimulationModeMessage, 
+  InitialDataMessage,
+  ClientDebugSettings 
+} from '../types/websocket'
 import type { Node, Edge } from '../types/core'
 import { BINARY_UPDATE_NODE_SIZE } from '../constants/websocket'
 
@@ -133,10 +143,19 @@ export const useWebSocketStore = defineStore('websocket', {
         })
         
         try {
+          // Initialize debug settings if they exist in the message
+          if (message.settings?.client_debug) {
+            const debugSettings: ClientDebugSettings = message.settings.client_debug
+            initDebugSettings(debugSettings)
+          }
+
           this._handleGraphUpdate(message, visualizationStore)
           if (message.settings) {
             visualizationStore.updateVisualizationSettings(message.settings)
           }
+
+          // Enable binary updates after initial data is processed
+          this.send({ type: 'enableBinaryUpdates' })
         } catch (error) {
           console.error('[WebSocketStore] Error processing initial data:', error)
         }
