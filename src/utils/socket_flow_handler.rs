@@ -1,12 +1,10 @@
-use actix::{Actor, ActorContext, AsyncContext, StreamHandler, WrapFuture, ActorFutureExt};
-use actix_web_actors::ws;
-use log::{error, info, warn};
-use std::sync::Arc;
+use actix::prelude::*;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
-
+use actix_web_actors::ws;
+use std::sync::Arc;
 use crate::utils::socket_flow_messages::{ServerMessage, UpdatePositionsMessage};
 use crate::models::position_update::NodePositionVelocity;
-use crate::utils::socket_flow_constants::NODE_SIZE;
+use crate::utils::socket_flow_constants::{NODE_POSITION_SIZE, BINARY_HEADER_SIZE};
 use crate::AppState;
 use crate::{log_websocket, log_data};
 use crate::utils::debug_logging::WsDebugData;
@@ -128,26 +126,29 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 let app_state = self.app_state.clone();
                                 let fut = async move {
                                     let mut graph = app_state.graph_service.graph_data.write().await;
-                                    for node_pos in &update_msg.nodes {
-                                        if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == node_pos.id) {
-                                            node.x = node_pos.position[0];
-                                            node.y = node_pos.position[1];
-                                            node.z = node_pos.position[2];
-                                            node.position = Some(node_pos.position);
+                                    for node_update in update_msg.nodes {
+                                        if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == node_update.id) {
+                                            node.position = Some(node_update.position);
                                         }
                                     }
 
+                                    // Prepare binary response
                                     let nodes: Vec<NodePositionVelocity> = graph.nodes.iter().map(|node| NodePositionVelocity {
-                                        x: node.x,
-                                        y: node.y,
-                                        z: node.z,
+                                        x: node.position.map(|p| p[0]).unwrap_or(0.0),
+                                        y: node.position.map(|p| p[1]).unwrap_or(0.0),
+                                        z: node.position.map(|p| p[2]).unwrap_or(0.0),
                                         vx: 0.0,
                                         vy: 0.0,
                                         vz: 0.0,
                                     }).collect();
 
                                     log_data!("Preparing binary response for {} nodes", nodes.len());
-                                    let mut binary_data = Vec::new();
+                                    let mut binary_data = Vec::with_capacity(BINARY_HEADER_SIZE + nodes.len() * NODE_POSITION_SIZE);
+                                    
+                                    // Add header (version 1.0)
+                                    binary_data.extend_from_slice(&1.0f32.to_le_bytes());
+                                    
+                                    // Add node data
                                     for node in &nodes {
                                         binary_data.extend_from_slice(bytemuck::bytes_of(node));
                                     }
@@ -199,28 +200,34 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 }
 
                 log_websocket!("Received binary message: {} bytes", bin.len());
-                if bin.len() % NODE_SIZE as usize != 0 {
-                    error!("Invalid binary data length: {} bytes (not divisible by NODE_SIZE {})", bin.len(), NODE_SIZE);
+                let expected_size = BINARY_HEADER_SIZE + (bin.len() - BINARY_HEADER_SIZE) / NODE_POSITION_SIZE * NODE_POSITION_SIZE;
+                if bin.len() != expected_size {
+                    error!("Invalid binary data length: {} bytes (expected {})", bin.len(), expected_size);
                     return;
                 }
 
-                let node_count = bin.len() / NODE_SIZE as usize;
+                let node_count = (bin.len() - BINARY_HEADER_SIZE) / NODE_POSITION_SIZE;
                 log_data!("Processing binary data for {} nodes", node_count);
 
                 let app_state = self.app_state.clone();
                 let fut = async move {
                     let graph = app_state.graph_service.graph_data.read().await;
                     let nodes: Vec<NodePositionVelocity> = graph.nodes.iter().map(|node| NodePositionVelocity {
-                        x: node.x,
-                        y: node.y,
-                        z: node.z,
+                        x: node.position.map(|p| p[0]).unwrap_or(0.0),
+                        y: node.position.map(|p| p[1]).unwrap_or(0.0),
+                        z: node.position.map(|p| p[2]).unwrap_or(0.0),
                         vx: 0.0,
                         vy: 0.0,
                         vz: 0.0,
                     }).collect();
 
                     log_data!("Preparing binary response for {} nodes", nodes.len());
-                    let mut binary_data = Vec::new();
+                    let mut binary_data = Vec::with_capacity(BINARY_HEADER_SIZE + nodes.len() * NODE_POSITION_SIZE);
+                    
+                    // Add header (version 1.0)
+                    binary_data.extend_from_slice(&1.0f32.to_le_bytes());
+                    
+                    // Add node data
                     for node in &nodes {
                         binary_data.extend_from_slice(bytemuck::bytes_of(node));
                     }

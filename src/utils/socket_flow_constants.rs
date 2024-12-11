@@ -14,6 +14,10 @@ pub const BINARY_CHUNK_SIZE: usize = 64 * 1024; // 64KB
 pub const POSITION_UPDATE_RATE: u32 = 5; // Hz (matching client's MAX_UPDATES_PER_SECOND)
 pub const METADATA_UPDATE_RATE: u32 = 1; // Hz
 
+// Binary message constants
+pub const NODE_POSITION_SIZE: usize = 24; // 6 f32s (x,y,z,vx,vy,vz) * 4 bytes
+pub const BINARY_HEADER_SIZE: usize = 4; // 1 f32 for header
+
 // Compression constants
 pub const COMPRESSION_THRESHOLD: usize = 1024; // 1KB
 pub const ENABLE_COMPRESSION: bool = true;
