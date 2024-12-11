@@ -20,11 +20,6 @@ interface BinaryPositionUpdateMessage {
     is_initial_layout: boolean
 }
 
-interface NodeMesh extends THREE.Mesh {
-    material: THREE.Material
-    geometry: THREE.BufferGeometry
-}
-
 // DOM Elements
 const statusEl = document.getElementById('status') as HTMLElement
 const nodeCountEl = document.getElementById('nodeCount') as HTMLElement
@@ -40,8 +35,31 @@ let scene: THREE.Scene
 let camera: THREE.PerspectiveCamera
 let renderer: THREE.WebGLRenderer
 let controls: OrbitControls
-let nodeObjects: NodeMesh[] = []
+let nodeInstancedMesh: THREE.InstancedMesh<THREE.SphereGeometry, THREE.MeshPhongMaterial>
+let edgeInstancedMesh: THREE.InstancedMesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial>
 let animationFrameId: number
+
+// Reusable objects for matrix operations
+const matrix = new THREE.Matrix4()
+const quaternion = new THREE.Quaternion()
+const position = new THREE.Vector3()
+const scale = new THREE.Vector3(1, 1, 1)
+const color = new THREE.Color()
+
+// Additional vectors for edge calculations
+const start = new THREE.Vector3()
+const end = new THREE.Vector3()
+const direction = new THREE.Vector3()
+const center = new THREE.Vector3()
+const UP = new THREE.Vector3(0, 1, 0)
+
+// Node state
+let currentNodes: Node[] = []
+let currentEdges: Edge[] = []
+const NODE_SIZE = 2
+const NODE_SEGMENTS = 16 // Reduced from 32 for better performance
+const EDGE_RADIUS = 0.2
+const EDGE_SEGMENTS = 8
 
 // WebSocket state
 let ws: WebSocket | null = null
@@ -123,11 +141,52 @@ function initThree() {
     }
     scene.add(gridHelper)
 
+    // Create instanced meshes
+    initNodeMesh()
+    initEdgeMesh()
+
     // Handle window resize
     window.addEventListener('resize', onWindowResize)
 
     // Start render loop
     animate()
+}
+
+function initNodeMesh() {
+    // Create geometry and material
+    const geometry = new THREE.SphereGeometry(NODE_SIZE, NODE_SEGMENTS, NODE_SEGMENTS)
+    const material = new THREE.MeshPhongMaterial({
+        color: 0x00ff00,
+        shininess: 80,
+        flatShading: false
+    })
+
+    // Create instanced mesh with a large enough capacity
+    nodeInstancedMesh = new THREE.InstancedMesh(geometry, material, 10000)
+    nodeInstancedMesh.count = 0 // Will be set when nodes are added
+    nodeInstancedMesh.frustumCulled = false // Disable culling for better performance
+
+    scene.add(nodeInstancedMesh)
+}
+
+function initEdgeMesh() {
+    // Create geometry and material for edges
+    const geometry = new THREE.CylinderGeometry(EDGE_RADIUS, EDGE_RADIUS, 1, EDGE_SEGMENTS)
+    // Rotate cylinder to align with direction vector
+    geometry.rotateX(Math.PI / 2)
+    
+    const material = new THREE.MeshBasicMaterial({
+        color: 0x666666,
+        transparent: true,
+        opacity: 0.6
+    })
+
+    // Create instanced mesh with a large enough capacity
+    edgeInstancedMesh = new THREE.InstancedMesh(geometry, material, 30000)
+    edgeInstancedMesh.count = 0 // Will be set when edges are added
+    edgeInstancedMesh.frustumCulled = false
+
+    scene.add(edgeInstancedMesh)
 }
 
 function onWindowResize() {
@@ -142,43 +201,133 @@ function animate() {
     renderer.render(scene, camera)
 }
 
-// Node visualization
-function createNodeObjects(nodes: Node[]) {
-    // Clear existing nodes
-    nodeObjects.forEach(node => {
-        scene.remove(node)
-        node.geometry.dispose()
-        node.material.dispose()
-    })
-    nodeObjects = []
+// Node and edge visualization
+function createNodeInstances(nodes: Node[]) {
+    currentNodes = nodes
+    nodeInstancedMesh.count = nodes.length
 
-    // Create sphere geometry and material
-    const geometry = new THREE.SphereGeometry(2, 32, 32)
-    const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 })
-
-    // Create a mesh for each node
-    nodes.forEach(node => {
-        const mesh = new THREE.Mesh(geometry, material) as NodeMesh
-        mesh.position.set(
+    // Update all instances
+    nodes.forEach((node, index) => {
+        // Position
+        position.set(
             node.position?.[0] || 0,
             node.position?.[1] || 0,
             node.position?.[2] || 0
         )
-        scene.add(mesh)
-        nodeObjects.push(mesh)
+
+        // Create matrix
+        matrix.compose(position, quaternion, scale)
+        nodeInstancedMesh.setMatrixAt(index, matrix)
+
+        // Set color (could be based on node properties)
+        color.setHex(0x00ff00)
+        nodeInstancedMesh.setColorAt(index, color)
     })
+
+    // Mark buffers for update
+    nodeInstancedMesh.instanceMatrix.needsUpdate = true
+    if (nodeInstancedMesh.instanceColor) nodeInstancedMesh.instanceColor.needsUpdate = true
+}
+
+function createEdgeInstances(nodes: Node[], edges: Edge[]) {
+    currentEdges = edges
+    edgeInstancedMesh.count = edges.length
+
+    // Update all edge instances
+    edges.forEach((edge, index) => {
+        const sourceNode = nodes.find(n => n.id === edge.source)
+        const targetNode = nodes.find(n => n.id === edge.target)
+
+        if (!sourceNode || !targetNode) return
+
+        updateEdgeInstance(index, sourceNode, targetNode)
+    })
+
+    // Mark buffers for update
+    edgeInstancedMesh.instanceMatrix.needsUpdate = true
+}
+
+function updateEdgeInstance(index: number, sourceNode: Node, targetNode: Node) {
+    // Get node positions
+    start.set(
+        sourceNode.position?.[0] || 0,
+        sourceNode.position?.[1] || 0,
+        sourceNode.position?.[2] || 0
+    )
+    end.set(
+        targetNode.position?.[0] || 0,
+        targetNode.position?.[1] || 0,
+        targetNode.position?.[2] || 0
+    )
+
+    // Calculate edge transform
+    direction.subVectors(end, start)
+    const length = direction.length()
+    
+    // Skip if nodes are in same position
+    if (length === 0) return
+
+    // Position at midpoint
+    center.addVectors(start, end).multiplyScalar(0.5)
+    position.copy(center)
+
+    // Scale to length
+    scale.set(1, length, 1)
+
+    // Rotate to align with direction
+    direction.normalize()
+    quaternion.setFromUnitVectors(UP, direction)
+
+    // Update matrix
+    matrix.compose(position, quaternion, scale)
+    edgeInstancedMesh.setMatrixAt(index, matrix)
 }
 
 function updateNodePositions(floatArray: Float32Array) {
-    // Skip version header (first float)
-    for (let i = 0; i < nodeObjects.length; i++) {
-        const baseIndex = 1 + i * 6 // Skip version header, 6 floats per node (x,y,z, vx,vy,vz)
-        nodeObjects[i].position.set(
+    const nodeCount = (floatArray.length - 1) / 6 // Subtract 1 for version header
+
+    // Update positions for each node
+    for (let i = 0; i < nodeCount; i++) {
+        const baseIndex = 1 + i * 6 // Skip version header
+        position.set(
             floatArray[baseIndex],
             floatArray[baseIndex + 1],
             floatArray[baseIndex + 2]
         )
+
+        // Update node matrix
+        matrix.compose(position, quaternion, scale)
+        nodeInstancedMesh.setMatrixAt(i, matrix)
+
+        // Update node data
+        if (currentNodes[i]) {
+            currentNodes[i].position = [
+                floatArray[baseIndex],
+                floatArray[baseIndex + 1],
+                floatArray[baseIndex + 2]
+            ]
+        }
     }
+
+    // Mark node matrix for update
+    nodeInstancedMesh.instanceMatrix.needsUpdate = true
+
+    // Update edge positions
+    updateEdgePositions()
+}
+
+function updateEdgePositions() {
+    currentEdges.forEach((edge, index) => {
+        const sourceNode = currentNodes.find(n => n.id === edge.source)
+        const targetNode = currentNodes.find(n => n.id === edge.target)
+
+        if (!sourceNode || !targetNode) return
+
+        updateEdgeInstance(index, sourceNode, targetNode)
+    })
+
+    // Mark edge matrix for update
+    edgeInstancedMesh.instanceMatrix.needsUpdate = true
 }
 
 // WebSocket connection
@@ -272,8 +421,9 @@ function handleInitialData(message: InitialDataMessage) {
     
     log(`Received initial data: ${nodes.length} nodes, ${edges.length} edges`)
     
-    // Create node objects in the scene
-    createNodeObjects(nodes)
+    // Create instances
+    createNodeInstances(nodes)
+    createEdgeInstances(nodes, edges)
     
     // Enable binary updates
     sendMessage({ type: 'enableBinaryUpdates' })
@@ -287,7 +437,7 @@ function handleBinaryMessage(data: Blob) {
         const floatArray = new Float32Array(buffer)
         const nodeCount = (floatArray.length - 1) / 6 // Subtract 1 for version header
         
-        // Update node positions in the scene
+        // Update node positions
         updateNodePositions(floatArray)
         
         updateCount++
@@ -319,12 +469,21 @@ function cleanup() {
         cancelAnimationFrame(animationFrameId)
     }
     
-    nodeObjects.forEach(node => {
-        scene.remove(node)
-        node.geometry.dispose()
-        node.material.dispose()
-    })
-    nodeObjects = []
+    if (nodeInstancedMesh) {
+        nodeInstancedMesh.geometry.dispose()
+        if (nodeInstancedMesh.material instanceof THREE.Material) {
+            nodeInstancedMesh.material.dispose()
+        }
+        scene.remove(nodeInstancedMesh)
+    }
+
+    if (edgeInstancedMesh) {
+        edgeInstancedMesh.geometry.dispose()
+        if (edgeInstancedMesh.material instanceof THREE.Material) {
+            edgeInstancedMesh.material.dispose()
+        }
+        scene.remove(edgeInstancedMesh)
+    }
     
     if (renderer) {
         renderer.dispose()
