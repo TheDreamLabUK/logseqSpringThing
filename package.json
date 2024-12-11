@@ -5,41 +5,29 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build --mode production",
-    "build:quest": "vue-tsc --noEmit && vite build --mode production --config vite.config.ts --platform quest",
+    "build": "tsc && vite build",
+    "build:quest": "tsc && vite build --mode production --config vite.config.ts --platform quest",
     "preview": "vite preview",
-    "type-check": "vue-tsc --noEmit",
-    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
-    "format": "prettier --write src/"
+    "type-check": "tsc --noEmit",
+    "lint": "eslint . --ext .js,.ts --fix --ignore-path .gitignore",
+    "format": "prettier --write client/"
   },
   "dependencies": {
-    "@types/d3-force": "^3.0.10",
+    "three": "0.170.0",
     "d3-force-3d": "^3.0.5",
-    "oimo": "^1.0.9",
     "pako": "^2.1.0"
   },
   "devDependencies": {
-    "@types/dat.gui": "^0.7.13",
+    "@types/d3-force": "^3.0.10",
     "@types/node": "^22.10.0",
     "@types/three": "0.170.0",
-    "@types/vue": "^2.0.0",
     "@typescript-eslint/eslint-plugin": "^8.16.0",
     "@typescript-eslint/parser": "^8.16.0",
-    "@vitejs/plugin-vue": "^5.2.1",
-    "@vue/runtime-core": "^3.5.13",
-    "@vue/tsconfig": "^0.7.0",
-    "dat.gui": "^0.7.9",
     "eslint": "^8.57.0",
-    "eslint-plugin-vue": "^9.31.0",
-    "pinia": "^2.2.6",
     "prettier": "^3.4.1",
     "terser": "^5.36.0",
-    "three": "0.170.0",
     "typescript": "~5.4.5",
-    "vite": "^5.1.4",
-    "vite-plugin-html": "^3.2.2",
-    "vue": "^3.5.13",
-    "vue-tsc": "^2.1.10"
+    "vite": "^5.1.4"
   },
   "engines": {
     "node": ">=18.0.0"

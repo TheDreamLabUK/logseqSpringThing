@@ -120,13 +120,21 @@ verify_client_structure() {
     echo -e "${YELLOW}Verifying client directory structure...${NC}"
     
     local required_files=(
+        "$PROJECT_ROOT/client/index.html"
         "$PROJECT_ROOT/client/index.ts"
-        "$PROJECT_ROOT/client/components/App.vue"
-        "$PROJECT_ROOT/client/stores/visualization.ts"
-        "$PROJECT_ROOT/client/types/core.ts"
-        "$PROJECT_ROOT/client/composables/useVisualization.ts"
-        "$PROJECT_ROOT/tsconfig.json"
-        "$PROJECT_ROOT/vite.config.ts"
+        "$PROJECT_ROOT/client/core/types.ts"
+        "$PROJECT_ROOT/client/core/constants.ts"
+        "$PROJECT_ROOT/client/core/utils.ts"
+        "$PROJECT_ROOT/client/websocket/websocketService.ts"
+        "$PROJECT_ROOT/client/rendering/scene.ts"
+        "$PROJECT_ROOT/client/rendering/nodes.ts"
+        "$PROJECT_ROOT/client/rendering/textRenderer.ts"
+        "$PROJECT_ROOT/client/state/settings.ts"
+        "$PROJECT_ROOT/client/state/graphData.ts"
+        "$PROJECT_ROOT/client/xr/xrSessionManager.ts"
+        "$PROJECT_ROOT/client/xr/xrInteraction.ts"
+        "$PROJECT_ROOT/client/platform/platformManager.ts"
+        "$PROJECT_ROOT/client/tsconfig.json"
     )
     
     for file in "${required_files[@]}"; do

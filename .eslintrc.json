@@ -3,46 +3,37 @@
   "env": {
     "browser": true,
     "es2021": true,
-    "node": true
+    "node": true,
+    "worker": true
   },
   "extends": [
     "eslint:recommended",
-    "plugin:@typescript-eslint/recommended",
-    "plugin:vue/vue3-recommended"
+    "plugin:@typescript-eslint/recommended"
   ],
-  "parser": "vue-eslint-parser",
+  "parser": "@typescript-eslint/parser",
   "parserOptions": {
     "ecmaVersion": "latest",
-    "parser": "@typescript-eslint/parser",
-    "sourceType": "module"
+    "sourceType": "module",
+    "project": "./tsconfig.json"
   },
-  "plugins": ["@typescript-eslint", "vue"],
+  "plugins": [
+    "@typescript-eslint"
+  ],
   "rules": {
-    "vue/script-setup-uses-vars": "error",
-    "vue/no-unused-vars": "error",
-    "vue/multi-word-component-names": "off",
     "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/explicit-function-return-type": "off",
     "@typescript-eslint/explicit-module-boundary-types": "off",
-    "@typescript-eslint/no-unused-vars": ["error", {
+    "@typescript-eslint/no-unused-vars": ["warn", {
       "argsIgnorePattern": "^_",
       "varsIgnorePattern": "^_"
     }],
     "no-console": ["warn", {
-      "allow": ["warn", "error"]
+      "allow": ["warn", "error", "info"]
     }]
   },
-  "overrides": [
-    {
-      "files": ["*.vue"],
-      "rules": {
-        "no-undef": "off"
-      }
-    }
-  ],
-  "settings": {
-    "import/resolver": {
-      "typescript": {}
-    }
-  }
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "*.js"
+  ]
 }
