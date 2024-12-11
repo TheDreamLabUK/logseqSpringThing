@@ -2,12 +2,12 @@ use actix::prelude::*;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use std::sync::Arc;
+use log::{error, warn}; // Add log macros
 use crate::utils::socket_flow_messages::{ServerMessage, UpdatePositionsMessage};
 use crate::models::position_update::NodePositionVelocity;
 use crate::utils::socket_flow_constants::{NODE_POSITION_SIZE, BINARY_HEADER_SIZE};
 use crate::AppState;
 use crate::{log_websocket, log_data};
-use crate::utils::debug_logging::WsDebugData;
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
