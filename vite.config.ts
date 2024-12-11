@@ -39,9 +39,7 @@ export default defineConfig(({ command, mode }) => {
       outDir: path.resolve(__dirname, 'dist'),
       emptyOutDir: true,
       assetsDir: 'assets',
-      // Always generate source maps for debugging
       sourcemap: true,
-      // Keep console.logs in production for debugging
       minify: mode === 'production' ? 'terser' : false,
       terserOptions: {
         compress: {
@@ -57,7 +55,8 @@ export default defineConfig(({ command, mode }) => {
       rollupOptions: {
         input: {
           main: path.resolve(__dirname, 'client/index.html'),
-          test: path.resolve(__dirname, 'client/indexTest.html')  // Add test client as entry point
+          test: path.resolve(__dirname, 'client/indexTest.html'),
+          iterate: path.resolve(__dirname, 'client/iterate.html')  // Add iterate entry point
         },
         output: {
           manualChunks: {
