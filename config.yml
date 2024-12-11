@@ -10,8 +10,6 @@ ingress:
       keepAliveTimeout: 2m
       keepAliveConnections: 100
       httpHostHeader: www.visionflow.info
-      idleTimeout: 3600s
-      streamTimeout: 3600s
   - service: http_status:404
 
 # Connection settings
@@ -21,8 +19,3 @@ no-autoupdate: true
 # Logging settings
 loglevel: debug
 
-# Metrics settings
-metrics: 0.0.0.0:2000
-
-warp-routing:
-  enabled: true

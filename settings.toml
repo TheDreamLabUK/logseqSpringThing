@@ -1,17 +1,17 @@
 # Debug settings
 [server_debug]
 enabled = true                     # Master switch for server debug logging
-enable_websocket_debug = false     # Enable detailed websocket debugging
-enable_data_debug = false          # Enable data exchange debugging
-log_binary_headers = false         # Log binary message headers
+enable_websocket_debug = true     # Enable detailed websocket debugging
+enable_data_debug = true          # Enable data exchange debugging
+log_binary_headers = true         # Log binary message headers
 log_full_json = false             # Log complete JSON payloads
 
 [client_debug]
-enabled = false                    # Master switch for client debug logging
-enable_websocket_debug = false     # Enable detailed websocket debugging
-enable_data_debug = false          # Enable data exchange debugging
-log_binary_headers = false         # Log binary message headers
-log_full_json = false             # Log complete JSON payloads
+enabled = true                    # Master switch for client debug logging
+enable_websocket_debug = true     # Enable detailed websocket debugging
+enable_data_debug = true          # Enable data exchange debugging
+log_binary_headers = true         # Log binary message headers
+log_full_json = true             # Log complete JSON payloads
 
 [network]
 domain = "localhost"               # Production domain is in dotenv
