@@ -39,6 +39,16 @@ const DEFAULT_CONFIG: WebSocketConfig = {
 };
 
 const logger = DebugLogger.getInstance();
+// Configure logger with settings from settings.toml
+logger.configure({
+    client_debug: {
+        enabled: true,
+        enable_websocket_debug: true,
+        enable_data_debug: false,
+        log_binary_headers: false,
+        log_full_json: false
+    }
+});
 
 // Rate limiting helper
 class UpdateThrottler {
@@ -102,6 +112,7 @@ export default class WebSocketService {
         const hostname = window.location.host;  // Use host instead of hostname to include port if present
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         this.url = `${protocol}//${hostname}/wss`;
+        logger.log('websocket', `WebSocket URL: ${this.url}`);
         
         this.updateThrottler = new UpdateThrottler();
         this.updateThrottler.onUpdate = (data: ArrayBuffer) => {
@@ -116,12 +127,14 @@ export default class WebSocketService {
 
         return new Promise((resolve, reject) => {
             try {
+                logger.log('websocket', 'Attempting to connect...');
                 this.ws = new WebSocket(this.url);
                 this.ws.binaryType = 'arraybuffer';
 
                 const connectionTimeout = setTimeout(() => {
                     if (this.ws?.readyState !== WebSocket.OPEN) {
                         this.ws?.close();
+                        logger.log('websocket', 'Connection timeout');
                         reject(new Error('WebSocket connection timeout'));
                         this.reconnect();
                     }
@@ -132,6 +145,7 @@ export default class WebSocketService {
                     this.reconnectAttempts = 0;
                     this.lastPongTime = Date.now();
                     this.startHeartbeat();
+                    logger.log('websocket', 'Connection established');
                     this.emit('open');
                     this.processQueuedMessages();
                     resolve();
@@ -139,11 +153,13 @@ export default class WebSocketService {
 
                 this.ws.onclose = (event) => {
                     clearTimeout(connectionTimeout);
+                    logger.log('websocket', `Connection closed: ${event.code} - ${event.reason}`);
                     this.handleClose(event);
                 };
 
                 this.ws.onerror = (event) => {
                     clearTimeout(connectionTimeout);
+                    logger.log('websocket', 'Connection error', event);
                     this.handleError(event);
                     if (this.ws?.readyState !== WebSocket.OPEN) {
                         reject(new Error('WebSocket connection failed'));
@@ -153,6 +169,7 @@ export default class WebSocketService {
                 this.ws.onmessage = this.handleMessage.bind(this);
 
             } catch (error) {
+                logger.log('websocket', 'Connection error:', error);
                 reject(error);
                 this.reconnect();
             }
@@ -167,13 +184,16 @@ export default class WebSocketService {
         this.heartbeatInterval = window.setInterval(() => {
             if (this.ws?.readyState === WebSocket.OPEN) {
                 if (Date.now() - this.lastPongTime > HEARTBEAT_TIMEOUT) {
+                    logger.log('websocket', 'Heartbeat timeout, reconnecting...');
                     this.reconnect();
                     return;
                 }
 
                 try {
                     this.ws.send(JSON.stringify({ type: 'ping' }));
+                    logger.log('websocket', 'Ping sent');
                 } catch (error) {
+                    logger.log('websocket', 'Error sending ping:', error);
                     this.reconnect();
                 }
             }
@@ -200,14 +220,17 @@ export default class WebSocketService {
             details: errorDetails
         };
         
+        logger.log('websocket', 'Error:', errorMsg);
         this.emit('error', errorMsg);
     }
 
     private handleMessage(event: MessageEvent): void {
         try {
             if (event.data instanceof ArrayBuffer) {
+                logger.log('binary', 'Received binary message', { size: event.data.byteLength });
                 this.handleBinaryMessage(event.data);
             } else {
+                logger.log('json', 'Received JSON message', event.data);
                 this.handleJsonMessage(event.data);
             }
         } catch (error) {
@@ -217,6 +240,7 @@ export default class WebSocketService {
                 code: ERROR_CODES.INVALID_MESSAGE,
                 details: error instanceof Error ? error.message : String(error)
             };
+            logger.log('websocket', 'Message handling error:', errorMsg);
             this.emit('error', errorMsg);
         }
     }
@@ -226,7 +250,13 @@ export default class WebSocketService {
 
         // Validate buffer size
         const expectedSize = this.indexToNodeId.length * BINARY_UPDATE_NODE_SIZE;
-        if (data.byteLength !== expectedSize) return;
+        if (data.byteLength !== expectedSize) {
+            logger.log('binary', 'Invalid binary message size', {
+                expected: expectedSize,
+                received: data.byteLength
+            });
+            return;
+        }
 
         // Forward binary data directly to subscribers
         const binaryMessage: BinaryMessage = {
@@ -243,6 +273,7 @@ export default class WebSocketService {
         
         if (message.type === 'pong') {
             this.lastPongTime = Date.now();
+            logger.log('websocket', 'Pong received');
             return;
         }
 
@@ -295,6 +326,7 @@ export default class WebSocketService {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             if (this.messageQueue.length < this.config.maxQueueSize) {
                 this.messageQueue.push(data);
+                logger.log('websocket', 'Message queued', data);
             }
             return;
         }
@@ -308,6 +340,7 @@ export default class WebSocketService {
         if (this.messageCount >= this.config.messageRateLimit) {
             if (this.messageQueue.length < this.config.maxQueueSize) {
                 this.messageQueue.push(data);
+                logger.log('websocket', 'Message rate limited, queued', data);
             }
             return;
         }
@@ -319,6 +352,7 @@ export default class WebSocketService {
             }
             
             this.ws.send(message);
+            logger.log('websocket', 'Message sent', data);
             this.messageCount++;
             this.lastMessageTime = now;
             this.processQueue();
@@ -329,6 +363,7 @@ export default class WebSocketService {
                 code: ERROR_CODES.MESSAGE_TOO_LARGE,
                 details: error instanceof Error ? error.message : String(error)
             };
+            logger.log('websocket', 'Send error:', errorMsg);
             this.emit('error', errorMsg);
         }
     }
@@ -338,7 +373,13 @@ export default class WebSocketService {
 
         // Validate data size
         const expectedSize = this.indexToNodeId.length * BINARY_UPDATE_NODE_SIZE;
-        if (data.byteLength !== expectedSize) return;
+        if (data.byteLength !== expectedSize) {
+            logger.log('binary', 'Invalid binary data size', {
+                expected: expectedSize,
+                received: data.byteLength
+            });
+            return;
+        }
 
         // Add to throttled updates
         this.updateThrottler.addUpdate(data);
@@ -368,6 +409,7 @@ export default class WebSocketService {
             this.eventListeners.set(event, new Set());
         }
         this.eventListeners.get(event)!.add(callback);
+        logger.log('websocket', `Event listener added for: ${event}`);
     }
 
     public off<K extends keyof WebSocketEventMap>(
@@ -377,6 +419,7 @@ export default class WebSocketService {
         const listeners = this.eventListeners.get(event);
         if (listeners) {
             listeners.delete(callback);
+            logger.log('websocket', `Event listener removed for: ${event}`);
         }
     }
 
@@ -399,6 +442,7 @@ export default class WebSocketService {
         if (this.reconnectAttempts < this.config.maxRetries) {
             this.reconnectAttempts++;
             const delay = this.config.retryDelay * Math.pow(2, this.reconnectAttempts - 1);
+            logger.log('websocket', `Attempting reconnect ${this.reconnectAttempts}/${this.config.maxRetries} in ${delay}ms`);
             
             this.reconnectTimeout = window.setTimeout(() => {
                 this.connect().catch(() => {
@@ -408,6 +452,7 @@ export default class WebSocketService {
                 });
             }, delay);
         } else {
+            logger.log('websocket', 'Max reconnection attempts reached');
             this.emit('maxReconnectAttemptsReached');
             this.isReconnecting = false;
         }
@@ -433,6 +478,7 @@ export default class WebSocketService {
             this.ws.onclose = null;
             this.ws.close();
             this.ws = null;
+            logger.log('websocket', 'WebSocket connection cleaned up');
         }
 
         this.messageQueue = [];
