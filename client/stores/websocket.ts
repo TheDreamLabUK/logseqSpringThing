@@ -154,8 +154,8 @@ export const useWebSocketStore = defineStore('websocket', {
             visualizationStore.updateVisualizationSettings(message.settings)
           }
 
-          // Enable binary updates after initial data is processed
-          this.send({ type: 'enableBinaryUpdates' })
+          // Binary updates disabled to prevent feedback loop
+          // this.send({ type: 'enableBinaryUpdates' })
         } catch (error) {
           console.error('[WebSocketStore] Error processing initial data:', error)
         }
