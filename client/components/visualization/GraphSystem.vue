@@ -140,7 +140,7 @@ export default defineComponent({
     // Watch for binary updates with enhanced logging
     watch(() => binaryUpdateStore.getAllPositions, (positions) => {
       const nodeCount = positions.length / 3;
-      if (nodeCount > 0 && !isDragging.value) {
+      if (nodeCount > 0) {
         console.debug('Processing binary position update:', {
           nodeCount,
           timestamp: new Date().toISOString()
@@ -149,10 +149,15 @@ export default defineComponent({
         // Get changed nodes from binary store
         const changedNodes = binaryUpdateStore.getChangedNodes;
         
-        // Update only changed nodes, preserving metadata
+        // Update nodes based on interaction mode
         changedNodes.forEach(index => {
           const node = graphData.value.nodes[index];
           if (!node) return;
+
+          // Only update non-interacted nodes when in local mode
+          if (websocketStore.service?.isNodeInteracted(node.id)) {
+            return;
+          }
 
           const position = binaryUpdateStore.getNodePosition(index);
           const velocity = binaryUpdateStore.getNodeVelocity(index);
@@ -208,6 +213,10 @@ export default defineComponent({
         initialPosition: getNodePosition(node),
         timestamp: new Date().toISOString()
       });
+
+      // Start interaction mode and track the dragged node
+      websocketStore.service?.startInteractionMode();
+      websocketStore.service?.addInteractedNode(node.id);
 
       isDragging.value = true;
       draggedNode.value = node;
@@ -277,6 +286,9 @@ export default defineComponent({
       if (binaryUpdate.byteLength > 0) {
         websocketStore.sendBinary(binaryUpdate);
       }
+
+      // End interaction mode
+      websocketStore.service?.endInteractionMode();
 
       isDragging.value = false;
       draggedNode.value = null;

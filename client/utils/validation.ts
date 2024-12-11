@@ -1,4 +1,5 @@
 import { VALIDATION } from '../constants/visualization';
+import type { ClientDebugSettings } from '../types/websocket';
 
 // Validate a single position value
 export function isValidPosition(value: number): boolean {
@@ -94,7 +95,7 @@ export class UpdateThrottler {
     }
 }
 
-// Debug logging helper that respects settings.toml configuration
+// Enhanced debug logging helper
 export class DebugLogger {
     private static instance: DebugLogger;
     private enabled: boolean = false;
@@ -112,40 +113,82 @@ export class DebugLogger {
         return DebugLogger.instance;
     }
 
-    configure(settings: any): void {
+    configure(settings: { client_debug: ClientDebugSettings }): void {
         if (settings?.client_debug) {
             this.enabled = settings.client_debug.enabled;
             this.websocketDebug = settings.client_debug.enable_websocket_debug;
             this.dataDebug = settings.client_debug.enable_data_debug;
             this.binaryHeaders = settings.client_debug.log_binary_headers;
             this.fullJson = settings.client_debug.log_full_json;
+            console.info('Debug logger configured:', {
+                enabled: this.enabled,
+                websocketDebug: this.websocketDebug,
+                dataDebug: this.dataDebug,
+                binaryHeaders: this.binaryHeaders,
+                fullJson: this.fullJson
+            });
         }
     }
 
-    log(type: 'websocket' | 'data' | 'binary' | 'json', message: string, data?: any): void {
-        if (!this.enabled) return;
+    log(type: string, message: string, data?: any): void {
+        const timestamp = new Date().toISOString();
+        const prefix = `[${type.toUpperCase()} ${timestamp}]`;
 
         switch (type) {
             case 'websocket':
-                if (this.websocketDebug) {
-                    console.debug(`[WebSocket] ${message}`, data);
-                }
-                break;
-            case 'data':
-                if (this.dataDebug) {
-                    console.debug(`[Data] ${message}`, data);
+                if (this.enabled || this.websocketDebug) {
+                    if (data instanceof ArrayBuffer) {
+                        console.debug(`${prefix} ${message}`, `Binary data size: ${data.byteLength} bytes`);
+                    } else {
+                        console.debug(`${prefix} ${message}`, data);
+                    }
                 }
                 break;
             case 'binary':
-                if (this.binaryHeaders) {
-                    console.debug(`[Binary] ${message}`, data);
+                if (this.enabled || this.binaryHeaders) {
+                    if (data instanceof ArrayBuffer) {
+                        const view = new DataView(data.slice(0, Math.min(16, data.byteLength)));
+                        const hexDump = Array.from(new Uint8Array(view.buffer))
+                            .map(b => b.toString(16).padStart(2, '0'))
+                            .join(' ');
+                        console.debug(`${prefix} ${message}`, `Header: ${hexDump}`);
+                    } else {
+                        console.debug(`${prefix} ${message}`, data);
+                    }
                 }
                 break;
             case 'json':
-                if (this.fullJson) {
-                    console.debug(`[JSON] ${message}`, data);
+                if (this.enabled || this.fullJson) {
+                    try {
+                        const formatted = typeof data === 'object' ? 
+                            JSON.stringify(data, null, 2) : data;
+                        console.debug(`${prefix} ${message}`, formatted);
+                    } catch (error) {
+                        console.debug(`${prefix} ${message}`, data);
+                    }
                 }
                 break;
+            case 'data':
+                if (this.enabled || this.dataDebug) {
+                    console.debug(`${prefix} ${message}`, data);
+                }
+                break;
+            default:
+                if (this.enabled) {
+                    console.debug(`${prefix} ${message}`, data);
+                }
+        }
+    }
+
+    error(message: string, error?: any): void {
+        const timestamp = new Date().toISOString();
+        console.error(`[ERROR ${timestamp}] ${message}`, error);
+    }
+
+    warn(message: string, data?: any): void {
+        if (this.enabled) {
+            const timestamp = new Date().toISOString();
+            console.warn(`[WARN ${timestamp}] ${message}`, data);
         }
     }
 }

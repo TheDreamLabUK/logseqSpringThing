@@ -52,11 +52,13 @@ export class EnhancedXRInteractionHandler {
     private lastUpdateTime: number;
     private pendingUpdates: Map<string, PositionUpdate>;
     private onPositionUpdate?: (nodeId: string, position: THREE.Vector3) => void;
+    private websocketService: any; // Reference to WebSocket service
 
-    constructor(scene: Scene, camera: Camera, renderer: WebGLRenderer) {
+    constructor(scene: Scene, camera: Camera, renderer: WebGLRenderer, websocketService: any) {
         this.scene = scene;
         this.camera = camera;
         this.renderer = renderer;
+        this.websocketService = websocketService;
         
         this.handModelFactory = new XRHandModelFactory();
         this.hands = { left: null, right: null };
@@ -187,8 +189,18 @@ export class EnhancedXRInteractionHandler {
             }
 
             if (closestObject && this.isInteractableMesh(closestObject)) {
+                // Start interaction mode if this is the first grabbed object
+                if (!this.grabStates.left.grabbedObject && !this.grabStates.right.grabbedObject) {
+                    this.websocketService?.startInteractionMode();
+                }
+
                 grabState.grabbedObject = closestObject;
                 closestObject.userData.isGrabbed = true;
+                
+                // Add node to interacted nodes list
+                if (closestObject.userData.id) {
+                    this.websocketService?.addInteractedNode(closestObject.userData.id);
+                }
                 
                 if (closestObject.material instanceof THREE.MeshStandardMaterial) {
                     closestObject.material.emissive.setHex(0x222222);
@@ -216,6 +228,11 @@ export class EnhancedXRInteractionHandler {
             }
 
             grabState.pinching = false;
+
+            // End interaction mode if no objects are grabbed
+            if (!this.grabStates.left.grabbedObject && !this.grabStates.right.grabbedObject) {
+                this.websocketService?.endInteractionMode();
+            }
         } catch (error) {
             console.error('Error handling pinch end:', error);
         }
@@ -293,6 +310,11 @@ export class EnhancedXRInteractionHandler {
 
     cleanup(): void {
         try {
+            // End interaction mode if active
+            if (this.grabStates.left.grabbedObject || this.grabStates.right.grabbedObject) {
+                this.websocketService?.endInteractionMode();
+            }
+
             this.geometryPool.forEach(geometry => geometry.dispose());
             this.geometryPool.clear();
 
@@ -328,10 +350,11 @@ export class EnhancedXRInteractionHandler {
 export function initXRInteraction(
     scene: Scene, 
     camera: Camera, 
-    renderer: WebGLRenderer, 
+    renderer: WebGLRenderer,
+    websocketService: any,
     onPositionUpdate?: (nodeId: string, position: THREE.Vector3) => void
 ): EnhancedXRInteractionHandler {
-    const handler = new EnhancedXRInteractionHandler(scene, camera, renderer);
+    const handler = new EnhancedXRInteractionHandler(scene, camera, renderer, websocketService);
     if (onPositionUpdate) {
         handler.setPositionUpdateCallback(onPositionUpdate);
     }
