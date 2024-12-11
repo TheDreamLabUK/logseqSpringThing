@@ -41,8 +41,10 @@ let scene: THREE.Scene
 let camera: THREE.PerspectiveCamera
 let renderer: THREE.WebGLRenderer
 let controls: OrbitControls
-let nodeInstancedMesh: THREE.InstancedMesh<THREE.SphereGeometry, THREE.MeshPhongMaterial>
-let edgeInstancedMesh: THREE.InstancedMesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial>
+let nodeInstancedMesh: THREE.InstancedMesh
+let edgeInstancedMesh: THREE.InstancedMesh
+
+// Animation
 let animationFrameId: number
 
 // Reusable objects
@@ -51,6 +53,8 @@ const quaternion = new THREE.Quaternion()
 const position = new THREE.Vector3()
 const scale = new THREE.Vector3(1, 1, 1)
 const color = new THREE.Color()
+
+// Edge calculation vectors
 const start = new THREE.Vector3()
 const end = new THREE.Vector3()
 const direction = new THREE.Vector3()
@@ -61,14 +65,15 @@ const tempVector = new THREE.Vector3()
 // Node state
 let currentNodes: Node[] = []
 let currentEdges: Edge[] = []
-const NODE_SIZE = 3
+const NODE_SIZE = 2.5
 const NODE_SEGMENTS = 16
-const EDGE_RADIUS = 0.15
+const EDGE_RADIUS = 0.25
 const EDGE_SEGMENTS = 8
 
 // Colors
-const NODE_COLOR = 0x4CAF50
-const EDGE_COLOR = 0x90A4AE
+const NODE_COLOR = 0x4CAF50  // Material Design Green
+const EDGE_COLOR = 0xE0E0E0  // Material Design Grey 300
+const BACKGROUND_COLOR = 0x212121  // Material Design Grey 900
 
 // WebSocket state
 let ws: WebSocket | null = null
@@ -84,7 +89,7 @@ const MAX_RECONNECT_ATTEMPTS = 5
 const INITIAL_RECONNECT_DELAY = 2000
 const MAX_RECONNECT_DELAY = 30000
 
-// Message queue for throttling
+// Message queue
 interface QueuedMessage {
     data: ArrayBuffer
     timestamp: number
@@ -119,12 +124,13 @@ function log(message: string, type: LogType = 'log') {
     }
 }
 
-// Three.js setup
 function initThree() {
+    // Scene
     scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x1a1a1a)
-    scene.fog = new THREE.FogExp2(0x1a1a1a, 0.002)
+    scene.background = new THREE.Color(BACKGROUND_COLOR)
+    scene.fog = new THREE.FogExp2(BACKGROUND_COLOR, 0.002)
 
+    // Camera
     camera = new THREE.PerspectiveCamera(
         75,
         window.innerWidth / window.innerHeight,
@@ -134,6 +140,7 @@ function initThree() {
     camera.position.set(0, 75, 200)
     camera.lookAt(0, 0, 0)
 
+    // Renderer
     renderer = new THREE.WebGLRenderer({ 
         antialias: true,
         alpha: true,
@@ -143,6 +150,7 @@ function initThree() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     sceneEl.appendChild(renderer.domElement)
 
+    // Controls
     controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.05
@@ -150,17 +158,19 @@ function initThree() {
     controls.minDistance = 50
     controls.maxDistance = 500
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
     scene.add(ambientLight)
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1)
-    directionalLight.position.set(10, 10, 10)
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
+    directionalLight.position.set(1, 1, 1).normalize()
     scene.add(directionalLight)
 
+    // Grid
     const gridHelper = new THREE.GridHelper(1000, 100)
     if (gridHelper.material instanceof THREE.Material) {
         gridHelper.material.transparent = true
-        gridHelper.material.opacity = 0.2
+        gridHelper.material.opacity = 0.1
     }
     scene.add(gridHelper)
 
@@ -172,31 +182,40 @@ function initThree() {
 }
 
 function initNodeMesh() {
+    // Create sphere for nodes
     const geometry = new THREE.SphereGeometry(NODE_SIZE, NODE_SEGMENTS, NODE_SEGMENTS)
     const material = new THREE.MeshPhongMaterial({
         color: NODE_COLOR,
-        shininess: 80,
+        shininess: 90,
+        specular: 0x444444,
         flatShading: false
     })
 
+    // Create instanced mesh for nodes
     nodeInstancedMesh = new THREE.InstancedMesh(geometry, material, 10000)
     nodeInstancedMesh.count = 0
     nodeInstancedMesh.frustumCulled = false
+
+    // Reset node transforms
+    quaternion.identity()
+    scale.set(1, 1, 1)
 
     scene.add(nodeInstancedMesh)
 }
 
 function initEdgeMesh() {
+    // Create cylinder for edges
     const geometry = new THREE.CylinderGeometry(EDGE_RADIUS, EDGE_RADIUS, 1, EDGE_SEGMENTS)
     geometry.rotateX(Math.PI / 2)
     
     const material = new THREE.MeshBasicMaterial({
         color: EDGE_COLOR,
         transparent: true,
-        opacity: 0.8,
+        opacity: 0.7,
         depthWrite: false
     })
 
+    // Create instanced mesh for edges
     edgeInstancedMesh = new THREE.InstancedMesh(geometry, material, 30000)
     edgeInstancedMesh.count = 0
     edgeInstancedMesh.frustumCulled = false
@@ -221,6 +240,10 @@ function createNodeInstances(nodes: Node[]) {
     currentNodes = nodes
     nodeInstancedMesh.count = nodes.length
 
+    // Reset transforms
+    quaternion.identity()
+    scale.set(1, 1, 1)
+
     nodes.forEach((node, index) => {
         position.set(
             node.position?.[0] || 0,
@@ -230,13 +253,9 @@ function createNodeInstances(nodes: Node[]) {
 
         matrix.compose(position, quaternion, scale)
         nodeInstancedMesh.setMatrixAt(index, matrix)
-
-        color.setHex(NODE_COLOR)
-        nodeInstancedMesh.setColorAt(index, color)
     })
 
     nodeInstancedMesh.instanceMatrix.needsUpdate = true
-    if (nodeInstancedMesh.instanceColor) nodeInstancedMesh.instanceColor.needsUpdate = true
 }
 
 function createEdgeInstances(nodes: Node[], edges: Edge[]) {
@@ -281,7 +300,7 @@ function updateEdgeInstance(index: number, sourceNode: Node, targetNode: Node) {
     
     if (tempVector.lengthSq() < 0.001) {
         if (direction.dot(UP) > 0) {
-            quaternion.set(0, 0, 0, 1)
+            quaternion.identity()
         } else {
             quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI)
         }
@@ -303,6 +322,10 @@ function updateNodePositions(floatArray: Float32Array) {
     }
 
     const nodeCount = (floatArray.length - 1) / 6
+
+    // Reset transforms for nodes
+    quaternion.identity()
+    scale.set(1, 1, 1)
 
     for (let i = 0; i < nodeCount && i < currentNodes.length; i++) {
         const baseIndex = 1 + i * 6
