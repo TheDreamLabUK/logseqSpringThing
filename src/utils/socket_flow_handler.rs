@@ -14,6 +14,7 @@ use crate::utils::debug_logging::WsDebugData;
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     initial_data_sent: bool,
+    binary_updates_enabled: bool,
 }
 
 impl Actor for SocketFlowServer {
@@ -106,6 +107,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                             });
                             ctx.spawn(fut);
                         },
+                        Some("enableBinaryUpdates") => {
+                            if !self.initial_data_sent {
+                                log_websocket!("Ignoring binary update request before initial data");
+                                return;
+                            }
+                            log_websocket!("Enabling binary updates");
+                            self.binary_updates_enabled = true;
+                        },
                         Some("updatePositions") => {
                             // Only process position updates after initial data is sent
                             if !self.initial_data_sent {
@@ -146,15 +155,17 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     binary_data
                                 };
 
-                                let fut = fut.into_actor(self).map(|binary_data, _actor, ctx| {
-                                    // First send a message indicating binary data is coming
-                                    if let Ok(message) = serde_json::to_string(&ServerMessage::BinaryPositionUpdate {
-                                        is_initial_layout: false,
-                                    }) {
-                                        ctx.text(message);
+                                let fut = fut.into_actor(self).map(|binary_data, actor, ctx| {
+                                    if actor.binary_updates_enabled {
+                                        // First send a message indicating binary data is coming
+                                        if let Ok(message) = serde_json::to_string(&ServerMessage::BinaryPositionUpdate {
+                                            is_initial_layout: false,
+                                        }) {
+                                            ctx.text(message);
+                                        }
+                                        log_websocket!("Sending binary response: {} bytes", binary_data.len());
+                                        ctx.binary(binary_data);
                                     }
-                                    log_websocket!("Sending binary response: {} bytes", binary_data.len());
-                                    ctx.binary(binary_data);
                                 });
                                 ctx.spawn(fut);
                             }
@@ -181,9 +192,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 }
             }
             Ok(ws::Message::Binary(bin)) => {
-                // Only process binary messages after initial data is sent
-                if !self.initial_data_sent {
-                    log_websocket!("Ignoring binary message before initial data");
+                // Only process binary messages after initial data is sent and binary updates enabled
+                if !self.initial_data_sent || !self.binary_updates_enabled {
+                    log_websocket!("Ignoring binary message before initialization");
                     return;
                 }
 
@@ -217,15 +228,17 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                     binary_data
                 };
 
-                let fut = fut.into_actor(self).map(|binary_data, _actor, ctx| {
-                    // First send a message indicating binary data is coming
-                    if let Ok(message) = serde_json::to_string(&ServerMessage::BinaryPositionUpdate {
-                        is_initial_layout: false,
-                    }) {
-                        ctx.text(message);
+                let fut = fut.into_actor(self).map(|binary_data, actor, ctx| {
+                    if actor.binary_updates_enabled {
+                        // First send a message indicating binary data is coming
+                        if let Ok(message) = serde_json::to_string(&ServerMessage::BinaryPositionUpdate {
+                            is_initial_layout: false,
+                        }) {
+                            ctx.text(message);
+                        }
+                        log_websocket!("Sending binary response: {} bytes", binary_data.len());
+                        ctx.binary(binary_data);
                     }
-                    log_websocket!("Sending binary response: {} bytes", binary_data.len());
-                    ctx.binary(binary_data);
                 });
                 ctx.spawn(fut);
             }
@@ -244,6 +257,7 @@ impl SocketFlowServer {
         Self { 
             app_state,
             initial_data_sent: false,
+            binary_updates_enabled: false,
         }
     }
 }
