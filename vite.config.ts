@@ -56,7 +56,8 @@ export default defineConfig(({ command, mode }) => {
       },
       rollupOptions: {
         input: {
-          main: path.resolve(__dirname, 'client/index.html')
+          main: path.resolve(__dirname, 'client/index.html'),
+          test: path.resolve(__dirname, 'client/indexTest.html')  // Add test client as entry point
         },
         output: {
           manualChunks: {
