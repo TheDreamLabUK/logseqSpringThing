@@ -3,7 +3,7 @@
 ## Current Setup
 The current architecture uses nginx to handle WebSocket connections with these features:
 ```nginx
-location /ws {
+location /wss {
     proxy_pass http://backend;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;

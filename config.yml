@@ -18,4 +18,3 @@ no-autoupdate: true
 
 # Logging settings
 loglevel: debug
-

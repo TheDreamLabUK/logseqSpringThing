@@ -258,7 +258,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state.clone())
             .wrap(middleware::Logger::default())
             .route("/health", web::get().to(health_check))
-            .route("/ws", web::get().to(ws_handler))  // WebSocket handler
+            .route("/wss", web::get().to(ws_handler))  // WebSocket handler
             .service(
                 web::scope("/api/files")
                     .route("/fetch", web::get().to(file_handler::fetch_and_process_files))
