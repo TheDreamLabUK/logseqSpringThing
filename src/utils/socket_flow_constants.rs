@@ -11,7 +11,7 @@ pub const MAX_MESSAGE_SIZE: usize = 100 * 1024 * 1024; // 100MB
 pub const BINARY_CHUNK_SIZE: usize = 64 * 1024; // 64KB
 
 // Update rate constants
-pub const POSITION_UPDATE_RATE: u32 = 30; // Hz
+pub const POSITION_UPDATE_RATE: u32 = 5; // Hz (matching client's MAX_UPDATES_PER_SECOND)
 pub const METADATA_UPDATE_RATE: u32 = 1; // Hz
 
 // Compression constants

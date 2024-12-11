@@ -67,6 +67,40 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
                     log_data!("Parsed text message: {}", value);
                     match value.get("type").and_then(|t| t.as_str()) {
+                        Some("initialData") => {
+                            log_websocket!("Processing initialData request");
+                            // Client is requesting initial data, send it again
+                            let app_state = self.app_state.clone();
+                            let fut = async move {
+                                let graph = app_state.graph_service.graph_data.read().await;
+                                let settings = app_state.settings.read().await;
+
+                                log_data!("Re-preparing initial graph data with {} nodes", graph.nodes.len());
+
+                                let initial_data = ServerMessage::InitialData {
+                                    graph_data: (*graph).clone(),
+                                    settings: serde_json::to_value(&*settings).unwrap_or_default(),
+                                };
+
+                                serde_json::to_string(&initial_data)
+                            };
+
+                            let fut = fut.into_actor(self).map(|res, _actor, ctx| {
+                                match res {
+                                    Ok(message) => {
+                                        log_websocket!("Re-sending initial data to client");
+                                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&message) {
+                                            log_data!("Initial data JSON: {}", json);
+                                        }
+                                        ctx.text(message);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to serialize initial data: {}", e);
+                                    }
+                                }
+                            });
+                            ctx.spawn(fut);
+                        },
                         Some("updatePositions") => {
                             log_websocket!("Processing updatePositions message");
                             if let Ok(update_msg) = serde_json::from_value::<UpdatePositionsMessage>(value) {
@@ -124,7 +158,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                             }
                         }
                         _ => {
-                            warn!("Unknown message type");
+                            warn!("Unknown message type: {:?}", value.get("type"));
                         }
                     }
                 }
