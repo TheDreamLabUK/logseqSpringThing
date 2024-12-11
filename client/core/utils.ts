@@ -81,7 +81,35 @@ export const vectorOps = {
   },
 
   distance: (a: Vector3, b: Vector3): number => 
-    vectorOps.length(vectorOps.subtract(a, b))
+    vectorOps.length(vectorOps.subtract(a, b)),
+
+  // Convert position array to Vector3
+  fromArray: (arr: number[]): Vector3 => ({
+    x: arr[0] || 0,
+    y: arr[1] || 0,
+    z: arr[2] || 0
+  })
+};
+
+// Scale utilities
+export const scaleOps = {
+  // Normalize a value between min and max
+  normalize: (value: number, min: number, max: number): number => {
+    return Math.min(max, Math.max(min, value));
+  },
+
+  // Map a value from one range to another
+  mapRange: (value: number, inMin: number, inMax: number, outMin: number, outMax: number): number => {
+    // First normalize to 0-1
+    const normalized = (value - inMin) / (inMax - inMin);
+    // Then map to output range
+    return outMin + normalized * (outMax - outMin);
+  },
+
+  // Scale node size from server range to visualization range
+  normalizeNodeSize: (size: number, serverMin: number = 20, serverMax: number = 30, visMin: number = 0.15, visMax: number = 0.4): number => {
+    return scaleOps.mapRange(size, serverMin, serverMax, visMin, visMax);
+  }
 };
 
 // Data validation utilities
@@ -91,11 +119,25 @@ export const validateGraphData = (data: any): boolean => {
   
   // Validate nodes
   for (const node of data.nodes) {
-    if (!node.id || !node.position || 
-        typeof node.position.x !== 'number' ||
-        typeof node.position.y !== 'number' ||
-        typeof node.position.z !== 'number') {
-      return false;
+    if (!node.id) return false;
+    // Allow position to be either array or Vector3
+    if (node.position) {
+      if (Array.isArray(node.position)) {
+        if (node.position.length !== 3 || 
+            typeof node.position[0] !== 'number' ||
+            typeof node.position[1] !== 'number' ||
+            typeof node.position[2] !== 'number') {
+          return false;
+        }
+      } else if (typeof node.position === 'object') {
+        if (typeof node.position.x !== 'number' ||
+            typeof node.position.y !== 'number' ||
+            typeof node.position.z !== 'number') {
+          return false;
+        }
+      } else {
+        return false;
+      }
     }
   }
   

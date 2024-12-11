@@ -49,21 +49,11 @@ Note that the super minimal implmentation shown in /featureclient/iterate.ts wor
 
 ## Next Steps
 
-0. Fix the launch scripts in /scripts
-./scripts/launch-docker.sh 
-Checking GPU availability...
-2 MiB, 49140 MiB
-1 MiB, 24576 MiB
-31006 MiB, 49140 MiB
-Verifying client directory structure...
-Error: Required file /mnt/mldata/githubs/logseqSpringThing/client/components/App.vue not found
-Client structure verification failed
-machinelearn@MLAI:/mnt/mldata/githubs/logseqSpringThing$ 
-
 1. Test the basic functionality:
-   - WebSocket connection and data flow
-   - Graph visualization rendering
+   - [✓] WebSocket connection and data flow
+   - Graph visualization rendering - still not showing, we should consider using vector3 at the server code and passing it in directly
    - Settings panel interaction
+   - Unify settings from server to client and back again over the network json system
    - XR mode on Meta Quest 3
 
 2. Implement additional features:

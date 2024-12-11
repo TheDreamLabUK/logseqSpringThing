@@ -10,13 +10,14 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 
 import { Viewport, VisualizationSettings } from '../core/types';
 import { CAMERA_FOV, CAMERA_NEAR, CAMERA_FAR, CAMERA_POSITION } from '../core/constants';
-// import { createLogger } from '../core/utils';
+import { createLogger } from '../core/utils';
 import { platformManager } from '../platform/platformManager';
 import { settingsManager } from '../state/settings';
 
-// Logger will be used for debugging scene setup, rendering performance, and XR mode transitions
-// import { createLogger } from '../core/utils';
-// const __logger = createLogger('SceneManager');
+const logger = createLogger('SceneManager');
+
+// Center point between the two nodes
+const SCENE_CENTER = new THREE.Vector3(-8.27, 8.11, 2.82);
 
 export class SceneManager {
   private static instance: SceneManager;
@@ -39,12 +40,16 @@ export class SceneManager {
   private viewport: Viewport;
   
   private constructor(canvas: HTMLCanvasElement) {
+    logger.log('Initializing SceneManager');
+    
     // Initialize viewport
     this.viewport = {
       width: window.innerWidth,
       height: window.innerHeight,
       devicePixelRatio: window.devicePixelRatio
     };
+
+    logger.log(`Viewport: ${this.viewport.width}x${this.viewport.height} (${this.viewport.devicePixelRatio})`);
 
     // Create scene
     this.scene = new THREE.Scene();
@@ -62,6 +67,10 @@ export class SceneManager {
       CAMERA_POSITION.y,
       CAMERA_POSITION.z
     );
+    // Look at the center point between nodes
+    this.camera.lookAt(SCENE_CENTER);
+    logger.log(`Camera position: ${JSON.stringify(CAMERA_POSITION)}`);
+    logger.log(`Looking at: ${JSON.stringify(SCENE_CENTER)}`);
 
     // Create renderer
     this.renderer = new THREE.WebGLRenderer({
@@ -72,11 +81,16 @@ export class SceneManager {
     this.renderer.setSize(this.viewport.width, this.viewport.height);
     this.renderer.setPixelRatio(this.viewport.devicePixelRatio);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.5;
 
     // Create controls
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
+    // Set controls target to center point between nodes
+    this.controls.target.copy(SCENE_CENTER);
+    logger.log('Controls initialized');
 
     // Setup post-processing
     this.composer = new EffectComposer(this.renderer);
@@ -92,6 +106,9 @@ export class SceneManager {
     );
     this.composer.addPass(this.bloomPass);
 
+    // Add helpers
+    this.setupHelpers();
+
     // Setup lighting
     this.setupLighting();
 
@@ -103,6 +120,8 @@ export class SceneManager {
 
     // Subscribe to settings changes
     settingsManager.subscribe(settings => this.applySettings(settings));
+
+    logger.log('SceneManager initialization complete');
   }
 
   static getInstance(canvas: HTMLCanvasElement): SceneManager {
@@ -112,23 +131,58 @@ export class SceneManager {
     return SceneManager.instance;
   }
 
+  private setupHelpers(): void {
+    // Add grid helper centered at the scene center
+    const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
+    gridHelper.position.copy(SCENE_CENTER);
+    this.scene.add(gridHelper);
+
+    // Add axes helper at scene center
+    const axesHelper = new THREE.AxesHelper(50);
+    axesHelper.position.copy(SCENE_CENTER);
+    this.scene.add(axesHelper);
+
+    logger.log('Scene helpers added');
+  }
+
   private setupLighting(): void {
-    // Ambient light
-    const ambientLight = new THREE.AmbientLight(0x404040, 1);
+    // Ambient light - increased intensity for better base illumination
+    const ambientLight = new THREE.AmbientLight(0xffffff, 2);
     this.scene.add(ambientLight);
 
-    // Directional light
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(1, 1, 1);
-    this.scene.add(directionalLight);
+    // Directional lights from multiple angles for better shading
+    const createDirectionalLight = (x: number, y: number, z: number, intensity: number) => {
+      const light = new THREE.DirectionalLight(0xffffff, intensity);
+      // Position lights relative to scene center
+      light.position.copy(SCENE_CENTER).add(new THREE.Vector3(x, y, z));
+      // Enable shadows for better depth perception
+      light.castShadow = true;
+      light.shadow.mapSize.width = 512;
+      light.shadow.mapSize.height = 512;
+      return light;
+    };
 
-    // Hemisphere light
-    const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x404040, 1);
+    // Add lights from different directions for better coverage
+    this.scene.add(createDirectionalLight(1, 1, 1, 2));     // Top-right-front (main light)
+    this.scene.add(createDirectionalLight(-1, 1, 1, 1));    // Top-left-front (fill light)
+    this.scene.add(createDirectionalLight(0, -1, 0, 0.5));  // Bottom (rim light)
+    this.scene.add(createDirectionalLight(0, 0, -1, 0.5));  // Back (back light)
+
+    // Hemisphere light for subtle ambient gradient
+    const hemisphereLight = new THREE.HemisphereLight(
+      0xffffff, // Sky color
+      0x444444, // Ground color
+      2         // Intensity
+    );
+    hemisphereLight.position.copy(SCENE_CENTER).add(new THREE.Vector3(0, 1, 0));
     this.scene.add(hemisphereLight);
+
+    logger.log('Enhanced lighting setup complete');
   }
 
   private setupEventListeners(): void {
     window.addEventListener('resize', this.handleResize.bind(this));
+    logger.log('Event listeners setup');
   }
 
   private handleResize(): void {
@@ -145,6 +199,8 @@ export class SceneManager {
     this.renderer.setPixelRatio(this.viewport.devicePixelRatio);
 
     this.composer.setSize(this.viewport.width, this.viewport.height);
+
+    logger.log(`Viewport resized: ${this.viewport.width}x${this.viewport.height}`);
   }
 
   private applySettings(settings: VisualizationSettings): void {
@@ -154,7 +210,7 @@ export class SceneManager {
     this.bloomPass.strength = settings.bloomIntensity;
     this.bloomPass.radius = settings.bloomRadius;
 
-    // Apply other visual settings as needed
+    logger.log('Settings applied');
   }
 
   private animate(): void {
@@ -178,6 +234,7 @@ export class SceneManager {
     if (this.isRunning) return;
     this.isRunning = true;
     this.animate();
+    logger.log('Scene rendering started');
   }
 
   stop(): void {
@@ -186,6 +243,7 @@ export class SceneManager {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
+    logger.log('Scene rendering stopped');
   }
 
   // Public API
@@ -215,6 +273,7 @@ export class SceneManager {
    */
   add(object: THREE.Object3D): void {
     this.scene.add(object);
+    logger.log(`Added object to scene: ${object.type}`);
   }
 
   /**
@@ -222,6 +281,7 @@ export class SceneManager {
    */
   remove(object: THREE.Object3D): void {
     this.scene.remove(object);
+    logger.log(`Removed object from scene: ${object.type}`);
   }
 
   /**
@@ -236,6 +296,8 @@ export class SceneManager {
     objectsToRemove.forEach(object => {
       this.scene.remove(object);
     });
+    
+    logger.log(`Cleared ${objectsToRemove.length} objects from scene`);
   }
 
   /**
@@ -260,5 +322,7 @@ export class SceneManager {
 
     // Clear scene
     this.clear();
+
+    logger.log('Scene manager disposed');
   }
 }

@@ -16,6 +16,7 @@ export class SettingsManager {
   private constructor() {
     this.settings = { ...DEFAULT_VISUALIZATION_SETTINGS };
     this.settingsListeners = new Set();
+    logger.log('Initialized with default settings:', this.settings);
   }
 
   static getInstance(): SettingsManager {
@@ -36,6 +37,7 @@ export class SettingsManager {
       }
       const settings = await response.json();
       this.updateSettings(settings);
+      logger.log('Loaded settings from server:', settings);
     } catch (error) {
       logger.error('Error loading settings:', error);
       // Fall back to default settings
@@ -75,6 +77,8 @@ export class SettingsManager {
       ...this.settings,
       ...newSettings
     };
+
+    logger.log('Updated settings:', this.settings);
 
     // Notify all listeners of the settings change
     this.settingsListeners.forEach(listener => {
@@ -120,6 +124,26 @@ export class SettingsManager {
 
   getNodeColor(): string {
     return this.settings.nodeColor;
+  }
+
+  getNodeMaterialSettings(): {
+    metalness: number;
+    roughness: number;
+    emissiveIntensity: number;
+    clearcoat: number;
+    clearcoatRoughness: number;
+    reflectivity: number;
+    envMapIntensity: number;
+  } {
+    return {
+      metalness: this.settings.nodeMaterialMetalness,
+      roughness: this.settings.nodeMaterialRoughness,
+      emissiveIntensity: this.settings.nodeMaterialEmissiveIntensity,
+      clearcoat: this.settings.nodeMaterialClearcoat,
+      clearcoatRoughness: this.settings.nodeMaterialClearcoatRoughness,
+      reflectivity: this.settings.nodeMaterialReflectivity,
+      envMapIntensity: this.settings.nodeMaterialEnvMapIntensity
+    };
   }
 
   getEdgeWidth(): number {

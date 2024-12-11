@@ -52,6 +52,15 @@ export interface VisualizationSettings {
   nodeOpacity: number;
   nodeHighlightColor: string;
   
+  // Node material properties
+  nodeMaterialMetalness: number;  // 0-1
+  nodeMaterialRoughness: number;  // 0-1
+  nodeMaterialEmissiveIntensity: number;  // 0-1
+  nodeMaterialClearcoat: number;  // 0-1
+  nodeMaterialClearcoatRoughness: number;  // 0-1
+  nodeMaterialReflectivity: number;  // 0-1
+  nodeMaterialEnvMapIntensity: number;  // 0-1
+  
   // Edge appearance
   edgeWidth: number;
   edgeColor: string;
@@ -91,7 +100,7 @@ export type MessageType =
   | 'binaryPositionUpdate'
   | 'settingsUpdate'
   | 'error'
-  | 'heartbeat';
+  | 'ping';  // Changed from 'heartbeat' to 'ping'
 
 export interface WebSocketMessage {
   type: MessageType;

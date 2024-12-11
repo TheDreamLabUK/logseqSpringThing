@@ -3,13 +3,87 @@
  */
 
 import { WebSocketMessage, MessageType } from '../core/types';
-import { WS_RECONNECT_INTERVAL, WS_HEARTBEAT_INTERVAL, WS_MESSAGE_QUEUE_SIZE } from '../core/constants';
+import { WS_RECONNECT_INTERVAL, WS_MESSAGE_QUEUE_SIZE } from '../core/constants';
 import { createLogger } from '../core/utils';
 
 const logger = createLogger('WebSocketService');
 
+// Server heartbeat configuration from settings.toml
+const HEARTBEAT_INTERVAL = 15000; // 15 seconds
+
 type MessageHandler = (data: any) => void;
 type ErrorHandler = (error: Error) => void;
+
+// Network debug panel
+class NetworkDebugPanel {
+  private container: HTMLDivElement;
+  private messageList: HTMLUListElement;
+  private maxMessages = 50;
+
+  constructor() {
+    this.container = document.createElement('div');
+    this.container.style.cssText = `
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      color: #00ff00;
+      padding: 10px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      z-index: 1000;
+    `;
+
+    const title = document.createElement('div');
+    title.textContent = 'Network Messages';
+    title.style.marginBottom = '5px';
+    this.container.appendChild(title);
+
+    this.messageList = document.createElement('ul');
+    this.messageList.style.cssText = `
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    `;
+    this.container.appendChild(this.messageList);
+
+    document.body.appendChild(this.container);
+  }
+
+  addMessage(direction: 'in' | 'out', message: any): void {
+    const item = document.createElement('li');
+    const timestamp = new Date().toISOString().split('T')[1].slice(0, -1);
+    const arrow = direction === 'in' ? '←' : '→';
+    let displayMessage: string;
+
+    if (message instanceof ArrayBuffer) {
+      displayMessage = `Binary data (${message.byteLength} bytes)`;
+    } else if (typeof message === 'string') {
+      try {
+        displayMessage = JSON.stringify(JSON.parse(message), null, 2);
+      } catch {
+        displayMessage = message;
+      }
+    } else {
+      displayMessage = JSON.stringify(message, null, 2);
+    }
+
+    item.textContent = `${timestamp} ${arrow} ${displayMessage}`;
+    item.style.marginBottom = '2px';
+    item.style.wordBreak = 'break-all';
+    item.style.whiteSpace = 'pre-wrap';
+
+    this.messageList.insertBefore(item, this.messageList.firstChild);
+
+    // Limit number of messages
+    while (this.messageList.children.length > this.maxMessages) {
+      this.messageList.removeChild(this.messageList.lastChild!);
+    }
+  }
+}
 
 export class WebSocketService {
   private ws: WebSocket | null = null;
@@ -20,10 +94,12 @@ export class WebSocketService {
   private messageHandlers: Map<MessageType, MessageHandler[]> = new Map();
   private errorHandlers: ErrorHandler[] = [];
   private isConnected: boolean = false;
+  private debugPanel: NetworkDebugPanel;
 
   constructor(url: string) {
     this.url = url;
     this.initializeHandlers();
+    this.debugPanel = new NetworkDebugPanel();
   }
 
   private initializeHandlers(): void {
@@ -77,6 +153,7 @@ export class WebSocketService {
     };
 
     this.ws.onmessage = (event) => {
+      this.debugPanel.addMessage('in', event.data);
       this.handleMessage(event);
     };
   }
@@ -123,10 +200,13 @@ export class WebSocketService {
   private startHeartbeat(): void {
     this.stopHeartbeat();
     this.heartbeatInterval = window.setInterval(() => {
-      if (this.isConnected) {
-        this.send({ type: 'heartbeat', data: null });
+      if (this.isConnected && this.ws) {
+        // Use native WebSocket ping
+        const pingData = new Uint8Array([]);
+        this.ws.send(pingData);
+        this.debugPanel.addMessage('out', 'WebSocket Ping');
       }
-    }, WS_HEARTBEAT_INTERVAL);
+    }, HEARTBEAT_INTERVAL);
   }
 
   private stopHeartbeat(): void {
@@ -175,7 +255,9 @@ export class WebSocketService {
     }
 
     try {
-      this.ws?.send(JSON.stringify(message));
+      const messageStr = JSON.stringify(message);
+      this.debugPanel.addMessage('out', messageStr);
+      this.ws?.send(messageStr);
     } catch (error) {
       logger.error('Error sending message:', error);
       this.notifyErrorHandlers(new Error('Failed to send message'));
@@ -189,6 +271,7 @@ export class WebSocketService {
     }
 
     try {
+      this.debugPanel.addMessage('out', data);
       this.ws?.send(data);
     } catch (error) {
       logger.error('Error sending binary data:', error);

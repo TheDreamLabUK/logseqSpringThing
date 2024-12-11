@@ -4,7 +4,7 @@
 
 import { GraphData, Node, Edge, Vector3 } from '../core/types';
 import { POSITION_SCALE } from '../core/constants';
-import { createLogger, binaryToFloat32Array, float32ArrayToPositions } from '../core/utils';
+import { createLogger, binaryToFloat32Array, float32ArrayToPositions, vectorOps } from '../core/utils';
 
 const logger = createLogger('GraphDataManager');
 
@@ -34,35 +34,66 @@ export class GraphDataManager {
   /**
    * Initialize or update the entire graph data
    */
-  updateGraphData(data: GraphData): void {
+  updateGraphData(data: any): void {
+    logger.log('Received graph data update:', data);
+
     // Clear existing data
     this.nodes.clear();
     this.edges.clear();
 
     // Store nodes in Map for O(1) access
-    data.nodes.forEach(node => {
-      this.nodes.set(node.id, {
-        ...node,
-        // Ensure all required properties exist
-        position: node.position || { x: 0, y: 0, z: 0 },
-        velocity: node.velocity || { x: 0, y: 0, z: 0 },
-        mass: node.mass || 1,
-        label: node.label || node.id
+    if (data.graphData && Array.isArray(data.graphData.nodes)) {
+      data.graphData.nodes.forEach((node: any) => {
+        // Convert position array to Vector3 if needed
+        const rawPosition = Array.isArray(node.position) 
+          ? node.position
+          : node.position || [0, 0, 0];
+
+        logger.log(`Raw position for node ${node.id}:`, rawPosition);
+
+        const position = vectorOps.fromArray(rawPosition);
+        logger.log(`Converted position for node ${node.id}:`, position);
+
+        // Scale the position
+        const scaledPosition = {
+          x: position.x * POSITION_SCALE,
+          y: position.y * POSITION_SCALE,
+          z: position.z * POSITION_SCALE
+        };
+
+        logger.log(`Scaled position for node ${node.id}:`, scaledPosition);
+
+        this.nodes.set(node.id, {
+          ...node,
+          position: scaledPosition,
+          velocity: { x: 0, y: 0, z: 0 }, // Initialize velocity
+          mass: 1, // Initialize mass
+          label: node.label || node.id
+        });
       });
-    });
 
-    // Store edges in Map with composite key
-    data.edges.forEach(edge => {
-      const edgeId = this.createEdgeId(edge.source, edge.target);
-      this.edges.set(edgeId, edge);
-    });
+      // Store edges in Map with composite key
+      if (Array.isArray(data.graphData.edges)) {
+        data.graphData.edges.forEach((edge: Edge) => {
+          const edgeId = this.createEdgeId(edge.source, edge.target);
+          this.edges.set(edgeId, edge);
+        });
+      }
 
-    // Update metadata
-    this.metadata = data.metadata || {};
+      // Update metadata
+      this.metadata = data.graphData.metadata || {};
 
-    // Notify listeners
-    this.notifyUpdateListeners();
-    logger.log(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
+      // Notify listeners
+      this.notifyUpdateListeners();
+      logger.log(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
+
+      // Log all node positions for debugging
+      this.nodes.forEach((node, id) => {
+        logger.log(`Final node ${id} position:`, node.position);
+      });
+    } else {
+      logger.warn('Invalid graph data format received');
+    }
   }
 
   /**
@@ -74,17 +105,21 @@ export class GraphDataManager {
       const positions = float32ArrayToPositions(float32Array);
       const nodePositions = new Map<string, Vector3>();
 
+      logger.log('Processing binary position update');
+
       // Update node positions
       let i = 0;
       for (const [id, node] of this.nodes) {
         if (i < positions.length) {
           const position = positions[i];
-          node.position = {
+          const scaledPosition = {
             x: position.x * POSITION_SCALE,
             y: position.y * POSITION_SCALE,
             z: position.z * POSITION_SCALE
           };
-          nodePositions.set(id, node.position);
+          node.position = scaledPosition;
+          nodePositions.set(id, scaledPosition);
+          logger.log(`Updated node ${id} position:`, scaledPosition);
           i++;
         }
       }
