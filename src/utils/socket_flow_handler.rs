@@ -13,6 +13,7 @@ use crate::utils::debug_logging::WsDebugData;
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
+    initial_data_sent: bool,
 }
 
 impl Actor for SocketFlowServer {
@@ -37,13 +38,15 @@ impl Actor for SocketFlowServer {
             serde_json::to_string(&initial_data)
         };
 
-        let fut = fut.into_actor(self).map(|res, _actor, ctx| {
+        let fut = fut.into_actor(self).map(|res, actor, ctx| {
             match res {
                 Ok(message) => {
                     log_websocket!("Sending initial data to client");
+                    // Log full JSON when enabled
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&message) {
-                        log_data!("Initial data JSON: {}", json);
+                        log_data!("Initial data JSON: {}", serde_json::to_string_pretty(&json).unwrap_or_default());
                     }
+                    actor.initial_data_sent = true;
                     ctx.text(message);
                 }
                 Err(e) => {
@@ -85,13 +88,15 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 serde_json::to_string(&initial_data)
                             };
 
-                            let fut = fut.into_actor(self).map(|res, _actor, ctx| {
+                            let fut = fut.into_actor(self).map(|res, actor, ctx| {
                                 match res {
                                     Ok(message) => {
                                         log_websocket!("Re-sending initial data to client");
+                                        // Log full JSON when enabled
                                         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&message) {
-                                            log_data!("Initial data JSON: {}", json);
+                                            log_data!("Initial data JSON: {}", serde_json::to_string_pretty(&json).unwrap_or_default());
                                         }
+                                        actor.initial_data_sent = true;
                                         ctx.text(message);
                                     }
                                     Err(e) => {
@@ -102,6 +107,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                             ctx.spawn(fut);
                         },
                         Some("updatePositions") => {
+                            // Only process position updates after initial data is sent
+                            if !self.initial_data_sent {
+                                log_websocket!("Ignoring position update before initial data");
+                                return;
+                            }
+
                             log_websocket!("Processing updatePositions message");
                             if let Ok(update_msg) = serde_json::from_value::<UpdatePositionsMessage>(value) {
                                 log_data!("Updating positions for {} nodes", update_msg.nodes.len());
@@ -136,6 +147,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                 };
 
                                 let fut = fut.into_actor(self).map(|binary_data, _actor, ctx| {
+                                    // First send a message indicating binary data is coming
+                                    if let Ok(message) = serde_json::to_string(&ServerMessage::BinaryPositionUpdate {
+                                        is_initial_layout: false,
+                                    }) {
+                                        ctx.text(message);
+                                    }
                                     log_websocket!("Sending binary response: {} bytes", binary_data.len());
                                     ctx.binary(binary_data);
                                 });
@@ -164,6 +181,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 }
             }
             Ok(ws::Message::Binary(bin)) => {
+                // Only process binary messages after initial data is sent
+                if !self.initial_data_sent {
+                    log_websocket!("Ignoring binary message before initial data");
+                    return;
+                }
+
                 log_websocket!("Received binary message: {} bytes", bin.len());
                 if bin.len() % NODE_SIZE as usize != 0 {
                     error!("Invalid binary data length: {} bytes (not divisible by NODE_SIZE {})", bin.len(), NODE_SIZE);
@@ -195,6 +218,12 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 };
 
                 let fut = fut.into_actor(self).map(|binary_data, _actor, ctx| {
+                    // First send a message indicating binary data is coming
+                    if let Ok(message) = serde_json::to_string(&ServerMessage::BinaryPositionUpdate {
+                        is_initial_layout: false,
+                    }) {
+                        ctx.text(message);
+                    }
                     log_websocket!("Sending binary response: {} bytes", binary_data.len());
                     ctx.binary(binary_data);
                 });
@@ -212,7 +241,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
 
 impl SocketFlowServer {
     pub fn new(app_state: Arc<AppState>) -> Self {
-        Self { app_state }
+        Self { 
+            app_state,
+            initial_data_sent: false,
+        }
     }
 }
 

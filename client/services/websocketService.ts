@@ -99,9 +99,9 @@ export default class WebSocketService {
 
     constructor(config: Partial<WebSocketConfig> = {}) {
         this.config = { ...DEFAULT_CONFIG, ...config };
-        const hostname = window.location.hostname;
-        // Always use ws:// since encryption is handled by Cloudflared tunnel
-        this.url = `ws://${hostname}/ws`;
+        const hostname = window.location.host;  // Use host instead of hostname to include port if present
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        this.url = `${protocol}//${hostname}/wss`;
         
         this.updateThrottler = new UpdateThrottler();
         this.updateThrottler.onUpdate = (data: ArrayBuffer) => {

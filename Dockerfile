@@ -70,8 +70,9 @@ RUN python -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
 # Install Python packages
-RUN pip install --no-cache-dir --upgrade pip==23.3.1 wheel==0.41.3 && \
-    pip install --no-cache-dir \
+RUN pip install --upgrade pip==23.3.1 wheel==0.41.3 && \
+    pip install \
+    # --no-cache-dir \
     piper-phonemize==1.1.0 \
     piper-tts==1.2.0 \
     onnxruntime-gpu==1.16.3
