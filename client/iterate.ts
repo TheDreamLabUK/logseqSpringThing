@@ -2,6 +2,12 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import type { Node, Edge } from './types/core'
 
+// Constants
+const THROTTLE_INTERVAL = 16  // ~60fps max
+const BINARY_VERSION = 1.0
+const NODE_POSITION_SIZE = 24  // 6 floats * 4 bytes
+const BINARY_HEADER_SIZE = 4   // 1 float * 4 bytes
+
 // Interfaces
 interface GraphData {
     nodes: Node[]
@@ -39,33 +45,52 @@ let nodeInstancedMesh: THREE.InstancedMesh<THREE.SphereGeometry, THREE.MeshPhong
 let edgeInstancedMesh: THREE.InstancedMesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial>
 let animationFrameId: number
 
-// Reusable objects for matrix operations
+// Reusable objects
 const matrix = new THREE.Matrix4()
 const quaternion = new THREE.Quaternion()
 const position = new THREE.Vector3()
 const scale = new THREE.Vector3(1, 1, 1)
 const color = new THREE.Color()
-
-// Additional vectors for edge calculations
 const start = new THREE.Vector3()
 const end = new THREE.Vector3()
 const direction = new THREE.Vector3()
 const center = new THREE.Vector3()
 const UP = new THREE.Vector3(0, 1, 0)
+const tempVector = new THREE.Vector3()
 
 // Node state
 let currentNodes: Node[] = []
 let currentEdges: Edge[] = []
-const NODE_SIZE = 2
-const NODE_SEGMENTS = 16 // Reduced from 32 for better performance
-const EDGE_RADIUS = 0.2
+const NODE_SIZE = 3
+const NODE_SEGMENTS = 16
+const EDGE_RADIUS = 0.15
 const EDGE_SEGMENTS = 8
+
+// Colors
+const NODE_COLOR = 0x4CAF50
+const EDGE_COLOR = 0x90A4AE
 
 // WebSocket state
 let ws: WebSocket | null = null
 let updateCount = 0
 let lastUpdateTime = performance.now()
+let lastMessageTime = performance.now()
 const fpsHistory: number[] = []
+let binaryUpdatesEnabled = false
+let initialDataReceived = false
+let reconnectTimeout: number | null = null
+let reconnectAttempts = 0
+const MAX_RECONNECT_ATTEMPTS = 5
+const INITIAL_RECONNECT_DELAY = 2000
+const MAX_RECONNECT_DELAY = 30000
+
+// Message queue for throttling
+interface QueuedMessage {
+    data: ArrayBuffer
+    timestamp: number
+}
+const messageQueue: QueuedMessage[] = []
+let processingQueue = false
 
 // Logging utilities
 type LogType = 'log' | 'error' | 'info' | 'warn'
@@ -96,12 +121,10 @@ function log(message: string, type: LogType = 'log') {
 
 // Three.js setup
 function initThree() {
-    // Scene
     scene = new THREE.Scene()
     scene.background = new THREE.Color(0x1a1a1a)
     scene.fog = new THREE.FogExp2(0x1a1a1a, 0.002)
 
-    // Camera
     camera = new THREE.PerspectiveCamera(
         75,
         window.innerWidth / window.innerHeight,
@@ -111,13 +134,15 @@ function initThree() {
     camera.position.set(0, 75, 200)
     camera.lookAt(0, 0, 0)
 
-    // Renderer
-    renderer = new THREE.WebGLRenderer({ antialias: true })
+    renderer = new THREE.WebGLRenderer({ 
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance'
+    })
     renderer.setSize(window.innerWidth, window.innerHeight)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     sceneEl.appendChild(renderer.domElement)
 
-    // Controls
     controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.05
@@ -125,7 +150,6 @@ function initThree() {
     controls.minDistance = 50
     controls.maxDistance = 500
 
-    // Lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
     scene.add(ambientLight)
 
@@ -133,7 +157,6 @@ function initThree() {
     directionalLight.position.set(10, 10, 10)
     scene.add(directionalLight)
 
-    // Grid helper
     const gridHelper = new THREE.GridHelper(1000, 100)
     if (gridHelper.material instanceof THREE.Material) {
         gridHelper.material.transparent = true
@@ -141,50 +164,43 @@ function initThree() {
     }
     scene.add(gridHelper)
 
-    // Create instanced meshes
     initNodeMesh()
     initEdgeMesh()
 
-    // Handle window resize
     window.addEventListener('resize', onWindowResize)
-
-    // Start render loop
     animate()
 }
 
 function initNodeMesh() {
-    // Create geometry and material
     const geometry = new THREE.SphereGeometry(NODE_SIZE, NODE_SEGMENTS, NODE_SEGMENTS)
     const material = new THREE.MeshPhongMaterial({
-        color: 0x00ff00,
+        color: NODE_COLOR,
         shininess: 80,
         flatShading: false
     })
 
-    // Create instanced mesh with a large enough capacity
     nodeInstancedMesh = new THREE.InstancedMesh(geometry, material, 10000)
-    nodeInstancedMesh.count = 0 // Will be set when nodes are added
-    nodeInstancedMesh.frustumCulled = false // Disable culling for better performance
+    nodeInstancedMesh.count = 0
+    nodeInstancedMesh.frustumCulled = false
 
     scene.add(nodeInstancedMesh)
 }
 
 function initEdgeMesh() {
-    // Create geometry and material for edges
     const geometry = new THREE.CylinderGeometry(EDGE_RADIUS, EDGE_RADIUS, 1, EDGE_SEGMENTS)
-    // Rotate cylinder to align with direction vector
     geometry.rotateX(Math.PI / 2)
     
     const material = new THREE.MeshBasicMaterial({
-        color: 0x666666,
+        color: EDGE_COLOR,
         transparent: true,
-        opacity: 0.6
+        opacity: 0.8,
+        depthWrite: false
     })
 
-    // Create instanced mesh with a large enough capacity
     edgeInstancedMesh = new THREE.InstancedMesh(geometry, material, 30000)
-    edgeInstancedMesh.count = 0 // Will be set when edges are added
+    edgeInstancedMesh.count = 0
     edgeInstancedMesh.frustumCulled = false
+    edgeInstancedMesh.renderOrder = 1
 
     scene.add(edgeInstancedMesh)
 }
@@ -201,30 +217,24 @@ function animate() {
     renderer.render(scene, camera)
 }
 
-// Node and edge visualization
 function createNodeInstances(nodes: Node[]) {
     currentNodes = nodes
     nodeInstancedMesh.count = nodes.length
 
-    // Update all instances
     nodes.forEach((node, index) => {
-        // Position
         position.set(
             node.position?.[0] || 0,
             node.position?.[1] || 0,
             node.position?.[2] || 0
         )
 
-        // Create matrix
         matrix.compose(position, quaternion, scale)
         nodeInstancedMesh.setMatrixAt(index, matrix)
 
-        // Set color (could be based on node properties)
-        color.setHex(0x00ff00)
+        color.setHex(NODE_COLOR)
         nodeInstancedMesh.setColorAt(index, color)
     })
 
-    // Mark buffers for update
     nodeInstancedMesh.instanceMatrix.needsUpdate = true
     if (nodeInstancedMesh.instanceColor) nodeInstancedMesh.instanceColor.needsUpdate = true
 }
@@ -233,7 +243,6 @@ function createEdgeInstances(nodes: Node[], edges: Edge[]) {
     currentEdges = edges
     edgeInstancedMesh.count = edges.length
 
-    // Update all edge instances
     edges.forEach((edge, index) => {
         const sourceNode = nodes.find(n => n.id === edge.source)
         const targetNode = nodes.find(n => n.id === edge.target)
@@ -243,12 +252,10 @@ function createEdgeInstances(nodes: Node[], edges: Edge[]) {
         updateEdgeInstance(index, sourceNode, targetNode)
     })
 
-    // Mark buffers for update
     edgeInstancedMesh.instanceMatrix.needsUpdate = true
 }
 
 function updateEdgeInstance(index: number, sourceNode: Node, targetNode: Node) {
-    // Get node positions
     start.set(
         sourceNode.position?.[0] || 0,
         sourceNode.position?.[1] || 0,
@@ -260,46 +267,54 @@ function updateEdgeInstance(index: number, sourceNode: Node, targetNode: Node) {
         targetNode.position?.[2] || 0
     )
 
-    // Calculate edge transform
     direction.subVectors(end, start)
     const length = direction.length()
     
-    // Skip if nodes are in same position
-    if (length === 0) return
+    if (length < 0.001) return
 
-    // Position at midpoint
     center.addVectors(start, end).multiplyScalar(0.5)
     position.copy(center)
 
-    // Scale to length
-    scale.set(1, length, 1)
-
-    // Rotate to align with direction
     direction.normalize()
-    quaternion.setFromUnitVectors(UP, direction)
+    const angle = Math.acos(THREE.MathUtils.clamp(direction.dot(UP), -1, 1))
+    tempVector.crossVectors(UP, direction).normalize()
+    
+    if (tempVector.lengthSq() < 0.001) {
+        if (direction.dot(UP) > 0) {
+            quaternion.set(0, 0, 0, 1)
+        } else {
+            quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI)
+        }
+    } else {
+        quaternion.setFromAxisAngle(tempVector, angle)
+    }
 
-    // Update matrix
+    const adjustedLength = Math.max(0.001, length - (NODE_SIZE * 2))
+    scale.set(1, adjustedLength, 1)
+
     matrix.compose(position, quaternion, scale)
     edgeInstancedMesh.setMatrixAt(index, matrix)
 }
 
 function updateNodePositions(floatArray: Float32Array) {
-    const nodeCount = (floatArray.length - 1) / 6 // Subtract 1 for version header
+    const version = floatArray[0]
+    if (version !== BINARY_VERSION) {
+        log(`Warning: Received binary data version ${version}, expected ${BINARY_VERSION}`, 'warn')
+    }
 
-    // Update positions for each node
-    for (let i = 0; i < nodeCount; i++) {
-        const baseIndex = 1 + i * 6 // Skip version header
+    const nodeCount = (floatArray.length - 1) / 6
+
+    for (let i = 0; i < nodeCount && i < currentNodes.length; i++) {
+        const baseIndex = 1 + i * 6
         position.set(
             floatArray[baseIndex],
             floatArray[baseIndex + 1],
             floatArray[baseIndex + 2]
         )
 
-        // Update node matrix
         matrix.compose(position, quaternion, scale)
         nodeInstancedMesh.setMatrixAt(i, matrix)
 
-        // Update node data
         if (currentNodes[i]) {
             currentNodes[i].position = [
                 floatArray[baseIndex],
@@ -309,10 +324,7 @@ function updateNodePositions(floatArray: Float32Array) {
         }
     }
 
-    // Mark node matrix for update
     nodeInstancedMesh.instanceMatrix.needsUpdate = true
-
-    // Update edge positions
     updateEdgePositions()
 }
 
@@ -326,15 +338,58 @@ function updateEdgePositions() {
         updateEdgeInstance(index, sourceNode, targetNode)
     })
 
-    // Mark edge matrix for update
     edgeInstancedMesh.instanceMatrix.needsUpdate = true
 }
 
-// WebSocket connection
+async function processMessageQueue() {
+    if (processingQueue || messageQueue.length === 0) return
+
+    processingQueue = true
+    const now = performance.now()
+
+    while (messageQueue.length > 0) {
+        const message = messageQueue[0]
+        const timeSinceLastMessage = now - lastMessageTime
+
+        if (timeSinceLastMessage < THROTTLE_INTERVAL) {
+            await new Promise(resolve => setTimeout(resolve, THROTTLE_INTERVAL - timeSinceLastMessage))
+        }
+
+        const floatArray = new Float32Array(message.data)
+        updateNodePositions(floatArray)
+        
+        updateCount++
+        updatesEl.textContent = updateCount.toString()
+        
+        const currentTime = performance.now()
+        const timeDiff = currentTime - lastUpdateTime
+        const fps = 1000 / timeDiff
+        
+        fpsHistory.push(fps)
+        if (fpsHistory.length > 10) fpsHistory.shift()
+        
+        const avgFps = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length
+        fpsEl.textContent = avgFps.toFixed(1)
+        
+        lastUpdateTime = currentTime
+        lastMessageTime = currentTime
+        lastUpdateEl.textContent = new Date().toISOString().split('T')[1].slice(0, -1)
+        
+        if (updateCount % 5 === 0) {
+            const nodeCount = (floatArray.length - 1) / 6
+            log(`Position update #${updateCount}: ${nodeCount} nodes, ${avgFps.toFixed(1)} FPS`)
+        }
+
+        messageQueue.shift()
+    }
+
+    processingQueue = false
+}
+
 function connect() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = window.location.host
-    const wsUrl = `${protocol}//${host}/wss`
+    if (ws?.readyState === WebSocket.CONNECTING) return
+
+    const wsUrl = 'wss://www.visionflow.info/wss'
     
     log(`Connecting to ${wsUrl}`, 'info')
     statusEl.textContent = 'Connecting...'
@@ -345,15 +400,38 @@ function connect() {
         ws.onopen = () => {
             log('Connected to server', 'info')
             statusEl.textContent = 'Connected'
+            reconnectAttempts = 0
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout)
+                reconnectTimeout = null
+            }
             
-            // Request initial data
-            sendMessage({ type: 'initialData' })
-            log('Requested initial data', 'info')
+            if (!initialDataReceived) {
+                sendMessage({ type: 'initialData' })
+                log('Requested initial data', 'info')
+            }
         }
         
         ws.onmessage = (event) => {
             if (event.data instanceof Blob) {
-                handleBinaryMessage(event.data)
+                event.data.arrayBuffer().then(buffer => {
+                    if (!initialDataReceived || !binaryUpdatesEnabled) {
+                        log('Ignoring binary message before initialization', 'warn')
+                        return
+                    }
+
+                    const expectedSize = BINARY_HEADER_SIZE + Math.floor((buffer.byteLength - BINARY_HEADER_SIZE) / NODE_POSITION_SIZE) * NODE_POSITION_SIZE
+                    if (buffer.byteLength !== expectedSize) {
+                        log(`Invalid binary data length: ${buffer.byteLength} bytes (expected ${expectedSize})`, 'error')
+                        return
+                    }
+
+                    messageQueue.push({
+                        data: buffer,
+                        timestamp: performance.now()
+                    })
+                    processMessageQueue()
+                })
             } else {
                 handleJsonMessage(event.data)
             }
@@ -368,16 +446,26 @@ function connect() {
             log('Disconnected from server', 'warn')
             statusEl.textContent = 'Disconnected'
             ws = null
+            binaryUpdatesEnabled = false
+            initialDataReceived = false
             
-            // Attempt to reconnect after 2 seconds
-            setTimeout(connect, 2000)
+            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                const delay = Math.min(
+                    INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts),
+                    MAX_RECONNECT_DELAY
+                )
+                reconnectTimeout = window.setTimeout(connect, delay)
+                reconnectAttempts++
+                log(`Reconnecting in ${delay/1000} seconds (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`, 'info')
+            } else {
+                log('Max reconnection attempts reached', 'error')
+            }
         }
     } catch (error) {
         log(`Failed to create WebSocket: ${error}`, 'error')
     }
 }
 
-// Helper function to safely send messages
 function sendMessage(data: unknown) {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         log('Cannot send message: WebSocket is not connected', 'warn')
@@ -393,7 +481,6 @@ function sendMessage(data: unknown) {
     }
 }
 
-// Message handlers
 function handleJsonMessage(data: string) {
     try {
         const message = JSON.parse(data)
@@ -421,50 +508,22 @@ function handleInitialData(message: InitialDataMessage) {
     
     log(`Received initial data: ${nodes.length} nodes, ${edges.length} edges`)
     
-    // Create instances
     createNodeInstances(nodes)
     createEdgeInstances(nodes, edges)
     
-    // Enable binary updates
-    sendMessage({ type: 'enableBinaryUpdates' })
-    log('Enabled binary updates', 'info')
-}
-
-function handleBinaryMessage(data: Blob) {
-    const reader = new FileReader()
-    reader.onload = () => {
-        const buffer = reader.result as ArrayBuffer
-        const floatArray = new Float32Array(buffer)
-        const nodeCount = (floatArray.length - 1) / 6 // Subtract 1 for version header
-        
-        // Update node positions
-        updateNodePositions(floatArray)
-        
-        updateCount++
-        updatesEl.textContent = updateCount.toString()
-        
-        const now = performance.now()
-        const timeDiff = now - lastUpdateTime
-        const fps = 1000 / timeDiff
-        
-        fpsHistory.push(fps)
-        if (fpsHistory.length > 10) fpsHistory.shift()
-        
-        const avgFps = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length
-        fpsEl.textContent = avgFps.toFixed(1)
-        
-        lastUpdateTime = now
-        lastUpdateEl.textContent = new Date().toISOString().split('T')[1].slice(0, -1)
-        
-        if (updateCount % 5 === 0) {
-            log(`Position update #${updateCount}: ${nodeCount} nodes, ${avgFps.toFixed(1)} FPS`)
-        }
+    initialDataReceived = true
+    if (!binaryUpdatesEnabled) {
+        binaryUpdatesEnabled = true
+        sendMessage({ type: 'enableBinaryUpdates' })
+        log('Enabled binary updates', 'info')
     }
-    reader.readAsArrayBuffer(data)
 }
 
-// Cleanup function
 function cleanup() {
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout)
+    }
+    
     if (animationFrameId) {
         cancelAnimationFrame(animationFrameId)
     }
@@ -496,9 +555,7 @@ function cleanup() {
     window.removeEventListener('resize', onWindowResize)
 }
 
-// Initialize everything
 initThree()
 connect()
 
-// Cleanup on window unload
 window.addEventListener('unload', cleanup)
