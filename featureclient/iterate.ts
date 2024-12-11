@@ -1,6 +1,11 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer'
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass'
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass'
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass'
 import type { Node, Edge } from './types/core'
+import { ControlPanel } from './controlPanel'
 
 // Constants
 const THROTTLE_INTERVAL = 16  // ~60fps max
@@ -43,6 +48,8 @@ let renderer: THREE.WebGLRenderer
 let controls: OrbitControls
 let nodeInstancedMesh: THREE.InstancedMesh
 let edgeInstancedMesh: THREE.InstancedMesh
+let composer: EffectComposer
+let bloomPass: UnrealBloomPass
 
 // Animation
 let animationFrameId: number
@@ -65,14 +72,14 @@ const tempVector = new THREE.Vector3()
 // Node state
 let currentNodes: Node[] = []
 let currentEdges: Edge[] = []
-const NODE_SIZE = 2.5
-const NODE_SEGMENTS = 16
-const EDGE_RADIUS = 0.25
-const EDGE_SEGMENTS = 8
+let NODE_SIZE = 2.5
+let NODE_SEGMENTS = 16
+let EDGE_RADIUS = 0.25
+let EDGE_SEGMENTS = 8
 
 // Colors
-const NODE_COLOR = 0x4CAF50  // Material Design Green
-const EDGE_COLOR = 0xE0E0E0  // Material Design Grey 300
+let NODE_COLOR = 0x4CAF50  // Material Design Green
+let EDGE_COLOR = 0xE0E0E0  // Material Design Grey 300
 const BACKGROUND_COLOR = 0x212121  // Material Design Grey 900
 
 // WebSocket state
@@ -150,6 +157,20 @@ function initThree() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     sceneEl.appendChild(renderer.domElement)
 
+    // Post-processing
+    composer = new EffectComposer(renderer)
+    const renderPass = new RenderPass(scene, camera)
+    composer.addPass(renderPass)
+
+    // Bloom
+    bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        1.5, // Strength
+        0.75, // Radius
+        0.3  // Threshold
+    )
+    composer.addPass(bloomPass)
+
     // Controls
     controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
@@ -188,7 +209,9 @@ function initNodeMesh() {
         color: NODE_COLOR,
         shininess: 90,
         specular: 0x444444,
-        flatShading: false
+        flatShading: false,
+        transparent: true,
+        opacity: 0.7
     })
 
     // Create instanced mesh for nodes
@@ -228,12 +251,13 @@ function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight
     camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
+    composer.setSize(window.innerWidth, window.innerHeight)
 }
 
 function animate() {
     animationFrameId = requestAnimationFrame(animate)
     controls.update()
-    renderer.render(scene, camera)
+    composer.render()
 }
 
 function createNodeInstances(nodes: Node[]) {
@@ -542,6 +566,44 @@ function handleInitialData(message: InitialDataMessage) {
     }
 }
 
+function handleSettingsChange(settings: any) {
+    // Update node appearance
+    NODE_SIZE = settings.nodeSize
+    const nodeMaterial = nodeInstancedMesh.material as THREE.MeshPhongMaterial
+    nodeMaterial.color.set(settings.nodeColor)
+    nodeMaterial.opacity = settings.opacity
+    nodeMaterial.needsUpdate = true
+
+    // Update edge appearance
+    EDGE_RADIUS = settings.edgeWidth
+    const edgeMaterial = edgeInstancedMesh.material as THREE.MeshBasicMaterial
+    edgeMaterial.color.set(settings.edgeColor)
+    edgeMaterial.opacity = settings.opacity
+    edgeMaterial.needsUpdate = true
+
+    // Update bloom effect
+    bloomPass.enabled = settings.bloom.enabled
+    bloomPass.strength = settings.bloom.strength
+    bloomPass.radius = settings.bloom.radius
+    bloomPass.threshold = settings.bloom.threshold
+
+    // Recreate geometries with new sizes
+    const nodeGeometry = new THREE.SphereGeometry(NODE_SIZE, NODE_SEGMENTS, NODE_SEGMENTS)
+    nodeInstancedMesh.geometry.dispose()
+    nodeInstancedMesh.geometry = nodeGeometry
+
+    const edgeGeometry = new THREE.CylinderGeometry(EDGE_RADIUS, EDGE_RADIUS, 1, EDGE_SEGMENTS)
+    edgeGeometry.rotateX(Math.PI / 2)
+    edgeInstancedMesh.geometry.dispose()
+    edgeInstancedMesh.geometry = edgeGeometry
+
+    // Update all instances
+    if (currentNodes.length > 0) {
+        createNodeInstances(currentNodes)
+        createEdgeInstances(currentNodes, currentEdges)
+    }
+}
+
 function cleanup() {
     if (reconnectTimeout) {
         clearTimeout(reconnectTimeout)
@@ -578,7 +640,11 @@ function cleanup() {
     window.removeEventListener('resize', onWindowResize)
 }
 
+// Initialize everything
 initThree()
 connect()
+
+// Initialize control panel
+new ControlPanel('scene', handleSettingsChange)
 
 window.addEventListener('unload', cleanup)
