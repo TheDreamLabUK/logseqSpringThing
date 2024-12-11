@@ -4,7 +4,7 @@
       <div id="scene-container" ref="sceneContainer">
         <canvas ref="canvas" />
         <GraphSystem 
-          v-if="visualizationState.scene" 
+          v-if="visualizationState.scene && isConnected" 
           :visual-settings="visualSettings" 
         />
       </div>
@@ -187,14 +187,21 @@ export default defineComponent({
       });
     };
 
-    onMounted(async () => {
+    const initializeApp = async () => {
       try {
+        // First initialize websocket
+        console.log('Initializing WebSocket connection...');
+        await websocketStore.initialize();
+        setupWebSocketHandlers();
+
+        // Then initialize settings
         settingsStore.applyServerSettings({});
         console.info('Settings initialized', {
           context: 'App Setup',
           settings: settingsStore.$state
         });
 
+        // Finally initialize visualization
         if (canvas.value && sceneContainer.value) {
           console.log('Initializing visualization system...');
           
@@ -218,9 +225,6 @@ export default defineComponent({
           }
         }
 
-        await websocketStore.initialize();
-        setupWebSocketHandlers();
-
         console.info('Application initialized', {
           context: 'App Initialization',
           environment: process.env.NODE_ENV
@@ -233,6 +237,18 @@ export default defineComponent({
           context: 'App Setup',
           component: 'App'
         });
+      }
+    };
+
+    onMounted(() => {
+      initializeApp();
+    });
+
+    // Watch for websocket disconnection and try to reconnect
+    watch(() => isConnected.value, (connected) => {
+      if (!connected && !error.value) {
+        console.log('WebSocket disconnected, attempting to reconnect...');
+        websocketStore.reconnect();
       }
     });
 

@@ -39,38 +39,97 @@ const DEFAULT_CONFIG: WebSocketConfig = {
 };
 
 const logger = DebugLogger.getInstance();
-// Configure logger with settings from settings.toml
-logger.configure({
-    client_debug: {
-        enabled: true,
-        enable_websocket_debug: true,
-        enable_data_debug: false,
-        log_binary_headers: false,
-        log_full_json: false
-    }
-});
 
-// Rate limiting helper
+// Performance monitoring constants
+const PERFORMANCE_SAMPLE_SIZE = 60; // 1 second worth at 60fps
+const TARGET_FRAME_TIME = 16.67; // Target 60fps
+const MIN_UPDATE_INTERVAL = 16.67; // Max 60fps
+const MAX_UPDATE_INTERVAL = 200; // Min 5fps
+const INTERACTION_UPDATE_INTERVAL = 33.33; // 30fps during interaction
+
+class PerformanceMonitor {
+  private frameTimes: number[] = [];
+  private lastFrameTime: number = 0;
+  private currentUpdateInterval: number = MIN_UPDATE_INTERVAL;
+
+  addFrameTime(timestamp: number) {
+    const frameTime = timestamp - this.lastFrameTime;
+    this.lastFrameTime = timestamp;
+
+    if (frameTime > 0) {
+      this.frameTimes.push(frameTime);
+      if (this.frameTimes.length > PERFORMANCE_SAMPLE_SIZE) {
+        this.frameTimes.shift();
+      }
+    }
+  }
+
+  getAverageFrameTime(): number {
+    if (this.frameTimes.length === 0) return TARGET_FRAME_TIME;
+    return this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
+  }
+
+  calculateUpdateInterval(isInteracting: boolean): number {
+    const avgFrameTime = this.getAverageFrameTime();
+    
+    // During interaction, try to maintain higher frame rate
+    if (isInteracting) {
+      this.currentUpdateInterval = INTERACTION_UPDATE_INTERVAL;
+      return this.currentUpdateInterval;
+    }
+
+    // Adjust update interval based on performance
+    if (avgFrameTime > TARGET_FRAME_TIME * 1.5) {
+      // Performance is poor, reduce update rate
+      this.currentUpdateInterval = Math.min(
+        this.currentUpdateInterval * 1.2,
+        MAX_UPDATE_INTERVAL
+      );
+    } else if (avgFrameTime < TARGET_FRAME_TIME * 0.8) {
+      // Performance is good, increase update rate
+      this.currentUpdateInterval = Math.max(
+        this.currentUpdateInterval * 0.8,
+        MIN_UPDATE_INTERVAL
+      );
+    }
+
+    return this.currentUpdateInterval;
+  }
+
+  reset() {
+    this.frameTimes = [];
+    this.lastFrameTime = 0;
+    this.currentUpdateInterval = MIN_UPDATE_INTERVAL;
+  }
+}
+
+// Rate limiting helper with adaptive interval
 class UpdateThrottler {
   private lastUpdateTime: number = 0;
   private pendingUpdate: ArrayBuffer | null = null;
   private timeoutId: number | null = null;
+  private performanceMonitor: PerformanceMonitor;
 
-  constructor(private minInterval: number = UPDATE_THROTTLE_MS) {}
+  constructor() {
+    this.performanceMonitor = new PerformanceMonitor();
+  }
 
-  addUpdate(data: ArrayBuffer): void {
+  addUpdate(data: ArrayBuffer, isInteracting: boolean): void {
     this.pendingUpdate = data;
     
     if (this.timeoutId === null) {
       const now = performance.now();
+      this.performanceMonitor.addFrameTime(now);
+      
+      const updateInterval = this.performanceMonitor.calculateUpdateInterval(isInteracting);
       const timeSinceLastUpdate = now - this.lastUpdateTime;
       
-      if (timeSinceLastUpdate >= this.minInterval) {
+      if (timeSinceLastUpdate >= updateInterval) {
         this.processPendingUpdate();
       } else {
         this.timeoutId = window.setTimeout(
           () => this.processPendingUpdate(),
-          this.minInterval - timeSinceLastUpdate
+          updateInterval - timeSinceLastUpdate
         );
       }
     }
@@ -83,6 +142,16 @@ class UpdateThrottler {
     }
     this.pendingUpdate = null;
     this.timeoutId = null;
+  }
+
+  reset(): void {
+    this.lastUpdateTime = 0;
+    this.pendingUpdate = null;
+    if (this.timeoutId !== null) {
+      window.clearTimeout(this.timeoutId);
+      this.timeoutId = null;
+    }
+    this.performanceMonitor.reset();
   }
 
   onUpdate: ((data: ArrayBuffer) => void) | null = null;
@@ -106,10 +175,12 @@ export default class WebSocketService {
     private forceClose: boolean = false;
     private pendingBinaryUpdate: boolean = false;
     private updateThrottler: UpdateThrottler;
+    private interactionMode: 'server' | 'local' = 'server';
+    private interactedNodes: Set<string> = new Set();
 
     constructor(config: Partial<WebSocketConfig> = {}) {
         this.config = { ...DEFAULT_CONFIG, ...config };
-        const hostname = window.location.host;  // Use host instead of hostname to include port if present
+        const hostname = window.location.host;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         this.url = `${protocol}//${hostname}/wss`;
         logger.log('websocket', `WebSocket URL: ${this.url}`);
@@ -120,6 +191,29 @@ export default class WebSocketService {
                 this.ws.send(data);
             }
         };
+    }
+
+    public startInteractionMode() {
+        logger.log('websocket', 'Starting interaction mode');
+        this.interactionMode = 'local';
+        this.interactedNodes.clear();
+    }
+
+    public endInteractionMode() {
+        logger.log('websocket', 'Ending interaction mode');
+        this.interactionMode = 'server';
+        this.interactedNodes.clear();
+    }
+
+    public addInteractedNode(nodeId: string) {
+        if (this.interactedNodes.size < 2) {
+            logger.log('websocket', `Adding interacted node: ${nodeId}`);
+            this.interactedNodes.add(nodeId);
+        }
+    }
+
+    public isNodeInteracted(nodeId: string): boolean {
+        return this.interactedNodes.has(nodeId);
     }
 
     public async connect(): Promise<void> {
@@ -200,6 +294,13 @@ export default class WebSocketService {
         }, HEARTBEAT_INTERVAL);
     }
 
+    private stopHeartbeat(): void {
+        if (this.heartbeatInterval) {
+            window.clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+    }
+
     private handleClose(event: CloseEvent): void {
         this.stopHeartbeat();
         if (!this.forceClose) {
@@ -246,26 +347,29 @@ export default class WebSocketService {
     }
 
     private handleBinaryMessage(data: ArrayBuffer): void {
-        if (!this.pendingBinaryUpdate) return;
+        // Only process binary updates if we're in server mode or if the data is for non-interacted nodes
+        if (this.interactionMode === 'server' || !this.pendingBinaryUpdate) {
+            if (!this.pendingBinaryUpdate) return;
 
-        // Validate buffer size
-        const expectedSize = this.indexToNodeId.length * BINARY_UPDATE_NODE_SIZE;
-        if (data.byteLength !== expectedSize) {
-            logger.log('binary', 'Invalid binary message size', {
-                expected: expectedSize,
-                received: data.byteLength
-            });
-            return;
+            // Validate buffer size
+            const expectedSize = this.indexToNodeId.length * BINARY_UPDATE_NODE_SIZE;
+            if (data.byteLength !== expectedSize) {
+                logger.log('binary', 'Invalid binary message size', {
+                    expected: expectedSize,
+                    received: data.byteLength
+                });
+                return;
+            }
+
+            // Forward binary data directly to subscribers
+            const binaryMessage: BinaryMessage = {
+                type: 'binaryPositionUpdate',
+                data
+            };
+
+            this.emit('gpuPositions', binaryMessage);
+            this.pendingBinaryUpdate = false;
         }
-
-        // Forward binary data directly to subscribers
-        const binaryMessage: BinaryMessage = {
-            type: 'binaryPositionUpdate',
-            data
-        };
-
-        this.emit('gpuPositions', binaryMessage);
-        this.pendingBinaryUpdate = false;
     }
 
     private handleJsonMessage(data: string): void {
@@ -371,18 +475,21 @@ export default class WebSocketService {
     public sendBinary(data: ArrayBuffer): void {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-        // Validate data size
-        const expectedSize = this.indexToNodeId.length * BINARY_UPDATE_NODE_SIZE;
-        if (data.byteLength !== expectedSize) {
-            logger.log('binary', 'Invalid binary data size', {
-                expected: expectedSize,
-                received: data.byteLength
-            });
-            return;
-        }
+        // Only send binary updates for interacted nodes in local mode
+        if (this.interactionMode === 'local' && this.interactedNodes.size > 0) {
+            // Validate data size
+            const expectedSize = this.indexToNodeId.length * BINARY_UPDATE_NODE_SIZE;
+            if (data.byteLength !== expectedSize) {
+                logger.log('binary', 'Invalid binary data size', {
+                    expected: expectedSize,
+                    received: data.byteLength
+                });
+                return;
+            }
 
-        // Add to throttled updates
-        this.updateThrottler.addUpdate(data);
+            // Add to throttled updates with interaction state
+            this.updateThrottler.addUpdate(data, this.interactionMode === 'local');
+        }
     }
 
     private processQueue(): void {
@@ -458,13 +565,6 @@ export default class WebSocketService {
         }
     }
 
-    private stopHeartbeat(): void {
-        if (this.heartbeatInterval) {
-            window.clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
-        }
-    }
-
     public cleanup(force: boolean = true): void {
         this.stopHeartbeat();
         
@@ -490,6 +590,9 @@ export default class WebSocketService {
             this.eventListeners.clear();
             this.nodeIdToIndex.clear();
             this.indexToNodeId = [];
+            this.interactedNodes.clear();
+            this.interactionMode = 'server';
+            this.updateThrottler.reset();
         }
     }
 }
