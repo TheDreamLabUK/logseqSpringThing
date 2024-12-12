@@ -1,12 +1,17 @@
 /**
- * Graph data management and updates
+ * Graph data management with simplified binary updates
  */
 
-import { GraphData, Node, Edge, Vector3 } from '../core/types';
-import { POSITION_SCALE } from '../core/constants';
-import { createLogger, binaryToFloat32Array, float32ArrayToPositions, vectorOps } from '../core/utils';
+import { GraphData, Node, Edge } from '../core/types';
+import { createLogger } from '../core/utils';
 
 const logger = createLogger('GraphDataManager');
+
+// Constants
+const THROTTLE_INTERVAL = 16;  // ~60fps max
+const BINARY_VERSION = 1.0;
+const NODE_POSITION_SIZE = 24;  // 6 floats * 4 bytes
+const BINARY_HEADER_SIZE = 4;   // 1 float * 4 bytes
 
 export class GraphDataManager {
   private static instance: GraphDataManager;
@@ -14,7 +19,9 @@ export class GraphDataManager {
   private edges: Map<string, Edge>;
   private metadata: Record<string, any>;
   private updateListeners: Set<(data: GraphData) => void>;
-  private positionUpdateListeners: Set<(nodePositions: Map<string, Vector3>) => void>;
+  private positionUpdateListeners: Set<(positions: Float32Array) => void>;
+  private lastUpdateTime: number;
+  private binaryUpdatesEnabled: boolean = false;
 
   private constructor() {
     this.nodes = new Map();
@@ -22,6 +29,7 @@ export class GraphDataManager {
     this.metadata = {};
     this.updateListeners = new Set();
     this.positionUpdateListeners = new Set();
+    this.lastUpdateTime = performance.now();
   }
 
   static getInstance(): GraphDataManager {
@@ -35,7 +43,7 @@ export class GraphDataManager {
    * Initialize or update the entire graph data
    */
   updateGraphData(data: any): void {
-    logger.log('Received graph data update:', data);
+    logger.log('Received graph data update');
 
     // Clear existing data
     this.nodes.clear();
@@ -44,35 +52,28 @@ export class GraphDataManager {
     // Store nodes in Map for O(1) access
     if (data.graphData && Array.isArray(data.graphData.nodes)) {
       data.graphData.nodes.forEach((node: any) => {
-        // Convert position array to Vector3 if needed
-        const rawPosition = Array.isArray(node.position) 
-          ? node.position
-          : node.position || [0, 0, 0];
+        // Convert position array to object if needed
+        let position;
+        if (Array.isArray(node.position)) {
+          position = {
+            x: node.position[0] || 0,
+            y: node.position[1] || 0,
+            z: node.position[2] || 0
+          };
+        } else {
+          position = node.position || { x: 0, y: 0, z: 0 };
+        }
 
-        logger.log(`Raw position for node ${node.id}:`, rawPosition);
-
-        const position = vectorOps.fromArray(rawPosition);
-        logger.log(`Converted position for node ${node.id}:`, position);
-
-        // Scale the position
-        const scaledPosition = {
-          x: position.x * POSITION_SCALE,
-          y: position.y * POSITION_SCALE,
-          z: position.z * POSITION_SCALE
-        };
-
-        logger.log(`Scaled position for node ${node.id}:`, scaledPosition);
+        logger.log(`Processing node ${node.id} with position:`, position);
 
         this.nodes.set(node.id, {
           ...node,
-          position: scaledPosition,
-          velocity: { x: 0, y: 0, z: 0 }, // Initialize velocity
-          mass: 1, // Initialize mass
+          position,
           label: node.label || node.id
         });
       });
 
-      // Store edges in Map with composite key
+      // Store edges in Map
       if (Array.isArray(data.graphData.edges)) {
         data.graphData.edges.forEach((edge: Edge) => {
           const edgeId = this.createEdgeId(edge.source, edge.target);
@@ -87,96 +88,61 @@ export class GraphDataManager {
       this.notifyUpdateListeners();
       logger.log(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
 
-      // Log all node positions for debugging
-      this.nodes.forEach((node, id) => {
-        logger.log(`Final node ${id} position:`, node.position);
-      });
+      // Enable binary updates after initial data is received
+      if (!this.binaryUpdatesEnabled) {
+        this.enableBinaryUpdates();
+      }
     } else {
       logger.warn('Invalid graph data format received');
     }
   }
 
   /**
-   * Handle binary position updates
+   * Enable binary position updates
+   */
+  private enableBinaryUpdates(): void {
+    // Send message to server to enable binary updates
+    if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+      window.ws.send(JSON.stringify({ type: 'enableBinaryUpdates' }));
+      this.binaryUpdatesEnabled = true;
+      logger.log('Enabled binary updates');
+    } else {
+      logger.warn('WebSocket not ready, cannot enable binary updates');
+    }
+  }
+
+  /**
+   * Handle binary position updates with throttling
    */
   updatePositions(buffer: ArrayBuffer): void {
+    const now = performance.now();
+    const timeSinceLastUpdate = now - this.lastUpdateTime;
+
+    if (timeSinceLastUpdate < THROTTLE_INTERVAL) {
+      return;  // Skip update if too soon
+    }
+
     try {
-      const float32Array = binaryToFloat32Array(buffer);
-      const positions = float32ArrayToPositions(float32Array);
-      const nodePositions = new Map<string, Vector3>();
-
-      logger.log('Processing binary position update');
-
-      // Update node positions
-      let i = 0;
-      for (const [id, node] of this.nodes) {
-        if (i < positions.length) {
-          const position = positions[i];
-          const scaledPosition = {
-            x: position.x * POSITION_SCALE,
-            y: position.y * POSITION_SCALE,
-            z: position.z * POSITION_SCALE
-          };
-          node.position = scaledPosition;
-          nodePositions.set(id, scaledPosition);
-          logger.log(`Updated node ${id} position:`, scaledPosition);
-          i++;
-        }
+      const floatArray = new Float32Array(buffer);
+      
+      // Check binary version
+      const version = floatArray[0];
+      if (version !== BINARY_VERSION) {
+        logger.warn(`Received binary data version ${version}, expected ${BINARY_VERSION}`);
       }
 
-      // Notify position update listeners
-      this.notifyPositionUpdateListeners(nodePositions);
+      // Verify data size
+      const expectedSize = BINARY_HEADER_SIZE + Math.floor((buffer.byteLength - BINARY_HEADER_SIZE) / NODE_POSITION_SIZE) * NODE_POSITION_SIZE;
+      if (buffer.byteLength !== expectedSize) {
+        logger.error(`Invalid binary data length: ${buffer.byteLength} bytes (expected ${expectedSize})`);
+        return;
+      }
+
+      this.notifyPositionUpdateListeners(floatArray);
+      this.lastUpdateTime = now;
     } catch (error) {
       logger.error('Error processing binary position update:', error);
     }
-  }
-
-  /**
-   * Add or update a single node
-   */
-  updateNode(node: Node): void {
-    this.nodes.set(node.id, {
-      ...node,
-      position: node.position || { x: 0, y: 0, z: 0 },
-      velocity: node.velocity || { x: 0, y: 0, z: 0 },
-      mass: node.mass || 1,
-      label: node.label || node.id
-    });
-    this.notifyUpdateListeners();
-  }
-
-  /**
-   * Add or update a single edge
-   */
-  updateEdge(edge: Edge): void {
-    const edgeId = this.createEdgeId(edge.source, edge.target);
-    this.edges.set(edgeId, edge);
-    this.notifyUpdateListeners();
-  }
-
-  /**
-   * Remove a node and its connected edges
-   */
-  removeNode(nodeId: string): void {
-    this.nodes.delete(nodeId);
-    
-    // Remove connected edges
-    for (const [edgeId, edge] of this.edges) {
-      if (edge.source === nodeId || edge.target === nodeId) {
-        this.edges.delete(edgeId);
-      }
-    }
-    
-    this.notifyUpdateListeners();
-  }
-
-  /**
-   * Remove an edge
-   */
-  removeEdge(source: string, target: string): void {
-    const edgeId = this.createEdgeId(source, target);
-    this.edges.delete(edgeId);
-    this.notifyUpdateListeners();
   }
 
   /**
@@ -198,23 +164,6 @@ export class GraphDataManager {
   }
 
   /**
-   * Get a specific edge by source and target IDs
-   */
-  getEdge(source: string, target: string): Edge | undefined {
-    const edgeId = this.createEdgeId(source, target);
-    return this.edges.get(edgeId);
-  }
-
-  /**
-   * Get all edges connected to a node
-   */
-  getConnectedEdges(nodeId: string): Edge[] {
-    return Array.from(this.edges.values()).filter(
-      edge => edge.source === nodeId || edge.target === nodeId
-    );
-  }
-
-  /**
    * Subscribe to graph data updates
    */
   subscribe(listener: (data: GraphData) => void): () => void {
@@ -228,7 +177,7 @@ export class GraphDataManager {
    * Subscribe to position updates only
    */
   subscribeToPositionUpdates(
-    listener: (nodePositions: Map<string, Vector3>) => void
+    listener: (positions: Float32Array) => void
   ): () => void {
     this.positionUpdateListeners.add(listener);
     return () => {
@@ -246,28 +195,7 @@ export class GraphDataManager {
     this.notifyUpdateListeners();
   }
 
-  /**
-   * Get graph statistics
-   */
-  getStats(): {
-    nodeCount: number;
-    edgeCount: number;
-    density: number;
-  } {
-    const nodeCount = this.nodes.size;
-    const edgeCount = this.edges.size;
-    const maxEdges = nodeCount * (nodeCount - 1) / 2;
-    const density = maxEdges > 0 ? edgeCount / maxEdges : 0;
-
-    return {
-      nodeCount,
-      edgeCount,
-      density
-    };
-  }
-
   private createEdgeId(source: string, target: string): string {
-    // Create a consistent edge ID regardless of source/target order
     return [source, target].sort().join('_');
   }
 
@@ -282,10 +210,10 @@ export class GraphDataManager {
     });
   }
 
-  private notifyPositionUpdateListeners(nodePositions: Map<string, Vector3>): void {
+  private notifyPositionUpdateListeners(positions: Float32Array): void {
     this.positionUpdateListeners.forEach(listener => {
       try {
-        listener(nodePositions);
+        listener(positions);
       } catch (error) {
         logger.error('Error in position update listener:', error);
       }
@@ -295,3 +223,10 @@ export class GraphDataManager {
 
 // Export a singleton instance
 export const graphDataManager = GraphDataManager.getInstance();
+
+// Declare WebSocket on window for TypeScript
+declare global {
+  interface Window {
+    ws: WebSocket;
+  }
+}

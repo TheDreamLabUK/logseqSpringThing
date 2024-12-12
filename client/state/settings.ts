@@ -1,12 +1,17 @@
 /**
- * Settings management for visualization configuration
+ * Settings management with simplified visualization configuration
  */
 
 import { VisualizationSettings } from '../core/types';
-import { DEFAULT_VISUALIZATION_SETTINGS, SETTINGS_URL } from '../core/constants';
+import { DEFAULT_VISUALIZATION_SETTINGS, IS_PRODUCTION } from '../core/constants';
 import { createLogger } from '../core/utils';
 
 const logger = createLogger('SettingsManager');
+
+// Settings endpoint
+const SETTINGS_URL = IS_PRODUCTION
+  ? 'https://www.visionflow.info/settings'
+  : 'http://localhost:4000/settings';
 
 export class SettingsManager {
   private static instance: SettingsManager;
@@ -16,7 +21,7 @@ export class SettingsManager {
   private constructor() {
     this.settings = { ...DEFAULT_VISUALIZATION_SETTINGS };
     this.settingsListeners = new Set();
-    logger.log('Initialized with default settings:', this.settings);
+    logger.log('Initialized with default settings');
   }
 
   static getInstance(): SettingsManager {
@@ -27,7 +32,7 @@ export class SettingsManager {
   }
 
   /**
-   * Load settings from the server's settings.toml file
+   * Load settings from the server
    */
   async loadSettings(): Promise<void> {
     try {
@@ -37,7 +42,7 @@ export class SettingsManager {
       }
       const settings = await response.json();
       this.updateSettings(settings);
-      logger.log('Loaded settings from server:', settings);
+      logger.log('Loaded settings from server');
     } catch (error) {
       logger.error('Error loading settings:', error);
       // Fall back to default settings
@@ -46,7 +51,7 @@ export class SettingsManager {
   }
 
   /**
-   * Save current settings to the server's settings.toml file
+   * Save current settings to the server
    */
   async saveSettings(): Promise<void> {
     try {
@@ -78,7 +83,7 @@ export class SettingsManager {
       ...newSettings
     };
 
-    logger.log('Updated settings:', this.settings);
+    logger.log('Updated settings');
 
     // Notify all listeners of the settings change
     this.settingsListeners.forEach(listener => {
@@ -102,8 +107,6 @@ export class SettingsManager {
    */
   subscribe(listener: (settings: VisualizationSettings) => void): () => void {
     this.settingsListeners.add(listener);
-    
-    // Return unsubscribe function
     return () => {
       this.settingsListeners.delete(listener);
     };
@@ -112,89 +115,60 @@ export class SettingsManager {
   /**
    * Reset settings to defaults
    */
-  async resetToDefaults(): Promise<void> {
+  resetToDefaults(): void {
     this.updateSettings(DEFAULT_VISUALIZATION_SETTINGS);
-    await this.saveSettings();
   }
 
-  // Specific setting getters
-  getNodeSize(): number {
-    return this.settings.nodeSize;
-  }
-
-  getNodeColor(): string {
-    return this.settings.nodeColor;
-  }
-
-  getNodeMaterialSettings(): {
-    metalness: number;
-    roughness: number;
-    emissiveIntensity: number;
-    clearcoat: number;
-    clearcoatRoughness: number;
-    reflectivity: number;
-    envMapIntensity: number;
+  // Essential setting getters
+  getNodeSettings(): {
+    size: number;
+    color: string;
+    opacity: number;
+    highlightColor: string;
   } {
     return {
-      metalness: this.settings.nodeMaterialMetalness,
-      roughness: this.settings.nodeMaterialRoughness,
-      emissiveIntensity: this.settings.nodeMaterialEmissiveIntensity,
-      clearcoat: this.settings.nodeMaterialClearcoat,
-      clearcoatRoughness: this.settings.nodeMaterialClearcoatRoughness,
-      reflectivity: this.settings.nodeMaterialReflectivity,
-      envMapIntensity: this.settings.nodeMaterialEnvMapIntensity
+      size: this.settings.nodeSize,
+      color: this.settings.nodeColor,
+      opacity: this.settings.nodeOpacity,
+      highlightColor: this.settings.nodeHighlightColor
     };
   }
 
-  getEdgeWidth(): number {
-    return this.settings.edgeWidth;
-  }
-
-  getEdgeColor(): string {
-    return this.settings.edgeColor;
-  }
-
-  getBloomEnabled(): boolean {
-    return this.settings.enableBloom;
+  getEdgeSettings(): {
+    width: number;
+    color: string;
+    opacity: number;
+  } {
+    return {
+      width: this.settings.edgeWidth,
+      color: this.settings.edgeColor,
+      opacity: this.settings.edgeOpacity
+    };
   }
 
   getBloomSettings(): {
+    enabled: boolean;
     intensity: number;
     threshold: number;
     radius: number;
   } {
     return {
+      enabled: this.settings.enableBloom,
       intensity: this.settings.bloomIntensity,
       threshold: this.settings.bloomThreshold,
       radius: this.settings.bloomRadius
     };
   }
 
-  getPhysicsSettings(): {
-    gravity: number;
-    springLength: number;
-    springStiffness: number;
-    charge: number;
-    damping: number;
-  } {
-    return {
-      gravity: this.settings.gravity,
-      springLength: this.settings.springLength,
-      springStiffness: this.settings.springStiffness,
-      charge: this.settings.charge,
-      damping: this.settings.damping
-    };
-  }
-
   getLabelSettings(): {
-    showLabels: boolean;
-    labelSize: number;
-    labelColor: string;
+    show: boolean;
+    size: number;
+    color: string;
   } {
     return {
-      showLabels: this.settings.showLabels,
-      labelSize: this.settings.labelSize,
-      labelColor: this.settings.labelColor
+      show: this.settings.showLabels,
+      size: this.settings.labelSize,
+      color: this.settings.labelColor
     };
   }
 
