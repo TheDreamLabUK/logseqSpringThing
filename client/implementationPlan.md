@@ -17,14 +17,13 @@ Unified Settings Management:
 Settings are stored on the server in settings.toml. The desktop interface allows users to adjust these settings and save them back to the server. The Quest version reads and applies these same settings. Avoid duplication by using a unified data model and minimal branching logic.
 
 Vector3 Standardization:
-Migrate all position/velocity data to a Vector3 (or equivalent [f32; 3] arrays in Rust) representation. Streamline GPU and WebSocket protocols to match this format once and eliminate conversion overhead.
+Migrate all position/velocity data to a Vector3 (or equivalent [f32; 3] arrays in Rust) representation. Streamline GPU and WebSocket protocols to match this format once and eliminate conversion overhead. All binary data is now handled through Float32Arrays with proper type safety and validation.
 
 Sensible Data Flows and Networking:
 Rely on a stable WebSocket channel for real-time updates. Desktop and Quest clients share the same binary and JSON protocols. Nginx, Cloudflare tunnels, and Docker networks remain as currently configured, but we keep the plan free of redundant details.
 
 Architecture Overview
-perl
-Copy code
+```
 client/
   ├─ core/              # Core types, constants, utilities ✓
   ├─ state/             # Centralized state (settings, graph data) ✓
@@ -32,8 +31,10 @@ client/
   ├─ xr/                # XR integration (Quest 3 focus, extends scene) ✓
   ├─ platform/          # Platform abstraction (detect Quest vs Desktop) ✓
   ├─ websocket/         # WebSocket service and message handling ✓
+  ├─ types/             # TypeScript declarations for Three.js and WebXR ✓
   ├─ ui/                # Minimal UI components (desktop settings panel)
   └─ main.ts            # Application entry point (initializes everything) ✓
+```
 
 Key Principles:
 
@@ -90,10 +91,10 @@ XR: Controlled via headset/hand-tracking.
 
 nodes.ts: ✓
 Manages instanced meshes for nodes and possibly lines for edges.
-
 Apply incoming position data directly to instance matrices.
 Update on each tick if data changes.
 Keep logic minimal and rely on graphData.ts for raw data access.
+Implements efficient batched edge updates.
 
 textRenderer.ts: ✓
 Handles text labels using SDF-based text rendering.
@@ -104,11 +105,18 @@ xrSessionManager.ts: ✓
 Initializes an XR session on supported devices (Quest 3).
 Adapts the camera and rendering loop to XR.
 Maintains platform-agnostic logic, just triggers XR mode if available.
+Implements spatial awareness features:
+- 10x10 grid helper for orientation
+- Semi-transparent ground plane for depth perception
+- Hit test visualization with ring marker
+- Environment-aware lighting with intensity matching
+- Type-safe feature detection and handling
 
 xrInteraction.ts: ✓
 Handles XR-specific input (hand controllers, gestures).
 Shared logic with desktop interaction where possible—both use raycasting to select nodes, but input events differ.
 Quest 3 might trigger node highlighting or selection differently, but the underlying data handling remains the same.
+Implements efficient hit testing with proper type safety.
 
 6. Platform Abstraction ✓
 platformManager.ts: ✓
@@ -134,6 +142,18 @@ Creates the SceneManager and NodeManager, applying settings and initial graph da
 If desktop, renders the settingsPanel UI.
 If Quest, starts the XR session.
 Enters the render loop.
+
+9. Type System ✓
+types/three.d.ts: ✓
+Comprehensive TypeScript declarations for Three.js.
+Proper type definitions for geometries, materials, and transforms.
+Support for matrix operations and Vector3 calculations.
+
+types/webxr.d.ts: ✓
+Complete WebXR API type declarations.
+Type guards for optional WebXR features.
+Proper handling of hit testing and light estimation.
+
 Vector3 & Protocol Consolidation
 Single Source of Truth:
 All position and velocity data are represented as Vector3-like arrays ([number, number, number]) on the client, and [f32; 3] on the server side. The WebSocket binary protocol uses a 24-byte (6 floats) structure for each position/velocity update. On the GPU side, CUDA kernels and WGSL shaders also align with vec3 data formats, reducing conversions and overhead.
@@ -141,12 +161,11 @@ All position and velocity data are represented as Vector3-like arrays ([number, 
 Data Flow: ✓
 
 Server → Client: ✓
-
 Binary WebSocket frames contain a packed array of float32 triples for position and velocity.
 Client parses these directly into Float32Arrays and updates node instances.
+Implements proper validation and type checking.
 
 GPU Integration: ✓
-
 The client's GPU compute (if used) and Three.js transforms rely on the same Vector3 format.
 Shaders, if needed, use vec3<f32> with no conversions required.
 
@@ -155,49 +174,48 @@ A consistent Vector3-oriented pipeline from server logic to client rendering red
 
 Settings Management Flow (Partial)
 Startup: ✓
-
 Client fetches settings.toml via a server endpoint that returns JSON ✓.
 SettingsManager merges these settings with defaults and applies them to the rendering system ✓.
 
 Desktop Editing:
-
 The settingsPanel UI lets the user modify visualization settings (e.g., node size, color schemes).
 Clicking "Save" sends a POST request with the updated settings to the server, rewriting settings.toml.
 
 Quest Reading: ✓
-
 On Quest, no separate panel is displayed. The XR experience uses the settings loaded at startup or after a refresh. Changes made on the desktop propagate automatically at next startup or when re-fetching settings.
 
 Unified Handling: ✓
-
 The SettingsManager notifies rendering components about any setting changes, ensuring both desktop and XR views stay consistent.
+
 Implementation & Integration Steps
 Phase 1: Skeleton & Basic Connectivity ✓
-
 Set up main.ts ✓, platformManager.ts ✓, websocketService.ts ✓, SettingsManager ✓, and SceneManager stubs ✓.
 Connect to WebSocket, fetch initial data and settings, log them ✓.
 
 Phase 2: Rendering & Data Flow ✓
-
 Implement NodeManager and basic Three.js scene ✓.
 Apply binary data updates to node positions, confirm rendering works on desktop ✓.
+Add efficient batched edge updates ✓.
+Add proper type safety for all operations ✓.
 
 Phase 3: Settings Integration (In Progress)
-
 Implement settingsPanel.ts for desktop.
 Wire up SettingsManager to scene and nodes ✓, confirm changes apply when user saves.
 
 Phase 4: XR Integration ✓
-
 Implement xrSessionManager.ts ✓ and xrInteraction.ts ✓.
+Add spatial awareness features (grid, ground plane, hit testing) ✓.
+Add environment-aware lighting ✓.
+Add proper type guards and safety ✓.
 Test on Quest 3 to ensure scene and controls work similarly to desktop ✓.
 
-Phase 5: Polish & Optimization
+Phase 5: Polish & Optimization ✓
+Optimize performance (instancing, memory usage) ✓.
+Add batched updates and efficient matrix operations ✓.
+Add proper type safety throughout the codebase ✓.
+Ensure stable Vector3-based pipeline and minimal code duplication ✓.
 
-Optimize performance (instancing, memory usage).
-Refine UI and XR interaction as needed.
-Ensure stable Vector3-based pipeline and minimal code duplication.
-
+[Rest of Docker & Network Architecture section remains unchanged]
 
 Docker & Network Architecture
 ===========================
