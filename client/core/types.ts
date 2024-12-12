@@ -9,6 +9,17 @@ export interface Vector3 {
   z: number;
 }
 
+// Binary protocol types
+export interface BinaryHeader {
+  version: number;
+  nodeCount: number;
+}
+
+export interface BinaryNodeData {
+  position: Float32Array; // x, y, z
+  velocity: Float32Array; // vx, vy, vz
+}
+
 // Raw types (matching server format)
 export interface RawNodeData {
   position: [number, number, number];
@@ -63,6 +74,17 @@ export interface GraphData {
   metadata?: Record<string, any>;
 }
 
+// Performance types
+export interface UpdateBatch {
+  timestamp: number;
+  updates: Float32Array;
+}
+
+export interface EdgeUpdateBatch {
+  edgeIndices: Set<number>;
+  timestamp: number;
+}
+
 // Shared types
 export interface Edge {
   source: string;
@@ -113,6 +135,20 @@ export function vector3ToArray(vec: Vector3): [number, number, number] {
   return [vec.x, vec.y, vec.z];
 }
 
+export function float32ArrayToVector3(arr: Float32Array, offset: number = 0): Vector3 {
+  return {
+    x: arr[offset],
+    y: arr[offset + 1],
+    z: arr[offset + 2]
+  };
+}
+
+export function vector3ToFloat32Array(vec: Vector3, arr: Float32Array, offset: number = 0): void {
+  arr[offset] = vec.x;
+  arr[offset + 1] = vec.y;
+  arr[offset + 2] = vec.z;
+}
+
 export function transformNodeData(raw: RawNodeData): NodeData {
   return {
     position: arrayToVector3(raw.position),
@@ -134,6 +170,16 @@ export function transformGraphData(raw: RawGraphData): GraphData {
     nodes: raw.nodes.map(transformNode),
     edges: raw.edges,
     metadata: raw.metadata
+  };
+}
+
+// Binary data validation
+export function validateBinaryHeader(data: ArrayBuffer): BinaryHeader | null {
+  if (data.byteLength < 8) return null; // Minimum size for version and count
+  const view = new Float32Array(data);
+  return {
+    version: view[0],
+    nodeCount: Math.floor((view.length - 1) / 6) // (length - version) / floats per node
   };
 }
 
@@ -189,7 +235,7 @@ export interface BinaryPositionUpdateMessage {
 
 // Other message types
 export interface RequestInitialDataMessage {
-  type: 'requestInitialData';  // Fixed: Changed from 'initialData' to 'requestInitialData'
+  type: 'requestInitialData';
 }
 
 export interface EnableBinaryUpdatesMessage {
@@ -243,4 +289,12 @@ export interface PlatformCapabilities {
 export interface QueuedMessage {
   data: ArrayBuffer;
   timestamp: number;
+}
+
+// Debug types
+export interface NetworkDebugMessage {
+  direction: 'in' | 'out';
+  type: 'binary' | 'json';
+  timestamp: number;
+  data: any;
 }

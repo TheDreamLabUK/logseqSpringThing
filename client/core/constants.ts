@@ -15,8 +15,15 @@ export const WS_URL = IS_PRODUCTION
 export const WS_RECONNECT_INTERVAL = 5000;
 export const WS_MESSAGE_QUEUE_SIZE = 100;
 
+// Binary protocol configuration
+export const BINARY_VERSION = 1.0;
+export const FLOATS_PER_NODE = 6;  // x, y, z, vx, vy, vz
+export const VERSION_OFFSET = 1;    // Skip version float
+export const BINARY_CHUNK_SIZE = 1000; // Number of nodes to process in one chunk
+
 // Performance configuration
 export const THROTTLE_INTERVAL = 16; // ~60fps
+export const EDGE_UPDATE_BATCH_INTERVAL = 16; // Batch edge updates at ~60fps
 
 // Visualization constants
 export const NODE_SIZE = 2.5;
@@ -72,4 +79,12 @@ export const DEFAULT_BLOOM_SETTINGS = {
   threshold: DEFAULT_VISUALIZATION_SETTINGS.bloomThreshold,
   strength: DEFAULT_VISUALIZATION_SETTINGS.bloomIntensity,
   radius: DEFAULT_VISUALIZATION_SETTINGS.bloomRadius,
+};
+
+// Debug configuration
+export const DEBUG = {
+  NETWORK_PANEL: {
+    MAX_MESSAGES: 50,
+    ENABLED: IS_DEVELOPMENT
+  }
 };

@@ -21,18 +21,23 @@ import { createLogger } from '../core/utils';
 
 const logger = createLogger('WebSocketService');
 
-// Server heartbeat configuration from settings.toml
+// Server configuration
 const HEARTBEAT_INTERVAL = 15000; // 15 seconds
+const BINARY_VERSION = 1.0;
+const FLOATS_PER_NODE = 6; // x, y, z, vx, vy, vz
+const VERSION_OFFSET = 1; // Skip version float
 
 type MessageHandler = (data: any) => void;
 type ErrorHandler = (error: Error) => void;
 type ConnectionHandler = (connected: boolean) => void;
+type NetworkMessage = string | ArrayBuffer | Float32Array;
 
 // Network debug panel
 class NetworkDebugPanel {
   private container: HTMLDivElement;
   private messageList: HTMLUListElement;
   private maxMessages = 50;
+  private binaryMessageCount = 0;
 
   constructor() {
     this.container = document.createElement('div');
@@ -68,35 +73,34 @@ class NetworkDebugPanel {
     document.body.appendChild(this.container);
   }
 
-  addMessage(direction: 'in' | 'out', message: any): void {
+  addMessage(direction: 'in' | 'out', message: NetworkMessage): void {
     const item = document.createElement('li');
     const timestamp = new Date().toISOString().split('T')[1].slice(0, -1);
     const arrow = direction === 'in' ? '←' : '→';
     let displayMessage: string;
 
-    if (message instanceof ArrayBuffer) {
-      displayMessage = `Binary data (${message.byteLength} bytes)`;
+    if (message instanceof ArrayBuffer || message instanceof Float32Array) {
+      this.binaryMessageCount++;
+      const byteLength = message instanceof ArrayBuffer ? message.byteLength : message.buffer.byteLength;
+      const nodeCount = Math.floor((byteLength / 4 - VERSION_OFFSET) / FLOATS_PER_NODE);
+      displayMessage = `Binary update #${this.binaryMessageCount} (${nodeCount} nodes, ${byteLength} bytes)`;
     } else if (typeof message === 'string') {
       try {
         const parsed = JSON.parse(message);
-        displayMessage = JSON.stringify(parsed, null, 2);
-        // Log full message for debugging
-        console.log('WebSocket message:', parsed);
+        displayMessage = `${parsed.type} ${JSON.stringify(parsed.data || {}, null, 0)}`;
       } catch {
         displayMessage = message;
       }
     } else {
-      displayMessage = JSON.stringify(message, null, 2);
+      displayMessage = JSON.stringify(message, null, 0);
     }
 
     item.textContent = `${timestamp} ${arrow} ${displayMessage}`;
     item.style.marginBottom = '2px';
     item.style.wordBreak = 'break-all';
-    item.style.whiteSpace = 'pre-wrap';
 
     this.messageList.insertBefore(item, this.messageList.firstChild);
 
-    // Limit number of messages
     while (this.messageList.children.length > this.maxMessages) {
       this.messageList.removeChild(this.messageList.lastChild!);
     }
@@ -114,6 +118,7 @@ export class WebSocketService {
   private connectionHandlers: ConnectionHandler[] = [];
   private isConnected: boolean = false;
   private debugPanel: NetworkDebugPanel;
+  private expectedNodeCount: number = 0;
 
   constructor(url: string) {
     this.url = url;
@@ -122,7 +127,6 @@ export class WebSocketService {
   }
 
   private initializeHandlers(): void {
-    // Initialize handlers for each message type
     const messageTypes: MessageType[] = [
       'initialData',
       'requestInitialData',
@@ -160,10 +164,8 @@ export class WebSocketService {
       this.notifyConnectionHandlers(true);
       this.startHeartbeat();
       
-      // Request initial data immediately after connection
       const requestInitialData: RequestInitialDataMessage = { type: 'requestInitialData' };
       this.send(requestInitialData);
-      logger.log('Requested initial data');
       
       this.processMessageQueue();
     };
@@ -190,50 +192,9 @@ export class WebSocketService {
   private handleMessage(event: MessageEvent): void {
     try {
       if (event.data instanceof ArrayBuffer) {
-        // Handle binary message (position updates)
-        this.notifyHandlers('binaryPositionUpdate', { nodes: event.data });
+        this.handleBinaryMessage(event.data);
       } else {
-        // Handle JSON message
-        const rawMessage = JSON.parse(event.data) as RawWebSocketMessage;
-        
-        switch (rawMessage.type) {
-          case 'initialData': {
-            const initialData = rawMessage as RawInitialDataMessage;
-            // Transform raw graph data to client format
-            const transformedData = {
-              type: 'initialData' as const,
-              data: {
-                graph: transformGraphData(initialData.data.graph)
-              }
-            };
-            this.handleInitialData(transformedData);
-            break;
-          }
-          case 'binaryPositionUpdate': {
-            const binaryUpdate = rawMessage as RawBinaryPositionUpdateMessage;
-            // Transform each node's data to client format
-            const transformedData = {
-              type: 'binaryPositionUpdate' as const,
-              data: {
-                nodes: binaryUpdate.data.nodes.map(node => ({
-                  nodeId: node.nodeId,
-                  data: transformNodeData(node.data)
-                }))
-              }
-            };
-            this.handleBinaryUpdate(transformedData);
-            break;
-          }
-          case 'settingsUpdated':
-            this.notifyHandlers('settingsUpdated', rawMessage.data);
-            break;
-          case 'ping':
-          case 'pong':
-            this.notifyHandlers(rawMessage.type, null);
-            break;
-          default:
-            logger.warn(`Unknown message type: ${(rawMessage as any).type}`);
-        }
+        this.handleJsonMessage(event.data);
       }
     } catch (error) {
       logger.error('Error handling message:', error);
@@ -241,14 +202,74 @@ export class WebSocketService {
     }
   }
 
+  private handleBinaryMessage(data: ArrayBuffer): void {
+    const floatArray = new Float32Array(data);
+    
+    // Validate binary version
+    const version = floatArray[0];
+    if (version !== BINARY_VERSION) {
+      logger.error(`Invalid binary version: ${version}`);
+      return;
+    }
+
+    // Calculate and validate node count
+    const nodeCount = Math.floor((floatArray.length - VERSION_OFFSET) / FLOATS_PER_NODE);
+    if (nodeCount === 0 || nodeCount > this.expectedNodeCount) {
+      logger.error(`Invalid node count: ${nodeCount}`);
+      return;
+    }
+
+    // Notify handlers with validated Float32Array
+    this.notifyHandlers('binaryPositionUpdate', { nodes: floatArray });
+  }
+
+  private handleJsonMessage(data: string): void {
+    const rawMessage = JSON.parse(data) as RawWebSocketMessage;
+    
+    switch (rawMessage.type) {
+      case 'initialData': {
+        const initialData = rawMessage as RawInitialDataMessage;
+        const transformedData = {
+          type: 'initialData' as const,
+          data: {
+            graph: transformGraphData(initialData.data.graph)
+          }
+        };
+        this.expectedNodeCount = initialData.data.graph.nodes.length;
+        this.handleInitialData(transformedData);
+        break;
+      }
+      case 'binaryPositionUpdate': {
+        const binaryUpdate = rawMessage as RawBinaryPositionUpdateMessage;
+        const transformedData = {
+          type: 'binaryPositionUpdate' as const,
+          data: {
+            nodes: binaryUpdate.data.nodes.map(node => ({
+              nodeId: node.nodeId,
+              data: transformNodeData(node.data)
+            }))
+          }
+        };
+        this.handleBinaryUpdate(transformedData);
+        break;
+      }
+      case 'settingsUpdated':
+        this.notifyHandlers('settingsUpdated', rawMessage.data);
+        break;
+      case 'ping':
+      case 'pong':
+        this.notifyHandlers(rawMessage.type, null);
+        break;
+      default:
+        logger.warn(`Unknown message type: ${(rawMessage as any).type}`);
+    }
+  }
+
   private handleInitialData(message: InitialDataMessage): void {
-    // Notify handlers of initial graph data
     this.notifyHandlers('initialData', message.data);
     
-    // Enable binary updates after receiving initial data
     const enableBinaryUpdates: EnableBinaryUpdatesMessage = { type: 'enableBinaryUpdates' };
     this.send(enableBinaryUpdates);
-    logger.log('Enabled binary updates');
   }
 
   private handleBinaryUpdate(message: BinaryPositionUpdateMessage): void {
@@ -294,7 +315,6 @@ export class WebSocketService {
       if (this.isConnected && this.ws) {
         const ping: PingMessage = { type: 'ping' };
         this.send(ping);
-        this.debugPanel.addMessage('out', 'Ping');
       }
     }, HEARTBEAT_INTERVAL);
   }
@@ -354,7 +374,7 @@ export class WebSocketService {
     }
   }
 
-  sendBinary(data: ArrayBuffer): void {
+  sendBinary(data: ArrayBuffer | Float32Array): void {
     if (!this.isConnected) {
       logger.warn('Cannot send binary data while disconnected');
       return;
@@ -362,7 +382,7 @@ export class WebSocketService {
 
     try {
       this.debugPanel.addMessage('out', data);
-      this.ws?.send(data);
+      this.ws?.send(data instanceof Float32Array ? data.buffer : data);
     } catch (error) {
       logger.error('Error sending binary data:', error);
       this.notifyErrorHandlers(new Error('Failed to send binary data'));
@@ -382,7 +402,6 @@ export class WebSocketService {
 
   onConnectionChange(handler: ConnectionHandler): void {
     this.connectionHandlers.push(handler);
-    // Call immediately with current state
     handler(this.isConnected);
   }
 
