@@ -10,17 +10,13 @@ import { SceneManager } from '../rendering/scene';
 
 const _logger = createLogger('XRSessionManager');
 
-// XR event types
-interface XRControllerEvent extends THREE.Event {
-  type: 'connected' | 'disconnected';
-  data: XRInputSource;
+// Type guards for WebXR features
+function hasLightEstimate(frame: XRFrame): frame is XRFrame & { getLightEstimate(): XRLightEstimate | null } {
+  return 'getLightEstimate' in frame;
 }
 
-declare module 'three' {
-  interface Object3DEventMap {
-    connected: XRControllerEvent;
-    disconnected: XRControllerEvent;
-  }
+function hasHitTest(session: XRSession): session is XRSession & { requestHitTestSource(options: XRHitTestOptionsInit): Promise<XRHitTestSource> } {
+  return 'requestHitTestSource' in session;
 }
 
 export class XRSessionManager {
@@ -36,6 +32,14 @@ export class XRSessionManager {
   private controllerGrips: THREE.Group[];
   private controllerModelFactory: XRControllerModelFactory;
 
+  // AR specific objects
+  private gridHelper: THREE.GridHelper;
+  private groundPlane: THREE.Mesh;
+  private hitTestMarker: THREE.Mesh;
+  private arLight: THREE.DirectionalLight;
+  private hitTestSource: XRHitTestSource | null = null;
+  private hitTestSourceRequested = false;
+
   // Event handlers
   private xrSessionStartCallback: (() => void) | null = null;
   private xrSessionEndCallback: (() => void) | null = null;
@@ -50,6 +54,12 @@ export class XRSessionManager {
     this.controllerGrips = [new THREE.Group(), new THREE.Group()];
     this.controllerModelFactory = new XRControllerModelFactory();
 
+    // Initialize AR objects
+    this.gridHelper = this.createGridHelper();
+    this.groundPlane = this.createGroundPlane();
+    this.hitTestMarker = this.createHitTestMarker();
+    this.arLight = this.createARLight();
+
     this.setupXRObjects();
   }
 
@@ -60,9 +70,59 @@ export class XRSessionManager {
     return XRSessionManager.instance;
   }
 
+  private createGridHelper(): THREE.GridHelper {
+    const grid = new THREE.GridHelper(10, 10, 0x808080, 0x808080);
+    grid.material.transparent = true;
+    grid.material.opacity = 0.5;
+    grid.position.y = -0.01; // Slightly below ground to avoid z-fighting
+    return grid;
+  }
+
+  private createGroundPlane(): THREE.Mesh {
+    const geometry = new THREE.PlaneGeometry(10, 10);
+    const material = new THREE.MeshPhongMaterial({
+      color: 0x999999,
+      transparent: true,
+      opacity: 0.3,
+      side: THREE.DoubleSide
+    });
+    const plane = new THREE.Mesh(geometry, material);
+    plane.rotateX(-Math.PI / 2);
+    plane.position.y = -0.02; // Below grid
+    return plane;
+  }
+
+  private createHitTestMarker(): THREE.Mesh {
+    const geometry = new THREE.RingGeometry(0.15, 0.2, 32);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide
+    });
+    const marker = new THREE.Mesh(geometry, material);
+    marker.rotateX(-Math.PI / 2);
+    marker.visible = false;
+    return marker;
+  }
+
+  private createARLight(): THREE.DirectionalLight {
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(1, 1, 1);
+    return light;
+  }
+
   private setupXRObjects(): void {
+    const scene = this.sceneManager.getScene();
+    
     // Add camera rig to scene
-    this.sceneManager.getScene().add(this.cameraRig);
+    scene.add(this.cameraRig);
+
+    // Add AR objects to scene
+    scene.add(this.gridHelper);
+    scene.add(this.groundPlane);
+    scene.add(this.hitTestMarker);
+    scene.add(this.arLight);
 
     // Setup controllers
     this.controllers.forEach((controller, _index) => {
@@ -119,7 +179,7 @@ export class XRSessionManager {
     try {
       const session = await navigator.xr.requestSession('immersive-ar', {
         requiredFeatures: ['local-floor', 'hit-test'],
-        optionalFeatures: ['hand-tracking', 'layers']
+        optionalFeatures: ['hand-tracking', 'layers', 'light-estimation']
       });
 
       if (!session) {
@@ -136,6 +196,10 @@ export class XRSessionManager {
       
       // Setup session event handlers
       this.session.addEventListener('end', () => this.onXRSessionEnd());
+
+      // Show AR visualization elements
+      this.gridHelper.visible = true;
+      this.groundPlane.visible = true;
       
       this.isPresenting = true;
       _logger.log('XR session initialized');
@@ -160,9 +224,21 @@ export class XRSessionManager {
   }
 
   private onXRSessionEnd(): void {
+    if (this.hitTestSource) {
+      this.hitTestSource.cancel();
+      this.hitTestSource = null;
+    }
+    
     this.session = null;
     this.referenceSpace = null;
+    this.hitTestSourceRequested = false;
     this.isPresenting = false;
+
+    // Hide AR visualization elements
+    this.gridHelper.visible = false;
+    this.groundPlane.visible = false;
+    this.hitTestMarker.visible = false;
+
     _logger.log('XR session ended');
 
     // Notify session end
@@ -181,6 +257,9 @@ export class XRSessionManager {
     const pose = frame.getViewerPose(this.referenceSpace);
     if (!pose) return;
 
+    // Handle hit testing
+    this.handleHitTest(frame);
+
     // Update controller poses
     this.controllers.forEach((controller) => {
       const inputSource = controller.userData.inputSource as XRInputSource;
@@ -193,10 +272,69 @@ export class XRSessionManager {
       }
     });
 
+    // Update lighting if available
+    if (hasLightEstimate(frame)) {
+      const lightEstimate = frame.getLightEstimate();
+      if (lightEstimate) {
+        this.updateARLighting(lightEstimate);
+      }
+    }
+
     // Call animation frame callback
     if (this.xrAnimationFrameCallback) {
       this.xrAnimationFrameCallback(frame);
     }
+  }
+
+  private async handleHitTest(frame: XRFrame): Promise<void> {
+    if (!this.hitTestSourceRequested && this.session && hasHitTest(this.session)) {
+      try {
+        const viewerSpace = await this.session.requestReferenceSpace('viewer');
+        if (!viewerSpace) {
+          throw new Error('Failed to get viewer reference space');
+        }
+
+        const hitTestSource = await this.session.requestHitTestSource({
+          space: viewerSpace
+        });
+
+        if (hitTestSource) {
+          this.hitTestSource = hitTestSource;
+          this.hitTestSourceRequested = true;
+        }
+      } catch (error) {
+        _logger.error('Failed to initialize hit test source:', error);
+        this.hitTestSourceRequested = true; // Prevent further attempts
+      }
+    }
+
+    if (this.hitTestSource && this.referenceSpace) {
+      const hitTestResults = frame.getHitTestResults(this.hitTestSource);
+      if (hitTestResults.length > 0) {
+        const hit = hitTestResults[0];
+        const pose = hit.getPose(this.referenceSpace);
+        if (pose) {
+          this.hitTestMarker.visible = true;
+          this.hitTestMarker.position.set(
+            pose.transform.position.x,
+            pose.transform.position.y,
+            pose.transform.position.z
+          );
+        }
+      } else {
+        this.hitTestMarker.visible = false;
+      }
+    }
+  }
+
+  private updateARLighting(lightEstimate: XRLightEstimate): void {
+    const intensity = lightEstimate.primaryLightIntensity?.value || 1;
+    const direction = lightEstimate.primaryLightDirection;
+    
+    if (direction) {
+      this.arLight.position.set(direction.x, direction.y, direction.z);
+    }
+    this.arLight.intensity = intensity;
   }
 
   /**
@@ -252,6 +390,10 @@ export class XRSessionManager {
    * Clean up resources
    */
   dispose(): void {
+    if (this.hitTestSource) {
+      this.hitTestSource.cancel();
+    }
+
     if (this.session) {
       this.session.end();
     }
@@ -265,6 +407,20 @@ export class XRSessionManager {
     });
 
     this.cameraRig.remove(...this.cameraRig.children);
-    this.sceneManager.getScene().remove(this.cameraRig);
+    
+    const scene = this.sceneManager.getScene();
+    scene.remove(this.cameraRig);
+    scene.remove(this.gridHelper);
+    scene.remove(this.groundPlane);
+    scene.remove(this.hitTestMarker);
+    scene.remove(this.arLight);
+
+    // Dispose geometries and materials
+    this.gridHelper.geometry.dispose();
+    (this.gridHelper.material as THREE.Material).dispose();
+    this.groundPlane.geometry.dispose();
+    (this.groundPlane.material as THREE.Material).dispose();
+    this.hitTestMarker.geometry.dispose();
+    (this.hitTestMarker.material as THREE.Material).dispose();
   }
 }
