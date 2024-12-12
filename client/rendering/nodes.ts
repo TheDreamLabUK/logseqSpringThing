@@ -3,7 +3,7 @@
  */
 
 import * as THREE from 'three';
-import { Node, Edge, Vector3 } from '../core/types';
+import { Node, Edge } from '../core/types';
 import { SceneManager } from './scene';
 import { createLogger } from '../core/utils';
 import { NODE_HIGHLIGHT_COLOR } from '../core/constants';
@@ -132,10 +132,11 @@ export class NodeManager {
     if (!node) {
       throw new Error(`Node ${nodeId} not found`);
     }
-    return new THREE.Vector3(node.position.x, node.position.y, node.position.z);
+    const pos = node.data.position;
+    return new THREE.Vector3(pos.x, pos.y, pos.z);
   }
 
-  updateNodePosition(nodeId: string, newPosition: Vector3): void {
+  updateNodePosition(nodeId: string, newPosition: THREE.Vector3): void {
     const index = this.nodeIndices.get(nodeId);
     if (index === undefined) {
       throw new Error(`Node ${nodeId} not found`);
@@ -144,12 +145,11 @@ export class NodeManager {
     // Update node position in current nodes array
     const node = this.currentNodes.find(n => n.id === nodeId);
     if (node) {
-      node.position = newPosition;
+      node.data.position = { x: newPosition.x, y: newPosition.y, z: newPosition.z };
     }
 
     // Update instance matrix
-    position.set(newPosition.x, newPosition.y, newPosition.z);
-    matrix.compose(position, quaternion, scale);
+    matrix.compose(newPosition, quaternion, scale);
     this.nodeInstances.setMatrixAt(index, matrix);
     this.nodeInstances.instanceMatrix.needsUpdate = true;
 
@@ -205,11 +205,8 @@ export class NodeManager {
     nodes.forEach((node, index) => {
       this.nodeIndices.set(node.id, index);
       
-      position.set(
-        node.position.x,
-        node.position.y,
-        node.position.z
-      );
+      const pos = node.data.position;
+      position.set(pos.x, pos.y, pos.z);
 
       matrix.compose(position, quaternion, scale);
       this.nodeInstances.setMatrixAt(index, matrix);
@@ -234,8 +231,11 @@ export class NodeManager {
   }
 
   private updateEdgeInstance(index: number, sourceNode: Node, targetNode: Node): void {
-    start.set(sourceNode.position.x, sourceNode.position.y, sourceNode.position.z);
-    end.set(targetNode.position.x, targetNode.position.y, targetNode.position.z);
+    const sourcePos = sourceNode.data.position;
+    const targetPos = targetNode.data.position;
+
+    start.set(sourcePos.x, sourcePos.y, sourcePos.z);
+    end.set(targetPos.x, targetPos.y, targetPos.z);
 
     direction.subVectors(end, start);
     const length = direction.length();
@@ -293,10 +293,15 @@ export class NodeManager {
 
       // Update node data
       if (this.currentNodes[i]) {
-        this.currentNodes[i].position = {
+        this.currentNodes[i].data.position = {
           x: floatArray[baseIndex],
           y: floatArray[baseIndex + 1],
           z: floatArray[baseIndex + 2]
+        };
+        this.currentNodes[i].data.velocity = {
+          x: floatArray[baseIndex + 3],
+          y: floatArray[baseIndex + 4],
+          z: floatArray[baseIndex + 5]
         };
       }
     }
