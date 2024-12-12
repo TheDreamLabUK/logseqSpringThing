@@ -1,16 +1,12 @@
-/**
- * THREE.js type declarations
- */
-
 declare module 'three' {
   export interface Event {
     type: string;
-    target: any;
+    target: Group;
   }
 
-  // XR Controller Event Types
   export interface XRControllerEvent extends Event {
     type: 'connected' | 'disconnected';
+    target: Group;
     data: XRInputSource;
   }
 
@@ -23,6 +19,15 @@ declare module 'three' {
     addEventListener<T extends E['type']>(type: T, listener: (event: E & { type: T }) => void): void;
     removeEventListener<T extends E['type']>(type: T, listener: (event: E & { type: T }) => void): void;
     dispatchEvent(event: E): void;
+  }
+
+  export class Layers {
+    mask: number;
+    set(layer: number): void;
+    enable(layer: number): void;
+    disable(layer: number): void;
+    toggle(layer: number): void;
+    test(layers: Layers): boolean;
   }
 
   export class Object3D implements EventDispatcher<Event & XRControllerEvent> {
@@ -38,6 +43,7 @@ declare module 'three' {
     renderOrder: number;
     frustumCulled: boolean;
     matrixAutoUpdate: boolean;
+    layers: Layers;
     add(...objects: Object3D[]): this;
     remove(...objects: Object3D[]): this;
     rotateX(angle: number): this;
@@ -66,41 +72,14 @@ declare module 'three' {
     dispatchEvent(event: Event): void;
   }
 
-  export class Scene extends Object3D {
-    constructor();
-    fog: FogExp2 | null;
-    background: Color | Texture | null;
-  }
-
   export class Group extends Object3D {
     constructor();
   }
 
-  export class Mesh extends Object3D {
-    constructor(geometry: BufferGeometry, material: Material);
-    geometry: BufferGeometry;
-    material: Material;
-  }
-
-  export class InstancedMesh extends Mesh {
-    constructor(geometry: BufferGeometry, material: Material, count: number);
-    count: number;
-    instanceMatrix: BufferAttribute;
-    instanceColor: BufferAttribute | null;
-    setMatrixAt(index: number, matrix: Matrix4): void;
-    setColorAt(index: number, color: Color): void;
-  }
-
-  export class Sprite extends Object3D {
-    constructor(material: SpriteMaterial);
-    material: SpriteMaterial;
-  }
-
-  export class BufferGeometry {
-    dispose(): void;
-    rotateX(angle: number): this;
-    rotateY(angle: number): this;
-    rotateZ(angle: number): this;
+  export class Scene extends Object3D {
+    constructor();
+    fog: FogExp2 | null;
+    background: Color | Texture | null;
   }
 
   export class Material {
@@ -113,23 +92,64 @@ declare module 'three' {
     dispose(): void;
   }
 
-  export interface MaterialParameters {
-    color?: ColorRepresentation;
-    transparent?: boolean;
-    opacity?: number;
-    side?: Side;
-    depthWrite?: boolean;
-    depthTest?: boolean;
-    map?: Texture;
+  export class Mesh extends Object3D {
+    constructor(geometry: BufferGeometry, material: Material);
+    geometry: BufferGeometry;
+    material: Material;
   }
 
-  export interface MeshBasicMaterialParameters extends MaterialParameters {}
-  export interface MeshPhongMaterialParameters extends MaterialParameters {
-    shininess?: number;
-    specular?: ColorRepresentation;
+  export class GridHelper extends Object3D {
+    constructor(size: number, divisions: number, color1?: ColorRepresentation, color2?: ColorRepresentation);
+    material: Material;
+    geometry: BufferGeometry;
   }
-  export interface SpriteMaterialParameters extends MaterialParameters {
-    depthTest?: boolean;
+
+  export class Light extends Object3D {
+    constructor(color?: ColorRepresentation, intensity?: number);
+    intensity: number;
+  }
+
+  export class DirectionalLight extends Light {
+    constructor(color?: ColorRepresentation, intensity?: number);
+    intensity: number;
+  }
+
+  export class AmbientLight extends Light {
+    constructor(color?: ColorRepresentation, intensity?: number);
+  }
+
+  export class BufferAttribute {
+    array: ArrayLike<number>;
+    itemSize: number;
+    count: number;
+    normalized: boolean;
+    needsUpdate: boolean;
+    constructor(array: ArrayLike<number>, itemSize: number, normalized?: boolean);
+    setX(index: number, x: number): this;
+    setY(index: number, y: number): this;
+    setZ(index: number, z: number): this;
+    setW(index: number, w: number): this;
+    setXY(index: number, x: number, y: number): this;
+    setXYZ(index: number, x: number, y: number, z: number): this;
+    setXYZW(index: number, x: number, y: number, z: number, w: number): this;
+  }
+
+  export class InstancedBufferAttribute extends BufferAttribute {
+    constructor(array: ArrayLike<number>, itemSize: number, normalized?: boolean, meshPerAttribute?: number);
+    meshPerAttribute: number;
+  }
+
+  export class InstancedMesh extends Mesh {
+    constructor(geometry: BufferGeometry, material: Material | Material[], count: number);
+    count: number;
+    instanceMatrix: InstancedBufferAttribute;
+    instanceColor: InstancedBufferAttribute | null;
+    frustumCulled: boolean;
+    setColorAt(index: number, color: Color): void;
+    setMatrixAt(index: number, matrix: Matrix4): void;
+    getMatrixAt(index: number, matrix: Matrix4): void;
+    getColorAt(index: number, color: Color): void;
+    dispose(): void;
   }
 
   export class MeshBasicMaterial extends Material {
@@ -145,31 +165,41 @@ declare module 'three' {
   export class SpriteMaterial extends Material {
     constructor(parameters?: SpriteMaterialParameters);
     map: Texture | null;
+    color: Color;
+    sizeAttenuation: boolean;
+    rotation: number;
   }
 
-  export class BufferAttribute {
-    array: ArrayLike<number>;
-    needsUpdate: boolean;
+  export class BufferGeometry {
+    dispose(): void;
+    rotateX(angle: number): this;
+    rotateY(angle: number): this;
+    rotateZ(angle: number): this;
   }
 
-  export class GridHelper extends Object3D {
-    constructor(size: number, divisions: number, color1?: ColorRepresentation, color2?: ColorRepresentation);
-    material: Material;
-    geometry: BufferGeometry;
+  export class PlaneGeometry extends BufferGeometry {
+    constructor(width?: number, height?: number, widthSegments?: number, heightSegments?: number);
   }
 
-  export class DirectionalLight extends Object3D {
-    constructor(color?: ColorRepresentation, intensity?: number);
-    intensity: number;
+  export class SphereGeometry extends BufferGeometry {
+    constructor(radius?: number, widthSegments?: number, heightSegments?: number);
   }
 
-  export class AmbientLight extends Light {
-    constructor(color?: ColorRepresentation, intensity?: number);
+  export class CylinderGeometry extends BufferGeometry {
+    constructor(
+      radiusTop?: number,
+      radiusBottom?: number,
+      height?: number,
+      radialSegments?: number
+    );
   }
 
-  export class Light extends Object3D {
-    constructor(color?: ColorRepresentation, intensity?: number);
-    intensity: number;
+  export class RingGeometry extends BufferGeometry {
+    constructor(
+      innerRadius?: number,
+      outerRadius?: number,
+      thetaSegments?: number
+    );
   }
 
   export class Vector2 {
@@ -234,35 +264,33 @@ declare module 'three' {
     set(color: ColorRepresentation): this;
   }
 
-  export class SphereGeometry extends BufferGeometry {
-    constructor(radius?: number, widthSegments?: number, heightSegments?: number);
+  export class Sprite extends Object3D {
+    constructor(material: SpriteMaterial);
+    material: SpriteMaterial;
   }
 
-  export class PlaneGeometry extends BufferGeometry {
-    constructor(width?: number, height?: number, widthSegments?: number, heightSegments?: number);
+  export class Raycaster {
+    constructor();
+    ray: Ray;
+    near: number;
+    far: number;
+    camera: Camera;
+    params: {
+      Mesh?: {},
+      Line?: {},
+      LOD?: {},
+      Points?: { threshold: number },
+      Sprite?: {}
+    };
+    setFromCamera(coords: Vector2, camera: Camera): void;
+    intersectObject(object: Object3D, recursive?: boolean, intersects?: Intersection[]): Intersection[];
+    intersectObjects(objects: Object3D[], recursive?: boolean, intersects?: Intersection[]): Intersection[];
   }
 
-  export class CylinderGeometry extends BufferGeometry {
-    constructor(
-      radiusTop?: number,
-      radiusBottom?: number,
-      height?: number,
-      radialSegments?: number
-    );
-  }
-
-  export class RingGeometry extends BufferGeometry {
-    constructor(
-      innerRadius?: number,
-      outerRadius?: number,
-      thetaSegments?: number
-    );
-  }
-
-  export class Texture {
-    constructor(image?: HTMLImageElement | HTMLCanvasElement);
-    needsUpdate: boolean;
-    dispose(): void;
+  export class Ray {
+    origin: Vector3;
+    direction: Vector3;
+    constructor(origin?: Vector3, direction?: Vector3);
   }
 
   export class WebGLRenderer {
@@ -275,13 +303,6 @@ declare module 'three' {
     xr: WebXRManager;
   }
 
-  export interface WebGLRendererParameters {
-    canvas?: HTMLCanvasElement;
-    antialias?: boolean;
-    alpha?: boolean;
-    powerPreference?: 'default' | 'high-performance' | 'low-power';
-  }
-
   export class WebXRManager {
     enabled: boolean;
     setSession(session: XRSession): Promise<void>;
@@ -291,6 +312,7 @@ declare module 'three' {
     matrixWorldInverse: Matrix4;
     projectionMatrix: Matrix4;
     projectionMatrixInverse: Matrix4;
+    layers: Layers;
     lookAt(target: Vector3 | number, y?: number, z?: number): void;
   }
 
@@ -304,25 +326,30 @@ declare module 'three' {
     lookAt(target: Vector3 | number, y?: number, z?: number): void;
   }
 
-  export class Raycaster {
-    constructor();
-    ray: Ray;
-    near: number;
-    far: number;
-    setFromCamera(coords: Vector2, camera: Camera): void;
-    intersectObject(object: Object3D, recursive?: boolean): Intersection[];
-    intersectObjects(objects: Object3D[], recursive?: boolean): Intersection[];
+  export interface MaterialParameters {
+    color?: ColorRepresentation;
+    transparent?: boolean;
+    opacity?: number;
+    side?: Side;
+    depthWrite?: boolean;
+    depthTest?: boolean;
+    map?: Texture;
   }
 
-  export class Ray {
-    origin: Vector3;
-    direction: Vector3;
+  export interface MeshBasicMaterialParameters extends MaterialParameters {}
+  export interface MeshPhongMaterialParameters extends MaterialParameters {
+    shininess?: number;
+    specular?: ColorRepresentation;
+  }
+  export interface SpriteMaterialParameters extends MaterialParameters {
+    sizeAttenuation?: boolean;
+    rotation?: number;
   }
 
-  export interface Intersection {
-    distance: number;
-    point: Vector3;
-    object: Object3D;
+  export class Texture {
+    constructor(image?: HTMLImageElement | HTMLCanvasElement);
+    needsUpdate: boolean;
+    dispose(): void;
   }
 
   export class FogExp2 {
@@ -331,11 +358,22 @@ declare module 'three' {
     density: number;
   }
 
-  export const DoubleSide: Side;
-  export type Side = 0 | 1 | 2;
-  export type ColorRepresentation = Color | string | number;
+  export interface Intersection {
+    distance: number;
+    point: Vector3;
+    face: { normal: Vector3 } | null;
+    object: Object3D;
+  }
 
   export class MathUtils {
     static clamp(value: number, min: number, max: number): number;
+    static degToRad(degrees: number): number;
+    static radToDeg(radians: number): number;
+    static lerp(x: number, y: number, t: number): number;
+    static smoothstep(x: number, min: number, max: number): number;
   }
+
+  export const DoubleSide: Side;
+  export type Side = 0 | 1 | 2;
+  export type ColorRepresentation = Color | string | number;
 }

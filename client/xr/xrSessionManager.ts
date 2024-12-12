@@ -7,6 +7,7 @@ import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerM
 import { createLogger } from '../core/utils';
 import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
+import { BACKGROUND_COLOR } from '../core/constants';
 
 const _logger = createLogger('XRSessionManager');
 
@@ -28,6 +29,7 @@ export class XRSessionManager {
 
   // XR specific objects
   private cameraRig: THREE.Group;
+  private arGroup: THREE.Group; // New group for AR elements
   private controllers: THREE.Group[];
   private controllerGrips: THREE.Group[];
   private controllerModelFactory: XRControllerModelFactory;
@@ -50,6 +52,7 @@ export class XRSessionManager {
     
     // Initialize XR objects
     this.cameraRig = new THREE.Group();
+    this.arGroup = new THREE.Group(); // Initialize AR group
     this.controllers = [new THREE.Group(), new THREE.Group()];
     this.controllerGrips = [new THREE.Group(), new THREE.Group()];
     this.controllerModelFactory = new XRControllerModelFactory();
@@ -75,6 +78,8 @@ export class XRSessionManager {
     grid.material.transparent = true;
     grid.material.opacity = 0.5;
     grid.position.y = -0.01; // Slightly below ground to avoid z-fighting
+    grid.visible = false; // Start hidden until AR session begins
+    grid.layers.set(1); // Set to AR layer
     return grid;
   }
 
@@ -89,6 +94,8 @@ export class XRSessionManager {
     const plane = new THREE.Mesh(geometry, material);
     plane.rotateX(-Math.PI / 2);
     plane.position.y = -0.02; // Below grid
+    plane.visible = false; // Start hidden until AR session begins
+    plane.layers.set(1); // Set to AR layer
     return plane;
   }
 
@@ -103,12 +110,14 @@ export class XRSessionManager {
     const marker = new THREE.Mesh(geometry, material);
     marker.rotateX(-Math.PI / 2);
     marker.visible = false;
+    marker.layers.set(1); // Set to AR layer
     return marker;
   }
 
   private createARLight(): THREE.DirectionalLight {
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(1, 1, 1);
+    light.layers.set(1); // Set to AR layer
     return light;
   }
 
@@ -118,38 +127,52 @@ export class XRSessionManager {
     // Add camera rig to scene
     scene.add(this.cameraRig);
 
-    // Add AR objects to scene
-    scene.add(this.gridHelper);
-    scene.add(this.groundPlane);
-    scene.add(this.hitTestMarker);
-    scene.add(this.arLight);
+    // Add AR group to camera rig
+    this.cameraRig.add(this.arGroup);
+
+    // Add AR objects to AR group
+    this.arGroup.add(this.gridHelper);
+    this.arGroup.add(this.groundPlane);
+    this.arGroup.add(this.hitTestMarker);
+    this.arGroup.add(this.arLight);
 
     // Setup controllers
     this.controllers.forEach((controller, _index) => {
       this.cameraRig.add(controller);
+      controller.layers.set(1); // Set to AR layer
       this.setupController(controller);
     });
 
     // Setup controller grips
     this.controllerGrips.forEach((grip, _index) => {
       this.cameraRig.add(grip);
+      grip.layers.set(1); // Set to AR layer
       this.setupControllerGrip(grip);
     });
   }
 
   private setupController(controller: THREE.Group): void {
-    controller.addEventListener('connected', (event: XRControllerEvent) => {
-      controller.userData.inputSource = event.data;
+    controller.addEventListener('connected', this.onControllerConnected);
+    controller.addEventListener('disconnected', this.onControllerDisconnected);
+  }
 
-      // Add visual representation of controller
-      if (event.data.targetRayMode === 'tracked-pointer') {
-        controller.add(this.createControllerPointer());
-      }
-    });
+private onControllerConnected = (event: THREE.Event): void => {
+  // Cast the event to XRControllerEvent
+  const xrEvent = event as THREE.XRControllerEvent;
+  // Cast the event target to Object3D first, then to Group
+  const controller = (xrEvent.target as unknown as THREE.Object3D) as THREE.Group;
+  controller.userData.inputSource = xrEvent.data;
 
-    controller.addEventListener('disconnected', () => {
-      controller.remove(...controller.children);
-    });
+  if (xrEvent.data.targetRayMode === 'tracked-pointer') {
+    const pointer = this.createControllerPointer();
+    controller.add(pointer);
+  }
+}
+
+private onControllerDisconnected = (event: THREE.Event): void => {
+  // Cast the event target to Object3D first, then to Group
+  const controller = (event.target as unknown as THREE.Object3D) as THREE.Group;
+  controller.remove(...controller.children);
   }
 
   private setupControllerGrip(grip: THREE.Group): void {
@@ -165,13 +188,20 @@ export class XRSessionManager {
       transparent: true,
       opacity: 0.8
     });
-    return new THREE.Mesh(geometry, material);
+    const pointer = new THREE.Mesh(geometry, material);
+    pointer.layers.set(1); // Set to AR layer
+    return pointer;
   }
 
   /**
    * Initialize XR session
    */
   async initXRSession(): Promise<void> {
+    if (this.isPresenting) {
+      _logger.warn('XR session already active');
+      return;
+    }
+
     if (!platformManager.getCapabilities().xrSupported || !navigator.xr) {
       throw new Error('XR not supported on this platform');
     }
@@ -189,17 +219,36 @@ export class XRSessionManager {
       this.session = session;
 
       // Setup XR rendering
-      await this.sceneManager.getRenderer().xr.setSession(this.session);
+      const renderer = this.sceneManager.getRenderer();
+      await renderer.xr.setSession(this.session);
+      
+      // Configure renderer for AR
+      renderer.xr.enabled = true;
+      
+      // Clear background for AR passthrough
+      const scene = this.sceneManager.getScene();
+      scene.background = null;
       
       // Get reference space
       this.referenceSpace = await this.session.requestReferenceSpace('local-floor');
       
       // Setup session event handlers
-      this.session.addEventListener('end', () => this.onXRSessionEnd());
+      this.session.addEventListener('end', this.onXRSessionEnd);
 
-      // Show AR visualization elements
-      this.gridHelper.visible = true;
-      this.groundPlane.visible = true;
+      // Enable AR layer for camera
+      const camera = this.sceneManager.getCamera();
+      camera.layers.enable(1);
+
+      // Reset camera rig position
+      this.cameraRig.position.set(0, 0, 0);
+      this.cameraRig.quaternion.identity();
+
+      // Show AR visualization elements after a short delay to ensure proper placement
+      setTimeout(() => {
+        this.gridHelper.visible = true;
+        this.groundPlane.visible = true;
+        this.arLight.visible = true;
+      }, 1000);
       
       this.isPresenting = true;
       _logger.log('XR session initialized');
@@ -223,7 +272,7 @@ export class XRSessionManager {
     }
   }
 
-  private onXRSessionEnd(): void {
+  private onXRSessionEnd = (): void => {
     if (this.hitTestSource) {
       this.hitTestSource.cancel();
       this.hitTestSource = null;
@@ -238,6 +287,23 @@ export class XRSessionManager {
     this.gridHelper.visible = false;
     this.groundPlane.visible = false;
     this.hitTestMarker.visible = false;
+    this.arLight.visible = false;
+
+    // Reset camera rig
+    this.cameraRig.position.set(0, 0, 0);
+    this.cameraRig.quaternion.identity();
+
+    // Reset scene background
+    const scene = this.sceneManager.getScene();
+    scene.background = new THREE.Color(BACKGROUND_COLOR);
+
+    // Disable AR layer for camera
+    const camera = this.sceneManager.getCamera();
+    camera.layers.disable(1);
+
+    // Reset renderer settings
+    const renderer = this.sceneManager.getRenderer();
+    renderer.xr.enabled = false;
 
     _logger.log('XR session ended');
 
@@ -257,6 +323,7 @@ export class XRSessionManager {
     const pose = frame.getViewerPose(this.referenceSpace);
     if (!pose) return;
 
+    // Let Three.js handle camera updates through WebXRManager
     // Handle hit testing
     this.handleHitTest(frame);
 
@@ -320,6 +387,10 @@ export class XRSessionManager {
             pose.transform.position.y,
             pose.transform.position.z
           );
+
+          // Update grid and ground plane position to match hit test
+          this.gridHelper.position.y = pose.transform.position.y;
+          this.groundPlane.position.y = pose.transform.position.y - 0.01;
         }
       } else {
         this.hitTestMarker.visible = false;
@@ -398,7 +469,10 @@ export class XRSessionManager {
       this.session.end();
     }
 
+    // Remove event listeners
     this.controllers.forEach(controller => {
+      controller.removeEventListener('connected', this.onControllerConnected);
+      controller.removeEventListener('disconnected', this.onControllerDisconnected);
       controller.remove(...controller.children);
     });
 
@@ -406,14 +480,15 @@ export class XRSessionManager {
       grip.remove(...grip.children);
     });
 
+    // Clean up AR group
+    this.arGroup.remove(...this.arGroup.children);
+    this.cameraRig.remove(this.arGroup);
+
+    // Clean up camera rig
     this.cameraRig.remove(...this.cameraRig.children);
     
     const scene = this.sceneManager.getScene();
     scene.remove(this.cameraRig);
-    scene.remove(this.gridHelper);
-    scene.remove(this.groundPlane);
-    scene.remove(this.hitTestMarker);
-    scene.remove(this.arLight);
 
     // Dispose geometries and materials
     this.gridHelper.geometry.dispose();
