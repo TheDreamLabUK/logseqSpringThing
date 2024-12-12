@@ -4,7 +4,7 @@ use std::io::Error;
 use std::sync::Arc;
 use log::debug;
 use crate::models::graph::GraphData;
-use crate::models::node::{Node, NodeData};
+use crate::utils::socket_flow_messages::NodeData;
 use crate::models::simulation_params::SimulationParams;
 use tokio::sync::RwLock;
 
@@ -12,9 +12,6 @@ const BLOCK_SIZE: u32 = 256;
 const MAX_NODES: u32 = 1_000_000;
 const NODE_SIZE: u32 = 28; // 24 bytes for position/velocity + 4 bytes for mass/flags/padding
 const SHARED_MEM_SIZE: u32 = BLOCK_SIZE * NODE_SIZE;
-
-// CUDA kernel matching compute_forces.cu
-const FORCE_KERNEL: &str = include_str!("compute_forces.cu");
 
 pub struct GPUCompute {
     device: Arc<CudaDevice>,
@@ -39,8 +36,7 @@ impl GPUCompute {
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?);
 
         debug!("Loading force computation kernel");
-        let ptx = Ptx::from_file("/app/compute_forces.ptx")
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        let ptx = Ptx::from_file("/app/compute_forces.ptx");
             
         device.load_ptx(ptx, "compute_forces", &["compute_forces"])
             .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;

@@ -3,9 +3,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use log::debug;
 
 // Global debug state
-pub(crate) static DEBUG_MODE: AtomicBool = AtomicBool::new(false);
-pub(crate) static WEBSOCKET_DEBUG: AtomicBool = AtomicBool::new(false);
-pub(crate) static DATA_DEBUG: AtomicBool = AtomicBool::new(false);
+pub static DEBUG_MODE: AtomicBool = AtomicBool::new(false);
+pub static WEBSOCKET_DEBUG: AtomicBool = AtomicBool::new(false);
+pub static DATA_DEBUG: AtomicBool = AtomicBool::new(false);
 
 // Initialize debug settings
 pub fn init_debug_settings(debug_mode: bool, websocket_debug: bool, data_debug: bool) {
@@ -56,8 +56,7 @@ macro_rules! log_error {
 macro_rules! log_warn {
     ($($arg:tt)*) => {{
         use log::warn;
-        use std::sync::atomic::Ordering;
-        if crate::utils::debug_logging::DEBUG_MODE.load(Ordering::SeqCst) {
+        if $crate::utils::debug_logging::DEBUG_MODE.load(std::sync::atomic::Ordering::SeqCst) {
             warn!($($arg)*);
         }
     }}
@@ -67,8 +66,7 @@ macro_rules! log_warn {
 macro_rules! log_websocket {
     ($($arg:tt)*) => {{
         use log::debug;
-        use std::sync::atomic::Ordering;
-        if crate::utils::debug_logging::WEBSOCKET_DEBUG.load(Ordering::SeqCst) {
+        if $crate::utils::debug_logging::WEBSOCKET_DEBUG.load(std::sync::atomic::Ordering::SeqCst) {
             debug!("[WS] {}", format!($($arg)*));
         }
     }}
@@ -78,8 +76,7 @@ macro_rules! log_websocket {
 macro_rules! log_data {
     ($($arg:tt)*) => {{
         use log::debug;
-        use std::sync::atomic::Ordering;
-        if crate::utils::debug_logging::DATA_DEBUG.load(Ordering::SeqCst) {
+        if $crate::utils::debug_logging::DATA_DEBUG.load(std::sync::atomic::Ordering::SeqCst) {
             debug!("[DATA] {}", format!($($arg)*));
         }
     }}

@@ -1,124 +1,167 @@
-use serde::{Serialize, Deserialize};
-use serde_json::Value;
-use crate::models::graph::GraphData;
-use crate::models::node::NodeData;
+use serde::{Deserialize, Serialize};
+use bytemuck::{Pod, Zeroable};
+use std::collections::HashMap;
+use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 
-/// Message types matching TypeScript MessageType
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-#[serde(rename_all = "camelCase")]
-pub enum ServerMessage {
-    InitialData {
-        #[serde(rename = "graphData")]
-        graph_data: GraphData,
-        settings: Value,
-    },
-    GraphUpdate {
-        #[serde(rename = "graphData")]
-        graph_data: GraphData,
-    },
-    BinaryPositionUpdate {
-        node_count: usize,
-        version: f32,
-        is_initial_layout: bool,
-    },
-    SettingsUpdated {
-        settings: Value,
-    },
-    Error {
-        message: String,
-        code: Option<String>,
-        details: Option<String>,
-    },
-    PositionUpdateComplete {
-        status: String,
-    },
-    SimulationModeSet {
-        mode: String,
-        gpu_enabled: bool,
-    },
-    GpuState {
-        enabled: bool,
-        node_count: usize,
-        frame_time: f32,
-    },
-    LayoutState {
-        iteration: usize,
-        energy: f32,
-        stable: bool,
-    },
-    AudioData {
-        audio_data: String,
-    },
-    OpenAIResponse {
-        text: String,
-        audio: Option<String>,
-    },
-    RagflowResponse {
-        answer: String,
-        audio: Option<String>,
-    },
-    Completion {
-        message: String,
-    },
-    Ping,
-    Pong,
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
+pub struct NodeData {
+    pub position: [f32; 3],  // 12 bytes - matches THREE.Vector3
+    pub velocity: [f32; 3],  // 12 bytes - matches THREE.Vector3
+    pub mass: u8,            // 1 byte - quantized mass
+    pub flags: u8,           // 1 byte - node state flags
+    pub padding: [u8; 2],    // 2 bytes - alignment padding
 }
 
-/// Node data for JSON messages (camelCase for TypeScript compatibility)
-#[derive(Debug, Serialize, Deserialize)]
+// Implement DeviceRepr for NodeData
+unsafe impl DeviceRepr for NodeData {}
+
+// Implement ValidAsZeroBits for NodeData
+unsafe impl ValidAsZeroBits for NodeData {}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
+    // Core data
     pub id: String,
-    pub position: [f32; 3],  // Matches THREE.Vector3
+    pub label: String,
+    pub data: NodeData,
+
+    // Metadata
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub metadata: HashMap<String, String>,
+    #[serde(skip)]
+    pub file_size: u64,
+
+    // Rendering properties
+    #[serde(rename = "type")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub velocity: Option<[f32; 3]>,  // Optional for client messages
+    pub node_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<NodeData>,  // Additional node data
+    pub size: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weight: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_data: Option<HashMap<String, String>>,
 }
 
-/// Position update message from client
+impl Node {
+    pub fn new(id: String) -> Self {
+        Self {
+            id: id.clone(),
+            label: id,
+            data: NodeData {
+                position: [0.0; 3],
+                velocity: [0.0; 3],
+                mass: 127, // Default mass
+                flags: 0,
+                padding: [0; 2],
+            },
+            metadata: HashMap::new(),
+            file_size: 0,
+            node_type: None,
+            size: None,
+            color: None,
+            weight: None,
+            group: None,
+            user_data: None,
+        }
+    }
+
+    /// Update mass based on file size
+    pub fn update_mass(&mut self) {
+        if self.file_size == 0 {
+            self.data.mass = 127; // Default mass
+            return;
+        }
+        
+        // Scale file size logarithmically to 0-255 range
+        let log_size = (self.file_size as f64).log2();
+        let max_log = (1024.0 * 1024.0 * 1024.0_f64).log2(); // 1GB
+        let normalized = (log_size / max_log).min(1.0);
+        self.data.mass = (normalized * 255.0) as u8;
+    }
+
+    pub fn update_from_gpu_node(&mut self, gpu_node: &NodeData) {
+        self.data = *gpu_node;
+    }
+
+    // Convenience getters/setters for x, y, z coordinates
+    pub fn x(&self) -> f32 { self.data.position[0] }
+    pub fn y(&self) -> f32 { self.data.position[1] }
+    pub fn z(&self) -> f32 { self.data.position[2] }
+    pub fn vx(&self) -> f32 { self.data.velocity[0] }
+    pub fn vy(&self) -> f32 { self.data.velocity[1] }
+    pub fn vz(&self) -> f32 { self.data.velocity[2] }
+    
+    pub fn set_x(&mut self, val: f32) { self.data.position[0] = val; }
+    pub fn set_y(&mut self, val: f32) { self.data.position[1] = val; }
+    pub fn set_z(&mut self, val: f32) { self.data.position[2] = val; }
+    pub fn set_vx(&mut self, val: f32) { self.data.velocity[0] = val; }
+    pub fn set_vy(&mut self, val: f32) { self.data.velocity[1] = val; }
+    pub fn set_vz(&mut self, val: f32) { self.data.velocity[2] = val; }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UpdatePositionsMessage {
-    pub nodes: Vec<Node>,
-}
-
-/// Client messages matching TypeScript interface
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", tag = "type")]
-pub enum ClientMessage {
-    EnableBinaryUpdates,
-    UpdatePositions(UpdatePositionsMessage),
-    RequestInitialData,
-    UpdateSettings { settings: Value },
-    SetSimulationMode { mode: String },
-    Ping,
-}
-
-/// Binary message format (packed for efficient transfer)
-#[repr(C, packed)]
-#[derive(Copy, Clone, Debug)]
 pub struct BinaryNodeData {
-    pub position: [f32; 3],  // 12 bytes
-    pub velocity: [f32; 3],  // 12 bytes
+    pub node_id: String,
+    pub data: NodeData,
 }
 
 impl BinaryNodeData {
-    pub fn new(position: [f32; 3], velocity: [f32; 3]) -> Self {
+    pub fn from_node_data(node_id: &str, data: &NodeData) -> Self {
         Self {
-            position,
-            velocity,
-        }
-    }
-
-    pub fn from_node_data(data: &NodeData) -> Self {
-        Self {
-            position: data.position,
-            velocity: data.velocity,
+            node_id: node_id.to_string(),
+            data: *data,
         }
     }
 }
 
-// Ensure binary layout matches expectations
-const _: () = assert!(std::mem::size_of::<BinaryNodeData>() == 24);
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePositionsMessage {
+    pub nodes: Vec<BinaryNodeData>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
+pub enum ServerMessage {
+    #[serde(rename = "updatePositions")]
+    UpdatePositions(UpdatePositionsMessage),
+    #[serde(rename = "initialData")]
+    InitialData { graph: GraphData },
+    #[serde(rename = "binaryPositionUpdate")]
+    BinaryPositionUpdate { nodes: Vec<BinaryNodeData> },
+    #[serde(rename = "simulationModeSet")]
+    SimulationModeSet { mode: String },
+    #[serde(rename = "settingsUpdated")]
+    SettingsUpdated { settings: Settings },
+    #[serde(rename = "pong")]
+    Pong,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
+pub enum ClientMessage {
+    #[serde(rename = "updatePositions")]
+    UpdatePositions(UpdatePositionsMessage),
+    #[serde(rename = "requestInitialData")]
+    RequestInitialData,
+    #[serde(rename = "enableBinaryUpdates")]
+    EnableBinaryUpdates,
+    #[serde(rename = "setSimulationMode")]
+    SetSimulationMode { mode: String },
+    #[serde(rename = "updateSettings")]
+    UpdateSettings { settings: Settings },
+    #[serde(rename = "ping")]
+    Ping,
+}
+
+// Forward declarations to avoid circular dependencies
+use crate::models::graph::GraphData;
+use crate::config::Settings;

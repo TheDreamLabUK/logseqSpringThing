@@ -7,33 +7,28 @@ use tokio::time::{interval, Duration};
 use dotenvy::dotenv;
 use std::error::Error;
 use cudarc::driver::DriverError;
-use log::{error, warn, debug};
 
-use crate::app_state::AppState;
-use crate::config::Settings;
-use crate::handlers::{
+#[macro_use]
+extern crate webxr;
+
+use webxr::AppState;
+use webxr::config::Settings;
+use webxr::handlers::{
     file_handler, 
     graph_handler, 
     ragflow_handler, 
     visualization_handler,
     perplexity_handler,
 };
-use crate::models::graph::GraphData;
-use crate::services::file_service::{RealGitHubService, FileService};
-use crate::services::perplexity_service::PerplexityService;
-use crate::services::ragflow_service::{RAGFlowService, RAGFlowError};
-use crate::services::graph_service::GraphService;
-use crate::services::github_service::RealGitHubPRService;
-use crate::utils::socket_flow_handler::ws_handler;
-use crate::utils::gpu_compute::GPUCompute;
-use crate::utils::debug_logging::init_debug_settings;
-
-mod app_state;
-mod config;
-mod handlers;
-mod models;
-mod services;
-mod utils;
+use webxr::models::graph::GraphData;
+use webxr::services::file_service::{RealGitHubService, FileService};
+use webxr::services::perplexity_service::PerplexityService;
+use webxr::services::ragflow_service::{RAGFlowService, RAGFlowError};
+use webxr::services::graph_service::GraphService;
+use webxr::services::github_service::RealGitHubPRService;
+use webxr::utils::socket_flow_handler::ws_handler;
+use webxr::utils::gpu_compute::GPUCompute;
+use webxr::utils::debug_logging::init_debug_settings;
 
 #[derive(Debug)]
 pub struct AppError(Box<dyn Error + Send + Sync>);
@@ -115,7 +110,8 @@ async fn update_graph_periodically(app_state: web::Data<AppState>) {
             }
         };
 
-        match FileService::fetch_and_process_files(&*app_state.github_service, app_state.settings.clone(), &mut metadata_map).await {
+        let settings = app_state.settings.clone();
+        match FileService::fetch_and_process_files(&*app_state.github_service, settings, &mut metadata_map).await {
             Ok(processed_files) => {
                 if !processed_files.is_empty() {
                     log_data!("Found {} updated files, updating graph", processed_files.len());
@@ -127,7 +123,7 @@ async fn update_graph_periodically(app_state: web::Data<AppState>) {
 
                     let mut graph = app_state.graph_service.graph_data.write().await;
                     let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
-                        .map(|node| (node.id.clone(), (node.x, node.y, node.z)))
+                        .map(|node| (node.id.clone(), (node.x(), node.y(), node.z())))
                         .collect();
                     
                     graph.metadata = metadata_map.clone();
@@ -135,10 +131,9 @@ async fn update_graph_periodically(app_state: web::Data<AppState>) {
                     if let Ok(mut new_graph) = GraphService::build_graph_from_metadata(&metadata_map).await {
                         for node in &mut new_graph.nodes {
                             if let Some(&(x, y, z)) = old_positions.get(&node.id) {
-                                node.x = x;
-                                node.y = y;
-                                node.z = z;
-                                node.position = Some([x, y, z]);
+                                node.set_x(x);
+                                node.set_y(y);
+                                node.set_z(z);
                             }
                         }
                         *graph = new_graph.clone();
@@ -233,7 +228,6 @@ async fn main() -> std::io::Result<()> {
         github_service,
         perplexity_service,
         ragflow_service,
-        None,
         gpu_compute,
         ragflow_conversation_id,
         github_pr_service,
@@ -258,7 +252,10 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state.clone())
             .wrap(middleware::Logger::default())
             .route("/health", web::get().to(health_check))
-            .route("/wss", web::get().to(ws_handler))  // WebSocket handler
+            .service(
+                web::resource("/wss")
+                    .route(web::get().to(ws_handler))
+            )
             .service(
                 web::scope("/api/files")
                     .route("/fetch", web::get().to(file_handler::fetch_and_process_files))
