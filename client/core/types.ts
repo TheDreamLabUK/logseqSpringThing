@@ -140,6 +140,7 @@ export function transformGraphData(raw: RawGraphData): GraphData {
 // WebSocket message types
 export type MessageType = 
   | 'initialData'
+  | 'requestInitialData'
   | 'binaryPositionUpdate'
   | 'settingsUpdated'
   | 'enableBinaryUpdates'
@@ -188,7 +189,7 @@ export interface BinaryPositionUpdateMessage {
 
 // Other message types
 export interface RequestInitialDataMessage {
-  type: 'initialData';
+  type: 'requestInitialData';  // Fixed: Changed from 'initialData' to 'requestInitialData'
 }
 
 export interface EnableBinaryUpdatesMessage {

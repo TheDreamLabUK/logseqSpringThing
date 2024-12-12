@@ -125,6 +125,7 @@ export class WebSocketService {
     // Initialize handlers for each message type
     const messageTypes: MessageType[] = [
       'initialData',
+      'requestInitialData',
       'binaryPositionUpdate',
       'settingsUpdated',
       'enableBinaryUpdates',
@@ -160,7 +161,7 @@ export class WebSocketService {
       this.startHeartbeat();
       
       // Request initial data immediately after connection
-      const requestInitialData: RequestInitialDataMessage = { type: 'initialData' };
+      const requestInitialData: RequestInitialDataMessage = { type: 'requestInitialData' };
       this.send(requestInitialData);
       logger.log('Requested initial data');
       
