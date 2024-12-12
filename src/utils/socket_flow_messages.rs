@@ -1,14 +1,29 @@
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use crate::models::graph::GraphData;
+use crate::models::node::NodeData;
 
+/// Message types matching TypeScript MessageType
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 pub enum ServerMessage {
+    InitialData {
+        #[serde(rename = "graphData")]
+        graph_data: GraphData,
+        settings: Value,
+    },
     GraphUpdate {
         #[serde(rename = "graphData")]
         graph_data: GraphData,
+    },
+    BinaryPositionUpdate {
+        node_count: usize,
+        version: f32,
+        is_initial_layout: bool,
+    },
+    SettingsUpdated {
+        settings: Value,
     },
     Error {
         message: String,
@@ -18,17 +33,9 @@ pub enum ServerMessage {
     PositionUpdateComplete {
         status: String,
     },
-    SettingsUpdated {
-        settings: Value,
-    },
     SimulationModeSet {
         mode: String,
         gpu_enabled: bool,
-    },
-    InitialData {
-        #[serde(rename = "graphData")]
-        graph_data: GraphData,
-        settings: Value,
     },
     GpuState {
         enabled: bool,
@@ -54,78 +61,64 @@ pub enum ServerMessage {
     Completion {
         message: String,
     },
-    BinaryPositionUpdate {
-        is_initial_layout: bool,
-    },
     Ping,
     Pong,
 }
 
+/// Node data for JSON messages (camelCase for TypeScript compatibility)
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
     pub id: String,
+    pub position: [f32; 3],  // Matches THREE.Vector3
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
+    pub velocity: Option<[f32; 3]>,  // Optional for client messages
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub position: Option<[f32; 3]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub velocity: Option<[f32; 3]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub size: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
-    #[serde(rename = "type")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub node_type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_data: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub weight: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub group: Option<String>,
+    pub data: Option<NodeData>,  // Additional node data
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Edge {
-    pub source: String,
-    pub target: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub weight: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub width: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
-    #[serde(rename = "type")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub edge_type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_data: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub directed: Option<bool>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NodePosition {
-    pub id: String,
-    pub position: [f32; 3],
-}
-
+/// Position update message from client
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdatePositionsMessage {
-    pub nodes: Vec<NodePosition>,
+    pub nodes: Vec<Node>,
 }
 
+/// Client messages matching TypeScript interface
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClientMessage {
-    pub message_type: String,
-    pub data: Value,
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum ClientMessage {
+    EnableBinaryUpdates,
+    UpdatePositions(UpdatePositionsMessage),
+    RequestInitialData,
+    UpdateSettings { settings: Value },
+    SetSimulationMode { mode: String },
+    Ping,
 }
+
+/// Binary message format (packed for efficient transfer)
+#[repr(C, packed)]
+#[derive(Copy, Clone, Debug)]
+pub struct BinaryNodeData {
+    pub position: [f32; 3],  // 12 bytes
+    pub velocity: [f32; 3],  // 12 bytes
+}
+
+impl BinaryNodeData {
+    pub fn new(position: [f32; 3], velocity: [f32; 3]) -> Self {
+        Self {
+            position,
+            velocity,
+        }
+    }
+
+    pub fn from_node_data(data: &NodeData) -> Self {
+        Self {
+            position: data.position,
+            velocity: data.velocity,
+        }
+    }
+}
+
+// Ensure binary layout matches expectations
+const _: () = assert!(std::mem::size_of::<BinaryNodeData>() == 24);

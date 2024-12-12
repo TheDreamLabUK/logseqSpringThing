@@ -1,16 +1,43 @@
 /**
- * Node and edge rendering using InstancedMesh
+ * Node and edge rendering using InstancedMesh for both
  */
 
 import * as THREE from 'three';
-import { Node, Edge, Vector3, VisualizationSettings } from '../core/types';
-import { settingsManager } from '../state/settings';
-import { graphDataManager } from '../state/graphData';
+import { Node, Edge, Vector3 } from '../core/types';
 import { SceneManager } from './scene';
-import { createLogger, scaleOps } from '../core/utils';
-import { MIN_NODE_SIZE, MAX_NODE_SIZE, SERVER_MIN_SIZE, SERVER_MAX_SIZE } from '../core/constants';
+import { createLogger } from '../core/utils';
+import { NODE_HIGHLIGHT_COLOR } from '../core/constants';
 
 const logger = createLogger('NodeManager');
+
+// Constants for geometry
+const NODE_SIZE = 2.5;
+const NODE_SEGMENTS = 16;
+const EDGE_RADIUS = 0.25;
+const EDGE_SEGMENTS = 8;
+
+// Binary format constants
+const BINARY_VERSION = 1.0;
+const FLOATS_PER_NODE = 6;  // x, y, z, vx, vy, vz
+const VERSION_OFFSET = 1;    // Skip version float
+
+// Colors
+const NODE_COLOR = 0x4CAF50;  // Material Design Green
+const EDGE_COLOR = 0xE0E0E0;  // Material Design Grey 300
+
+// Reusable objects for matrix calculations
+const matrix = new THREE.Matrix4();
+const quaternion = new THREE.Quaternion();
+const position = new THREE.Vector3();
+const scale = new THREE.Vector3(1, 1, 1);
+
+// Edge calculation vectors
+const start = new THREE.Vector3();
+const end = new THREE.Vector3();
+const direction = new THREE.Vector3();
+const center = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
+const tempVector = new THREE.Vector3();
 
 export interface NodeMesh extends THREE.Object3D {
   userData: {
@@ -22,44 +49,27 @@ export class NodeManager {
   private static instance: NodeManager;
   private sceneManager: SceneManager;
 
-  // Geometry instances
-  private nodeGeometry!: THREE.SphereGeometry;
-  private edgeGeometry!: THREE.BufferGeometry;
-  
-  // Materials
-  private nodeMaterial!: THREE.MeshPhysicalMaterial;
-  private edgeMaterial!: THREE.LineBasicMaterial;
-  private highlightMaterial!: THREE.MeshPhysicalMaterial;
-  
-  // Instanced meshes
-  private nodeInstances!: THREE.InstancedMesh;
-  private edges!: THREE.LineSegments;
-  
-  // Node tracking
-  private nodePositions: Map<string, Vector3>;
-  private nodeIndices: Map<string, number>;
-  private nodeSizes: Map<string, number>;
+  // Instanced meshes - initialized with dummy values, properly set in constructor
+  private nodeInstances: THREE.InstancedMesh = new THREE.InstancedMesh(
+    new THREE.BufferGeometry(),
+    new THREE.MeshBasicMaterial(),
+    1
+  );
+  private edgeInstances: THREE.InstancedMesh = new THREE.InstancedMesh(
+    new THREE.BufferGeometry(),
+    new THREE.MeshBasicMaterial(),
+    1
+  );
+
+  // State tracking
+  private currentNodes: Node[] = [];
+  private currentEdges: Edge[] = [];
+  private nodeIndices: Map<string, number> = new Map();
   private highlightedNode: string | null = null;
-  
-  // Temporary objects for matrix calculations
-  private tempMatrix: THREE.Matrix4;
-  private tempColor: THREE.Color;
-  private tempScale: THREE.Vector3;
 
   private constructor(sceneManager: SceneManager) {
     this.sceneManager = sceneManager;
-    this.nodePositions = new Map();
-    this.nodeIndices = new Map();
-    this.nodeSizes = new Map();
-    this.tempMatrix = new THREE.Matrix4();
-    this.tempColor = new THREE.Color();
-    this.tempScale = new THREE.Vector3();
-
-    this.initializeGeometries();
-    this.initializeMaterials();
     this.initializeInstances();
-    this.setupEventListeners();
-
     logger.log('NodeManager initialized');
   }
 
@@ -70,286 +80,112 @@ export class NodeManager {
     return NodeManager.instance;
   }
 
-  /**
-   * Get all node meshes for intersection testing
-   */
+  private initializeInstances(): void {
+    // Clean up dummy instances
+    this.nodeInstances.geometry.dispose();
+    (this.nodeInstances.material as THREE.Material).dispose();
+    this.edgeInstances.geometry.dispose();
+    (this.edgeInstances.material as THREE.Material).dispose();
+
+    // Create node instances
+    const nodeGeometry = new THREE.SphereGeometry(NODE_SIZE, NODE_SEGMENTS, NODE_SEGMENTS);
+    const nodeMaterial = new THREE.MeshPhongMaterial({
+      color: NODE_COLOR,
+      shininess: 90,
+      specular: 0x444444,
+      transparent: true,
+      opacity: 0.7
+    });
+
+    this.nodeInstances = new THREE.InstancedMesh(nodeGeometry, nodeMaterial, 10000);
+    this.nodeInstances.count = 0;
+    this.nodeInstances.frustumCulled = false;
+
+    // Create edge instances
+    const edgeGeometry = new THREE.CylinderGeometry(EDGE_RADIUS, EDGE_RADIUS, 1, EDGE_SEGMENTS);
+    edgeGeometry.rotateX(Math.PI / 2);
+    
+    const edgeMaterial = new THREE.MeshBasicMaterial({
+      color: EDGE_COLOR,
+      transparent: true,
+      opacity: 0.7,
+      depthWrite: false
+    });
+
+    this.edgeInstances = new THREE.InstancedMesh(edgeGeometry, edgeMaterial, 30000);
+    this.edgeInstances.count = 0;
+    this.edgeInstances.frustumCulled = false;
+    this.edgeInstances.renderOrder = 1;
+
+    this.sceneManager.add(this.nodeInstances);
+    this.sceneManager.add(this.edgeInstances);
+
+    logger.log('Instances initialized');
+  }
+
   getAllNodeMeshes(): NodeMesh[] {
     return [this.nodeInstances as unknown as NodeMesh];
   }
 
-  /**
-   * Get position of a specific node
-   */
-  getNodePosition(nodeId: string): Vector3 {
-    const position = this.nodePositions.get(nodeId);
-    if (!position) {
+  getNodePosition(nodeId: string): THREE.Vector3 {
+    const node = this.currentNodes.find(n => n.id === nodeId);
+    if (!node) {
       throw new Error(`Node ${nodeId} not found`);
     }
-    return position;
+    return new THREE.Vector3(node.position.x, node.position.y, node.position.z);
   }
 
-  /**
-   * Update position of a specific node
-   */
-  updateNodePosition(nodeId: string, position: Vector3): void {
+  updateNodePosition(nodeId: string, newPosition: Vector3): void {
     const index = this.nodeIndices.get(nodeId);
     if (index === undefined) {
       throw new Error(`Node ${nodeId} not found`);
     }
 
-    // Update position in tracking map
-    this.nodePositions.set(nodeId, position);
-
-    // Get normalized node size
-    const serverSize = this.nodeSizes.get(nodeId) || SERVER_MIN_SIZE;
-    const normalizedSize = this.normalizeNodeSize(serverSize);
-    this.tempScale.set(normalizedSize, normalizedSize, normalizedSize);
-
-    // Update transform matrix with position and scale
-    this.tempMatrix.compose(
-      new THREE.Vector3(position.x, position.y, position.z),
-      new THREE.Quaternion(),
-      this.tempScale
-    );
-    this.nodeInstances.setMatrixAt(index, this.tempMatrix);
-
-    // Mark instance attributes for update
-    this.nodeInstances.instanceMatrix.needsUpdate = true;
-
-    // Update edges connected to this node
-    const edges = graphDataManager.getGraphData().edges;
-    this.updateEdges(edges);
-  }
-
-  private normalizeNodeSize(serverSize: number): number {
-    return scaleOps.normalizeNodeSize(
-      serverSize,
-      SERVER_MIN_SIZE,
-      SERVER_MAX_SIZE,
-      MIN_NODE_SIZE,
-      MAX_NODE_SIZE
-    );
-  }
-
-  private initializeGeometries(): void {
-    this.nodeGeometry = new THREE.SphereGeometry(1, 32, 32);
-    this.edgeGeometry = new THREE.BufferGeometry();
-    logger.log('Geometries initialized');
-  }
-
-  private initializeMaterials(): void {
-    const settings = settingsManager.getSettings();
-    const materialSettings = settingsManager.getNodeMaterialSettings();
-
-    this.nodeMaterial = new THREE.MeshPhysicalMaterial({
-      color: settings.nodeColor,
-      opacity: settings.nodeOpacity,
-      transparent: settings.nodeOpacity < 1,
-      metalness: materialSettings.metalness,
-      roughness: materialSettings.roughness,
-      emissive: new THREE.Color(settings.nodeColor),
-      emissiveIntensity: materialSettings.emissiveIntensity,
-      clearcoat: materialSettings.clearcoat,
-      clearcoatRoughness: materialSettings.clearcoatRoughness,
-      reflectivity: materialSettings.reflectivity,
-      envMapIntensity: materialSettings.envMapIntensity,
-      side: THREE.DoubleSide,
-    });
-
-    this.edgeMaterial = new THREE.LineBasicMaterial({
-      color: settings.edgeColor,
-      opacity: settings.edgeOpacity,
-      transparent: settings.edgeOpacity < 1,
-      linewidth: settings.edgeWidth,
-    });
-
-    this.highlightMaterial = new THREE.MeshPhysicalMaterial({
-      color: settings.nodeHighlightColor,
-      opacity: settings.nodeOpacity,
-      transparent: settings.nodeOpacity < 1,
-      metalness: materialSettings.metalness + 0.1,
-      roughness: materialSettings.roughness - 0.1,
-      emissive: new THREE.Color(settings.nodeHighlightColor),
-      emissiveIntensity: materialSettings.emissiveIntensity * 1.5,
-      clearcoat: materialSettings.clearcoat,
-      clearcoatRoughness: materialSettings.clearcoatRoughness,
-      reflectivity: materialSettings.reflectivity,
-      envMapIntensity: materialSettings.envMapIntensity * 1.3,
-      side: THREE.DoubleSide,
-    });
-
-    logger.log('Materials initialized');
-  }
-
-  private initializeInstances(): void {
-    this.nodeInstances = new THREE.InstancedMesh(
-      this.nodeGeometry,
-      this.nodeMaterial,
-      1000
-    );
-    this.nodeInstances.count = 0;
-    this.nodeInstances.frustumCulled = false;
-    this.nodeInstances.castShadow = true;
-    this.nodeInstances.receiveShadow = true;
-
-    this.edges = new THREE.LineSegments(this.edgeGeometry, this.edgeMaterial);
-    this.edges.frustumCulled = false;
-
-    this.sceneManager.add(this.nodeInstances);
-    this.sceneManager.add(this.edges);
-
-    logger.log('Instances initialized');
-  }
-
-  private setupEventListeners(): void {
-    graphDataManager.subscribe(data => this.updateGraph(data));
-    graphDataManager.subscribeToPositionUpdates(positions => this.updatePositions(positions));
-    settingsManager.subscribe(settings => this.updateSettings(settings));
-    logger.log('Event listeners setup');
-  }
-
-  private updateGraph(data: { nodes: Node[]; edges: Edge[] }): void {
-    this.updateNodes(data.nodes);
-    this.updateEdges(data.edges);
-  }
-
-  private updateNodes(nodes: Node[]): void {
-    if (nodes.length > this.nodeInstances.count) {
-      const newInstancedMesh = new THREE.InstancedMesh(
-        this.nodeGeometry,
-        this.nodeMaterial,
-        Math.ceil(nodes.length * 1.5)
-      );
-      newInstancedMesh.castShadow = true;
-      newInstancedMesh.receiveShadow = true;
-      this.sceneManager.remove(this.nodeInstances);
-      this.nodeInstances = newInstancedMesh;
-      this.sceneManager.add(this.nodeInstances);
+    // Update node position in current nodes array
+    const node = this.currentNodes.find(n => n.id === nodeId);
+    if (node) {
+      node.position = newPosition;
     }
 
-    this.nodeInstances.count = nodes.length;
-    this.nodePositions.clear();
-    this.nodeIndices.clear();
-    this.nodeSizes.clear();
-
-    nodes.forEach((node, index) => {
-      this.nodePositions.set(node.id, node.position);
-      this.nodeIndices.set(node.id, index);
-      this.nodeSizes.set(node.id, node.size || SERVER_MIN_SIZE);
-
-      const normalizedSize = this.normalizeNodeSize(node.size || SERVER_MIN_SIZE);
-      this.tempScale.set(normalizedSize, normalizedSize, normalizedSize);
-
-      this.tempMatrix.compose(
-        new THREE.Vector3(node.position.x, node.position.y, node.position.z),
-        new THREE.Quaternion(),
-        this.tempScale
-      );
-      this.nodeInstances.setMatrixAt(index, this.tempMatrix);
-
-      const color = node.color ? new THREE.Color(node.color) : this.tempColor.set(settingsManager.getSettings().nodeColor);
-      this.nodeInstances.setColorAt(index, color);
-    });
-
+    // Update instance matrix
+    position.set(newPosition.x, newPosition.y, newPosition.z);
+    matrix.compose(position, quaternion, scale);
+    this.nodeInstances.setMatrixAt(index, matrix);
     this.nodeInstances.instanceMatrix.needsUpdate = true;
-    if (this.nodeInstances.instanceColor) {
-      this.nodeInstances.instanceColor.needsUpdate = true;
-    }
-  }
 
-  private updateEdges(edges: Edge[]): void {
-    const positions: number[] = [];
-    
-    edges.forEach(edge => {
-      const sourcePos = this.nodePositions.get(edge.source);
-      const targetPos = this.nodePositions.get(edge.target);
-      
-      if (sourcePos && targetPos) {
-        positions.push(
-          sourcePos.x, sourcePos.y, sourcePos.z,
-          targetPos.x, targetPos.y, targetPos.z
-        );
+    // Update connected edges
+    this.currentEdges.forEach((edge, edgeIndex) => {
+      if (edge.source === nodeId || edge.target === nodeId) {
+        const sourceNode = this.currentNodes.find(n => n.id === edge.source);
+        const targetNode = this.currentNodes.find(n => n.id === edge.target);
+        if (sourceNode && targetNode) {
+          this.updateEdgeInstance(edgeIndex, sourceNode, targetNode);
+        }
       }
     });
 
-    this.edgeGeometry.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute(positions, 3)
-    );
-    this.edgeGeometry.attributes.position.needsUpdate = true;
-  }
-
-  private updatePositions(positions: Map<string, Vector3>): void {
-    positions.forEach((position, nodeId) => {
-      const index = this.nodeIndices.get(nodeId);
-      if (index !== undefined) {
-        this.nodePositions.set(nodeId, position);
-        
-        const serverSize = this.nodeSizes.get(nodeId) || SERVER_MIN_SIZE;
-        const normalizedSize = this.normalizeNodeSize(serverSize);
-        this.tempScale.set(normalizedSize, normalizedSize, normalizedSize);
-
-        this.tempMatrix.compose(
-          new THREE.Vector3(position.x, position.y, position.z),
-          new THREE.Quaternion(),
-          this.tempScale
-        );
-        this.nodeInstances.setMatrixAt(index, this.tempMatrix);
-      }
-    });
-
-    const edges = graphDataManager.getGraphData().edges;
-    this.updateEdges(edges);
-
-    this.nodeInstances.instanceMatrix.needsUpdate = true;
-  }
-
-  private updateSettings(settings: VisualizationSettings): void {
-    const materialSettings = settingsManager.getNodeMaterialSettings();
-
-    this.nodeMaterial.color.set(settings.nodeColor);
-    this.nodeMaterial.opacity = settings.nodeOpacity;
-    this.nodeMaterial.transparent = settings.nodeOpacity < 1;
-    this.nodeMaterial.metalness = materialSettings.metalness;
-    this.nodeMaterial.roughness = materialSettings.roughness;
-    this.nodeMaterial.emissive.set(settings.nodeColor);
-    this.nodeMaterial.emissiveIntensity = materialSettings.emissiveIntensity;
-    this.nodeMaterial.clearcoat = materialSettings.clearcoat;
-    this.nodeMaterial.clearcoatRoughness = materialSettings.clearcoatRoughness;
-    this.nodeMaterial.reflectivity = materialSettings.reflectivity;
-    this.nodeMaterial.envMapIntensity = materialSettings.envMapIntensity;
-
-    this.edgeMaterial.color.set(settings.edgeColor);
-    this.edgeMaterial.opacity = settings.edgeOpacity;
-    this.edgeMaterial.transparent = settings.edgeOpacity < 1;
-    this.edgeMaterial.linewidth = settings.edgeWidth;
-
-    this.highlightMaterial.color.set(settings.nodeHighlightColor);
-    this.highlightMaterial.opacity = settings.nodeOpacity;
-    this.highlightMaterial.transparent = settings.nodeOpacity < 1;
+    this.edgeInstances.instanceMatrix.needsUpdate = true;
   }
 
   highlightNode(nodeId: string | null): void {
     if (this.highlightedNode === nodeId) return;
 
+    const color = new THREE.Color();
+
     if (this.highlightedNode) {
       const prevIndex = this.nodeIndices.get(this.highlightedNode);
       if (prevIndex !== undefined) {
-        const node = graphDataManager.getNode(this.highlightedNode);
-        if (node?.color) {
-          this.tempColor.set(node.color);
-        } else {
-          this.tempColor.set(settingsManager.getSettings().nodeColor);
-        }
-        this.nodeInstances.setColorAt(prevIndex, this.tempColor);
+        const node = this.currentNodes.find(n => n.id === this.highlightedNode);
+        color.set(node?.color || NODE_COLOR);
+        this.nodeInstances.setColorAt(prevIndex, color);
       }
     }
 
     if (nodeId) {
       const index = this.nodeIndices.get(nodeId);
       if (index !== undefined) {
-        this.tempColor.set(settingsManager.getSettings().nodeHighlightColor);
-        this.nodeInstances.setColorAt(index, this.tempColor);
+        color.set(NODE_HIGHLIGHT_COLOR);
+        this.nodeInstances.setColorAt(index, color);
       }
     }
 
@@ -359,13 +195,136 @@ export class NodeManager {
     }
   }
 
+  updateGraph(nodes: Node[], edges: Edge[]): void {
+    this.currentNodes = nodes;
+    this.currentEdges = edges;
+    this.nodeIndices.clear();
+
+    // Update nodes
+    this.nodeInstances.count = nodes.length;
+    nodes.forEach((node, index) => {
+      this.nodeIndices.set(node.id, index);
+      
+      position.set(
+        node.position.x,
+        node.position.y,
+        node.position.z
+      );
+
+      matrix.compose(position, quaternion, scale);
+      this.nodeInstances.setMatrixAt(index, matrix);
+    });
+
+    this.nodeInstances.instanceMatrix.needsUpdate = true;
+
+    // Update edges
+    this.edgeInstances.count = edges.length;
+    edges.forEach((edge, index) => {
+      const sourceNode = nodes.find(n => n.id === edge.source);
+      const targetNode = nodes.find(n => n.id === edge.target);
+
+      if (!sourceNode || !targetNode) return;
+
+      this.updateEdgeInstance(index, sourceNode, targetNode);
+    });
+
+    this.edgeInstances.instanceMatrix.needsUpdate = true;
+
+    logger.log(`Updated graph: ${nodes.length} nodes, ${edges.length} edges`);
+  }
+
+  private updateEdgeInstance(index: number, sourceNode: Node, targetNode: Node): void {
+    start.set(sourceNode.position.x, sourceNode.position.y, sourceNode.position.z);
+    end.set(targetNode.position.x, targetNode.position.y, targetNode.position.z);
+
+    direction.subVectors(end, start);
+    const length = direction.length();
+    
+    if (length < 0.001) return;
+
+    center.addVectors(start, end).multiplyScalar(0.5);
+    position.copy(center);
+
+    direction.normalize();
+    const angle = Math.acos(THREE.MathUtils.clamp(direction.dot(UP), -1, 1));
+    tempVector.crossVectors(UP, direction).normalize();
+    
+    if (tempVector.lengthSq() < 0.001) {
+      if (direction.dot(UP) > 0) {
+        quaternion.identity();
+      } else {
+        quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
+      }
+    } else {
+      quaternion.setFromAxisAngle(tempVector, angle);
+    }
+
+    const adjustedLength = Math.max(0.001, length - (NODE_SIZE * 2));
+    scale.set(1, adjustedLength, 1);
+
+    matrix.compose(position, quaternion, scale);
+    this.edgeInstances.setMatrixAt(index, matrix);
+  }
+
+  updatePositions(floatArray: Float32Array): void {
+    // Check binary version
+    const version = floatArray[0];
+    if (version !== BINARY_VERSION) {
+      logger.warn(`Received binary data version ${version}, expected ${BINARY_VERSION}`);
+    }
+
+    // Calculate number of nodes from array length
+    const nodeCount = Math.floor((floatArray.length - VERSION_OFFSET) / FLOATS_PER_NODE);
+    logger.log(`Processing position update for ${nodeCount} nodes`);
+
+    for (let i = 0; i < nodeCount && i < this.currentNodes.length; i++) {
+      const baseIndex = VERSION_OFFSET + (i * FLOATS_PER_NODE);
+      
+      // Extract position (x, y, z)
+      position.set(
+        floatArray[baseIndex],
+        floatArray[baseIndex + 1],
+        floatArray[baseIndex + 2]
+      );
+
+      // Update instance matrix
+      matrix.compose(position, quaternion, scale);
+      this.nodeInstances.setMatrixAt(i, matrix);
+
+      // Update node data
+      if (this.currentNodes[i]) {
+        this.currentNodes[i].position = {
+          x: floatArray[baseIndex],
+          y: floatArray[baseIndex + 1],
+          z: floatArray[baseIndex + 2]
+        };
+      }
+    }
+
+    this.nodeInstances.instanceMatrix.needsUpdate = true;
+
+    // Update edges with new node positions
+    this.currentEdges.forEach((edge, index) => {
+      const sourceNode = this.currentNodes.find(n => n.id === edge.source);
+      const targetNode = this.currentNodes.find(n => n.id === edge.target);
+
+      if (!sourceNode || !targetNode) return;
+
+      this.updateEdgeInstance(index, sourceNode, targetNode);
+    });
+
+    this.edgeInstances.instanceMatrix.needsUpdate = true;
+  }
+
   dispose(): void {
-    this.nodeGeometry.dispose();
-    this.edgeGeometry.dispose();
-    this.nodeMaterial.dispose();
-    this.edgeMaterial.dispose();
-    this.highlightMaterial.dispose();
+    this.nodeInstances.geometry.dispose();
+    (this.nodeInstances.material as THREE.Material).dispose();
     this.sceneManager.remove(this.nodeInstances);
-    this.sceneManager.remove(this.edges);
+
+    this.edgeInstances.geometry.dispose();
+    (this.edgeInstances.material as THREE.Material).dispose();
+    this.sceneManager.remove(this.edgeInstances);
+
+    logger.log('NodeManager disposed');
   }
 }
