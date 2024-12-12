@@ -9,7 +9,7 @@ export const IS_DEVELOPMENT = !IS_PRODUCTION;
 // WebSocket URLs
 export const WS_URL = IS_PRODUCTION
   ? 'wss://www.visionflow.info/wss'
-  : 'ws://localhost:4000/ws';
+  : 'ws://localhost:3000/wss';  // Updated to match server port and path
 
 // WebSocket configuration
 export const WS_RECONNECT_INTERVAL = 5000;

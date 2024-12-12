@@ -12,7 +12,8 @@ import { TextRenderer } from './rendering/textRenderer';
 import { XRSessionManager } from './xr/xrSessionManager';
 import { XRInteraction } from './xr/xrInteraction';
 import { createLogger } from './core/utils';
-import { WS_URL, IS_PRODUCTION } from './core/constants';
+import { WS_URL } from './core/constants';
+import { BinaryNodeUpdate } from './core/types';
 
 const logger = createLogger('Application');
 
@@ -23,6 +24,9 @@ class Application {
   private textRenderer!: TextRenderer;
   private xrManager: XRSessionManager | null = null;
   private xrInteraction: XRInteraction | null = null;
+  private lastFrameTime = performance.now();
+  private frameCount = 0;
+  private updateCount = 0;
 
   constructor() {
     this.initializeApplication();
@@ -33,11 +37,11 @@ class Application {
       // Initialize platform manager
       await platformManager.initialize();
 
+      // Initialize scene first so we can render nodes when data arrives
+      this.initializeScene();
+
       // Initialize WebSocket connection
       this.initializeWebSocket();
-
-      // Initialize scene
-      this.initializeScene();
 
       // Initialize settings
       await this.initializeSettings();
@@ -47,6 +51,9 @@ class Application {
 
       // Setup UI event listeners
       this.setupUIEventListeners();
+
+      // Start stats update loop
+      this.updateStats();
 
       // Hide loading overlay
       this.hideLoadingOverlay();
@@ -64,24 +71,110 @@ class Application {
 
     // Setup WebSocket event handlers
     this.webSocket.on('initialData', (data) => {
-      graphDataManager.updateGraphData(data);
-    });
+      logger.log('Received initial graph data:', data);
+      if (data && data.graph) {
+        // Update graph data
+        graphDataManager.updateGraphData(data.graph);
+        this.nodeManager.updateGraph(data.graph.nodes, data.graph.edges);
 
-    this.webSocket.on('graphUpdate', (data) => {
-      graphDataManager.updateGraphData(data);
+        // Update UI
+        this.updateGraphStatus(true);
+        this.updateNodeEdgeCounts(data.graph.nodes.length, data.graph.edges.length);
+      }
     });
 
     this.webSocket.on('binaryPositionUpdate', (data) => {
-      graphDataManager.updatePositions(data);
+      if (data && data.nodes) {
+        // Convert nodes data to ArrayBuffer for position updates
+        const buffer = new ArrayBuffer(data.nodes.length * 24); // 6 floats per node
+        const floatArray = new Float32Array(buffer);
+        
+        data.nodes.forEach((node: BinaryNodeUpdate, index: number) => {
+          const baseIndex = index * 6;
+          const pos = node.data.position;
+          const vel = node.data.velocity;
+          
+          // Position
+          floatArray[baseIndex] = pos.x;
+          floatArray[baseIndex + 1] = pos.y;
+          floatArray[baseIndex + 2] = pos.z;
+          // Velocity
+          floatArray[baseIndex + 3] = vel.x;
+          floatArray[baseIndex + 4] = vel.y;
+          floatArray[baseIndex + 5] = vel.z;
+        });
+
+        // Update graph data and visual representation
+        graphDataManager.updatePositions(buffer);
+        this.nodeManager.updatePositions(floatArray);
+
+        // Update stats
+        this.updateCount++;
+        this.updateLastUpdate();
+      }
     });
 
-    this.webSocket.on('error', (error) => {
-      logger.error('WebSocket error:', error);
-      this.showError('Connection error');
+    this.webSocket.on('settingsUpdated', (data) => {
+      if (data && data.settings) {
+        settingsManager.updateSettings(data.settings);
+        this.updateSettingsUI();
+      }
     });
+
+    // Update connection status
+    const connectionStatus = document.getElementById('connection-status');
+    if (connectionStatus) {
+      this.webSocket.onConnectionChange((connected: boolean) => {
+        connectionStatus.classList.toggle('connected', connected);
+      });
+    }
 
     // Connect to server
     this.webSocket.connect();
+  }
+
+  private updateGraphStatus(hasData: boolean): void {
+    const graphStatus = document.getElementById('graph-status');
+    if (graphStatus) {
+      graphStatus.classList.toggle('connected', hasData);
+    }
+  }
+
+  private updateNodeEdgeCounts(nodes: number, edges: number): void {
+    const nodeCount = document.getElementById('nodeCount');
+    const edgeCount = document.getElementById('edgeCount');
+    if (nodeCount) nodeCount.textContent = nodes.toString();
+    if (edgeCount) edgeCount.textContent = edges.toString();
+  }
+
+  private updateLastUpdate(): void {
+    const lastUpdate = document.getElementById('lastUpdate');
+    if (lastUpdate) {
+      lastUpdate.textContent = new Date().toISOString().split('T')[1].slice(0, -1);
+    }
+    const updates = document.getElementById('updates');
+    if (updates) {
+      updates.textContent = this.updateCount.toString();
+    }
+  }
+
+  private updateStats(): void {
+    const now = performance.now();
+    this.frameCount++;
+
+    // Update FPS every second
+    if (now - this.lastFrameTime >= 1000) {
+      const fps = Math.round((this.frameCount * 1000) / (now - this.lastFrameTime));
+      const fpsElement = document.getElementById('fps');
+      if (fpsElement) {
+        fpsElement.textContent = fps.toString();
+      }
+
+      this.frameCount = 0;
+      this.lastFrameTime = now;
+    }
+
+    requestAnimationFrame(() => this.updateStats());
   }
 
   private initializeScene(): void {
@@ -229,8 +322,21 @@ class Application {
   }
 
   private showError(message: string): void {
-    // TODO: Implement proper error UI
-    alert(message);
+    logger.error(message);
+    const errorDiv = document.createElement('div');
+    errorDiv.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 0, 0, 0.8);
+      color: white;
+      padding: 15px;
+      border-radius: 5px;
+      z-index: 1000;
+    `;
+    errorDiv.textContent = message;
+    document.body.appendChild(errorDiv);
+    setTimeout(() => errorDiv.remove(), 5000);
   }
 
   /**
@@ -250,11 +356,6 @@ class Application {
     // Close WebSocket connection
     this.webSocket.disconnect();
   }
-}
-
-// Prevent context menu in production
-if (!IS_PRODUCTION) {
-  document.addEventListener('contextmenu', event => event.preventDefault());
 }
 
 // Create application instance

@@ -34,11 +34,7 @@
       padding: 20px;
       border-radius: 8px;
       z-index: 1000;
-      display: none; /* Hidden by default in XR mode */
-    }
-
-    #settings-panel.visible {
-      display: block;
+      min-width: 300px;
     }
 
     .settings-group {
@@ -116,25 +112,94 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+
+    #status-panel {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      padding: 10px 20px;
+      border-radius: 8px;
+      z-index: 1000;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #666;
+    }
+
+    .status-dot.connected {
+      background: #4CAF50;
+    }
+
+    .status-dot.error {
+      background: #f44336;
+    }
+
+    #graph-stats {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 10px;
+      border-radius: 8px;
+      z-index: 1000;
+      font-family: monospace;
+    }
+
+    .stat-item {
+      margin-bottom: 5px;
+    }
   </style>
 </head>
 <body>
   <div id="canvas-container"></div>
   
+  <div id="status-panel">
+    <div class="status-indicator">
+      <div id="connection-status" class="status-dot"></div>
+      <span>Connection</span>
+    </div>
+    <div class="status-indicator">
+      <div id="graph-status" class="status-dot"></div>
+      <span>Graph Data</span>
+    </div>
+  </div>
+
+  <div id="graph-stats">
+    <div class="stat-item">Nodes: <span id="nodeCount">0</span></div>
+    <div class="stat-item">Edges: <span id="edgeCount">0</span></div>
+    <div class="stat-item">FPS: <span id="fps">0</span></div>
+    <div class="stat-item">Updates: <span id="updates">0</span></div>
+    <div class="stat-item">Last Update: <span id="lastUpdate">-</span></div>
+  </div>
+
   <div id="settings-panel">
     <div class="settings-group">
       <h3>Node Appearance</h3>
       <div class="setting-item">
         <label for="nodeSize">Node Size</label>
-        <input type="number" id="nodeSize" min="0.1" max="5" step="0.1">
+        <input type="number" id="nodeSize" min="0.1" max="5" step="0.1" value="2.5">
       </div>
       <div class="setting-item">
         <label for="nodeColor">Node Color</label>
-        <input type="color" id="nodeColor">
+        <input type="color" id="nodeColor" value="#4CAF50">
       </div>
       <div class="setting-item">
         <label for="nodeOpacity">Node Opacity</label>
-        <input type="number" id="nodeOpacity" min="0" max="1" step="0.1">
+        <input type="number" id="nodeOpacity" min="0" max="1" step="0.1" value="0.7">
       </div>
     </div>
 
@@ -142,15 +207,15 @@
       <h3>Edge Appearance</h3>
       <div class="setting-item">
         <label for="edgeWidth">Edge Width</label>
-        <input type="number" id="edgeWidth" min="0.1" max="5" step="0.1">
+        <input type="number" id="edgeWidth" min="0.1" max="5" step="0.1" value="0.25">
       </div>
       <div class="setting-item">
         <label for="edgeColor">Edge Color</label>
-        <input type="color" id="edgeColor">
+        <input type="color" id="edgeColor" value="#E0E0E0">
       </div>
       <div class="setting-item">
         <label for="edgeOpacity">Edge Opacity</label>
-        <input type="number" id="edgeOpacity" min="0" max="1" step="0.1">
+        <input type="number" id="edgeOpacity" min="0" max="1" step="0.1" value="0.7">
       </div>
     </div>
 
@@ -158,13 +223,13 @@
       <h3>Visual Effects</h3>
       <div class="setting-item">
         <label>
-          <input type="checkbox" id="enableBloom">
+          <input type="checkbox" id="enableBloom" checked>
           Enable Bloom
         </label>
       </div>
       <div class="setting-item">
         <label for="bloomIntensity">Bloom Intensity</label>
-        <input type="number" id="bloomIntensity" min="0" max="3" step="0.1">
+        <input type="number" id="bloomIntensity" min="0" max="3" step="0.1" value="1.5">
       </div>
     </div>
 

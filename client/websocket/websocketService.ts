@@ -2,7 +2,20 @@
  * WebSocket service for real-time communication
  */
 
-import { WebSocketMessage, MessageType } from '../core/types';
+import { 
+  WebSocketMessage,
+  RawWebSocketMessage,
+  MessageType,
+  InitialDataMessage,
+  RawInitialDataMessage,
+  BinaryPositionUpdateMessage,
+  RawBinaryPositionUpdateMessage,
+  RequestInitialDataMessage,
+  EnableBinaryUpdatesMessage,
+  PingMessage,
+  transformGraphData,
+  transformNodeData,
+} from '../core/types';
 import { WS_RECONNECT_INTERVAL, WS_MESSAGE_QUEUE_SIZE } from '../core/constants';
 import { createLogger } from '../core/utils';
 
@@ -13,6 +26,7 @@ const HEARTBEAT_INTERVAL = 15000; // 15 seconds
 
 type MessageHandler = (data: any) => void;
 type ErrorHandler = (error: Error) => void;
+type ConnectionHandler = (connected: boolean) => void;
 
 // Network debug panel
 class NetworkDebugPanel {
@@ -35,6 +49,7 @@ class NetworkDebugPanel {
       max-height: 300px;
       overflow-y: auto;
       z-index: 1000;
+      display: block !important;
     `;
 
     const title = document.createElement('div');
@@ -63,7 +78,10 @@ class NetworkDebugPanel {
       displayMessage = `Binary data (${message.byteLength} bytes)`;
     } else if (typeof message === 'string') {
       try {
-        displayMessage = JSON.stringify(JSON.parse(message), null, 2);
+        const parsed = JSON.parse(message);
+        displayMessage = JSON.stringify(parsed, null, 2);
+        // Log full message for debugging
+        console.log('WebSocket message:', parsed);
       } catch {
         displayMessage = message;
       }
@@ -93,6 +111,7 @@ export class WebSocketService {
   private messageQueue: WebSocketMessage[] = [];
   private messageHandlers: Map<MessageType, MessageHandler[]> = new Map();
   private errorHandlers: ErrorHandler[] = [];
+  private connectionHandlers: ConnectionHandler[] = [];
   private isConnected: boolean = false;
   private debugPanel: NetworkDebugPanel;
 
@@ -106,10 +125,11 @@ export class WebSocketService {
     // Initialize handlers for each message type
     const messageTypes: MessageType[] = [
       'initialData',
-      'graphUpdate',
       'binaryPositionUpdate',
-      'settingsUpdate',
-      'error'
+      'settingsUpdated',
+      'enableBinaryUpdates',
+      'ping',
+      'pong'
     ];
     messageTypes.forEach(type => this.messageHandlers.set(type, []));
   }
@@ -136,13 +156,21 @@ export class WebSocketService {
     this.ws.onopen = () => {
       logger.log('WebSocket connected');
       this.isConnected = true;
+      this.notifyConnectionHandlers(true);
       this.startHeartbeat();
+      
+      // Request initial data immediately after connection
+      const requestInitialData: RequestInitialDataMessage = { type: 'initialData' };
+      this.send(requestInitialData);
+      logger.log('Requested initial data');
+      
       this.processMessageQueue();
     };
 
     this.ws.onclose = () => {
       logger.warn('WebSocket disconnected');
       this.isConnected = false;
+      this.notifyConnectionHandlers(false);
       this.cleanup();
       this.scheduleReconnect();
     };
@@ -162,16 +190,68 @@ export class WebSocketService {
     try {
       if (event.data instanceof ArrayBuffer) {
         // Handle binary message (position updates)
-        this.notifyHandlers('binaryPositionUpdate', event.data);
+        this.notifyHandlers('binaryPositionUpdate', { nodes: event.data });
       } else {
         // Handle JSON message
-        const message = JSON.parse(event.data) as WebSocketMessage;
-        this.notifyHandlers(message.type, message.data);
+        const rawMessage = JSON.parse(event.data) as RawWebSocketMessage;
+        
+        switch (rawMessage.type) {
+          case 'initialData': {
+            const initialData = rawMessage as RawInitialDataMessage;
+            // Transform raw graph data to client format
+            const transformedData = {
+              type: 'initialData' as const,
+              data: {
+                graph: transformGraphData(initialData.data.graph)
+              }
+            };
+            this.handleInitialData(transformedData);
+            break;
+          }
+          case 'binaryPositionUpdate': {
+            const binaryUpdate = rawMessage as RawBinaryPositionUpdateMessage;
+            // Transform each node's data to client format
+            const transformedData = {
+              type: 'binaryPositionUpdate' as const,
+              data: {
+                nodes: binaryUpdate.data.nodes.map(node => ({
+                  nodeId: node.nodeId,
+                  data: transformNodeData(node.data)
+                }))
+              }
+            };
+            this.handleBinaryUpdate(transformedData);
+            break;
+          }
+          case 'settingsUpdated':
+            this.notifyHandlers('settingsUpdated', rawMessage.data);
+            break;
+          case 'ping':
+          case 'pong':
+            this.notifyHandlers(rawMessage.type, null);
+            break;
+          default:
+            logger.warn(`Unknown message type: ${(rawMessage as any).type}`);
+        }
       }
     } catch (error) {
       logger.error('Error handling message:', error);
       this.notifyErrorHandlers(new Error('Failed to process message'));
     }
+  }
+
+  private handleInitialData(message: InitialDataMessage): void {
+    // Notify handlers of initial graph data
+    this.notifyHandlers('initialData', message.data);
+    
+    // Enable binary updates after receiving initial data
+    const enableBinaryUpdates: EnableBinaryUpdatesMessage = { type: 'enableBinaryUpdates' };
+    this.send(enableBinaryUpdates);
+    logger.log('Enabled binary updates');
+  }
+
+  private handleBinaryUpdate(message: BinaryPositionUpdateMessage): void {
+    this.notifyHandlers('binaryPositionUpdate', message.data);
   }
 
   private notifyHandlers(type: MessageType, data: any): void {
@@ -197,14 +277,23 @@ export class WebSocketService {
     });
   }
 
+  private notifyConnectionHandlers(connected: boolean): void {
+    this.connectionHandlers.forEach(handler => {
+      try {
+        handler(connected);
+      } catch (error) {
+        logger.error('Error in connection handler:', error);
+      }
+    });
+  }
+
   private startHeartbeat(): void {
     this.stopHeartbeat();
     this.heartbeatInterval = window.setInterval(() => {
       if (this.isConnected && this.ws) {
-        // Use native WebSocket ping
-        const pingData = new Uint8Array([]);
-        this.ws.send(pingData);
-        this.debugPanel.addMessage('out', 'WebSocket Ping');
+        const ping: PingMessage = { type: 'ping' };
+        this.send(ping);
+        this.debugPanel.addMessage('out', 'Ping');
       }
     }, HEARTBEAT_INTERVAL);
   }
@@ -290,20 +379,33 @@ export class WebSocketService {
     this.errorHandlers.push(handler);
   }
 
+  onConnectionChange(handler: ConnectionHandler): void {
+    this.connectionHandlers.push(handler);
+    // Call immediately with current state
+    handler(this.isConnected);
+  }
+
   off(type: MessageType, handler: MessageHandler): void {
     const handlers = this.messageHandlers.get(type);
     if (handlers) {
-      const __index = handlers.indexOf(handler);
-      if (__index !== -1) {
-        handlers.splice(__index, 1);
+      const index = handlers.indexOf(handler);
+      if (index !== -1) {
+        handlers.splice(index, 1);
       }
     }
   }
 
   offError(handler: ErrorHandler): void {
-    const __index = this.errorHandlers.indexOf(handler);
-    if (__index !== -1) {
-      this.errorHandlers.splice(__index, 1);
+    const index = this.errorHandlers.indexOf(handler);
+    if (index !== -1) {
+      this.errorHandlers.splice(index, 1);
+    }
+  }
+
+  offConnectionChange(handler: ConnectionHandler): void {
+    const index = this.connectionHandlers.indexOf(handler);
+    if (index !== -1) {
+      this.connectionHandlers.splice(index, 1);
     }
   }
 
