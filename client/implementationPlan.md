@@ -198,3 +198,95 @@ Optimize performance (instancing, memory usage).
 Refine UI and XR interaction as needed.
 Ensure stable Vector3-based pipeline and minimal code duplication.
 
+
+Docker & Network Architecture
+===========================
+
+Container Structure
+-----------------
+1. Multi-Stage Build:
+- Stage 1: Frontend Build (node:20-slim)
+  * Builds TypeScript/client code using pnpm
+  * Outputs static files to /app/data/public/dist
+
+- Stage 2: Rust Dependencies (nvidia/cuda:12.2.0-devel-ubuntu22.04)
+  * Caches Rust dependencies
+  * Compiles CUDA kernels to PTX
+
+- Stage 3: Rust Application
+  * Builds the main Rust application
+  * Handles WebSocket and HTTP endpoints
+
+- Stage 4: Python Dependencies
+  * Sets up Python environment for TTS
+  * Installs GPU-enabled packages
+
+- Stage 5: Final Runtime (nvidia/cuda:12.2.0-devel-ubuntu22.04)
+  * Combines all built artifacts
+  * Runs nginx and application server
+
+Network Architecture
+------------------
+1. External Access Chain:
+   Client → Cloudflare → cloudflared tunnel → nginx → Rust backend
+
+2. Docker Network (docker_ragflow):
+   * Subnet: 172.19.0.0/16
+   * Container Aliases:
+     - logseq-xr-webxr
+     - webxr-client
+     - cloudflared
+
+3. Port Mapping:
+   * External: 4000
+   * Internal: 3000
+   * WebSocket endpoint: /wss
+
+Security & Performance
+--------------------
+1. Container Security:
+   * Read-only filesystem where possible
+   * Explicit capability limitations
+   * No privilege escalation
+   * Regular security audits via launch script
+
+2. Resource Management:
+   * CPU: Limited to 16 cores
+   * Memory: 64GB limit
+   * GPU: Explicit NVIDIA GPU 0 allocation
+   * tmpfs for high-speed temporary storage
+
+3. Health Monitoring:
+   * 30s health check intervals
+   * Automatic container restart
+   * JSON log format with rotation
+   * Resource usage tracking
+
+Deployment Flow
+-------------
+1. Launch Process:
+   * Environment validation
+   * Security checks (pnpm, TypeScript, Rust)
+   * Container cleanup
+   * Service startup
+   * Health verification
+   * Cloudflare tunnel establishment
+
+2. Volume Management:
+   * /app/data/markdown: Persistent markdown storage
+   * /app/data/piper: TTS model storage
+   * /app/client: Development mount
+   * /tmp: High-speed tmpfs
+
+3. Configuration:
+   * settings.toml: Main configuration
+   * nginx.conf: Web server setup
+   * config.yml: Cloudflare tunnel config
+   * .env: Environment variables
+
+This architecture ensures:
+- Secure external access via Cloudflare
+- Efficient container-to-container communication
+- GPU acceleration for compute tasks
+- Persistent data storage
+- Development flexibility
