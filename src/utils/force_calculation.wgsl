@@ -1,8 +1,10 @@
-// Node structure exactly matching Rust GPUNode memory layout (28 bytes total)
+// Node structure exactly matching Rust NodeData memory layout (28 bytes total)
 struct Node {
-    x: f32, y: f32, z: f32,      // position (12 bytes)
-    vx: f32, vy: f32, vz: f32,   // velocity (12 bytes)
-    mass: u32,                    // mass in lower byte + flags + padding (4 bytes)
+    position: vec3<f32>,  // 12 bytes - matches THREE.Vector3
+    velocity: vec3<f32>,  // 12 bytes - matches THREE.Vector3
+    mass: u32,            // 1 byte - quantized mass
+    flags: u32,           // 1 byte - node state flags
+    padding: vec2<u32>,   // 2 bytes - alignment padding
 }
 
 // Edge structure matching Rust GPUEdge layout
@@ -69,12 +71,12 @@ fn decode_mass(mass_packed: u32) -> f32 {
 
 // Get node position as vec3
 fn get_position(node: Node) -> vec3<f32> {
-    return vec3<f32>(node.x, node.y, node.z);
+    return node.position;
 }
 
 // Get node velocity as vec3
 fn get_velocity(node: Node) -> vec3<f32> {
-    return vec3<f32>(node.vx, node.vy, node.vz);
+    return node.velocity;
 }
 
 // Calculate spring force between connected nodes
@@ -137,12 +139,8 @@ fn compute_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Validate input node data
     if (!is_valid_float3(get_position(node)) || !is_valid_float3(get_velocity(node))) {
         // Reset invalid node to origin
-        node.x = 0.0;
-        node.y = 0.0;
-        node.z = 0.0;
-        node.vx = 0.0;
-        node.vy = 0.0;
-        node.vz = 0.0;
+        node.position = vec3<f32>(0.0);
+        node.velocity = vec3<f32>(0.0);
         nodes_buffer.nodes[node_id] = node;
         return;
     }
@@ -234,20 +232,12 @@ fn compute_main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Validate final values
     if (!is_valid_float3(bounded_pos) || !is_valid_float3(velocity)) {
         // Reset to origin if invalid
-        node.x = 0.0;
-        node.y = 0.0;
-        node.z = 0.0;
-        node.vx = 0.0;
-        node.vy = 0.0;
-        node.vz = 0.0;
+        node.position = vec3<f32>(0.0);
+        node.velocity = vec3<f32>(0.0);
     } else {
         // Update node with new values
-        node.x = bounded_pos.x;
-        node.y = bounded_pos.y;
-        node.z = bounded_pos.z;
-        node.vx = velocity.x;
-        node.vy = velocity.y;
-        node.vz = velocity.z;
+        node.position = bounded_pos;
+        node.velocity = velocity;
     }
 
     nodes_buffer.nodes[node_id] = node;

@@ -20,6 +20,12 @@ struct PerplexityResponse {
     link: String,
 }
 
+#[derive(Debug, Serialize)]
+struct QueryRequest {
+    query: String,
+    conversation_id: String,
+}
+
 pub struct PerplexityService {
     client: Client,
     settings: Arc<RwLock<Settings>>,
@@ -32,6 +38,33 @@ impl PerplexityService {
             .build()?;
 
         Ok(Self { client, settings })
+    }
+
+    pub async fn query(&self, query: &str, conversation_id: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
+        let settings = self.settings.read().await;
+        let api_url = format!("{}/query", settings.network.domain);
+        info!("Sending query to Perplexity API: {}", api_url);
+
+        let request = QueryRequest {
+            query: query.to_string(),
+            conversation_id: conversation_id.to_string(),
+        };
+
+        let response = self.client
+            .post(&api_url)
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            error!("Perplexity API error: Status: {}, Error: {}", status, error_text);
+            return Err(format!("Perplexity API error: {}", error_text).into());
+        }
+
+        let perplexity_response: PerplexityResponse = response.json().await?;
+        Ok(perplexity_response.content)
     }
 
     pub async fn process_file(&self, file_name: &str) -> Result<ProcessedFile, Box<dyn StdError + Send + Sync>> {

@@ -4,13 +4,14 @@ use serde::Serialize;
 use log::{info, debug};
 use std::collections::HashMap;
 use crate::models::metadata::Metadata;
+use crate::utils::socket_flow_messages::Node;
 
 /// Struct to serialize GraphData for HTTP responses.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphResponse {
     /// List of nodes in the graph.
-    pub nodes: Vec<crate::models::node::Node>,
+    pub nodes: Vec<Node>,
     /// List of edges connecting the nodes.
     pub edges: Vec<crate::models::edge::Edge>,
     /// Additional metadata about the graph.

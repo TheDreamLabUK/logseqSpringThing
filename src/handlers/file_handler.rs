@@ -58,7 +58,7 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
 
                     // Send binary position update to clients
                     if let Some(gpu) = &state.gpu_compute {
-                        if let Ok(_nodes) = gpu.read().await.get_node_positions() {
+                        if let Ok(_nodes) = gpu.read().await.get_node_data() {
                             // Note: Socket-flow server will handle broadcasting
                             debug!("GPU node positions updated successfully");
                         } else {
@@ -129,7 +129,7 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
 
             // Send binary position update to clients
             if let Some(gpu) = &state.gpu_compute {
-                if let Ok(_nodes) = gpu.read().await.get_node_positions() {
+                if let Ok(_nodes) = gpu.read().await.get_node_data() {
                     // Note: Socket-flow server will handle broadcasting
                     debug!("GPU node positions updated successfully");
                 } else {
@@ -173,7 +173,7 @@ pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, Ac
             
             // Send binary position update to clients
             if let Some(gpu) = &state.gpu_compute {
-                if let Ok(_nodes) = gpu.read().await.get_node_positions() {
+                if let Ok(_nodes) = gpu.read().await.get_node_data() {
                     // Note: Socket-flow server will handle broadcasting
                     debug!("GPU node positions updated successfully");
                 } else {

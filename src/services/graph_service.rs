@@ -6,7 +6,7 @@ use log::{info, warn};
 use rand::Rng;
 
 use crate::models::graph::GraphData;
-use crate::models::node::Node;
+use crate::utils::socket_flow_messages::Node;
 use crate::models::edge::Edge;
 use crate::models::metadata::MetadataStore;
 use crate::app_state::AppState;
@@ -176,13 +176,12 @@ impl GraphService {
             let phi = rng.gen_range(0.0..std::f32::consts::PI);
             let r = rng.gen_range(0.0..initial_radius);
             
-            node.x = r * theta.cos() * phi.sin();
-            node.y = r * theta.sin() * phi.sin();
-            node.z = r * phi.cos();
-            node.vx = 0.0;
-            node.vy = 0.0;
-            node.vz = 0.0;
-            node.position = Some([node.x, node.y, node.z]);
+            node.set_x(r * theta.cos() * phi.sin());
+            node.set_y(r * theta.sin() * phi.sin());
+            node.set_z(r * phi.cos());
+            node.set_vx(0.0);
+            node.set_vy(0.0);
+            node.set_vz(0.0);
         }
     }
 
@@ -197,7 +196,7 @@ impl GraphService {
                 let mut gpu_compute = gpu.write().await;
                 
                 // Only initialize positions for new graphs
-                if graph.nodes.iter().all(|n| n.x == 0.0 && n.y == 0.0 && n.z == 0.0) {
+                if graph.nodes.iter().all(|n| n.x() == 0.0 && n.y() == 0.0 && n.z() == 0.0) {
                     Self::initialize_random_positions(graph);
                 }
                 
@@ -209,16 +208,9 @@ impl GraphService {
                     gpu_compute.step()?;
                     
                     // Update positions every iteration for smoother motion
-                    let updated_nodes = gpu_compute.get_node_positions()?;
+                    let updated_nodes = gpu_compute.get_node_data()?;
                     for (i, node) in graph.nodes.iter_mut().enumerate() {
                         node.update_from_gpu_node(&updated_nodes[i]);
-                        
-                        // Apply bounds
-                        let max_coord = 100.0;
-                        node.x = node.x.clamp(-max_coord, max_coord);
-                        node.y = node.y.clamp(-max_coord, max_coord);
-                        node.z = node.z.clamp(-max_coord, max_coord);
-                        node.position = Some([node.x, node.y, node.z]);
                     }
                 }
                 Ok(())
@@ -241,9 +233,9 @@ impl GraphService {
             // Calculate repulsion forces
             for i in 0..graph.nodes.len() {
                 for j in i+1..graph.nodes.len() {
-                    let dx = graph.nodes[j].x - graph.nodes[i].x;
-                    let dy = graph.nodes[j].y - graph.nodes[i].y;
-                    let dz = graph.nodes[j].z - graph.nodes[i].z;
+                    let dx = graph.nodes[j].x() - graph.nodes[i].x();
+                    let dy = graph.nodes[j].y() - graph.nodes[i].y();
+                    let dz = graph.nodes[j].z() - graph.nodes[i].z();
                     
                     let distance = (dx * dx + dy * dy + dz * dz).sqrt();
                     if distance > 0.0 {
@@ -274,9 +266,9 @@ impl GraphService {
                     let source = &graph.nodes[si];
                     let target = &graph.nodes[ti];
                     
-                    let dx = target.x - source.x;
-                    let dy = target.y - source.y;
-                    let dz = target.z - source.z;
+                    let dx = target.x() - source.x();
+                    let dy = target.y() - source.y();
+                    let dz = target.z() - source.z();
                     
                     let distance = (dx * dx + dy * dy + dz * dz).sqrt();
                     if distance > 0.0 {
@@ -300,19 +292,21 @@ impl GraphService {
             
             // Apply forces and update positions
             for (i, node) in graph.nodes.iter_mut().enumerate() {
-                node.vx += forces[i].0;
-                node.vy += forces[i].1;
-                node.vz += forces[i].2;
+                let vx = node.vx() + forces[i].0;
+                let vy = node.vy() + forces[i].1;
+                let vz = node.vz() + forces[i].2;
                 
-                node.x += node.vx;
-                node.y += node.vy;
-                node.z += node.vz;
+                let x = node.x() + vx;
+                let y = node.y() + vy;
+                let z = node.z() + vz;
                 
-                node.vx *= damping;
-                node.vy *= damping;
-                node.vz *= damping;
-
-                node.position = Some([node.x, node.y, node.z]);
+                node.set_vx(vx * damping);
+                node.set_vy(vy * damping);
+                node.set_vz(vz * damping);
+                
+                node.set_x(x);
+                node.set_y(y);
+                node.set_z(z);
             }
         }
     }

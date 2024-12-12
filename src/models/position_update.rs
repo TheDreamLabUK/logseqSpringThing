@@ -1,21 +1,14 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
-use crate::models::node::NodeData;
+use serde::{Deserialize, Serialize};
+use crate::utils::socket_flow_messages::NodeData;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PositionUpdate {
-    /// Maps node indices to their updated data
-    pub nodes: HashMap<usize, NodeData>,
-    /// Whether this is the final update in a sequence
-    pub is_final: bool,
+    pub node_id: String,
+    pub data: NodeData,
 }
 
 impl PositionUpdate {
-    pub fn new(nodes: HashMap<usize, NodeData>, is_final: bool) -> Self {
-        Self {
-            nodes,
-            is_final,
-        }
+    pub fn new(node_id: String, data: NodeData) -> Self {
+        Self { node_id, data }
     }
 }
