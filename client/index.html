@@ -112,79 +112,10 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
-
-    #status-panel {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.8);
-      padding: 10px 20px;
-      border-radius: 8px;
-      z-index: 1000;
-      display: flex;
-      gap: 20px;
-      align-items: center;
-    }
-
-    .status-indicator {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #666;
-    }
-
-    .status-dot.connected {
-      background: #4CAF50;
-    }
-
-    .status-dot.error {
-      background: #f44336;
-    }
-
-    #graph-stats {
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
-      background: rgba(0, 0, 0, 0.8);
-      padding: 10px;
-      border-radius: 8px;
-      z-index: 1000;
-      font-family: monospace;
-    }
-
-    .stat-item {
-      margin-bottom: 5px;
-    }
   </style>
 </head>
 <body>
   <div id="canvas-container"></div>
-  
-  <div id="status-panel">
-    <div class="status-indicator">
-      <div id="connection-status" class="status-dot"></div>
-      <span>Connection</span>
-    </div>
-    <div class="status-indicator">
-      <div id="graph-status" class="status-dot"></div>
-      <span>Graph Data</span>
-    </div>
-  </div>
-
-  <div id="graph-stats">
-    <div class="stat-item">Nodes: <span id="nodeCount">0</span></div>
-    <div class="stat-item">Edges: <span id="edgeCount">0</span></div>
-    <div class="stat-item">FPS: <span id="fps">0</span></div>
-    <div class="stat-item">Updates: <span id="updates">0</span></div>
-    <div class="stat-item">Last Update: <span id="lastUpdate">-</span></div>
-  </div>
 
   <div id="settings-panel">
     <div class="settings-group">
