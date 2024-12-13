@@ -4,13 +4,14 @@ use actix_web_actors::ws;
 use log::{error, warn, debug, info};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::fs;
+use toml;
 
 use crate::app_state::AppState;
 use crate::utils::socket_flow_messages::{
     BinaryNodeData,
     ClientMessage,
     ServerMessage,
-    UpdatePositionsMessage,
 };
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
@@ -91,6 +92,44 @@ impl SocketFlowServer {
         });
     }
 
+    fn write_settings_to_file(settings: &crate::config::Settings) -> Result<(), String> {
+        // Read current settings file
+        let settings_content = fs::read_to_string("settings.toml")
+            .map_err(|e| format!("Failed to read settings.toml: {}", e))?;
+
+        // Parse current settings to maintain non-visualization sections
+        let mut current_settings: toml::Value = toml::from_str(&settings_content)
+            .map_err(|e| format!("Failed to parse current settings: {}", e))?;
+
+        // Convert new settings to Value
+        let new_settings = toml::Value::try_from(settings)
+            .map_err(|e| format!("Failed to convert settings: {}", e))?;
+
+        // Update only visualization-related sections
+        if let (Some(current_table), Some(new_table)) = (current_settings.as_table_mut(), new_settings.as_table()) {
+            let sections = [
+                "rendering", "nodes", "edges", "labels", 
+                "bloom", "ar", "physics", "animations", "audio"
+            ];
+
+            for section in sections.iter() {
+                if let Some(new_section) = new_table.get(*section) {
+                    current_table.insert(section.to_string(), new_section.clone());
+                }
+            }
+        }
+
+        // Convert back to TOML string
+        let updated_content = toml::to_string_pretty(&current_settings)
+            .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+
+        // Write back to file
+        fs::write("settings.toml", updated_content)
+            .map_err(|e| format!("Failed to write settings.toml: {}", e))?;
+
+        Ok(())
+    }
+
     fn handle_client_message(&mut self, message: ClientMessage, ctx: &mut ws::WebsocketContext<Self>) {
         match message {
             ClientMessage::RequestInitialData => {
@@ -100,7 +139,6 @@ impl SocketFlowServer {
                 ctx.spawn(
                     async move {
                         let graph = app_state.graph_service.graph_data.read().await;
-                        // Log graph data before sending
                         info!("Sending initial graph data: {} nodes, {} edges", 
                             graph.nodes.len(), 
                             graph.edges.len()
@@ -109,7 +147,6 @@ impl SocketFlowServer {
                             graph.nodes.first().map(|n| n.data.position)
                         );
                         
-                        // Send InitialData message with full graph data
                         let initial_data = ServerMessage::InitialData { 
                             graph: (*graph).clone() 
                         };
@@ -138,7 +175,6 @@ impl SocketFlowServer {
             }
             ClientMessage::EnableBinaryUpdates => {
                 debug!("Handling EnableBinaryUpdates message");
-                // After enabling binary updates, send initial binary position data
                 let app_state = self.app_state.clone();
                 let addr = ctx.address();
                 ctx.spawn(
@@ -171,8 +207,20 @@ impl SocketFlowServer {
             }
             ClientMessage::UpdateSettings { settings } => {
                 debug!("Updating settings");
-                if let Ok(message) = serde_json::to_string(&ServerMessage::SettingsUpdated { settings }) {
-                    ctx.text(message);
+                match Self::write_settings_to_file(&settings) {
+                    Ok(_) => {
+                        info!("Successfully wrote settings to settings.toml");
+                        if let Ok(message) = serde_json::to_string(&ServerMessage::SettingsUpdated { settings }) {
+                            ctx.text(message);
+                        }
+                    },
+                    Err(e) => {
+                        error!("Failed to write settings to file: {}", e);
+                        // Still update in-memory settings even if file write fails
+                        if let Ok(message) = serde_json::to_string(&ServerMessage::SettingsUpdated { settings }) {
+                            ctx.text(message);
+                        }
+                    }
                 }
             }
             ClientMessage::Ping => {
