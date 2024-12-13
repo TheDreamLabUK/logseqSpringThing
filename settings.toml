@@ -10,7 +10,7 @@ log_full_json = false             # Log complete JSON payloads
 enabled = false                    # Master switch for client debug logging
 enable_websocket_debug = false     # Enable detailed websocket debugging
 enable_data_debug = false          # Enable data exchange debugging
-log_binary_headers = true         # Log binary message headers
+log_binary_headers = true          # Log binary message headers
 log_full_json = false             # Log complete JSON payloads
 
 [network]
@@ -30,13 +30,13 @@ tunnel_id = "dummy"               # Cloudflare tunnel ID handled in dotenv
 compression_enabled = true         # Enable WebSocket compression
 compression_threshold = 1024       # Compress messages larger than 1KB
 max_message_size = 100485760      # Maximum WebSocket message size (100MB)
-update_rate = 5                   # Update rate in FPS (5fps)
+update_rate = 90                  # Update rate in FPS (90fps for smooth VR)
 heartbeat_interval = 15000        # Heartbeat interval in milliseconds
 heartbeat_timeout = 60000         # Heartbeat timeout in milliseconds
 max_connections = 1000            # Maximum concurrent WebSocket connections
 reconnect_attempts = 3            # Number of reconnection attempts
-reconnect_delay = 5000           # Delay between reconnection attempts (ms)
-binary_chunk_size = 65536        # Size of binary message chunks (64KB)
+reconnect_delay = 5000            # Delay between reconnection attempts (ms)
+binary_chunk_size = 65536         # Size of binary message chunks (64KB)
 
 [security]
 enable_cors = false
@@ -97,93 +97,244 @@ metrics_port = 9090
 log_level = "debug"              # Changed to debug for more verbose logging
 log_format = "json"
 
-[visualization]
-# Colors in hex format - warm golden palette
-node_color = "#FFA500"             # Base orange
-edge_color = "#FFD700"             # Golden
-hologram_color = "#FFC125"         # Deep golden yellow
+# Visual Settings
+[rendering]
+# Core rendering settings
+enable_antialiasing = true        # Enable FXAA antialiasing
+enable_shadows = true             # Enable real-time shadows
+enable_ambient_occlusion = true   # Enable SSAO for depth
+shadow_map_size = 4096           # High-quality shadow resolution
+pixel_ratio = 1.5                # Enhanced pixel ratio for clarity
+enable_gpu_acceleration = true    # Use GPU for physics/rendering
 
-# Node age-based colors - warm palette
-node_color_new = "#FFD700"         # Bright gold for very recent files
-node_color_recent = "#FFA500"      # Orange for recent files
-node_color_medium = "#DAA520"      # Goldenrod for medium-age files
-node_color_old = "#CD853F"         # Peru/bronze for old files
-node_age_max_days = 30             # Maximum age in days for color calculation
+# Environment settings
+background_color = "#000000"      # Deep black background
+environment_intensity = 1.2       # Vibrant environment lighting
+ambient_light_intensity = 0.7     # Rich ambient illumination
+directional_light_intensity = 1.0 # Strong directional lighting
+enable_hemisphere_light = true    # Enable hemisphere lighting
+fog_enabled = true               # Enable atmospheric depth
+fog_color = "#000000"            # Deep black fog
+fog_density = 0.0008             # Subtle fog effect
+enable_grid = true               # Show reference grid in AR/VR
+grid_size = 10                   # Grid size in meters
+grid_divisions = 20              # Fine grid detail
+grid_color = "#1A1A1A"           # Subtle grid color
 
-# Node type colors
-node_color_core = "#FFB90F"        # Dark golden for core nodes
-node_color_secondary = "#FFC125"   # Golden yellow for secondary nodes
-node_color_default = "#FFD700"     # Gold for default nodes
+[nodes]
+# Node appearance
+base_size = 0.2                  # Substantial node presence
+size_range = [0.2, 0.5]          # Impactful size range
+size_by_connections = true       # Scale nodes by importance
+geometry_segments = 32           # High-detail spheres
+enable_instancing = true         # Efficient rendering
 
-# Physical dimensions in meters
-min_node_size = 0.15               # 15cm minimum node size
-max_node_size = 0.4                # 40cm maximum node size
-hologram_scale = 6.0               # Increased for better visibility
-hologram_opacity = 0.15            # Slightly increased for better visibility
-edge_opacity = 0.4                 # Increased for better visibility
-label_font_size = 42               # Increased for better readability
-fog_density = 0.001                # Reduced for clearer distant nodes
+# Node materials
+material_type = "physical"       # Premium material quality
+metalness = 0.85                 # Strong metallic finish
+roughness = 0.15                 # Glossy surface
+clearcoat = 1.0                  # Maximum clear coat
+clearcoat_roughness = 0.05       # Mirror-like finish
+opacity = 0.92                   # Subtle transparency
+enable_transparency = true       # Enable transparency
 
-# Material properties - enhanced metallic look
-node_material_metalness = 0.7      # High metallic for better reflection
-node_material_roughness = 0.2      # Low roughness for shine
-node_material_clearcoat = 0.8      # High clearcoat for glossiness
-node_material_clearcoat_roughness = 0.1
-node_material_opacity = 0.95
-node_emissive_min_intensity = 0.4  # Good base glow
-node_emissive_max_intensity = 1.0  # Strong maximum glow
+# Node colors
+base_color = "#FFB700"           # Rich golden base
+color_scheme = "age"             # Dynamic age-based coloring
+new_node_color = "#FFD700"       # Bright gold for new
+old_node_color = "#E6A640"       # Warm aged gold
+core_node_color = "#FFC125"      # Vibrant core nodes
+secondary_node_color = "#FFD147"  # Harmonious secondary
+age_max_days = 30                # Month-long aging
 
-# Label properties
-label_font_family = "Arial"
-label_padding = 24
-label_vertical_offset = 2.5
-label_close_offset = 0.25
-label_background_color = "rgba(0, 0, 0, 0.85)"
-label_text_color = "white"
-label_info_text_color = "lightgray"
-label_xr_font_size = 28
+# Node highlighting
+highlight_color = "#FFFFFF"       # Pure white highlight
+highlight_intensity = 3.0         # Strong highlight effect
+highlight_duration = 350          # Smooth highlight fade
+enable_hover_effect = true       # Interactive feedback
+hover_scale = 1.15               # Subtle size increase
 
-# Edge properties
-edge_weight_normalization = 12.0   # Better visibility
-edge_min_width = 1.5              # Clear minimum width
-edge_max_width = 6.0              # Strong maximum width
+[edges]
+# Edge appearance
+base_width = 2.0                 # Bold connections
+width_range = [2.0, 8.0]         # Impactful width range
+width_by_strength = true         # Dynamic connection strength
+curve_segments = 24              # Smooth curves
+enable_arrows = true             # Show relationships
+arrow_size = 0.15                # Clear directional markers
 
-# Geometry properties
-geometry_min_segments = 24         # Smooth curves
-geometry_max_segments = 48         # High detail for close objects
-geometry_segment_per_hyperlink = 0.6
+# Edge materials
+opacity = 0.6                    # Clear visibility
+color = "#FFD700"                # Golden connections
+highlight_color = "#FFFFFF"       # Bright highlights
+enable_glow = true               # Edge illumination
+glow_intensity = 0.7             # Strong glow
+glow_color = "#FFD700"           # Golden glow
 
-# Interaction properties
-click_emissive_boost = 2.5        # Strong feedback
-click_feedback_duration = 250      # Quarter second feedback
+[labels]
+# Label appearance
+enable_labels = true             # Show node labels
+font_family = "Arial"            # Clean font
+desktop_font_size = 48           # Large desktop text
+ar_font_size = 32               # Clear AR text
+padding = 28                     # Comfortable spacing
+background_opacity = 0.92        # Clear backgrounds
+max_visible_labels = 75          # Abundant information
 
-# Physics simulation parameters
-force_directed_iterations = 300    # More iterations for better layout
-force_directed_spring = 0.015     # Balanced spring force
-force_directed_repulsion = 1200.0 # Strong repulsion
-force_directed_attraction = 0.012  # Balanced attraction
-force_directed_damping = 0.85     # Good stability
+# Label positioning
+vertical_offset = 2.8            # Clear separation
+close_offset = 0.3              # Comfortable viewing
+view_angle_fade = 0.7           # Smooth fade
+depth_fade_start = 7.0          # Extended visibility
+depth_fade_end = 25.0           # Far fade distance
+
+# Label colors
+text_color = "#FFFFFF"           # Bright text
+info_color = "#E6E6E6"          # Clear info text
+background_color = "#000000"     # Solid background
 
 [bloom]
-# Node bloom settings
-node_bloom_strength = 1.5          # Strong but not overpowering
-node_bloom_radius = 0.4           # Moderate spread
-node_bloom_threshold = 0.2        # Balanced sensitivity
+# Bloom effect settings
+enabled = true                   # Enable glow effects
+strength = 1.8                   # Strong bloom
+radius = 0.5                     # Wide bloom spread
+threshold = 0.15                 # Inclusive glow
 
-# Edge bloom settings
-edge_bloom_strength = 1.2         # Visible but not dominant
-edge_bloom_radius = 0.4          # Consistent with nodes
-edge_bloom_threshold = 0.2       # Balanced sensitivity
+# Per-element bloom
+node_bloom_strength = 1.8        # Strong node glow
+edge_bloom_strength = 1.4        # Clear edge glow
+environment_bloom_strength = 1.2  # Ambient glow
 
-# Environment bloom settings
-environment_bloom_strength = 1.0   # Subtle ambient effect
-environment_bloom_radius = 0.4    # Consistent spread
-environment_bloom_threshold = 0.2  # Balanced sensitivity
+[ar]
+# AR-specific settings
+enable_plane_detection = true    # Detect surfaces
+enable_light_estimation = true   # Match real lighting
+enable_hand_tracking = true      # Enable hand input
+enable_scene_understanding = true # Room geometry
+snap_to_floor = true            # Place graph on floor
+room_scale = true               # Room-scale experience
 
-[fisheye]
-enabled = false
-strength = 0.5
-radius = 100.0
-focus_x = 0.0
-focus_y = 0.0
-focus_z = 0.0
+# Hand visualization
+hand_mesh_enabled = true         # Show hand models
+hand_mesh_opacity = 0.3          # Subtle hand presence
+hand_mesh_color = "#FFD700"      # Golden hands
+hand_ray_enabled = true          # Show interaction rays
+hand_ray_color = "#FFD700"       # Golden rays
+hand_ray_width = 0.002          # Fine ray width
+hand_point_size = 0.01          # Clear touch points
+hand_trail_enabled = true        # Show motion trails
+hand_trail_length = 0.5         # Medium trail length
+hand_trail_opacity = 0.3        # Subtle trails
+
+# AR interaction
+pinch_threshold = 0.015         # Precise pinch detection
+drag_threshold = 0.04           # Smooth dragging
+rotation_threshold = 0.08       # Precise rotation
+enable_haptics = true           # Tactile feedback
+haptic_intensity = 0.7          # Clear feedback
+gesture_smoothing = 0.9         # Smooth input
+
+[physics]
+# Force-directed layout
+enabled = true                   # Enable physics
+iterations = 500                # Thorough simulation
+spring_strength = 0.018         # Strong connections
+repulsion_strength = 1500.0     # Clear separation
+attraction_strength = 0.015     # Balanced attraction
+damping = 0.88                  # Smooth motion
+
+# Constraints
+enable_bounds = true            # Keep organized
+bounds_size = 12.0              # Spacious boundary
+enable_collision = true         # Prevent overlap
+collision_radius = 0.25         # Clear separation
+max_velocity = 2.5              # Smooth movement
+
+
+[animations]
+# Node animations
+enable_node_animations = true    # Enable node animation effects
+selection_wave_enabled = true    # Expanding selection wave
+selection_wave_color = "#FFD700" # Golden wave color
+selection_wave_speed = 1.2       # Wave expansion rate
+selection_wave_size = 0.5        # Maximum wave radius
+selection_wave_opacity = 0.4     # Wave transparency
+
+pulse_enabled = true            # Gentle pulse animation
+pulse_frequency = 0.8           # Pulses per second
+pulse_amplitude = 0.15          # Pulse size variation
+pulse_color = "#FFD700"         # Pulse highlight color
+
+ripple_enabled = true           # Surface ripple effect
+ripple_speed = 1.0              # Ripple movement rate
+ripple_size = 0.4              # Maximum ripple size
+ripple_segments = 32           # Ripple detail
+ripple_color = "#FFD700"       # Ripple color
+ripple_decay = 0.85            # Ripple fade rate
+
+# Edge animations
+edge_animation_enabled = true    # Enable edge animations
+flow_particles_enabled = true    # Moving particles on edges
+flow_particle_count = 5         # Particles per edge
+flow_particle_size = 0.02       # Particle size
+flow_particle_speed = 0.8       # Movement speed
+flow_particle_color = "#FFD700" # Particle color
+flow_particle_trail = true      # Leave light trails
+flow_particle_trail_length = 0.2 # Trail length
+
+edge_pulse_enabled = true       # Edge strength pulses
+edge_pulse_frequency = 0.5      # Pulses per second
+edge_pulse_amplitude = 0.3      # Pulse intensity
+edge_pulse_color = "#FFD700"    # Pulse color
+edge_pulse_width = 0.2         # Pulse width
+
+# General animation settings
+animation_quality = "high"       # Animation detail level
+enable_motion_blur = true       # Smooth motion blur
+motion_blur_strength = 0.4      # Blur intensity
+animation_smoothing = 0.92      # Movement smoothing
+max_concurrent_animations = 10   # Simultaneous effects
+
+[audio]
+# Spatial audio settings
+enable_spatial_audio = true     # Enable 3D audio
+master_volume = 0.8            # Overall volume
+audio_rolloff = "logarithmic"  # Distance falloff
+max_audio_distance = 20.0      # Maximum hearing range
+doppler_factor = 0.5          # Motion audio effect
+
+# Interaction sounds
+enable_interaction_sounds = true # Enable feedback sounds
+selection_sound_enabled = true  # Node selection sound
+selection_sound_volume = 0.7    # Selection volume
+hover_sound_enabled = true     # Hover feedback sound
+hover_sound_volume = 0.4       # Hover volume
+
+# Node sounds
+node_collision_sound = true    # Physics impact sounds
+node_collision_volume = 0.5    # Impact volume
+node_creation_sound = true     # New node sound
+node_creation_volume = 0.6     # Creation volume
+node_deletion_sound = true     # Remove node sound
+node_deletion_volume = 0.5     # Deletion volume
+
+# Edge sounds
+edge_creation_sound = true     # New connection sound
+edge_creation_volume = 0.5     # Connection volume
+edge_deletion_sound = true     # Remove connection sound
+edge_deletion_volume = 0.4     # Deletion volume
+edge_flow_sound = true        # Data flow sound
+edge_flow_volume = 0.3        # Flow sound volume
+
+# Ambient sounds
+enable_ambient_sounds = true   # Background sounds
+ambient_volume = 0.2          # Background volume
+ambient_variation = 0.1       # Volume variation
+
+# Sound types (frequencies in Hz)
+selection_frequency = 440      # A4 note
+hover_frequency = 330         # E4 note
+collision_frequency = 220     # A3 note
+creation_frequency = 550      # C#5 note
+deletion_frequency = 275      # C#4 note
+flow_frequency = 385         # G4 note
