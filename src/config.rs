@@ -12,8 +12,15 @@ pub struct Settings {
     pub perplexity: PerplexitySettings,
     pub openai: OpenAISettings,
     pub default: DefaultSettings,
-    pub visualization: VisualizationSettings,
+    pub rendering: RenderingSettings,
+    pub nodes: NodeSettings,
+    pub edges: EdgeSettings,
+    pub labels: LabelSettings,
     pub bloom: BloomSettings,
+    pub ar: ARSettings,
+    pub physics: PhysicsSettings,
+    pub animations: AnimationSettings,
+    pub audio: AudioSettings,
     pub websocket: WebSocketSettings,
 }
 
@@ -85,65 +92,6 @@ fn default_owner() -> String { "".to_string() }
 fn default_repo() -> String { "".to_string() }
 fn default_path() -> String { "".to_string() }
 fn default_rate_limit() -> bool { true }
-
-impl Settings {
-    pub fn new() -> Result<Self, ConfigError> {
-        let builder = ConfigBuilder::<config::builder::DefaultState>::default();
-        let config = builder
-            .add_source(File::with_name("settings.toml"))
-            .add_source(
-                Environment::default()
-                    .separator("_")
-                    .try_parsing(true)
-            )
-            .build()?;
-
-        let mut settings: Settings = config.try_deserialize()?;
-        
-        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            settings.github.token = token;
-        }
-        if let Ok(owner) = std::env::var("GITHUB_OWNER") {
-            settings.github.owner = owner;
-        }
-        if let Ok(repo) = std::env::var("GITHUB_REPO") {
-            settings.github.repo = repo;
-        }
-        if let Ok(path) = std::env::var("GITHUB_PATH") {
-            settings.github.base_path = path;
-        }
-
-        Ok(settings)
-    }
-
-    pub fn from_env() -> Result<Self, ConfigError> {
-        let builder = ConfigBuilder::<config::builder::DefaultState>::default();
-        let config = builder
-            .add_source(
-                Environment::default()
-                    .separator("_")
-                    .try_parsing(true)
-            )
-            .build()?;
-
-        let mut settings: Settings = config.try_deserialize()?;
-        
-        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            settings.github.token = token;
-        }
-        if let Ok(owner) = std::env::var("GITHUB_OWNER") {
-            settings.github.owner = owner;
-        }
-        if let Ok(repo) = std::env::var("GITHUB_REPO") {
-            settings.github.repo = repo;
-        }
-        if let Ok(path) = std::env::var("GITHUB_PATH") {
-            settings.github.base_path = path;
-        }
-
-        Ok(settings)
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NetworkSettings {
@@ -223,64 +171,270 @@ pub struct DefaultSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct VisualizationSettings {
-    pub node_color: String,
-    pub edge_color: String,
-    pub hologram_color: String,
-    pub node_color_new: String,
-    pub node_color_recent: String,
-    pub node_color_medium: String,
-    pub node_color_old: String,
-    pub node_age_max_days: u32,
-    pub node_color_core: String,
-    pub node_color_secondary: String,
-    pub node_color_default: String,
-    pub min_node_size: f32,
-    pub max_node_size: f32,
-    pub hologram_scale: f32,
-    pub hologram_opacity: f32,
-    pub edge_opacity: f32,
+pub struct RenderingSettings {
+    pub enable_antialiasing: bool,
+    pub enable_shadows: bool,
+    pub enable_ambient_occlusion: bool,
+    pub shadow_map_size: u32,
+    pub pixel_ratio: f32,
+    pub enable_gpu_acceleration: bool,
+    pub background_color: String,
+    pub environment_intensity: f32,
+    pub ambient_light_intensity: f32,
+    pub directional_light_intensity: f32,
+    pub enable_hemisphere_light: bool,
+    pub fog_enabled: bool,
+    pub fog_color: String,
     pub fog_density: f32,
-    pub node_material_metalness: f32,
-    pub node_material_roughness: f32,
-    pub node_material_clearcoat: f32,
-    pub node_material_clearcoat_roughness: f32,
-    pub node_material_opacity: f32,
-    pub node_emissive_min_intensity: f32,
-    pub node_emissive_max_intensity: f32,
-    pub label_font_size: u32,
-    pub label_font_family: String,
-    pub label_padding: u32,
-    pub label_vertical_offset: f32,
-    pub label_close_offset: f32,
-    pub label_background_color: String,
-    pub label_text_color: String,
-    pub label_info_text_color: String,
-    pub label_xr_font_size: u32,
-    pub edge_weight_normalization: f32,
-    pub edge_min_width: f32,
-    pub edge_max_width: f32,
-    pub geometry_min_segments: u32,
-    pub geometry_max_segments: u32,
-    pub geometry_segment_per_hyperlink: f32,
-    pub click_emissive_boost: f32,
-    pub click_feedback_duration: u32,
-    pub force_directed_iterations: u32,
-    pub force_directed_spring: f32,
-    pub force_directed_repulsion: f32,
-    pub force_directed_attraction: f32,
-    pub force_directed_damping: f32,
+    pub enable_grid: bool,
+    pub grid_size: u32,
+    pub grid_divisions: u32,
+    pub grid_color: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NodeSettings {
+    pub base_size: f32,
+    pub size_range: Vec<f32>,
+    pub size_by_connections: bool,
+    pub geometry_segments: u32,
+    pub enable_instancing: bool,
+    pub material_type: String,
+    pub metalness: f32,
+    pub roughness: f32,
+    pub clearcoat: f32,
+    pub clearcoat_roughness: f32,
+    pub opacity: f32,
+    pub enable_transparency: bool,
+    pub base_color: String,
+    pub color_scheme: String,
+    pub new_node_color: String,
+    pub old_node_color: String,
+    pub core_node_color: String,
+    pub secondary_node_color: String,
+    pub age_max_days: u32,
+    pub highlight_color: String,
+    pub highlight_intensity: f32,
+    pub highlight_duration: u32,
+    pub enable_hover_effect: bool,
+    pub hover_scale: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EdgeSettings {
+    pub base_width: f32,
+    pub width_range: Vec<f32>,
+    pub width_by_strength: bool,
+    pub curve_segments: u32,
+    pub enable_arrows: bool,
+    pub arrow_size: f32,
+    pub opacity: f32,
+    pub color: String,
+    pub highlight_color: String,
+    pub enable_glow: bool,
+    pub glow_intensity: f32,
+    pub glow_color: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LabelSettings {
+    pub enable_labels: bool,
+    pub font_family: String,
+    pub desktop_font_size: u32,
+    pub ar_font_size: u32,
+    pub padding: u32,
+    pub background_opacity: f32,
+    pub max_visible_labels: u32,
+    pub vertical_offset: f32,
+    pub close_offset: f32,
+    pub view_angle_fade: f32,
+    pub depth_fade_start: f32,
+    pub depth_fade_end: f32,
+    pub text_color: String,
+    pub info_color: String,
+    pub background_color: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BloomSettings {
+    pub enabled: bool,
+    pub strength: f32,
+    pub radius: f32,
+    pub threshold: f32,
     pub node_bloom_strength: f32,
-    pub node_bloom_radius: f32,
-    pub node_bloom_threshold: f32,
     pub edge_bloom_strength: f32,
-    pub edge_bloom_radius: f32,
-    pub edge_bloom_threshold: f32,
     pub environment_bloom_strength: f32,
-    pub environment_bloom_radius: f32,
-    pub environment_bloom_threshold: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ARSettings {
+    pub enable_plane_detection: bool,
+    pub enable_light_estimation: bool,
+    pub enable_hand_tracking: bool,
+    pub enable_scene_understanding: bool,
+    pub snap_to_floor: bool,
+    pub room_scale: bool,
+    pub hand_mesh_enabled: bool,
+    pub hand_mesh_opacity: f32,
+    pub hand_mesh_color: String,
+    pub hand_ray_enabled: bool,
+    pub hand_ray_color: String,
+    pub hand_ray_width: f32,
+    pub hand_point_size: f32,
+    pub hand_trail_enabled: bool,
+    pub hand_trail_length: f32,
+    pub hand_trail_opacity: f32,
+    pub pinch_threshold: f32,
+    pub drag_threshold: f32,
+    pub rotation_threshold: f32,
+    pub enable_haptics: bool,
+    pub haptic_intensity: f32,
+    pub gesture_smoothing: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PhysicsSettings {
+    pub enabled: bool,
+    pub iterations: u32,
+    pub spring_strength: f32,
+    pub repulsion_strength: f32,
+    pub attraction_strength: f32,
+    pub damping: f32,
+    pub enable_bounds: bool,
+    pub bounds_size: f32,
+    pub enable_collision: bool,
+    pub collision_radius: f32,
+    pub max_velocity: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AnimationSettings {
+    pub enable_node_animations: bool,
+    pub selection_wave_enabled: bool,
+    pub selection_wave_color: String,
+    pub selection_wave_speed: f32,
+    pub selection_wave_size: f32,
+    pub selection_wave_opacity: f32,
+    pub pulse_enabled: bool,
+    pub pulse_frequency: f32,
+    pub pulse_amplitude: f32,
+    pub pulse_color: String,
+    pub ripple_enabled: bool,
+    pub ripple_speed: f32,
+    pub ripple_size: f32,
+    pub ripple_segments: u32,
+    pub ripple_color: String,
+    pub ripple_decay: f32,
+    pub edge_animation_enabled: bool,
+    pub flow_particles_enabled: bool,
+    pub flow_particle_count: u32,
+    pub flow_particle_size: f32,
+    pub flow_particle_speed: f32,
+    pub flow_particle_color: String,
+    pub flow_particle_trail: bool,
+    pub flow_particle_trail_length: f32,
+    pub edge_pulse_enabled: bool,
+    pub edge_pulse_frequency: f32,
+    pub edge_pulse_amplitude: f32,
+    pub edge_pulse_color: String,
+    pub edge_pulse_width: f32,
+    pub animation_quality: String,
+    pub enable_motion_blur: bool,
+    pub motion_blur_strength: f32,
+    pub animation_smoothing: f32,
+    pub max_concurrent_animations: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AudioSettings {
+    pub enable_spatial_audio: bool,
+    pub master_volume: f32,
+    pub audio_rolloff: String,
+    pub max_audio_distance: f32,
+    pub doppler_factor: f32,
+    pub enable_interaction_sounds: bool,
+    pub selection_sound_enabled: bool,
+    pub selection_sound_volume: f32,
+    pub hover_sound_enabled: bool,
+    pub hover_sound_volume: f32,
+    pub node_collision_sound: bool,
+    pub node_collision_volume: f32,
+    pub node_creation_sound: bool,
+    pub node_creation_volume: f32,
+    pub node_deletion_sound: bool,
+    pub node_deletion_volume: f32,
+    pub edge_creation_sound: bool,
+    pub edge_creation_volume: f32,
+    pub edge_deletion_sound: bool,
+    pub edge_deletion_volume: f32,
+    pub edge_flow_sound: bool,
+    pub edge_flow_volume: f32,
+    pub enable_ambient_sounds: bool,
+    pub ambient_volume: f32,
+    pub ambient_variation: f32,
+    pub selection_frequency: u32,
+    pub hover_frequency: u32,
+    pub collision_frequency: u32,
+    pub creation_frequency: u32,
+    pub deletion_frequency: u32,
+    pub flow_frequency: u32,
+}
+
+impl Settings {
+    pub fn new() -> Result<Self, ConfigError> {
+        let builder = ConfigBuilder::<config::builder::DefaultState>::default();
+        let config = builder
+            .add_source(File::with_name("settings.toml"))
+            .add_source(
+                Environment::default()
+                    .separator("_")
+                    .try_parsing(true)
+            )
+            .build()?;
+
+        let mut settings: Settings = config.try_deserialize()?;
+        
+        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+            settings.github.token = token;
+        }
+        if let Ok(owner) = std::env::var("GITHUB_OWNER") {
+            settings.github.owner = owner;
+        }
+        if let Ok(repo) = std::env::var("GITHUB_REPO") {
+            settings.github.repo = repo;
+        }
+        if let Ok(path) = std::env::var("GITHUB_PATH") {
+            settings.github.base_path = path;
+        }
+
+        Ok(settings)
+    }
+
+    pub fn from_env() -> Result<Self, ConfigError> {
+        let builder = ConfigBuilder::<config::builder::DefaultState>::default();
+        let config = builder
+            .add_source(
+                Environment::default()
+                    .separator("_")
+                    .try_parsing(true)
+            )
+            .build()?;
+
+        let mut settings: Settings = config.try_deserialize()?;
+        
+        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+            settings.github.token = token;
+        }
+        if let Ok(owner) = std::env::var("GITHUB_OWNER") {
+            settings.github.owner = owner;
+        }
+        if let Ok(repo) = std::env::var("GITHUB_REPO") {
+            settings.github.repo = repo;
+        }
+        if let Ok(path) = std::env::var("GITHUB_PATH") {
+            settings.github.base_path = path;
+        }
+
+        Ok(settings)
+    }
 }
