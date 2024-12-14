@@ -1,18 +1,3 @@
-# Debug settings
-[server_debug]
-enabled = true                     # Master switch for server debug logging, forces just two nodes
-enable_websocket_debug = false     # Enable detailed websocket debugging
-enable_data_debug = false          # Enable data exchange debugging
-log_binary_headers = false         # Log binary message headers
-log_full_json = false              # Log complete JSON payloads
-
-[client_debug]
-enable_data_debug = false
-enable_websocket_debug = false
-enabled = false
-log_binary_headers = false
-log_full_json = false
-
 [animations]
 animation_quality = "high"
 animation_smoothing = 0.92
@@ -33,8 +18,21 @@ flow_particle_trail_length = 0.2
 flow_particles_enabled = true
 max_concurrent_animations = 10
 motion_blur_strength = 0.4
-animation_smoothing = 0.92
-max_concurrent_animations = 10
+pulse_amplitude = 0.15
+pulse_color = "#FFD700"
+pulse_enabled = true
+pulse_frequency = 0.8
+ripple_color = "#FFD700"
+ripple_decay = 0.85
+ripple_enabled = true
+ripple_segments = 32
+ripple_size = 0.4
+ripple_speed = 1.0
+selection_wave_color = "#FFD700"
+selection_wave_enabled = true
+selection_wave_opacity = 0.4
+selection_wave_size = 0.5
+selection_wave_speed = 1.2
 
 [ar]
 drag_threshold = 0.04
@@ -54,6 +52,7 @@ hand_ray_width = 0.002
 hand_trail_enabled = true
 hand_trail_length = 0.5
 hand_trail_opacity = 0.3
+haptic_intensity = 0.7
 pinch_threshold = 0.015
 room_scale = true
 rotation_threshold = 0.08
@@ -101,25 +100,65 @@ radius = 0.5
 strength = 1.8
 threshold = 0.15
 
-[rendering]
-ambient_light_intensity = 0.7
+[client_debug]
+enable_data_debug = false
+enable_websocket_debug = false
+enabled = false
+log_binary_headers = false
+log_full_json = false
+
+[default]
+api_client_timeout = 30
+enable_metrics = true
+enable_request_logging = true
+log_format = "json"
+log_level = "debug"
+max_concurrent_requests = 5
+max_payload_size = 5242880
+max_retries = 3
+metrics_port = 9090
+retry_delay = 5
+
+[edges]
+arrow_size = 0.15
+base_width = 2.0
+color = "#FFD700"
+curve_segments = 24
+enable_arrows = true
+enable_glow = true
+glow_color = "#FFD700"
+glow_intensity = 0.7
+highlight_color = "#FFFFFF"
+opacity = 0.6
+width_by_strength = true
+width_range = [
+    2.0,
+    8.0,
+]
+
+[github]
+base_path = "default_path"
+owner = "default_owner"
+rate_limit = true
+repo = "default_repo"
+token = "default_token"
+
+[labels]
+ar_font_size = 32
 background_color = "#000000"
-directional_light_intensity = 1.0
-enable_ambient_occlusion = true
-enable_antialiasing = true
-enable_gpu_acceleration = true
-enable_grid = true
-enable_hemisphere_light = true
-enable_shadows = true
-environment_intensity = 1.2
-fog_color = "#000000"
-fog_density = 0.0008
-fog_enabled = true
-grid_color = "#1A1A1A"
-grid_divisions = 20
-grid_size = 10
-pixel_ratio = 1.5
-shadow_map_size = 4096
+background_opacity = 0.92
+close_offset = 0.3
+depth_fade_end = 25.0
+depth_fade_start = 7.0
+desktop_font_size = 48
+enable_labels = true
+font_family = "Arial"
+info_color = "#E6E6E6"
+max_visible_labels = 75
+padding = 28
+text_color = "#FFFFFF"
+vertical_offset = 2.8
+view_angle_fade = 0.7
 
 [network]
 bind_address = "0.0.0.0"
@@ -163,75 +202,12 @@ size_range = [
     0.5,
 ]
 
-[labels]
-enable_labels = true
-font_family = "Arial"
-desktop_font_size = 48
-ar_font_size = 32
-padding = 28
-background_opacity = 0.92
-max_visible_labels = 75
-vertical_offset = 2.8
-close_offset = 0.3
-view_angle_fade = 0.7
-text_color = "#FFFFFF"
-info_color = "#E6E6E6"
-background_color = "#000000"
-
-[default]
-api_client_timeout = 30
-enable_metrics = true
-enable_request_logging = true
-log_format = "json"
-log_level = "debug"
-max_concurrent_requests = 5
-max_payload_size = 5242880
-max_retries = 3
-metrics_port = 9090
-retry_delay = 5
-
-[edges]
-arrow_size = 0.15
-base_width = 2.0
-color = "#FFD700"
-curve_segments = 24
-enable_arrows = true
-enable_glow = true
-glow_color = "#FFD700"
-glow_intensity = 0.7
-highlight_color = "#FFFFFF"
-opacity = 0.6
-width_by_strength = true
-width_range = [
-    2.0,
-    8.0,
-]
-
-[github]
-base_path = "default_path"
-owner = "default_owner"
-repo = "default_repo"
-token = "default_token"
-rate_limit = true
-
-[ragflow]
-api_key = "default_ragflow_key"
-base_url = "http://ragflow-server/v1/"
-max_retries = 3
+[openai]
+api_key = "default_openai_key"
+base_url = "wss://api.openai.com/v1/realtime"
+model = "gpt-4o-realtime-preview-2024-10-01"
+rate_limit = 100
 timeout = 30
-
-[physics]
-attraction_strength = 0.015
-bounds_size = 12.0
-collision_radius = 0.25
-damping = 0.88
-enable_bounds = true
-enable_collision = true
-enabled = true
-iterations = 500
-max_velocity = 2.5
-repulsion_strength = 1500.0
-spring_strength = 0.018
 
 [perplexity]
 api_key = "default_perplexity_key"
@@ -247,6 +223,82 @@ rate_limit = 100
 temperature = 0.5
 timeout = 30
 top_p = 0.9
+
+[physics]
+attraction_strength = 0.015
+bounds_size = 12.0
+collision_radius = 0.25
+damping = 0.88
+enable_bounds = true
+enable_collision = true
+enabled = true
+iterations = 500
+max_velocity = 2.5
+repulsion_strength = 1500.0
+spring_strength = 0.018
+
+[ragflow]
+api_key = "default_ragflow_key"
+base_url = "http://ragflow-server/v1/"
+max_retries = 3
+timeout = 30
+
+[rendering]
+ambient_light_intensity = 0.7
+background_color = "#000000"
+directional_light_intensity = 1.0
+enable_ambient_occlusion = true
+enable_antialiasing = true
+enable_gpu_acceleration = true
+enable_grid = true
+enable_hemisphere_light = true
+enable_shadows = true
+environment_intensity = 1.2
+fog_color = "#000000"
+fog_density = 0.0008
+fog_enabled = true
+grid_color = "#1A1A1A"
+grid_divisions = 20
+grid_size = 10
+pixel_ratio = 1.5
+shadow_map_size = 4096
+
+[security]
+allowed_origins = []
+audit_log_path = "/app/logs/audit.log"
+cookie_httponly = true
+cookie_samesite = "Strict"
+cookie_secure = true
+csrf_token_timeout = 3600
+enable_audit_logging = true
+enable_cors = false
+enable_csrf = false
+enable_request_validation = true
+enable_security_headers = false
+session_timeout = 3600
+
+# Debug settings
+[server_debug]
+enabled = true                     # Master switch for server debug logging, forces just two nodes
+enable_websocket_debug = false     # Enable detailed websocket debugging
+enable_data_debug = false          # Enable data exchange debugging
+log_binary_headers = false         # Log binary message headers
+log_full_json = false             # Log complete JSON payloads
+
+[client_debug]
+enabled = false                    # Master switch for client debug logging
+enable_websocket_debug = false     # Enable detailed websocket debugging
+enable_data_debug = false          # Enable data exchange debugging
+log_binary_headers = false         # Log binary message headers
+log_full_json = false             # Log complete JSON payloads
+
+
+[server_debug]
+enable_data_debug = false
+enable_websocket_debug = false
+enabled = true
+log_binary_headers = false
+log_full_json = false
 
 [websocket]
 binary_chunk_size = 65536
