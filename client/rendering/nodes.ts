@@ -6,25 +6,18 @@ import * as THREE from 'three';
 import { Node, Edge } from '../core/types';
 import { SceneManager } from './scene';
 import { createLogger } from '../core/utils';
-import { NODE_HIGHLIGHT_COLOR } from '../core/constants';
+import { settingsManager } from '../state/settings';
 
 const logger = createLogger('NodeManager');
 
 // Constants for geometry
-const NODE_SIZE = 2.5;
-const NODE_VISUAL_OFFSET = 1.0; // Reduced from NODE_SIZE to account for visual appearance
 const NODE_SEGMENTS = 16;
-const EDGE_RADIUS = 0.25;
 const EDGE_SEGMENTS = 8;
 
 // Binary format constants
 const BINARY_VERSION = 1.0;
 const FLOATS_PER_NODE = 6;  // x, y, z, vx, vy, vz
 const VERSION_OFFSET = 1;    // Skip version float
-
-// Colors
-const NODE_COLOR = 0x4CAF50;  // Material Design Green
-const EDGE_COLOR = 0xE0E0E0;  // Material Design Grey 300
 
 // Reusable objects for matrix calculations
 const matrix = new THREE.Matrix4();
@@ -68,23 +61,31 @@ export class NodeManager {
   private constructor(sceneManager: SceneManager) {
     this.sceneManager = sceneManager;
     
+    // Get initial settings
+    const threeSettings = settingsManager.getThreeJSSettings();
+    
     // Initialize with proper geometries
-    const nodeGeometry = new THREE.SphereGeometry(NODE_SIZE, NODE_SEGMENTS, NODE_SEGMENTS);
+    const nodeGeometry = new THREE.SphereGeometry(threeSettings.nodes.size, NODE_SEGMENTS, NODE_SEGMENTS);
     const nodeMaterial = new THREE.MeshPhongMaterial({
-      color: NODE_COLOR,
-      shininess: 90,
-      specular: 0x444444,
+      color: new THREE.Color(threeSettings.nodes.color),
+      shininess: 100, // High shininess for metallic look
+      specular: new THREE.Color('#FFFFFF'), // Bright specular for golden sheen
       transparent: true,
-      opacity: 0.7
+      opacity: threeSettings.nodes.opacity
     });
 
-    const edgeGeometry = new THREE.CylinderGeometry(EDGE_RADIUS, EDGE_RADIUS, 1, EDGE_SEGMENTS);
+    const edgeGeometry = new THREE.CylinderGeometry(
+      threeSettings.edges.width / 4,
+      threeSettings.edges.width / 4,
+      1,
+      EDGE_SEGMENTS
+    );
     edgeGeometry.rotateX(Math.PI / 2);
     
     const edgeMaterial = new THREE.MeshBasicMaterial({
-      color: EDGE_COLOR,
+      color: new THREE.Color(threeSettings.edges.color),
       transparent: true,
-      opacity: 0.7,
+      opacity: threeSettings.edges.opacity,
       depthWrite: false
     });
 
@@ -92,7 +93,42 @@ export class NodeManager {
     this.edgeInstances = new THREE.InstancedMesh(edgeGeometry, edgeMaterial, 30000);
     
     this.initializeInstances();
-    logger.log('NodeManager initialized');
+
+    // Subscribe to settings changes
+    settingsManager.subscribe(() => this.onSettingsChanged());
+    
+    logger.log('NodeManager initialized with settings:', threeSettings);
+  }
+
+  private onSettingsChanged(): void {
+    const threeSettings = settingsManager.getThreeJSSettings();
+
+    // Update node material
+    const nodeMaterial = this.nodeInstances.material as THREE.MeshPhongMaterial;
+    nodeMaterial.color.set(threeSettings.nodes.color);
+    nodeMaterial.opacity = threeSettings.nodes.opacity;
+    nodeMaterial.shininess = 100; // Keep high shininess for metallic look
+    nodeMaterial.specular.set('#FFFFFF'); // Keep bright specular for golden sheen
+
+    // Update edge material
+    const edgeMaterial = this.edgeInstances.material as THREE.MeshBasicMaterial;
+    edgeMaterial.color.set(threeSettings.edges.color);
+    edgeMaterial.opacity = threeSettings.edges.opacity;
+
+    // Request fresh graph data to apply new visual attributes
+    this.requestGraphRefresh();
+
+    logger.log('Visual settings updated:', threeSettings);
+  }
+
+  private requestGraphRefresh(): void {
+    // Use WebSocket to request fresh graph data
+    const webSocket = (window as any).webSocket;
+    if (webSocket) {
+      webSocket.send({
+        type: 'requestInitialData'
+      });
+    }
   }
 
   static getInstance(sceneManager: SceneManager): NodeManager {
@@ -194,12 +230,13 @@ export class NodeManager {
     if (this.highlightedNode === nodeId) return;
 
     const color = new THREE.Color();
+    const threeSettings = settingsManager.getThreeJSSettings();
 
     if (this.highlightedNode) {
       const prevIndex = this.nodeIndices.get(this.highlightedNode);
       if (prevIndex !== undefined) {
         const node = this.currentNodes[prevIndex];
-        color.set(node?.color || NODE_COLOR);
+        color.set(node?.color || threeSettings.nodes.color);
         this.nodeInstances.setColorAt(prevIndex, color);
       }
     }
@@ -207,7 +244,7 @@ export class NodeManager {
     if (nodeId) {
       const index = this.nodeIndices.get(nodeId);
       if (index !== undefined) {
-        color.set(NODE_HIGHLIGHT_COLOR);
+        color.set(threeSettings.nodes.highlightColor);
         this.nodeInstances.setColorAt(index, color);
       }
     }
@@ -224,6 +261,9 @@ export class NodeManager {
     this.nodeIndices.clear();
     this.dirtyEdges.clear();
 
+    // Get current settings
+    const threeSettings = settingsManager.getThreeJSSettings();
+
     // Update node instances count and matrices
     this.nodeInstances.count = nodes.length;
     nodes.forEach((node, index) => {
@@ -237,9 +277,16 @@ export class NodeManager {
 
       matrix.compose(position, quaternion, scale);
       this.nodeInstances.setMatrixAt(index, matrix);
+
+      // Set node color based on settings
+      const color = new THREE.Color(node.color || threeSettings.nodes.color);
+      this.nodeInstances.setColorAt(index, color);
     });
 
     this.nodeInstances.instanceMatrix.needsUpdate = true;
+    if (this.nodeInstances.instanceColor) {
+      this.nodeInstances.instanceColor.needsUpdate = true;
+    }
 
     // Update edge instances
     this.edgeInstances.count = edges.length;
@@ -282,8 +329,11 @@ export class NodeManager {
       quaternion.setFromAxisAngle(tempVector, angle);
     }
 
-    // Use NODE_VISUAL_OFFSET instead of NODE_SIZE for more accurate edge length
-    scale.set(1, Math.max(0.001, length - (NODE_VISUAL_OFFSET * 2)), 1);
+    // Get current settings
+    const threeSettings = settingsManager.getThreeJSSettings();
+    const nodeVisualOffset = threeSettings.nodes.size;
+
+    scale.set(1, Math.max(0.001, length - (nodeVisualOffset * 2)), 1);
 
     matrix.compose(position, quaternion, scale);
     this.edgeInstances.setMatrixAt(index, matrix);
