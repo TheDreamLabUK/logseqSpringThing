@@ -1,3 +1,7 @@
+/**
+ * Control panel for visualization settings
+ */
+
 import { VisualizationSettings } from '../core/types';
 import { settingsManager } from '../state/settings';
 import { createLogger } from '../core/utils';
@@ -30,8 +34,9 @@ export class ControlPanel {
                 <div class="settings-group">
                     <h4>Node Appearance</h4>
                     <div class="setting-item">
-                        <label for="nodeSize">Base Size</label>
-                        <input type="range" id="nodeSize" min="0.1" max="2" step="0.1" value="${this.settings.nodeSize}">
+                        <label for="nodeSize">Node Size</label>
+                        <input type="range" id="nodeSize" min="0.05" max="0.5" step="0.05" value="${this.settings.nodeSize}">
+                        <span class="setting-value">${this.settings.nodeSize.toFixed(2)}</span>
                     </div>
                     <div class="setting-item">
                         <label for="nodeColor">Color</label>
@@ -40,18 +45,22 @@ export class ControlPanel {
                     <div class="setting-item">
                         <label for="nodeOpacity">Opacity</label>
                         <input type="range" id="nodeOpacity" min="0" max="1" step="0.1" value="${this.settings.nodeOpacity}">
+                        <span class="setting-value">${this.settings.nodeOpacity.toFixed(1)}</span>
                     </div>
                     <div class="setting-item">
                         <label for="metalness">Metalness</label>
                         <input type="range" id="metalness" min="0" max="1" step="0.05" value="${this.settings.metalness}">
+                        <span class="setting-value">${this.settings.metalness.toFixed(2)}</span>
                     </div>
                     <div class="setting-item">
                         <label for="roughness">Roughness</label>
                         <input type="range" id="roughness" min="0" max="1" step="0.05" value="${this.settings.roughness}">
+                        <span class="setting-value">${this.settings.roughness.toFixed(2)}</span>
                     </div>
                     <div class="setting-item">
                         <label for="clearcoat">Clearcoat</label>
                         <input type="range" id="clearcoat" min="0" max="1" step="0.1" value="${this.settings.clearcoat}">
+                        <span class="setting-value">${this.settings.clearcoat.toFixed(1)}</span>
                     </div>
                 </div>
 
@@ -60,6 +69,7 @@ export class ControlPanel {
                     <div class="setting-item">
                         <label for="edgeWidth">Width</label>
                         <input type="range" id="edgeWidth" min="0.1" max="5" step="0.1" value="${this.settings.edgeWidth}">
+                        <span class="setting-value">${this.settings.edgeWidth.toFixed(1)}</span>
                     </div>
                     <div class="setting-item">
                         <label for="edgeColor">Color</label>
@@ -68,6 +78,7 @@ export class ControlPanel {
                     <div class="setting-item">
                         <label for="edgeOpacity">Opacity</label>
                         <input type="range" id="edgeOpacity" min="0" max="1" step="0.1" value="${this.settings.edgeOpacity}">
+                        <span class="setting-value">${this.settings.edgeOpacity.toFixed(1)}</span>
                     </div>
                     <div class="setting-item">
                         <label>
@@ -78,6 +89,7 @@ export class ControlPanel {
                     <div class="setting-item arrow-setting ${this.settings.enableArrows ? '' : 'disabled'}">
                         <label for="arrowSize">Arrow Size</label>
                         <input type="range" id="arrowSize" min="0.1" max="1" step="0.05" value="${this.settings.arrowSize}">
+                        <span class="setting-value">${this.settings.arrowSize.toFixed(2)}</span>
                     </div>
                 </div>
 
@@ -92,6 +104,7 @@ export class ControlPanel {
                     <div class="setting-item bloom-setting ${this.settings.enableBloom ? '' : 'disabled'}">
                         <label for="bloomIntensity">Bloom Intensity</label>
                         <input type="range" id="bloomIntensity" min="0" max="2" step="0.1" value="${this.settings.bloomIntensity}">
+                        <span class="setting-value">${this.settings.bloomIntensity.toFixed(1)}</span>
                     </div>
                     <div class="setting-item bloom-setting ${this.settings.enableBloom ? '' : 'disabled'}">
                         <label for="bloomRadius">Bloom Radius</label>
@@ -130,6 +143,7 @@ export class ControlPanel {
                     <div class="setting-item label-setting ${this.settings.showLabels ? '' : 'disabled'}">
                         <label for="labelSize">Label Size</label>
                         <input type="range" id="labelSize" min="0.5" max="2" step="0.1" value="${this.settings.labelSize}">
+                        <span class="setting-value">${this.settings.labelSize.toFixed(1)}</span>
                     </div>
                     <div class="setting-item label-setting ${this.settings.showLabels ? '' : 'disabled'}">
                         <label for="labelColor">Label Color</label>
@@ -480,9 +494,17 @@ export class ControlPanel {
 
     private setupInputListener(id: string, type: 'number' | 'string'): void {
         const input = this.container.querySelector(`#${id}`) as HTMLInputElement;
+        const valueDisplay = input?.parentElement?.querySelector('.setting-value');
+        
         input?.addEventListener('input', () => {
             const value = type === 'number' ? parseFloat(input.value) : input.value;
             (this.settings as any)[id] = value;
+            
+            // Update value display
+            if (valueDisplay && type === 'number') {
+                const decimals = input.step.includes('.') ? input.step.split('.')[1].length : 0;
+                valueDisplay.textContent = typeof value === 'number' ? value.toFixed(decimals) : Number(value).toFixed(decimals);
+            }
         });
     }
 
@@ -503,11 +525,19 @@ export class ControlPanel {
     private updateUIValues(): void {
         Object.entries(this.settings).forEach(([key, value]) => {
             const input = this.container.querySelector(`#${key}`) as HTMLInputElement;
+            const valueDisplay = input?.parentElement?.querySelector('.setting-value');
+            
             if (input) {
                 if (input.type === 'checkbox') {
                     input.checked = value as boolean;
                 } else {
                     input.value = value.toString();
+                    
+                    // Update value display
+                    if (valueDisplay && typeof value === 'number') {
+                        const decimals = input.step.includes('.') ? input.step.split('.')[1].length : 0;
+                        valueDisplay.textContent = value.toFixed(decimals);
+                    }
                 }
             }
         });

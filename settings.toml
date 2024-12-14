@@ -1,44 +1,14 @@
 [animations]
-animation_quality = "high"
-animation_smoothing = 0.92
-edge_animation_enabled = true
-edge_pulse_amplitude = 0.3
-edge_pulse_color = "#FFD700"
-edge_pulse_enabled = true
-edge_pulse_frequency = 0.5
-edge_pulse_width = 0.2
 enable_motion_blur = true
 enable_node_animations = true
-flow_particle_color = "#FFD700"
-flow_particle_count = 5
-flow_particle_size = 0.02
-flow_particle_speed = 0.8
-flow_particle_trail = true
-flow_particle_trail_length = 0.2
-flow_particles_enabled = true
-max_concurrent_animations = 10
 motion_blur_strength = 0.4
-pulse_amplitude = 0.15
-pulse_color = "#FFD700"
-pulse_enabled = true
-pulse_frequency = 0.8
-ripple_color = "#FFD700"
-ripple_decay = 0.85
-ripple_enabled = true
-ripple_segments = 32
-ripple_size = 0.4
-ripple_speed = 1.0
-selection_wave_color = "#FFD700"
-selection_wave_enabled = true
-selection_wave_opacity = 0.4
-selection_wave_size = 0.5
-selection_wave_speed = 1.2
 
 [ar]
 drag_threshold = 0.04
 enable_hand_tracking = true
 enable_haptics = true
 enable_light_estimation = true
+enable_passthrough_portal = false
 enable_plane_detection = true
 enable_scene_understanding = true
 gesture_smoothing = 0.9
@@ -51,11 +21,25 @@ hand_ray_enabled = true
 hand_ray_width = 0.002
 hand_trail_enabled = true
 hand_trail_length = 0.5
-hand_trail_opacity = 0.3
+hand_trail_opacity = 0.6
 haptic_intensity = 0.7
+passthrough_brightness = 1
+passthrough_contrast = 1
+passthrough_opacity = 1
 pinch_threshold = 0.015
+plane_color = "#4A90E2"
+plane_opacity = 0.3
+portal_edge_color = "#FFD700"
+portal_edge_width = 0.02
+portal_size = 1
 room_scale = true
 rotation_threshold = 0.08
+selection_wave_enabled = true
+selection_wave_color = "#FFD700"
+selection_wave_speed = 1.0
+selection_wave_size = 0.5
+selection_wave_opacity = 0.4
+show_plane_overlay = true
 snap_to_floor = true
 
 [audio]
@@ -92,13 +76,13 @@ selection_sound_enabled = true
 selection_sound_volume = 0.7
 
 [bloom]
-edge_bloom_strength = 1.4
 enabled = true
-environment_bloom_strength = 1.2
-node_bloom_strength = 1.8
 radius = 0.5
 strength = 1.8
-threshold = 0.15
+threshold = 0.3
+node_bloom_strength = 1.2
+edge_bloom_strength = 0.8
+environment_bloom_strength = 0.5
 
 [client_debug]
 enable_data_debug = false
@@ -121,20 +105,16 @@ retry_delay = 5
 
 [edges]
 arrow_size = 0.15
-base_width = 2.0
-color = "#FFD700"
-curve_segments = 24
-enable_arrows = true
-enable_glow = true
-glow_color = "#FFD700"
-glow_intensity = 0.7
-highlight_color = "#FFFFFF"
-opacity = 0.6
+base_width = 2
+width_range = [1.0, 3.0]
 width_by_strength = true
-width_range = [
-    2.0,
-    8.0,
-]
+curve_segments = 8
+color = "#FFD700"
+enable_arrows = true
+opacity = 0.6
+highlight_color = "#FFFFFF"
+highlight_intensity = 1.0
+highlight_duration = 500
 
 [github]
 base_path = "default_path"
@@ -144,21 +124,11 @@ repo = "default_repo"
 token = "default_token"
 
 [labels]
-ar_font_size = 32
-background_color = "#000000"
-background_opacity = 0.92
-close_offset = 0.3
-depth_fade_end = 25.0
-depth_fade_start = 7.0
+ar_font_size = 24
 desktop_font_size = 48
 enable_labels = true
-font_family = "Arial"
-info_color = "#E6E6E6"
-max_visible_labels = 75
-padding = 28
+font_family = "Arial, Helvetica, sans-serif"
 text_color = "#FFFFFF"
-vertical_offset = 2.8
-view_angle_fade = 0.7
 
 [network]
 bind_address = "0.0.0.0"
@@ -174,33 +144,23 @@ rate_limit_window = 60
 tunnel_id = "dummy"
 
 [nodes]
-age_max_days = 30
 base_color = "#FFB700"
-base_size = 0.2
-clearcoat = 1.0
-clearcoat_roughness = 0.05
-color_scheme = "age"
-core_node_color = "#FFC125"
-enable_hover_effect = true
+base_size = 0.15
+size_range = [0.1, 0.3]
+size_by_connections = true
+geometry_segments = 16
 enable_instancing = true
-enable_transparency = true
-geometry_segments = 32
-highlight_color = "#FFFFFF"
-highlight_duration = 350
-highlight_intensity = 3.0
-hover_scale = 1.15
 material_type = "physical"
+clearcoat = 1
+clearcoat_roughness = 0.1
 metalness = 0.85
-new_node_color = "#FFD700"
-old_node_color = "#E6A640"
 opacity = 0.92
 roughness = 0.15
-secondary_node_color = "#FFD147"
-size_by_connections = true
-size_range = [
-    0.2,
-    0.5,
-]
+highlight_color = "#FFFFFF"
+highlight_intensity = 1.0
+highlight_duration = 500
+enable_hover_effect = true
+hover_scale = 1.2
 
 [openai]
 api_key = "default_openai_key"
