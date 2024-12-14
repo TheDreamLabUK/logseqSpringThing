@@ -15,25 +15,15 @@ export class SettingsManager {
   private settingsListeners: Set<(settings: VisualizationSettings) => void>;
   private webSocket: WebSocketService | null = null;
 
-  private constructor(webSocket: WebSocketService) {
+  private constructor() {
     this.settings = { ...DEFAULT_VISUALIZATION_SETTINGS };
     this.settingsListeners = new Set();
-    this.webSocket = webSocket;
-
-    // Listen for settings updates from server
-    this.webSocket.on('settingsUpdated', (data) => {
-      if (data && data.settings) {
-        this.settings = data.settings;
-        this.notifyListeners();
-      }
-    });
-
     logger.log('Initialized with default settings');
   }
 
-  static getInstance(webSocket: WebSocketService): SettingsManager {
+  static getInstance(): SettingsManager {
     if (!SettingsManager.instance) {
-      SettingsManager.instance = new SettingsManager(webSocket);
+      SettingsManager.instance = new SettingsManager();
     }
     return SettingsManager.instance;
   }

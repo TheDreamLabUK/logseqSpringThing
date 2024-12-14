@@ -4,6 +4,8 @@ use actix_web::{web, HttpResponse};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use serde_json::Value;
+use std::fs;
+use toml;
 
 pub async fn get_visualization_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
@@ -33,6 +35,11 @@ pub async fn handle_settings_message(
             // Update settings in memory
             let mut settings_lock = settings.write().await;
             update_settings(&mut *settings_lock, new_settings);
+            
+            // Save settings to file
+            if let Err(e) = save_settings_to_file(&*settings_lock) {
+                log::error!("Failed to save settings to file: {}", e);
+            }
             
             // Send updated settings back to all clients
             Some(Message::SettingsUpdated(SettingsUpdate {
@@ -106,6 +113,17 @@ fn update_section<T: serde::de::DeserializeOwned + serde::Serialize>(
             *section = updated;
         }
     }
+}
+
+fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
+    // Convert settings to TOML
+    let toml_string = toml::to_string_pretty(&settings)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    
+    // Write to settings.toml
+    fs::write("settings.toml", toml_string)?;
+    
+    Ok(())
 }
 
 // Register the handlers with the Actix web app
