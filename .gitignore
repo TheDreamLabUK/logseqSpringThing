@@ -13,6 +13,7 @@ node_modules
 .pnpm-store/
 .npm
 .yarn
+/featureclient/
 
 # Build output
 dist
