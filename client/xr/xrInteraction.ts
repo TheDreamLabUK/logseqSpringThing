@@ -84,13 +84,16 @@ export class XRInteraction {
         // Calculate movement delta
         const delta = position.clone().sub(this.lastInteractorPosition);
         
-        // Update node positions based on hand movement
+        // Update node position based on hand movement
         if (delta.length() > this.settings.dragThreshold) {
-            this.nodeManager.updateNodePositions({
-                x: delta.x,
-                y: delta.y,
-                z: delta.z
+            // Get all nodes and update their positions
+            const nodes = this.nodeManager.getAllNodeMeshes();
+            nodes.forEach(nodeMesh => {
+                const currentPos = this.nodeManager.getNodePosition(nodeMesh.userData.nodeId);
+                const newPos = currentPos.add(delta);
+                this.nodeManager.updateNodePosition(nodeMesh.userData.nodeId, newPos);
             });
+
             if (this.settings.enableHaptics) {
                 this.triggerHapticFeedback(hand, this.settings.hapticIntensity, 50);
             }
@@ -106,13 +109,16 @@ export class XRInteraction {
         // Calculate movement delta
         const delta = position.clone().sub(this.lastInteractorPosition);
         
-        // Update node positions based on controller movement
+        // Update node position based on controller movement
         if (delta.length() > this.settings.dragThreshold) {
-            this.nodeManager.updateNodePositions({
-                x: delta.x,
-                y: delta.y,
-                z: delta.z
+            // Get all nodes and update their positions
+            const nodes = this.nodeManager.getAllNodeMeshes();
+            nodes.forEach(nodeMesh => {
+                const currentPos = this.nodeManager.getNodePosition(nodeMesh.userData.nodeId);
+                const newPos = currentPos.add(delta);
+                this.nodeManager.updateNodePosition(nodeMesh.userData.nodeId, newPos);
             });
+
             if (this.settings.enableHaptics && controller.userData.hapticActuator) {
                 this.triggerHapticFeedback(controller, this.settings.hapticIntensity, 50);
             }
