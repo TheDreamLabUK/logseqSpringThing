@@ -12,6 +12,7 @@ const logger = createLogger('NodeManager');
 
 // Constants for geometry
 const NODE_SIZE = 2.5;
+const NODE_VISUAL_OFFSET = 1.0; // Reduced from NODE_SIZE to account for visual appearance
 const NODE_SEGMENTS = 16;
 const EDGE_RADIUS = 0.25;
 const EDGE_SEGMENTS = 8;
@@ -281,7 +282,8 @@ export class NodeManager {
       quaternion.setFromAxisAngle(tempVector, angle);
     }
 
-    scale.set(1, Math.max(0.001, length - (NODE_SIZE * 2)), 1);
+    // Use NODE_VISUAL_OFFSET instead of NODE_SIZE for more accurate edge length
+    scale.set(1, Math.max(0.001, length - (NODE_VISUAL_OFFSET * 2)), 1);
 
     matrix.compose(position, quaternion, scale);
     this.edgeInstances.setMatrixAt(index, matrix);
@@ -318,6 +320,10 @@ export class NodeManager {
   }
 
   private processNodeChunk(floatArray: Float32Array, startIndex: number, endIndex: number): void {
+    // Reset quaternion and scale for each chunk to ensure clean transforms
+    quaternion.set(0, 0, 0, 1); // Identity quaternion
+    scale.set(1, 1, 1);         // Unit scale
+
     for (let i = startIndex; i < endIndex; i++) {
       const baseIndex = VERSION_OFFSET + (i * FLOATS_PER_NODE);
       
@@ -328,9 +334,10 @@ export class NodeManager {
         floatArray[baseIndex + 2]
       );
 
-      // Update instance matrix
-      matrix.compose(position, quaternion, scale);
-      this.nodeInstances.setMatrixAt(i, matrix);
+      // Create a new matrix for this instance to avoid transformation bleeding
+      const instanceMatrix = new THREE.Matrix4();
+      instanceMatrix.compose(position, quaternion, scale);
+      this.nodeInstances.setMatrixAt(i, instanceMatrix);
 
       // Update node data
       const node = this.currentNodes[i];

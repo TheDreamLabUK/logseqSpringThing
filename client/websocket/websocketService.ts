@@ -54,7 +54,7 @@ class NetworkDebugPanel {
       max-height: 300px;
       overflow-y: auto;
       z-index: 1000;
-      display: block !important;
+      display: none;
     `;
 
     const title = document.createElement('div');
@@ -117,12 +117,13 @@ export class WebSocketService {
   private errorHandlers: ErrorHandler[] = [];
   private connectionHandlers: ConnectionHandler[] = [];
   private isConnected: boolean = false;
-  private debugPanel: NetworkDebugPanel;
+  private debugPanel: NetworkDebugPanel | null = null;
   private expectedNodeCount: number = 0;
 
   constructor(url: string) {
     this.url = url;
     this.initializeHandlers();
+    // Debug panel is now created but hidden by default
     this.debugPanel = new NetworkDebugPanel();
   }
 
@@ -184,7 +185,9 @@ export class WebSocketService {
     };
 
     this.ws.onmessage = (event) => {
-      this.debugPanel.addMessage('in', event.data);
+      if (this.debugPanel) {
+        this.debugPanel.addMessage('in', event.data);
+      }
       this.handleMessage(event);
     };
   }
@@ -366,7 +369,9 @@ export class WebSocketService {
 
     try {
       const messageStr = JSON.stringify(message);
-      this.debugPanel.addMessage('out', messageStr);
+      if (this.debugPanel) {
+        this.debugPanel.addMessage('out', messageStr);
+      }
       this.ws?.send(messageStr);
     } catch (error) {
       logger.error('Error sending message:', error);
@@ -381,7 +386,9 @@ export class WebSocketService {
     }
 
     try {
-      this.debugPanel.addMessage('out', data);
+      if (this.debugPanel) {
+        this.debugPanel.addMessage('out', data);
+      }
       this.ws?.send(data instanceof Float32Array ? data.buffer : data);
     } catch (error) {
       logger.error('Error sending binary data:', error);
