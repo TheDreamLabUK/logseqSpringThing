@@ -189,6 +189,7 @@ export type MessageType =
   | 'requestInitialData'
   | 'binaryPositionUpdate'
   | 'settingsUpdated'
+  | 'updateSettings'
   | 'enableBinaryUpdates'
   | 'ping'
   | 'pong';
@@ -249,6 +250,13 @@ export interface SettingsUpdateMessage {
   };
 }
 
+export interface UpdateSettingsMessage {
+  type: 'updateSettings';
+  data: {
+    settings: Partial<VisualizationSettings>;
+  };
+}
+
 export interface PingMessage {
   type: 'ping';
 }
@@ -262,6 +270,7 @@ export type RawWebSocketMessage =
   | RawInitialDataMessage
   | RawBinaryPositionUpdateMessage
   | SettingsUpdateMessage
+  | UpdateSettingsMessage
   | RequestInitialDataMessage
   | EnableBinaryUpdatesMessage
   | PingMessage
@@ -271,6 +280,7 @@ export type WebSocketMessage =
   | InitialDataMessage
   | BinaryPositionUpdateMessage
   | SettingsUpdateMessage
+  | UpdateSettingsMessage
   | RequestInitialDataMessage
   | EnableBinaryUpdatesMessage
   | PingMessage

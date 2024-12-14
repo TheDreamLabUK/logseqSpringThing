@@ -321,7 +321,7 @@ export class NodeManager {
 
   private processNodeChunk(floatArray: Float32Array, startIndex: number, endIndex: number): void {
     // Reset quaternion and scale for each chunk to ensure clean transforms
-    quaternion.set(0, 0, 0, 1); // Identity quaternion
+    quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0); // Identity quaternion using axis-angle
     scale.set(1, 1, 1);         // Unit scale
 
     for (let i = startIndex; i < endIndex; i++) {

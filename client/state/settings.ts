@@ -3,73 +3,64 @@
  */
 
 import { VisualizationSettings } from '../core/types';
-import { DEFAULT_VISUALIZATION_SETTINGS, IS_PRODUCTION } from '../core/constants';
+import { DEFAULT_VISUALIZATION_SETTINGS } from '../core/constants';
 import { createLogger } from '../core/utils';
+import { WebSocketService } from '../websocket/websocketService';
 
 const logger = createLogger('SettingsManager');
-
-// Settings endpoint
-const SETTINGS_URL = IS_PRODUCTION
-  ? 'https://www.visionflow.info/settings'
-  : 'http://localhost:4000/settings';
 
 export class SettingsManager {
   private static instance: SettingsManager;
   private settings: VisualizationSettings;
   private settingsListeners: Set<(settings: VisualizationSettings) => void>;
+  private webSocket: WebSocketService;
 
-  private constructor() {
+  private constructor(webSocket: WebSocketService) {
     this.settings = { ...DEFAULT_VISUALIZATION_SETTINGS };
     this.settingsListeners = new Set();
+    this.webSocket = webSocket;
+
+    // Listen for settings updates from server
+    this.webSocket.on('settingsUpdated', (data) => {
+      if (data && data.settings) {
+        this.settings = data.settings;
+        this.notifyListeners();
+      }
+    });
+
     logger.log('Initialized with default settings');
   }
 
-  static getInstance(): SettingsManager {
+  static getInstance(webSocket: WebSocketService): SettingsManager {
     if (!SettingsManager.instance) {
-      SettingsManager.instance = new SettingsManager();
+      SettingsManager.instance = new SettingsManager(webSocket);
     }
     return SettingsManager.instance;
   }
 
   /**
-   * Load settings from the server
+   * Load settings from the server via WebSocket
    */
   async loadSettings(): Promise<void> {
-    try {
-      const response = await fetch(SETTINGS_URL);
-      if (!response.ok) {
-        throw new Error(`Failed to load settings: ${response.statusText}`);
-      }
-      const settings = await response.json();
-      this.updateSettings(settings);
-      logger.log('Loaded settings from server');
-    } catch (error) {
-      logger.error('Error loading settings:', error);
-      // Fall back to default settings
-      this.updateSettings(DEFAULT_VISUALIZATION_SETTINGS);
-    }
+    // Settings will be received through the settingsUpdated WebSocket message
+    // No need to explicitly request them as they're sent with initial data
+    logger.log('Settings will be received through WebSocket');
   }
 
   /**
-   * Save current settings to the server
+   * Save current settings to the server via WebSocket
    */
   async saveSettings(): Promise<void> {
     try {
-      const response = await fetch(SETTINGS_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(this.settings),
+      this.webSocket.send({
+        type: 'updateSettings',
+        data: {
+          settings: this.settings
+        }
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to save settings: ${response.statusText}`);
-      }
-
-      logger.log('Settings saved successfully');
+      logger.log('Settings update sent through WebSocket');
     } catch (error) {
-      logger.error('Error saving settings:', error);
+      logger.error('Error sending settings update:', error);
       throw error;
     }
   }
@@ -83,9 +74,11 @@ export class SettingsManager {
       ...newSettings
     };
 
-    logger.log('Updated settings');
+    logger.log('Updated settings locally');
+    this.notifyListeners();
+  }
 
-    // Notify all listeners of the settings change
+  private notifyListeners(): void {
     this.settingsListeners.forEach(listener => {
       try {
         listener(this.settings);
@@ -194,4 +187,9 @@ export class SettingsManager {
 }
 
 // Export a singleton instance
-export const settingsManager = SettingsManager.getInstance();
+// Note: This will be initialized with the WebSocket instance in index.ts
+export let settingsManager: SettingsManager;
+
+export function initializeSettingsManager(webSocket: WebSocketService): void {
+  settingsManager = SettingsManager.getInstance(webSocket);
+}
