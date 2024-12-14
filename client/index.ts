@@ -14,6 +14,7 @@ import { XRInteraction } from './xr/xrInteraction';
 import { createLogger } from './core/utils';
 import { WS_URL } from './core/constants';
 import { BinaryNodeUpdate } from './core/types';
+import { ControlPanel } from './ui';
 
 const logger = createLogger('Application');
 
@@ -45,6 +46,9 @@ class Application {
 
       // Initialize XR if supported
       await this.initializeXR();
+
+      // Initialize UI components
+      new ControlPanel(); // Create the control panel instance
 
       // Setup UI event listeners
       this.setupUIEventListeners();

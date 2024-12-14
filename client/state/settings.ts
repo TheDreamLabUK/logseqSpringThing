@@ -3,11 +3,85 @@
  */
 
 import { VisualizationSettings } from '../core/types';
-import { DEFAULT_VISUALIZATION_SETTINGS } from '../core/constants';
 import { createLogger } from '../core/utils';
 import { WebSocketService } from '../websocket/websocketService';
 
 const logger = createLogger('SettingsManager');
+
+export const DEFAULT_VISUALIZATION_SETTINGS: VisualizationSettings = {
+    // Node Appearance
+    nodeSize: 0.2,
+    nodeColor: '#FFB700',
+    nodeOpacity: 0.92,
+    metalness: 0.85,
+    roughness: 0.15,
+    clearcoat: 1.0,
+
+    // Edge Appearance
+    edgeWidth: 2.0,
+    edgeColor: '#FFD700',
+    edgeOpacity: 0.6,
+    enableArrows: true,
+    arrowSize: 0.15,
+
+    // Visual Effects
+    enableBloom: true,
+    bloomIntensity: 1.8,
+    bloomRadius: 0.5,
+    enableNodeAnimations: true,
+    enableMotionBlur: true,
+    motionBlurStrength: 0.4,
+
+    // Labels
+    showLabels: true,
+    labelSize: 1.0,
+    labelColor: '#FFFFFF',
+
+    // Performance
+    maxFps: 60,
+
+    // AR Settings (Meta Quest 3)
+    // Scene Understanding
+    enablePlaneDetection: true,
+    enableSceneUnderstanding: true,
+    showPlaneOverlay: true,
+    planeOpacity: 0.3,
+    planeColor: '#4A90E2',
+    enableLightEstimation: true,
+    
+    // Hand Tracking
+    enableHandTracking: true,
+    handMeshEnabled: true,
+    handMeshColor: '#FFD700',
+    handMeshOpacity: 0.3,
+    handRayEnabled: true,
+    handRayColor: '#FFD700',
+    handRayWidth: 0.002,
+    handPointSize: 0.01,
+    
+    // Gesture Controls
+    gestureSmoothing: 0.9,
+    pinchThreshold: 0.015,
+    dragThreshold: 0.04,
+    rotationThreshold: 0.08,
+    
+    // Haptics
+    enableHaptics: true,
+    hapticIntensity: 0.7,
+    
+    // Room Scale
+    roomScale: true,
+    snapToFloor: true,
+    
+    // Passthrough
+    passthroughOpacity: 1.0,
+    passthroughBrightness: 1.0,
+    passthroughContrast: 1.0,
+    enablePassthroughPortal: false,
+    portalSize: 1.0,
+    portalEdgeColor: '#FFD700',
+    portalEdgeWidth: 0.02
+};
 
 export class SettingsManager {
   private static instance: SettingsManager | null = null;
@@ -107,6 +181,20 @@ export class SettingsManager {
   }
 
   /**
+   * Add a settings update listener
+   */
+  addSettingsListener(listener: (settings: VisualizationSettings) => void): void {
+    this.settingsListeners.add(listener);
+  }
+
+  /**
+   * Remove a settings update listener
+   */
+  removeSettingsListener(listener: (settings: VisualizationSettings) => void): void {
+    this.settingsListeners.delete(listener);
+  }
+
+  /**
    * Get current settings
    */
   getSettings(): VisualizationSettings {
@@ -144,6 +232,49 @@ export class SettingsManager {
     SettingsManager.instance = null;
   }
 
+  public getThreeJSSettings() {
+    return {
+      nodes: {
+        size: this.settings.nodeSize,
+        color: this.settings.nodeColor,
+        opacity: this.settings.nodeOpacity,
+        metalness: this.settings.metalness,
+        roughness: this.settings.roughness,
+        clearcoat: this.settings.clearcoat,
+        highlightColor: '#FFFFFF' // Default highlight color
+      },
+      edges: {
+        width: this.settings.edgeWidth,
+        color: this.settings.edgeColor,
+        opacity: this.settings.edgeOpacity,
+        arrows: {
+          enabled: this.settings.enableArrows,
+          size: this.settings.arrowSize
+        }
+      },
+      bloom: {
+        enabled: this.settings.enableBloom,
+        intensity: this.settings.bloomIntensity,
+        radius: this.settings.bloomRadius
+      },
+      animations: {
+        enabled: this.settings.enableNodeAnimations,
+        motionBlur: {
+          enabled: this.settings.enableMotionBlur,
+          strength: this.settings.motionBlurStrength
+        }
+      },
+      labels: {
+        enabled: this.settings.showLabels,
+        size: this.settings.labelSize,
+        color: this.settings.labelColor
+      },
+      performance: {
+        maxFps: this.settings.maxFps
+      }
+    };
+  }
+
   // Essential setting getters
   getNodeSettings(): {
     size: number;
@@ -155,7 +286,7 @@ export class SettingsManager {
       size: this.settings.nodeSize,
       color: this.settings.nodeColor,
       opacity: this.settings.nodeOpacity,
-      highlightColor: this.settings.nodeHighlightColor
+      highlightColor: '#FFFFFF' // Default highlight color
     };
   }
 
@@ -180,7 +311,7 @@ export class SettingsManager {
     return {
       enabled: this.settings.enableBloom,
       intensity: this.settings.bloomIntensity,
-      threshold: this.settings.bloomThreshold,
+      threshold: 0.5, // Default threshold
       radius: this.settings.bloomRadius
     };
   }
@@ -202,8 +333,8 @@ export class SettingsManager {
     hapticIntensity: number;
   } {
     return {
-      controllerVibration: this.settings.xrControllerVibration,
-      hapticIntensity: this.settings.xrControllerHapticIntensity
+      controllerVibration: false, // Default controller vibration
+      hapticIntensity: 0.5 // Default haptic intensity
     };
   }
 
@@ -213,7 +344,7 @@ export class SettingsManager {
   } {
     return {
       maxFps: this.settings.maxFps,
-      updateThrottle: this.settings.updateThrottle
+      updateThrottle: 0 // Default update throttle
     };
   }
 }

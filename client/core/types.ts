@@ -99,31 +99,161 @@ export interface VisualizationSettings {
   nodeSize: number;
   nodeColor: string;
   nodeOpacity: number;
-  nodeHighlightColor: string;
-  
+  metalness: number;
+  roughness: number;
+  clearcoat: number;
+
   // Edge appearance
   edgeWidth: number;
   edgeColor: string;
   edgeOpacity: number;
-  
+  enableArrows: boolean;
+  arrowSize: number;
+
   // Visual effects
   enableBloom: boolean;
   bloomIntensity: number;
-  bloomThreshold: number;
   bloomRadius: number;
-  
-  // Performance
-  maxFps: number;
-  updateThrottle: number;
+  enableNodeAnimations: boolean;
+  enableMotionBlur: boolean;
+  motionBlurStrength: number;
 
   // Labels
   showLabels: boolean;
   labelSize: number;
   labelColor: string;
 
-  // XR specific
-  xrControllerVibration: boolean;
-  xrControllerHapticIntensity: number;
+  // Performance
+  maxFps: number;
+
+  // AR Settings (Meta Quest 3)
+  // Scene Understanding
+  enablePlaneDetection: boolean;
+  enableSceneUnderstanding: boolean;
+  showPlaneOverlay: boolean;
+  planeOpacity: number;
+  planeColor: string;
+  enableLightEstimation: boolean;
+  
+  // Hand Tracking
+  enableHandTracking: boolean;
+  handMeshEnabled: boolean;
+  handMeshColor: string;
+  handMeshOpacity: number;
+  handRayEnabled: boolean;
+  handRayColor: string;
+  handRayWidth: number;
+  handPointSize: number;
+  
+  // Gesture Controls
+  gestureSmoothing: number;
+  pinchThreshold: number;
+  dragThreshold: number;
+  rotationThreshold: number;
+  
+  // Haptics
+  enableHaptics: boolean;
+  hapticIntensity: number;
+  
+  // Room Scale
+  roomScale: boolean;
+  snapToFloor: boolean;
+  
+  // Passthrough
+  passthroughOpacity: number;
+  passthroughBrightness: number;
+  passthroughContrast: number;
+  enablePassthroughPortal: boolean;
+  portalSize: number;
+  portalEdgeColor: string;
+  portalEdgeWidth: number;
+}
+
+export interface BinaryNodeUpdate {
+  nodeId: string;
+  data: NodeData;
+}
+
+export interface BinaryPositionUpdateMessage {
+  type: 'binaryPositionUpdate';
+  data: {
+    nodes: BinaryNodeUpdate[];
+  };
+}
+
+// Other message types
+export interface RequestInitialDataMessage {
+  type: 'requestInitialData';
+}
+
+export interface EnableBinaryUpdatesMessage {
+  type: 'enableBinaryUpdates';
+}
+
+export interface SettingsUpdateMessage {
+  type: 'settingsUpdated';
+  data: {
+    settings: VisualizationSettings;
+  };
+}
+
+export interface UpdateSettingsMessage {
+  type: 'updateSettings';
+  data: {
+    settings: Partial<VisualizationSettings>;
+  };
+}
+
+export interface PingMessage {
+  type: 'ping';
+}
+
+export interface PongMessage {
+  type: 'pong';
+}
+
+// Union types for messages
+export type RawWebSocketMessage =
+  | RawInitialDataMessage
+  | RawBinaryPositionUpdateMessage
+  | SettingsUpdateMessage
+  | UpdateSettingsMessage
+  | RequestInitialDataMessage
+  | EnableBinaryUpdatesMessage
+  | PingMessage
+  | PongMessage;
+
+export type WebSocketMessage =
+  | InitialDataMessage
+  | BinaryPositionUpdateMessage
+  | SettingsUpdateMessage
+  | UpdateSettingsMessage
+  | RequestInitialDataMessage
+  | EnableBinaryUpdatesMessage
+  | PingMessage
+  | PongMessage;
+
+// Platform detection types
+export type Platform = 'browser' | 'quest';
+
+export interface PlatformCapabilities {
+  xrSupported: boolean;
+  webglSupported: boolean;
+  websocketSupported: boolean;
+}
+
+// Message queue types
+export interface QueuedMessage {
+  data: ArrayBuffer;
+  timestamp: number;
+}
+
+// Debug types
+export interface NetworkDebugMessage {
+  direction: 'in' | 'out';
+  type: 'binary' | 'json';
+  timestamp: number;
+  data: any;
 }
 
 // Transform functions
@@ -220,91 +350,4 @@ export interface InitialDataMessage {
   data: {
     graph: GraphData;
   };
-}
-
-export interface BinaryNodeUpdate {
-  nodeId: string;
-  data: NodeData;
-}
-
-export interface BinaryPositionUpdateMessage {
-  type: 'binaryPositionUpdate';
-  data: {
-    nodes: BinaryNodeUpdate[];
-  };
-}
-
-// Other message types
-export interface RequestInitialDataMessage {
-  type: 'requestInitialData';
-}
-
-export interface EnableBinaryUpdatesMessage {
-  type: 'enableBinaryUpdates';
-}
-
-export interface SettingsUpdateMessage {
-  type: 'settingsUpdated';
-data: {
-    settings: VisualizationSettings;
-  };
-}
-
-export interface UpdateSettingsMessage {
-  type: 'updateSettings';
-data: {
-    settings: Partial<VisualizationSettings>;
-  };
-}
-
-export interface PingMessage {
-  type: 'ping';
-}
-
-export interface PongMessage {
-  type: 'pong';
-}
-
-// Union types for messages
-export type RawWebSocketMessage =
-  | RawInitialDataMessage
-  | RawBinaryPositionUpdateMessage
-  | SettingsUpdateMessage
-  | UpdateSettingsMessage
-  | RequestInitialDataMessage
-  | EnableBinaryUpdatesMessage
-  | PingMessage
-  | PongMessage;
-
-export type WebSocketMessage =
-  | InitialDataMessage
-  | BinaryPositionUpdateMessage
-  | SettingsUpdateMessage
-  | UpdateSettingsMessage
-  | RequestInitialDataMessage
-  | EnableBinaryUpdatesMessage
-  | PingMessage
-  | PongMessage;
-
-// Platform detection types
-export type Platform = 'browser' | 'quest';
-
-export interface PlatformCapabilities {
-  xrSupported: boolean;
-  webglSupported: boolean;
-  websocketSupported: boolean;
-}
-
-// Message queue types
-export interface QueuedMessage {
-  data: ArrayBuffer;
-  timestamp: number;
-}
-
-// Debug types
-export interface NetworkDebugMessage {
-  direction: 'in' | 'out';
-  type: 'binary' | 'json';
-  timestamp: number;
-  data: any;
 }
