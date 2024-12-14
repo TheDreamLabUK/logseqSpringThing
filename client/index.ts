@@ -37,10 +37,10 @@ class Application {
       // Initialize scene first so we can render nodes when data arrives
       this.initializeScene();
 
-      // Initialize WebSocket connection
+      // Initialize WebSocket connection and settings
       this.initializeWebSocket();
 
-      // Initialize settings
+      // Initialize settings after WebSocket is ready
       await this.initializeSettings();
 
       // Initialize XR if supported
@@ -100,12 +100,8 @@ class Application {
       }
     });
 
-    this.webSocket.on('settingsUpdated', (data) => {
-      if (data && data.settings) {
-        settingsManager.updateSettings(data.settings);
-        this.updateSettingsUI();
-      }
-    });
+    // Initialize settings manager with WebSocket
+    settingsManager.initializeWebSocket(this.webSocket);
 
     // Connect to server
     this.webSocket.connect();
@@ -140,11 +136,16 @@ class Application {
 
   private async initializeSettings(): Promise<void> {
     try {
-      // Load settings from server
+      // Settings will be received through WebSocket
       await settingsManager.loadSettings();
 
       // Update UI with current settings
       this.updateSettingsUI();
+
+      // Subscribe to settings changes to update UI
+      settingsManager.subscribe(() => {
+        this.updateSettingsUI();
+      });
     } catch (error) {
       logger.error('Failed to load settings:', error);
       // Continue with default settings
@@ -204,6 +205,7 @@ class Application {
         const value = type === 'checkbox' ? input.checked :
                      type === 'number' ? parseFloat(input.value) :
                      input.value;
+        // Update settings - this will automatically send to server via WebSocket
         settingsManager.updateSettings({ [id]: value });
       });
     }
@@ -277,15 +279,16 @@ class Application {
    * Clean up resources
    */
   dispose(): void {
+    // Dispose of managers in reverse order of initialization
+    settingsManager.dispose();
+    this.xrInteraction?.dispose();
+    this.xrManager?.dispose();
+    this.textRenderer.dispose();
+    this.nodeManager.dispose();
+    this.sceneManager.dispose();
+
     // Stop rendering
     this.sceneManager.stop();
-
-    // Dispose of managers
-    this.nodeManager.dispose();
-    this.textRenderer.dispose();
-    this.xrManager?.dispose();
-    this.xrInteraction?.dispose();
-    this.sceneManager.dispose();
 
     // Close WebSocket connection
     this.webSocket.disconnect();

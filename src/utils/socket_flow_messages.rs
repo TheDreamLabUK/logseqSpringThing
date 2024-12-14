@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use bytemuck::{Pod, Zeroable};
 use std::collections::HashMap;
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
+use serde_json::Value;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
@@ -72,7 +73,6 @@ impl Node {
         }
     }
 
-    /// Update mass based on file size
     pub fn update_mass(&mut self) {
         if self.file_size == 0 {
             self.data.mass = 127; // Default mass
@@ -128,9 +128,20 @@ pub struct UpdatePositionsMessage {
     pub nodes: Vec<BinaryNodeData>,
 }
 
+// Settings message types
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SettingsUpdate {
+    pub settings: Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateSettings {
+    pub settings: Value,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
-pub enum ServerMessage {
+pub enum Message {
     #[serde(rename = "updatePositions")]
     UpdatePositions(UpdatePositionsMessage),
     #[serde(rename = "initialData")]
@@ -140,28 +151,20 @@ pub enum ServerMessage {
     #[serde(rename = "simulationModeSet")]
     SimulationModeSet { mode: String },
     #[serde(rename = "settingsUpdated")]
-    SettingsUpdated { settings: Settings },
-    #[serde(rename = "pong")]
-    Pong,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", content = "data")]
-pub enum ClientMessage {
-    #[serde(rename = "updatePositions")]
-    UpdatePositions(UpdatePositionsMessage),
+    SettingsUpdated(SettingsUpdate),
+    #[serde(rename = "updateSettings")]
+    UpdateSettings(UpdateSettings),
     #[serde(rename = "requestInitialData")]
     RequestInitialData,
     #[serde(rename = "enableBinaryUpdates")]
     EnableBinaryUpdates,
     #[serde(rename = "setSimulationMode")]
     SetSimulationMode { mode: String },
-    #[serde(rename = "updateSettings")]
-    UpdateSettings { settings: Settings },
     #[serde(rename = "ping")]
     Ping,
+    #[serde(rename = "pong")]
+    Pong,
 }
 
 // Forward declarations to avoid circular dependencies
 use crate::models::graph::GraphData;
-use crate::config::Settings;
