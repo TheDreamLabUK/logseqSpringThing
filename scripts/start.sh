@@ -53,16 +53,40 @@ verify_build() {
     return 0
 }
 
+# Function to verify settings file permissions
+verify_settings_permissions() {
+    log "Verifying settings.toml permissions..."
+    
+    # Check if settings.toml exists
+    if [ ! -f "/app/settings.toml" ]; then
+        log "Error: settings.toml not found"
+        return 1
+    fi
+    
+    # Check if file is readable
+    if [ ! -r "/app/settings.toml" ]; then
+        log "Error: settings.toml is not readable"
+        return 1
+    fi
+    
+    # Check if file is writable
+    if [ ! -w "/app/settings.toml" ]; then
+        log "Error: settings.toml is not writable"
+        return 1
+    fi
+    
+    log "settings.toml permissions verified"
+    return 0
+}
+
 # Set up runtime environment
 setup_runtime() {
     log "Setting up runtime environment..."
 
-    # Set up XDG_RUNTIME_DIR with proper permissions
+    # Set up XDG_RUNTIME_DIR
     export XDG_RUNTIME_DIR="/tmp/runtime"
     mkdir -p "$XDG_RUNTIME_DIR"
     chmod 700 "$XDG_RUNTIME_DIR"
-    chown "$(id -u)" "$XDG_RUNTIME_DIR"
-
 
     # Verify GPU is available
     if ! command -v nvidia-smi &> /dev/null; then
@@ -80,147 +104,53 @@ setup_runtime() {
     return 0
 }
 
-# Set up runtime environment first
-if ! setup_runtime; then
-    log "Failed to set up runtime environment"
-    exit 1
-fi
+# Main script execution starts here
+main() {
+    # Verify settings file permissions
+    if ! verify_settings_permissions; then
+        log "Failed to verify settings.toml permissions"
+        exit 1
+    fi
 
-# Wait for RAGFlow to be available
-log "Waiting for RAGFlow server..."
-retries=24
-while ! check_ragflow && [ $retries -gt 0 ]; do
-    log "Retrying RAGFlow connection... ($retries attempts left)"
-    retries=$((retries-1))
-    sleep 5
-done
+    # Set up runtime environment
+    if ! setup_runtime; then
+        log "Failed to set up runtime environment"
+        exit 1
+    fi
 
-if [ $retries -eq 0 ]; then
-    log "Failed to connect to RAGFlow server after multiple attempts"
-    exit 1
-fi
+    # Wait for RAGFlow to be available
+    log "Waiting for RAGFlow server..."
+    retries=24
+    while ! check_ragflow && [ $retries -gt 0 ]; do
+        log "Retrying RAGFlow connection... ($retries attempts left)"
+        retries=$((retries-1))
+        sleep 5
+    done
 
-# Verify production build
-if ! verify_build; then
-    log "Failed to verify production build"
-    exit 1
-fi
+    if [ $retries -eq 0 ]; then
+        log "Failed to connect to RAGFlow server after multiple attempts"
+        exit 1
+    fi
 
-# Update nginx configuration with environment variables
-log "Configuring nginx..."
-cat > /etc/nginx/nginx.conf << 'EOF'
-user root;
-worker_processes auto;
-error_log /var/log/nginx/error.log warn;
-pid /var/run/nginx/nginx.pid;
+    # Verify production build
+    if ! verify_build; then
+        log "Failed to verify production build"
+        exit 1
+    fi
 
-events {
-    worker_connections 1024;
+    # Start nginx
+    log "Starting nginx..."
+    nginx -t && nginx
+    if [ $? -ne 0 ]; then
+        log "Failed to start nginx"
+        exit 1
+    fi
+    log "nginx started successfully"
+
+    # Start the Rust backend
+    log "Starting webxr..."
+    exec /app/webxr
 }
 
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    
-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                    '$status $body_bytes_sent "$http_referer" '
-                    '"$http_user_agent" "$http_x_forwarded_for"';
-    
-    access_log /var/log/nginx/access.log main;
-    
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65;
-    types_hash_max_size 2048;
-    client_max_body_size 20M;
-    
-    # Compression
-    gzip on;
-    gzip_disable "msie6";
-    gzip_vary on;
-    gzip_proxied any;
-    gzip_comp_level 6;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
-
-    # Map to detect WebSocket upgrade
-    map $http_upgrade $connection_upgrade {
-        default upgrade;
-        ''      close;
-    }
-
-    upstream backend {
-        server localhost:3000;
-        keepalive 32;
-    }
-
-    server {
-        listen 4000;
-        server_name localhost;
-        
-        # Security headers
-        add_header X-Frame-Options "SAMEORIGIN";
-        add_header X-XSS-Protection "1; mode=block";
-        add_header X-Content-Type-Options "nosniff";
-        add_header Referrer-Policy "strict-origin-when-cross-origin";
-        add_header Content-Security-Policy "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: ws: wss:; connect-src 'self' ws: wss: http: https:;";
-        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-        
-        # Root directory for static files
-        root /app/data/public/dist;
-        
-        # SPA configuration
-        location / {
-            try_files $uri $uri/ /index.html;
-            expires -1;
-            add_header Cache-Control 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0';
-        }
-        
-        # Static file caching
-        location /assets {
-            expires 1y;
-            add_header Cache-Control "public, no-transform";
-        }
-        
-        # API proxy
-        location /api {
-            proxy_pass http://backend;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_cache_bypass $http_upgrade;
-        }
-        
-        # WebSocket proxy with proper upgrade handling
-        location /wss {
-            proxy_pass http://backend;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection $connection_upgrade;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_read_timeout 3600s;
-            proxy_send_timeout 3600s;
-            proxy_buffering off;
-            proxy_cache off;
-        }
-    }
-}
-EOF
-
-# Start nginx
-log "Starting nginx..."
-nginx -t && nginx
-if [ $? -ne 0 ]; then
-    log "Failed to start nginx"
-    exit 1
-fi
-log "nginx started successfully"
-
-# Start the Rust backend
-log "Starting webxr..."
-exec /app/webxr
+# Execute main function
+main

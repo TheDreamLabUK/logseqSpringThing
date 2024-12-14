@@ -35,32 +35,14 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /usr/src/app
 
-# Copy only Cargo.toml and Cargo.lock first
+# Copy Cargo files and entire src directory for proper module resolution
 COPY Cargo.toml Cargo.lock ./
-
-# Create dummy src/main.rs to build dependencies
-RUN mkdir src && \
-    echo "fn main() {}" > src/main.rs && \
-    echo "pub fn add(a: i32, b: i32) -> i32 { a + b }" > src/lib.rs && \
-    cargo build --release && \
-    rm src/*.rs && \
-    rm -f target/release/deps/webxr* target/release/webxr*
-
-# Stage 3: Rust Application Build
-FROM rust-deps-builder AS rust-builder
-
-# Copy actual source code
 COPY src ./src
-COPY settings.toml ./settings.toml
 
-# Compile CUDA to PTX
-RUN cd src/utils && \
-    nvcc -arch=sm_86 -ptx compute_forces.cu -o compute_forces.ptx
-
-# Build the application
+# Build dependencies and application
 RUN cargo build --release
 
-# Stage 4: Python Dependencies
+# Stage 3: Python Dependencies
 FROM python:3.10.12-slim AS python-builder
 
 WORKDIR /app
@@ -72,12 +54,11 @@ ENV PATH="/app/venv/bin:$PATH"
 # Install Python packages
 RUN pip install --upgrade pip==23.3.1 wheel==0.41.3 && \
     pip install \
-    # --no-cache-dir \
     piper-phonemize==1.1.0 \
     piper-tts==1.2.0 \
     onnxruntime-gpu==1.16.3
 
-# Stage 5: Final Runtime Image
+# Stage 4: Final Runtime Image
 FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -88,7 +69,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     RUST_BACKTRACE=0 \
     PORT=4000 \
     BIND_ADDRESS=0.0.0.0 \
-    NODE_ENV=production
+    NODE_ENV=production \
+    DOMAIN=localhost
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -109,6 +91,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /usr/share/doc/* \
     && rm -rf /usr/share/man/*
 
+# Create a non-root user for running the application
+RUN groupadd -g 1000 webxr && \
+    useradd -u 1000 -g webxr -d /app webxr
+
+# Set up nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf.template
+RUN envsubst '${DOMAIN}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && \
+    rm /etc/nginx/nginx.conf.template && \
+    chown -R webxr:webxr /etc/nginx/nginx.conf && \
+    chmod 644 /etc/nginx/nginx.conf
+
 # Set up nginx directories and permissions
 RUN mkdir -p /var/lib/nginx/client_temp \
              /var/lib/nginx/proxy_temp \
@@ -118,44 +111,57 @@ RUN mkdir -p /var/lib/nginx/client_temp \
              /var/log/nginx \
              /var/run/nginx \
              /var/cache/nginx && \
-    chmod -R 777 /var/lib/nginx \
+    chown -R webxr:webxr /var/lib/nginx \
+                         /var/log/nginx \
+                         /var/run/nginx \
+                         /var/cache/nginx \
+                         /etc/nginx && \
+    chmod -R 755 /var/lib/nginx \
                  /var/log/nginx \
                  /var/run/nginx \
                  /var/cache/nginx \
                  /etc/nginx && \
     touch /var/log/nginx/error.log \
-          /var/log/nginx/access.log && \
-    chmod 666 /var/log/nginx/*.log && \
-    touch /var/run/nginx/nginx.pid && \
-    chmod 666 /var/run/nginx/nginx.pid
+          /var/log/nginx/access.log \
+          /var/run/nginx/nginx.pid && \
+    chmod 666 /var/log/nginx/*.log \
+              /var/run/nginx/nginx.pid
 
-# Set up directory structure
+# Set up directory structure and permissions
 WORKDIR /app
 
-# Create required directories with root permissions
+# Create required directories with proper permissions
 RUN mkdir -p /app/data/public/dist \
              /app/data/markdown \
              /app/data/runtime \
              /app/src/utils \
              /app/data/piper \
              /tmp/runtime && \
-    chmod -R 777 /app /tmp/runtime
+    chown -R webxr:webxr /app /tmp/runtime && \
+    chmod -R 755 /app /tmp/runtime
 
 # Copy Python virtual environment
 COPY --from=python-builder /app/venv /app/venv
+RUN chown -R webxr:webxr /app/venv
 
 # Copy built artifacts
-COPY --from=rust-builder /usr/src/app/target/release/webxr /app/
-COPY --from=rust-builder /usr/src/app/settings.toml /app/
-COPY --from=rust-builder /usr/src/app/src/utils/compute_forces.ptx /app/compute_forces.ptx
+COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/
+COPY settings.toml /app/
+COPY src/utils/compute_forces.ptx /app/compute_forces.ptx
 COPY --from=frontend-builder /app/dist /app/data/public/dist
 
 # Copy configuration and scripts
 COPY src/generate_audio.py /app/src/
-COPY nginx.conf /etc/nginx/nginx.conf
 COPY scripts/start.sh /app/start.sh
-RUN chmod 755 /app/start.sh && \
-    chmod 644 /etc/nginx/nginx.conf
+
+# Set proper permissions for copied files
+RUN chown -R webxr:webxr /app && \
+    chmod 755 /app/start.sh && \
+    chmod 644 /app/settings.toml && \
+    chmod -R g+w /app
+
+# Switch to non-root user
+USER webxr
 
 # Add security labels
 LABEL org.opencontainers.image.source="https://github.com/yourusername/logseq-xr" \
