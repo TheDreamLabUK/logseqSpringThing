@@ -13,6 +13,7 @@ const logger = createLogger('NodeManager');
 // Constants for geometry
 const NODE_SEGMENTS = 16;
 const EDGE_SEGMENTS = 8;
+const NODE_SIZE_MULTIPLIER = 1; // Reduced from 25 to 1 for better control
 
 // Binary format constants
 const BINARY_VERSION = 1.0;
@@ -65,7 +66,7 @@ export class NodeManager {
     const threeSettings = settingsManager.getThreeJSSettings();
     
     // Initialize with proper geometries
-    const nodeGeometry = new THREE.SphereGeometry(threeSettings.nodes.size, NODE_SEGMENTS, NODE_SEGMENTS);
+    const nodeGeometry = new THREE.SphereGeometry(threeSettings.nodes.size * NODE_SIZE_MULTIPLIER, NODE_SEGMENTS, NODE_SEGMENTS);
     const nodeMaterial = new THREE.MeshPhongMaterial({
       color: new THREE.Color(threeSettings.nodes.color),
       shininess: 100, // High shininess for metallic look
@@ -103,6 +104,11 @@ export class NodeManager {
   private onSettingsChanged(): void {
     const threeSettings = settingsManager.getThreeJSSettings();
 
+    // Update node geometry with new size
+    const nodeGeometry = new THREE.SphereGeometry(threeSettings.nodes.size * NODE_SIZE_MULTIPLIER, NODE_SEGMENTS, NODE_SEGMENTS);
+    this.nodeInstances.geometry.dispose();
+    this.nodeInstances.geometry = nodeGeometry;
+
     // Update node material
     const nodeMaterial = this.nodeInstances.material as THREE.MeshPhongMaterial;
     nodeMaterial.color.set(threeSettings.nodes.color);
@@ -115,20 +121,29 @@ export class NodeManager {
     edgeMaterial.color.set(threeSettings.edges.color);
     edgeMaterial.opacity = threeSettings.edges.opacity;
 
-    // Request fresh graph data to apply new visual attributes
-    this.requestGraphRefresh();
+    // Update all node positions to account for new size
+    this.currentNodes.forEach((node, index) => {
+      position.set(
+        node.data.position.x,
+        node.data.position.y,
+        node.data.position.z
+      );
+      matrix.compose(position, quaternion, scale);
+      this.nodeInstances.setMatrixAt(index, matrix);
+    });
+    this.nodeInstances.instanceMatrix.needsUpdate = true;
+
+    // Update all edges to account for new node size
+    this.currentEdges.forEach((edge, index) => {
+      const sourceNode = this.currentNodes.find(n => n.id === edge.source);
+      const targetNode = this.currentNodes.find(n => n.id === edge.target);
+      if (sourceNode && targetNode) {
+        this.updateEdgeInstance(index, sourceNode, targetNode);
+      }
+    });
+    this.edgeInstances.instanceMatrix.needsUpdate = true;
 
     logger.log('Visual settings updated:', threeSettings);
-  }
-
-  private requestGraphRefresh(): void {
-    // Use WebSocket to request fresh graph data
-    const webSocket = (window as any).webSocket;
-    if (webSocket) {
-      webSocket.send({
-        type: 'requestInitialData'
-      });
-    }
   }
 
   static getInstance(sceneManager: SceneManager): NodeManager {
@@ -331,9 +346,9 @@ export class NodeManager {
 
     // Get current settings
     const threeSettings = settingsManager.getThreeJSSettings();
-    const nodeVisualOffset = threeSettings.nodes.size;
+    const nodeVisualOffset = threeSettings.nodes.size * NODE_SIZE_MULTIPLIER;
 
-    scale.set(1, Math.max(0.001, length - (nodeVisualOffset * 2)), 1);
+    scale.set(nodeVisualOffset, nodeVisualOffset, nodeVisualOffset);
 
     matrix.compose(position, quaternion, scale);
     this.edgeInstances.setMatrixAt(index, matrix);
@@ -370,34 +385,36 @@ export class NodeManager {
   }
 
   private processNodeChunk(floatArray: Float32Array, startIndex: number, endIndex: number): void {
-    // Reset quaternion and scale for each chunk to ensure clean transforms
-    quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0); // Identity quaternion using axis-angle
-    scale.set(1, 1, 1);         // Unit scale
-
+    // Reset quaternion to identity
+    quaternion.identity();
+    
+    const threeSettings = settingsManager.getThreeJSSettings();
+    const nodeSize = threeSettings.nodes.size;
+    
     for (let i = startIndex; i < endIndex; i++) {
       const baseIndex = VERSION_OFFSET + (i * FLOATS_PER_NODE);
       
-      // Extract position directly into position vector
+      // Extract position
       position.set(
         floatArray[baseIndex],
         floatArray[baseIndex + 1],
         floatArray[baseIndex + 2]
       );
 
-      // Create a new matrix for this instance to avoid transformation bleeding
-      const instanceMatrix = new THREE.Matrix4();
-      instanceMatrix.compose(position, quaternion, scale);
-      this.nodeInstances.setMatrixAt(i, instanceMatrix);
+      // Apply uniform scale
+      scale.set(nodeSize, nodeSize, nodeSize);
+      
+      // Create matrix with uniform scaling
+      matrix.compose(position, quaternion, scale);
+      this.nodeInstances.setMatrixAt(i, matrix);
 
       // Update node data
       const node = this.currentNodes[i];
       if (node) {
-        // Update position
         node.data.position.x = floatArray[baseIndex];
         node.data.position.y = floatArray[baseIndex + 1];
         node.data.position.z = floatArray[baseIndex + 2];
         
-        // Update velocity
         node.data.velocity.x = floatArray[baseIndex + 3];
         node.data.velocity.y = floatArray[baseIndex + 4];
         node.data.velocity.z = floatArray[baseIndex + 5];
