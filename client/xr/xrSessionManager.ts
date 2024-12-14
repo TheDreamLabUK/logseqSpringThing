@@ -46,6 +46,8 @@ export class XRSessionManager {
   private xrSessionStartCallback: (() => void) | null = null;
   private xrSessionEndCallback: (() => void) | null = null;
   private xrAnimationFrameCallback: ((frame: XRFrame) => void) | null = null;
+  private controllerAddedCallback: ((controller: THREE.Group) => void) | null = null;
+  private controllerRemovedCallback: ((controller: THREE.Group) => void) | null = null;
 
   private constructor(sceneManager: SceneManager) {
     this.sceneManager = sceneManager;
@@ -137,42 +139,33 @@ export class XRSessionManager {
     this.arGroup.add(this.arLight);
 
     // Setup controllers
-    this.controllers.forEach((controller, _index) => {
-      this.cameraRig.add(controller);
-      controller.layers.set(1); // Set to AR layer
-      this.setupController(controller);
+    this.controllers.forEach((_controller, index) => {
+      this.setupController(index);
     });
 
     // Setup controller grips
-    this.controllerGrips.forEach((grip, _index) => {
-      this.cameraRig.add(grip);
-      grip.layers.set(1); // Set to AR layer
+    this.controllerGrips.forEach(grip => {
       this.setupControllerGrip(grip);
     });
   }
 
-  private setupController(controller: THREE.Group): void {
-    controller.addEventListener('connected', this.onControllerConnected);
-    controller.addEventListener('disconnected', this.onControllerDisconnected);
-  }
+  private setupController(index: number): void {
+    const controller = this.controllers[index];
+    const controllerGrip = this.controllerGrips[index];
 
-private onControllerConnected = (event: THREE.Event): void => {
-  // Cast the event to XRControllerEvent
-  const xrEvent = event as THREE.XRControllerEvent;
-  // Cast the event target to Object3D first, then to Group
-  const controller = (xrEvent.target as unknown as THREE.Object3D) as THREE.Group;
-  controller.userData.inputSource = xrEvent.data;
+    controller.addEventListener('connected', (event: any) => {
+      const controllerModel = this.buildController(event.data);
+      controller.add(controllerModel);
+      this.notifyControllerAdded(controller);
+    });
 
-  if (xrEvent.data.targetRayMode === 'tracked-pointer') {
-    const pointer = this.createControllerPointer();
-    controller.add(pointer);
-  }
-}
+    controller.addEventListener('disconnected', () => {
+      controller.remove(...controller.children);
+      this.notifyControllerRemoved(controller);
+    });
 
-private onControllerDisconnected = (event: THREE.Event): void => {
-  // Cast the event target to Object3D first, then to Group
-  const controller = (event.target as unknown as THREE.Object3D) as THREE.Group;
-  controller.remove(...controller.children);
+    this.cameraRig.add(controller);
+    this.cameraRig.add(controllerGrip);
   }
 
   private setupControllerGrip(grip: THREE.Group): void {
@@ -180,17 +173,13 @@ private onControllerDisconnected = (event: THREE.Event): void => {
     grip.add(controllerModel);
   }
 
-  private createControllerPointer(): THREE.Mesh {
-    const geometry = new THREE.CylinderGeometry(0.01, 0.02, 0.08);
-    geometry.rotateX(-Math.PI / 2);
-    const material = new THREE.MeshPhongMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.8
-    });
-    const pointer = new THREE.Mesh(geometry, material);
-    pointer.layers.set(1); // Set to AR layer
-    return pointer;
+  private buildController(_inputSource: XRInputSource): THREE.Group {
+    const controller = new THREE.Group();
+    const geometry = new THREE.SphereGeometry(0.1, 16, 16);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const sphere = new THREE.Mesh(geometry, material);
+    controller.add(sphere);
+    return controller;
   }
 
   /**
@@ -421,6 +410,22 @@ private onControllerDisconnected = (event: THREE.Event): void => {
     this.xrAnimationFrameCallback = onFrame;
   }
 
+  public onControllerAdded(callback: (controller: THREE.Group) => void): void {
+    this.controllerAddedCallback = callback;
+  }
+
+  public onControllerRemoved(callback: (controller: THREE.Group) => void): void {
+    this.controllerRemovedCallback = callback;
+  }
+
+  private notifyControllerAdded(controller: THREE.Group): void {
+    this.controllerAddedCallback?.(controller);
+  }
+
+  private notifyControllerRemoved(controller: THREE.Group): void {
+    this.controllerRemovedCallback?.(controller);
+  }
+
   /**
    * Get XR objects
    */
@@ -461,41 +466,33 @@ private onControllerDisconnected = (event: THREE.Event): void => {
    * Clean up resources
    */
   dispose(): void {
-    if (this.hitTestSource) {
-      this.hitTestSource.cancel();
-    }
-
     if (this.session) {
-      this.session.end();
+      this.session.end().catch(console.error);
     }
 
-    // Remove event listeners
     this.controllers.forEach(controller => {
-      controller.removeEventListener('connected', this.onControllerConnected);
-      controller.removeEventListener('disconnected', this.onControllerDisconnected);
-      controller.remove(...controller.children);
+      controller.removeEventListener('connected', (event: any) => {
+        const controllerModel = this.buildController(event.data);
+        controller.add(controllerModel);
+        this.notifyControllerAdded(controller);
+      });
+
+      controller.removeEventListener('disconnected', () => {
+        controller.remove(...controller.children);
+        this.notifyControllerRemoved(controller);
+      });
     });
 
     this.controllerGrips.forEach(grip => {
       grip.remove(...grip.children);
     });
 
-    // Clean up AR group
-    this.arGroup.remove(...this.arGroup.children);
-    this.cameraRig.remove(this.arGroup);
+    this.hitTestSource?.cancel();
+    this.hitTestSource = null;
+    this.hitTestSourceRequested = false;
 
-    // Clean up camera rig
-    this.cameraRig.remove(...this.cameraRig.children);
-    
-    const scene = this.sceneManager.getScene();
-    scene.remove(this.cameraRig);
-
-    // Dispose geometries and materials
-    this.gridHelper.geometry.dispose();
-    (this.gridHelper.material as THREE.Material).dispose();
-    this.groundPlane.geometry.dispose();
-    (this.groundPlane.material as THREE.Material).dispose();
-    this.hitTestMarker.geometry.dispose();
-    (this.hitTestMarker.material as THREE.Material).dispose();
+    this.session = null;
+    this.referenceSpace = null;
+    this.isPresenting = false;
   }
 }
