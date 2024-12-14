@@ -3,20 +3,17 @@
  */
 
 import { VisualizationSettings } from '../core/types';
-import { DEFAULT_VISUALIZATION_SETTINGS, IS_PRODUCTION } from '../core/constants';
+import { DEFAULT_VISUALIZATION_SETTINGS } from '../core/constants';
 import { createLogger } from '../core/utils';
+import { WebSocketService } from '../websocket/websocketService';
 
 const logger = createLogger('SettingsManager');
 
-// Settings endpoint
-const SETTINGS_URL = IS_PRODUCTION
-  ? 'https://www.visionflow.info/settings'
-  : 'http://localhost:4000/settings';
-
 export class SettingsManager {
-  private static instance: SettingsManager;
+  private static instance: SettingsManager | null = null;
   private settings: VisualizationSettings;
   private settingsListeners: Set<(settings: VisualizationSettings) => void>;
+  private webSocket: WebSocketService | null = null;
 
   private constructor() {
     this.settings = { ...DEFAULT_VISUALIZATION_SETTINGS };
@@ -32,44 +29,49 @@ export class SettingsManager {
   }
 
   /**
-   * Load settings from the server
+   * Initialize WebSocket connection
    */
-  async loadSettings(): Promise<void> {
-    try {
-      const response = await fetch(SETTINGS_URL);
-      if (!response.ok) {
-        throw new Error(`Failed to load settings: ${response.statusText}`);
+  initializeWebSocket(webSocket: WebSocketService): void {
+    this.webSocket = webSocket;
+
+    // Listen for settings updates from server
+    this.webSocket.on('settingsUpdated', (data) => {
+      if (data && data.settings) {
+        this.settings = data.settings;
+        this.notifyListeners();
       }
-      const settings = await response.json();
-      this.updateSettings(settings);
-      logger.log('Loaded settings from server');
-    } catch (error) {
-      logger.error('Error loading settings:', error);
-      // Fall back to default settings
-      this.updateSettings(DEFAULT_VISUALIZATION_SETTINGS);
-    }
+    });
+
+    logger.log('WebSocket initialized for settings');
   }
 
   /**
-   * Save current settings to the server
+   * Load settings from the server via WebSocket
+   */
+  async loadSettings(): Promise<void> {
+    // Settings will be received through the settingsUpdated WebSocket message
+    // No need to explicitly request them as they're sent with initial data
+    logger.log('Settings will be received through WebSocket');
+  }
+
+  /**
+   * Save current settings to the server via WebSocket
    */
   async saveSettings(): Promise<void> {
+    if (!this.webSocket) {
+      throw new Error('WebSocket not initialized');
+    }
+
     try {
-      const response = await fetch(SETTINGS_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(this.settings),
+      this.webSocket.send({
+        type: 'updateSettings',
+        data: {
+          settings: this.settings
+        }
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to save settings: ${response.statusText}`);
-      }
-
-      logger.log('Settings saved successfully');
+      logger.log('Settings update sent through WebSocket');
     } catch (error) {
-      logger.error('Error saving settings:', error);
+      logger.error('Error sending settings update:', error);
       throw error;
     }
   }
@@ -83,9 +85,18 @@ export class SettingsManager {
       ...newSettings
     };
 
-    logger.log('Updated settings');
+    logger.log('Updated settings locally');
+    this.notifyListeners();
+    
+    // Send update to server if WebSocket is available
+    if (this.webSocket) {
+      this.saveSettings().catch(error => {
+        logger.error('Failed to save settings to server:', error);
+      });
+    }
+  }
 
-    // Notify all listeners of the settings change
+  private notifyListeners(): void {
     this.settingsListeners.forEach(listener => {
       try {
         listener(this.settings);
@@ -117,6 +128,20 @@ export class SettingsManager {
    */
   resetToDefaults(): void {
     this.updateSettings(DEFAULT_VISUALIZATION_SETTINGS);
+  }
+
+  /**
+   * Clean up resources
+   */
+  dispose(): void {
+    if (this.webSocket) {
+      // Remove WebSocket listeners
+      this.webSocket.off('settingsUpdated', this.notifyListeners);
+      this.webSocket = null;
+    }
+    // Clear all listeners
+    this.settingsListeners.clear();
+    SettingsManager.instance = null;
   }
 
   // Essential setting getters
@@ -193,5 +218,9 @@ export class SettingsManager {
   }
 }
 
-// Export a singleton instance
+// Export singleton instance and initialization function
 export const settingsManager = SettingsManager.getInstance();
+
+export function initializeSettingsManager(webSocket: WebSocketService): void {
+  settingsManager.initializeWebSocket(webSocket);
+}
