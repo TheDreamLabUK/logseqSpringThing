@@ -86,15 +86,14 @@ rate_limit = 100
 model = "gpt-4o-realtime-preview-2024-10-01"
 
 [default]
-max_concurrent_requests = 5
+max_concurrent_requests = 10
 max_retries = 3
-retry_delay = 5
-api_client_timeout = 30
-max_payload_size = 5242880       # 5MB in bytes
-enable_request_logging = true     # Enable request logging for debugging
+retry_delay = 1000
+api_client_timeout = 30000
+max_payload_size = 10485760
+enable_request_logging = true
 enable_metrics = true
 metrics_port = 9090
-log_level = "debug"              # Changed to debug for more verbose logging
 log_format = "json"
 
 [rendering]
