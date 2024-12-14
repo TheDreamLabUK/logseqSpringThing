@@ -69,6 +69,18 @@ pub struct DebugSettings {
     pub log_full_json: bool,
 }
 
+impl Default for DebugSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            enable_websocket_debug: false,
+            enable_data_debug: false,
+            log_binary_headers: false,
+            log_full_json: false,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GitHubSettings {
     #[serde(default = "default_token")]
@@ -166,7 +178,6 @@ pub struct DefaultSettings {
     pub enable_request_logging: bool,
     pub enable_metrics: bool,
     pub metrics_port: u16,
-    pub log_level: String,
     pub log_format: String,
 }
 

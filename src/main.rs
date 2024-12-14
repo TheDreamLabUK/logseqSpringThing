@@ -1,34 +1,26 @@
-use actix_files::Files;
-use actix_web::{web, App, HttpServer, middleware, HttpResponse};
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use std::collections::HashMap;
-use tokio::time::{interval, Duration};
-use dotenvy::dotenv;
-use std::error::Error;
-use cudarc::driver::DriverError;
+#[macro_use]
+extern crate log;
 
 #[macro_use]
 extern crate webxr;
 
-use webxr::AppState;
-use webxr::config::Settings;
-use webxr::handlers::{
-    file_handler, 
-    graph_handler, 
-    ragflow_handler, 
-    visualization_handler,
-    perplexity_handler,
+use webxr::{
+    AppState, Settings, GraphData,
+    init_debug_settings,
+    file_handler, graph_handler, perplexity_handler, ragflow_handler, visualization_handler,
+    RealGitHubService, FileService, PerplexityService, RAGFlowService, RAGFlowError,
+    GraphService, RealGitHubPRService, ws_handler, GPUCompute
 };
-use webxr::models::graph::GraphData;
-use webxr::services::file_service::{RealGitHubService, FileService};
-use webxr::services::perplexity_service::PerplexityService;
-use webxr::services::ragflow_service::{RAGFlowService, RAGFlowError};
-use webxr::services::graph_service::GraphService;
-use webxr::services::github_service::RealGitHubPRService;
-use webxr::utils::socket_flow_handler::ws_handler;
-use webxr::utils::gpu_compute::GPUCompute;
-use webxr::utils::debug_logging::init_debug_settings;
+
+use actix_web::{web, App, HttpServer, middleware, HttpResponse};
+use actix_files::Files;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use std::collections::HashMap;
+use std::error::Error;
+use cudarc::driver::DriverError;
+use tokio::time::{interval, Duration};
+use dotenvy::dotenv;
 
 #[derive(Debug)]
 pub struct AppError(Box<dyn Error + Send + Sync>);
@@ -162,18 +154,19 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // Set log level from settings and initialize debug settings
-    let (log_level, debug_enabled, websocket_debug, data_debug) = {
+    // Initialize debug settings
+    let (debug_enabled, websocket_debug, data_debug) = {
         let settings_read = settings.read().await;
         (
-            settings_read.default.log_level.clone(),
             settings_read.server_debug.enabled,
             settings_read.server_debug.enable_websocket_debug,
-            settings_read.server_debug.enable_data_debug
+            settings_read.server_debug.enable_data_debug,
         )
     };
+
+    // Set default log level
+    std::env::set_var("RUST_LOG", "info");
     
-    std::env::set_var("RUST_LOG", log_level);
     env_logger::init();
     
     // Initialize our debug logging system
