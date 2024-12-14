@@ -10,10 +10,10 @@ import { WebSocketService } from '../websocket/websocketService';
 const logger = createLogger('SettingsManager');
 
 export class SettingsManager {
-  private static instance: SettingsManager;
+  private static instance: SettingsManager | null = null;
   private settings: VisualizationSettings;
   private settingsListeners: Set<(settings: VisualizationSettings) => void>;
-  private webSocket: WebSocketService;
+  private webSocket: WebSocketService | null = null;
 
   private constructor(webSocket: WebSocketService) {
     this.settings = { ...DEFAULT_VISUALIZATION_SETTINGS };
@@ -39,6 +39,23 @@ export class SettingsManager {
   }
 
   /**
+   * Initialize WebSocket connection
+   */
+  initializeWebSocket(webSocket: WebSocketService): void {
+    this.webSocket = webSocket;
+
+    // Listen for settings updates from server
+    this.webSocket.on('settingsUpdated', (data) => {
+      if (data && data.settings) {
+        this.settings = data.settings;
+        this.notifyListeners();
+      }
+    });
+
+    logger.log('WebSocket initialized for settings');
+  }
+
+  /**
    * Load settings from the server via WebSocket
    */
   async loadSettings(): Promise<void> {
@@ -51,6 +68,10 @@ export class SettingsManager {
    * Save current settings to the server via WebSocket
    */
   async saveSettings(): Promise<void> {
+    if (!this.webSocket) {
+      throw new Error('WebSocket not initialized');
+    }
+
     try {
       this.webSocket.send({
         type: 'updateSettings',
@@ -76,6 +97,13 @@ export class SettingsManager {
 
     logger.log('Updated settings locally');
     this.notifyListeners();
+    
+    // Send update to server if WebSocket is available
+    if (this.webSocket) {
+      this.saveSettings().catch(error => {
+        logger.error('Failed to save settings to server:', error);
+      });
+    }
   }
 
   private notifyListeners(): void {
@@ -110,6 +138,20 @@ export class SettingsManager {
    */
   resetToDefaults(): void {
     this.updateSettings(DEFAULT_VISUALIZATION_SETTINGS);
+  }
+
+  /**
+   * Clean up resources
+   */
+  dispose(): void {
+    if (this.webSocket) {
+      // Remove WebSocket listeners
+      this.webSocket.off('settingsUpdated', this.notifyListeners);
+      this.webSocket = null;
+    }
+    // Clear all listeners
+    this.settingsListeners.clear();
+    SettingsManager.instance = null;
   }
 
   // Essential setting getters
@@ -186,10 +228,9 @@ export class SettingsManager {
   }
 }
 
-// Export a singleton instance
-// Note: This will be initialized with the WebSocket instance in index.ts
-export let settingsManager: SettingsManager;
+// Export singleton instance and initialization function
+export const settingsManager = SettingsManager.getInstance();
 
 export function initializeSettingsManager(webSocket: WebSocketService): void {
-  settingsManager = SettingsManager.getInstance(webSocket);
+  settingsManager.initializeWebSocket(webSocket);
 }

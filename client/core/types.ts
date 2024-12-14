@@ -245,14 +245,14 @@ export interface EnableBinaryUpdatesMessage {
 
 export interface SettingsUpdateMessage {
   type: 'settingsUpdated';
-  data: {
+data: {
     settings: VisualizationSettings;
   };
 }
 
 export interface UpdateSettingsMessage {
   type: 'updateSettings';
-  data: {
+data: {
     settings: Partial<VisualizationSettings>;
   };
 }

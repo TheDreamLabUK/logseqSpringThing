@@ -4,334 +4,258 @@ enabled = true                     # Master switch for server debug logging, for
 enable_websocket_debug = false     # Enable detailed websocket debugging
 enable_data_debug = false          # Enable data exchange debugging
 log_binary_headers = false         # Log binary message headers
-log_full_json = false             # Log complete JSON payloads
+log_full_json = false              # Log complete JSON payloads
 
 [client_debug]
-enabled = false                    # Master switch for client debug logging
-enable_websocket_debug = false     # Enable detailed websocket debugging
-enable_data_debug = false          # Enable data exchange debugging
-log_binary_headers = false         # Log binary message headers
-log_full_json = false             # Log complete JSON payloads
+enable_data_debug = false
+enable_websocket_debug = false
+enabled = false
+log_binary_headers = false
+log_full_json = false
+
+[animations]
+animation_quality = "high"
+animation_smoothing = 0.92
+edge_animation_enabled = true
+edge_pulse_amplitude = 0.3
+edge_pulse_color = "#FFD700"
+edge_pulse_enabled = true
+edge_pulse_frequency = 0.5
+edge_pulse_width = 0.2
+enable_motion_blur = true
+enable_node_animations = true
+flow_particle_color = "#FFD700"
+flow_particle_count = 5
+flow_particle_size = 0.02
+flow_particle_speed = 0.8
+flow_particle_trail = true
+flow_particle_trail_length = 0.2
+flow_particles_enabled = true
+max_concurrent_animations = 10
+motion_blur_strength = 0.4
+animation_smoothing = 0.92
+max_concurrent_animations = 10
+
+[ar]
+drag_threshold = 0.04
+enable_hand_tracking = true
+enable_haptics = true
+enable_light_estimation = true
+enable_plane_detection = true
+enable_scene_understanding = true
+gesture_smoothing = 0.9
+hand_mesh_color = "#FFD700"
+hand_mesh_enabled = true
+hand_mesh_opacity = 0.3
+hand_point_size = 0.01
+hand_ray_color = "#FFD700"
+hand_ray_enabled = true
+hand_ray_width = 0.002
+hand_trail_enabled = true
+hand_trail_length = 0.5
+hand_trail_opacity = 0.3
+pinch_threshold = 0.015
+room_scale = true
+rotation_threshold = 0.08
+snap_to_floor = true
+
+[audio]
+ambient_variation = 0.1
+ambient_volume = 0.2
+audio_rolloff = "logarithmic"
+collision_frequency = 220
+creation_frequency = 550
+deletion_frequency = 275
+doppler_factor = 0.5
+edge_creation_sound = true
+edge_creation_volume = 0.5
+edge_deletion_sound = true
+edge_deletion_volume = 0.4
+edge_flow_sound = true
+edge_flow_volume = 0.3
+enable_ambient_sounds = true
+enable_interaction_sounds = true
+enable_spatial_audio = true
+flow_frequency = 385
+hover_frequency = 330
+hover_sound_enabled = true
+hover_sound_volume = 0.4
+master_volume = 0.8
+max_audio_distance = 20.0
+node_collision_sound = true
+node_collision_volume = 0.5
+node_creation_sound = true
+node_creation_volume = 0.6
+node_deletion_sound = true
+node_deletion_volume = 0.5
+selection_frequency = 440
+selection_sound_enabled = true
+selection_sound_volume = 0.7
+
+[bloom]
+edge_bloom_strength = 1.4
+enabled = true
+environment_bloom_strength = 1.2
+node_bloom_strength = 1.8
+radius = 0.5
+strength = 1.8
+threshold = 0.15
+
+[rendering]
+ambient_light_intensity = 0.7
+background_color = "#000000"
+directional_light_intensity = 1.0
+enable_ambient_occlusion = true
+enable_antialiasing = true
+enable_gpu_acceleration = true
+enable_grid = true
+enable_hemisphere_light = true
+enable_shadows = true
+environment_intensity = 1.2
+fog_color = "#000000"
+fog_density = 0.0008
+fog_enabled = true
+grid_color = "#1A1A1A"
+grid_divisions = 20
+grid_size = 10
+pixel_ratio = 1.5
+shadow_map_size = 4096
 
 [network]
-domain = "localhost"               # Production domain is in dotenv
-port = 3000                       # Port for backend server
-bind_address = "0.0.0.0"          # bind to all interfaces for docker
-enable_tls = false                # TLS is handled by Cloudflare tunnel
-min_tls_version = ""              # Not needed since TLS is handled by Cloudflare
-enable_http2 = false              # HTTP/2 is handled by Cloudflare
-max_request_size = 10485760       # 10MB in bytes
+bind_address = "0.0.0.0"
+domain = "localhost"
+enable_http2 = false
 enable_rate_limiting = true
+enable_tls = false
+max_request_size = 10485760
+min_tls_version = ""
+port = 3000
 rate_limit_requests = 100
 rate_limit_window = 60
-tunnel_id = "dummy"               # Cloudflare tunnel ID handled in dotenv
+tunnel_id = "dummy"
 
-[websocket]
-compression_enabled = true         # Enable WebSocket compression
-compression_threshold = 1024       # Compress messages larger than 1KB
-max_message_size = 100485760      # Maximum WebSocket message size (100MB)
-update_rate = 90                  # Update rate in FPS (90fps for smooth VR)
-heartbeat_interval = 15000        # Heartbeat interval in milliseconds
-heartbeat_timeout = 60000         # Heartbeat timeout in milliseconds
-max_connections = 1000            # Maximum concurrent WebSocket connections
-reconnect_attempts = 3            # Number of reconnection attempts
-reconnect_delay = 5000            # Delay between reconnection attempts (ms)
-binary_chunk_size = 65536         # Size of binary message chunks (64KB)
+[nodes]
+age_max_days = 30
+base_color = "#FFB700"
+base_size = 0.2
+clearcoat = 1.0
+clearcoat_roughness = 0.05
+color_scheme = "age"
+core_node_color = "#FFC125"
+enable_hover_effect = true
+enable_instancing = true
+enable_transparency = true
+geometry_segments = 32
+highlight_color = "#FFFFFF"
+highlight_duration = 350
+highlight_intensity = 3.0
+hover_scale = 1.15
+material_type = "physical"
+metalness = 0.85
+new_node_color = "#FFD700"
+old_node_color = "#E6A640"
+opacity = 0.92
+roughness = 0.15
+secondary_node_color = "#FFD147"
+size_by_connections = true
+size_range = [
+    0.2,
+    0.5,
+]
 
-[security]
-enable_cors = false
-allowed_origins = []
-enable_csrf = false               # CSRF is handled by Cloudflare
-csrf_token_timeout = 3600
-session_timeout = 3600
-cookie_secure = true
-cookie_httponly = true
-cookie_samesite = "Strict"
-enable_security_headers = false    # Security headers are handled by Cloudflare
-enable_request_validation = true
-enable_audit_logging = true
-audit_log_path = "/app/logs/audit.log"
+[labels]
+enable_labels = true
+font_family = "Arial"
+desktop_font_size = 48
+ar_font_size = 32
+padding = 28
+background_opacity = 0.92
+max_visible_labels = 75
+vertical_offset = 2.8
+close_offset = 0.3
+view_angle_fade = 0.7
+text_color = "#FFFFFF"
+info_color = "#E6E6E6"
+background_color = "#000000"
+
+[default]
+api_client_timeout = 30
+enable_metrics = true
+enable_request_logging = true
+log_format = "json"
+log_level = "debug"
+max_concurrent_requests = 5
+max_payload_size = 5242880
+max_retries = 3
+metrics_port = 9090
+retry_delay = 5
+
+[edges]
+arrow_size = 0.15
+base_width = 2.0
+color = "#FFD700"
+curve_segments = 24
+enable_arrows = true
+enable_glow = true
+glow_color = "#FFD700"
+glow_intensity = 0.7
+highlight_color = "#FFFFFF"
+opacity = 0.6
+width_by_strength = true
+width_range = [
+    2.0,
+    8.0,
+]
 
 [github]
-token = "default_token"
+base_path = "default_path"
 owner = "default_owner"
 repo = "default_repo"
-base_path = "default_path"
+token = "default_token"
 rate_limit = true
 
 [ragflow]
 api_key = "default_ragflow_key"
-base_url = "http://ragflow-server/v1/"  # Use Docker service name
-timeout = 30
+base_url = "http://ragflow-server/v1/"
 max_retries = 3
+timeout = 30
+
+[physics]
+attraction_strength = 0.015
+bounds_size = 12.0
+collision_radius = 0.25
+damping = 0.88
+enable_bounds = true
+enable_collision = true
+enabled = true
+iterations = 500
+max_velocity = 2.5
+repulsion_strength = 1500.0
+spring_strength = 0.018
 
 [perplexity]
 api_key = "default_perplexity_key"
-prompt = "You are an AI assistant for LogSeq knowledge summaries via perplexity API. Style: Informative, analytical, optimistic, critical, conversational, authoritative. Markdown: hierarchical headings (- #), minimal bold, italics for book titles, descriptive links [URL](text), images ![alt](path){:width height}, embeds {{type id}}, lists with '-', block refs [[title]], properties property:: value, code blocks ```lang``` and `inline code`, \r\n newlines, public:: true at start/end. UK spelling, introduce acronyms once, numeric citations, [[reference]] for sources, minimal emojis, parentheses for asides, collapsed:: true. Focus on emerging tech (decentralization, AI, XR), detail, credible sources, implications, examples, future-oriented. Adhere strictly, ensure accuracy, consistency, large context, refine with feedback."
-model = "llama-3.1-sonar-small-128k-online"
 api_url = "https://api.perplexity.ai/chat/completions"
-max_tokens = 4096
-temperature = 0.5
-top_p = 0.9
-presence_penalty = 0.0
 frequency_penalty = 1.0
-timeout = 30
+max_tokens = 4096
+model = "llama-3.1-sonar-small-128k-online"
+presence_penalty = 0.0
+prompt = """
+You are an AI assistant for LogSeq knowledge summaries via perplexity API. Style: Informative, analytical, optimistic, critical, conversational, authoritative. Markdown: hierarchical headings (- #), minimal bold, italics for book titles, descriptive links [URL](text), images ![alt](path){:width height}, embeds {{type id}}, lists with '-', block refs [[title]], properties property:: value, code blocks ```lang``` and `inline code`, \r
+ newlines, public:: true at start/end. UK spelling, introduce acronyms once, numeric citations, [[reference]] for sources, minimal emojis, parentheses for asides, collapsed:: true. Focus on emerging tech (decentralization, AI, XR), detail, credible sources, implications, examples, future-oriented. Adhere strictly, ensure accuracy, consistency, large context, refine with feedback."""
 rate_limit = 100
-
-[openai]
-api_key = "default_openai_key"
-base_url = "wss://api.openai.com/v1/realtime"
+temperature = 0.5
 timeout = 30
-rate_limit = 100
-model = "gpt-4o-realtime-preview-2024-10-01"
+top_p = 0.9
 
-[default]
-max_concurrent_requests = 10
-max_retries = 3
-retry_delay = 1000
-api_client_timeout = 30000
-max_payload_size = 10485760
-enable_request_logging = true
-enable_metrics = true
-metrics_port = 9090
-log_format = "json"
-
-[rendering]
-# Core rendering settings
-enable_antialiasing = true        # Enable FXAA antialiasing
-enable_shadows = true             # Enable real-time shadows
-enable_ambient_occlusion = true   # Enable SSAO for depth
-shadow_map_size = 4096           # High-quality shadow resolution
-pixel_ratio = 1.5                # Enhanced pixel ratio for clarity
-enable_gpu_acceleration = true    # Use GPU for physics/rendering
-
-# Environment settings
-background_color = "#000000"      # Deep black background
-environment_intensity = 1.2       # Vibrant environment lighting
-ambient_light_intensity = 0.7     # Rich ambient illumination
-directional_light_intensity = 1.0 # Strong directional lighting
-enable_hemisphere_light = true    # Enable hemisphere lighting
-fog_enabled = true               # Enable atmospheric depth
-fog_color = "#000000"            # Deep black fog
-fog_density = 0.0008             # Subtle fog effect
-enable_grid = true               # Show reference grid in AR/VR
-grid_size = 10                   # Grid size in meters
-grid_divisions = 20              # Fine grid detail
-grid_color = "#1A1A1A"           # Subtle grid color
-
-[nodes]
-# Node appearance
-base_size = 0.2                  # Substantial node presence
-size_range = [0.2, 0.5]          # Impactful size range
-size_by_connections = true       # Scale nodes by importance
-geometry_segments = 32           # High-detail spheres
-enable_instancing = true         # Efficient rendering
-
-# Node materials
-material_type = "physical"       # Premium material quality
-metalness = 0.85                 # Strong metallic finish
-roughness = 0.15                 # Glossy surface
-clearcoat = 1.0                  # Maximum clear coat
-clearcoat_roughness = 0.05       # Mirror-like finish
-opacity = 0.92                   # Subtle transparency
-enable_transparency = true       # Enable transparency
-
-# Node colors
-base_color = "#FFB700"           # Rich golden base
-color_scheme = "age"             # Dynamic age-based coloring
-new_node_color = "#FFD700"       # Bright gold for new
-old_node_color = "#E6A640"       # Warm aged gold
-core_node_color = "#FFC125"      # Vibrant core nodes
-secondary_node_color = "#FFD147"  # Harmonious secondary
-age_max_days = 30                # Month-long aging
-
-# Node highlighting
-highlight_color = "#FFFFFF"       # Pure white highlight
-highlight_intensity = 3.0         # Strong highlight effect
-highlight_duration = 350          # Smooth highlight fade
-enable_hover_effect = true       # Interactive feedback
-hover_scale = 1.15               # Subtle size increase
-
-[edges]
-# Edge appearance
-base_width = 2.0                 # Bold connections
-width_range = [2.0, 8.0]         # Impactful width range
-width_by_strength = true         # Dynamic connection strength
-curve_segments = 24              # Smooth curves
-enable_arrows = true             # Show relationships
-arrow_size = 0.15                # Clear directional markers
-
-# Edge materials
-opacity = 0.6                    # Clear visibility
-color = "#FFD700"                # Golden connections
-highlight_color = "#FFFFFF"       # Bright highlights
-enable_glow = true               # Edge illumination
-glow_intensity = 0.7             # Strong glow
-glow_color = "#FFD700"           # Golden glow
-
-[labels]
-# Label appearance
-enable_labels = true             # Show node labels
-font_family = "Arial"            # Clean font
-desktop_font_size = 48           # Large desktop text
-ar_font_size = 32               # Clear AR text
-padding = 28                     # Comfortable spacing
-background_opacity = 0.92        # Clear backgrounds
-max_visible_labels = 75          # Abundant information
-
-# Label positioning
-vertical_offset = 2.8            # Clear separation
-close_offset = 0.3              # Comfortable viewing
-view_angle_fade = 0.7           # Smooth fade
-depth_fade_start = 7.0          # Extended visibility
-depth_fade_end = 25.0           # Far fade distance
-
-# Label colors
-text_color = "#FFFFFF"           # Bright text
-info_color = "#E6E6E6"          # Clear info text
-background_color = "#000000"     # Solid background
-
-[bloom]
-# Bloom effect settings
-enabled = true                   # Enable glow effects
-strength = 1.8                   # Strong bloom
-radius = 0.5                     # Wide bloom spread
-threshold = 0.15                 # Inclusive glow
-
-# Per-element bloom
-node_bloom_strength = 1.8        # Strong node glow
-edge_bloom_strength = 1.4        # Clear edge glow
-environment_bloom_strength = 1.2  # Ambient glow
-
-[ar]
-# AR-specific settings
-enable_plane_detection = true    # Detect surfaces
-enable_light_estimation = true   # Match real lighting
-enable_hand_tracking = true      # Enable hand input
-enable_scene_understanding = true # Room geometry
-snap_to_floor = true            # Place graph on floor
-room_scale = true               # Room-scale experience
-
-# Hand visualization
-hand_mesh_enabled = true         # Show hand models
-hand_mesh_opacity = 0.3          # Subtle hand presence
-hand_mesh_color = "#FFD700"      # Golden hands
-hand_ray_enabled = true          # Show interaction rays
-hand_ray_color = "#FFD700"       # Golden rays
-hand_ray_width = 0.002          # Fine ray width
-hand_point_size = 0.01          # Clear touch points
-hand_trail_enabled = true        # Show motion trails
-hand_trail_length = 0.5         # Medium trail length
-hand_trail_opacity = 0.3        # Subtle trails
-
-# AR interaction
-pinch_threshold = 0.015         # Precise pinch detection
-drag_threshold = 0.04           # Smooth dragging
-rotation_threshold = 0.08       # Precise rotation
-enable_haptics = true           # Tactile feedback
-haptic_intensity = 0.7          # Clear feedback
-gesture_smoothing = 0.9         # Smooth input
-
-[physics]
-# Force-directed layout
-enabled = true                   # Enable physics
-iterations = 500                # Thorough simulation
-spring_strength = 0.018         # Strong connections
-repulsion_strength = 1500.0     # Clear separation
-attraction_strength = 0.015     # Balanced attraction
-damping = 0.88                  # Smooth motion
-
-# Constraints
-enable_bounds = true            # Keep organized
-bounds_size = 12.0              # Spacious boundary
-enable_collision = true         # Prevent overlap
-collision_radius = 0.25         # Clear separation
-max_velocity = 2.5              # Smooth movement
-
-[animations]
-# Node animations
-enable_node_animations = true    # Enable node animation effects
-selection_wave_enabled = true    # Expanding selection wave
-selection_wave_color = "#FFD700" # Golden wave color
-selection_wave_speed = 1.2       # Wave expansion rate
-selection_wave_size = 0.5        # Maximum wave radius
-selection_wave_opacity = 0.4     # Wave transparency
-
-pulse_enabled = true            # Gentle pulse animation
-pulse_frequency = 0.8           # Pulses per second
-pulse_amplitude = 0.15          # Pulse size variation
-pulse_color = "#FFD700"         # Pulse highlight color
-
-ripple_enabled = true           # Surface ripple effect
-ripple_speed = 1.0              # Ripple movement rate
-ripple_size = 0.4              # Maximum ripple size
-ripple_segments = 32           # Ripple detail
-ripple_color = "#FFD700"       # Ripple color
-ripple_decay = 0.85            # Ripple fade rate
-
-# Edge animations
-edge_animation_enabled = true    # Enable edge animations
-flow_particles_enabled = true    # Moving particles on edges
-flow_particle_count = 5         # Particles per edge
-flow_particle_size = 0.02       # Particle size
-flow_particle_speed = 0.8       # Movement speed
-flow_particle_color = "#FFD700" # Particle color
-flow_particle_trail = true      # Leave light trails
-flow_particle_trail_length = 0.2 # Trail length
-
-edge_pulse_enabled = true       # Edge strength pulses
-edge_pulse_frequency = 0.5      # Pulses per second
-edge_pulse_amplitude = 0.3      # Pulse intensity
-edge_pulse_color = "#FFD700"    # Pulse color
-edge_pulse_width = 0.2         # Pulse width
-
-# General animation settings
-animation_quality = "high"       # Animation detail level
-enable_motion_blur = true       # Smooth motion blur
-motion_blur_strength = 0.4      # Blur intensity
-animation_smoothing = 0.92      # Movement smoothing
-max_concurrent_animations = 10   # Simultaneous effects
-
-[audio]
-# Spatial audio settings
-enable_spatial_audio = true     # Enable 3D audio
-master_volume = 0.8            # Overall volume
-audio_rolloff = "logarithmic"  # Distance falloff
-max_audio_distance = 20.0      # Maximum hearing range
-doppler_factor = 0.5          # Motion audio effect
-
-# Interaction sounds
-enable_interaction_sounds = true # Enable feedback sounds
-selection_sound_enabled = true  # Node selection sound
-selection_sound_volume = 0.7    # Selection volume
-hover_sound_enabled = true     # Hover feedback sound
-hover_sound_volume = 0.4       # Hover volume
-
-# Node sounds
-node_collision_sound = true    # Physics impact sounds
-node_collision_volume = 0.5    # Impact volume
-node_creation_sound = true     # New node sound
-node_creation_volume = 0.6     # Creation volume
-node_deletion_sound = true     # Remove node sound
-node_deletion_volume = 0.5     # Deletion volume
-
-# Edge sounds
-edge_creation_sound = true     # New connection sound
-edge_creation_volume = 0.5     # Connection volume
-edge_deletion_sound = true     # Remove connection sound
-edge_deletion_volume = 0.4     # Deletion volume
-edge_flow_sound = true        # Data flow sound
-edge_flow_volume = 0.3        # Flow sound volume
-
-# Ambient sounds
-enable_ambient_sounds = true   # Background sounds
-ambient_volume = 0.2          # Background volume
-ambient_variation = 0.1       # Volume variation
-
-# Sound types (frequencies in Hz)
-selection_frequency = 440      # A4 note
-hover_frequency = 330         # E4 note
-collision_frequency = 220     # A3 note
-creation_frequency = 550      # C#5 note
-deletion_frequency = 275      # C#4 note
-flow_frequency = 385         # G4 note
+[websocket]
+binary_chunk_size = 65536
+compression_enabled = true
+compression_threshold = 1024
+heartbeat_interval = 15000
+heartbeat_timeout = 60000
+max_connections = 1000
+max_message_size = 100485760
+reconnect_attempts = 3
+reconnect_delay = 5000
+update_rate = 90

@@ -36,11 +36,16 @@ services:
       - ./data/markdown:/app/data/markdown
       - ./data/piper:/app/data/piper
       - ./client:/app/client
-      - ./settings.toml:/app/settings.toml:ro
+      - type: bind
+        source: ./settings.toml
+        target: /app/settings.toml
+        bind:
+          create_host_path: true
       - type: tmpfs
         target: /tmp
         tmpfs:
           size: 4G
+    user: "webxr:webxr"  # Run container as webxr user
     restart: unless-stopped
     logging:
       driver: "json-file"
