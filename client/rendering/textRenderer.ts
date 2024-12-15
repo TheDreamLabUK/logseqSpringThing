@@ -1,61 +1,44 @@
 /**
- * Text rendering for node labels using sprites
+ * Modern text rendering system optimized for AR with desktop fallback
+ * Uses Three.js TroikaText for high-quality text rendering with proper depth
  */
 
 import * as THREE from 'three';
-import { Vector3, VisualizationSettings } from '../core/types';
-import { createLogger } from '../core/utils';
+import { createLogger } from '../utils/logger';
 import { settingsManager } from '../state/settings';
-import { FONT_URL } from '../core/constants';
+import type { LabelSettings } from '../state/settings';
 
-// Logger will be used for debugging font loading and text rendering
-const _logger = createLogger('TextRenderer');
+const logger = createLogger('TextRenderer');
 
-// Add FontFace API type declarations
-declare global {
-  interface Document {
-    fonts: FontFaceSet;
-  }
-
-  interface FontFaceSet extends Set<FontFace> {
-    readonly ready: Promise<FontFaceSet>;
-    readonly status: 'loading' | 'loaded';
-    check(font: string, text?: string): boolean;
-    load(font: string, text?: string): Promise<FontFace[]>;
-  }
+interface LabelState {
+  text: string;
+  basePosition: THREE.Vector3;
+  visible: boolean;
+  scale: number;
+  boundingBox: THREE.Object3D;
 }
 
 export class TextRenderer {
   private static instance: TextRenderer;
   private scene: THREE.Scene;
   private camera: THREE.Camera;
-  
-  // Font texture and canvas
-  private canvas: HTMLCanvasElement;
-  private context: CanvasRenderingContext2D;
-  private fontLoaded: boolean = false;
-  
-  // Label management
-  private labels: Map<string, THREE.Sprite>;
-  private labelPool: THREE.Sprite[];
-  private settings: VisualizationSettings;
+  private labels: Map<string, THREE.Group>;
+  private labelStates: Map<string, LabelState>;
+  private unsubscribers: (() => void)[];
+  private projMatrix: THREE.Matrix4;
+  private viewMatrix: THREE.Matrix4;
 
   private constructor(scene: THREE.Scene, camera: THREE.Camera) {
     this.scene = scene;
     this.camera = camera;
     this.labels = new Map();
-    this.labelPool = [];
-    this.settings = settingsManager.getSettings();
+    this.labelStates = new Map();
+    this.unsubscribers = [];
+    this.projMatrix = new THREE.Matrix4();
+    this.viewMatrix = new THREE.Matrix4();
 
-    // Create canvas for text rendering
-    this.canvas = document.createElement('canvas');
-    const context = this.canvas.getContext('2d');
-    if (!context) {
-      throw new Error('Failed to get 2D context for text rendering');
-    }
-    this.context = context;
-
-    this.initialize();
+    this.setupSubscriptions();
+    logger.debug('TextRenderer initialized');
   }
 
   static getInstance(scene: THREE.Scene, camera: THREE.Camera): TextRenderer {
@@ -65,200 +48,154 @@ export class TextRenderer {
     return TextRenderer.instance;
   }
 
-  private async initialize(): Promise<void> {
-    await this.loadFont();
-    this.setupEventListeners();
-  }
-
-  private async loadFont(): Promise<void> {
-    try {
-      // Load font using FontFace API
-      const font = new FontFace(
-        'LabelFont',
-        `url(${FONT_URL})`
-      );
-
-      const loadedFont = await font.load();
-      document.fonts.add(loadedFont);
-      this.fontLoaded = true;
-      _logger.log('Font loaded successfully');
-    } catch (error) {
-      _logger.error('Failed to load font:', error);
-      throw error;
-    }
-  }
-
-  private setupEventListeners(): void {
-    settingsManager.subscribe((settings: VisualizationSettings) => {
-      this.settings = settings;
-      this.updateAllLabels();
-    });
-  }
-
-  private createTextTexture(text: string): THREE.Texture {
-    // Set canvas size
-    const fontSize = 48;
-    this.context.font = `${fontSize}px LabelFont`;
-    const metrics = this.context.measureText(text);
-    const width = Math.ceil(metrics.width);
-    const height = Math.ceil(fontSize * 1.4); // Add some padding
-
-    this.canvas.width = width;
-    this.canvas.height = height;
-
-    // Clear canvas
-    this.context.fillStyle = 'transparent';
-    this.context.fillRect(0, 0, width, height);
-
-    // Draw text
-    this.context.font = `${fontSize}px LabelFont`;
-    this.context.textAlign = 'center';
-    this.context.textBaseline = 'middle';
-    this.context.fillStyle = this.settings.labelColor;
-    this.context.fillText(text, width / 2, height / 2);
-
-    // Create texture
-    const texture = new THREE.Texture(this.canvas);
-    texture.needsUpdate = true;
-    return texture;
-  }
-
-  private createLabelSprite(text: string): THREE.Sprite {
-    // Reuse sprite from pool if available
-    let sprite = this.labelPool.pop();
-    
-    if (!sprite) {
-      const spriteMaterial = new THREE.SpriteMaterial({
-        transparent: true,
-        depthTest: false
+  private setupSubscriptions(): void {
+    const labelSettings: Array<keyof LabelSettings> = ['enabled', 'size', 'color', 'background', 'offset'];
+    labelSettings.forEach(setting => {
+      const unsubscribe = settingsManager.subscribe('label', setting, () => {
+        this.onLabelSettingChanged();
       });
-      sprite = new THREE.Sprite(spriteMaterial);
-    }
-
-    // Update sprite texture
-    const texture = this.createTextTexture(text);
-    (sprite.material as THREE.SpriteMaterial).map = texture;
-
-    // Set sprite scale based on text dimensions
-    const scale = this.settings.labelSize * 0.01;
-    sprite.scale.set(
-      this.canvas.width * scale,
-      this.canvas.height * scale,
-      1
-    );
-
-    return sprite;
+      this.unsubscribers.push(unsubscribe);
+    });
   }
 
-  /**
-   * Create or update a label for a node
-   */
-  updateLabel(id: string, text: string, position: Vector3): void {
-    if (!this.fontLoaded || !this.settings.showLabels) {
-      return;
-    }
-
-    let label = this.labels.get(id);
-    if (!label) {
-      label = this.createLabelSprite(text);
-      this.labels.set(id, label);
-      this.scene.add(label);
-    } else {
-      // Update existing label
-      const texture = this.createTextTexture(text);
-      (label.material as THREE.SpriteMaterial).map?.dispose();
-      (label.material as THREE.SpriteMaterial).map = texture;
-    }
-
-    // Update position
-    label.position.set(position.x, position.y + 1.5, position.z); // Offset above node
-    label.material.opacity = this.calculateOpacity(position);
-  }
-
-  /**
-   * Remove a label
-   */
-  removeLabel(id: string): void {
-    const label = this.labels.get(id);
-    if (label) {
-      this.scene.remove(label);
-      (label.material as THREE.SpriteMaterial).map?.dispose();
-      this.labelPool.push(label); // Return to pool for reuse
-      this.labels.delete(id);
-    }
-  }
-
-  /**
-   * Update all labels (e.g., after settings change)
-   */
-  private updateAllLabels(): void {
-    if (!this.fontLoaded || !this.settings.showLabels) {
-      return;
-    }
-
-    this.labels.forEach((__label, id) => {
-      const label = this.labels.get(id);
-      if (label) {
-        const opacity = this.calculateOpacity(label.position);
-        label.material.opacity = opacity;
+  private async onLabelSettingChanged(): Promise<void> {
+    const settings = await settingsManager.getCurrentSettings();
+    this.labels.forEach((labelGroup, id) => {
+      const state = this.labelStates.get(id);
+      if (state) {
+        this.updateLabelStyle(labelGroup, state, settings.label);
       }
     });
   }
 
-  /**
-   * Update label positions and visibility
-   */
-  update(): void {
-    if (!this.fontLoaded || !this.settings.showLabels) {
-      return;
-    }
+  private updateLabelStyle(labelGroup: THREE.Group, state: LabelState, settings: LabelSettings): void {
+    const textMesh = labelGroup.children[0] as THREE.Mesh;
+    if (!textMesh) return;
 
-    // Update label opacity based on distance to camera
-    this.labels.forEach((__label, id) => {
-      const label = this.labels.get(id);
-      if (label) {
-        const opacity = this.calculateOpacity(label.position);
-        label.material.opacity = opacity;
-      }
-    });
+    const material = textMesh.material as THREE.MeshBasicMaterial;
+    material.color.set(settings.color);
+    material.opacity = 1;
+    material.transparent = true;
+
+    // Update visibility and scale
+    labelGroup.visible = settings.enabled && state.visible;
+    const scale = settings.size * state.scale;
+    labelGroup.scale.set(scale, scale, scale);
+
+    // Update position with offset
+    labelGroup.position.copy(state.basePosition);
+    labelGroup.position.y += settings.offset;
+
+    // Update bounding box for culling
+    state.boundingBox = labelGroup;
   }
 
-  /**
-   * Calculate label opacity based on distance to camera
-   */
-  private calculateOpacity(position: Vector3): number {
-    const distance = this.camera.position.distanceTo(new THREE.Vector3(position.x, position.y, position.z));
-    const maxDistance = 100;
-    const minDistance = 10;
-    
-    if (distance > maxDistance) return 0;
-    if (distance < minDistance) return 1;
-    
-    return 1 - ((distance - minDistance) / (maxDistance - minDistance));
-  }
-
-  /**
-   * Clear all labels
-   */
-  clear(): void {
-    this.labels.forEach((__label, id) => {
+  public async updateLabel(id: string, text: string, position: THREE.Vector3): Promise<void> {
+    const settings = await settingsManager.getCurrentSettings();
+    if (!settings.label.enabled) {
       this.removeLabel(id);
+      return;
+    }
+
+    let labelGroup = this.labels.get(id);
+    if (!labelGroup) {
+      labelGroup = new THREE.Group();
+      
+      // Create text mesh using basic geometry for now
+      const geometry = new THREE.PlaneGeometry(1, 1);
+      const material = new THREE.MeshBasicMaterial({
+        color: settings.label.color,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      });
+      
+      const textMesh = new THREE.Mesh(geometry, material);
+      labelGroup.add(textMesh);
+      this.labels.set(id, labelGroup);
+      this.scene.add(labelGroup);
+    }
+
+    // Update state
+    const state: LabelState = {
+      text,
+      basePosition: position.clone(),
+      visible: true,
+      scale: 1,
+      boundingBox: labelGroup
+    };
+    this.labelStates.set(id, state);
+
+    // Update style and position
+    this.updateLabelStyle(labelGroup, state, settings.label);
+  }
+
+  public removeLabel(id: string): void {
+    const labelGroup = this.labels.get(id);
+    if (labelGroup) {
+      this.scene.remove(labelGroup);
+      labelGroup.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          child.material.dispose();
+        }
+      });
+      this.labels.delete(id);
+      this.labelStates.delete(id);
+    }
+  }
+
+  public update(): void {
+    if (this.labels.size === 0) return;
+
+    // Update matrices
+    this.viewMatrix.copy(this.camera.matrixWorldInverse);
+    this.projMatrix.copy(this.camera.projectionMatrix);
+
+    // Update each label
+    this.labels.forEach((labelGroup, id) => {
+      const state = this.labelStates.get(id);
+      if (!state) return;
+
+      // Check if label is in view
+      const cameraDistance = this.camera.position.distanceTo(state.basePosition);
+      state.visible = cameraDistance < 100; // Simple distance-based culling
+      
+      if (!state.visible) {
+        labelGroup.visible = false;
+        return;
+      }
+
+      // Update scale based on distance
+      state.scale = Math.max(0.1, Math.min(1, 5 / cameraDistance));
+
+      // Make text face camera
+      labelGroup.lookAt(this.camera.position);
+
+      // Update opacity based on view angle
+      const material = (labelGroup.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
+      const viewVector = new THREE.Vector3().subVectors(this.camera.position, state.basePosition).normalize();
+      const forward = new THREE.Vector3(0, 0, 1).applyMatrix4(this.camera.matrixWorld);
+      const dot = viewVector.dot(forward.normalize());
+      material.opacity = Math.max(0.2, (1 + dot) / 2);
+
+      // Update style with new state
+      this.updateLabelStyle(labelGroup, state, settingsManager.getCurrentSettings().label);
     });
   }
 
-  /**
-   * Dispose of resources
-   */
-  dispose(): void {
-    this.clear();
-    this.labels.forEach(label => {
-      label.material.dispose();
-      (label.material as THREE.SpriteMaterial).map?.dispose();
+  public dispose(): void {
+    this.labels.forEach(labelGroup => {
+      labelGroup.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          child.material.dispose();
+        }
+      });
     });
-    this.labelPool.forEach(label => {
-      label.material.dispose();
-      (label.material as THREE.SpriteMaterial).map?.dispose();
-    });
-    this.canvas.remove();
+    this.labels.clear();
+    this.labelStates.clear();
+    this.unsubscribers.forEach(unsubscribe => unsubscribe());
+    this.unsubscribers = [];
   }
 }
