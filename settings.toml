@@ -34,10 +34,7 @@ cookie_samesite = "Strict"
 cookie_secure = true
 csrf_token_timeout = 3600
 enable_audit_logging = true
-# enable_cors = false
-# enable_csrf = false
 enable_request_validation = true
-# enable_security_headers = false
 session_timeout = 3600
 
 # Rendering Settings
@@ -47,21 +44,10 @@ background_color = "#000000"
 directional_light_intensity = 1.0
 enable_ambient_occlusion = true
 enable_antialiasing = true
-# enable_gpu_acceleration = true
-# enable_grid = true
-# enable_hemisphere_light = true
 enable_shadows = true
 environment_intensity = 1.2
-# fog_color = "#000000"
-# fog_density = 0.0008
-# fog_enabled = true
-# grid_color = "#1A1A1A"
-# grid_divisions = 20
-# grid_size = 10
-# pixel_ratio = 1.5
-# shadow_map_size = 4096
 
-# AR Settings (High Priority)
+# AR Settings
 [ar]
 enable_hand_tracking = true
 enable_haptics = true
@@ -73,16 +59,13 @@ base_color = "#FFB700"
 base_size = 1
 size_range = [1, 5]
 size_by_connections = true
-# geometry_segments = 16
 enable_instancing = true
 material_type = "physical"
-# clearcoat = 1
-# clearcoat_roughness = 0.1
-# metalness = 0.85
 opacity = 0.92
 roughness = 0.15
+metalness = 0.85
+clearcoat = 1
 highlight_color = "#FFFFFF"
-# highlight_intensity = 1.0
 highlight_duration = 500
 enable_hover_effect = true
 hover_scale = 1.2
@@ -92,13 +75,7 @@ hover_scale = 1.2
 base_width = 2
 width_range = [1.0, 3.0]
 color = "#FFD700"
-# enable_arrows = true
 opacity = 0.6
-# width_by_strength = true
-# curve_segments = 8
-# highlight_color = "#FFFFFF"
-# highlight_intensity = 1.0
-# highlight_duration = 500
 
 # Physics Settings
 [physics]
@@ -107,7 +84,6 @@ bounds_size = 12.0
 collision_radius = 0.25
 damping = 0.88
 enable_bounds = true
-# enable_collision = true
 enabled = true
 iterations = 500
 max_velocity = 2.5
@@ -120,17 +96,11 @@ enabled = false
 node_bloom_strength = 0.2
 edge_bloom_strength = 0.3
 environment_bloom_strength = 0.5
-# radius = 0.5
-# strength = 1.8
-# threshold = 0.3
 
 # Labels Configuration
 [labels]
 enable_labels = true
 text_color = "#FFFFFF"
-# ar_font_size = 24
-# desktop_font_size = 48
-# font_family = "Arial, Helvetica, sans-serif"
 
 # WebSocket Configuration
 [websocket]
@@ -162,36 +132,35 @@ log_full_json = false
 
 # Integrations
 [github]
-# base_path = "default_path"
-# owner = "default_owner"
-# rate_limit = true
-# repo = "default_repo"
-# token = "default_token"
+base_path = "default_path"
+owner = "default_owner"
+rate_limit = true
+repo = "default_repo"
+token = "default_token"
 
 [openai]
-# api_key = "default_openai_key"
-# base_url = "wss://api.openai.com/v1/realtime"
-# model = "gpt-4o-realtime-preview-2024-10-01"
-# rate_limit = 100
-# timeout = 30
+api_key = "default_openai_key"
+base_url = "wss://api.openai.com/v1/realtime"
+model = "gpt-4o-realtime-preview-2024-10-01"
+rate_limit = 100
+timeout = 30
 
 [perplexity]
-# api_key = "default_perplexity_key"
-# api_url = "https://api.perplexity.ai/chat/completions"
-# frequency_penalty = 1.0
-# max_tokens = 4096
-# model = "llama-3.1-sonar-small-128k-online"
-# presence_penalty = 0.0
-# prompt = """
-# You are an AI assistant for LogSeq knowledge summaries via perplexity API. Style: Informative, analytical, optimistic, critical, conversational, authoritative. Markdown: hierarchical headings (- #), minimal bold, italics for book titles, descriptive links [URL](text), images ![alt](path){:width height}, embeds {{type id}}, lists with '-', block refs [[title]], properties property:: value, code blocks ```lang``` and `inline code`, \r
-#  newlines, public:: true at start. UK spelling, introduce acronyms once, numeric citations, [[reference]] for sources, minimal emojis, parentheses for asides, collapsed:: true. Focus on emerging tech (decentralization, AI, XR), detail, credible sources, implications, examples, future-oriented. Adhere strictly, ensure accuracy, consistency, large context, refine with feedback."""
-# rate_limit = 100
-# temperature = 0.5
-# timeout = 30
-# top_p = 0.9
+api_key = "default_perplexity_key"
+api_url = "https://api.perplexity.ai/chat/completions"
+frequency_penalty = 1.0
+max_tokens = 4096
+model = "llama-3.1-sonar-small-128k-online"
+resence_penalty = 0.0
+prompt = """
+You are an AI assistant for LogSeq knowledge summaries via perplexity API. Style: Informative, analytical, optimistic, critical, conversational, authoritative. Markdown: hierarchical headings (- #), minimal bold, italics for book titles, descriptive links [URL](text), images ![alt](path){:width height}, embeds {{type id}}, lists with '-', block refs [[title]], properties property:: value, code blocks ```lang``` and `inline code`, \r newlines, public:: true at start. UK spelling, introduce acronyms once, numeric citations, [[reference]] for sources, minimal emojis, parentheses for asides, collapsed:: true. Focus on emerging tech (decentralization, AI, XR), detail, credible sources, implications, examples, future-oriented. Adhere strictly, ensure accuracy, consistency, large context, refine with feedback."""
+rate_limit = 100
+temperature = 0.5
+timeout = 30
+top_p = 0.9
 
 [ragflow]
-# api_key = "default_ragflow_key"
-# base_url = "http://ragflow-server/v1/"
-# max_retries = 3
-# timeout = 30
+api_key = "default_ragflow_key"
+base_url = "http://ragflow-server/v1/"
+max_retries = 3
+timeout = 30
