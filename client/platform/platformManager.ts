@@ -1,29 +1,53 @@
-/**
- * Platform detection and capability management
- */
+class BrowserEventEmitter {
+  private listeners: { [event: string]: Function[] } = {};
+
+  on(event: string, listener: Function): void {
+    if (!this.listeners[event]) {
+      this.listeners[event] = [];
+    }
+    this.listeners[event].push(listener);
+  }
+
+  emit(event: string, ...args: any[]): void {
+    const eventListeners = this.listeners[event];
+    if (eventListeners) {
+      eventListeners.forEach(listener => listener(...args));
+    }
+  }
+
+  removeAllListeners(): void {
+    this.listeners = {};
+  }
+}
 
 import { Platform, PlatformCapabilities } from '../core/types';
 import { createLogger } from '../core/utils';
 
 const logger = createLogger('PlatformManager');
 
-export class PlatformManager {
-  private static instance: PlatformManager;
+declare global {
+  interface Navigator {
+    xr?: XRSystem;
+  }
+}
+
+export class PlatformManager extends BrowserEventEmitter {
+  private static instance: PlatformManager | null = null;
   private platform: Platform;
   private capabilities: PlatformCapabilities;
+  private initialized: boolean = false;
 
   private constructor() {
-    this.platform = this.detectPlatform();
-    // Initialize with default values
+    super();
+    this.platform = 'desktop';
     this.capabilities = {
       xrSupported: false,
       webglSupported: false,
-      websocketSupported: false
+      websocketSupported: false,
+      webxr: false,
+      handTracking: false,
+      planeDetection: false
     };
-    // Then update capabilities asynchronously
-    this.updateCapabilities();
-    
-    logger.log(`Platform: ${this.platform}`);
   }
 
   static getInstance(): PlatformManager {
@@ -33,40 +57,61 @@ export class PlatformManager {
     return PlatformManager.instance;
   }
 
-  private detectPlatform(): Platform {
-    // Check for Oculus Browser
-    const userAgent = navigator.userAgent.toLowerCase();
-    if (userAgent.includes('oculus') || userAgent.includes('quest')) {
-      return 'quest';
+  async initialize(): Promise<void> {
+    if (this.initialized) {
+      return;
     }
-    return 'browser';
+
+    this.detectPlatform();
+    await this.detectCapabilities();
+    this.initialized = true;
+    logger.log('Platform manager initialized');
   }
 
-  private async updateCapabilities(): Promise<void> {
-    // Check WebXR support
-    if (navigator.xr) {
+  private detectPlatform(): void {
+    const userAgent = navigator.userAgent.toLowerCase();
+    const isQuest = userAgent.includes('quest');
+    
+    if (isQuest) {
+      this.platform = 'quest';
+    } else if (userAgent.includes('chrome') || userAgent.includes('firefox') || userAgent.includes('safari')) {
+      this.platform = 'browser';
+    } else {
+      this.platform = 'desktop';
+    }
+  }
+
+  private async detectCapabilities(): Promise<void> {
+    // WebXR support
+    if ('xr' in navigator && navigator.xr) {
       try {
         this.capabilities.xrSupported = await navigator.xr.isSessionSupported('immersive-ar');
+        this.capabilities.webxr = this.capabilities.xrSupported;
+        this.capabilities.handTracking = this.capabilities.xrSupported;
+        this.capabilities.planeDetection = this.capabilities.xrSupported;
       } catch (error) {
-        logger.warn('Error checking XR support:', error);
+        logger.warn('WebXR not supported:', error);
         this.capabilities.xrSupported = false;
+        this.capabilities.webxr = false;
+        this.capabilities.handTracking = false;
+        this.capabilities.planeDetection = false;
       }
     }
 
-    // Check WebGL support
+    // WebGL support
     try {
       const canvas = document.createElement('canvas');
       const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
       this.capabilities.webglSupported = !!gl;
     } catch (error) {
-      logger.warn('Error checking WebGL support:', error);
+      logger.warn('WebGL not supported:', error);
       this.capabilities.webglSupported = false;
     }
 
-    // Check WebSocket support
+    // WebSocket support
     this.capabilities.websocketSupported = 'WebSocket' in window;
 
-    logger.log('Capabilities:', this.capabilities);
+    logger.log('Platform capabilities detected:', this.capabilities);
   }
 
   getPlatform(): Platform {
@@ -74,7 +119,11 @@ export class PlatformManager {
   }
 
   getCapabilities(): PlatformCapabilities {
-    return this.capabilities;
+    return { ...this.capabilities };
+  }
+
+  isDesktop(): boolean {
+    return this.platform === 'desktop';
   }
 
   isQuest(): boolean {
@@ -85,7 +134,7 @@ export class PlatformManager {
     return this.platform === 'browser';
   }
 
-  async isXRSupported(): Promise<boolean> {
+  isXRSupported(): boolean {
     return this.capabilities.xrSupported;
   }
 
@@ -97,90 +146,61 @@ export class PlatformManager {
     return this.capabilities.websocketSupported;
   }
 
-  async requestXRSession(mode: XRSessionMode = 'immersive-ar'): Promise<XRSession | null> {
-    if (!this.capabilities.xrSupported || !navigator.xr) {
-      logger.warn('XR not supported on this platform');
+  async requestXRSession(): Promise<XRSession | null> {
+    if (!this.capabilities.xrSupported || !('xr' in navigator) || !navigator.xr) {
+      logger.warn('WebXR not supported');
       return null;
     }
 
     try {
-      const session = await navigator.xr.requestSession(mode, {
+      const session = await navigator.xr.requestSession('immersive-ar', {
         requiredFeatures: ['local-floor', 'hit-test'],
-        optionalFeatures: ['hand-tracking', 'layers']
+        optionalFeatures: ['hand-tracking', 'plane-detection']
       });
+
+      // Update capabilities based on session features
+      session.addEventListener('end', () => {
+        logger.log('XR session ended');
+        this.emit('xrsessionend');
+      });
+
+      logger.log('XR session started');
       return session;
     } catch (error) {
-      logger.error('Error requesting XR session:', error);
+      logger.error('Failed to start XR session:', error);
       return null;
     }
   }
 
-  // Event handling for platform-specific features
-  private eventListeners: Map<string, Set<Function>> = new Map();
-
-  on(event: string, callback: Function): void {
-    if (!this.eventListeners.has(event)) {
-      this.eventListeners.set(event, new Set());
-    }
-    this.eventListeners.get(event)?.add(callback);
-  }
-
-  off(event: string, callback: Function): void {
-    this.eventListeners.get(event)?.delete(callback);
-  }
-
-  private emit(event: string, ...args: any[]): void {
-    this.eventListeners.get(event)?.forEach(callback => {
+  async checkXRSupport(): Promise<void> {
+    if ('xr' in navigator && navigator.xr) {
       try {
-        callback(...args);
-      } catch (error) {
-        logger.error(`Error in platform event listener for ${event}:`, error);
-      }
-    });
-  }
-
-  // Device orientation handling for mobile/Quest
-  private setupDeviceOrientation(): void {
-    if (typeof DeviceOrientationEvent !== 'undefined') {
-      window.addEventListener('deviceorientation', (event: DeviceOrientationEvent) => {
-        this.emit('orientation', {
-          alpha: event.alpha, // z-axis rotation
-          beta: event.beta,   // x-axis rotation
-          gamma: event.gamma  // y-axis rotation
-        });
-      }, true);
-    }
-  }
-
-  // Screen orientation handling
-  private setupScreenOrientation(): void {
-    if ('screen' in window && 'orientation' in screen) {
-      screen.orientation.addEventListener('change', () => {
-        this.emit('orientationchange', screen.orientation.type);
-      });
-    }
-  }
-
-  // Initialize platform-specific features
-  async initialize(): Promise<void> {
-    // Set up event listeners
-    this.setupDeviceOrientation();
-    this.setupScreenOrientation();
-
-    // Check for WebXR changes
-    if (navigator.xr) {
-      navigator.xr.addEventListener('devicechange', async () => {
-        if (navigator.xr) {
-          this.capabilities.xrSupported = await navigator.xr.isSessionSupported('immersive-ar');
-          this.emit('xrdevicechange', this.capabilities.xrSupported);
+        // Check for AR support
+        const arSupported = await navigator.xr.isSessionSupported('immersive-ar');
+        if (arSupported) {
+          this.capabilities.xrSupported = true;
+          this.capabilities.webxr = true;
+          this.capabilities.handTracking = true;
+          this.capabilities.planeDetection = true;
+          this.emit('xrdevicechange', true);
+          logger.log('WebXR AR supported');
         }
-      });
+      } catch (error) {
+        logger.warn('WebXR check failed:', error);
+        this.capabilities.xrSupported = false;
+        this.capabilities.webxr = false;
+        this.capabilities.handTracking = false;
+        this.capabilities.planeDetection = false;
+        this.emit('xrdevicechange', false);
+      }
     }
+  }
 
-    // Additional platform-specific initialization can be added here
-    logger.log('Platform manager initialized');
+  dispose(): void {
+    this.removeAllListeners();
+    this.initialized = false;
+    PlatformManager.instance = null;
   }
 }
 
-// Export a singleton instance
 export const platformManager = PlatformManager.getInstance();

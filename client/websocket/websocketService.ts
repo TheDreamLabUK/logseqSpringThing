@@ -14,7 +14,6 @@ import {
   EnableBinaryUpdatesMessage,
   PingMessage,
   transformGraphData,
-  transformNodeData,
 } from '../core/types';
 import { WS_RECONNECT_INTERVAL, WS_MESSAGE_QUEUE_SIZE } from '../core/constants';
 import { createLogger } from '../core/utils';
@@ -244,15 +243,7 @@ export class WebSocketService {
       }
       case 'binaryPositionUpdate': {
         const binaryUpdate = rawMessage as RawBinaryPositionUpdateMessage;
-        const transformedData = {
-          type: 'binaryPositionUpdate' as const,
-          data: {
-            nodes: binaryUpdate.data.nodes.map(node => ({
-              nodeId: node.nodeId,
-              data: transformNodeData(node.data)
-            }))
-          }
-        };
+        const transformedData = this.transformBinaryData(binaryUpdate);
         this.handleBinaryUpdate(transformedData);
         break;
       }
@@ -266,6 +257,21 @@ export class WebSocketService {
       default:
         logger.warn(`Unknown message type: ${(rawMessage as any).type}`);
     }
+  }
+
+  private transformBinaryData(data: any): BinaryPositionUpdateMessage {
+    return {
+      type: 'binaryPositionUpdate',
+      data: {
+        nodes: data.nodes.map((node: any) => ({
+          nodeId: node.nodeId,
+          data: {
+            position: node.data.position,
+            velocity: node.data.velocity
+          }
+        }))
+      }
+    };
   }
 
   private handleInitialData(message: InitialDataMessage): void {
