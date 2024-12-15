@@ -40,7 +40,25 @@ export class GraphDataManager {
   }
 
   /**
-   * Initialize or update the entire graph data
+   * Load initial graph data from REST endpoint
+   */
+  async loadGraphData(): Promise<void> {
+    try {
+      const response = await fetch('/api/graph/data');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);
+      }
+      const data = await response.json();
+      this.updateGraphData(data);
+      logger.log('Initial graph data loaded from REST endpoint');
+    } catch (error) {
+      logger.error('Failed to load initial graph data:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Initialize or update the graph data
    */
   updateGraphData(data: any): void {
     logger.log('Received graph data update');
@@ -50,8 +68,8 @@ export class GraphDataManager {
     this.edges.clear();
 
     // Store nodes in Map for O(1) access
-    if (data.graphData && Array.isArray(data.graphData.nodes)) {
-      data.graphData.nodes.forEach((node: any) => {
+    if (data.nodes && Array.isArray(data.nodes)) {
+      data.nodes.forEach((node: any) => {
         // Convert position array to object if needed
         let position;
         if (Array.isArray(node.position)) {
@@ -74,15 +92,15 @@ export class GraphDataManager {
       });
 
       // Store edges in Map
-      if (Array.isArray(data.graphData.edges)) {
-        data.graphData.edges.forEach((edge: Edge) => {
+      if (Array.isArray(data.edges)) {
+        data.edges.forEach((edge: Edge) => {
           const edgeId = this.createEdgeId(edge.source, edge.target);
           this.edges.set(edgeId, edge);
         });
       }
 
       // Update metadata
-      this.metadata = data.graphData.metadata || {};
+      this.metadata = data.metadata || {};
 
       // Notify listeners
       this.notifyUpdateListeners();

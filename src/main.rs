@@ -265,7 +265,7 @@ async fn main() -> std::io::Result<()> {
             )
             .service(
                 web::scope("/api/visualization")
-                    .route("/settings", web::get().to(visualization_handler::get_visualization_settings))
+                    .configure(visualization_handler::config)  // Use the config function to register both GET and PUT
             )
             .service(
                 web::scope("/api/perplexity")

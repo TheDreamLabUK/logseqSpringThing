@@ -180,100 +180,200 @@ export interface VisualizationSettings {
 
 // Server-side settings format
 export interface ServerSettings {
-  nodes: {
-    base_size: number;
-    base_color: string;
-    opacity: number;
-    metalness: number;
-    roughness: number;
-    clearcoat: number;
-    enable_instancing: boolean;
-    material_type: string;
-    size_range: [number, number];
-    size_by_connections: boolean;
-    highlight_color: string;
-    highlight_duration: number;
-    enable_hover_effect: boolean;
-    hover_scale: number;
+  animations: {
+    enable_motion_blur: boolean;
+    enable_node_animations: boolean;
+    motion_blur_strength: number;
+  };
+  ar: {
+    drag_threshold: number;
+    enable_hand_tracking: boolean;
+    enable_haptics: boolean;
+    enable_light_estimation: boolean;
+    enable_passthrough_portal: boolean;
+    enable_plane_detection: boolean;
+    enable_scene_understanding: boolean;
+    gesture_smoothing: number;
+    hand_mesh_color: string;
+    hand_mesh_enabled: boolean;
+    hand_mesh_opacity: number;
+    hand_point_size: number;
+    hand_ray_color: string;
+    hand_ray_enabled: boolean;
+    hand_ray_width: number;
+    haptic_intensity: number;
+    passthrough_brightness: number;
+    passthrough_contrast: number;
+    passthrough_opacity: number;
+    pinch_threshold: number;
+    plane_color: string;
+    plane_opacity: number;
+    portal_edge_color: string;
+    portal_edge_width: number;
+    portal_size: number;
+    room_scale: boolean;
+    rotation_threshold: number;
+    show_plane_overlay: boolean;
+    snap_to_floor: boolean;
+  };
+  audio: {
+    enable_ambient_sounds: boolean;
+    enable_interaction_sounds: boolean;
+    enable_spatial_audio: boolean;
+  };
+  bloom: {
+    edge_bloom_strength: number;
+    enabled: boolean;
+    environment_bloom_strength: number;
+    node_bloom_strength: number;
+    radius: number;
+    strength: number;
   };
   edges: {
+    arrow_size: number;
     base_width: number;
     color: string;
+    enable_arrows: boolean;
     opacity: number;
     width_range: [number, number];
-    enable_arrows: boolean;
-    arrow_size: number;
+  };
+  labels: {
+    desktop_font_size: number;
+    enable_labels: boolean;
+    text_color: string;
+  };
+  nodes: {
+    base_color: string;
+    base_size: number;
+    clearcoat: number;
+    enable_hover_effect: boolean;
+    enable_instancing: boolean;
+    highlight_color: string;
+    highlight_duration: number;
+    hover_scale: number;
+    material_type: string;
+    metalness: number;
+    opacity: number;
+    roughness: number;
+    size_by_connections: boolean;
+    size_range: [number, number];
   };
   physics: {
-    enabled: boolean;
     attraction_strength: number;
+    bounds_size: number;
+    collision_radius: number;
+    damping: number;
+    enable_bounds: boolean;
+    enabled: boolean;
+    iterations: number;
+    max_velocity: number;
     repulsion_strength: number;
     spring_strength: number;
-    damping: number;
-    max_velocity: number;
-    collision_radius: number;
-    bounds_size: number;
-    enable_bounds: boolean;
-    iterations: number;
   };
   rendering: {
     ambient_light_intensity: number;
+    background_color: string;
     directional_light_intensity: number;
-    environment_intensity: number;
     enable_ambient_occlusion: boolean;
     enable_antialiasing: boolean;
     enable_shadows: boolean;
-    background_color: string;
+    environment_intensity: number;
   };
-  bloom: {
-    enabled: boolean;
-    strength: number;
-    radius: number;
-    node_bloom_strength: number;
-    edge_bloom_strength: number;
-    environment_bloom_strength: number;
-  };
-  animations: {
-    enable_node_animations: boolean;
-    enable_motion_blur: boolean;
-    motion_blur_strength: number;
-  };
-  labels: {
-    enable_labels: boolean;
-    desktop_font_size: number;
-    text_color: string;
-  };
-  ar: {
-    enable_plane_detection: boolean;
-    enable_scene_understanding: boolean;
-    show_plane_overlay: boolean;
-    plane_opacity: number;
-    plane_color: string;
-    enable_light_estimation: boolean;
-    enable_hand_tracking: boolean;
-    hand_mesh_enabled: boolean;
-    hand_mesh_color: string;
-    hand_mesh_opacity: number;
-    hand_ray_enabled: boolean;
-    hand_ray_color: string;
-    hand_ray_width: number;
-    hand_point_size: number;
-    gesture_smoothing: number;
-    pinch_threshold: number;
-    drag_threshold: number;
-    rotation_threshold: number;
-    enable_haptics: boolean;
-    haptic_intensity: number;
-    room_scale: boolean;
-    snap_to_floor: boolean;
-    passthrough_opacity: number;
-    passthrough_brightness: number;
-    passthrough_contrast: number;
-    enable_passthrough_portal: boolean;
-    portal_size: number;
-    portal_edge_color: string;
-    portal_edge_width: number;
-  };
+}
+
+// Client-side visualization settings (mapped from server settings)
+export interface VisualizationSettings {
+  // Node Appearance
+  nodeSize: number;  // maps from nodes.base_size
+  nodeColor: string;  // maps from nodes.base_color
+  nodeOpacity: number;  // maps from nodes.opacity
+  metalness: number;
+  roughness: number;
+  clearcoat: number;
+  enableInstancing: boolean;  // maps from nodes.enable_instancing
+  materialType: string;  // maps from nodes.material_type
+  sizeRange: [number, number];  // maps from nodes.size_range
+  sizeByConnections: boolean;  // maps from nodes.size_by_connections
+  highlightColor: string;  // maps from nodes.highlight_color
+  highlightDuration: number;  // maps from nodes.highlight_duration
+  enableHoverEffect: boolean;  // maps from nodes.enable_hover_effect
+  hoverScale: number;  // maps from nodes.hover_scale
+
+  // Edge Appearance
+  edgeWidth: number;  // maps from edges.base_width
+  edgeColor: string;  // maps from edges.color
+  edgeOpacity: number;  // maps from edges.opacity
+  edgeWidthRange: [number, number];  // maps from edges.width_range
+  enableArrows: boolean;  // maps from edges.enable_arrows
+  arrowSize: number;  // maps from edges.arrow_size
+
+  // Physics Settings
+  physicsEnabled: boolean;  // maps from physics.enabled
+  attractionStrength: number;  // maps from physics.attraction_strength
+  repulsionStrength: number;  // maps from physics.repulsion_strength
+  springStrength: number;  // maps from physics.spring_strength
+  damping: number;  // maps from physics.damping
+  maxVelocity: number;  // maps from physics.max_velocity
+  collisionRadius: number;  // maps from physics.collision_radius
+  boundsSize: number;  // maps from physics.bounds_size
+  enableBounds: boolean;  // maps from physics.enable_bounds
+  iterations: number;  // maps from physics.iterations
+
+  // Rendering Settings
+  ambientLightIntensity: number;  // maps from rendering.ambient_light_intensity
+  directionalLightIntensity: number;  // maps from rendering.directional_light_intensity
+  environmentIntensity: number;  // maps from rendering.environment_intensity
+  enableAmbientOcclusion: boolean;  // maps from rendering.enable_ambient_occlusion
+  enableAntialiasing: boolean;  // maps from rendering.enable_antialiasing
+  enableShadows: boolean;  // maps from rendering.enable_shadows
+  backgroundColor: string;  // maps from rendering.background_color
+
+  // Visual Effects
+  enableBloom: boolean;  // maps from bloom.enabled
+  bloomIntensity: number;  // maps from bloom.strength
+  bloomRadius: number;  // maps from bloom.radius
+  nodeBloomStrength: number;  // maps from bloom.node_bloom_strength
+  edgeBloomStrength: number;  // maps from bloom.edge_bloom_strength
+  environmentBloomStrength: number;  // maps from bloom.environment_bloom_strength
+  enableNodeAnimations: boolean;  // maps from animations.enable_node_animations
+  enableMotionBlur: boolean;  // maps from animations.enable_motion_blur
+  motionBlurStrength: number;  // maps from animations.motion_blur_strength
+
+  // Labels
+  showLabels: boolean;  // maps from labels.enable_labels
+  labelSize: number;  // maps from labels.desktop_font_size / 48
+  labelColor: string;  // maps from labels.text_color
+
+  // AR Settings
+  enablePlaneDetection: boolean;  // maps from ar.enable_plane_detection
+  enableSceneUnderstanding: boolean;  // maps from ar.enable_scene_understanding
+  showPlaneOverlay: boolean;  // maps from ar.show_plane_overlay
+  planeOpacity: number;  // maps from ar.plane_opacity
+  planeColor: string;  // maps from ar.plane_color
+  enableLightEstimation: boolean;  // maps from ar.enable_light_estimation
+  enableHandTracking: boolean;  // maps from ar.enable_hand_tracking
+  handMeshEnabled: boolean;  // maps from ar.hand_mesh_enabled
+  handMeshColor: string;  // maps from ar.hand_mesh_color
+  handMeshOpacity: number;  // maps from ar.hand_mesh_opacity
+  handRayEnabled: boolean;  // maps from ar.hand_ray_enabled
+  handRayColor: string;  // maps from ar.hand_ray_color
+  handRayWidth: number;  // maps from ar.hand_ray_width
+  handPointSize: number;  // maps from ar.hand_point_size
+  gestureSmoothing: number;  // maps from ar.gesture_smoothing
+  pinchThreshold: number;  // maps from ar.pinch_threshold
+  dragThreshold: number;  // maps from ar.drag_threshold
+  rotationThreshold: number;  // maps from ar.rotation_threshold
+  enableHaptics: boolean;  // maps from ar.enable_haptics
+  hapticIntensity: number;  // maps from ar.haptic_intensity
+  roomScale: boolean;  // maps from ar.room_scale
+  snapToFloor: boolean;  // maps from ar.snap_to_floor
+  passthroughOpacity: number;  // maps from ar.passthrough_opacity
+  passthroughBrightness: number;  // maps from ar.passthrough_brightness
+  passthroughContrast: number;  // maps from ar.passthrough_contrast
+  enablePassthroughPortal: boolean;  // maps from ar.enable_passthrough_portal
+  portalSize: number;  // maps from ar.portal_size
+  portalEdgeColor: string;  // maps from ar.portal_edge_color
+  portalEdgeWidth: number;  // maps from ar.portal_edge_width
 }
 
 // WebSocket message types

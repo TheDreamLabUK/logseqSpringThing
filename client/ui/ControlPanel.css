@@ -1,17 +1,33 @@
+/* Control Panel Styles */
+
 .control-panel {
     position: fixed;
     top: 20px;
     right: 20px;
-    background: rgba(0, 0, 0, 0.85);
-    border-radius: 8px;
-    color: #fff;
-    font-family: Arial, sans-serif;
     width: 320px;
-    max-height: 90vh;
-    overflow-y: auto;
-    transition: transform 0.3s ease;
+    max-width: calc(100vw - 40px); /* Prevent overflow */
+    background: rgba(28, 28, 28, 0.95);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     z-index: 1000;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease;
+    transform: translateX(calc(100% - 48px));
+}
+
+/* Ensure panel stays within viewport */
+@media (max-width: 360px) {
+    .control-panel {
+        right: 0;
+        width: 100%;
+        border-radius: 0;
+    }
+}
+
+.control-panel.expanded {
+    transform: translateX(0);
+    max-width: min(320px, calc(100vw - 40px)); /* Limit width when expanded */
 }
 
 .control-panel-header {
@@ -19,11 +35,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background: rgba(0, 0, 0, 0.2);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    position: sticky;
-    top: 0;
-    z-index: 2;
 }
 
 .control-panel-header h3 {
@@ -35,223 +47,212 @@
 .toggle-button {
     background: none;
     border: none;
-    color: #fff;
+    color: #ffffff;
     font-size: 20px;
     cursor: pointer;
     padding: 4px 8px;
-    transition: transform 0.3s ease;
+    border-radius: 4px;
+    transition: background-color 0.2s;
 }
 
+.toggle-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Ensure content stays within panel bounds */
 .control-panel-content {
-    padding: 16px;
-    max-height: calc(90vh - 50px);
+    max-height: calc(100vh - 200px);
     overflow-y: auto;
-}
-
-.settings-group {
-    margin-bottom: 24px;
+    overflow-x: hidden; /* Prevent horizontal scroll */
     padding: 16px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.settings-group h4 {
-    margin: 0 0 16px 0;
-    font-size: 14px;
-    color: #4a90e2;
-    font-weight: 500;
+/* Ensure inputs don't overflow */
+.setting-item {
+    margin-bottom: 12px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.setting-item {
-    margin-bottom: 16px;
-    transition: opacity 0.3s ease;
-}
-
-.setting-item:last-child {
-    margin-bottom: 0;
+    gap: 12px;
+    flex-wrap: wrap; /* Allow wrapping on small screens */
 }
 
 .setting-item label {
-    display: block;
-    margin-bottom: 6px;
-    font-size: 12px;
-    color: #ccc;
-    font-weight: 500;
+    flex: 1;
+    min-width: 100px; /* Ensure labels have minimum width */
+    font-size: 13px;
+    color: #e0e0e0;
 }
 
-/* Range inputs */
 .setting-item input[type="range"] {
-    width: 100%;
+    flex: 2;
+    min-width: 100px;
+    max-width: 150px;
     height: 4px;
-    background: #333;
-    border-radius: 2px;
     -webkit-appearance: none;
-    margin: 8px 0;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
 }
 
 .setting-item input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
     width: 12px;
     height: 12px;
-    background: #4a90e2;
+    background: #ffffff;
     border-radius: 50%;
     cursor: pointer;
-    transition: background 0.2s;
-    border: 2px solid rgba(255, 255, 255, 0.1);
 }
 
-.setting-item input[type="range"]::-webkit-slider-thumb:hover {
-    background: #357abd;
-    transform: scale(1.1);
-}
-
-/* Color inputs */
 .setting-item input[type="color"] {
-    width: 100%;
-    height: 36px;
-    padding: 2px;
-    border: 1px solid #444;
-    background: #222;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
     border-radius: 4px;
     cursor: pointer;
 }
 
-/* Number inputs */
-.setting-item input[type="number"] {
-    width: 100%;
-    padding: 8px 12px;
-    border: 1px solid #444;
-    background: #222;
-    color: #fff;
-    border-radius: 4px;
-    font-size: 13px;
-}
-
-/* Checkbox inputs */
 .setting-item input[type="checkbox"] {
-    position: relative;
-    width: 40px;
-    height: 20px;
-    -webkit-appearance: none;
-    background: #333;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: 0.3s;
-}
-
-.setting-item input[type="checkbox"]:checked {
-    background: #4a90e2;
-}
-
-.setting-item input[type="checkbox"]::before {
-    content: '';
-    position: absolute;
     width: 16px;
     height: 16px;
-    border-radius: 50%;
-    top: 2px;
-    left: 2px;
-    background: #fff;
-    transition: 0.3s;
-}
-
-.setting-item input[type="checkbox"]:checked::before {
-    left: 22px;
-}
-
-/* Select inputs */
-.setting-item select {
-    width: 100%;
-    padding: 8px 12px;
-    border: 1px solid #444;
-    background: #222;
-    color: #fff;
-    border-radius: 4px;
-    font-size: 13px;
     cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-    background-repeat: no-repeat;
-    background-position: right 8px center;
-    background-size: 16px;
-    padding-right: 32px;
 }
 
-.setting-item select:focus {
-    outline: none;
-    border-color: #4a90e2;
+.setting-item input[type="number"] {
+    width: 60px;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    color: #ffffff;
 }
 
-/* Value display */
+.setting-item select {
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    color: #ffffff;
+    cursor: pointer;
+    max-width: 150px; /* Prevent select from being too wide */
+}
+
 .setting-value {
-    float: right;
-    color: #4a90e2;
-    font-size: 12px;
-    font-weight: 500;
-    background: rgba(74, 144, 226, 0.1);
-    padding: 2px 6px;
-    border-radius: 3px;
     min-width: 40px;
-    text-align: center;
+    font-size: 12px;
+    color: #a0a0a0;
+    text-align: right;
 }
 
-/* Action buttons */
+.settings-group {
+    margin-bottom: 24px;
+}
+
+.settings-group h4 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #a0a0a0;
+}
+
 .settings-actions {
     display: flex;
     gap: 12px;
     margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.primary-button, .secondary-button {
+.primary-button,
+.secondary-button {
     flex: 1;
-    padding: 12px 16px;
+    padding: 8px 16px;
     border: none;
     border-radius: 4px;
-    cursor: pointer;
     font-size: 14px;
     font-weight: 500;
-    transition: all 0.2s ease;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    white-space: nowrap; /* Prevent button text from wrapping */
 }
 
 .primary-button {
     background: #4a90e2;
-    color: #fff;
+    color: #ffffff;
 }
 
 .primary-button:hover {
     background: #357abd;
-    transform: translateY(-1px);
+}
+
+.primary-button:disabled {
+    background: #2c5c8f;
+    cursor: not-allowed;
 }
 
 .secondary-button {
     background: rgba(255, 255, 255, 0.1);
-    color: #fff;
+    color: #ffffff;
 }
 
 .secondary-button:hover {
     background: rgba(255, 255, 255, 0.15);
-    transform: translateY(-1px);
 }
 
-/* Custom scrollbar */
+.secondary-button:disabled {
+    background: rgba(255, 255, 255, 0.05);
+    cursor: not-allowed;
+}
+
+.settings-feedback {
+    margin: 8px 0;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    animation: fadeIn 0.3s ease;
+}
+
+.settings-feedback.success {
+    background: rgba(39, 174, 96, 0.2);
+    color: #2ecc71;
+}
+
+.settings-feedback.error {
+    background: rgba(231, 76, 60, 0.2);
+    color: #e74c3c;
+}
+
+.settings-feedback.fade-out {
+    animation: fadeOut 0.3s ease;
+}
+
+.connection-status {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.connection-status.connected {
+    background: #2ecc71;
+}
+
+.connection-status.disconnected {
+    background: #e74c3c;
+}
+
+/* Scrollbar Styles */
 .control-panel-content::-webkit-scrollbar {
-    width: 6px;
+    width: 8px;
 }
 
 .control-panel-content::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
 }
 
 .control-panel-content::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
+    border-radius: 4px;
 }
 
 .control-panel-content::-webkit-scrollbar-thumb:hover {
@@ -264,24 +265,9 @@
     to { opacity: 1; }
 }
 
-.control-panel {
-    animation: fadeIn 0.3s ease;
-}
-
-/* Expanded state */
-.control-panel:not(.expanded) .control-panel-content {
-    display: none;
-}
-
-.control-panel.expanded .toggle-button {
-    transform: rotate(180deg);
-}
-
-/* Responsive design */
-@media (max-width: 768px) {
-    .control-panel {
-        width: 280px;
-    }
+@keyframes fadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(10px); }
 }
 
 /* Tooltips */
@@ -342,5 +328,5 @@
 }
 
 .setting-item:hover .setting-value {
-    background: rgba(74, 144, 226, 0.2);
+    color: #fff;
 }
