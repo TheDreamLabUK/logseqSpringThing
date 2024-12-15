@@ -6,245 +6,760 @@ use std::fs;
 use std::path::PathBuf;
 use toml;
 use log::{error, info};
+use serde::{Deserialize, Serialize};
 
-// GET /api/visualization/settings
-pub async fn get_visualization_settings(
+// Request/Response structures for individual settings
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NodeSettingValue<T> {
+    pub value: T,
+}
+
+// GET /api/visualization/nodes/{setting}
+pub async fn get_node_setting(
     settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
 ) -> HttpResponse {
-    info!("Attempting to read visualization settings");
+    let setting_name = path.into_inner();
+    let settings_guard = settings.read().await;
     
-    let settings_guard = match settings.read().await {
-        Ok(guard) => guard,
-        Err(e) => {
-            error!("Failed to acquire read lock on settings: {}", e);
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to read settings"
-            }));
-        }
-    };
-
-    info!("Successfully acquired settings read lock");
-    
-    match serde_json::to_value({
-        let json = serde_json::json!({
-            // Node settings
-            "nodeSize": settings_guard.nodes.base_size,
-            "nodeColor": settings_guard.nodes.base_color,
-            "nodeOpacity": settings_guard.nodes.opacity,
-            "metalness": settings_guard.nodes.metalness,
-            "roughness": settings_guard.nodes.roughness,
-            "clearcoat": settings_guard.nodes.clearcoat,
-            "enableInstancing": settings_guard.nodes.enable_instancing,
-            "materialType": settings_guard.nodes.material_type,
-            "sizeRange": settings_guard.nodes.size_range,
-            "sizeByConnections": settings_guard.nodes.size_by_connections,
-            "highlightColor": settings_guard.nodes.highlight_color,
-            "highlightDuration": settings_guard.nodes.highlight_duration,
-            "enableHoverEffect": settings_guard.nodes.enable_hover_effect,
-            "hoverScale": settings_guard.nodes.hover_scale,
-
-            // Edge settings
-            "edgeWidth": settings_guard.edges.base_width,
-            "edgeColor": settings_guard.edges.color,
-            "edgeOpacity": settings_guard.edges.opacity,
-            "edgeWidthRange": settings_guard.edges.width_range,
-            "enableArrows": settings_guard.edges.enable_arrows,
-            "arrowSize": settings_guard.edges.arrow_size,
-
-            // Physics settings
-            "physicsEnabled": settings_guard.physics.enabled,
-            "attractionStrength": settings_guard.physics.attraction_strength,
-            "repulsionStrength": settings_guard.physics.repulsion_strength,
-            "springStrength": settings_guard.physics.spring_strength,
-            "damping": settings_guard.physics.damping,
-            "maxVelocity": settings_guard.physics.max_velocity,
-            "collisionRadius": settings_guard.physics.collision_radius,
-            "boundsSize": settings_guard.physics.bounds_size,
-            "enableBounds": settings_guard.physics.enable_bounds,
-            "iterations": settings_guard.physics.iterations,
-
-            // Rendering settings
-            "ambientLightIntensity": settings_guard.rendering.ambient_light_intensity,
-            "directionalLightIntensity": settings_guard.rendering.directional_light_intensity,
-            "environmentIntensity": settings_guard.rendering.environment_intensity,
-            "enableAmbientOcclusion": settings_guard.rendering.enable_ambient_occlusion,
-            "enableAntialiasing": settings_guard.rendering.enable_antialiasing,
-            "enableShadows": settings_guard.rendering.enable_shadows,
-            "backgroundColor": settings_guard.rendering.background_color,
-
-            // Bloom settings
-            "enableBloom": settings_guard.bloom.enabled,
-            "bloomIntensity": settings_guard.bloom.strength,
-            "bloomRadius": settings_guard.bloom.radius,
-            "nodeBloomStrength": settings_guard.bloom.node_bloom_strength,
-            "edgeBloomStrength": settings_guard.bloom.edge_bloom_strength,
-            "environmentBloomStrength": settings_guard.bloom.environment_bloom_strength,
-
-            // Animation settings
-            "enableNodeAnimations": settings_guard.animations.enable_node_animations,
-            "enableMotionBlur": settings_guard.animations.enable_motion_blur,
-            "motionBlurStrength": settings_guard.animations.motion_blur_strength,
-            "selectionWaveEnabled": settings_guard.animations.selection_wave_enabled,
-            "pulseEnabled": settings_guard.animations.pulse_enabled,
-            "rippleEnabled": settings_guard.animations.ripple_enabled,
-            "edgeAnimationEnabled": settings_guard.animations.edge_animation_enabled,
-            "flowParticlesEnabled": settings_guard.animations.flow_particles_enabled,
-
-            // Label settings
-            "showLabels": settings_guard.labels.enable_labels,
-            "labelSize": settings_guard.labels.desktop_font_size as f32 / 48.0,
-            "labelColor": settings_guard.labels.text_color,
-
-            // AR settings
-            "enablePlaneDetection": settings_guard.ar.enable_plane_detection,
-            "enableHandTracking": settings_guard.ar.enable_hand_tracking,
-            "enableHaptics": settings_guard.ar.enable_haptics,
-            "showPlaneOverlay": settings_guard.ar.show_plane_overlay,
-            "planeOpacity": settings_guard.ar.plane_opacity,
-            "planeColor": settings_guard.ar.plane_color
-        });
-        json
-    }) {
-        Ok(settings_json) => {
-            info!("Successfully serialized settings to JSON");
-            HttpResponse::Ok().json(settings_json)
-        }
-        Err(e) => {
-            error!("Failed to serialize settings to JSON: {}", e);
-            HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": format!("Failed to serialize settings: {}", e)
-            }))
-        }
+    match setting_name.as_str() {
+        "size" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.nodes.base_size 
+        }),
+        "color" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: &settings_guard.nodes.base_color 
+        }),
+        "opacity" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.nodes.opacity 
+        }),
+        "metalness" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.nodes.metalness 
+        }),
+        "roughness" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.nodes.roughness 
+        }),
+        "clearcoat" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.nodes.clearcoat 
+        }),
+        "enableInstancing" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.nodes.enable_instancing 
+        }),
+        "materialType" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: &settings_guard.nodes.material_type 
+        }),
+        "sizeRange" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: &settings_guard.nodes.size_range 
+        }),
+        "sizeByConnections" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.nodes.size_by_connections 
+        }),
+        "highlightColor" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: &settings_guard.nodes.highlight_color 
+        }),
+        "highlightDuration" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.nodes.highlight_duration 
+        }),
+        "enableHoverEffect" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.nodes.enable_hover_effect 
+        }),
+        "hoverScale" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.nodes.hover_scale 
+        }),
+        _ => HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Unknown node setting: {}", setting_name)
+        }))
     }
 }
 
-// PUT /api/visualization/settings
-pub async fn update_visualization_settings(
+// PUT /api/visualization/nodes/{setting}
+pub async fn update_node_setting(
     settings: web::Data<Arc<RwLock<Settings>>>,
-    new_settings: web::Json<serde_json::Value>,
+    path: web::Path<String>,
+    value: web::Json<NodeSettingValue<serde_json::Value>>,
 ) -> HttpResponse {
+    let setting_name = path.into_inner();
     let mut settings_guard = settings.write().await;
     
-    if let Some(obj) = new_settings.as_object() {
-        info!("Received settings update: {:?}", obj);
-        
-        // Update node settings
-        if let Some(size) = obj.get("nodeSize").and_then(|v| v.as_f64()) {
-            settings_guard.nodes.base_size = size as f32;
-        }
-        if let Some(color) = obj.get("nodeColor").and_then(|v| v.as_str()) {
-            settings_guard.nodes.base_color = color.to_string();
-        }
-        if let Some(opacity) = obj.get("nodeOpacity").and_then(|v| v.as_f64()) {
-            settings_guard.nodes.opacity = opacity as f32;
-        }
-        if let Some(metalness) = obj.get("metalness").and_then(|v| v.as_f64()) {
-            settings_guard.nodes.metalness = metalness as f32;
-        }
-        if let Some(roughness) = obj.get("roughness").and_then(|v| v.as_f64()) {
-            settings_guard.nodes.roughness = roughness as f32;
-        }
-        if let Some(clearcoat) = obj.get("clearcoat").and_then(|v| v.as_f64()) {
-            settings_guard.nodes.clearcoat = clearcoat as f32;
-        }
-        if let Some(enable_instancing) = obj.get("enableInstancing").and_then(|v| v.as_bool()) {
-            settings_guard.nodes.enable_instancing = enable_instancing;
-        }
-        if let Some(material_type) = obj.get("materialType").and_then(|v| v.as_str()) {
-            settings_guard.nodes.material_type = material_type.to_string();
-        }
-        if let Some(size_range) = obj.get("sizeRange").and_then(|v| v.as_array()) {
-            settings_guard.nodes.size_range = size_range.iter()
-                .filter_map(|x| x.as_f64())
-                .map(|x| x as f32)
-                .collect();
-        }
-        if let Some(size_by_connections) = obj.get("sizeByConnections").and_then(|v| v.as_bool()) {
-            settings_guard.nodes.size_by_connections = size_by_connections;
-        }
-        if let Some(highlight_color) = obj.get("highlightColor").and_then(|v| v.as_str()) {
-            settings_guard.nodes.highlight_color = highlight_color.to_string();
-        }
-        if let Some(highlight_duration) = obj.get("highlightDuration").and_then(|v| v.as_u64()) {
-            settings_guard.nodes.highlight_duration = highlight_duration as u32;
-        }
-        if let Some(enable_hover_effect) = obj.get("enableHoverEffect").and_then(|v| v.as_bool()) {
-            settings_guard.nodes.enable_hover_effect = enable_hover_effect;
-        }
-        if let Some(hover_scale) = obj.get("hoverScale").and_then(|v| v.as_f64()) {
-            settings_guard.nodes.hover_scale = hover_scale as f32;
-        }
-
-        // Update edge settings
-        if let Some(base_width) = obj.get("edgeWidth").and_then(|v| v.as_f64()) {
-            settings_guard.edges.base_width = base_width as f32;
-        }
-        if let Some(color) = obj.get("edgeColor").and_then(|v| v.as_str()) {
-            settings_guard.edges.color = color.to_string();
-        }
-        if let Some(opacity) = obj.get("edgeOpacity").and_then(|v| v.as_f64()) {
-            settings_guard.edges.opacity = opacity as f32;
-        }
-        if let Some(width_range) = obj.get("edgeWidthRange").and_then(|v| v.as_array()) {
-            settings_guard.edges.width_range = width_range.iter()
-                .filter_map(|x| x.as_f64())
-                .map(|x| x as f32)
-                .collect();
-        }
-        if let Some(enable_arrows) = obj.get("enableArrows").and_then(|v| v.as_bool()) {
-            settings_guard.edges.enable_arrows = enable_arrows;
-        }
-        if let Some(arrow_size) = obj.get("arrowSize").and_then(|v| v.as_f64()) {
-            settings_guard.edges.arrow_size = arrow_size as f32;
-        }
-
-        // Update animation settings
-        if let Some(enable_node_animations) = obj.get("enableNodeAnimations").and_then(|v| v.as_bool()) {
-            settings_guard.animations.enable_node_animations = enable_node_animations;
-        }
-        if let Some(enable_motion_blur) = obj.get("enableMotionBlur").and_then(|v| v.as_bool()) {
-            settings_guard.animations.enable_motion_blur = enable_motion_blur;
-        }
-        if let Some(motion_blur_strength) = obj.get("motionBlurStrength").and_then(|v| v.as_f64()) {
-            settings_guard.animations.motion_blur_strength = motion_blur_strength as f32;
-        }
-        if let Some(selection_wave_enabled) = obj.get("selectionWaveEnabled").and_then(|v| v.as_bool()) {
-            settings_guard.animations.selection_wave_enabled = selection_wave_enabled;
-        }
-        if let Some(pulse_enabled) = obj.get("pulseEnabled").and_then(|v| v.as_bool()) {
-            settings_guard.animations.pulse_enabled = pulse_enabled;
-        }
-        if let Some(ripple_enabled) = obj.get("rippleEnabled").and_then(|v| v.as_bool()) {
-            settings_guard.animations.ripple_enabled = ripple_enabled;
-        }
-        if let Some(edge_animation_enabled) = obj.get("edgeAnimationEnabled").and_then(|v| v.as_bool()) {
-            settings_guard.animations.edge_animation_enabled = edge_animation_enabled;
-        }
-        if let Some(flow_particles_enabled) = obj.get("flowParticlesEnabled").and_then(|v| v.as_bool()) {
-            settings_guard.animations.flow_particles_enabled = flow_particles_enabled;
-        }
-
-        // Save settings to file
-        match save_settings_to_file(&settings_guard) {
-            Ok(_) => {
-                info!("Settings saved successfully");
-                HttpResponse::Ok().json(serde_json::json!({
-                    "message": "Settings updated successfully"
+    match setting_name.as_str() {
+        "size" => {
+            if let Some(size) = value.value.as_f64() {
+                settings_guard.nodes.base_size = size as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: size })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node size"
                 }))
             }
-            Err(e) => {
-                error!("Failed to save settings: {}", e);
-                HttpResponse::InternalServerError().json(serde_json::json!({
-                    "error": format!("Failed to save settings: {}", e)
+        },
+        "color" => {
+            if let Some(color) = value.value.as_str() {
+                settings_guard.nodes.base_color = color.to_string();
+                HttpResponse::Ok().json(NodeSettingValue { 
+                    value: &settings_guard.nodes.base_color 
+                })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node color"
                 }))
             }
-        }
-    } else {
-        error!("Invalid settings format received: {:?}", new_settings);
-        HttpResponse::BadRequest().json(serde_json::json!({
-            "error": "Invalid settings format"
+        },
+        "opacity" => {
+            if let Some(opacity) = value.value.as_f64() {
+                settings_guard.nodes.opacity = opacity as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: opacity })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node opacity"
+                }))
+            }
+        },
+        "metalness" => {
+            if let Some(metalness) = value.value.as_f64() {
+                settings_guard.nodes.metalness = metalness as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: metalness })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node metalness"
+                }))
+            }
+        },
+        "roughness" => {
+            if let Some(roughness) = value.value.as_f64() {
+                settings_guard.nodes.roughness = roughness as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: roughness })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node roughness"
+                }))
+            }
+        },
+        "clearcoat" => {
+            if let Some(clearcoat) = value.value.as_f64() {
+                settings_guard.nodes.clearcoat = clearcoat as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: clearcoat })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node clearcoat"
+                }))
+            }
+        },
+        "enableInstancing" => {
+            if let Some(enable_instancing) = value.value.as_bool() {
+                settings_guard.nodes.enable_instancing = enable_instancing;
+                HttpResponse::Ok().json(NodeSettingValue { value: enable_instancing })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node enableInstancing"
+                }))
+            }
+        },
+        "materialType" => {
+            if let Some(material_type) = value.value.as_str() {
+                settings_guard.nodes.material_type = material_type.to_string();
+                HttpResponse::Ok().json(NodeSettingValue { 
+                    value: &settings_guard.nodes.material_type 
+                })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node materialType"
+                }))
+            }
+        },
+        "sizeRange" => {
+            if let Some(size_range) = value.value.as_array() {
+                settings_guard.nodes.size_range = size_range.iter()
+                    .filter_map(|x| x.as_f64())
+                    .map(|x| x as f32)
+                    .collect();
+                HttpResponse::Ok().json(NodeSettingValue { 
+                    value: &settings_guard.nodes.size_range 
+                })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node sizeRange"
+                }))
+            }
+        },
+        "sizeByConnections" => {
+            if let Some(size_by_connections) = value.value.as_bool() {
+                settings_guard.nodes.size_by_connections = size_by_connections;
+                HttpResponse::Ok().json(NodeSettingValue { value: size_by_connections })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node sizeByConnections"
+                }))
+            }
+        },
+        "highlightColor" => {
+            if let Some(highlight_color) = value.value.as_str() {
+                settings_guard.nodes.highlight_color = highlight_color.to_string();
+                HttpResponse::Ok().json(NodeSettingValue { 
+                    value: &settings_guard.nodes.highlight_color 
+                })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node highlightColor"
+                }))
+            }
+        },
+        "highlightDuration" => {
+            if let Some(highlight_duration) = value.value.as_u64() {
+                settings_guard.nodes.highlight_duration = highlight_duration as u32;
+                HttpResponse::Ok().json(NodeSettingValue { value: highlight_duration })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node highlightDuration"
+                }))
+            }
+        },
+        "enableHoverEffect" => {
+            if let Some(enable_hover_effect) = value.value.as_bool() {
+                settings_guard.nodes.enable_hover_effect = enable_hover_effect;
+                HttpResponse::Ok().json(NodeSettingValue { value: enable_hover_effect })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node enableHoverEffect"
+                }))
+            }
+        },
+        "hoverScale" => {
+            if let Some(hover_scale) = value.value.as_f64() {
+                settings_guard.nodes.hover_scale = hover_scale as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: hover_scale })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for node hoverScale"
+                }))
+            }
+        },
+        _ => HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Unknown node setting: {}", setting_name)
         }))
     }
+}
+
+// GET /api/visualization/edges/{setting}
+pub async fn get_edge_setting(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let setting_name = path.into_inner();
+    let settings_guard = settings.read().await;
+    
+    match setting_name.as_str() {
+        "width" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.edges.base_width 
+        }),
+        "color" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: &settings_guard.edges.color 
+        }),
+        "opacity" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.edges.opacity 
+        }),
+        "widthRange" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: &settings_guard.edges.width_range 
+        }),
+        "enableArrows" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.edges.enable_arrows 
+        }),
+        "arrowSize" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.edges.arrow_size 
+        }),
+        _ => HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Unknown edge setting: {}", setting_name)
+        }))
+    }
+}
+
+// PUT /api/visualization/edges/{setting}
+pub async fn update_edge_setting(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
+    value: web::Json<NodeSettingValue<serde_json::Value>>,
+) -> HttpResponse {
+    let setting_name = path.into_inner();
+    let mut settings_guard = settings.write().await;
+    
+    match setting_name.as_str() {
+        "width" => {
+            if let Some(width) = value.value.as_f64() {
+                settings_guard.edges.base_width = width as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: width })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for edge width"
+                }))
+            }
+        },
+        "color" => {
+            if let Some(color) = value.value.as_str() {
+                settings_guard.edges.color = color.to_string();
+                HttpResponse::Ok().json(NodeSettingValue { 
+                    value: &settings_guard.edges.color 
+                })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for edge color"
+                }))
+            }
+        },
+        "opacity" => {
+            if let Some(opacity) = value.value.as_f64() {
+                settings_guard.edges.opacity = opacity as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: opacity })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for edge opacity"
+                }))
+            }
+        },
+        "widthRange" => {
+            if let Some(width_range) = value.value.as_array() {
+                settings_guard.edges.width_range = width_range.iter()
+                    .filter_map(|x| x.as_f64())
+                    .map(|x| x as f32)
+                    .collect();
+                HttpResponse::Ok().json(NodeSettingValue { 
+                    value: &settings_guard.edges.width_range 
+                })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for edge widthRange"
+                }))
+            }
+        },
+        "enableArrows" => {
+            if let Some(enable_arrows) = value.value.as_bool() {
+                settings_guard.edges.enable_arrows = enable_arrows;
+                HttpResponse::Ok().json(NodeSettingValue { value: enable_arrows })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for edge enableArrows"
+                }))
+            }
+        },
+        "arrowSize" => {
+            if let Some(arrow_size) = value.value.as_f64() {
+                settings_guard.edges.arrow_size = arrow_size as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: arrow_size })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for edge arrowSize"
+                }))
+            }
+        },
+        _ => HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Unknown edge setting: {}", setting_name)
+        }))
+    }
+}
+
+// GET /api/visualization/physics/{setting}
+pub async fn get_physics_setting(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let setting_name = path.into_inner();
+    let settings_guard = settings.read().await;
+    
+    match setting_name.as_str() {
+        "enabled" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.physics.enabled 
+        }),
+        "attractionStrength" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.physics.attraction_strength 
+        }),
+        "repulsionStrength" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.physics.repulsion_strength 
+        }),
+        "springStrength" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.physics.spring_strength 
+        }),
+        "damping" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.physics.damping 
+        }),
+        "maxVelocity" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.physics.max_velocity 
+        }),
+        "collisionRadius" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.physics.collision_radius 
+        }),
+        "boundsSize" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.physics.bounds_size 
+        }),
+        "enableBounds" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.physics.enable_bounds 
+        }),
+        "iterations" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.physics.iterations 
+        }),
+        _ => HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Unknown physics setting: {}", setting_name)
+        }))
+    }
+}
+
+// PUT /api/visualization/physics/{setting}
+pub async fn update_physics_setting(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
+    value: web::Json<NodeSettingValue<serde_json::Value>>,
+) -> HttpResponse {
+    let setting_name = path.into_inner();
+    let mut settings_guard = settings.write().await;
+    
+    match setting_name.as_str() {
+        "enabled" => {
+            if let Some(enabled) = value.value.as_bool() {
+                settings_guard.physics.enabled = enabled;
+                HttpResponse::Ok().json(NodeSettingValue { value: enabled })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for physics enabled"
+                }))
+            }
+        },
+        "attractionStrength" => {
+            if let Some(strength) = value.value.as_f64() {
+                settings_guard.physics.attraction_strength = strength as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: strength })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for physics attractionStrength"
+                }))
+            }
+        },
+        "repulsionStrength" => {
+            if let Some(strength) = value.value.as_f64() {
+                settings_guard.physics.repulsion_strength = strength as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: strength })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for physics repulsionStrength"
+                }))
+            }
+        },
+        "springStrength" => {
+            if let Some(strength) = value.value.as_f64() {
+                settings_guard.physics.spring_strength = strength as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: strength })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for physics springStrength"
+                }))
+            }
+        },
+        "damping" => {
+            if let Some(damping) = value.value.as_f64() {
+                settings_guard.physics.damping = damping as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: damping })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for physics damping"
+                }))
+            }
+        },
+        "maxVelocity" => {
+            if let Some(velocity) = value.value.as_f64() {
+                settings_guard.physics.max_velocity = velocity as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: velocity })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for physics maxVelocity"
+                }))
+            }
+        },
+        "collisionRadius" => {
+            if let Some(radius) = value.value.as_f64() {
+                settings_guard.physics.collision_radius = radius as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: radius })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for physics collisionRadius"
+                }))
+            }
+        },
+        "boundsSize" => {
+            if let Some(size) = value.value.as_f64() {
+                settings_guard.physics.bounds_size = size as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: size })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for physics boundsSize"
+                }))
+            }
+        },
+        "enableBounds" => {
+            if let Some(enable_bounds) = value.value.as_bool() {
+                settings_guard.physics.enable_bounds = enable_bounds;
+                HttpResponse::Ok().json(NodeSettingValue { value: enable_bounds })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for physics enableBounds"
+                }))
+            }
+        },
+        "iterations" => {
+            if let Some(iterations) = value.value.as_u64() {
+                settings_guard.physics.iterations = iterations as u32;
+                HttpResponse::Ok().json(NodeSettingValue { value: iterations })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for physics iterations"
+                }))
+            }
+        },
+        _ => HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Unknown physics setting: {}", setting_name)
+        }))
+    }
+}
+
+// GET /api/visualization/rendering/{setting}
+pub async fn get_rendering_setting(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let setting_name = path.into_inner();
+    let settings_guard = settings.read().await;
+    
+    match setting_name.as_str() {
+        "ambientLightIntensity" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.rendering.ambient_light_intensity 
+        }),
+        "directionalLightIntensity" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.rendering.directional_light_intensity 
+        }),
+        "environmentIntensity" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.rendering.environment_intensity 
+        }),
+        "enableAmbientOcclusion" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.rendering.enable_ambient_occlusion 
+        }),
+        "enableAntialiasing" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.rendering.enable_antialiasing 
+        }),
+        "enableShadows" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.rendering.enable_shadows 
+        }),
+        "backgroundColor" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: &settings_guard.rendering.background_color 
+        }),
+        _ => HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Unknown rendering setting: {}", setting_name)
+        }))
+    }
+}
+
+// PUT /api/visualization/rendering/{setting}
+pub async fn update_rendering_setting(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
+    value: web::Json<NodeSettingValue<serde_json::Value>>,
+) -> HttpResponse {
+    let setting_name = path.into_inner();
+    let mut settings_guard = settings.write().await;
+    
+    match setting_name.as_str() {
+        "ambientLightIntensity" => {
+            if let Some(intensity) = value.value.as_f64() {
+                settings_guard.rendering.ambient_light_intensity = intensity as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: intensity })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for rendering ambientLightIntensity"
+                }))
+            }
+        },
+        "directionalLightIntensity" => {
+            if let Some(intensity) = value.value.as_f64() {
+                settings_guard.rendering.directional_light_intensity = intensity as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: intensity })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for rendering directionalLightIntensity"
+                }))
+            }
+        },
+        "environmentIntensity" => {
+            if let Some(intensity) = value.value.as_f64() {
+                settings_guard.rendering.environment_intensity = intensity as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: intensity })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for rendering environmentIntensity"
+                }))
+            }
+        },
+        "enableAmbientOcclusion" => {
+            if let Some(enable_ambient_occlusion) = value.value.as_bool() {
+                settings_guard.rendering.enable_ambient_occlusion = enable_ambient_occlusion;
+                HttpResponse::Ok().json(NodeSettingValue { value: enable_ambient_occlusion })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for rendering enableAmbientOcclusion"
+                }))
+            }
+        },
+        "enableAntialiasing" => {
+            if let Some(enable_antialiasing) = value.value.as_bool() {
+                settings_guard.rendering.enable_antialiasing = enable_antialiasing;
+                HttpResponse::Ok().json(NodeSettingValue { value: enable_antialiasing })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for rendering enableAntialiasing"
+                }))
+            }
+        },
+        "enableShadows" => {
+            if let Some(enable_shadows) = value.value.as_bool() {
+                settings_guard.rendering.enable_shadows = enable_shadows;
+                HttpResponse::Ok().json(NodeSettingValue { value: enable_shadows })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for rendering enableShadows"
+                }))
+            }
+        },
+        "backgroundColor" => {
+            if let Some(color) = value.value.as_str() {
+                settings_guard.rendering.background_color = color.to_string();
+                HttpResponse::Ok().json(NodeSettingValue { 
+                    value: &settings_guard.rendering.background_color 
+                })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for rendering backgroundColor"
+                }))
+            }
+        },
+        _ => HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Unknown rendering setting: {}", setting_name)
+        }))
+    }
+}
+
+// GET /api/visualization/bloom/{setting}
+pub async fn get_bloom_setting(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let setting_name = path.into_inner();
+    let settings_guard = settings.read().await;
+    
+    match setting_name.as_str() {
+        "enabled" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.bloom.enabled 
+        }),
+        "strength" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.bloom.strength 
+        }),
+        "radius" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.bloom.radius 
+        }),
+        "nodeBloomStrength" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.bloom.node_bloom_strength 
+        }),
+        "edgeBloomStrength" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.bloom.edge_bloom_strength 
+        }),
+        "environmentBloomStrength" => HttpResponse::Ok().json(NodeSettingValue { 
+            value: settings_guard.bloom.environment_bloom_strength 
+        }),
+        _ => HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Unknown bloom setting: {}", setting_name)
+        }))
+    }
+}
+
+// PUT /api/visualization/bloom/{setting}
+pub async fn update_bloom_setting(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
+    value: web::Json<NodeSettingValue<serde_json::Value>>,
+) -> HttpResponse {
+    let setting_name = path.into_inner();
+    let mut settings_guard = settings.write().await;
+    
+    match setting_name.as_str() {
+        "enabled" => {
+            if let Some(enabled) = value.value.as_bool() {
+                settings_guard.bloom.enabled = enabled;
+                HttpResponse::Ok().json(NodeSettingValue { value: enabled })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for bloom enabled"
+                }))
+            }
+        },
+        "strength" => {
+            if let Some(strength) = value.value.as_f64() {
+                settings_guard.bloom.strength = strength as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: strength })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for bloom strength"
+                }))
+            }
+        },
+        "radius" => {
+            if let Some(radius) = value.value.as_f64() {
+                settings_guard.bloom.radius = radius as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: radius })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for bloom radius"
+                }))
+            }
+        },
+        "nodeBloomStrength" => {
+            if let Some(strength) = value.value.as_f64() {
+                settings_guard.bloom.node_bloom_strength = strength as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: strength })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for bloom nodeBloomStrength"
+                }))
+            }
+        },
+        "edgeBloomStrength" => {
+            if let Some(strength) = value.value.as_f64() {
+                settings_guard.bloom.edge_bloom_strength = strength as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: strength })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for bloom edgeBloomStrength"
+                }))
+            }
+        },
+        "environmentBloomStrength" => {
+            if let Some(strength) = value.value.as_f64() {
+                settings_guard.bloom.environment_bloom_strength = strength as f32;
+                HttpResponse::Ok().json(NodeSettingValue { value: strength })
+            } else {
+                HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": "Invalid value type for bloom environmentBloomStrength"
+                }))
+            }
+        },
+        _ => HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Unknown bloom setting: {}", setting_name)
+        }))
+    }
+}
+
+// Register the handlers with the Actix web app
+pub fn config(cfg: &mut web::ServiceConfig) {
+    cfg.route("/nodes/{setting}", web::get().to(get_node_setting))
+       .route("/nodes/{setting}", web::put().to(update_node_setting))
+       .route("/edges/{setting}", web::get().to(get_edge_setting))
+       .route("/edges/{setting}", web::put().to(update_edge_setting))
+       .route("/physics/{setting}", web::get().to(get_physics_setting))
+       .route("/physics/{setting}", web::put().to(update_physics_setting))
+       .route("/rendering/{setting}", web::get().to(get_rendering_setting))
+       .route("/rendering/{setting}", web::put().to(update_rendering_setting))
+       .route("/bloom/{setting}", web::get().to(get_bloom_setting))
+       .route("/bloom/{setting}", web::put().to(update_bloom_setting));
 }
 
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
@@ -305,10 +820,4 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
             Err(e)
         }
     }
-}
-
-// Register the handlers with the Actix web app
-pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("/settings", web::get().to(get_visualization_settings))
-       .route("/settings", web::put().to(update_visualization_settings));
 }

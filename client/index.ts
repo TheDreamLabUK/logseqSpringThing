@@ -11,10 +11,10 @@ import { NodeManager } from './rendering/nodes';
 import { TextRenderer } from './rendering/textRenderer';
 import { XRSessionManager } from './xr/xrSessionManager';
 import { XRInteraction } from './xr/xrInteraction';
-import { createLogger } from './core/utils';
+import { createLogger } from './utils/logger';
 import { WS_URL } from './core/constants';
 import { BinaryPositionUpdateMessage } from './core/types';
-import { ControlPanel } from './ui';
+import { ControlPanel } from './ui/ControlPanel';
 
 const logger = createLogger('Application');
 
@@ -42,7 +42,7 @@ class Application {
             await graphDataManager.loadGraphData();
             
             // Load settings from REST endpoint
-            await settingsManager.loadSettings();
+            await this.loadSettings();
 
             // Initialize WebSocket for real-time updates
             this.initializeWebSocket();
@@ -64,6 +64,37 @@ class Application {
             logger.error('Failed to initialize application:', error);
             this.showError('Failed to initialize application');
         }
+    }
+
+    private async loadSettings(): Promise<void> {
+        try {
+            // Initialize settings by loading initial values for each category
+            await Promise.all([
+                this.loadSettingsCategory('nodes'),
+                this.loadSettingsCategory('edges'),
+                this.loadSettingsCategory('physics'),
+                this.loadSettingsCategory('rendering'),
+                this.loadSettingsCategory('bloom'),
+                this.loadSettingsCategory('animation'),
+                this.loadSettingsCategory('label'),
+                this.loadSettingsCategory('ar')
+            ]);
+        } catch (error) {
+            logger.error('Failed to load settings:', error);
+            throw error;
+        }
+    }
+
+    private async loadSettingsCategory(category: string): Promise<void> {
+        const settings = settingsManager.getCurrentSettings();
+        const categorySettings = settings[category as keyof typeof settings];
+        
+        await Promise.all(
+            Object.keys(categorySettings).map(async setting => {
+                const getterMethod = `get${category.charAt(0).toUpperCase() + category.slice(1)}Setting`;
+                await (settingsManager as any)[getterMethod](setting);
+            })
+        );
     }
 
     private initializeWebSocket(): void {
