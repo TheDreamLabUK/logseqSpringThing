@@ -19,97 +19,97 @@ import { ControlPanel } from './ui';
 const logger = createLogger('Application');
 
 class Application {
-  private webSocket!: WebSocketService;
-  private sceneManager!: SceneManager;
-  private nodeManager!: NodeManager;
-  private textRenderer!: TextRenderer;
-  private xrManager: XRSessionManager | null = null;
-  private xrInteraction: XRInteraction | null = null;
+    private webSocket!: WebSocketService;
+    private sceneManager!: SceneManager;
+    private nodeManager!: NodeManager;
+    private textRenderer!: TextRenderer;
+    private xrManager: XRSessionManager | null = null;
+    private xrInteraction: XRInteraction | null = null;
 
-  constructor() {
-    this.initializeApplication();
-  }
-
-  private async initializeApplication(): Promise<void> {
-    try {
-      // Initialize platform manager
-      await platformManager.initialize();
-
-      // Initialize scene first so we can render nodes when data arrives
-      this.initializeScene();
-
-      // Initialize WebSocket connection and settings
-      this.initializeWebSocket();
-
-      // Initialize settings after WebSocket is ready
-      await this.initializeSettings();
-
-      // Initialize XR if supported
-      await this.initializeXR();
-
-      // Initialize UI components
-      new ControlPanel(); // Create the control panel instance
-
-      // Setup UI event listeners
-      this.setupUIEventListeners();
-
-      // Hide loading overlay
-      this.hideLoadingOverlay();
-
-      logger.log('Application initialized successfully');
-    } catch (error) {
-      logger.error('Failed to initialize application:', error);
-      this.showError('Failed to initialize application');
+    constructor() {
+        this.initializeApplication();
     }
-  }
 
-  private initializeWebSocket(): void {
-    // Create WebSocket service with environment-aware URL
-    this.webSocket = new WebSocketService(WS_URL);
+    private async initializeApplication(): Promise<void> {
+        try {
+            // Initialize platform manager
+            await platformManager.initialize();
 
-    // Setup WebSocket event handlers
-    this.webSocket.on('initialData', (data) => {
-      logger.log('Received initial graph data:', data);
-      if (data && data.graph) {
-        // Update graph data
-        graphDataManager.updateGraphData(data.graph);
-        this.nodeManager.updateGraph(data.graph.nodes, data.graph.edges);
-      }
-    });
+            // Initialize scene first so we can render nodes when data arrives
+            this.initializeScene();
 
-    this.webSocket.on('binaryPositionUpdate', (data: BinaryPositionUpdateMessage['data']) => {
-      if (data && data.nodes) {
-        // Convert nodes data to ArrayBuffer for position updates
-        const buffer = new ArrayBuffer(data.nodes.length * 24); // 6 floats per node
-        const floatArray = new Float32Array(buffer);
-        
-        data.nodes.forEach((node, index) => {
-          const baseIndex = index * 6;
-          const pos = node.data.position;
-          const vel = node.data.velocity;
-          
-          // Position
-          floatArray[baseIndex] = pos.x;
-          floatArray[baseIndex + 1] = pos.y;
-          floatArray[baseIndex + 2] = pos.z;
-          // Velocity
-          floatArray[baseIndex + 3] = vel.x;
-          floatArray[baseIndex + 4] = vel.y;
-          floatArray[baseIndex + 5] = vel.z;
+            // Initialize WebSocket connection
+            this.initializeWebSocket();
+
+            // Wait for settings to be loaded before creating UI components
+            await settingsManager.loadSettings();
+
+            // Initialize XR if supported
+            await this.initializeXR();
+
+            // Initialize UI components after settings are loaded
+            new ControlPanel();
+
+            // Setup UI event listeners
+            this.setupUIEventListeners();
+
+            // Hide loading overlay
+            this.hideLoadingOverlay();
+
+            logger.log('Application initialized successfully');
+        } catch (error) {
+            logger.error('Failed to initialize application:', error);
+            this.showError('Failed to initialize application');
+        }
+    }
+
+    private initializeWebSocket(): void {
+        // Create WebSocket service with environment-aware URL
+        this.webSocket = new WebSocketService(WS_URL);
+
+        // Initialize settings manager with WebSocket
+        settingsManager.initializeWebSocket(this.webSocket);
+
+        // Setup WebSocket event handlers
+        this.webSocket.on('initialData', (data) => {
+            logger.log('Received initial graph data:', data);
+            if (data && data.graph) {
+                // Update graph data
+                graphDataManager.updateGraphData(data.graph);
+                this.nodeManager.updateGraph(data.graph.nodes, data.graph.edges);
+            }
         });
 
-        // Update graph data and visual representation
-        graphDataManager.updatePositions(buffer);
-        this.nodeManager.updatePositions(floatArray);
-      }
-    });
+        this.webSocket.on('binaryPositionUpdate', (data: BinaryPositionUpdateMessage['data']) => {
+            if (data && data.nodes) {
+                // Convert nodes data to ArrayBuffer for position updates
+                const buffer = new ArrayBuffer(data.nodes.length * 24); // 6 floats per node
+                const floatArray = new Float32Array(buffer);
+                
+                data.nodes.forEach((node, index) => {
+                    const baseIndex = index * 6;
+                    const pos = node.data.position;
+                    const vel = node.data.velocity;
+                    
+                    // Position
+                    floatArray[baseIndex] = pos.x;
+                    floatArray[baseIndex + 1] = pos.y;
+                    floatArray[baseIndex + 2] = pos.z;
+                    // Velocity
+                    floatArray[baseIndex + 3] = vel.x;
+                    floatArray[baseIndex + 4] = vel.y;
+                    floatArray[baseIndex + 5] = vel.z;
+                });
 
-    // Initialize settings manager with WebSocket
-    settingsManager.initializeWebSocket(this.webSocket);
+                // Update graph data and visual representation
+                graphDataManager.updatePositions(buffer);
+                this.nodeManager.updatePositions(floatArray);
+            }
+        });
 
-    // Connect to server
-    this.webSocket.connect();
-  }
+        // Connect to server
+        this.webSocket.connect();
+    }
 
   private initializeScene(): void {
     // Get canvas element
@@ -304,7 +304,7 @@ const app = new Application();
 
 // Handle window unload
 window.addEventListener('unload', () => {
-  app.dispose();
+    app.dispose();
 });
 
 // Log application start

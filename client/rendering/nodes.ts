@@ -20,13 +20,14 @@ import { Node, Edge } from '../core/types';
 import { SceneManager } from './scene';
 import { createLogger } from '../core/utils';
 import { settingsManager } from '../state/settings';
+import { graphDataManager } from '../state/graphData';
 
 const logger = createLogger('NodeManager');
 
 // Constants for geometry
 const NODE_SEGMENTS = 16;
 const EDGE_SEGMENTS = 8;
-const NODE_SIZE_MULTIPLIER = 1; // Increased from 1 to 5 for better visibility
+const NODE_SIZE_MULTIPLIER = 1;
 
 // Binary format constants
 const BINARY_VERSION = 1.0;
@@ -72,6 +73,9 @@ export class NodeManager {
   private dirtyEdges: Set<number> = new Set();
   private batchUpdateTimeout: number | null = null;
 
+  // Unsubscribe function for position updates
+  private unsubscribeFromPositionUpdates: (() => void) | null = null;
+
   private constructor(sceneManager: SceneManager) {
     this.sceneManager = sceneManager;
     
@@ -110,6 +114,11 @@ export class NodeManager {
 
     // Subscribe to settings changes
     settingsManager.subscribe(() => this.onSettingsChanged());
+
+    // Subscribe to position updates from graphDataManager
+    this.unsubscribeFromPositionUpdates = graphDataManager.subscribeToPositionUpdates(
+      (positions: Float32Array) => this.updatePositions(positions)
+    );
     
     logger.log('NodeManager initialized with settings:', threeSettings);
   }
@@ -395,14 +404,13 @@ export class NodeManager {
     
     // Process batched edge updates
     this.processBatchEdgeUpdate();
+
+    logger.debug(`Updated positions for ${nodeCount} nodes`);
   }
 
   private processNodeChunk(floatArray: Float32Array, startIndex: number, endIndex: number): void {
     // Reset quaternion to identity
     quaternion.identity();
-    
-    const threeSettings = settingsManager.getThreeJSSettings();
-    const nodeSize = threeSettings.nodes.size;
     
     for (let i = startIndex; i < endIndex; i++) {
       const baseIndex = VERSION_OFFSET + (i * FLOATS_PER_NODE);
@@ -414,8 +422,8 @@ export class NodeManager {
         floatArray[baseIndex + 2]
       );
 
-      // Apply uniform scale
-      scale.set(nodeSize, nodeSize, nodeSize);
+      // Keep uniform scale of 1 for position updates
+      scale.set(1, 1, 1);
       
       // Create matrix with uniform scaling
       matrix.compose(position, quaternion, scale);
@@ -445,6 +453,12 @@ export class NodeManager {
   dispose(): void {
     if (this.batchUpdateTimeout !== null) {
       clearTimeout(this.batchUpdateTimeout);
+    }
+
+    // Unsubscribe from position updates
+    if (this.unsubscribeFromPositionUpdates) {
+      this.unsubscribeFromPositionUpdates();
+      this.unsubscribeFromPositionUpdates = null;
     }
 
     this.nodeInstances.geometry.dispose();

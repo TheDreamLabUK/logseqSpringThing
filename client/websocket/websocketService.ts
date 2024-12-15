@@ -221,8 +221,8 @@ export class WebSocketService {
       return;
     }
 
-    // Notify handlers with validated Float32Array
-    this.notifyHandlers('binaryPositionUpdate', { nodes: floatArray });
+    // Pass the Float32Array directly to handlers
+    this.notifyHandlers('binaryPositionUpdate', floatArray);
   }
 
   private handleJsonMessage(data: string): void {
