@@ -2,119 +2,120 @@ use crate::config::Settings;
 use actix_web::{web, HttpResponse};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 use toml;
+use log::{error, info};
 
 // GET /api/visualization/settings
 pub async fn get_visualization_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
 ) -> HttpResponse {
-    let settings_guard = settings.read().await;
+    info!("Attempting to read visualization settings");
     
-    // Break down JSON construction into parts
-    let node_settings = serde_json::json!({
-        "nodeSize": settings_guard.nodes.base_size,
-        "nodeColor": settings_guard.nodes.base_color,
-        "nodeOpacity": settings_guard.nodes.opacity,
-        "metalness": settings_guard.nodes.metalness,
-        "roughness": settings_guard.nodes.roughness,
-        "clearcoat": settings_guard.nodes.clearcoat,
-        "enableInstancing": settings_guard.nodes.enable_instancing,
-        "materialType": settings_guard.nodes.material_type,
-        "sizeRange": settings_guard.nodes.size_range,
-        "sizeByConnections": settings_guard.nodes.size_by_connections,
-        "highlightColor": settings_guard.nodes.highlight_color,
-        "highlightDuration": settings_guard.nodes.highlight_duration,
-        "enableHoverEffect": settings_guard.nodes.enable_hover_effect
-    });
+    let settings_guard = match settings.read().await {
+        Ok(guard) => guard,
+        Err(e) => {
+            error!("Failed to acquire read lock on settings: {}", e);
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to read settings"
+            }));
+        }
+    };
 
-    let edge_settings = serde_json::json!({
-        "edgeWidth": settings_guard.edges.base_width,
-        "edgeColor": settings_guard.edges.color,
-        "edgeOpacity": settings_guard.edges.opacity,
-        "edgeWidthRange": settings_guard.edges.width_range
-    });
+    info!("Successfully acquired settings read lock");
+    
+    match serde_json::to_value({
+        let json = serde_json::json!({
+            // Node settings
+            "nodeSize": settings_guard.nodes.base_size,
+            "nodeColor": settings_guard.nodes.base_color,
+            "nodeOpacity": settings_guard.nodes.opacity,
+            "metalness": settings_guard.nodes.metalness,
+            "roughness": settings_guard.nodes.roughness,
+            "clearcoat": settings_guard.nodes.clearcoat,
+            "enableInstancing": settings_guard.nodes.enable_instancing,
+            "materialType": settings_guard.nodes.material_type,
+            "sizeRange": settings_guard.nodes.size_range,
+            "sizeByConnections": settings_guard.nodes.size_by_connections,
+            "highlightColor": settings_guard.nodes.highlight_color,
+            "highlightDuration": settings_guard.nodes.highlight_duration,
+            "enableHoverEffect": settings_guard.nodes.enable_hover_effect,
+            "hoverScale": settings_guard.nodes.hover_scale,
 
-    let physics_settings = serde_json::json!({
-        "physicsEnabled": settings_guard.physics.enabled,
-        "attractionStrength": settings_guard.physics.attraction_strength,
-        "repulsionStrength": settings_guard.physics.repulsion_strength,
-        "springStrength": settings_guard.physics.spring_strength,
-        "damping": settings_guard.physics.damping,
-        "maxVelocity": settings_guard.physics.max_velocity,
-        "collisionRadius": settings_guard.physics.collision_radius,
-        "boundsSize": settings_guard.physics.bounds_size,
-        "enableBounds": settings_guard.physics.enable_bounds,
-        "iterations": settings_guard.physics.iterations
-    });
+            // Edge settings
+            "edgeWidth": settings_guard.edges.base_width,
+            "edgeColor": settings_guard.edges.color,
+            "edgeOpacity": settings_guard.edges.opacity,
+            "edgeWidthRange": settings_guard.edges.width_range,
+            "enableArrows": settings_guard.edges.enable_arrows,
+            "arrowSize": settings_guard.edges.arrow_size,
 
-    let rendering_settings = serde_json::json!({
-        "ambientLightIntensity": settings_guard.rendering.ambient_light_intensity,
-        "directionalLightIntensity": settings_guard.rendering.directional_light_intensity,
-        "environmentIntensity": settings_guard.rendering.environment_intensity,
-        "enableAmbientOcclusion": settings_guard.rendering.enable_ambient_occlusion,
-        "enableAntialiasing": settings_guard.rendering.enable_antialiasing,
-        "enableShadows": settings_guard.rendering.enable_shadows,
-        "backgroundColor": settings_guard.rendering.background_color
-    });
+            // Physics settings
+            "physicsEnabled": settings_guard.physics.enabled,
+            "attractionStrength": settings_guard.physics.attraction_strength,
+            "repulsionStrength": settings_guard.physics.repulsion_strength,
+            "springStrength": settings_guard.physics.spring_strength,
+            "damping": settings_guard.physics.damping,
+            "maxVelocity": settings_guard.physics.max_velocity,
+            "collisionRadius": settings_guard.physics.collision_radius,
+            "boundsSize": settings_guard.physics.bounds_size,
+            "enableBounds": settings_guard.physics.enable_bounds,
+            "iterations": settings_guard.physics.iterations,
 
-    let bloom_settings = serde_json::json!({
-        "bloomEnabled": settings_guard.bloom.enabled,
-        "nodeBloomStrength": settings_guard.bloom.node_bloom_strength,
-        "edgeBloomStrength": settings_guard.bloom.edge_bloom_strength,
-        "environmentBloomStrength": settings_guard.bloom.environment_bloom_strength
-    });
+            // Rendering settings
+            "ambientLightIntensity": settings_guard.rendering.ambient_light_intensity,
+            "directionalLightIntensity": settings_guard.rendering.directional_light_intensity,
+            "environmentIntensity": settings_guard.rendering.environment_intensity,
+            "enableAmbientOcclusion": settings_guard.rendering.enable_ambient_occlusion,
+            "enableAntialiasing": settings_guard.rendering.enable_antialiasing,
+            "enableShadows": settings_guard.rendering.enable_shadows,
+            "backgroundColor": settings_guard.rendering.background_color,
 
-    let animation_settings = serde_json::json!({
-        "enableNodeAnimations": settings_guard.animations.enable_node_animations,
-        "selectionWaveEnabled": settings_guard.animations.selection_wave_enabled,
-        "pulseEnabled": settings_guard.animations.pulse_enabled,
-        "rippleEnabled": settings_guard.animations.ripple_enabled,
-        "edgeAnimationEnabled": settings_guard.animations.edge_animation_enabled,
-        "flowParticlesEnabled": settings_guard.animations.flow_particles_enabled
-    });
+            // Bloom settings
+            "enableBloom": settings_guard.bloom.enabled,
+            "bloomIntensity": settings_guard.bloom.strength,
+            "bloomRadius": settings_guard.bloom.radius,
+            "nodeBloomStrength": settings_guard.bloom.node_bloom_strength,
+            "edgeBloomStrength": settings_guard.bloom.edge_bloom_strength,
+            "environmentBloomStrength": settings_guard.bloom.environment_bloom_strength,
 
-    let label_settings = serde_json::json!({
-        "enableLabels": settings_guard.labels.enable_labels,
-        "textColor": settings_guard.labels.text_color
-    });
+            // Animation settings
+            "enableNodeAnimations": settings_guard.animations.enable_node_animations,
+            "enableMotionBlur": settings_guard.animations.enable_motion_blur,
+            "motionBlurStrength": settings_guard.animations.motion_blur_strength,
+            "selectionWaveEnabled": settings_guard.animations.selection_wave_enabled,
+            "pulseEnabled": settings_guard.animations.pulse_enabled,
+            "rippleEnabled": settings_guard.animations.ripple_enabled,
+            "edgeAnimationEnabled": settings_guard.animations.edge_animation_enabled,
+            "flowParticlesEnabled": settings_guard.animations.flow_particles_enabled,
 
-    let ar_settings = serde_json::json!({
-        "enablePlaneDetection": settings_guard.ar.enable_plane_detection,
-        "enableHandTracking": settings_guard.ar.enable_hand_tracking,
-        "enableHaptics": settings_guard.ar.enable_haptics
-    });
+            // Label settings
+            "showLabels": settings_guard.labels.enable_labels,
+            "labelSize": settings_guard.labels.desktop_font_size as f32 / 48.0,
+            "labelColor": settings_guard.labels.text_color,
 
-    // Combine all settings
-    let mut settings_map = serde_json::Map::new();
-    if let Some(obj) = node_settings.as_object() {
-        settings_map.extend(obj.clone());
+            // AR settings
+            "enablePlaneDetection": settings_guard.ar.enable_plane_detection,
+            "enableHandTracking": settings_guard.ar.enable_hand_tracking,
+            "enableHaptics": settings_guard.ar.enable_haptics,
+            "showPlaneOverlay": settings_guard.ar.show_plane_overlay,
+            "planeOpacity": settings_guard.ar.plane_opacity,
+            "planeColor": settings_guard.ar.plane_color
+        });
+        json
+    }) {
+        Ok(settings_json) => {
+            info!("Successfully serialized settings to JSON");
+            HttpResponse::Ok().json(settings_json)
+        }
+        Err(e) => {
+            error!("Failed to serialize settings to JSON: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to serialize settings: {}", e)
+            }))
+        }
     }
-    if let Some(obj) = edge_settings.as_object() {
-        settings_map.extend(obj.clone());
-    }
-    if let Some(obj) = physics_settings.as_object() {
-        settings_map.extend(obj.clone());
-    }
-    if let Some(obj) = rendering_settings.as_object() {
-        settings_map.extend(obj.clone());
-    }
-    if let Some(obj) = bloom_settings.as_object() {
-        settings_map.extend(obj.clone());
-    }
-    if let Some(obj) = animation_settings.as_object() {
-        settings_map.extend(obj.clone());
-    }
-    if let Some(obj) = label_settings.as_object() {
-        settings_map.extend(obj.clone());
-    }
-    if let Some(obj) = ar_settings.as_object() {
-        settings_map.extend(obj.clone());
-    }
-
-    HttpResponse::Ok().json(serde_json::Value::Object(settings_map))
 }
 
 // PUT /api/visualization/settings
@@ -122,11 +123,11 @@ pub async fn update_visualization_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
     new_settings: web::Json<serde_json::Value>,
 ) -> HttpResponse {
-    // Clone the settings Data before borrowing
-    let settings_clone = settings.clone();
     let mut settings_guard = settings.write().await;
     
     if let Some(obj) = new_settings.as_object() {
+        info!("Received settings update: {:?}", obj);
+        
         // Update node settings
         if let Some(size) = obj.get("nodeSize").and_then(|v| v.as_f64()) {
             settings_guard.nodes.base_size = size as f32;
@@ -164,11 +165,14 @@ pub async fn update_visualization_settings(
         if let Some(highlight_color) = obj.get("highlightColor").and_then(|v| v.as_str()) {
             settings_guard.nodes.highlight_color = highlight_color.to_string();
         }
-        if let Some(highlight_duration) = obj.get("highlightDuration").and_then(|v| v.as_f64()) {
+        if let Some(highlight_duration) = obj.get("highlightDuration").and_then(|v| v.as_u64()) {
             settings_guard.nodes.highlight_duration = highlight_duration as u32;
         }
         if let Some(enable_hover_effect) = obj.get("enableHoverEffect").and_then(|v| v.as_bool()) {
             settings_guard.nodes.enable_hover_effect = enable_hover_effect;
+        }
+        if let Some(hover_scale) = obj.get("hoverScale").and_then(|v| v.as_f64()) {
+            settings_guard.nodes.hover_scale = hover_scale as f32;
         }
 
         // Update edge settings
@@ -187,79 +191,22 @@ pub async fn update_visualization_settings(
                 .map(|x| x as f32)
                 .collect();
         }
-
-        // Update physics settings
-        if let Some(enabled) = obj.get("physicsEnabled").and_then(|v| v.as_bool()) {
-            settings_guard.physics.enabled = enabled;
+        if let Some(enable_arrows) = obj.get("enableArrows").and_then(|v| v.as_bool()) {
+            settings_guard.edges.enable_arrows = enable_arrows;
         }
-        if let Some(attraction_strength) = obj.get("attractionStrength").and_then(|v| v.as_f64()) {
-            settings_guard.physics.attraction_strength = attraction_strength as f32;
-        }
-        if let Some(repulsion_strength) = obj.get("repulsionStrength").and_then(|v| v.as_f64()) {
-            settings_guard.physics.repulsion_strength = repulsion_strength as f32;
-        }
-        if let Some(spring_strength) = obj.get("springStrength").and_then(|v| v.as_f64()) {
-            settings_guard.physics.spring_strength = spring_strength as f32;
-        }
-        if let Some(damping) = obj.get("damping").and_then(|v| v.as_f64()) {
-            settings_guard.physics.damping = damping as f32;
-        }
-        if let Some(max_velocity) = obj.get("maxVelocity").and_then(|v| v.as_f64()) {
-            settings_guard.physics.max_velocity = max_velocity as f32;
-        }
-        if let Some(collision_radius) = obj.get("collisionRadius").and_then(|v| v.as_f64()) {
-            settings_guard.physics.collision_radius = collision_radius as f32;
-        }
-        if let Some(bounds_size) = obj.get("boundsSize").and_then(|v| v.as_f64()) {
-            settings_guard.physics.bounds_size = bounds_size as f32;
-        }
-        if let Some(enable_bounds) = obj.get("enableBounds").and_then(|v| v.as_bool()) {
-            settings_guard.physics.enable_bounds = enable_bounds;
-        }
-        if let Some(iterations) = obj.get("iterations").and_then(|v| v.as_f64()) {
-            settings_guard.physics.iterations = iterations as u32;
-        }
-
-        // Update rendering settings
-        if let Some(ambient_light_intensity) = obj.get("ambientLightIntensity").and_then(|v| v.as_f64()) {
-            settings_guard.rendering.ambient_light_intensity = ambient_light_intensity as f32;
-        }
-        if let Some(directional_light_intensity) = obj.get("directionalLightIntensity").and_then(|v| v.as_f64()) {
-            settings_guard.rendering.directional_light_intensity = directional_light_intensity as f32;
-        }
-        if let Some(environment_intensity) = obj.get("environmentIntensity").and_then(|v| v.as_f64()) {
-            settings_guard.rendering.environment_intensity = environment_intensity as f32;
-        }
-        if let Some(enable_ambient_occlusion) = obj.get("enableAmbientOcclusion").and_then(|v| v.as_bool()) {
-            settings_guard.rendering.enable_ambient_occlusion = enable_ambient_occlusion;
-        }
-        if let Some(enable_antialiasing) = obj.get("enableAntialiasing").and_then(|v| v.as_bool()) {
-            settings_guard.rendering.enable_antialiasing = enable_antialiasing;
-        }
-        if let Some(enable_shadows) = obj.get("enableShadows").and_then(|v| v.as_bool()) {
-            settings_guard.rendering.enable_shadows = enable_shadows;
-        }
-        if let Some(background_color) = obj.get("backgroundColor").and_then(|v| v.as_str()) {
-            settings_guard.rendering.background_color = background_color.to_string();
-        }
-
-        // Update bloom settings
-        if let Some(enabled) = obj.get("bloomEnabled").and_then(|v| v.as_bool()) {
-            settings_guard.bloom.enabled = enabled;
-        }
-        if let Some(node_bloom_strength) = obj.get("nodeBloomStrength").and_then(|v| v.as_f64()) {
-            settings_guard.bloom.node_bloom_strength = node_bloom_strength as f32;
-        }
-        if let Some(edge_bloom_strength) = obj.get("edgeBloomStrength").and_then(|v| v.as_f64()) {
-            settings_guard.bloom.edge_bloom_strength = edge_bloom_strength as f32;
-        }
-        if let Some(environment_bloom_strength) = obj.get("environmentBloomStrength").and_then(|v| v.as_f64()) {
-            settings_guard.bloom.environment_bloom_strength = environment_bloom_strength as f32;
+        if let Some(arrow_size) = obj.get("arrowSize").and_then(|v| v.as_f64()) {
+            settings_guard.edges.arrow_size = arrow_size as f32;
         }
 
         // Update animation settings
         if let Some(enable_node_animations) = obj.get("enableNodeAnimations").and_then(|v| v.as_bool()) {
             settings_guard.animations.enable_node_animations = enable_node_animations;
+        }
+        if let Some(enable_motion_blur) = obj.get("enableMotionBlur").and_then(|v| v.as_bool()) {
+            settings_guard.animations.enable_motion_blur = enable_motion_blur;
+        }
+        if let Some(motion_blur_strength) = obj.get("motionBlurStrength").and_then(|v| v.as_f64()) {
+            settings_guard.animations.motion_blur_strength = motion_blur_strength as f32;
         }
         if let Some(selection_wave_enabled) = obj.get("selectionWaveEnabled").and_then(|v| v.as_bool()) {
             settings_guard.animations.selection_wave_enabled = selection_wave_enabled;
@@ -277,119 +224,91 @@ pub async fn update_visualization_settings(
             settings_guard.animations.flow_particles_enabled = flow_particles_enabled;
         }
 
-        // Update label settings
-        if let Some(enable_labels) = obj.get("enableLabels").and_then(|v| v.as_bool()) {
-            settings_guard.labels.enable_labels = enable_labels;
-        }
-        if let Some(text_color) = obj.get("textColor").and_then(|v| v.as_str()) {
-            settings_guard.labels.text_color = text_color.to_string();
-        }
-
-        // Update AR settings
-        if let Some(enable_plane_detection) = obj.get("enablePlaneDetection").and_then(|v| v.as_bool()) {
-            settings_guard.ar.enable_plane_detection = enable_plane_detection;
-        }
-        if let Some(enable_hand_tracking) = obj.get("enableHandTracking").and_then(|v| v.as_bool()) {
-            settings_guard.ar.enable_hand_tracking = enable_hand_tracking;
-        }
-        if let Some(enable_haptics) = obj.get("enableHaptics").and_then(|v| v.as_bool()) {
-            settings_guard.ar.enable_haptics = enable_haptics;
-        }
-
         // Save settings to file
-        if let Err(e) = save_settings_to_file(&settings_guard) {
-            eprintln!("Failed to save settings to file: {}", e);
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to save settings to file"
-            }));
+        match save_settings_to_file(&settings_guard) {
+            Ok(_) => {
+                info!("Settings saved successfully");
+                HttpResponse::Ok().json(serde_json::json!({
+                    "message": "Settings updated successfully"
+                }))
+            }
+            Err(e) => {
+                error!("Failed to save settings: {}", e);
+                HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": format!("Failed to save settings: {}", e)
+                }))
+            }
         }
-
-        // Drop the write guard before returning the current settings
-        drop(settings_guard);
-        
-        // Return the current settings using the cloned Data
-        get_visualization_settings(settings_clone).await
     } else {
+        error!("Invalid settings format received: {:?}", new_settings);
         HttpResponse::BadRequest().json(serde_json::json!({
             "error": "Invalid settings format"
         }))
     }
 }
 
-fn update_settings(settings: &mut Settings, new_settings: Value) {
-    if let Some(obj) = new_settings.as_object() {
-        for (section, values) in obj {
-            match section.as_str() {
-                "rendering" => if let Some(v) = values.as_object() {
-                    update_section(&mut settings.rendering, v);
-                },
-                "nodes" => if let Some(v) = values.as_object() {
-                    update_section(&mut settings.nodes, v);
-                },
-                "edges" => if let Some(v) = values.as_object() {
-                    update_section(&mut settings.edges, v);
-                },
-                "labels" => if let Some(v) = values.as_object() {
-                    update_section(&mut settings.labels, v);
-                },
-                "bloom" => if let Some(v) = values.as_object() {
-                    update_section(&mut settings.bloom, v);
-                },
-                "ar" => if let Some(v) = values.as_object() {
-                    update_section(&mut settings.ar, v);
-                },
-                "physics" => if let Some(v) = values.as_object() {
-                    update_section(&mut settings.physics, v);
-                },
-                "animations" => if let Some(v) = values.as_object() {
-                    update_section(&mut settings.animations, v);
-                },
-                "audio" => if let Some(v) = values.as_object() {
-                    update_section(&mut settings.audio, v);
-                },
-                _ => {}
+fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
+    // Convert settings to TOML
+    let toml_string = match toml::to_string_pretty(&settings) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to serialize settings to TOML: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
+        }
+    };
+    
+    // Use absolute path from environment or default to /app/settings.toml
+    let settings_path = std::env::var("SETTINGS_FILE_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/app/settings.toml"));
+    
+    info!("Attempting to save settings to: {:?}", settings_path);
+    
+    // Ensure parent directory exists and is writable
+    if let Some(parent) = settings_path.parent() {
+        match fs::create_dir_all(parent) {
+            Ok(_) => info!("Created parent directories: {:?}", parent),
+            Err(e) => {
+                error!("Failed to create parent directories: {}", e);
+                return Err(e);
             }
         }
     }
-}
-
-fn update_section<T: serde::de::DeserializeOwned + serde::Serialize>(
-    section: &mut T,
-    values: &serde_json::Map<String, Value>
-) {
-    // Create a reference to section to avoid moving it
-    let current = serde_json::to_value(&*section).unwrap_or(Value::Null);
-    if let Value::Object(mut current_map) = current {
-        // Update only provided values
-        for (key, value) in values {
-            current_map.insert(key.clone(), value.clone());
-        }
-        // Convert back to the original type
-        if let Ok(updated) = serde_json::from_value(Value::Object(current_map)) {
-            *section = updated;
+    
+    // Check if file exists and is writable
+    if settings_path.exists() {
+        match fs::metadata(&settings_path) {
+            Ok(metadata) => {
+                if metadata.permissions().readonly() {
+                    error!("Settings file is read-only: {:?}", settings_path);
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "Settings file is read-only"
+                    ));
+                }
+            }
+            Err(e) => {
+                error!("Failed to check settings file permissions: {}", e);
+                return Err(e);
+            }
         }
     }
-}
-
-fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
-    // Convert settings to TOML
-    let toml_string = toml::to_string_pretty(&settings)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     
-    // Get the absolute path to settings.toml
-    let settings_path = PathBuf::from(std::env::current_dir()?)
-        .join("settings.toml");
-    
-    // Write to settings.toml with absolute path
-    fs::write(&settings_path, toml_string)?;
-    
-    log::info!("Settings saved to: {:?}", settings_path);
-    
-    Ok(())
+    // Write to settings.toml
+    match fs::write(&settings_path, toml_string) {
+        Ok(_) => {
+            info!("Settings saved successfully to: {:?}", settings_path);
+            Ok(())
+        }
+        Err(e) => {
+            error!("Failed to write settings file: {}", e);
+            Err(e)
+        }
+    }
 }
 
 // Register the handlers with the Actix web app
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("/visualization/settings", web::get().to(get_visualization_settings))
-       .route("/visualization/settings", web::put().to(update_visualization_settings));
+    cfg.route("/settings", web::get().to(get_visualization_settings))
+       .route("/settings", web::put().to(update_visualization_settings));
 }

@@ -45,18 +45,23 @@
 }
 
 .toggle-button {
-    background: none;
+    position: absolute;
+    left: -40px;
+    top: 10px;
+    width: 30px;
+    height: 30px;
+    background: rgba(28, 28, 28, 0.95);
     border: none;
+    border-radius: 4px;
     color: #ffffff;
     font-size: 20px;
     cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
+    z-index: 1001;
     transition: background-color 0.2s;
 }
 
 .toggle-button:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(40, 40, 40, 0.95);
 }
 
 /* Ensure content stays within panel bounds */

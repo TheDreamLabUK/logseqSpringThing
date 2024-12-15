@@ -2,6 +2,11 @@
 enable_motion_blur = false
 enable_node_animations = false
 motion_blur_strength = 0.4
+selection_wave_enabled = false
+pulse_enabled = false
+ripple_enabled = false
+edge_animation_enabled = false
+flow_particles_enabled = false
 
 [ar]
 drag_threshold = 0.04

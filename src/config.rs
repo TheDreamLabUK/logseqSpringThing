@@ -82,6 +82,9 @@ pub struct ARSettings {
     pub enable_hand_tracking: bool,
     pub enable_haptics: bool,
     pub enable_plane_detection: bool,
+    pub show_plane_overlay: bool,
+    pub plane_opacity: f32,
+    pub plane_color: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -108,6 +111,8 @@ pub struct EdgeSettings {
     pub width_range: Vec<f32>,
     pub color: String,
     pub opacity: f32,
+    pub enable_arrows: bool,
+    pub arrow_size: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -130,12 +135,15 @@ pub struct BloomSettings {
     pub node_bloom_strength: f32,
     pub edge_bloom_strength: f32,
     pub environment_bloom_strength: f32,
+    pub strength: f32,
+    pub radius: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LabelSettings {
     pub enable_labels: bool,
     pub text_color: String,
+    pub desktop_font_size: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -203,27 +211,20 @@ pub struct RagFlowSettings {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AnimationSettings {
-    #[serde(default)]
     pub enable_node_animations: bool,
-    #[serde(default)]
     pub selection_wave_enabled: bool,
-    #[serde(default)]
     pub pulse_enabled: bool,
-    #[serde(default)]
     pub ripple_enabled: bool,
-    #[serde(default)]
     pub edge_animation_enabled: bool,
-    #[serde(default)]
     pub flow_particles_enabled: bool,
+    pub enable_motion_blur: bool,
+    pub motion_blur_strength: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AudioSettings {
-    #[serde(default)]
     pub enable_spatial_audio: bool,
-    #[serde(default)]
     pub enable_interaction_sounds: bool,
-    #[serde(default)]
     pub enable_ambient_sounds: bool,
 }
 
