@@ -44,16 +44,20 @@ export class GraphDataManager {
    */
   async loadGraphData(): Promise<void> {
     try {
-      const response = await fetch('/api/graph/data');
+      const response = await fetch('/graph/data');
       if (!response.ok) {
-        throw new Error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);
+        logger.error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);
+        // Initialize with empty data instead of throwing
+        this.updateGraphData({ nodes: [], edges: [], metadata: {} });
+        return;
       }
       const data = await response.json();
       this.updateGraphData(data);
       logger.log('Initial graph data loaded from REST endpoint');
     } catch (error) {
       logger.error('Failed to load initial graph data:', error);
-      throw error;
+      // Initialize with empty data instead of throwing
+      this.updateGraphData({ nodes: [], edges: [], metadata: {} });
     }
   }
 
