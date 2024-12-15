@@ -391,6 +391,11 @@ export type MessageType =
   | 'ping'
   | 'pong';
 
+export type BinaryNodeUpdate = {
+  nodeId: string;
+  data: NodeData;
+};
+
 // Base message types
 export interface WebSocketMessage {
   type: MessageType;
@@ -421,10 +426,7 @@ export interface RawInitialDataMessage extends RawWebSocketMessage {
 export interface BinaryPositionUpdateMessage extends WebSocketMessage {
   type: 'binaryPositionUpdate';
   data: {
-    nodes: {
-      nodeId: string;
-      data: NodeData;
-    }[];
+    nodes: BinaryNodeUpdate[];
   };
 }
 

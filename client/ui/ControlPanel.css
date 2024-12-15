@@ -5,7 +5,7 @@
     top: 20px;
     right: 20px;
     width: 320px;
-    max-width: calc(100vw - 40px); /* Prevent overflow */
+    max-width: calc(100vw - 40px);
     background: rgba(28, 28, 28, 0.95);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
@@ -13,21 +13,21 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     z-index: 1000;
     transition: transform 0.3s ease;
-    transform: translateX(calc(100% - 48px));
+    transform: translateX(100%);
+    overflow: visible;
 }
 
 /* Ensure panel stays within viewport */
 @media (max-width: 360px) {
     .control-panel {
-        right: 0;
-        width: 100%;
-        border-radius: 0;
+        right: 10px;
+        width: calc(100% - 20px);
+        max-width: 320px;
     }
 }
 
 .control-panel.expanded {
     transform: translateX(0);
-    max-width: min(320px, calc(100vw - 40px)); /* Limit width when expanded */
 }
 
 .control-panel-header {

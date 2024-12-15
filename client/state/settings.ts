@@ -10,102 +10,118 @@ const logger = createLogger('SettingsManager');
 // Default settings matching settings.toml exactly
 export const DEFAULT_VISUALIZATION_SETTINGS: VisualizationSettings = {
     // Node Appearance
-    nodeSize: 1.0,  // maps from nodes.base_size
-    nodeColor: '#c3ab6f',  // maps from nodes.base_color
-    nodeOpacity: 0.4,  // maps from nodes.opacity
-    metalness: 0.3,  // maps from nodes.metalness
-    roughness: 0.35,  // maps from nodes.roughness
-    clearcoat: 1.0,  // maps from nodes.clearcoat
-    enableInstancing: false,  // maps from nodes.enable_instancing
-    materialType: 'basic',  // maps from nodes.material_type
-    sizeRange: [1, 5],  // maps from nodes.size_range
-    sizeByConnections: true,  // maps from nodes.size_by_connections
-    highlightColor: '#822626',  // maps from nodes.highlight_color
-    highlightDuration: 300,  // maps from nodes.highlight_duration
-    enableHoverEffect: false,  // maps from nodes.enable_hover_effect
-    hoverScale: 1.2,  // maps from nodes.hover_scale
+    nodeSize: 1.0,
+    nodeColor: '#c3ab6f',
+    nodeOpacity: 0.4,
+    metalness: 0.3,
+    roughness: 0.35,
+    clearcoat: 1.0,
+    enableInstancing: false,
+    materialType: 'basic',
+    sizeRange: [1, 5],
+    sizeByConnections: true,
+    highlightColor: '#822626',
+    highlightDuration: 300,
+    enableHoverEffect: true,
+    hoverScale: 1.2,
 
     // Edge Appearance
-    edgeWidth: 2.0,  // maps from edges.base_width
-    edgeColor: '#917f18',  // maps from edges.color
-    edgeOpacity: 0.6,  // maps from edges.opacity
-    edgeWidthRange: [1, 3],  // maps from edges.width_range
-    enableArrows: false,  // maps from edges.enable_arrows
-    arrowSize: 0.15,  // maps from edges.arrow_size
+    edgeWidth: 2.0,
+    edgeColor: '#917f18',
+    edgeOpacity: 0.6,
+    edgeWidthRange: [1, 3],
+    enableArrows: false,
+    arrowSize: 0.15,
 
     // Physics Settings
-    physicsEnabled: false,  // maps from physics.enabled
-    attractionStrength: 0.015,  // maps from physics.attraction_strength
-    repulsionStrength: 1500.0,  // maps from physics.repulsion_strength
-    springStrength: 0.018,  // maps from physics.spring_strength
-    damping: 0.88,  // maps from physics.damping
-    maxVelocity: 2.5,  // maps from physics.max_velocity
-    collisionRadius: 0.25,  // maps from physics.collision_radius
-    boundsSize: 12.0,  // maps from physics.bounds_size
-    enableBounds: true,  // maps from physics.enable_bounds
-    iterations: 500,  // maps from physics.iterations
+    physicsEnabled: false,
+    attractionStrength: 0.015,
+    repulsionStrength: 1500.0,
+    springStrength: 0.018,
+    damping: 0.88,
+    maxVelocity: 2.5,
+    collisionRadius: 0.25,
+    boundsSize: 12.0,
+    enableBounds: true,
+    iterations: 500,
 
     // Rendering Settings
-    ambientLightIntensity: 0.7,  // maps from rendering.ambient_light_intensity
-    directionalLightIntensity: 1.0,  // maps from rendering.directional_light_intensity
-    environmentIntensity: 1.2,  // maps from rendering.environment_intensity
-    enableAmbientOcclusion: false,  // maps from rendering.enable_ambient_occlusion
-    enableAntialiasing: true,  // maps from rendering.enable_antialiasing
-    enableShadows: false,  // maps from rendering.enable_shadows
-    backgroundColor: '#000000',  // maps from rendering.background_color
+    ambientLightIntensity: 0.7,
+    directionalLightIntensity: 1.0,
+    environmentIntensity: 1.2,
+    enableAmbientOcclusion: false,
+    enableAntialiasing: true,
+    enableShadows: false,
+    backgroundColor: '#000000',
 
     // Visual Effects
-    enableBloom: false,  // maps from bloom.enabled
-    bloomIntensity: 1.8,  // maps from bloom.strength
-    bloomRadius: 0.5,  // maps from bloom.radius
-    nodeBloomStrength: 0.2,  // maps from bloom.node_bloom_strength
-    edgeBloomStrength: 0.3,  // maps from bloom.edge_bloom_strength
-    environmentBloomStrength: 0.5,  // maps from bloom.environment_bloom_strength
-    enableNodeAnimations: false,  // maps from animations.enable_node_animations
-    enableMotionBlur: false,  // maps from animations.enable_motion_blur
-    motionBlurStrength: 0.4,  // maps from animations.motion_blur_strength
+    enableBloom: false,
+    bloomIntensity: 1.8,
+    bloomRadius: 0.5,
+    nodeBloomStrength: 0.2,
+    edgeBloomStrength: 0.3,
+    environmentBloomStrength: 0.5,
+    enableNodeAnimations: false,
+    enableMotionBlur: false,
+    motionBlurStrength: 0.4,
 
     // Labels
-    showLabels: true,  // maps from labels.enable_labels
-    labelSize: 1.0,  // maps from labels.desktop_font_size / 48
-    labelColor: '#FFFFFF',  // maps from labels.text_color
+    showLabels: true,
+    labelSize: 1.0,
+    labelColor: '#FFFFFF',
 
     // Performance
-    maxFps: 60,  // Not in server settings
+    maxFps: 60,
 
     // AR Settings
-    enablePlaneDetection: true,  // maps from ar.enable_plane_detection
-    enableSceneUnderstanding: true,  // maps from ar.enable_scene_understanding
-    showPlaneOverlay: true,  // maps from ar.show_plane_overlay
-    planeOpacity: 0.3,  // maps from ar.plane_opacity
-    planeColor: '#4A90E2',  // maps from ar.plane_color
-    enableLightEstimation: true,  // maps from ar.enable_light_estimation
-    enableHandTracking: true,  // maps from ar.enable_hand_tracking
-    handMeshEnabled: true,  // maps from ar.hand_mesh_enabled
-    handMeshColor: '#FFD700',  // maps from ar.hand_mesh_color
-    handMeshOpacity: 0.3,  // maps from ar.hand_mesh_opacity
-    handRayEnabled: true,  // maps from ar.hand_ray_enabled
-    handRayColor: '#FFD700',  // maps from ar.hand_ray_color
-    handRayWidth: 0.002,  // maps from ar.hand_ray_width
-    handPointSize: 0.01,  // maps from ar.hand_point_size
-    gestureSmoothing: 0.9,  // maps from ar.gesture_smoothing
-    pinchThreshold: 0.015,  // maps from ar.pinch_threshold
-    dragThreshold: 0.04,  // maps from ar.drag_threshold
-    rotationThreshold: 0.08,  // maps from ar.rotation_threshold
-    enableHaptics: true,  // maps from ar.enable_haptics
-    hapticIntensity: 0.7,  // maps from ar.haptic_intensity
-    roomScale: true,  // maps from ar.room_scale
-    snapToFloor: true,  // maps from ar.snap_to_floor
-    passthroughOpacity: 1.0,  // maps from ar.passthrough_opacity
-    passthroughBrightness: 1.0,  // maps from ar.passthrough_brightness
-    passthroughContrast: 1.0,  // maps from ar.passthrough_contrast
-    enablePassthroughPortal: false,  // maps from ar.enable_passthrough_portal
-    portalSize: 1.0,  // maps from ar.portal_size
-    portalEdgeColor: '#FFD700',  // maps from ar.portal_edge_color
-    portalEdgeWidth: 0.02  // maps from ar.portal_edge_width
+    enablePlaneDetection: true,
+    enableSceneUnderstanding: true,
+    showPlaneOverlay: true,
+    planeOpacity: 0.3,
+    planeColor: '#4A90E2',
+    enableLightEstimation: true,
+    enableHandTracking: true,
+    handMeshEnabled: true,
+    handMeshColor: '#FFD700',
+    handMeshOpacity: 0.3,
+    handRayEnabled: true,
+    handRayColor: '#FFD700',
+    handRayWidth: 0.002,
+    handPointSize: 0.01,
+    gestureSmoothing: 0.9,
+    pinchThreshold: 0.015,
+    dragThreshold: 0.04,
+    rotationThreshold: 0.08,
+    enableHaptics: true,
+    hapticIntensity: 0.7,
+    roomScale: true,
+    snapToFloor: true,
+    passthroughOpacity: 1.0,
+    passthroughBrightness: 1.0,
+    passthroughContrast: 1.0,
+    enablePassthroughPortal: false,
+    portalSize: 1.0,
+    portalEdgeColor: '#FFD700',
+    portalEdgeWidth: 0.02
 };
 
-// ... [Rest of the file remains the same] ...
+export interface ThreeJSSettings {
+    nodes: {
+        size: number;
+        color: string;
+        opacity: number;
+        metalness: number;
+        roughness: number;
+        clearcoat: number;
+        materialType: string;
+        highlightColor: string;
+    };
+    edges: {
+        width: number;
+        color: string;
+        opacity: number;
+    };
+}
 
 export class SettingsManager {
     private static instance: SettingsManager | null = null;
@@ -129,13 +145,18 @@ export class SettingsManager {
         return SettingsManager.instance;
     }
 
+    dispose(): void {
+        this.settingsListeners.clear();
+        this.connectionListeners.clear();
+        SettingsManager.instance = null;
+    }
+
     isConnected(): boolean {
         return this.connected;
     }
 
     onConnectionChange(listener: (connected: boolean) => void): void {
         this.connectionListeners.add(listener);
-        // Immediately notify of current state
         listener(this.connected);
     }
 
@@ -163,6 +184,53 @@ export class SettingsManager {
             } catch (error) {
                 logger.error('Error in settings listener:', error);
             }
+        });
+    }
+
+    getSettings(): VisualizationSettings {
+        return { ...this.settings };
+    }
+
+    getThreeJSSettings(): ThreeJSSettings {
+        return {
+            nodes: {
+                size: this.settings.nodeSize,
+                color: this.settings.nodeColor,
+                opacity: this.settings.nodeOpacity,
+                metalness: this.settings.metalness,
+                roughness: this.settings.roughness,
+                clearcoat: this.settings.clearcoat,
+                materialType: this.settings.materialType,
+                highlightColor: this.settings.highlightColor
+            },
+            edges: {
+                width: this.settings.edgeWidth,
+                color: this.settings.edgeColor,
+                opacity: this.settings.edgeOpacity
+            }
+        };
+    }
+
+    subscribe(listener: (settings: VisualizationSettings) => void): () => void {
+        this.settingsListeners.add(listener);
+        listener(this.settings);
+        return () => this.settingsListeners.delete(listener);
+    }
+
+    addSettingsListener(listener: (settings: VisualizationSettings) => void): void {
+        this.settingsListeners.add(listener);
+        listener(this.settings);
+    }
+
+    removeSettingsListener(listener: (settings: VisualizationSettings) => void): void {
+        this.settingsListeners.delete(listener);
+    }
+
+    resetToDefaults(): void {
+        this.settings = { ...DEFAULT_VISUALIZATION_SETTINGS };
+        this.notifyListeners();
+        this.saveSettings().catch(error => {
+            logger.error('Failed to save default settings:', error);
         });
     }
 
@@ -389,8 +457,8 @@ export class SettingsManager {
             labelSize: serverSettings.labels.desktop_font_size / 48,
             labelColor: serverSettings.labels.text_color,
 
-            // Performance settings (not in server settings)
-            maxFps: this.settings.maxFps,
+            // Performance settings
+            maxFps: 60,
 
             // AR settings
             enablePlaneDetection: serverSettings.ar.enable_plane_detection,
@@ -424,5 +492,6 @@ export class SettingsManager {
             portalEdgeWidth: serverSettings.ar.portal_edge_width
         };
     }
+}
 
-// ... [Rest of the code remains the same] ...
+export const settingsManager = SettingsManager.getInstance();

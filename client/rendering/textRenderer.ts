@@ -89,7 +89,7 @@ export class TextRenderer {
   }
 
   private setupEventListeners(): void {
-    settingsManager.subscribe(settings => {
+    settingsManager.subscribe((settings: VisualizationSettings) => {
       this.settings = settings;
       this.updateAllLabels();
     });

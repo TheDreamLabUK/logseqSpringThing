@@ -6,22 +6,23 @@ import { Vector3 } from './types';
 import { THROTTLE_INTERVAL } from './constants';
 
 // Debug logging utility
-export const createLogger = (namespace: string) => {
+export interface Logger {
+  log: (message: string, ...args: any[]) => void;
+  error: (message: string, ...args: any[]) => void;
+  warn: (message: string, ...args: any[]) => void;
+  debug: (message: string, ...args: any[]) => void;
+  info: (message: string, ...args: any[]) => void;
+}
+
+export function createLogger(namespace: string): Logger {
   return {
-    log: (message: string, ...args: any[]) => {
-      console.log(`[${namespace}] ${message}`, ...args);
-    },
-    error: (message: string, ...args: any[]) => {
-      console.error(`[${namespace}] ${message}`, ...args);
-    },
-    warn: (message: string, ...args: any[]) => {
-      console.warn(`[${namespace}] ${message}`, ...args);
-    },
-    debug: (message: string, ...args: any[]) => {
-      console.debug(`[${namespace}] ${message}`, ...args);
-    }
+    log: (message: string, ...args: any[]) => console.log(`[${namespace}] ${message}`, ...args),
+    error: (message: string, ...args: any[]) => console.error(`[${namespace}] ${message}`, ...args),
+    warn: (message: string, ...args: any[]) => console.warn(`[${namespace}] ${message}`, ...args),
+    debug: (message: string, ...args: any[]) => console.debug(`[${namespace}] ${message}`, ...args),
+    info: (message: string, ...args: any[]) => console.info(`[${namespace}] ${message}`, ...args)
   };
-};
+}
 
 // Update throttler for performance optimization
 export class UpdateThrottler {
