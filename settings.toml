@@ -69,8 +69,8 @@ retry_delay = 5
 [edges]
 arrow_size = 0.15
 base_width = 2
-color = "#FFD700"
-enable_arrows = true
+color = "#917f18"
+enable_arrows = false
 opacity = 0.6
 width_range = [
     1,
@@ -86,7 +86,7 @@ token = "default_token"
 
 [labels]
 desktop_font_size = 48
-enable_labels = false
+enable_labels = true
 text_color = "#FFFFFF"
 
 [network]
@@ -103,18 +103,18 @@ rate_limit_window = 60
 tunnel_id = "dummy"
 
 [nodes]
-base_color = "#FFB700"
+base_color = "#c3ab6f"
 base_size = 1
 clearcoat = 1
-enable_hover_effect = true
-enable_instancing = true
-highlight_color = "#FFFFFF"
-highlight_duration = 500
+enable_hover_effect = false
+enable_instancing = false
+highlight_color = "#822626"
+highlight_duration = 300
 hover_scale = 1.2
-material_type = "physical"
-metalness = 0.85
-opacity = 0.92
-roughness = 0.15
+material_type = "basic"
+metalness = 0.3
+opacity = 0.4
+roughness = 0.35
 size_by_connections = true
 size_range = [
     1,
@@ -147,7 +147,7 @@ bounds_size = 12
 collision_radius = 0.25
 damping = 0.88
 enable_bounds = true
-enabled = true
+enabled = false
 iterations = 500
 max_velocity = 2.5
 repulsion_strength = 1500
@@ -163,9 +163,9 @@ timeout = 30
 ambient_light_intensity = 0.7
 background_color = "#000000"
 directional_light_intensity = 1
-enable_ambient_occlusion = true
-enable_antialiasing = false
-enable_shadows = true
+enable_ambient_occlusion = false
+enable_antialiasing = true
+enable_shadows = false
 environment_intensity = 1.2
 
 [security]

@@ -1,62 +1,64 @@
 use crate::config::Settings;
-use crate::utils::socket_flow_messages::{Message, SettingsUpdate, UpdateSettings};
 use actix_web::{web, HttpResponse};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use serde_json::Value;
 use std::fs;
+use std::path::PathBuf;
 use toml;
 
+// GET /api/visualization/settings
 pub async fn get_visualization_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
 ) -> HttpResponse {
-    let settings = settings.read().await;
+    let settings_guard = settings.read().await;
     let settings_json = serde_json::json!({
-        "rendering": settings.rendering,
-        "nodes": settings.nodes,
-        "edges": settings.edges,
-        "labels": settings.labels,
-        "bloom": settings.bloom,
-        "ar": settings.ar,
-        "physics": settings.physics,
-        "animations": settings.animations,
-        "audio": settings.audio
+        "rendering": settings_guard.rendering,
+        "nodes": settings_guard.nodes,
+        "edges": settings_guard.edges,
+        "labels": settings_guard.labels,
+        "bloom": settings_guard.bloom,
+        "ar": settings_guard.ar,
+        "physics": settings_guard.physics,
+        "animations": settings_guard.animations,
+        "audio": settings_guard.audio
     });
 
     HttpResponse::Ok().json(settings_json)
 }
 
-pub async fn handle_settings_message(
-    message: Message,
-    settings: Arc<RwLock<Settings>>,
-) -> Option<Message> {
-    match message {
-        Message::UpdateSettings(UpdateSettings { settings: new_settings }) => {
-            // Update settings in memory
-            let mut settings_lock = settings.write().await;
-            update_settings(&mut *settings_lock, new_settings);
-            
-            // Save settings to file
-            if let Err(e) = save_settings_to_file(&*settings_lock) {
-                log::error!("Failed to save settings to file: {}", e);
-            }
-            
-            // Send updated settings back to all clients
-            Some(Message::SettingsUpdated(SettingsUpdate {
-                settings: serde_json::json!({
-                    "rendering": settings_lock.rendering,
-                    "nodes": settings_lock.nodes,
-                    "edges": settings_lock.edges,
-                    "labels": settings_lock.labels,
-                    "bloom": settings_lock.bloom,
-                    "ar": settings_lock.ar,
-                    "physics": settings_lock.physics,
-                    "animations": settings_lock.animations,
-                    "audio": settings_lock.audio
-                })
-            }))
+// PUT /api/visualization/settings
+pub async fn update_visualization_settings(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    new_settings: web::Json<Value>,
+) -> HttpResponse {
+    let mut settings_guard = settings.write().await;
+    
+    // Update settings in memory
+    update_settings(&mut *settings_guard, new_settings.into_inner());
+    
+    // Save settings to file
+    match save_settings_to_file(&*settings_guard) {
+        Ok(_) => {
+            let updated_json = serde_json::json!({
+                "rendering": settings_guard.rendering,
+                "nodes": settings_guard.nodes,
+                "edges": settings_guard.edges,
+                "labels": settings_guard.labels,
+                "bloom": settings_guard.bloom,
+                "ar": settings_guard.ar,
+                "physics": settings_guard.physics,
+                "animations": settings_guard.animations,
+                "audio": settings_guard.audio
+            });
+            HttpResponse::Ok().json(updated_json)
         },
-        _ => None
+        Err(e) => {
+            log::error!("Failed to save settings to file: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to save settings"
+            }))
+        }
     }
 }
 
@@ -120,8 +122,14 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
     let toml_string = toml::to_string_pretty(&settings)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     
-    // Write to settings.toml
-    fs::write("settings.toml", toml_string)?;
+    // Get the absolute path to settings.toml
+    let settings_path = PathBuf::from(std::env::current_dir()?)
+        .join("settings.toml");
+    
+    // Write to settings.toml with absolute path
+    fs::write(&settings_path, toml_string)?;
+    
+    log::info!("Settings saved to: {:?}", settings_path);
     
     Ok(())
 }
@@ -131,5 +139,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/visualization")
             .route("/settings", web::get().to(get_visualization_settings))
+            .route("/settings", web::put().to(update_visualization_settings))
     );
 }
