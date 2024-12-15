@@ -37,7 +37,7 @@ export class SceneManager {
     // Create scene
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(BACKGROUND_COLOR);
-    this.scene.fog = new THREE.FogExp2(BACKGROUND_COLOR, 0.002);
+    // Removed fog to ensure graph visibility
 
     // Create camera
     this.camera = new THREE.PerspectiveCamera(
@@ -46,7 +46,7 @@ export class SceneManager {
       0.1,
       1000
     );
-    this.camera.position.set(0, 75, 200);
+    this.camera.position.set(0, 5, 20); // Moved camera closer
     this.camera.lookAt(0, 0, 0);
 
     // Create renderer
@@ -64,8 +64,8 @@ export class SceneManager {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
     this.controls.screenSpacePanning = false;
-    this.controls.minDistance = 50;
-    this.controls.maxDistance = 500;
+    this.controls.minDistance = 5;  // Reduced min distance
+    this.controls.maxDistance = 100; // Reduced max distance
 
     // Setup post-processing
     this.composer = new EffectComposer(this.renderer);
@@ -104,8 +104,8 @@ export class SceneManager {
     directionalLight.position.set(1, 1, 1).normalize();
     this.scene.add(directionalLight);
 
-    // Add grid helper
-    const gridHelper = new THREE.GridHelper(1000, 100);
+    // Add smaller grid helper
+    const gridHelper = new THREE.GridHelper(50, 50); // Reduced grid size
     if (gridHelper.material instanceof THREE.Material) {
       gridHelper.material.transparent = true;
       gridHelper.material.opacity = 0.1;
