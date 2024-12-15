@@ -81,7 +81,7 @@ class Application {
             ]);
         } catch (error) {
             logger.error('Failed to load settings:', error);
-            throw error;
+            logger.info('Continuing with default settings');
         }
     }
 
@@ -281,8 +281,10 @@ class Application {
         // Stop rendering
         this.sceneManager.stop();
 
-        // Close WebSocket connection
-        this.webSocket.disconnect();
+        // Close WebSocket connection if it exists
+        if (this.webSocket) {
+            this.webSocket.disconnect();
+        }
     }
 }
 

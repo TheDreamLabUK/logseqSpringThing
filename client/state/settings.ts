@@ -276,7 +276,7 @@ export class SettingsManager {
     public async saveSettings(): Promise<void> {
         try {
             // Save settings to backend
-            const response = await fetch('/api/settings', {
+            const response = await fetch('/settings', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(this.settings)
