@@ -13,39 +13,73 @@ Develop a "mixed reality first" architecture that provides an optimal experience
 Clean, Modern Architecture:
 Use TypeScript, Three.js, and other best-practice libraries as needed (e.g., state management, lightweight UI libraries). No Vue.js. A simple TypeScript-based approach to UI and state management will replace the old Vue-based panel.
 
-Unified Settings Management:
+Unified Settings Management: (In Progress)
 Settings are stored on the server in settings.toml. The desktop interface allows users to adjust these settings and save them back to the server. The Quest version reads and applies these same settings. Avoid duplication by using a unified data model and minimal branching logic.
+- ✓ Core settings types and interfaces
+- ✓ Settings state management
+- ✓ WebSocket communication for settings
+- ✓ Settings integration with rendering
+- Desktop settings panel UI (In Progress)
+- Settings persistence and save functionality (In Progress)
 
-Vector3 Standardization:
+Vector3 Standardization: ✓
 Migrate all position/velocity data to a Vector3 (or equivalent [f32; 3] arrays in Rust) representation. Streamline GPU and WebSocket protocols to match this format once and eliminate conversion overhead. All binary data is now handled through Float32Arrays with proper type safety and validation.
 
-Sensible Data Flows and Networking:
+Sensible Data Flows and Networking: ✓
 Rely on a stable WebSocket channel for real-time updates. Desktop and Quest clients share the same binary and JSON protocols. Nginx, Cloudflare tunnels, and Docker networks remain as currently configured, but we keep the plan free of redundant details.
 
 Architecture Overview
 ```
 client/
   ├─ core/              # Core types, constants, utilities ✓
+  │  ├─ types.ts        # Core interfaces and types ✓
+  │  ├─ constants.ts    # Shared constants ✓
+  │  └─ utils.ts        # Helper functions ✓
+  │
   ├─ state/             # Centralized state (settings, graph data) ✓
+  │  ├─ settings.ts     # Settings management ✓
+  │  └─ graphData.ts    # Graph data management ✓
+  │
   ├─ rendering/         # Three.js scene, nodes/edges, text rendering ✓
+  │  ├─ scene.ts        # Scene management ✓
+  │  ├─ nodes.ts        # Node and edge rendering ✓
+  │  └─ textRenderer.ts # Text label rendering ✓
+  │
   ├─ xr/                # XR integration (Quest 3 focus, extends scene) ✓
+  │  ├─ xrSessionManager.ts  # XR session handling ✓
+  │  └─ xrInteraction.ts     # XR input and interaction ✓
+  │
   ├─ platform/          # Platform abstraction (detect Quest vs Desktop) ✓
+  │  └─ platformManager.ts    # Platform detection and capabilities ✓
+  │
   ├─ websocket/         # WebSocket service and message handling ✓
+  │  └─ websocketService.ts   # Real-time communication ✓
+  │
   ├─ types/             # TypeScript declarations for Three.js and WebXR ✓
+  │  ├─ three.d.ts      # Three.js type definitions ✓
+  │  └─ webxr.d.ts      # WebXR type definitions ✓
+  │
   ├─ ui/                # Minimal UI components (desktop settings panel)
+  │  ├─ ControlPanel.ts     # Settings panel UI (In Progress)
+  │  └─ ControlPanel.css    # Settings panel styles (In Progress)
+  │
   └─ main.ts            # Application entry point (initializes everything) ✓
 ```
 
 Key Principles:
 
-Unified Code Paths:
+Unified Code Paths: ✓
 Keep the code paths for desktop and XR similar, differing mainly in input and UI layers. For example, both platforms use the same SceneManager and GraphDataManager, but desktop also spins up a settings panel, while XR relies on in-world interactions or no panel at all.
 
-Minimal Frameworks:
+Minimal Frameworks: ✓
 Vanilla TS, Three.js, and potentially a small state or UI library (e.g., Zustand or a lightweight reactive store) to handle global state and reduce complexity.
 
-No Vue.js:
-The old Vue-based panel is replaced with a simple HTML/TS UI component for the desktop. This UI retrieves and updates settings.toml via API calls.
+No Vue.js: (In Progress)
+The old Vue-based panel is being replaced with a simple HTML/TS UI component for the desktop. This UI retrieves and updates settings.toml via WebSocket.
+- ✓ Remove Vue dependencies
+- ✓ Create TypeScript-based UI structure
+- Settings panel implementation (In Progress)
+- Settings persistence (In Progress)
 
 Core Components
 1. Core (types, constants, utils) ✓
@@ -124,13 +158,14 @@ Detects if running on Quest (WebXR capable) or Desktop.
 Hooks into main.ts to decide whether to start an XR session or show a desktop UI panel.
 Keeps platform-conditional logic localized here.
 
-7. UI (Desktop Settings Interface)
+7. UI (Desktop Settings Interface) (In Progress)
 ui/settingsPanel.ts:
 A simple HTML+TS panel for desktop:
-Fetches current settings on load.
-Allows editing (sliders, text inputs) of VisualizationSettings.
-On "Save" click, sends updated settings back to the server, updating settings.toml.
-The Quest interface reads the updated settings but does not offer in-headset controls for them.
+- ✓ Basic panel structure
+- ✓ Settings controls (sliders, inputs)
+- ✓ Settings update handling
+- Save functionality (In Progress)
+- Settings persistence (In Progress)
 
 8. Application Entry ✓
 main.ts: ✓
@@ -154,7 +189,7 @@ Complete WebXR API type declarations.
 Type guards for optional WebXR features.
 Proper handling of hit testing and light estimation.
 
-Vector3 & Protocol Consolidation
+Vector3 & Protocol Consolidation ✓
 Single Source of Truth:
 All position and velocity data are represented as Vector3-like arrays ([number, number, number]) on the client, and [f32; 3] on the server side. The WebSocket binary protocol uses a 24-byte (6 floats) structure for each position/velocity update. On the GPU side, CUDA kernels and WGSL shaders also align with vec3 data formats, reducing conversions and overhead.
 
@@ -172,14 +207,17 @@ Shaders, if needed, use vec3<f32> with no conversions required.
 Result: ✓
 A consistent Vector3-oriented pipeline from server logic to client rendering reduces complexity and improves performance.
 
-Settings Management Flow (Partial)
+Settings Management Flow (In Progress)
 Startup: ✓
 Client fetches settings.toml via a server endpoint that returns JSON ✓.
 SettingsManager merges these settings with defaults and applies them to the rendering system ✓.
 
-Desktop Editing:
+Desktop Editing: (In Progress)
 The settingsPanel UI lets the user modify visualization settings (e.g., node size, color schemes).
-Clicking "Save" sends a POST request with the updated settings to the server, rewriting settings.toml.
+- ✓ Settings controls implementation
+- ✓ Real-time preview
+- Save functionality (In Progress)
+- Settings persistence (In Progress)
 
 Quest Reading: ✓
 On Quest, no separate panel is displayed. The XR experience uses the settings loaded at startup or after a refresh. Changes made on the desktop propagate automatically at next startup or when re-fetching settings.
@@ -200,7 +238,11 @@ Add proper type safety for all operations ✓.
 
 Phase 3: Settings Integration (In Progress)
 Implement settingsPanel.ts for desktop.
-Wire up SettingsManager to scene and nodes ✓, confirm changes apply when user saves.
+- ✓ Basic panel structure
+- ✓ Settings controls
+- ✓ Settings update handling
+- Save functionality (In Progress)
+- Settings persistence (In Progress)
 
 Phase 4: XR Integration ✓
 Implement xrSessionManager.ts ✓ and xrInteraction.ts ✓.
@@ -214,8 +256,6 @@ Optimize performance (instancing, memory usage) ✓.
 Add batched updates and efficient matrix operations ✓.
 Add proper type safety throughout the codebase ✓.
 Ensure stable Vector3-based pipeline and minimal code duplication ✓.
-
-[Rest of Docker & Network Architecture section remains unchanged]
 
 Docker & Network Architecture
 ===========================

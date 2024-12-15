@@ -13,7 +13,7 @@ import { XRSessionManager } from './xr/xrSessionManager';
 import { XRInteraction } from './xr/xrInteraction';
 import { createLogger } from './core/utils';
 import { WS_URL } from './core/constants';
-import { BinaryNodeUpdate } from './core/types';
+import { BinaryPositionUpdateMessage } from './core/types';
 import { ControlPanel } from './ui';
 
 const logger = createLogger('Application');
@@ -77,13 +77,13 @@ class Application {
       }
     });
 
-    this.webSocket.on('binaryPositionUpdate', (data) => {
+    this.webSocket.on('binaryPositionUpdate', (data: BinaryPositionUpdateMessage['data']) => {
       if (data && data.nodes) {
         // Convert nodes data to ArrayBuffer for position updates
         const buffer = new ArrayBuffer(data.nodes.length * 24); // 6 floats per node
         const floatArray = new Float32Array(buffer);
         
-        data.nodes.forEach((node: BinaryNodeUpdate, index: number) => {
+        data.nodes.forEach((node, index) => {
           const baseIndex = index * 6;
           const pos = node.data.position;
           const vel = node.data.velocity;

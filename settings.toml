@@ -102,6 +102,21 @@ environment_bloom_strength = 0.5
 enable_labels = true
 text_color = "#FFFFFF"
 
+# Animation Settings
+[animations]
+enable_node_animations = false
+selection_wave_enabled = false
+pulse_enabled = false
+ripple_enabled = false
+edge_animation_enabled = false
+flow_particles_enabled = false
+
+# Audio Settings
+[audio]
+enable_spatial_audio = false
+enable_interaction_sounds = false
+enable_ambient_sounds = false
+
 # WebSocket Configuration
 [websocket]
 binary_chunk_size = 65536

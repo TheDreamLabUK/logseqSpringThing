@@ -50,39 +50,49 @@
 
 .settings-group {
     margin-bottom: 24px;
-    padding: 12px;
+    padding: 16px;
     background: rgba(0, 0, 0, 0.2);
     border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .settings-group h4 {
-    margin: 0 0 12px 0;
+    margin: 0 0 16px 0;
     font-size: 14px;
     color: #4a90e2;
     font-weight: 500;
     display: flex;
     align-items: center;
     gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .setting-item {
-    margin-bottom: 12px;
+    margin-bottom: 16px;
     transition: opacity 0.3s ease;
+}
+
+.setting-item:last-child {
+    margin-bottom: 0;
 }
 
 .setting-item label {
     display: block;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     font-size: 12px;
     color: #ccc;
+    font-weight: 500;
 }
 
+/* Range inputs */
 .setting-item input[type="range"] {
     width: 100%;
     height: 4px;
     background: #333;
     border-radius: 2px;
     -webkit-appearance: none;
+    margin: 8px 0;
 }
 
 .setting-item input[type="range"]::-webkit-slider-thumb {
@@ -93,15 +103,18 @@
     border-radius: 50%;
     cursor: pointer;
     transition: background 0.2s;
+    border: 2px solid rgba(255, 255, 255, 0.1);
 }
 
 .setting-item input[type="range"]::-webkit-slider-thumb:hover {
     background: #357abd;
+    transform: scale(1.1);
 }
 
+/* Color inputs */
 .setting-item input[type="color"] {
     width: 100%;
-    height: 30px;
+    height: 36px;
     padding: 2px;
     border: 1px solid #444;
     background: #222;
@@ -109,83 +122,122 @@
     cursor: pointer;
 }
 
+/* Number inputs */
 .setting-item input[type="number"] {
     width: 100%;
-    padding: 6px;
+    padding: 8px 12px;
     border: 1px solid #444;
     background: #222;
     color: #fff;
     border-radius: 4px;
+    font-size: 13px;
 }
 
+/* Checkbox inputs */
 .setting-item input[type="checkbox"] {
-    margin-right: 8px;
+    position: relative;
+    width: 40px;
+    height: 20px;
+    -webkit-appearance: none;
+    background: #333;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: 0.3s;
 }
 
+.setting-item input[type="checkbox"]:checked {
+    background: #4a90e2;
+}
+
+.setting-item input[type="checkbox"]::before {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    background: #fff;
+    transition: 0.3s;
+}
+
+.setting-item input[type="checkbox"]:checked::before {
+    left: 22px;
+}
+
+/* Select inputs */
+.setting-item select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #444;
+    background: #222;
+    color: #fff;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 16px;
+    padding-right: 32px;
+}
+
+.setting-item select:focus {
+    outline: none;
+    border-color: #4a90e2;
+}
+
+/* Value display */
 .setting-value {
     float: right;
     color: #4a90e2;
     font-size: 12px;
+    font-weight: 500;
+    background: rgba(74, 144, 226, 0.1);
+    padding: 2px 6px;
+    border-radius: 3px;
+    min-width: 40px;
+    text-align: center;
 }
 
-/* Range inputs for edge width */
-.range-inputs {
+/* Action buttons */
+.settings-actions {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    gap: 12px;
+    margin-top: 24px;
 }
 
-.range-inputs input[type="number"] {
-    width: 70px;
-}
-
-.range-inputs span {
-    color: #ccc;
-    font-size: 12px;
-}
-
-/* Sub-settings */
-.sub-settings {
-    margin-left: 16px;
-    padding-left: 8px;
-    border-left: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* Disabled states */
-.setting-item.disabled,
-.hover-setting.disabled,
-.bloom-setting.disabled,
-.label-setting.disabled,
-.physics-setting.disabled,
-.portal-setting.disabled {
-    opacity: 0.5;
-    pointer-events: none;
-}
-
-/* Save button */
-.save-button {
-    width: 100%;
+.primary-button, .secondary-button {
+    flex: 1;
     padding: 12px 16px;
-    background: #4a90e2;
-    color: #fff;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
     font-weight: 500;
     transition: all 0.2s ease;
-    margin-top: 16px;
-    position: sticky;
-    bottom: 16px;
 }
 
-.save-button:hover {
+.primary-button {
+    background: #4a90e2;
+    color: #fff;
+}
+
+.primary-button:hover {
     background: #357abd;
     transform: translateY(-1px);
 }
 
-.save-button:active {
-    transform: translateY(0);
+.secondary-button {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.secondary-button:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
 }
 
 /* Custom scrollbar */
@@ -230,14 +282,10 @@
     .control-panel {
         width: 280px;
     }
-    
-    .range-inputs input[type="number"] {
-        width: 60px;
-    }
 }
 
 /* Tooltips */
-.setting-item label {
+.setting-item label[data-tooltip] {
     position: relative;
     display: inline-flex;
     align-items: center;
@@ -250,12 +298,13 @@
     top: 100%;
     background: rgba(0, 0, 0, 0.9);
     color: #fff;
-    padding: 4px 8px;
+    padding: 6px 10px;
     border-radius: 4px;
     font-size: 11px;
     white-space: nowrap;
     z-index: 10;
     pointer-events: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 /* Group headers */
@@ -265,4 +314,33 @@
     height: 1px;
     background: rgba(255, 255, 255, 0.1);
     margin-left: 8px;
+}
+
+/* Disabled states */
+.setting-item.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* Sub-settings indentation */
+.sub-settings {
+    margin-left: 16px;
+    padding-left: 12px;
+    border-left: 2px solid rgba(74, 144, 226, 0.2);
+}
+
+/* Input focus states */
+.setting-item input:focus,
+.setting-item select:focus {
+    outline: none;
+    border-color: #4a90e2;
+}
+
+/* Hover effects */
+.setting-item:hover label {
+    color: #fff;
+}
+
+.setting-item:hover .setting-value {
+    background: rgba(74, 144, 226, 0.2);
 }
