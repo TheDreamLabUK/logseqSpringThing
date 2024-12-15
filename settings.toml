@@ -1,96 +1,4 @@
-[animations]
-enable_motion_blur = true
-enable_node_animations = true
-motion_blur_strength = 0.4
-
-[ar]
-drag_threshold = 0.04
-enable_hand_tracking = true
-enable_haptics = true
-enable_light_estimation = true
-enable_passthrough_portal = false
-enable_plane_detection = true
-enable_scene_understanding = true
-gesture_smoothing = 0.9
-hand_mesh_color = "#FFD700"
-hand_mesh_enabled = true
-hand_mesh_opacity = 0.3
-hand_point_size = 0.01
-hand_ray_color = "#FFD700"
-hand_ray_enabled = true
-hand_ray_width = 0.002
-hand_trail_enabled = true
-hand_trail_length = 0.5
-hand_trail_opacity = 0.6
-haptic_intensity = 0.7
-passthrough_brightness = 1
-passthrough_contrast = 1
-passthrough_opacity = 1
-pinch_threshold = 0.015
-plane_color = "#4A90E2"
-plane_opacity = 0.3
-portal_edge_color = "#FFD700"
-portal_edge_width = 0.02
-portal_size = 1
-room_scale = true
-rotation_threshold = 0.08
-selection_wave_enabled = true
-selection_wave_color = "#FFD700"
-selection_wave_speed = 1.0
-selection_wave_size = 0.5
-selection_wave_opacity = 0.4
-show_plane_overlay = true
-snap_to_floor = true
-
-[audio]
-ambient_variation = 0.1
-ambient_volume = 0.2
-audio_rolloff = "logarithmic"
-collision_frequency = 220
-creation_frequency = 550
-deletion_frequency = 275
-doppler_factor = 0.5
-edge_creation_sound = true
-edge_creation_volume = 0.5
-edge_deletion_sound = true
-edge_deletion_volume = 0.4
-edge_flow_sound = true
-edge_flow_volume = 0.3
-enable_ambient_sounds = true
-enable_interaction_sounds = true
-enable_spatial_audio = true
-flow_frequency = 385
-hover_frequency = 330
-hover_sound_enabled = true
-hover_sound_volume = 0.4
-master_volume = 0.8
-max_audio_distance = 20.0
-node_collision_sound = true
-node_collision_volume = 0.5
-node_creation_sound = true
-node_creation_volume = 0.6
-node_deletion_sound = true
-node_deletion_volume = 0.5
-selection_frequency = 440
-selection_sound_enabled = true
-selection_sound_volume = 0.7
-
-[bloom]
-enabled = true
-radius = 0.5
-strength = 1.8
-threshold = 0.3
-node_bloom_strength = 1.2
-edge_bloom_strength = 0.8
-environment_bloom_strength = 0.5
-
-[client_debug]
-enable_data_debug = false
-enable_websocket_debug = false
-enabled = false
-log_binary_headers = false
-log_full_json = false
-
+# Core Configuration
 [default]
 api_client_timeout = 30
 enable_metrics = true
@@ -103,33 +11,7 @@ max_retries = 3
 metrics_port = 9090
 retry_delay = 5
 
-[edges]
-arrow_size = 0.15
-base_width = 2
-width_range = [1.0, 3.0]
-width_by_strength = true
-curve_segments = 8
-color = "#FFD700"
-enable_arrows = true
-opacity = 0.6
-highlight_color = "#FFFFFF"
-highlight_intensity = 1.0
-highlight_duration = 500
-
-[github]
-base_path = "default_path"
-owner = "default_owner"
-rate_limit = true
-repo = "default_repo"
-token = "default_token"
-
-[labels]
-ar_font_size = 24
-desktop_font_size = 48
-enable_labels = true
-font_family = "Arial, Helvetica, sans-serif"
-text_color = "#FFFFFF"
-
+# Network Settings
 [network]
 bind_address = "0.0.0.0"
 domain = "localhost"
@@ -143,86 +25,7 @@ rate_limit_requests = 100
 rate_limit_window = 60
 tunnel_id = "dummy"
 
-[nodes]
-base_color = "#FFB700"
-base_size = 0.15
-size_range = [0.1, 0.3]
-size_by_connections = true
-geometry_segments = 16
-enable_instancing = true
-material_type = "physical"
-clearcoat = 1
-clearcoat_roughness = 0.1
-metalness = 0.85
-opacity = 0.92
-roughness = 0.15
-highlight_color = "#FFFFFF"
-highlight_intensity = 1.0
-highlight_duration = 500
-enable_hover_effect = true
-hover_scale = 1.2
-
-[openai]
-api_key = "default_openai_key"
-base_url = "wss://api.openai.com/v1/realtime"
-model = "gpt-4o-realtime-preview-2024-10-01"
-rate_limit = 100
-timeout = 30
-
-[perplexity]
-api_key = "default_perplexity_key"
-api_url = "https://api.perplexity.ai/chat/completions"
-frequency_penalty = 1.0
-max_tokens = 4096
-model = "llama-3.1-sonar-small-128k-online"
-presence_penalty = 0.0
-prompt = """
-You are an AI assistant for LogSeq knowledge summaries via perplexity API. Style: Informative, analytical, optimistic, critical, conversational, authoritative. Markdown: hierarchical headings (- #), minimal bold, italics for book titles, descriptive links [URL](text), images ![alt](path){:width height}, embeds {{type id}}, lists with '-', block refs [[title]], properties property:: value, code blocks ```lang``` and `inline code`, \r
- newlines, public:: true at start/end. UK spelling, introduce acronyms once, numeric citations, [[reference]] for sources, minimal emojis, parentheses for asides, collapsed:: true. Focus on emerging tech (decentralization, AI, XR), detail, credible sources, implications, examples, future-oriented. Adhere strictly, ensure accuracy, consistency, large context, refine with feedback."""
-rate_limit = 100
-temperature = 0.5
-timeout = 30
-top_p = 0.9
-
-[physics]
-attraction_strength = 0.015
-bounds_size = 12.0
-collision_radius = 0.25
-damping = 0.88
-enable_bounds = true
-enable_collision = true
-enabled = true
-iterations = 500
-max_velocity = 2.5
-repulsion_strength = 1500.0
-spring_strength = 0.018
-
-[ragflow]
-api_key = "default_ragflow_key"
-base_url = "http://ragflow-server/v1/"
-max_retries = 3
-timeout = 30
-
-[rendering]
-ambient_light_intensity = 0.7
-background_color = "#000000"
-directional_light_intensity = 1.0
-enable_ambient_occlusion = true
-enable_antialiasing = true
-enable_gpu_acceleration = true
-enable_grid = true
-enable_hemisphere_light = true
-enable_shadows = true
-environment_intensity = 1.2
-fog_color = "#000000"
-fog_density = 0.0008
-fog_enabled = true
-grid_color = "#1A1A1A"
-grid_divisions = 20
-grid_size = 10
-pixel_ratio = 1.5
-shadow_map_size = 4096
-
+# Security Settings
 [security]
 allowed_origins = []
 audit_log_path = "/app/logs/audit.log"
@@ -231,19 +34,105 @@ cookie_samesite = "Strict"
 cookie_secure = true
 csrf_token_timeout = 3600
 enable_audit_logging = true
-enable_cors = false
-enable_csrf = false
+# enable_cors = false
+# enable_csrf = false
 enable_request_validation = true
-enable_security_headers = false
+# enable_security_headers = false
 session_timeout = 3600
 
-[server_debug]
-enable_data_debug = false
-enable_websocket_debug = false
-enabled = true
-log_binary_headers = false
-log_full_json = false
+# Rendering Settings
+[rendering]
+ambient_light_intensity = 0.7
+background_color = "#000000"
+directional_light_intensity = 1.0
+enable_ambient_occlusion = true
+enable_antialiasing = true
+# enable_gpu_acceleration = true
+# enable_grid = true
+# enable_hemisphere_light = true
+enable_shadows = true
+environment_intensity = 1.2
+# fog_color = "#000000"
+# fog_density = 0.0008
+# fog_enabled = true
+# grid_color = "#1A1A1A"
+# grid_divisions = 20
+# grid_size = 10
+# pixel_ratio = 1.5
+# shadow_map_size = 4096
 
+# AR Settings (High Priority)
+[ar]
+enable_hand_tracking = true
+enable_haptics = true
+enable_plane_detection = true
+
+# Nodes Configuration
+[nodes]
+base_color = "#FFB700"
+base_size = 1
+size_range = [1, 5]
+size_by_connections = true
+# geometry_segments = 16
+enable_instancing = true
+material_type = "physical"
+# clearcoat = 1
+# clearcoat_roughness = 0.1
+# metalness = 0.85
+opacity = 0.92
+roughness = 0.15
+highlight_color = "#FFFFFF"
+# highlight_intensity = 1.0
+highlight_duration = 500
+enable_hover_effect = true
+hover_scale = 1.2
+
+# Edges Configuration
+[edges]
+base_width = 2
+width_range = [1.0, 3.0]
+color = "#FFD700"
+# enable_arrows = true
+opacity = 0.6
+# width_by_strength = true
+# curve_segments = 8
+# highlight_color = "#FFFFFF"
+# highlight_intensity = 1.0
+# highlight_duration = 500
+
+# Physics Settings
+[physics]
+attraction_strength = 0.015
+bounds_size = 12.0
+collision_radius = 0.25
+damping = 0.88
+enable_bounds = true
+# enable_collision = true
+enabled = true
+iterations = 500
+max_velocity = 2.5
+repulsion_strength = 1500.0
+spring_strength = 0.018
+
+# Bloom Effects
+[bloom]
+enabled = false
+node_bloom_strength = 0.2
+edge_bloom_strength = 0.3
+environment_bloom_strength = 0.5
+# radius = 0.5
+# strength = 1.8
+# threshold = 0.3
+
+# Labels Configuration
+[labels]
+enable_labels = true
+text_color = "#FFFFFF"
+# ar_font_size = 24
+# desktop_font_size = 48
+# font_family = "Arial, Helvetica, sans-serif"
+
+# WebSocket Configuration
 [websocket]
 binary_chunk_size = 65536
 compression_enabled = true
@@ -255,3 +144,54 @@ max_message_size = 100485760
 reconnect_attempts = 3
 reconnect_delay = 5000
 update_rate = 90
+
+# Debugging Settings
+[server_debug]
+enable_data_debug = false
+enable_websocket_debug = false
+enabled = true
+log_binary_headers = false
+log_full_json = false
+
+[client_debug]
+enable_data_debug = false
+enable_websocket_debug = false
+enabled = false
+log_binary_headers = false
+log_full_json = false
+
+# Integrations
+[github]
+# base_path = "default_path"
+# owner = "default_owner"
+# rate_limit = true
+# repo = "default_repo"
+# token = "default_token"
+
+[openai]
+# api_key = "default_openai_key"
+# base_url = "wss://api.openai.com/v1/realtime"
+# model = "gpt-4o-realtime-preview-2024-10-01"
+# rate_limit = 100
+# timeout = 30
+
+[perplexity]
+# api_key = "default_perplexity_key"
+# api_url = "https://api.perplexity.ai/chat/completions"
+# frequency_penalty = 1.0
+# max_tokens = 4096
+# model = "llama-3.1-sonar-small-128k-online"
+# presence_penalty = 0.0
+# prompt = """
+# You are an AI assistant for LogSeq knowledge summaries via perplexity API. Style: Informative, analytical, optimistic, critical, conversational, authoritative. Markdown: hierarchical headings (- #), minimal bold, italics for book titles, descriptive links [URL](text), images ![alt](path){:width height}, embeds {{type id}}, lists with '-', block refs [[title]], properties property:: value, code blocks ```lang``` and `inline code`, \r
+#  newlines, public:: true at start. UK spelling, introduce acronyms once, numeric citations, [[reference]] for sources, minimal emojis, parentheses for asides, collapsed:: true. Focus on emerging tech (decentralization, AI, XR), detail, credible sources, implications, examples, future-oriented. Adhere strictly, ensure accuracy, consistency, large context, refine with feedback."""
+# rate_limit = 100
+# temperature = 0.5
+# timeout = 30
+# top_p = 0.9
+
+[ragflow]
+# api_key = "default_ragflow_key"
+# base_url = "http://ragflow-server/v1/"
+# max_retries = 3
+# timeout = 30
