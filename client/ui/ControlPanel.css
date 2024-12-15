@@ -21,6 +21,9 @@
     padding: 12px 16px;
     background: rgba(0, 0, 0, 0.2);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 2;
 }
 
 .control-panel-header h3 {
@@ -47,6 +50,9 @@
 
 .settings-group {
     margin-bottom: 24px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
 }
 
 .settings-group h4 {
@@ -54,10 +60,14 @@
     font-size: 14px;
     color: #4a90e2;
     font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .setting-item {
     margin-bottom: 12px;
+    transition: opacity 0.3s ease;
 }
 
 .setting-item label {
@@ -112,25 +122,70 @@
     margin-right: 8px;
 }
 
-.setting-item.disabled {
+.setting-value {
+    float: right;
+    color: #4a90e2;
+    font-size: 12px;
+}
+
+/* Range inputs for edge width */
+.range-inputs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.range-inputs input[type="number"] {
+    width: 70px;
+}
+
+.range-inputs span {
+    color: #ccc;
+    font-size: 12px;
+}
+
+/* Sub-settings */
+.sub-settings {
+    margin-left: 16px;
+    padding-left: 8px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Disabled states */
+.setting-item.disabled,
+.hover-setting.disabled,
+.bloom-setting.disabled,
+.label-setting.disabled,
+.physics-setting.disabled,
+.portal-setting.disabled {
     opacity: 0.5;
     pointer-events: none;
 }
 
+/* Save button */
 .save-button {
     width: 100%;
-    padding: 8px 16px;
+    padding: 12px 16px;
     background: #4a90e2;
     color: #fff;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
-    transition: background 0.2s;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    margin-top: 16px;
+    position: sticky;
+    bottom: 16px;
 }
 
 .save-button:hover {
     background: #357abd;
+    transform: translateY(-1px);
+}
+
+.save-button:active {
+    transform: translateY(0);
 }
 
 /* Custom scrollbar */
@@ -161,9 +216,53 @@
     animation: fadeIn 0.3s ease;
 }
 
+/* Expanded state */
+.control-panel:not(.expanded) .control-panel-content {
+    display: none;
+}
+
+.control-panel.expanded .toggle-button {
+    transform: rotate(180deg);
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
     .control-panel {
         width: 280px;
     }
+    
+    .range-inputs input[type="number"] {
+        width: 60px;
+    }
+}
+
+/* Tooltips */
+.setting-item label {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.setting-item label[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 0;
+    top: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    z-index: 10;
+    pointer-events: none;
+}
+
+/* Group headers */
+.settings-group h4::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin-left: 8px;
 }

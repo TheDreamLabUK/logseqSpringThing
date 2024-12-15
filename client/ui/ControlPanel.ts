@@ -35,7 +35,7 @@ export class ControlPanel {
                     <h4>Node Appearance</h4>
                     <div class="setting-item">
                         <label for="nodeSize">Node Size</label>
-                        <input type="range" id="nodeSize" min="0.05" max="0.5" step="0.05" value="${this.settings.nodeSize}">
+                        <input type="range" id="nodeSize" min="0.05" max="2" step="0.05" value="${this.settings.nodeSize}">
                         <span class="setting-value">${this.settings.nodeSize.toFixed(2)}</span>
                     </div>
                     <div class="setting-item">
@@ -62,6 +62,25 @@ export class ControlPanel {
                         <input type="range" id="clearcoat" min="0" max="1" step="0.1" value="${this.settings.clearcoat}">
                         <span class="setting-value">${this.settings.clearcoat.toFixed(1)}</span>
                     </div>
+                    <div class="setting-item">
+                        <label for="highlightColor">Highlight Color</label>
+                        <input type="color" id="highlightColor" value="${this.settings.highlightColor}">
+                    </div>
+                    <div class="setting-item">
+                        <label for="highlightDuration">Highlight Duration (ms)</label>
+                        <input type="number" id="highlightDuration" min="100" max="2000" step="100" value="${this.settings.highlightDuration}">
+                    </div>
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="enableHoverEffect" ${this.settings.enableHoverEffect ? 'checked' : ''}>
+                            Enable Hover Effect
+                        </label>
+                    </div>
+                    <div class="setting-item hover-setting ${this.settings.enableHoverEffect ? '' : 'disabled'}">
+                        <label for="hoverScale">Hover Scale</label>
+                        <input type="range" id="hoverScale" min="1" max="2" step="0.1" value="${this.settings.hoverScale}">
+                        <span class="setting-value">${this.settings.hoverScale.toFixed(1)}</span>
+                    </div>
                 </div>
 
                 <div class="settings-group">
@@ -81,15 +100,12 @@ export class ControlPanel {
                         <span class="setting-value">${this.settings.edgeOpacity.toFixed(1)}</span>
                     </div>
                     <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="enableArrows" ${this.settings.enableArrows ? 'checked' : ''}>
-                            Show Arrows
-                        </label>
-                    </div>
-                    <div class="setting-item arrow-setting ${this.settings.enableArrows ? '' : 'disabled'}">
-                        <label for="arrowSize">Arrow Size</label>
-                        <input type="range" id="arrowSize" min="0.1" max="1" step="0.05" value="${this.settings.arrowSize}">
-                        <span class="setting-value">${this.settings.arrowSize.toFixed(2)}</span>
+                        <label>Edge Width Range</label>
+                        <div class="range-inputs">
+                            <input type="number" id="edgeWidthRangeMin" min="0.1" max="5" step="0.1" value="${this.settings.edgeWidthRange[0]}">
+                            <span>to</span>
+                            <input type="number" id="edgeWidthRangeMax" min="0.1" max="5" step="0.1" value="${this.settings.edgeWidthRange[1]}">
+                        </div>
                     </div>
                 </div>
 
@@ -102,33 +118,19 @@ export class ControlPanel {
                         </label>
                     </div>
                     <div class="setting-item bloom-setting ${this.settings.enableBloom ? '' : 'disabled'}">
-                        <label for="bloomIntensity">Bloom Intensity</label>
-                        <input type="range" id="bloomIntensity" min="0" max="2" step="0.1" value="${this.settings.bloomIntensity}">
-                        <span class="setting-value">${this.settings.bloomIntensity.toFixed(1)}</span>
+                        <label for="nodeBloomStrength">Node Bloom Strength</label>
+                        <input type="range" id="nodeBloomStrength" min="0" max="1" step="0.1" value="${this.settings.nodeBloomStrength}">
+                        <span class="setting-value">${this.settings.nodeBloomStrength.toFixed(1)}</span>
                     </div>
                     <div class="setting-item bloom-setting ${this.settings.enableBloom ? '' : 'disabled'}">
-                        <label for="bloomRadius">Bloom Radius</label>
-                        <input type="range" id="bloomRadius" min="0" max="2" step="0.1" value="${this.settings.bloomRadius}">
+                        <label for="edgeBloomStrength">Edge Bloom Strength</label>
+                        <input type="range" id="edgeBloomStrength" min="0" max="1" step="0.1" value="${this.settings.edgeBloomStrength}">
+                        <span class="setting-value">${this.settings.edgeBloomStrength.toFixed(1)}</span>
                     </div>
-                </div>
-
-                <div class="settings-group">
-                    <h4>Animations</h4>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="enableNodeAnimations" ${this.settings.enableNodeAnimations ? 'checked' : ''}>
-                            Node Animations
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="enableMotionBlur" ${this.settings.enableMotionBlur ? 'checked' : ''}>
-                            Motion Blur
-                        </label>
-                    </div>
-                    <div class="setting-item motion-setting ${this.settings.enableMotionBlur ? '' : 'disabled'}">
-                        <label for="motionBlurStrength">Motion Blur Strength</label>
-                        <input type="range" id="motionBlurStrength" min="0" max="1" step="0.1" value="${this.settings.motionBlurStrength}">
+                    <div class="setting-item bloom-setting ${this.settings.enableBloom ? '' : 'disabled'}">
+                        <label for="environmentBloomStrength">Environment Bloom Strength</label>
+                        <input type="range" id="environmentBloomStrength" min="0" max="1" step="0.1" value="${this.settings.environmentBloomStrength}">
+                        <span class="setting-value">${this.settings.environmentBloomStrength.toFixed(1)}</span>
                     </div>
                 </div>
 
@@ -141,186 +143,126 @@ export class ControlPanel {
                         </label>
                     </div>
                     <div class="setting-item label-setting ${this.settings.showLabels ? '' : 'disabled'}">
-                        <label for="labelSize">Label Size</label>
-                        <input type="range" id="labelSize" min="0.5" max="2" step="0.1" value="${this.settings.labelSize}">
-                        <span class="setting-value">${this.settings.labelSize.toFixed(1)}</span>
-                    </div>
-                    <div class="setting-item label-setting ${this.settings.showLabels ? '' : 'disabled'}">
                         <label for="labelColor">Label Color</label>
                         <input type="color" id="labelColor" value="${this.settings.labelColor}">
                     </div>
                 </div>
 
                 <div class="settings-group">
-                    <h4>Performance</h4>
+                    <h4>Physics</h4>
                     <div class="setting-item">
-                        <label for="maxFps">Max FPS</label>
-                        <input type="number" id="maxFps" min="30" max="144" value="${this.settings.maxFps}">
+                        <label>
+                            <input type="checkbox" id="physicsEnabled" ${this.settings.physicsEnabled ? 'checked' : ''}>
+                            Enable Physics
+                        </label>
+                    </div>
+                    <div class="setting-item physics-setting ${this.settings.physicsEnabled ? '' : 'disabled'}">
+                        <label for="attractionStrength">Attraction Strength</label>
+                        <input type="range" id="attractionStrength" min="0" max="0.1" step="0.001" value="${this.settings.attractionStrength}">
+                        <span class="setting-value">${this.settings.attractionStrength.toFixed(3)}</span>
+                    </div>
+                    <div class="setting-item physics-setting ${this.settings.physicsEnabled ? '' : 'disabled'}">
+                        <label for="repulsionStrength">Repulsion Strength</label>
+                        <input type="range" id="repulsionStrength" min="0" max="3000" step="100" value="${this.settings.repulsionStrength}">
+                        <span class="setting-value">${this.settings.repulsionStrength.toFixed(0)}</span>
+                    </div>
+                    <div class="setting-item physics-setting ${this.settings.physicsEnabled ? '' : 'disabled'}">
+                        <label for="springStrength">Spring Strength</label>
+                        <input type="range" id="springStrength" min="0" max="0.1" step="0.001" value="${this.settings.springStrength}">
+                        <span class="setting-value">${this.settings.springStrength.toFixed(3)}</span>
+                    </div>
+                    <div class="setting-item physics-setting ${this.settings.physicsEnabled ? '' : 'disabled'}">
+                        <label for="damping">Damping</label>
+                        <input type="range" id="damping" min="0" max="1" step="0.01" value="${this.settings.damping}">
+                        <span class="setting-value">${this.settings.damping.toFixed(2)}</span>
+                    </div>
+                    <div class="setting-item physics-setting ${this.settings.physicsEnabled ? '' : 'disabled'}">
+                        <label for="maxVelocity">Max Velocity</label>
+                        <input type="range" id="maxVelocity" min="0" max="10" step="0.1" value="${this.settings.maxVelocity}">
+                        <span class="setting-value">${this.settings.maxVelocity.toFixed(1)}</span>
+                    </div>
+                    <div class="setting-item physics-setting ${this.settings.physicsEnabled ? '' : 'disabled'}">
+                        <label for="collisionRadius">Collision Radius</label>
+                        <input type="range" id="collisionRadius" min="0" max="1" step="0.05" value="${this.settings.collisionRadius}">
+                        <span class="setting-value">${this.settings.collisionRadius.toFixed(2)}</span>
+                    </div>
+                    <div class="setting-item physics-setting ${this.settings.physicsEnabled ? '' : 'disabled'}">
+                        <label for="boundsSize">Bounds Size</label>
+                        <input type="range" id="boundsSize" min="1" max="50" step="1" value="${this.settings.boundsSize}">
+                        <span class="setting-value">${this.settings.boundsSize.toFixed(0)}</span>
+                    </div>
+                    <div class="setting-item physics-setting ${this.settings.physicsEnabled ? '' : 'disabled'}">
+                        <label>
+                            <input type="checkbox" id="enableBounds" ${this.settings.enableBounds ? 'checked' : ''}>
+                            Enable Bounds
+                        </label>
+                    </div>
+                    <div class="setting-item physics-setting ${this.settings.physicsEnabled ? '' : 'disabled'}">
+                        <label for="iterations">Iterations</label>
+                        <input type="number" id="iterations" min="100" max="1000" step="100" value="${this.settings.iterations}">
                     </div>
                 </div>
 
                 <div class="settings-group">
                     <h4>AR Settings</h4>
                     <div class="setting-item">
-                        <label>Scene Understanding</label>
-                        <div class="sub-settings">
-                            <div class="setting-item">
-                                <label>
-                                    <input type="checkbox" id="enablePlaneDetection" ${this.settings.enablePlaneDetection ? 'checked' : ''}>
-                                    Plane Detection
-                                </label>
-                            </div>
-                            <div class="setting-item">
-                                <label>
-                                    <input type="checkbox" id="enableSceneUnderstanding" ${this.settings.enableSceneUnderstanding ? 'checked' : ''}>
-                                    Scene Understanding
-                                </label>
-                            </div>
-                            <div class="setting-item">
-                                <label>
-                                    <input type="checkbox" id="showPlaneOverlay" ${this.settings.showPlaneOverlay ? 'checked' : ''}>
-                                    Show Plane Overlay
-                                </label>
-                            </div>
-                            <div class="setting-item">
-                                <label for="planeOpacity">Plane Opacity</label>
-                                <input type="range" id="planeOpacity" min="0" max="1" step="0.1" value="${this.settings.planeOpacity}">
-                            </div>
-                            <div class="setting-item">
-                                <label for="planeColor">Plane Color</label>
-                                <input type="color" id="planeColor" value="${this.settings.planeColor}">
-                            </div>
-                            <div class="setting-item">
-                                <label>
-                                    <input type="checkbox" id="enableLightEstimation" ${this.settings.enableLightEstimation ? 'checked' : ''}>
-                                    Light Estimation
-                                </label>
-                            </div>
-                        </div>
+                        <label>
+                            <input type="checkbox" id="enableHandTracking" ${this.settings.enableHandTracking ? 'checked' : ''}>
+                            Enable Hand Tracking
+                        </label>
                     </div>
-
                     <div class="setting-item">
-                        <label>Hand Tracking</label>
-                        <div class="sub-settings">
-                            <div class="setting-item">
-                                <label>
-                                    <input type="checkbox" id="enableHandTracking" ${this.settings.enableHandTracking ? 'checked' : ''}>
-                                    Enable Hand Tracking
-                                </label>
-                            </div>
-                            <div class="setting-item">
-                                <label>
-                                    <input type="checkbox" id="handMeshEnabled" ${this.settings.handMeshEnabled ? 'checked' : ''}>
-                                    Show Hand Mesh
-                                </label>
-                            </div>
-                            <div class="setting-item">
-                                <label for="handMeshColor">Hand Mesh Color</label>
-                                <input type="color" id="handMeshColor" value="${this.settings.handMeshColor}">
-                            </div>
-                            <div class="setting-item">
-                                <label for="handMeshOpacity">Hand Mesh Opacity</label>
-                                <input type="range" id="handMeshOpacity" min="0" max="1" step="0.1" value="${this.settings.handMeshOpacity}">
-                            </div>
-                            <div class="setting-item">
-                                <label>
-                                    <input type="checkbox" id="handRayEnabled" ${this.settings.handRayEnabled ? 'checked' : ''}>
-                                    Show Hand Ray
-                                </label>
-                            </div>
-                            <div class="setting-item">
-                                <label for="handRayColor">Hand Ray Color</label>
-                                <input type="color" id="handRayColor" value="${this.settings.handRayColor}">
-                            </div>
-                        </div>
+                        <label>
+                            <input type="checkbox" id="enableHaptics" ${this.settings.enableHaptics ? 'checked' : ''}>
+                            Enable Haptics
+                        </label>
                     </div>
-
                     <div class="setting-item">
-                        <label>Gesture Controls</label>
-                        <div class="sub-settings">
-                            <div class="setting-item">
-                                <label for="gestureSmoothing">Gesture Smoothing</label>
-                                <input type="range" id="gestureSmoothing" min="0" max="1" step="0.1" value="${this.settings.gestureSmoothing}">
-                            </div>
-                            <div class="setting-item">
-                                <label for="pinchThreshold">Pinch Threshold</label>
-                                <input type="range" id="pinchThreshold" min="0" max="0.05" step="0.001" value="${this.settings.pinchThreshold}">
-                            </div>
-                            <div class="setting-item">
-                                <label for="dragThreshold">Drag Threshold</label>
-                                <input type="range" id="dragThreshold" min="0" max="0.1" step="0.01" value="${this.settings.dragThreshold}">
-                            </div>
-                        </div>
+                        <label>
+                            <input type="checkbox" id="enablePlaneDetection" ${this.settings.enablePlaneDetection ? 'checked' : ''}>
+                            Enable Plane Detection
+                        </label>
                     </div>
+                </div>
 
+                <div class="settings-group">
+                    <h4>Rendering</h4>
                     <div class="setting-item">
-                        <label>Haptics</label>
-                        <div class="sub-settings">
-                            <div class="setting-item">
-                                <label>
-                                    <input type="checkbox" id="enableHaptics" ${this.settings.enableHaptics ? 'checked' : ''}>
-                                    Enable Haptics
-                                </label>
-                            </div>
-                            <div class="setting-item">
-                                <label for="hapticIntensity">Haptic Intensity</label>
-                                <input type="range" id="hapticIntensity" min="0" max="1" step="0.1" value="${this.settings.hapticIntensity}">
-                            </div>
-                        </div>
+                        <label for="ambientLightIntensity">Ambient Light Intensity</label>
+                        <input type="range" id="ambientLightIntensity" min="0" max="2" step="0.1" value="${this.settings.ambientLightIntensity}">
+                        <span class="setting-value">${this.settings.ambientLightIntensity.toFixed(1)}</span>
                     </div>
-
                     <div class="setting-item">
-                        <label>Room Scale</label>
-                        <div class="sub-settings">
-                            <div class="setting-item">
-                                <label>
-                                    <input type="checkbox" id="roomScale" ${this.settings.roomScale ? 'checked' : ''}>
-                                    Room Scale Mode
-                                </label>
-                            </div>
-                            <div class="setting-item">
-                                <label>
-                                    <input type="checkbox" id="snapToFloor" ${this.settings.snapToFloor ? 'checked' : ''}>
-                                    Snap to Floor
-                                </label>
-                            </div>
-                        </div>
+                        <label for="directionalLightIntensity">Directional Light Intensity</label>
+                        <input type="range" id="directionalLightIntensity" min="0" max="2" step="0.1" value="${this.settings.directionalLightIntensity}">
+                        <span class="setting-value">${this.settings.directionalLightIntensity.toFixed(1)}</span>
                     </div>
-
                     <div class="setting-item">
-                        <label>Passthrough</label>
-                        <div class="sub-settings">
-                            <div class="setting-item">
-                                <label for="passthroughOpacity">Opacity</label>
-                                <input type="range" id="passthroughOpacity" min="0" max="1" step="0.1" value="${this.settings.passthroughOpacity}">
-                            </div>
-                            <div class="setting-item">
-                                <label for="passthroughBrightness">Brightness</label>
-                                <input type="range" id="passthroughBrightness" min="0" max="2" step="0.1" value="${this.settings.passthroughBrightness}">
-                            </div>
-                            <div class="setting-item">
-                                <label for="passthroughContrast">Contrast</label>
-                                <input type="range" id="passthroughContrast" min="0" max="2" step="0.1" value="${this.settings.passthroughContrast}">
-                            </div>
-                            <div class="setting-item">
-                                <label>
-                                    <input type="checkbox" id="enablePassthroughPortal" ${this.settings.enablePassthroughPortal ? 'checked' : ''}>
-                                    Enable Portal
-                                </label>
-                            </div>
-                            <div class="setting-item portal-setting ${this.settings.enablePassthroughPortal ? '' : 'disabled'}">
-                                <label for="portalSize">Portal Size</label>
-                                <input type="range" id="portalSize" min="0.1" max="2" step="0.1" value="${this.settings.portalSize}">
-                            </div>
-                            <div class="setting-item portal-setting ${this.settings.enablePassthroughPortal ? '' : 'disabled'}">
-                                <label for="portalEdgeColor">Portal Edge Color</label>
-                                <input type="color" id="portalEdgeColor" value="${this.settings.portalEdgeColor}">
-                            </div>
-                            <div class="setting-item portal-setting ${this.settings.enablePassthroughPortal ? '' : 'disabled'}">
-                                <label for="portalEdgeWidth">Portal Edge Width</label>
-                                <input type="range" id="portalEdgeWidth" min="0.001" max="0.05" step="0.001" value="${this.settings.portalEdgeWidth}">
-                            </div>
-                        </div>
+                        <label for="environmentIntensity">Environment Intensity</label>
+                        <input type="range" id="environmentIntensity" min="0" max="2" step="0.1" value="${this.settings.environmentIntensity}">
+                        <span class="setting-value">${this.settings.environmentIntensity.toFixed(1)}</span>
+                    </div>
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="enableAmbientOcclusion" ${this.settings.enableAmbientOcclusion ? 'checked' : ''}>
+                            Enable Ambient Occlusion
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="enableAntialiasing" ${this.settings.enableAntialiasing ? 'checked' : ''}>
+                            Enable Antialiasing
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="enableShadows" ${this.settings.enableShadows ? 'checked' : ''}>
+                            Enable Shadows
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <label for="backgroundColor">Background Color</label>
+                        <input type="color" id="backgroundColor" value="${this.settings.backgroundColor}">
                     </div>
                 </div>
 
@@ -350,21 +292,35 @@ export class ControlPanel {
         this.setupInputListener('metalness', 'number');
         this.setupInputListener('roughness', 'number');
         this.setupInputListener('clearcoat', 'number');
+        this.setupInputListener('highlightColor', 'string');
+        this.setupInputListener('highlightDuration', 'number');
+        
+        const hoverEffectCheckbox = this.container.querySelector('#enableHoverEffect') as HTMLInputElement;
+        hoverEffectCheckbox?.addEventListener('change', () => {
+            const hoverSettings = this.container.querySelectorAll('.hover-setting');
+            hoverSettings.forEach(setting => {
+                setting.classList.toggle('disabled', !hoverEffectCheckbox.checked);
+            });
+            this.settings.enableHoverEffect = hoverEffectCheckbox.checked;
+        });
+        this.setupInputListener('hoverScale', 'number');
 
         // Edge settings
         this.setupInputListener('edgeWidth', 'number');
         this.setupInputListener('edgeColor', 'string');
         this.setupInputListener('edgeOpacity', 'number');
         
-        const arrowsCheckbox = this.container.querySelector('#enableArrows') as HTMLInputElement;
-        arrowsCheckbox?.addEventListener('change', () => {
-            const arrowSettings = this.container.querySelectorAll('.arrow-setting');
-            arrowSettings.forEach(setting => {
-                setting.classList.toggle('disabled', !arrowsCheckbox.checked);
-            });
-            this.settings.enableArrows = arrowsCheckbox.checked;
+        // Edge width range
+        const edgeWidthRangeMin = this.container.querySelector('#edgeWidthRangeMin') as HTMLInputElement;
+        const edgeWidthRangeMax = this.container.querySelector('#edgeWidthRangeMax') as HTMLInputElement;
+        
+        edgeWidthRangeMin?.addEventListener('input', () => {
+            this.settings.edgeWidthRange = [parseFloat(edgeWidthRangeMin.value), this.settings.edgeWidthRange[1]];
         });
-        this.setupInputListener('arrowSize', 'number');
+        
+        edgeWidthRangeMax?.addEventListener('input', () => {
+            this.settings.edgeWidthRange = [this.settings.edgeWidthRange[0], parseFloat(edgeWidthRangeMax.value)];
+        });
 
         // Bloom settings
         const bloomCheckbox = this.container.querySelector('#enableBloom') as HTMLInputElement;
@@ -375,24 +331,9 @@ export class ControlPanel {
             });
             this.settings.enableBloom = bloomCheckbox.checked;
         });
-        this.setupInputListener('bloomIntensity', 'number');
-        this.setupInputListener('bloomRadius', 'number');
-
-        // Animation settings
-        const nodeAnimCheckbox = this.container.querySelector('#enableNodeAnimations') as HTMLInputElement;
-        nodeAnimCheckbox?.addEventListener('change', () => {
-            this.settings.enableNodeAnimations = nodeAnimCheckbox.checked;
-        });
-
-        const motionBlurCheckbox = this.container.querySelector('#enableMotionBlur') as HTMLInputElement;
-        motionBlurCheckbox?.addEventListener('change', () => {
-            const motionSettings = this.container.querySelectorAll('.motion-setting');
-            motionSettings.forEach(setting => {
-                setting.classList.toggle('disabled', !motionBlurCheckbox.checked);
-            });
-            this.settings.enableMotionBlur = motionBlurCheckbox.checked;
-        });
-        this.setupInputListener('motionBlurStrength', 'number');
+        this.setupInputListener('nodeBloomStrength', 'number');
+        this.setupInputListener('edgeBloomStrength', 'number');
+        this.setupInputListener('environmentBloomStrength', 'number');
 
         // Label settings
         const labelCheckbox = this.container.querySelector('#showLabels') as HTMLInputElement;
@@ -403,93 +344,70 @@ export class ControlPanel {
             });
             this.settings.showLabels = labelCheckbox.checked;
         });
-        this.setupInputListener('labelSize', 'number');
         this.setupInputListener('labelColor', 'string');
 
-        // Performance settings
-        this.setupInputListener('maxFps', 'number');
+        // Physics settings
+        const physicsCheckbox = this.container.querySelector('#physicsEnabled') as HTMLInputElement;
+        physicsCheckbox?.addEventListener('change', () => {
+            const physicsSettings = this.container.querySelectorAll('.physics-setting');
+            physicsSettings.forEach(setting => {
+                setting.classList.toggle('disabled', !physicsCheckbox.checked);
+            });
+            this.settings.physicsEnabled = physicsCheckbox.checked;
+        });
+        
+        this.setupInputListener('attractionStrength', 'number');
+        this.setupInputListener('repulsionStrength', 'number');
+        this.setupInputListener('springStrength', 'number');
+        this.setupInputListener('damping', 'number');
+        this.setupInputListener('maxVelocity', 'number');
+        this.setupInputListener('collisionRadius', 'number');
+        this.setupInputListener('boundsSize', 'number');
+        
+        const boundsCheckbox = this.container.querySelector('#enableBounds') as HTMLInputElement;
+        boundsCheckbox?.addEventListener('change', () => {
+            this.settings.enableBounds = boundsCheckbox.checked;
+        });
+        
+        this.setupInputListener('iterations', 'number');
 
         // AR settings
-        const planeDetectionCheckbox = this.container.querySelector('#enablePlaneDetection') as HTMLInputElement;
-        planeDetectionCheckbox?.addEventListener('change', () => {
-            this.settings.enablePlaneDetection = planeDetectionCheckbox.checked;
-        });
-
-        const sceneUnderstandingCheckbox = this.container.querySelector('#enableSceneUnderstanding') as HTMLInputElement;
-        sceneUnderstandingCheckbox?.addEventListener('change', () => {
-            this.settings.enableSceneUnderstanding = sceneUnderstandingCheckbox.checked;
-        });
-
-        const showPlaneOverlayCheckbox = this.container.querySelector('#showPlaneOverlay') as HTMLInputElement;
-        showPlaneOverlayCheckbox?.addEventListener('change', () => {
-            this.settings.showPlaneOverlay = showPlaneOverlayCheckbox.checked;
-        });
-
-        this.setupInputListener('planeOpacity', 'number');
-        this.setupInputListener('planeColor', 'string');
-
-        const lightEstimationCheckbox = this.container.querySelector('#enableLightEstimation') as HTMLInputElement;
-        lightEstimationCheckbox?.addEventListener('change', () => {
-            this.settings.enableLightEstimation = lightEstimationCheckbox.checked;
-        });
-
         const handTrackingCheckbox = this.container.querySelector('#enableHandTracking') as HTMLInputElement;
         handTrackingCheckbox?.addEventListener('change', () => {
             this.settings.enableHandTracking = handTrackingCheckbox.checked;
         });
-
-        const handMeshEnabledCheckbox = this.container.querySelector('#handMeshEnabled') as HTMLInputElement;
-        handMeshEnabledCheckbox?.addEventListener('change', () => {
-            this.settings.handMeshEnabled = handMeshEnabledCheckbox.checked;
-        });
-
-        this.setupInputListener('handMeshColor', 'string');
-        this.setupInputListener('handMeshOpacity', 'number');
-
-        const handRayEnabledCheckbox = this.container.querySelector('#handRayEnabled') as HTMLInputElement;
-        handRayEnabledCheckbox?.addEventListener('change', () => {
-            this.settings.handRayEnabled = handRayEnabledCheckbox.checked;
-        });
-
-        this.setupInputListener('handRayColor', 'string');
-
-        this.setupInputListener('gestureSmoothing', 'number');
-        this.setupInputListener('pinchThreshold', 'number');
-        this.setupInputListener('dragThreshold', 'number');
 
         const hapticsCheckbox = this.container.querySelector('#enableHaptics') as HTMLInputElement;
         hapticsCheckbox?.addEventListener('change', () => {
             this.settings.enableHaptics = hapticsCheckbox.checked;
         });
 
-        this.setupInputListener('hapticIntensity', 'number');
-
-        const roomScaleCheckbox = this.container.querySelector('#roomScale') as HTMLInputElement;
-        roomScaleCheckbox?.addEventListener('change', () => {
-            this.settings.roomScale = roomScaleCheckbox.checked;
+        const planeDetectionCheckbox = this.container.querySelector('#enablePlaneDetection') as HTMLInputElement;
+        planeDetectionCheckbox?.addEventListener('change', () => {
+            this.settings.enablePlaneDetection = planeDetectionCheckbox.checked;
         });
 
-        const snapToFloorCheckbox = this.container.querySelector('#snapToFloor') as HTMLInputElement;
-        snapToFloorCheckbox?.addEventListener('change', () => {
-            this.settings.snapToFloor = snapToFloorCheckbox.checked;
+        // Rendering settings
+        this.setupInputListener('ambientLightIntensity', 'number');
+        this.setupInputListener('directionalLightIntensity', 'number');
+        this.setupInputListener('environmentIntensity', 'number');
+        
+        const ambientOcclusionCheckbox = this.container.querySelector('#enableAmbientOcclusion') as HTMLInputElement;
+        ambientOcclusionCheckbox?.addEventListener('change', () => {
+            this.settings.enableAmbientOcclusion = ambientOcclusionCheckbox.checked;
         });
 
-        this.setupInputListener('passthroughOpacity', 'number');
-        this.setupInputListener('passthroughBrightness', 'number');
-        this.setupInputListener('passthroughContrast', 'number');
-
-        const passthroughPortalCheckbox = this.container.querySelector('#enablePassthroughPortal') as HTMLInputElement;
-        passthroughPortalCheckbox?.addEventListener('change', () => {
-            const portalSettings = this.container.querySelectorAll('.portal-setting');
-            portalSettings.forEach(setting => {
-                setting.classList.toggle('disabled', !passthroughPortalCheckbox.checked);
-            });
-            this.settings.enablePassthroughPortal = passthroughPortalCheckbox.checked;
+        const antialiasingCheckbox = this.container.querySelector('#enableAntialiasing') as HTMLInputElement;
+        antialiasingCheckbox?.addEventListener('change', () => {
+            this.settings.enableAntialiasing = antialiasingCheckbox.checked;
         });
 
-        this.setupInputListener('portalSize', 'number');
-        this.setupInputListener('portalEdgeColor', 'string');
-        this.setupInputListener('portalEdgeWidth', 'number');
+        const shadowsCheckbox = this.container.querySelector('#enableShadows') as HTMLInputElement;
+        shadowsCheckbox?.addEventListener('change', () => {
+            this.settings.enableShadows = shadowsCheckbox.checked;
+        });
+
+        this.setupInputListener('backgroundColor', 'string');
     }
 
     private setupInputListener(id: string, type: 'number' | 'string'): void {
@@ -523,7 +441,10 @@ export class ControlPanel {
     }
 
     private updateUIValues(): void {
+        // Update all input values
         Object.entries(this.settings).forEach(([key, value]) => {
+            if (typeof value === 'object') return; // Skip nested objects (like github, openai, etc.)
+            
             const input = this.container.querySelector(`#${key}`) as HTMLInputElement;
             const valueDisplay = input?.parentElement?.querySelector('.setting-value');
             
@@ -541,5 +462,29 @@ export class ControlPanel {
                 }
             }
         });
+
+        // Update edge width range inputs
+        const edgeWidthRangeMin = this.container.querySelector('#edgeWidthRangeMin') as HTMLInputElement;
+        const edgeWidthRangeMax = this.container.querySelector('#edgeWidthRangeMax') as HTMLInputElement;
+        if (edgeWidthRangeMin && edgeWidthRangeMax && Array.isArray(this.settings.edgeWidthRange)) {
+            edgeWidthRangeMin.value = this.settings.edgeWidthRange[0].toString();
+            edgeWidthRangeMax.value = this.settings.edgeWidthRange[1].toString();
+        }
+
+        // Update disabled states
+        const updateDisabledState = (checkboxId: string, settingClass: string) => {
+            const checkbox = this.container.querySelector(`#${checkboxId}`) as HTMLInputElement;
+            const settings = this.container.querySelectorAll(`.${settingClass}`);
+            if (checkbox && settings) {
+                settings.forEach(setting => {
+                    setting.classList.toggle('disabled', !checkbox.checked);
+                });
+            }
+        };
+
+        updateDisabledState('enableHoverEffect', 'hover-setting');
+        updateDisabledState('enableBloom', 'bloom-setting');
+        updateDisabledState('showLabels', 'label-setting');
+        updateDisabledState('physicsEnabled', 'physics-setting');
     }
 }
