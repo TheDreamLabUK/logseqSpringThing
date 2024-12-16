@@ -4,7 +4,7 @@
 
 import { createLogger } from '../utils/logger';
 import { settingsManager } from '../state/settings';
-import { Settings, SettingCategory, SettingKey, SettingValue } from '../core/types';
+import { Settings, SettingKey, SettingValue } from '../core/types';
 
 const logger = createLogger('ControlPanel');
 
@@ -19,27 +19,15 @@ export class ControlPanel {
     }
 
     private initializeUI(): void {
-        // Create header with connection status
+        // Create header
         const header = document.createElement('div');
         header.className = 'control-panel-header';
         
         const title = document.createElement('h2');
         title.textContent = 'Settings';
         
-        const connectionStatus = document.createElement('div');
-        connectionStatus.className = 'connection-status';
-        
         header.appendChild(title);
-        header.appendChild(connectionStatus);
         this.container.appendChild(header);
-
-        // Subscribe to connection status
-        this.unsubscribers.push(
-            settingsManager.subscribeToConnection((connected) => {
-                connectionStatus.className = `connection-status ${connected ? 'connected' : 'disconnected'}`;
-                connectionStatus.textContent = connected ? 'Connected' : 'Disconnected';
-            })
-        );
 
         // Create settings sections
         const settings = settingsManager.getCurrentSettings();
@@ -78,36 +66,14 @@ export class ControlPanel {
         this.container.appendChild(section);
     }
 
-    private createInputElement(
-        type: string,
-        value: string | number | boolean,
-        onChange: (e: Event) => void
-    ): HTMLInputElement {
-        const input = document.createElement('input');
-        input.type = type;
-        if (type === 'checkbox') {
-            input.checked = value as boolean;
-        } else {
-            input.value = String(value);
-            if (type === 'number') {
-                input.step = '0.1';
-            }
-        }
-        input.onchange = onChange;
-        return input;
-    }
-
-    private createSettingElement(
-        category: keyof Settings,
-        setting: string,
-        value: SettingValue
-    ): HTMLElement {
+    private createSettingElement(category: keyof Settings, setting: SettingKey<typeof category>, value: SettingValue): HTMLElement {
         const container = document.createElement('div');
         container.className = 'setting-container';
 
         // Convert setting from camelCase to Title Case for display
         const label = document.createElement('label');
-        label.textContent = setting
+        const settingStr = String(setting); // Convert to string to ensure replace method exists
+        label.textContent = settingStr
             .replace(/([A-Z])/g, ' $1')
             .replace(/^./, (str: string) => str.toUpperCase());
 
@@ -171,29 +137,91 @@ export class ControlPanel {
                         inputs[i].value = String(newValue[i]);
                     }
                 }
+                this.updateUI();
             })
         );
 
         return container;
     }
 
+    private createInputElement(
+        type: string,
+        value: string | number | boolean,
+        onChange: (e: Event) => void
+    ): HTMLInputElement {
+        const input = document.createElement('input');
+        input.type = type;
+        if (type === 'checkbox') {
+            input.checked = value as boolean;
+        } else {
+            input.value = String(value);
+            if (type === 'number') {
+                input.step = '0.1';
+            }
+        }
+        input.onchange = onChange;
+        return input;
+    }
+
+    private updateUI(): void {
+        // Update all UI elements that depend on settings
+        const settings = settingsManager.getCurrentSettings();
+        
+        // Update theme
+        document.body.style.backgroundColor = settings.rendering.backgroundColor;
+        
+        // Update control panel visibility
+        const panel = document.getElementById('control-panel');
+        if (panel) {
+            panel.style.display = settings.clientDebug.enabled ? 'block' : 'none';
+        }
+
+        // Update other UI elements based on settings
+        this.updateLabels(settings);
+        this.updateEdges(settings);
+        this.updateNodes(settings);
+    }
+
+    private updateLabels(settings: Settings): void {
+        const labelElements = document.querySelectorAll('.node-label');
+        labelElements.forEach(label => {
+            if (label instanceof HTMLElement) {
+                label.style.display = settings.labels.enableLabels ? 'block' : 'none';
+                label.style.fontSize = `${settings.labels.desktopFontSize}px`;
+                label.style.color = settings.labels.textColor;
+            }
+        });
+    }
+
+    private updateEdges(settings: Settings): void {
+        const edgeElements = document.querySelectorAll('.edge');
+        edgeElements.forEach(edge => {
+            if (edge instanceof HTMLElement) {
+                edge.style.opacity = settings.edges.opacity.toString();
+                edge.style.stroke = settings.edges.color;
+                edge.style.strokeWidth = settings.edges.baseWidth.toString();
+            }
+        });
+    }
+
+    private updateNodes(settings: Settings): void {
+        const nodeElements = document.querySelectorAll('.node');
+        nodeElements.forEach(node => {
+            if (node instanceof HTMLElement) {
+                node.style.backgroundColor = settings.nodes.baseColor;
+                node.style.opacity = settings.nodes.opacity.toString();
+                const scale = settings.nodes.baseSize;
+                node.style.transform = `scale(${scale})`;
+            }
+        });
+    }
+
     private async resetToDefaults(): Promise<void> {
         try {
             const defaultSettings = settingsManager.getCurrentSettings();
-            const categories = Object.keys(defaultSettings) as Array<keyof Settings>;
-            
-            for (const category of categories) {
-                const settings = defaultSettings[category];
-                for (const [setting, value] of Object.entries(settings)) {
-                    await settingsManager.updateSetting(
-                        category,
-                        setting,
-                        value as SettingValue
-                    );
-                }
-            }
-            
+            await settingsManager.updateAllSettings(defaultSettings);
             logger.info('Settings reset to defaults');
+            this.updateUI();
         } catch (error) {
             logger.error('Failed to reset settings:', error);
         }

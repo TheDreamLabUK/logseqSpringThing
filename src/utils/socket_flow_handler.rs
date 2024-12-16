@@ -4,15 +4,11 @@ use actix_web_actors::ws;
 use log::{error, warn, debug, info};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::fs;
-use toml;
 
 use crate::app_state::AppState;
 use crate::utils::socket_flow_messages::{
     BinaryNodeData,
     Message,
-    SettingsUpdate,
-    UpdateSettings,
 };
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
@@ -93,60 +89,6 @@ impl SocketFlowServer {
         });
     }
 
-    fn write_settings_to_file(settings: &serde_json::Value) -> Result<(), String> {
-        // Try to read current settings file
-        let settings_content = match fs::read_to_string("settings.toml") {
-            Ok(content) => content,
-            Err(e) => {
-                warn!("Could not read settings.toml: {}", e);
-                return Ok(());  // Continue with in-memory settings
-            }
-        };
-
-        // Try to parse current settings
-        let mut current_settings: toml::Value = match toml::from_str(&settings_content) {
-            Ok(settings) => settings,
-            Err(e) => {
-                warn!("Could not parse settings.toml: {}", e);
-                return Ok(());  // Continue with in-memory settings
-            }
-        };
-
-        // Update visualization-related sections
-        if let Some(current_table) = current_settings.as_table_mut() {
-            if let Some(new_settings) = settings.as_object() {
-                let sections = [
-                    "rendering", "nodes", "edges", "labels", 
-                    "bloom", "ar", "physics", "animations", "audio"
-                ];
-
-                for section in sections.iter() {
-                    if let Some(new_section) = new_settings.get(*section) {
-                        if let Ok(converted) = toml::Value::try_from(new_section.clone()) {
-                            current_table.insert(section.to_string(), converted);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Try to write back to file, but don't fail if we can't
-        match toml::to_string_pretty(&current_settings)
-            .map_err(|e| format!("Failed to serialize settings: {}", e))
-            .and_then(|content| fs::write("settings.toml", content)
-                .map_err(|e| format!("Failed to write settings.toml: {}", e))) 
-        {
-            Ok(_) => {
-                debug!("Successfully wrote settings to file");
-                Ok(())
-            },
-            Err(e) => {
-                warn!("Could not write to settings.toml ({}), continuing with in-memory settings", e);
-                Ok(())  // Continue with in-memory settings
-            }
-        }
-    }
-
     fn handle_message(&mut self, message: Message, ctx: &mut ws::WebsocketContext<Self>) {
         match message {
             Message::RequestInitialData => {
@@ -210,17 +152,6 @@ impl SocketFlowServer {
             Message::SetSimulationMode { mode } => {
                 debug!("Setting simulation mode to: {}", mode);
                 if let Ok(message) = serde_json::to_string(&Message::SimulationModeSet { mode }) {
-                    ctx.text(message);
-                }
-            }
-            Message::UpdateSettings(UpdateSettings { settings }) => {
-                debug!("Updating settings");
-                // Try to write to file but continue even if it fails
-                let _ = Self::write_settings_to_file(&settings);
-                
-                // Always broadcast settings update to all clients
-                let settings_update = Message::SettingsUpdated(SettingsUpdate { settings });
-                if let Ok(message) = serde_json::to_string(&settings_update) {
                     ctx.text(message);
                 }
             }
