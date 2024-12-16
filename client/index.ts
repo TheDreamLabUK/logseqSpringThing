@@ -112,7 +112,7 @@ class Application {
         this.sceneManager = SceneManager.getInstance(canvas);
 
         // Initialize node manager
-        this.nodeManager = NodeManager.getInstance(this.sceneManager);
+        this.nodeManager = NodeManager.getInstance();
 
         // Initialize text renderer
         this.textRenderer = new TextRenderer(this.sceneManager.getCamera());
