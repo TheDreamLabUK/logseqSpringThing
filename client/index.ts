@@ -13,7 +13,7 @@ import { XRSessionManager } from './xr/xrSessionManager';
 import { XRInteraction } from './xr/xrInteraction';
 import { createLogger } from './utils/logger';
 import { WS_URL } from './core/constants';
-import { BinaryPositionUpdateMessage } from './core/types';
+import { BinaryPositionUpdateMessage, Settings, SettingValue } from './core/types';
 import { ControlPanel } from './ui/ControlPanel';
 
 const logger = createLogger('Application');
@@ -68,33 +68,12 @@ class Application {
 
     private async loadSettings(): Promise<void> {
         try {
-            // Initialize settings by loading initial values for each category
-            await Promise.all([
-                this.loadSettingsCategory('nodes'),
-                this.loadSettingsCategory('edges'),
-                this.loadSettingsCategory('physics'),
-                this.loadSettingsCategory('rendering'),
-                this.loadSettingsCategory('bloom'),
-                this.loadSettingsCategory('animation'),
-                this.loadSettingsCategory('label'),
-                this.loadSettingsCategory('ar')
-            ]);
+            // Load all settings at once using the REST endpoint
+            await settingsManager.loadAllSettings();
         } catch (error) {
             logger.error('Failed to load settings:', error);
             logger.info('Continuing with default settings');
         }
-    }
-
-    private async loadSettingsCategory(category: string): Promise<void> {
-        const settings = settingsManager.getCurrentSettings();
-        const categorySettings = settings[category as keyof typeof settings];
-        
-        await Promise.all(
-            Object.keys(categorySettings).map(async setting => {
-                const getterMethod = `get${category.charAt(0).toUpperCase() + category.slice(1)}Setting`;
-                await (settingsManager as any)[getterMethod](setting);
-            })
-        );
     }
 
     private initializeWebSocket(): void {
@@ -192,36 +171,62 @@ class Application {
 
     private setupSettingsInputListeners(): void {
         // Node appearance settings
-        this.setupSettingInput('nodeSize', 'number');
-        this.setupSettingInput('nodeColor', 'color');
-        this.setupSettingInput('nodeOpacity', 'number');
+        this.setupSettingInput('nodes', 'baseSize', 'number');
+        this.setupSettingInput('nodes', 'baseColor', 'color');
+        this.setupSettingInput('nodes', 'opacity', 'number');
 
         // Edge appearance settings
-        this.setupSettingInput('edgeWidth', 'number');
-        this.setupSettingInput('edgeColor', 'color');
-        this.setupSettingInput('edgeOpacity', 'number');
+        this.setupSettingInput('edges', 'baseWidth', 'number');
+        this.setupSettingInput('edges', 'color', 'color');
+        this.setupSettingInput('edges', 'opacity', 'number');
 
         // Visual effects settings
-        this.setupSettingInput('enableBloom', 'checkbox');
-        this.setupSettingInput('bloomIntensity', 'number');
+        this.setupSettingInput('bloom', 'enabled', 'checkbox');
+        this.setupSettingInput('bloom', 'strength', 'number');
     }
 
-    private setupSettingInput(id: string, type: 'number' | 'color' | 'checkbox'): void {
-        const input = document.getElementById(id) as HTMLInputElement;
+    private setupSettingInput(
+        category: keyof Settings,
+        setting: string,
+        type: 'number' | 'color' | 'checkbox'
+    ): void {
+        const input = document.getElementById(`${category}-${setting}`) as HTMLInputElement;
         if (input) {
-            input.addEventListener('change', () => {
-                const value = type === 'checkbox' ? input.checked :
-                            type === 'number' ? parseFloat(input.value) :
-                            input.value;
-                // Update settings and save to server via REST endpoint
-                settingsManager.updateSetting('nodes', id, value);
+            input.addEventListener('change', async () => {
+                let currentValue: SettingValue;
+                let previousValue: SettingValue;
+
+                if (type === 'checkbox') {
+                    previousValue = input.checked;
+                    currentValue = input.checked;
+                } else if (type === 'number') {
+                    previousValue = input.valueAsNumber;
+                    currentValue = input.valueAsNumber;
+                } else {
+                    previousValue = input.value;
+                    currentValue = input.value;
+                }
+
+                try {
+                    await settingsManager.updateSetting(category, setting, currentValue);
+                } catch (error) {
+                    logger.error(`Failed to update setting ${category}.${setting}:`, error);
+                    // Revert UI on error
+                    if (type === 'checkbox') {
+                        input.checked = previousValue as boolean;
+                    } else {
+                        input.value = String(previousValue);
+                    }
+                    this.showError(`Failed to update ${category} ${setting}`);
+                }
             });
         }
     }
 
     private async saveSettings(): Promise<void> {
         try {
-            await settingsManager.loadAllSettings();
+            const currentSettings = settingsManager.getCurrentSettings();
+            await settingsManager.updateAllSettings(currentSettings);
             logger.log('Settings saved successfully');
         } catch (error) {
             logger.error('Failed to save settings:', error);
