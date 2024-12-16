@@ -216,10 +216,42 @@ export class SettingsManager {
 
     private async initializeSettings(): Promise<void> {
         try {
-            await this.loadAllSettings();
+            // Fetch settings by category instead of all at once
+            const categories = ['nodes', 'edges', 'rendering', 'labels'] as const;
+            
+            const settingsPromises = categories.map(async (category) => {
+                const response = await fetch(`/api/visualization/settings/${category}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch ${category} settings`);
+                }
+                return { category, data: await response.json() };
+            });
+
+            const results = await Promise.all(settingsPromises);
+            
+            // Merge settings from all categories
+            const mergedSettings: Partial<Settings> = {};
+            results.forEach(({ category, data }) => {
+                // Type assertion to ensure category is a valid key
+                mergedSettings[category as keyof Settings] = convertObjectKeysToCamelCase(data);
+            });
+
+            // Update settings with merged data, falling back to defaults for any missing categories
+            this.settings = {
+                ...this.getDefaultSettings(),
+                ...mergedSettings
+            };
+
+            // Notify all subscribers of each category's changes
+            Object.entries(this.settings).forEach(([category, categorySettings]) => {
+                Object.entries(categorySettings).forEach(([setting, value]) => {
+                    this.notifySubscribers(category, setting, value);
+                });
+            });
         } catch (error) {
             logger.error('Failed to initialize settings:', error);
-            // Keep default settings if loading fails
+            // Fall back to default settings on error
+            this.settings = this.getDefaultSettings();
         }
     }
 
