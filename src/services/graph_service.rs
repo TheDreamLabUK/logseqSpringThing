@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use actix_web::web;
 use log::{info, warn};
 use rand::Rng;
+use serde_json;
 
 use crate::models::graph::GraphData;
 use crate::utils::socket_flow_messages::Node;
@@ -12,6 +13,7 @@ use crate::models::metadata::MetadataStore;
 use crate::app_state::AppState;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::SimulationParams;
+use crate::models::pagination::PaginatedGraphData;
 
 #[derive(Clone)]
 pub struct GraphService {
@@ -309,5 +311,49 @@ impl GraphService {
                 node.set_z(z);
             }
         }
+    }
+
+    pub async fn get_paginated_graph_data(
+        &self,
+        page: u32,
+        page_size: u32,
+    ) -> Result<PaginatedGraphData, Box<dyn std::error::Error + Send + Sync>> {
+        let graph = self.graph_data.read().await;
+        
+        // Convert page and page_size to usize for vector operations
+        let page = page as usize;
+        let page_size = page_size as usize;
+        let total_nodes = graph.nodes.len();
+        
+        let start = page * page_size;
+        let end = std::cmp::min((page + 1) * page_size, total_nodes);
+
+        let page_nodes: Vec<Node> = graph.nodes
+            .iter()
+            .skip(start)
+            .take(end - start)
+            .cloned()
+            .collect();
+
+        // Get edges that connect to these nodes
+        let node_ids: HashSet<String> = page_nodes.iter()
+            .map(|n| n.id.clone())
+            .collect();
+
+        let edges: Vec<Edge> = graph.edges
+            .iter()
+            .filter(|e| node_ids.contains(&e.source) || node_ids.contains(&e.target))
+            .cloned()
+            .collect();
+
+        Ok(PaginatedGraphData {
+            nodes: page_nodes,
+            edges: edges.clone(),
+            metadata: serde_json::to_value(graph.metadata.clone()).unwrap_or_default(),
+            total_nodes,
+            total_edges: graph.edges.len(),
+            total_pages: ((total_nodes as f32 / page_size as f32).ceil()) as u32,
+            current_page: page as u32,
+        })
     }
 }

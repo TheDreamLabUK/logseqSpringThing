@@ -22,6 +22,10 @@ export class GraphDataManager {
   private positionUpdateListeners: Set<(positions: Float32Array) => void>;
   private lastUpdateTime: number;
   private binaryUpdatesEnabled: boolean = false;
+  private loadingNodes: boolean = false;
+  private currentPage: number = 0;
+  private hasMorePages: boolean = true;
+  private pageSize: number = 100;
 
   private constructor() {
     this.nodes = new Map();
@@ -39,25 +43,80 @@ export class GraphDataManager {
     return GraphDataManager.instance;
   }
 
-  /**
-   * Load initial graph data from REST endpoint
-   */
-  async loadGraphData(): Promise<void> {
+  async loadInitialGraphData(): Promise<void> {
     try {
-      const response = await fetch('/graph/data');
-      if (!response.ok) {
-        logger.error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);
-        // Initialize with empty data instead of throwing
-        this.updateGraphData({ nodes: [], edges: [], metadata: {} });
-        return;
-      }
-      const data = await response.json();
-      this.updateGraphData(data);
-      logger.log('Initial graph data loaded from REST endpoint');
+      // Reset state
+      this.nodes.clear();
+      this.edges.clear();
+      this.currentPage = 0;
+      this.hasMorePages = true;
+      this.loadingNodes = false;
+
+      // Load first page
+      await this.loadNextPage();
+      
+      // Start binary updates only after initial data is loaded
+      this.setupBinaryUpdates();
+
+      logger.log('Initial graph data loaded');
     } catch (error) {
       logger.error('Failed to load initial graph data:', error);
-      // Initialize with empty data instead of throwing
-      this.updateGraphData({ nodes: [], edges: [], metadata: {} });
+      throw error;
+    }
+  }
+
+  private async loadNextPage(): Promise<void> {
+    if (this.loadingNodes || !this.hasMorePages) return;
+
+    try {
+      this.loadingNodes = true;
+      const response = await fetch(`/api/graph/data/paginated?page=${this.currentPage}&pageSize=${this.pageSize}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      // Update graph with new nodes and edges
+      data.nodes.forEach((node: Node) => this.nodes.set(node.id, node));
+      data.edges.forEach((edge: Edge) => {
+        const edgeId = this.createEdgeId(edge.source, edge.target);
+        this.edges.set(edgeId, edge);
+      });
+
+      // Update pagination state
+      this.currentPage++;
+      this.hasMorePages = this.currentPage < data.total_pages;
+
+      // Update metadata if it's the first page
+      if (this.currentPage === 1) {
+        this.metadata = data.metadata;
+      }
+
+      // Notify listeners
+      this.notifyUpdateListeners();
+
+      logger.log(`Loaded page ${this.currentPage} with ${data.nodes.length} nodes and ${data.edges.length} edges`);
+    } catch (error) {
+      logger.error('Failed to load graph page:', error);
+      throw error;
+    } finally {
+      this.loadingNodes = false;
+    }
+  }
+
+  private setupBinaryUpdates(): void {
+    // Only start binary updates after initial data is loaded
+    if (this.nodes.size > 0) {
+      this.binaryUpdatesEnabled = true;
+      logger.log('Binary updates enabled');
+    }
+  }
+
+  public async loadMoreIfNeeded(): Promise<void> {
+    if (this.hasMorePages && !this.loadingNodes) {
+      await this.loadNextPage();
     }
   }
 

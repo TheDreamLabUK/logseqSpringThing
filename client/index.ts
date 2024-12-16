@@ -39,7 +39,7 @@ class Application {
             this.initializeScene();
 
             // Load initial graph data from REST endpoint
-            await graphDataManager.loadGraphData();
+            await graphDataManager.loadInitialGraphData();
             
             // Load settings from REST endpoint
             await this.loadSettings();
