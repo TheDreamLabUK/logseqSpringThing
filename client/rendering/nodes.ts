@@ -70,12 +70,12 @@ export class NodeManager {
     this.sceneManager = sceneManager;
     
     // Get initial settings
-    const threeSettings = settingsManager.getThreeJSSettings();
+    const threeSettings = settingsManager.getCurrentSettings();
     
     // Initialize with proper geometries
-    const nodeGeometry = new THREE.SphereGeometry(threeSettings.nodes.size * NODE_SIZE_MULTIPLIER, NODE_SEGMENTS, NODE_SEGMENTS);
+    const nodeGeometry = new THREE.SphereGeometry(threeSettings.nodes.baseSize * NODE_SIZE_MULTIPLIER, NODE_SEGMENTS, NODE_SEGMENTS);
     const nodeMaterial = new THREE.MeshPhongMaterial({
-      color: new THREE.Color(threeSettings.nodes.color),
+      color: new THREE.Color(threeSettings.nodes.baseColor),
       shininess: 100,
       specular: new THREE.Color('#FFFFFF'),
       transparent: true,
@@ -83,8 +83,8 @@ export class NodeManager {
     });
 
     const edgeGeometry = new THREE.CylinderGeometry(
-      threeSettings.edges.width / 4,
-      threeSettings.edges.width / 4,
+      threeSettings.edges.baseWidth / 4,
+      threeSettings.edges.baseWidth / 4,
       1,
       EDGE_SEGMENTS
     );
@@ -104,7 +104,7 @@ export class NodeManager {
 
     // Subscribe to settings changes
     const nodeSettings = [
-      'size', 'color', 'opacity', 'highlightColor'
+      'baseSize', 'baseColor', 'opacity', 'highlightColor'
     ];
 
     nodeSettings.forEach(setting => {
@@ -115,7 +115,7 @@ export class NodeManager {
     });
 
     const edgeSettings = [
-      'width', 'color', 'opacity'
+      'baseWidth', 'color', 'opacity'
     ];
 
     edgeSettings.forEach(setting => {
@@ -134,12 +134,12 @@ export class NodeManager {
   }
 
   private onNodeSettingChanged(setting: string): void {
-    const threeSettings = settingsManager.getThreeJSSettings();
+    const threeSettings = settingsManager.getCurrentSettings();
 
     switch (setting) {
-      case 'size':
+      case 'baseSize':
         // Update node geometry with new size
-        const nodeGeometry = new THREE.SphereGeometry(threeSettings.nodes.size * NODE_SIZE_MULTIPLIER, NODE_SEGMENTS, NODE_SEGMENTS);
+        const nodeGeometry = new THREE.SphereGeometry(threeSettings.nodes.baseSize * NODE_SIZE_MULTIPLIER, NODE_SEGMENTS, NODE_SEGMENTS);
         this.nodeInstances.geometry.dispose();
         this.nodeInstances.geometry = nodeGeometry;
 
@@ -165,10 +165,10 @@ export class NodeManager {
         });
         this.edgeInstances.instanceMatrix.needsUpdate = true;
         break;
-      case 'color':
+      case 'baseColor':
         // Update node material
         const nodeMaterial = this.nodeInstances.material as THREE.MeshPhongMaterial;
-        nodeMaterial.color.set(threeSettings.nodes.color);
+        nodeMaterial.color.set(threeSettings.nodes.baseColor);
         break;
       case 'opacity':
         // Update node material
@@ -191,14 +191,14 @@ export class NodeManager {
   }
 
   private onEdgeSettingChanged(setting: string): void {
-    const threeSettings = settingsManager.getThreeJSSettings();
+    const threeSettings = settingsManager.getCurrentSettings();
 
     switch (setting) {
-      case 'width':
+      case 'baseWidth':
         // Update edge geometry with new width
         const edgeGeometry = new THREE.CylinderGeometry(
-          threeSettings.edges.width / 4,
-          threeSettings.edges.width / 4,
+          threeSettings.edges.baseWidth / 4,
+          threeSettings.edges.baseWidth / 4,
           1,
           EDGE_SEGMENTS
         );
@@ -330,13 +330,13 @@ export class NodeManager {
     if (this.highlightedNode === nodeId) return;
 
     const color = new THREE.Color();
-    const threeSettings = settingsManager.getThreeJSSettings();
+    const threeSettings = settingsManager.getCurrentSettings();
 
     if (this.highlightedNode) {
       const prevIndex = this.nodeIndices.get(this.highlightedNode);
       if (prevIndex !== undefined) {
         const node = this.currentNodes[prevIndex];
-        color.set(node?.color || threeSettings.nodes.color);
+        color.set(node?.color || threeSettings.nodes.baseColor);
         this.nodeInstances.setColorAt(prevIndex, color);
       }
     }
@@ -362,7 +362,7 @@ export class NodeManager {
     this.dirtyEdges.clear();
 
     // Get current settings
-    const threeSettings = settingsManager.getThreeJSSettings();
+    const threeSettings = settingsManager.getCurrentSettings();
 
     // Update node instances count and matrices
     this.nodeInstances.count = nodes.length;
@@ -379,7 +379,7 @@ export class NodeManager {
       this.nodeInstances.setMatrixAt(index, matrix);
 
       // Set node color based on settings
-      const color = new THREE.Color(node.color || threeSettings.nodes.color);
+      const color = new THREE.Color(node.color || threeSettings.nodes.baseColor);
       this.nodeInstances.setColorAt(index, color);
     });
 
@@ -430,8 +430,8 @@ export class NodeManager {
     }
 
     // Get current settings
-    const threeSettings = settingsManager.getThreeJSSettings();
-    const nodeVisualOffset = threeSettings.nodes.size * NODE_SIZE_MULTIPLIER;
+    const threeSettings = settingsManager.getCurrentSettings();
+    const nodeVisualOffset = threeSettings.nodes.baseSize * NODE_SIZE_MULTIPLIER;
 
     scale.set(nodeVisualOffset, nodeVisualOffset, nodeVisualOffset);
 

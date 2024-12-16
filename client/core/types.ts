@@ -287,98 +287,81 @@ export type SettingValue = string | number | boolean | number[] | string[];
 // WebSocket message types
 export type MessageType = 
   | 'initialData'
-  | 'graphUpdate'
-  | 'positionUpdate'
   | 'binaryPositionUpdate'
-  | 'updateSettings'
-  | 'settingsUpdated'
   | 'requestInitialData'
   | 'enableBinaryUpdates'
-  | 'connect'
-  | 'disconnect'
   | 'ping'
-  | 'pong';
+  | 'pong'
+  | 'updateSettings'
+  | 'settingsUpdated';
 
-export type BinaryNodeUpdate = {
-  nodeId: string;
-  data: NodeData;
-};
-
-// Base message types
-export interface WebSocketMessage {
+// Base WebSocket message interface
+export interface BaseWebSocketMessage {
   type: MessageType;
-  data?: any;
 }
 
-export interface RawWebSocketMessage {
-  type: MessageType;
-  data?: any;
-}
-
-// Initial data messages
-export interface InitialDataMessage extends WebSocketMessage {
+export interface InitialDataMessage extends BaseWebSocketMessage {
   type: 'initialData';
   data: {
-    graph: GraphData;
+    nodes: Node[];
+    edges: Edge[];
   };
 }
 
-export interface RawInitialDataMessage extends RawWebSocketMessage {
-  type: 'initialData';
-  data: {
-    graph: any;
-  };
-}
-
-// Binary position update messages
-export interface BinaryPositionUpdateMessage extends WebSocketMessage {
-  type: 'binaryPositionUpdate';
-  data: {
-    nodes: BinaryNodeUpdate[];
-  };
-}
-
-export interface RawBinaryPositionUpdateMessage extends RawWebSocketMessage {
+export interface BinaryPositionUpdateMessage extends BaseWebSocketMessage {
   type: 'binaryPositionUpdate';
   data: {
     nodes: {
       nodeId: string;
-      data: any;
+      data: NodeData;
     }[];
   };
 }
 
-// Other message types
-export interface RequestInitialDataMessage extends WebSocketMessage {
+export interface RequestInitialDataMessage extends BaseWebSocketMessage {
   type: 'requestInitialData';
 }
 
-export interface EnableBinaryUpdatesMessage extends WebSocketMessage {
+export interface EnableBinaryUpdatesMessage extends BaseWebSocketMessage {
   type: 'enableBinaryUpdates';
+  data: {
+    enabled: boolean;
+  };
 }
 
-export interface PingMessage extends WebSocketMessage {
+export interface PingMessage extends BaseWebSocketMessage {
   type: 'ping';
+  timestamp: number;
 }
 
-export interface PongMessage extends WebSocketMessage {
+export interface PongMessage extends BaseWebSocketMessage {
   type: 'pong';
+  timestamp: number;
 }
 
-// Settings messages
-export interface UpdateSettingsMessage extends WebSocketMessage {
+export interface UpdateSettingsMessage extends BaseWebSocketMessage {
   type: 'updateSettings';
   data: {
-    settings: Settings;
+    settings: Record<string, any>;
   };
 }
 
-export interface SettingsUpdatedMessage extends WebSocketMessage {
+export interface SettingsUpdatedMessage extends BaseWebSocketMessage {
   type: 'settingsUpdated';
   data: {
-    settings: Settings;
+    settings: Record<string, any>;
   };
 }
+
+export type WebSocketMessage =
+  | InitialDataMessage
+  | BinaryPositionUpdateMessage
+  | RequestInitialDataMessage
+  | EnableBinaryUpdatesMessage
+  | PingMessage
+  | PongMessage
+  | UpdateSettingsMessage
+  | SettingsUpdatedMessage;
 
 // Logger interface
 export interface Logger {

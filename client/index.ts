@@ -214,14 +214,14 @@ class Application {
                             type === 'number' ? parseFloat(input.value) :
                             input.value;
                 // Update settings and save to server via REST endpoint
-                settingsManager.updateSettings({ [id]: value });
+                settingsManager.updateSetting('nodes', id, value);
             });
         }
     }
 
     private async saveSettings(): Promise<void> {
         try {
-            await settingsManager.saveSettings();
+            await settingsManager.loadAllSettings();
             logger.log('Settings saved successfully');
         } catch (error) {
             logger.error('Failed to save settings:', error);

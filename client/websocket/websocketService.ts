@@ -226,36 +226,36 @@ export class WebSocketService {
   }
 
   private handleJsonMessage(data: string): void {
-    const rawMessage = JSON.parse(data) as RawWebSocketMessage;
-    
-    switch (rawMessage.type) {
-      case 'initialData': {
-        const initialData = rawMessage as RawInitialDataMessage;
-        const transformedData = {
-          type: 'initialData' as const,
-          data: {
-            graph: transformGraphData(initialData.data.graph)
-          }
-        };
-        this.expectedNodeCount = initialData.data.graph.nodes.length;
-        this.handleInitialData(transformedData);
-        break;
+    try {
+      const message = JSON.parse(data) as WebSocketMessage;
+      
+      switch (message.type) {
+        case 'initialData':
+          this.handleInitialData(message);
+          break;
+        case 'ping':
+          // Send pong response with same timestamp
+          this.send({
+            type: 'pong',
+            timestamp: (message as PingMessage).timestamp
+          });
+          break;
+        case 'pong':
+          // Handle pong response if needed
+          break;
+        case 'settingsUpdated':
+          this.notifyHandlers('settingsUpdated', message);
+          break;
+        default:
+          this.notifyHandlers(message.type, message);
       }
-      case 'binaryPositionUpdate': {
-        const binaryUpdate = rawMessage as RawBinaryPositionUpdateMessage;
-        const transformedData = this.transformBinaryData(binaryUpdate);
-        this.handleBinaryUpdate(transformedData);
-        break;
+      
+      if (this.debugPanel) {
+        this.debugPanel.addMessage('in', message);
       }
-      case 'settingsUpdated':
-        this.notifyHandlers('settingsUpdated', rawMessage.data);
-        break;
-      case 'ping':
-      case 'pong':
-        this.notifyHandlers(rawMessage.type, null);
-        break;
-      default:
-        logger.warn(`Unknown message type: ${(rawMessage as any).type}`);
+    } catch (error) {
+      logger.error('Error parsing WebSocket message:', error);
+      this.notifyErrorHandlers(new Error('Failed to parse WebSocket message'));
     }
   }
 

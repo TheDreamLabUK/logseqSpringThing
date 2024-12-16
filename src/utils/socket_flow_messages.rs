@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use bytemuck::{Pod, Zeroable};
 use std::collections::HashMap;
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
-use serde_json::Value;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
@@ -128,17 +127,6 @@ pub struct UpdatePositionsMessage {
     pub nodes: Vec<BinaryNodeData>,
 }
 
-// Settings message types
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SettingsUpdate {
-    pub settings: Value,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UpdateSettings {
-    pub settings: Value,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum Message {
@@ -150,10 +138,6 @@ pub enum Message {
     BinaryPositionUpdate { nodes: Vec<BinaryNodeData> },
     #[serde(rename = "simulationModeSet")]
     SimulationModeSet { mode: String },
-    #[serde(rename = "settingsUpdated")]
-    SettingsUpdated(SettingsUpdate),
-    #[serde(rename = "updateSettings")]
-    UpdateSettings(UpdateSettings),
     #[serde(rename = "requestInitialData")]
     RequestInitialData,
     #[serde(rename = "enableBinaryUpdates")]

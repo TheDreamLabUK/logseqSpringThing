@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { createLogger } from '../utils/logger';
 import { settingsManager } from '../state/settings';
-import type { LabelSettings } from '../state/settings';
+import type { Settings } from '../core/types';
 
 const logger = createLogger('TextRenderer');
 
@@ -49,9 +49,9 @@ export class TextRenderer {
   }
 
   private setupSubscriptions(): void {
-    const labelSettings: Array<keyof LabelSettings> = ['enabled', 'size', 'color', 'background', 'offset'];
+    const labelSettings: Array<keyof Settings['labels']> = ['enableLabels', 'desktopFontSize', 'textColor'];
     labelSettings.forEach(setting => {
-      const unsubscribe = settingsManager.subscribe('label', setting, () => {
+      const unsubscribe = settingsManager.subscribe('labels', setting as string, () => {
         this.onLabelSettingChanged();
       });
       this.unsubscribers.push(unsubscribe);
@@ -63,28 +63,28 @@ export class TextRenderer {
     this.labels.forEach((labelGroup, id) => {
       const state = this.labelStates.get(id);
       if (state) {
-        this.updateLabelStyle(labelGroup, state, settings.label);
+        this.updateLabelStyle(labelGroup, state, settings.labels);
       }
     });
   }
 
-  private updateLabelStyle(labelGroup: THREE.Group, state: LabelState, settings: LabelSettings): void {
+  private updateLabelStyle(labelGroup: THREE.Group, state: LabelState, settings: Settings['labels']): void {
     const textMesh = labelGroup.children[0] as THREE.Mesh;
     if (!textMesh) return;
 
     const material = textMesh.material as THREE.MeshBasicMaterial;
-    material.color.set(settings.color);
+    material.color.set(settings.textColor);
     material.opacity = 1;
     material.transparent = true;
 
     // Update visibility and scale
-    labelGroup.visible = settings.enabled && state.visible;
-    const scale = settings.size * state.scale;
+    labelGroup.visible = settings.enableLabels && state.visible;
+    const scale = settings.desktopFontSize * state.scale;
     labelGroup.scale.set(scale, scale, scale);
 
     // Update position with offset
     labelGroup.position.copy(state.basePosition);
-    labelGroup.position.y += settings.offset;
+    labelGroup.position.y += 0; // Removed offset
 
     // Update bounding box for culling
     state.boundingBox = labelGroup;
@@ -92,7 +92,7 @@ export class TextRenderer {
 
   public async updateLabel(id: string, text: string, position: THREE.Vector3): Promise<void> {
     const settings = await settingsManager.getCurrentSettings();
-    if (!settings.label.enabled) {
+    if (!settings.labels.enableLabels) {
       this.removeLabel(id);
       return;
     }
@@ -104,7 +104,7 @@ export class TextRenderer {
       // Create text mesh using basic geometry for now
       const geometry = new THREE.PlaneGeometry(1, 1);
       const material = new THREE.MeshBasicMaterial({
-        color: settings.label.color,
+        color: settings.labels.textColor,
         transparent: true,
         depthWrite: false,
         side: THREE.DoubleSide
@@ -127,7 +127,7 @@ export class TextRenderer {
     this.labelStates.set(id, state);
 
     // Update style and position
-    this.updateLabelStyle(labelGroup, state, settings.label);
+    this.updateLabelStyle(labelGroup, state, settings.labels);
   }
 
   public removeLabel(id: string): void {
@@ -180,7 +180,7 @@ export class TextRenderer {
       material.opacity = Math.max(0.2, (1 + dot) / 2);
 
       // Update style with new state
-      this.updateLabelStyle(labelGroup, state, settingsManager.getCurrentSettings().label);
+      this.updateLabelStyle(labelGroup, state, settingsManager.getCurrentSettings().labels);
     });
   }
 
