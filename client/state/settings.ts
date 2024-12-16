@@ -219,35 +219,29 @@ export class SettingsManager {
             // Fetch settings by category instead of all at once
             const categories = ['nodes', 'edges', 'rendering', 'labels'] as const;
             
-            const settingsPromises = categories.map(async (category) => {
-                const response = await fetch(`/api/visualization/settings/${category}`);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch ${category} settings`);
+            for (const category of categories) {
+                try {
+                    logger.info(`Loading settings for category: ${category}`);
+                    const response = await fetch(`/api/visualization/settings/${category}`);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch ${category} settings: ${response.statusText}`);
+                    }
+                    const data = await response.json();
+                    
+                    // Update settings for this category
+                    this.settings[category] = convertObjectKeysToCamelCase(data);
+                    
+                    // Notify subscribers for this category
+                    Object.entries(this.settings[category]).forEach(([setting, value]) => {
+                        this.notifySubscribers(category, setting, value);
+                    });
+                    
+                    logger.info(`Successfully loaded settings for ${category}`);
+                } catch (error) {
+                    logger.error(`Error loading ${category} settings:`, error);
+                    logger.info(`Using default settings for ${category}`);
                 }
-                return { category, data: await response.json() };
-            });
-
-            const results = await Promise.all(settingsPromises);
-            
-            // Merge settings from all categories
-            const mergedSettings: Partial<Settings> = {};
-            results.forEach(({ category, data }) => {
-                // Type assertion to ensure category is a valid key
-                mergedSettings[category as keyof Settings] = convertObjectKeysToCamelCase(data);
-            });
-
-            // Update settings with merged data, falling back to defaults for any missing categories
-            this.settings = {
-                ...this.getDefaultSettings(),
-                ...mergedSettings
-            };
-
-            // Notify all subscribers of each category's changes
-            Object.entries(this.settings).forEach(([category, categorySettings]) => {
-                Object.entries(categorySettings).forEach(([setting, value]) => {
-                    this.notifySubscribers(category, setting, value);
-                });
-            });
+            }
         } catch (error) {
             logger.error('Failed to initialize settings:', error);
             // Fall back to default settings on error
@@ -320,79 +314,6 @@ export class SettingsManager {
             logger.error('Error getting setting:', error);
             throw error;
         }
-    }
-
-    public async loadAllSettings(): Promise<void> {
-        try {
-            const response = await fetch('/api/visualization/settings');
-            if (!response.ok) {
-                throw new Error(`Failed to load settings: ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            const camelCaseSettings = convertObjectKeysToCamelCase(data);
-            this.updateSettingsFromServer(camelCaseSettings);
-        } catch (error) {
-            logger.error('Error loading settings:', error);
-            throw error;
-        }
-    }
-
-    public async updateAllSettings(settings: Settings): Promise<void> {
-        try {
-            // Store old settings in case of error
-            const oldSettings = this.getCurrentSettings();
-
-            // Update local settings first
-            this.settings = settings;
-
-            const response = await fetch('/api/visualization/settings', {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(convertObjectKeysToSnakeCase(settings))
-            });
-
-            if (!response.ok) {
-                // Revert local changes on error
-                this.settings = oldSettings;
-                throw new Error(`Failed to update all settings: ${response.statusText}`);
-            }
-
-            const updatedSettings = convertObjectKeysToCamelCase(await response.json());
-            this.updateSettingsFromServer(updatedSettings);
-        } catch (error) {
-            logger.error('Error updating all settings:', error);
-            throw error;
-        }
-    }
-
-    private updateSettingsFromServer(newSettings: Settings): void {
-        // Store old settings for comparison
-        const oldSettings = this.settings;
-        this.settings = newSettings;
-
-        // Compare and notify only changed settings
-        Object.entries(newSettings).forEach(([category, categorySettings]) => {
-            if (typeof categorySettings === 'object') {
-                Object.entries(categorySettings).forEach(([setting, value]) => {
-                    const oldValue = (oldSettings[category as keyof Settings] as any)?.[setting];
-                    if (JSON.stringify(value) !== JSON.stringify(oldValue)) {
-                        this.notifySubscribers(category, setting, value);
-                    }
-                });
-            }
-        });
-
-        // Emit a global settings change event
-        this.notifyGlobalSettingsChange(newSettings);
-    }
-
-    private notifyGlobalSettingsChange(settings: Settings): void {
-        // Dispatch a custom event that components can listen to for global settings changes
-        const event = new CustomEvent('settingsChanged', { detail: settings });
-        window.dispatchEvent(event);
     }
 
     private notifySubscribers<T>(category: string, setting: string, value: T): void {

@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 use std::fs;
 use std::path::PathBuf;
 use toml;
-use log::{error, info};
+use log::{error, info, debug};
 use serde::{Deserialize, Serialize};
 use crate::utils::case_conversion::{to_snake_case};
 
@@ -21,18 +21,129 @@ pub async fn get_category_settings(
     path: web::Path<String>,
 ) -> HttpResponse {
     let category = path.into_inner();
-    let settings_guard = settings.read().await;
     
-    match category.as_str() {
-        "nodes" => HttpResponse::Ok().json(&settings_guard.nodes),
-        "edges" => HttpResponse::Ok().json(&settings_guard.edges),
-        "rendering" => HttpResponse::Ok().json(&settings_guard.rendering),
-        "labels" => HttpResponse::Ok().json(&settings_guard.labels),
-        "bloom" => HttpResponse::Ok().json(&settings_guard.bloom),
-        "physics" => HttpResponse::Ok().json(&settings_guard.physics),
-        _ => HttpResponse::NotFound().json(serde_json::json!({
-            "error": format!("Unknown settings category: {}", category)
-        }))
+    // Log the request for debugging
+    info!("Getting settings for category: {}", category);
+    
+    // Acquire read lock and log any errors
+    let settings_guard = match settings.read().await {
+        guard => {
+            debug!("Successfully acquired settings read lock");
+            guard
+        }
+    };
+
+    // Debug log the entire settings object
+    debug!("Current settings state: {:?}", &*settings_guard);
+    
+    // Match on category and handle serialization errors
+    let result = match category.as_str() {
+        "nodes" => {
+            debug!("Attempting to serialize nodes settings: {:?}", settings_guard.nodes);
+            match serde_json::to_value(&settings_guard.nodes) {
+                Ok(value) => {
+                    debug!("Successfully serialized nodes settings: {:?}", value);
+                    Ok(value)
+                },
+                Err(e) => {
+                    error!("Failed to serialize nodes settings: {:?}", e);
+                    error!("Nodes settings value that failed: {:?}", settings_guard.nodes);
+                    Err(e)
+                }
+            }
+        },
+        "edges" => {
+            debug!("Attempting to serialize edges settings: {:?}", settings_guard.edges);
+            match serde_json::to_value(&settings_guard.edges) {
+                Ok(value) => {
+                    debug!("Successfully serialized edges settings: {:?}", value);
+                    Ok(value)
+                },
+                Err(e) => {
+                    error!("Failed to serialize edges settings: {:?}", e);
+                    error!("Edges settings value that failed: {:?}", settings_guard.edges);
+                    Err(e)
+                }
+            }
+        },
+        "rendering" => {
+            debug!("Attempting to serialize rendering settings: {:?}", settings_guard.rendering);
+            match serde_json::to_value(&settings_guard.rendering) {
+                Ok(value) => {
+                    debug!("Successfully serialized rendering settings: {:?}", value);
+                    Ok(value)
+                },
+                Err(e) => {
+                    error!("Failed to serialize rendering settings: {:?}", e);
+                    error!("Rendering settings value that failed: {:?}", settings_guard.rendering);
+                    Err(e)
+                }
+            }
+        },
+        "labels" => {
+            debug!("Attempting to serialize labels settings: {:?}", settings_guard.labels);
+            match serde_json::to_value(&settings_guard.labels) {
+                Ok(value) => {
+                    debug!("Successfully serialized labels settings: {:?}", value);
+                    Ok(value)
+                },
+                Err(e) => {
+                    error!("Failed to serialize labels settings: {:?}", e);
+                    error!("Labels settings value that failed: {:?}", settings_guard.labels);
+                    Err(e)
+                }
+            }
+        },
+        "bloom" => {
+            debug!("Attempting to serialize bloom settings: {:?}", settings_guard.bloom);
+            match serde_json::to_value(&settings_guard.bloom) {
+                Ok(value) => {
+                    debug!("Successfully serialized bloom settings: {:?}", value);
+                    Ok(value)
+                },
+                Err(e) => {
+                    error!("Failed to serialize bloom settings: {:?}", e);
+                    error!("Bloom settings value that failed: {:?}", settings_guard.bloom);
+                    Err(e)
+                }
+            }
+        },
+        "physics" => {
+            debug!("Attempting to serialize physics settings: {:?}", settings_guard.physics);
+            match serde_json::to_value(&settings_guard.physics) {
+                Ok(value) => {
+                    debug!("Successfully serialized physics settings: {:?}", value);
+                    Ok(value)
+                },
+                Err(e) => {
+                    error!("Failed to serialize physics settings: {:?}", e);
+                    error!("Physics settings value that failed: {:?}", settings_guard.physics);
+                    Err(e)
+                }
+            }
+        },
+        _ => {
+            error!("Unknown settings category requested: {}", category);
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "error": format!("Unknown settings category: {}", category)
+            }));
+        }
+    };
+
+    // Handle serialization result
+    match result {
+        Ok(value) => {
+            info!("Successfully retrieved settings for category: {}", category);
+            HttpResponse::Ok().json(value)
+        }
+        Err(e) => {
+            error!("Failed to serialize settings for category {}: {}", category, e);
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Failed to serialize settings: {}", e),
+                "category": category,
+                "details": format!("{:?}", e)
+            }))
+        }
     }
 }
 

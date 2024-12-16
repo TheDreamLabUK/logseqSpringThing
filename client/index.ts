@@ -95,8 +95,29 @@ class Application {
 
     private async loadSettings(): Promise<void> {
         try {
-            // Load all settings at once using the REST endpoint
-            await settingsManager.loadAllSettings();
+            // Load settings by category
+            const categories = ['nodes', 'edges', 'rendering', 'labels', 'bloom', 'physics'] as const;
+            
+            for (const category of categories) {
+                try {
+                    logger.info(`Loading settings for category: ${category}`);
+                    const response = await fetch(`/api/visualization/settings/${category}`);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch ${category} settings: ${response.statusText}`);
+                    }
+                    const data = await response.json();
+                    
+                    // Update settings for this category
+                    Object.entries(data).forEach(([setting, value]) => {
+                        settingsManager.updateSetting(category, setting, value);
+                    });
+                    
+                    logger.info(`Successfully loaded settings for ${category}`);
+                } catch (error) {
+                    logger.error(`Error loading ${category} settings:`, error);
+                    logger.info(`Using default settings for ${category}`);
+                }
+            }
         } catch (error) {
             logger.error('Failed to load settings:', error);
             logger.info('Continuing with default settings');
@@ -217,7 +238,19 @@ class Application {
     private async saveSettings(): Promise<void> {
         try {
             const currentSettings = settingsManager.getCurrentSettings();
-            await settingsManager.updateAllSettings(currentSettings);
+            const categories = ['nodes', 'edges', 'rendering', 'labels', 'bloom', 'physics'] as const;
+            
+            for (const category of categories) {
+                const categorySettings = currentSettings[category];
+                for (const [setting, value] of Object.entries(categorySettings)) {
+                    try {
+                        await settingsManager.updateSetting(category, setting, value);
+                    } catch (error) {
+                        logger.error(`Failed to update setting ${category}.${setting}:`, error);
+                    }
+                }
+            }
+            
             logger.log('Settings saved successfully');
         } catch (error) {
             logger.error('Failed to save settings:', error);

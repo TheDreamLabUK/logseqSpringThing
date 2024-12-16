@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use config::{ConfigBuilder, ConfigError, Environment, File};
+use log::{debug, error};
+use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
@@ -230,9 +232,18 @@ pub struct AudioSettings {
 
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
+        debug!("Initializing settings");
+        
+        // Use environment variable or default to /app/settings.toml
+        let settings_path = std::env::var("SETTINGS_FILE_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/app/settings.toml"));
+        
+        debug!("Loading settings from: {:?}", settings_path);
+        
         let builder = ConfigBuilder::<config::builder::DefaultState>::default();
         let config = builder
-            .add_source(File::with_name("settings.toml"))
+            .add_source(File::from(settings_path))
             .add_source(
                 Environment::default()
                     .separator("_")
@@ -240,8 +251,19 @@ impl Settings {
             )
             .build()?;
 
-        let mut settings: Settings = config.try_deserialize()?;
+        debug!("Deserializing settings");
+        let mut settings: Settings = match config.try_deserialize() {
+            Ok(s) => {
+                debug!("Successfully deserialized settings");
+                s
+            },
+            Err(e) => {
+                error!("Failed to deserialize settings: {}", e);
+                return Err(e);
+            }
+        };
         
+        debug!("Checking for environment variables");
         if let Ok(token) = std::env::var("GITHUB_TOKEN") {
             settings.github.token = token;
         }
@@ -255,6 +277,7 @@ impl Settings {
             settings.github.base_path = path;
         }
 
+        debug!("Successfully loaded settings");
         Ok(settings)
     }
 
