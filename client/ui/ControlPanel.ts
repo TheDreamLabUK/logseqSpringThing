@@ -14,8 +14,20 @@ export class ControlPanel {
 
     constructor() {
         this.container = document.createElement('div');
+        this.container.id = 'control-panel';
         this.container.className = 'control-panel';
+
+        // Listen for global settings changes
+        window.addEventListener('settingsChanged', ((event: CustomEvent) => {
+            this.updateUI();
+        }) as EventListener);
+
         this.initializeUI();
+    }
+
+    public mount(parent: HTMLElement): void {
+        parent.appendChild(this.container);
+        this.updateUI(); // Initial UI update after mounting
     }
 
     private async initializeUI(): Promise<void> {
@@ -205,6 +217,17 @@ export class ControlPanel {
         return input;
     }
 
+    private async resetToDefaults(): Promise<void> {
+        try {
+            const defaultSettings = settingsManager.getDefaultSettings();
+            await settingsManager.updateAllSettings(defaultSettings);
+            logger.info('Settings reset to defaults');
+            this.updateUI();
+        } catch (error) {
+            logger.error('Failed to reset settings:', error);
+        }
+    }
+
     private updateUI(): void {
         // Update all UI elements that depend on settings
         const settings = settingsManager.getCurrentSettings();
@@ -213,15 +236,34 @@ export class ControlPanel {
         document.body.style.backgroundColor = settings.rendering.backgroundColor;
         
         // Update control panel visibility
-        const panel = document.getElementById('control-panel');
-        if (panel) {
-            panel.style.display = settings.clientDebug.enabled ? 'block' : 'none';
-        }
+        this.container.style.display = settings.clientDebug.enabled ? 'block' : 'none';
 
-        // Update other UI elements based on settings
+        // Update input elements
+        this.updateInputElements(settings);
+
+        // Update other UI elements
         this.updateLabels(settings);
         this.updateEdges(settings);
         this.updateNodes(settings);
+    }
+
+    private updateInputElements(settings: Settings): void {
+        Object.entries(settings).forEach(([category, categorySettings]) => {
+            if (typeof categorySettings === 'object') {
+                Object.entries(categorySettings).forEach(([setting, value]) => {
+                    const input = this.container.querySelector(`[data-category="${category}"][data-setting="${setting}"]`) as HTMLInputElement;
+                    if (input) {
+                        if (input.type === 'checkbox') {
+                            input.checked = value as boolean;
+                        } else if (input.type === 'color') {
+                            input.value = value as string;
+                        } else {
+                            input.value = String(value);
+                        }
+                    }
+                });
+            }
+        });
     }
 
     private updateLabels(settings: Settings): void {
@@ -256,21 +298,6 @@ export class ControlPanel {
                 node.style.transform = `scale(${scale})`;
             }
         });
-    }
-
-    private async resetToDefaults(): Promise<void> {
-        try {
-            const defaultSettings = settingsManager.getCurrentSettings();
-            await settingsManager.updateAllSettings(defaultSettings);
-            logger.info('Settings reset to defaults');
-            this.updateUI();
-        } catch (error) {
-            logger.error('Failed to reset settings:', error);
-        }
-    }
-
-    public mount(parent: HTMLElement): void {
-        parent.appendChild(this.container);
     }
 
     public unmount(): void {
