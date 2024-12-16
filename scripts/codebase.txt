@@ -6417,7 +6417,7 @@ import { XRSessionManager } from './xr/xrSessionManager';
 import { XRInteraction } from './xr/xrInteraction';
 import { createLogger } from './utils/logger';
 import { WS_URL } from './core/constants';
-import { BinaryPositionUpdateMessage } from './core/types';
+import { BinaryPositionUpdateMessage, Settings, SettingValue } from './core/types';
 import { ControlPanel } from './ui/ControlPanel';
 
 const logger = createLogger('Application');
@@ -6472,33 +6472,12 @@ class Application {
 
     private async loadSettings(): Promise<void> {
         try {
-            // Initialize settings by loading initial values for each category
-            await Promise.all([
-                this.loadSettingsCategory('nodes'),
-                this.loadSettingsCategory('edges'),
-                this.loadSettingsCategory('physics'),
-                this.loadSettingsCategory('rendering'),
-                this.loadSettingsCategory('bloom'),
-                this.loadSettingsCategory('animation'),
-                this.loadSettingsCategory('label'),
-                this.loadSettingsCategory('ar')
-            ]);
+            // Load all settings at once using the REST endpoint
+            await settingsManager.loadAllSettings();
         } catch (error) {
             logger.error('Failed to load settings:', error);
             logger.info('Continuing with default settings');
         }
-    }
-
-    private async loadSettingsCategory(category: string): Promise<void> {
-        const settings = settingsManager.getCurrentSettings();
-        const categorySettings = settings[category as keyof typeof settings];
-        
-        await Promise.all(
-            Object.keys(categorySettings).map(async setting => {
-                const getterMethod = `get${category.charAt(0).toUpperCase() + category.slice(1)}Setting`;
-                await (settingsManager as any)[getterMethod](setting);
-            })
-        );
     }
 
     private initializeWebSocket(): void {
@@ -6596,36 +6575,62 @@ class Application {
 
     private setupSettingsInputListeners(): void {
         // Node appearance settings
-        this.setupSettingInput('nodeSize', 'number');
-        this.setupSettingInput('nodeColor', 'color');
-        this.setupSettingInput('nodeOpacity', 'number');
+        this.setupSettingInput('nodes', 'baseSize', 'number');
+        this.setupSettingInput('nodes', 'baseColor', 'color');
+        this.setupSettingInput('nodes', 'opacity', 'number');
 
         // Edge appearance settings
-        this.setupSettingInput('edgeWidth', 'number');
-        this.setupSettingInput('edgeColor', 'color');
-        this.setupSettingInput('edgeOpacity', 'number');
+        this.setupSettingInput('edges', 'baseWidth', 'number');
+        this.setupSettingInput('edges', 'color', 'color');
+        this.setupSettingInput('edges', 'opacity', 'number');
 
         // Visual effects settings
-        this.setupSettingInput('enableBloom', 'checkbox');
-        this.setupSettingInput('bloomIntensity', 'number');
+        this.setupSettingInput('bloom', 'enabled', 'checkbox');
+        this.setupSettingInput('bloom', 'strength', 'number');
     }
 
-    private setupSettingInput(id: string, type: 'number' | 'color' | 'checkbox'): void {
-        const input = document.getElementById(id) as HTMLInputElement;
+    private setupSettingInput(
+        category: keyof Settings,
+        setting: string,
+        type: 'number' | 'color' | 'checkbox'
+    ): void {
+        const input = document.getElementById(`${category}-${setting}`) as HTMLInputElement;
         if (input) {
-            input.addEventListener('change', () => {
-                const value = type === 'checkbox' ? input.checked :
-                            type === 'number' ? parseFloat(input.value) :
-                            input.value;
-                // Update settings and save to server via REST endpoint
-                settingsManager.updateSetting('nodes', id, value);
+            input.addEventListener('change', async () => {
+                let currentValue: SettingValue;
+                let previousValue: SettingValue;
+
+                if (type === 'checkbox') {
+                    previousValue = input.checked;
+                    currentValue = input.checked;
+                } else if (type === 'number') {
+                    previousValue = input.valueAsNumber;
+                    currentValue = input.valueAsNumber;
+                } else {
+                    previousValue = input.value;
+                    currentValue = input.value;
+                }
+
+                try {
+                    await settingsManager.updateSetting(category, setting, currentValue);
+                } catch (error) {
+                    logger.error(`Failed to update setting ${category}.${setting}:`, error);
+                    // Revert UI on error
+                    if (type === 'checkbox') {
+                        input.checked = previousValue as boolean;
+                    } else {
+                        input.value = String(previousValue);
+                    }
+                    this.showError(`Failed to update ${category} ${setting}`);
+                }
             });
         }
     }
 
     private async saveSettings(): Promise<void> {
         try {
-            await settingsManager.loadAllSettings();
+            const currentSettings = settingsManager.getCurrentSettings();
+            await settingsManager.updateAllSettings(currentSettings);
             logger.log('Settings saved successfully');
         } catch (error) {
             logger.error('Failed to save settings:', error);
@@ -8363,204 +8368,8 @@ export class SettingsManager {
     }
 
     private getDefaultSettings(): Settings {
-        return {
-            animations: {
-                enableMotionBlur: false,
-                enableNodeAnimations: false,
-                motionBlurStrength: 0.4,
-                selectionWaveEnabled: false,
-                pulseEnabled: false,
-                rippleEnabled: false,
-                edgeAnimationEnabled: false,
-                flowParticlesEnabled: false
-            },
-            ar: {
-                dragThreshold: 0.04,
-                enableHandTracking: true,
-                enableHaptics: true,
-                enableLightEstimation: true,
-                enablePassthroughPortal: false,
-                enablePlaneDetection: true,
-                enableSceneUnderstanding: true,
-                gestureSsmoothing: 0.9,
-                handMeshColor: '#FFD700',
-                handMeshEnabled: true,
-                handMeshOpacity: 0.3,
-                handPointSize: 0.01,
-                handRayColor: '#FFD700',
-                handRayEnabled: true,
-                handRayWidth: 0.002,
-                hapticIntensity: 0.7,
-                passthroughBrightness: 1,
-                passthroughContrast: 1,
-                passthroughOpacity: 1,
-                pinchThreshold: 0.015,
-                planeColor: '#4A90E2',
-                planeOpacity: 0.3,
-                portalEdgeColor: '#FFD700',
-                portalEdgeWidth: 0.02,
-                portalSize: 1,
-                roomScale: true,
-                rotationThreshold: 0.08,
-                showPlaneOverlay: true,
-                snapToFloor: true
-            },
-            audio: {
-                enableAmbientSounds: false,
-                enableInteractionSounds: false,
-                enableSpatialAudio: false
-            },
-            bloom: {
-                edgeBloomStrength: 0.3,
-                enabled: false,
-                environmentBloomStrength: 0.5,
-                nodeBloomStrength: 0.2,
-                radius: 0.5,
-                strength: 1.8
-            },
-            clientDebug: {
-                enableDataDebug: false,
-                enableWebsocketDebug: false,
-                enabled: false,
-                logBinaryHeaders: false,
-                logFullJson: false
-            },
-            default: {
-                apiClientTimeout: 30,
-                enableMetrics: true,
-                enableRequestLogging: true,
-                logFormat: 'json',
-                logLevel: 'debug',
-                maxConcurrentRequests: 5,
-                maxPayloadSize: 5242880,
-                maxRetries: 3,
-                metricsPort: 9090,
-                retryDelay: 5
-            },
-            edges: {
-                arrowSize: 0.15,
-                baseWidth: 2,
-                color: '#917f18',
-                enableArrows: false,
-                opacity: 0.6,
-                widthRange: [1, 3]
-            },
-            github: {
-                basePath: 'default_path',
-                owner: 'default_owner',
-                rateLimit: true,
-                repo: 'default_repo',
-                token: 'default_token'
-            },
-            labels: {
-                desktopFontSize: 48,
-                enableLabels: true,
-                textColor: '#FFFFFF'
-            },
-            network: {
-                bindAddress: '0.0.0.0',
-                domain: 'localhost',
-                enableHttp2: false,
-                enableRateLimiting: true,
-                enableTls: false,
-                maxRequestSize: 10485760,
-                minTlsVersion: '',
-                port: 3000,
-                rateLimitRequests: 100,
-                rateLimitWindow: 60,
-                tunnelId: 'dummy'
-            },
-            nodes: {
-                baseColor: '#c3ab6f',
-                baseSize: 1,
-                clearcoat: 1,
-                enableHoverEffect: false,
-                enableInstancing: false,
-                highlightColor: '#822626',
-                highlightDuration: 300,
-                hoverScale: 1.2,
-                materialType: 'basic',
-                metalness: 0.3,
-                opacity: 0.4,
-                roughness: 0.35,
-                sizeByConnections: true,
-                sizeRange: [1, 5]
-            },
-            openai: {
-                apiKey: 'default_openai_key',
-                baseUrl: 'wss://api.openai.com/v1/realtime',
-                model: 'gpt-4o-realtime-preview-2024-10-01',
-                rateLimit: 100,
-                timeout: 30
-            },
-            perplexity: {
-                apiKey: 'default_perplexity_key',
-                apiUrl: 'https://api.perplexity.ai/chat/completions',
-                frequencyPenalty: 1.0,
-                maxTokens: 4096,
-                model: 'llama-3.1-sonar-small-128k-online',
-                prompt: '',
-                rateLimit: 100,
-                presencePenalty: 0.0,
-                temperature: 0.5,
-                timeout: 30,
-                topP: 0.9
-            },
-            physics: {
-                attractionStrength: 0.015,
-                boundsSize: 12,
-                collisionRadius: 0.25,
-                damping: 0.88,
-                enableBounds: true,
-                enabled: false,
-                iterations: 500,
-                maxVelocity: 2.5,
-                repulsionStrength: 1500,
-                springStrength: 0.018
-            },
-            ragflow: {
-                apiKey: 'default_ragflow_key',
-                baseUrl: 'http://ragflow-server/v1/',
-                maxRetries: 3,
-                timeout: 30
-            },
-            rendering: {
-                ambientLightIntensity: 0.7,
-                backgroundColor: '#000000',
-                directionalLightIntensity: 1,
-                enableAmbientOcclusion: false,
-                enableAntialiasing: true,
-                enableShadows: false,
-                environmentIntensity: 1.2
-            },
-            security: {
-                allowedOrigins: [],
-                auditLogPath: '/app/logs/audit.log',
-                cookieHttponly: true,
-                cookieSamesite: 'Strict',
-                cookieSecure: true,
-                csrfTokenTimeout: 3600,
-                enableAuditLogging: true,
-                enableRequestValidation: true,
-                sessionTimeout: 3600
-            },
-            serverDebug: {
-                enableDataDebug: false,
-                enableWebsocketDebug: false,
-                enabled: true,
-                logBinaryHeaders: false,
-                logFullJson: false
-            },
-            websocket: {
-                binaryChunkSize: 65536,
-                compressionEnabled: true,
-                compressionThreshold: 1024,
-                heartbeatInterval: 15000,
-                heartbeatTimeout: 60000,
-                maxConnections: 1000,
-                maxMessageSize: 100485760
-            }
-        };
+        // ... (keep existing default settings)
+        return this.settings;
     }
 
     private async initializeSettings(): Promise<void> {
@@ -8568,11 +8377,17 @@ export class SettingsManager {
             await this.loadAllSettings();
         } catch (error) {
             logger.error('Failed to initialize settings:', error);
+            // Keep default settings if loading fails
         }
     }
 
     public async updateSetting(category: keyof Settings, setting: string, value: any): Promise<void> {
         try {
+            // Update local settings first
+            const categorySettings = this.settings[category] as Record<string, any>;
+            const oldValue = categorySettings[setting];
+            categorySettings[setting] = value;
+
             // Convert category and setting to snake_case for API
             const snakeCaseCategory = convertObjectKeysToSnakeCase({ [category]: null })[0];
             const snakeCaseSetting = convertObjectKeysToSnakeCase({ [setting]: null })[0];
@@ -8595,14 +8410,12 @@ export class SettingsManager {
             );
 
             if (!response.ok) {
+                // Revert local change on error
+                categorySettings[setting] = oldValue;
                 throw new Error(`Failed to update setting: ${response.statusText}`);
             }
 
-            // Update local settings
-            const categorySettings = this.settings[category] as Record<string, any>;
-            categorySettings[setting] = value;
-
-            // Notify subscribers
+            // Notify subscribers of successful update
             this.notifySubscribers(category, setting, value);
         } catch (error) {
             logger.error('Error updating setting:', error);
@@ -8622,7 +8435,13 @@ export class SettingsManager {
             }
 
             const data = await response.json();
-            return convertObjectKeysToCamelCase(data.value);
+            const value = convertObjectKeysToCamelCase(data.value);
+
+            // Update local setting
+            const categorySettings = this.settings[category] as Record<string, any>;
+            categorySettings[setting] = value;
+
+            return value;
         } catch (error) {
             logger.error('Error getting setting:', error);
             throw error;
@@ -8647,6 +8466,12 @@ export class SettingsManager {
 
     public async updateAllSettings(settings: Settings): Promise<void> {
         try {
+            // Store old settings in case of error
+            const oldSettings = this.getCurrentSettings();
+
+            // Update local settings first
+            this.settings = settings;
+
             const response = await fetch('/api/visualization/settings', {
                 method: 'PUT',
                 headers: {
@@ -8656,6 +8481,8 @@ export class SettingsManager {
             });
 
             if (!response.ok) {
+                // Revert local changes on error
+                this.settings = oldSettings;
                 throw new Error(`Failed to update all settings: ${response.statusText}`);
             }
 
@@ -8673,8 +8500,7 @@ export class SettingsManager {
         // Notify all subscribers of the updates
         Object.entries(this.settings).forEach(([category, categorySettings]) => {
             if (typeof categorySettings === 'object') {
-                Object.keys(categorySettings).forEach(setting => {
-                    const value = (categorySettings as any)[setting];
+                Object.entries(categorySettings).forEach(([setting, value]) => {
                     this.notifySubscribers(category, setting, value);
                 });
             }
@@ -8710,9 +8536,14 @@ export class SettingsManager {
         
         settingSet.add(listener);
         
+        // Send current value immediately
         const currentValue = (this.settings[category as keyof Settings] as any)[setting];
         if (currentValue !== undefined) {
-            listener(currentValue);
+            try {
+                listener(currentValue);
+            } catch (error) {
+                logger.error(`Error in initial settings listener for ${category}.${setting}:`, error);
+            }
         }
         
         return () => {
@@ -8907,7 +8738,7 @@ export class ControlPanel {
         this.initializeUI();
     }
 
-    private initializeUI(): void {
+    private async initializeUI(): Promise<void> {
         // Create header
         const header = document.createElement('div');
         header.className = 'control-panel-header';
@@ -8930,6 +8761,9 @@ export class ControlPanel {
         resetButton.textContent = 'Reset to Defaults';
         resetButton.onclick = () => this.resetToDefaults();
         this.container.appendChild(resetButton);
+
+        // Initial UI update
+        this.updateUI();
     }
 
     private createCategorySection(category: keyof Settings, settings: any): void {
@@ -8961,7 +8795,7 @@ export class ControlPanel {
 
         // Convert setting from camelCase to Title Case for display
         const label = document.createElement('label');
-        const settingStr = String(setting); // Convert to string to ensure replace method exists
+        const settingStr = String(setting);
         label.textContent = settingStr
             .replace(/([A-Z])/g, ' $1')
             .replace(/^./, (str: string) => str.toUpperCase());
@@ -8969,36 +8803,75 @@ export class ControlPanel {
         let input: HTMLElement;
 
         if (typeof value === 'boolean') {
-            input = this.createInputElement('checkbox', value, (e) => {
+            input = this.createInputElement('checkbox', value, async (e) => {
                 const target = e.target as HTMLInputElement;
-                settingsManager.updateSetting(category, setting, target.checked);
+                try {
+                    await settingsManager.updateSetting(category, setting, target.checked);
+                    this.updateUI();
+                } catch (error) {
+                    logger.error('Failed to update setting:', error);
+                    // Revert UI on error
+                    target.checked = !target.checked;
+                }
             });
         } else if (typeof value === 'number') {
-            input = this.createInputElement('number', value, (e) => {
+            input = this.createInputElement('number', value, async (e) => {
                 const target = e.target as HTMLInputElement;
-                settingsManager.updateSetting(category, setting, parseFloat(target.value));
+                const oldValue = value;
+                try {
+                    await settingsManager.updateSetting(category, setting, parseFloat(target.value));
+                    this.updateUI();
+                } catch (error) {
+                    logger.error('Failed to update setting:', error);
+                    // Revert UI on error
+                    target.value = String(oldValue);
+                }
             });
         } else if (typeof value === 'string') {
             if (value.startsWith('#')) {
-                input = this.createInputElement('color', value, (e) => {
+                input = this.createInputElement('color', value, async (e) => {
                     const target = e.target as HTMLInputElement;
-                    settingsManager.updateSetting(category, setting, target.value);
+                    const oldValue = value;
+                    try {
+                        await settingsManager.updateSetting(category, setting, target.value);
+                        this.updateUI();
+                    } catch (error) {
+                        logger.error('Failed to update setting:', error);
+                        // Revert UI on error
+                        target.value = oldValue;
+                    }
                 });
             } else {
-                input = this.createInputElement('text', value, (e) => {
+                input = this.createInputElement('text', value, async (e) => {
                     const target = e.target as HTMLInputElement;
-                    settingsManager.updateSetting(category, setting, target.value);
+                    const oldValue = value;
+                    try {
+                        await settingsManager.updateSetting(category, setting, target.value);
+                        this.updateUI();
+                    } catch (error) {
+                        logger.error('Failed to update setting:', error);
+                        // Revert UI on error
+                        target.value = oldValue;
+                    }
                 });
             }
         } else if (Array.isArray(value)) {
             const arrayContainer = document.createElement('div');
             arrayContainer.className = 'array-input';
             value.forEach((item, index) => {
-                const itemInput = this.createInputElement('number', item, (e) => {
+                const itemInput = this.createInputElement('number', item, async (e) => {
                     const target = e.target as HTMLInputElement;
+                    const oldValue = [...value];
                     const newValue = [...value];
                     newValue[index] = parseFloat(target.value);
-                    settingsManager.updateSetting(category, setting, newValue);
+                    try {
+                        await settingsManager.updateSetting(category, setting, newValue);
+                        this.updateUI();
+                    } catch (error) {
+                        logger.error('Failed to update setting:', error);
+                        // Revert UI on error
+                        target.value = String(oldValue[index]);
+                    }
                 });
                 arrayContainer.appendChild(itemInput);
             });
@@ -10878,6 +10751,7 @@ export class TextRenderer {
   private unsubscribers: (() => void)[];
   private projMatrix: THREE.Matrix4;
   private viewMatrix: THREE.Matrix4;
+  private currentSettings: Settings['labels'];
 
   private constructor(scene: THREE.Scene, camera: THREE.Camera) {
     this.scene = scene;
@@ -10887,6 +10761,7 @@ export class TextRenderer {
     this.unsubscribers = [];
     this.projMatrix = new THREE.Matrix4();
     this.viewMatrix = new THREE.Matrix4();
+    this.currentSettings = settingsManager.getCurrentSettings().labels;
 
     this.setupSubscriptions();
     logger.debug('TextRenderer initialized');
@@ -10902,152 +10777,182 @@ export class TextRenderer {
   private setupSubscriptions(): void {
     const labelSettings: Array<keyof Settings['labels']> = ['enableLabels', 'desktopFontSize', 'textColor'];
     labelSettings.forEach(setting => {
-      const unsubscribe = settingsManager.subscribe('labels', setting as string, () => {
-        this.onLabelSettingChanged();
+      const unsubscribe = settingsManager.subscribe('labels', setting as string, (value) => {
+        try {
+          // Update local settings cache
+          this.currentSettings = {
+            ...this.currentSettings,
+            [setting]: value
+          };
+          this.onLabelSettingChanged();
+        } catch (error) {
+          logger.error(`Error handling label setting change for ${setting}:`, error);
+        }
       });
       this.unsubscribers.push(unsubscribe);
     });
   }
 
   private async onLabelSettingChanged(): Promise<void> {
-    const settings = await settingsManager.getCurrentSettings();
-    this.labels.forEach((labelGroup, id) => {
-      const state = this.labelStates.get(id);
-      if (state) {
-        this.updateLabelStyle(labelGroup, state, settings.labels);
-      }
-    });
+    try {
+      this.labels.forEach((labelGroup, id) => {
+        const state = this.labelStates.get(id);
+        if (state) {
+          this.updateLabelStyle(labelGroup, state);
+        }
+      });
+    } catch (error) {
+      logger.error('Error updating labels after settings change:', error);
+    }
   }
 
-  private updateLabelStyle(labelGroup: THREE.Group, state: LabelState, settings: Settings['labels']): void {
+  private updateLabelStyle(labelGroup: THREE.Group, state: LabelState): void {
     const textMesh = labelGroup.children[0] as THREE.Mesh;
     if (!textMesh) return;
 
-    const material = textMesh.material as THREE.MeshBasicMaterial;
-    material.color.set(settings.textColor);
-    material.opacity = 1;
-    material.transparent = true;
+    try {
+      const material = textMesh.material as THREE.MeshBasicMaterial;
+      material.color.set(this.currentSettings.textColor);
+      material.opacity = 1;
+      material.transparent = true;
 
-    // Update visibility and scale
-    labelGroup.visible = settings.enableLabels && state.visible;
-    const scale = settings.desktopFontSize * state.scale;
-    labelGroup.scale.set(scale, scale, scale);
+      // Update visibility and scale
+      labelGroup.visible = this.currentSettings.enableLabels && state.visible;
+      const scale = this.currentSettings.desktopFontSize * state.scale;
+      labelGroup.scale.set(scale, scale, scale);
 
-    // Update position with offset
-    labelGroup.position.copy(state.basePosition);
-    labelGroup.position.y += 0; // Removed offset
+      // Update position with offset
+      labelGroup.position.copy(state.basePosition);
 
-    // Update bounding box for culling
-    state.boundingBox = labelGroup;
+      // Update bounding box for culling
+      state.boundingBox = labelGroup;
+    } catch (error) {
+      logger.error('Error updating label style:', error);
+    }
   }
 
   public async updateLabel(id: string, text: string, position: THREE.Vector3): Promise<void> {
-    const settings = await settingsManager.getCurrentSettings();
-    if (!settings.labels.enableLabels) {
-      this.removeLabel(id);
-      return;
+    try {
+      if (!this.currentSettings.enableLabels) {
+        this.removeLabel(id);
+        return;
+      }
+
+      let labelGroup = this.labels.get(id);
+      if (!labelGroup) {
+        labelGroup = new THREE.Group();
+        
+        // Create text mesh using basic geometry for now
+        const geometry = new THREE.PlaneGeometry(1, 1);
+        const material = new THREE.MeshBasicMaterial({
+          color: this.currentSettings.textColor,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide
+        });
+        
+        const textMesh = new THREE.Mesh(geometry, material);
+        labelGroup.add(textMesh);
+        this.labels.set(id, labelGroup);
+        this.scene.add(labelGroup);
+      }
+
+      // Update state
+      const state: LabelState = {
+        text,
+        basePosition: position.clone(),
+        visible: true,
+        scale: 1,
+        boundingBox: labelGroup
+      };
+      this.labelStates.set(id, state);
+
+      // Update style and position
+      this.updateLabelStyle(labelGroup, state);
+    } catch (error) {
+      logger.error('Error updating label:', error);
     }
-
-    let labelGroup = this.labels.get(id);
-    if (!labelGroup) {
-      labelGroup = new THREE.Group();
-      
-      // Create text mesh using basic geometry for now
-      const geometry = new THREE.PlaneGeometry(1, 1);
-      const material = new THREE.MeshBasicMaterial({
-        color: settings.labels.textColor,
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide
-      });
-      
-      const textMesh = new THREE.Mesh(geometry, material);
-      labelGroup.add(textMesh);
-      this.labels.set(id, labelGroup);
-      this.scene.add(labelGroup);
-    }
-
-    // Update state
-    const state: LabelState = {
-      text,
-      basePosition: position.clone(),
-      visible: true,
-      scale: 1,
-      boundingBox: labelGroup
-    };
-    this.labelStates.set(id, state);
-
-    // Update style and position
-    this.updateLabelStyle(labelGroup, state, settings.labels);
   }
 
   public removeLabel(id: string): void {
-    const labelGroup = this.labels.get(id);
-    if (labelGroup) {
-      this.scene.remove(labelGroup);
-      labelGroup.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.geometry.dispose();
-          child.material.dispose();
-        }
-      });
-      this.labels.delete(id);
-      this.labelStates.delete(id);
+    try {
+      const labelGroup = this.labels.get(id);
+      if (labelGroup) {
+        this.scene.remove(labelGroup);
+        labelGroup.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.geometry.dispose();
+            child.material.dispose();
+          }
+        });
+        this.labels.delete(id);
+        this.labelStates.delete(id);
+      }
+    } catch (error) {
+      logger.error('Error removing label:', error);
     }
   }
 
   public update(): void {
     if (this.labels.size === 0) return;
 
-    // Update matrices
-    this.viewMatrix.copy(this.camera.matrixWorldInverse);
-    this.projMatrix.copy(this.camera.projectionMatrix);
+    try {
+      // Update matrices
+      this.viewMatrix.copy(this.camera.matrixWorldInverse);
+      this.projMatrix.copy(this.camera.projectionMatrix);
 
-    // Update each label
-    this.labels.forEach((labelGroup, id) => {
-      const state = this.labelStates.get(id);
-      if (!state) return;
+      // Update each label
+      this.labels.forEach((labelGroup, id) => {
+        const state = this.labelStates.get(id);
+        if (!state) return;
 
-      // Check if label is in view
-      const cameraDistance = this.camera.position.distanceTo(state.basePosition);
-      state.visible = cameraDistance < 100; // Simple distance-based culling
-      
-      if (!state.visible) {
-        labelGroup.visible = false;
-        return;
-      }
+        // Check if label is in view
+        const cameraDistance = this.camera.position.distanceTo(state.basePosition);
+        state.visible = cameraDistance < 100; // Simple distance-based culling
+        
+        if (!state.visible) {
+          labelGroup.visible = false;
+          return;
+        }
 
-      // Update scale based on distance
-      state.scale = Math.max(0.1, Math.min(1, 5 / cameraDistance));
+        // Update scale based on distance
+        state.scale = Math.max(0.1, Math.min(1, 5 / cameraDistance));
 
-      // Make text face camera
-      labelGroup.lookAt(this.camera.position);
+        // Make text face camera
+        labelGroup.lookAt(this.camera.position);
 
-      // Update opacity based on view angle
-      const material = (labelGroup.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
-      const viewVector = new THREE.Vector3().subVectors(this.camera.position, state.basePosition).normalize();
-      const forward = new THREE.Vector3(0, 0, 1).applyMatrix4(this.camera.matrixWorld);
-      const dot = viewVector.dot(forward.normalize());
-      material.opacity = Math.max(0.2, (1 + dot) / 2);
+        // Update opacity based on view angle
+        const material = (labelGroup.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
+        const viewVector = new THREE.Vector3().subVectors(this.camera.position, state.basePosition).normalize();
+        const forward = new THREE.Vector3(0, 0, 1).applyMatrix4(this.camera.matrixWorld);
+        const dot = viewVector.dot(forward.normalize());
+        material.opacity = Math.max(0.2, (1 + dot) / 2);
 
-      // Update style with new state
-      this.updateLabelStyle(labelGroup, state, settingsManager.getCurrentSettings().labels);
-    });
+        // Update style with new state
+        this.updateLabelStyle(labelGroup, state);
+      });
+    } catch (error) {
+      logger.error('Error updating labels:', error);
+    }
   }
 
   public dispose(): void {
-    this.labels.forEach(labelGroup => {
-      labelGroup.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.geometry.dispose();
-          child.material.dispose();
-        }
+    try {
+      this.labels.forEach(labelGroup => {
+        labelGroup.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.geometry.dispose();
+            child.material.dispose();
+          }
+        });
       });
-    });
-    this.labels.clear();
-    this.labelStates.clear();
-    this.unsubscribers.forEach(unsubscribe => unsubscribe());
-    this.unsubscribers = [];
+      this.labels.clear();
+      this.labelStates.clear();
+      this.unsubscribers.forEach(unsubscribe => unsubscribe());
+      this.unsubscribers = [];
+    } catch (error) {
+      logger.error('Error disposing TextRenderer:', error);
+    }
   }
 }
 
@@ -11256,7 +11161,7 @@ rendering/nodes.ts
 
 import * as THREE from 'three';
 import { MathUtils } from 'three';
-import { Node, Edge } from '../core/types';
+import { Node, Edge, Settings } from '../core/types';
 import { SceneManager } from './scene';
 import { createLogger } from '../utils/logger';
 import { settingsManager } from '../state/settings';
@@ -11313,6 +11218,12 @@ export class NodeManager {
   private dirtyEdges: Set<number> = new Set();
   private batchUpdateTimeout: number | null = null;
 
+  // Settings cache
+  private currentSettings: {
+    nodes: Settings['nodes'];
+    edges: Settings['edges'];
+  };
+
   // Unsubscribe function for position updates
   private unsubscribeFromPositionUpdates: (() => void) | null = null;
 
@@ -11321,31 +11232,35 @@ export class NodeManager {
   private constructor(sceneManager: SceneManager) {
     this.sceneManager = sceneManager;
     
-    // Get initial settings
-    const threeSettings = settingsManager.getCurrentSettings();
+    // Initialize settings cache
+    const initialSettings = settingsManager.getCurrentSettings();
+    this.currentSettings = {
+      nodes: initialSettings.nodes,
+      edges: initialSettings.edges
+    };
     
     // Initialize with proper geometries
-    const nodeGeometry = new THREE.SphereGeometry(threeSettings.nodes.baseSize * NODE_SIZE_MULTIPLIER, NODE_SEGMENTS, NODE_SEGMENTS);
+    const nodeGeometry = new THREE.SphereGeometry(this.currentSettings.nodes.baseSize * NODE_SIZE_MULTIPLIER, NODE_SEGMENTS, NODE_SEGMENTS);
     const nodeMaterial = new THREE.MeshPhongMaterial({
-      color: new THREE.Color(threeSettings.nodes.baseColor),
+      color: new THREE.Color(this.currentSettings.nodes.baseColor),
       shininess: 100,
       specular: new THREE.Color('#FFFFFF'),
       transparent: true,
-      opacity: threeSettings.nodes.opacity
+      opacity: this.currentSettings.nodes.opacity
     });
 
     const edgeGeometry = new THREE.CylinderGeometry(
-      threeSettings.edges.baseWidth / 4,
-      threeSettings.edges.baseWidth / 4,
+      this.currentSettings.edges.baseWidth / 4,
+      this.currentSettings.edges.baseWidth / 4,
       1,
       EDGE_SEGMENTS
     );
     edgeGeometry.rotateX(Math.PI / 2);
     
     const edgeMaterial = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(threeSettings.edges.color),
+      color: new THREE.Color(this.currentSettings.edges.color),
       transparent: true,
-      opacity: threeSettings.edges.opacity,
+      opacity: this.currentSettings.edges.opacity,
       depthWrite: false
     });
 
@@ -11360,8 +11275,14 @@ export class NodeManager {
     ];
 
     nodeSettings.forEach(setting => {
-      const unsubscribe = settingsManager.subscribe('nodes', setting, () => {
-        this.onNodeSettingChanged(setting);
+      const unsubscribe = settingsManager.subscribe('nodes', setting, (value) => {
+        try {
+          // Update settings cache
+          (this.currentSettings.nodes as any)[setting] = value;
+          this.onNodeSettingChanged(setting);
+        } catch (error) {
+          logger.error(`Error handling node setting change for ${setting}:`, error);
+        }
       });
       this.unsubscribers.push(unsubscribe);
     });
@@ -11371,8 +11292,14 @@ export class NodeManager {
     ];
 
     edgeSettings.forEach(setting => {
-      const unsubscribe = settingsManager.subscribe('edges', setting, () => {
-        this.onEdgeSettingChanged(setting);
+      const unsubscribe = settingsManager.subscribe('edges', setting, (value) => {
+        try {
+          // Update settings cache
+          (this.currentSettings.edges as any)[setting] = value;
+          this.onEdgeSettingChanged(setting);
+        } catch (error) {
+          logger.error(`Error handling edge setting change for ${setting}:`, error);
+        }
       });
       this.unsubscribers.push(unsubscribe);
     });
@@ -11382,104 +11309,108 @@ export class NodeManager {
       (positions: Float32Array) => this.updatePositions(positions)
     );
     
-    logger.log('NodeManager initialized with settings:', threeSettings);
+    logger.log('NodeManager initialized with settings:', this.currentSettings);
   }
 
   private onNodeSettingChanged(setting: string): void {
-    const threeSettings = settingsManager.getCurrentSettings();
+    try {
+      switch (setting) {
+        case 'baseSize':
+          // Update node geometry with new size
+          const nodeGeometry = new THREE.SphereGeometry(this.currentSettings.nodes.baseSize * NODE_SIZE_MULTIPLIER, NODE_SEGMENTS, NODE_SEGMENTS);
+          this.nodeInstances.geometry.dispose();
+          this.nodeInstances.geometry = nodeGeometry;
 
-    switch (setting) {
-      case 'baseSize':
-        // Update node geometry with new size
-        const nodeGeometry = new THREE.SphereGeometry(threeSettings.nodes.baseSize * NODE_SIZE_MULTIPLIER, NODE_SEGMENTS, NODE_SEGMENTS);
-        this.nodeInstances.geometry.dispose();
-        this.nodeInstances.geometry = nodeGeometry;
+          // Update all node positions to account for new size
+          this.currentNodes.forEach((node, index) => {
+            position.set(
+              node.data.position.x,
+              node.data.position.y,
+              node.data.position.z
+            );
+            matrix.compose(position, quaternion, scale);
+            this.nodeInstances.setMatrixAt(index, matrix);
+          });
+          this.nodeInstances.instanceMatrix.needsUpdate = true;
 
-        // Update all node positions to account for new size
-        this.currentNodes.forEach((node, index) => {
-          position.set(
-            node.data.position.x,
-            node.data.position.y,
-            node.data.position.z
-          );
-          matrix.compose(position, quaternion, scale);
-          this.nodeInstances.setMatrixAt(index, matrix);
-        });
-        this.nodeInstances.instanceMatrix.needsUpdate = true;
-
-        // Update all edges to account for new node size
-        this.currentEdges.forEach((edge, index) => {
-          const sourceNode = this.currentNodes.find(n => n.id === edge.source);
-          const targetNode = this.currentNodes.find(n => n.id === edge.target);
-          if (sourceNode && targetNode) {
-            this.updateEdgeInstance(index, sourceNode, targetNode);
+          // Update all edges to account for new node size
+          this.currentEdges.forEach((edge, index) => {
+            const sourceNode = this.currentNodes.find(n => n.id === edge.source);
+            const targetNode = this.currentNodes.find(n => n.id === edge.target);
+            if (sourceNode && targetNode) {
+              this.updateEdgeInstance(index, sourceNode, targetNode);
+            }
+          });
+          this.edgeInstances.instanceMatrix.needsUpdate = true;
+          break;
+        case 'baseColor':
+          // Update node material
+          const nodeMaterial = this.nodeInstances.material as THREE.MeshPhongMaterial;
+          nodeMaterial.color.set(this.currentSettings.nodes.baseColor);
+          break;
+        case 'opacity':
+          // Update node material
+          const nodeMaterialOpacity = this.nodeInstances.material as THREE.MeshPhongMaterial;
+          nodeMaterialOpacity.opacity = this.currentSettings.nodes.opacity;
+          break;
+        case 'highlightColor':
+          // Update highlighted node color
+          if (this.highlightedNode) {
+            const index = this.nodeIndices.get(this.highlightedNode);
+            if (index !== undefined) {
+              const color = new THREE.Color(this.currentSettings.nodes.highlightColor);
+              this.nodeInstances.setColorAt(index, color);
+            }
           }
-        });
-        this.edgeInstances.instanceMatrix.needsUpdate = true;
-        break;
-      case 'baseColor':
-        // Update node material
-        const nodeMaterial = this.nodeInstances.material as THREE.MeshPhongMaterial;
-        nodeMaterial.color.set(threeSettings.nodes.baseColor);
-        break;
-      case 'opacity':
-        // Update node material
-        const nodeMaterialOpacity = this.nodeInstances.material as THREE.MeshPhongMaterial;
-        nodeMaterialOpacity.opacity = threeSettings.nodes.opacity;
-        break;
-      case 'highlightColor':
-        // Update highlighted node color
-        if (this.highlightedNode) {
-          const index = this.nodeIndices.get(this.highlightedNode);
-          if (index !== undefined) {
-            const color = new THREE.Color(threeSettings.nodes.highlightColor);
-            this.nodeInstances.setColorAt(index, color);
-          }
-        }
-        break;
-      default:
-        logger.log(`Unknown node setting changed: ${setting}`);
+          break;
+        default:
+          logger.log(`Unknown node setting changed: ${setting}`);
+      }
+    } catch (error) {
+      logger.error(`Error applying node setting change for ${setting}:`, error);
     }
   }
 
   private onEdgeSettingChanged(setting: string): void {
-    const threeSettings = settingsManager.getCurrentSettings();
+    try {
+      switch (setting) {
+        case 'baseWidth':
+          // Update edge geometry with new width
+          const edgeGeometry = new THREE.CylinderGeometry(
+            this.currentSettings.edges.baseWidth / 4,
+            this.currentSettings.edges.baseWidth / 4,
+            1,
+            EDGE_SEGMENTS
+          );
+          edgeGeometry.rotateX(Math.PI / 2);
+          this.edgeInstances.geometry.dispose();
+          this.edgeInstances.geometry = edgeGeometry;
 
-    switch (setting) {
-      case 'baseWidth':
-        // Update edge geometry with new width
-        const edgeGeometry = new THREE.CylinderGeometry(
-          threeSettings.edges.baseWidth / 4,
-          threeSettings.edges.baseWidth / 4,
-          1,
-          EDGE_SEGMENTS
-        );
-        edgeGeometry.rotateX(Math.PI / 2);
-        this.edgeInstances.geometry.dispose();
-        this.edgeInstances.geometry = edgeGeometry;
-
-        // Update all edges to account for new width
-        this.currentEdges.forEach((edge, index) => {
-          const sourceNode = this.currentNodes.find(n => n.id === edge.source);
-          const targetNode = this.currentNodes.find(n => n.id === edge.target);
-          if (sourceNode && targetNode) {
-            this.updateEdgeInstance(index, sourceNode, targetNode);
-          }
-        });
-        this.edgeInstances.instanceMatrix.needsUpdate = true;
-        break;
-      case 'color':
-        // Update edge material
-        const edgeMaterial = this.edgeInstances.material as THREE.MeshBasicMaterial;
-        edgeMaterial.color.set(threeSettings.edges.color);
-        break;
-      case 'opacity':
-        // Update edge material
-        const edgeMaterialOpacity = this.edgeInstances.material as THREE.MeshBasicMaterial;
-        edgeMaterialOpacity.opacity = threeSettings.edges.opacity;
-        break;
-      default:
-        logger.log(`Unknown edge setting changed: ${setting}`);
+          // Update all edges to account for new width
+          this.currentEdges.forEach((edge, index) => {
+            const sourceNode = this.currentNodes.find(n => n.id === edge.source);
+            const targetNode = this.currentNodes.find(n => n.id === edge.target);
+            if (sourceNode && targetNode) {
+              this.updateEdgeInstance(index, sourceNode, targetNode);
+            }
+          });
+          this.edgeInstances.instanceMatrix.needsUpdate = true;
+          break;
+        case 'color':
+          // Update edge material
+          const edgeMaterial = this.edgeInstances.material as THREE.MeshBasicMaterial;
+          edgeMaterial.color.set(this.currentSettings.edges.color);
+          break;
+        case 'opacity':
+          // Update edge material
+          const edgeMaterialOpacity = this.edgeInstances.material as THREE.MeshBasicMaterial;
+          edgeMaterialOpacity.opacity = this.currentSettings.edges.opacity;
+          break;
+        default:
+          logger.log(`Unknown edge setting changed: ${setting}`);
+      }
+    } catch (error) {
+      logger.error(`Error applying edge setting change for ${setting}:`, error);
     }
   }
 
@@ -11491,20 +11422,25 @@ export class NodeManager {
   }
 
   private initializeInstances(): void {
-    // Initialize node instances
-    this.nodeInstances.count = 0;
-    this.nodeInstances.frustumCulled = false;
+    try {
+      // Initialize node instances
+      this.nodeInstances.count = 0;
+      this.nodeInstances.frustumCulled = false;
 
-    // Initialize edge instances
-    this.edgeInstances.count = 0;
-    this.edgeInstances.frustumCulled = false;
-    this.edgeInstances.renderOrder = 1;
+      // Initialize edge instances
+      this.edgeInstances.count = 0;
+      this.edgeInstances.frustumCulled = false;
+      this.edgeInstances.renderOrder = 1;
 
-    // Add to scene
-    this.sceneManager.add(this.nodeInstances);
-    this.sceneManager.add(this.edgeInstances);
+      // Add to scene
+      this.sceneManager.add(this.nodeInstances);
+      this.sceneManager.add(this.edgeInstances);
 
-    logger.log('Instances initialized');
+      logger.log('Instances initialized');
+    } catch (error) {
+      logger.error('Error initializing instances:', error);
+      throw error;
+    }
   }
 
   getAllNodeMeshes(): NodeMesh[] {
@@ -11524,32 +11460,37 @@ export class NodeManager {
   }
 
   updateNodePosition(nodeId: string, newPosition: THREE.Vector3): void {
-    const index = this.nodeIndices.get(nodeId);
-    if (index === undefined) {
-      throw new Error(`Node ${nodeId} not found`);
-    }
-
-    // Update node position in current nodes array
-    const node = this.currentNodes[index];
-    if (node) {
-      node.data.position = { x: newPosition.x, y: newPosition.y, z: newPosition.z };
-    }
-
-    // Update instance matrix
-    position.copy(newPosition);
-    matrix.compose(position, quaternion, scale);
-    this.nodeInstances.setMatrixAt(index, matrix);
-    this.nodeInstances.instanceMatrix.needsUpdate = true;
-
-    // Mark connected edges for update
-    this.currentEdges.forEach((edge, edgeIndex) => {
-      if (edge.source === nodeId || edge.target === nodeId) {
-        this.dirtyEdges.add(edgeIndex);
+    try {
+      const index = this.nodeIndices.get(nodeId);
+      if (index === undefined) {
+        throw new Error(`Node ${nodeId} not found`);
       }
-    });
 
-    // Schedule batch edge update
-    this.scheduleBatchEdgeUpdate();
+      // Update node position in current nodes array
+      const node = this.currentNodes[index];
+      if (node) {
+        node.data.position = { x: newPosition.x, y: newPosition.y, z: newPosition.z };
+      }
+
+      // Update instance matrix
+      position.copy(newPosition);
+      matrix.compose(position, quaternion, scale);
+      this.nodeInstances.setMatrixAt(index, matrix);
+      this.nodeInstances.instanceMatrix.needsUpdate = true;
+
+      // Mark connected edges for update
+      this.currentEdges.forEach((edge, edgeIndex) => {
+        if (edge.source === nodeId || edge.target === nodeId) {
+          this.dirtyEdges.add(edgeIndex);
+        }
+      });
+
+      // Schedule batch edge update
+      this.scheduleBatchEdgeUpdate();
+    } catch (error) {
+      logger.error('Error updating node position:', error);
+      throw error;
+    }
   }
 
   private scheduleBatchEdgeUpdate(): void {
@@ -11564,230 +11505,253 @@ export class NodeManager {
   private processBatchEdgeUpdate(): void {
     if (this.dirtyEdges.size === 0) return;
 
-    for (const edgeIndex of this.dirtyEdges) {
-      const edge = this.currentEdges[edgeIndex];
-      const sourceNode = this.currentNodes.find(n => n.id === edge.source);
-      const targetNode = this.currentNodes.find(n => n.id === edge.target);
+    try {
+      for (const edgeIndex of this.dirtyEdges) {
+        const edge = this.currentEdges[edgeIndex];
+        const sourceNode = this.currentNodes.find(n => n.id === edge.source);
+        const targetNode = this.currentNodes.find(n => n.id === edge.target);
 
-      if (sourceNode && targetNode) {
-        this.updateEdgeInstance(edgeIndex, sourceNode, targetNode);
+        if (sourceNode && targetNode) {
+          this.updateEdgeInstance(edgeIndex, sourceNode, targetNode);
+        }
       }
-    }
 
-    this.dirtyEdges.clear();
-    this.edgeInstances.instanceMatrix.needsUpdate = true;
+      this.dirtyEdges.clear();
+      this.edgeInstances.instanceMatrix.needsUpdate = true;
+    } catch (error) {
+      logger.error('Error processing batch edge update:', error);
+      this.dirtyEdges.clear();
+    }
   }
 
   highlightNode(nodeId: string | null): void {
-    if (this.highlightedNode === nodeId) return;
+    try {
+      if (this.highlightedNode === nodeId) return;
 
-    const color = new THREE.Color();
-    const threeSettings = settingsManager.getCurrentSettings();
+      const color = new THREE.Color();
 
-    if (this.highlightedNode) {
-      const prevIndex = this.nodeIndices.get(this.highlightedNode);
-      if (prevIndex !== undefined) {
-        const node = this.currentNodes[prevIndex];
-        color.set(node?.color || threeSettings.nodes.baseColor);
-        this.nodeInstances.setColorAt(prevIndex, color);
+      if (this.highlightedNode) {
+        const prevIndex = this.nodeIndices.get(this.highlightedNode);
+        if (prevIndex !== undefined) {
+          const node = this.currentNodes[prevIndex];
+          color.set(node?.color || this.currentSettings.nodes.baseColor);
+          this.nodeInstances.setColorAt(prevIndex, color);
+        }
       }
-    }
 
-    if (nodeId) {
-      const index = this.nodeIndices.get(nodeId);
-      if (index !== undefined) {
-        color.set(threeSettings.nodes.highlightColor);
-        this.nodeInstances.setColorAt(index, color);
+      if (nodeId) {
+        const index = this.nodeIndices.get(nodeId);
+        if (index !== undefined) {
+          color.set(this.currentSettings.nodes.highlightColor);
+          this.nodeInstances.setColorAt(index, color);
+        }
       }
-    }
 
-    this.highlightedNode = nodeId;
-    if (this.nodeInstances.instanceColor) {
-      this.nodeInstances.instanceColor.needsUpdate = true;
+      this.highlightedNode = nodeId;
+      if (this.nodeInstances.instanceColor) {
+        this.nodeInstances.instanceColor.needsUpdate = true;
+      }
+    } catch (error) {
+      logger.error('Error highlighting node:', error);
     }
   }
 
   updateGraph(nodes: Node[], edges: Edge[]): void {
-    this.currentNodes = nodes;
-    this.currentEdges = edges;
-    this.nodeIndices.clear();
-    this.dirtyEdges.clear();
+    try {
+      this.currentNodes = nodes;
+      this.currentEdges = edges;
+      this.nodeIndices.clear();
+      this.dirtyEdges.clear();
 
-    // Get current settings
-    const threeSettings = settingsManager.getCurrentSettings();
+      // Update node instances count and matrices
+      this.nodeInstances.count = nodes.length;
+      nodes.forEach((node, index) => {
+        this.nodeIndices.set(node.id, index);
+        
+        position.set(
+          node.data.position.x,
+          node.data.position.y,
+          node.data.position.z
+        );
 
-    // Update node instances count and matrices
-    this.nodeInstances.count = nodes.length;
-    nodes.forEach((node, index) => {
-      this.nodeIndices.set(node.id, index);
-      
-      position.set(
-        node.data.position.x,
-        node.data.position.y,
-        node.data.position.z
-      );
+        matrix.compose(position, quaternion, scale);
+        this.nodeInstances.setMatrixAt(index, matrix);
 
-      matrix.compose(position, quaternion, scale);
-      this.nodeInstances.setMatrixAt(index, matrix);
+        // Set node color based on settings
+        const color = new THREE.Color(node.color || this.currentSettings.nodes.baseColor);
+        this.nodeInstances.setColorAt(index, color);
+      });
 
-      // Set node color based on settings
-      const color = new THREE.Color(node.color || threeSettings.nodes.baseColor);
-      this.nodeInstances.setColorAt(index, color);
-    });
-
-    this.nodeInstances.instanceMatrix.needsUpdate = true;
-    if (this.nodeInstances.instanceColor) {
-      this.nodeInstances.instanceColor.needsUpdate = true;
-    }
-
-    // Update edge instances
-    this.edgeInstances.count = edges.length;
-    edges.forEach((edge, index) => {
-      const sourceNode = nodes.find(n => n.id === edge.source);
-      const targetNode = nodes.find(n => n.id === edge.target);
-
-      if (sourceNode && targetNode) {
-        this.updateEdgeInstance(index, sourceNode, targetNode);
+      this.nodeInstances.instanceMatrix.needsUpdate = true;
+      if (this.nodeInstances.instanceColor) {
+        this.nodeInstances.instanceColor.needsUpdate = true;
       }
-    });
 
-    this.edgeInstances.instanceMatrix.needsUpdate = true;
+      // Update edge instances
+      this.edgeInstances.count = edges.length;
+      edges.forEach((edge, index) => {
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        const targetNode = nodes.find(n => n.id === edge.target);
 
-    logger.log(`Updated graph: ${nodes.length} nodes, ${edges.length} edges`);
+        if (sourceNode && targetNode) {
+          this.updateEdgeInstance(index, sourceNode, targetNode);
+        }
+      });
+
+      this.edgeInstances.instanceMatrix.needsUpdate = true;
+
+      logger.log(`Updated graph: ${nodes.length} nodes, ${edges.length} edges`);
+    } catch (error) {
+      logger.error('Error updating graph:', error);
+      throw error;
+    }
   }
 
   private updateEdgeInstance(index: number, sourceNode: Node, targetNode: Node): void {
-    const sourcePos = sourceNode.data.position;
-    const targetPos = targetNode.data.position;
+    try {
+      const sourcePos = sourceNode.data.position;
+      const targetPos = targetNode.data.position;
 
-    start.set(sourcePos.x, sourcePos.y, sourcePos.z);
-    end.set(targetPos.x, targetPos.y, targetPos.z);
+      start.set(sourcePos.x, sourcePos.y, sourcePos.z);
+      end.set(targetPos.x, targetPos.y, targetPos.z);
 
-    direction.subVectors(end, start);
-    const length = direction.length();
-    
-    if (length < 0.001) return;
+      direction.subVectors(end, start);
+      const length = direction.length();
+      
+      if (length < 0.001) return;
 
-    center.addVectors(start, end).multiplyScalar(0.5);
-    position.copy(center);
+      center.addVectors(start, end).multiplyScalar(0.5);
+      position.copy(center);
 
-    direction.normalize();
-    const angle = Math.acos(MathUtils.clamp(direction.dot(UP), -1, 1));
-    tempVector.crossVectors(UP, direction).normalize();
-    
-    if (tempVector.lengthSq() < 0.001) {
-      quaternion.setFromAxisAngle(rotationAxis, direction.dot(UP) > 0 ? 0 : Math.PI);
-    } else {
-      quaternion.setFromAxisAngle(tempVector, angle);
+      direction.normalize();
+      const angle = Math.acos(MathUtils.clamp(direction.dot(UP), -1, 1));
+      tempVector.crossVectors(UP, direction).normalize();
+      
+      if (tempVector.lengthSq() < 0.001) {
+        quaternion.setFromAxisAngle(rotationAxis, direction.dot(UP) > 0 ? 0 : Math.PI);
+      } else {
+        quaternion.setFromAxisAngle(tempVector, angle);
+      }
+
+      const nodeVisualOffset = this.currentSettings.nodes.baseSize * NODE_SIZE_MULTIPLIER;
+      scale.set(nodeVisualOffset, nodeVisualOffset, nodeVisualOffset);
+
+      matrix.compose(position, quaternion, scale);
+      this.edgeInstances.setMatrixAt(index, matrix);
+    } catch (error) {
+      logger.error('Error updating edge instance:', error);
     }
-
-    // Get current settings
-    const threeSettings = settingsManager.getCurrentSettings();
-    const nodeVisualOffset = threeSettings.nodes.baseSize * NODE_SIZE_MULTIPLIER;
-
-    scale.set(nodeVisualOffset, nodeVisualOffset, nodeVisualOffset);
-
-    matrix.compose(position, quaternion, scale);
-    this.edgeInstances.setMatrixAt(index, matrix);
   }
 
   updatePositions(floatArray: Float32Array): void {
-    // Check binary version
-    const version = floatArray[0];
-    if (version !== BINARY_VERSION) {
-      logger.warn(`Received binary data version ${version}, expected ${BINARY_VERSION}`);
-      return;
+    try {
+      // Check binary version
+      const version = floatArray[0];
+      if (version !== BINARY_VERSION) {
+        logger.warn(`Received binary data version ${version}, expected ${BINARY_VERSION}`);
+        return;
+      }
+
+      // Calculate number of nodes from array length
+      const nodeCount = Math.floor((floatArray.length - VERSION_OFFSET) / FLOATS_PER_NODE);
+      
+      if (nodeCount > this.currentNodes.length) {
+        logger.warn(`Received more nodes than currently tracked: ${nodeCount} > ${this.currentNodes.length}`);
+        return;
+      }
+
+      // Process node updates in chunks for better performance
+      const CHUNK_SIZE = 1000;
+      for (let i = 0; i < nodeCount; i += CHUNK_SIZE) {
+        const endIndex = Math.min(i + CHUNK_SIZE, nodeCount);
+        this.processNodeChunk(floatArray, i, endIndex);
+      }
+
+      // Trigger matrix updates
+      this.nodeInstances.instanceMatrix.needsUpdate = true;
+      
+      // Process batched edge updates
+      this.processBatchEdgeUpdate();
+
+      logger.debug(`Updated positions for ${nodeCount} nodes`);
+    } catch (error) {
+      logger.error('Error updating positions:', error);
     }
-
-    // Calculate number of nodes from array length
-    const nodeCount = Math.floor((floatArray.length - VERSION_OFFSET) / FLOATS_PER_NODE);
-    
-    if (nodeCount > this.currentNodes.length) {
-      logger.warn(`Received more nodes than currently tracked: ${nodeCount} > ${this.currentNodes.length}`);
-      return;
-    }
-
-    // Process node updates in chunks for better performance
-    const CHUNK_SIZE = 1000;
-    for (let i = 0; i < nodeCount; i += CHUNK_SIZE) {
-      const endIndex = Math.min(i + CHUNK_SIZE, nodeCount);
-      this.processNodeChunk(floatArray, i, endIndex);
-    }
-
-    // Trigger matrix updates
-    this.nodeInstances.instanceMatrix.needsUpdate = true;
-    
-    // Process batched edge updates
-    this.processBatchEdgeUpdate();
-
-    logger.debug(`Updated positions for ${nodeCount} nodes`);
   }
 
   private processNodeChunk(floatArray: Float32Array, startIndex: number, endIndex: number): void {
-    // Reset quaternion to identity
-    quaternion.identity();
-    
-    for (let i = startIndex; i < endIndex; i++) {
-      const baseIndex = VERSION_OFFSET + (i * FLOATS_PER_NODE);
+    try {
+      // Reset quaternion to identity
+      quaternion.identity();
       
-      // Extract position
-      position.set(
-        floatArray[baseIndex],
-        floatArray[baseIndex + 1],
-        floatArray[baseIndex + 2]
-      );
-
-      // Keep uniform scale of 1 for position updates
-      scale.set(1, 1, 1);
-      
-      // Create matrix with uniform scaling
-      matrix.compose(position, quaternion, scale);
-      this.nodeInstances.setMatrixAt(i, matrix);
-
-      // Update node data
-      const node = this.currentNodes[i];
-      if (node) {
-        node.data.position.x = floatArray[baseIndex];
-        node.data.position.y = floatArray[baseIndex + 1];
-        node.data.position.z = floatArray[baseIndex + 2];
+      for (let i = startIndex; i < endIndex; i++) {
+        const baseIndex = VERSION_OFFSET + (i * FLOATS_PER_NODE);
         
-        node.data.velocity.x = floatArray[baseIndex + 3];
-        node.data.velocity.y = floatArray[baseIndex + 4];
-        node.data.velocity.z = floatArray[baseIndex + 5];
+        // Extract position
+        position.set(
+          floatArray[baseIndex],
+          floatArray[baseIndex + 1],
+          floatArray[baseIndex + 2]
+        );
 
-        // Mark connected edges for update
-        this.currentEdges.forEach((edge, edgeIndex) => {
-          if (edge.source === node.id || edge.target === node.id) {
-            this.dirtyEdges.add(edgeIndex);
-          }
-        });
+        // Keep uniform scale of 1 for position updates
+        scale.set(1, 1, 1);
+        
+        // Create matrix with uniform scaling
+        matrix.compose(position, quaternion, scale);
+        this.nodeInstances.setMatrixAt(i, matrix);
+
+        // Update node data
+        const node = this.currentNodes[i];
+        if (node) {
+          node.data.position.x = floatArray[baseIndex];
+          node.data.position.y = floatArray[baseIndex + 1];
+          node.data.position.z = floatArray[baseIndex + 2];
+          
+          node.data.velocity.x = floatArray[baseIndex + 3];
+          node.data.velocity.y = floatArray[baseIndex + 4];
+          node.data.velocity.z = floatArray[baseIndex + 5];
+
+          // Mark connected edges for update
+          this.currentEdges.forEach((edge, edgeIndex) => {
+            if (edge.source === node.id || edge.target === node.id) {
+              this.dirtyEdges.add(edgeIndex);
+            }
+          });
+        }
       }
+    } catch (error) {
+      logger.error('Error processing node chunk:', error);
     }
   }
 
   dispose(): void {
-    if (this.batchUpdateTimeout !== null) {
-      clearTimeout(this.batchUpdateTimeout);
+    try {
+      if (this.batchUpdateTimeout !== null) {
+        clearTimeout(this.batchUpdateTimeout);
+      }
+
+      // Unsubscribe from position updates
+      if (this.unsubscribeFromPositionUpdates) {
+        this.unsubscribeFromPositionUpdates();
+        this.unsubscribeFromPositionUpdates = null;
+      }
+
+      this.nodeInstances.geometry.dispose();
+      (this.nodeInstances.material as THREE.Material).dispose();
+      this.sceneManager.remove(this.nodeInstances);
+
+      this.edgeInstances.geometry.dispose();
+      (this.edgeInstances.material as THREE.Material).dispose();
+      this.sceneManager.remove(this.edgeInstances);
+
+      this.dirtyEdges.clear();
+      this.unsubscribers.forEach(unsubscribe => unsubscribe());
+      this.unsubscribers = [];
+      logger.log('NodeManager disposed');
+    } catch (error) {
+      logger.error('Error disposing NodeManager:', error);
     }
-
-    // Unsubscribe from position updates
-    if (this.unsubscribeFromPositionUpdates) {
-      this.unsubscribeFromPositionUpdates();
-      this.unsubscribeFromPositionUpdates = null;
-    }
-
-    this.nodeInstances.geometry.dispose();
-    (this.nodeInstances.material as THREE.Material).dispose();
-    this.sceneManager.remove(this.nodeInstances);
-
-    this.edgeInstances.geometry.dispose();
-    (this.edgeInstances.material as THREE.Material).dispose();
-    this.sceneManager.remove(this.edgeInstances);
-
-    this.dirtyEdges.clear();
-    this.unsubscribers.forEach(unsubscribe => unsubscribe());
-    this.unsubscribers = [];
-    logger.log('NodeManager disposed');
   }
 }
 

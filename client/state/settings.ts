@@ -141,9 +141,33 @@ export class SettingsManager {
     }
 
     private updateSettingsFromServer(newSettings: Settings): void {
+        // Store old settings for comparison
+        const oldSettings = this.settings;
         this.settings = newSettings;
-        
-        // Notify all subscribers of the updates
+
+        // Compare and notify only changed settings
+        Object.entries(newSettings).forEach(([category, categorySettings]) => {
+            if (typeof categorySettings === 'object') {
+                Object.entries(categorySettings).forEach(([setting, value]) => {
+                    const oldValue = (oldSettings[category as keyof Settings] as any)?.[setting];
+                    if (JSON.stringify(value) !== JSON.stringify(oldValue)) {
+                        this.notifySubscribers(category, setting, value);
+                    }
+                });
+            }
+        });
+
+        // Emit a global settings change event
+        this.notifyGlobalSettingsChange(newSettings);
+    }
+
+    private notifyGlobalSettingsChange(settings: Settings): void {
+        // Dispatch a custom event that components can listen to for global settings changes
+        const event = new CustomEvent('settingsChanged', { detail: settings });
+        window.dispatchEvent(event);
+    }
+
+    private notifyAllSubscribers(): void {
         Object.entries(this.settings).forEach(([category, categorySettings]) => {
             if (typeof categorySettings === 'object') {
                 Object.entries(categorySettings).forEach(([setting, value]) => {
