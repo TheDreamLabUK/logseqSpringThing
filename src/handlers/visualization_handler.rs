@@ -7,23 +7,22 @@ use std::path::PathBuf;
 use toml;
 use log::{error, info, debug};
 use serde::{Deserialize, Serialize};
-use crate::utils::case_conversion::{to_snake_case};
+use serde_json::Value;
+use crate::utils::case_conversion::{to_snake_case, to_camel_case};
 
 // Request/Response structures for individual settings
 #[derive(Debug, Serialize, Deserialize)]
-pub struct NodeSettingValue<T> {
-    pub value: T,
+pub struct SettingValue {
+    pub value: Value,
 }
 
-// GET /api/visualization/settings/{category} - Get settings for a specific category
-pub async fn get_category_settings(
+// GET /api/visualization/settings/{category}/{setting} - Get setting for a specific category and setting
+pub async fn get_setting(
     settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
+    path: web::Path<(String, String)>,
 ) -> HttpResponse {
-    let category = path.into_inner();
-    
-    // Log the request for debugging
-    info!("Getting settings for category: {}", category);
+    let (category, setting) = path.into_inner();
+    debug!("Getting setting for category: {}, setting: {}", category, setting);
     
     // Acquire read lock and log any errors
     let settings_guard = match settings.read().await {
@@ -33,433 +32,173 @@ pub async fn get_category_settings(
         }
     };
 
-    // Debug log the entire settings object
-    debug!("Current settings state: {:?}", &*settings_guard);
-    
-    // Match on category and handle serialization errors
-    let result = match category.as_str() {
-        "nodes" => {
-            debug!("Attempting to serialize nodes settings: {:?}", settings_guard.nodes);
-            match serde_json::to_value(&settings_guard.nodes) {
-                Ok(value) => {
-                    debug!("Successfully serialized nodes settings: {:?}", value);
-                    Ok(value)
-                },
-                Err(e) => {
-                    error!("Failed to serialize nodes settings: {:?}", e);
-                    error!("Nodes settings value that failed: {:?}", settings_guard.nodes);
-                    Err(e)
-                }
-            }
-        },
-        "edges" => {
-            debug!("Attempting to serialize edges settings: {:?}", settings_guard.edges);
-            match serde_json::to_value(&settings_guard.edges) {
-                Ok(value) => {
-                    debug!("Successfully serialized edges settings: {:?}", value);
-                    Ok(value)
-                },
-                Err(e) => {
-                    error!("Failed to serialize edges settings: {:?}", e);
-                    error!("Edges settings value that failed: {:?}", settings_guard.edges);
-                    Err(e)
-                }
-            }
-        },
-        "rendering" => {
-            debug!("Attempting to serialize rendering settings: {:?}", settings_guard.rendering);
-            match serde_json::to_value(&settings_guard.rendering) {
-                Ok(value) => {
-                    debug!("Successfully serialized rendering settings: {:?}", value);
-                    Ok(value)
-                },
-                Err(e) => {
-                    error!("Failed to serialize rendering settings: {:?}", e);
-                    error!("Rendering settings value that failed: {:?}", settings_guard.rendering);
-                    Err(e)
-                }
-            }
-        },
-        "labels" => {
-            debug!("Attempting to serialize labels settings: {:?}", settings_guard.labels);
-            match serde_json::to_value(&settings_guard.labels) {
-                Ok(value) => {
-                    debug!("Successfully serialized labels settings: {:?}", value);
-                    Ok(value)
-                },
-                Err(e) => {
-                    error!("Failed to serialize labels settings: {:?}", e);
-                    error!("Labels settings value that failed: {:?}", settings_guard.labels);
-                    Err(e)
-                }
-            }
-        },
-        "bloom" => {
-            debug!("Attempting to serialize bloom settings: {:?}", settings_guard.bloom);
-            match serde_json::to_value(&settings_guard.bloom) {
-                Ok(value) => {
-                    debug!("Successfully serialized bloom settings: {:?}", value);
-                    Ok(value)
-                },
-                Err(e) => {
-                    error!("Failed to serialize bloom settings: {:?}", e);
-                    error!("Bloom settings value that failed: {:?}", settings_guard.bloom);
-                    Err(e)
-                }
-            }
-        },
-        "physics" => {
-            debug!("Attempting to serialize physics settings: {:?}", settings_guard.physics);
-            match serde_json::to_value(&settings_guard.physics) {
-                Ok(value) => {
-                    debug!("Successfully serialized physics settings: {:?}", value);
-                    Ok(value)
-                },
-                Err(e) => {
-                    error!("Failed to serialize physics settings: {:?}", e);
-                    error!("Physics settings value that failed: {:?}", settings_guard.physics);
-                    Err(e)
-                }
-            }
-        },
-        _ => {
-            error!("Unknown settings category requested: {}", category);
-            return HttpResponse::NotFound().json(serde_json::json!({
-                "error": format!("Unknown settings category: {}", category)
-            }));
-        }
-    };
-
-    // Handle serialization result
-    match result {
+    // Get setting value from settings object
+    match get_setting_value(&*settings_guard, &category, &setting) {
         Ok(value) => {
-            info!("Successfully retrieved settings for category: {}", category);
-            HttpResponse::Ok().json(value)
-        }
+            debug!("Successfully retrieved setting value: {:?}", value);
+            HttpResponse::Ok().json(SettingValue { value })
+        },
         Err(e) => {
-            error!("Failed to serialize settings for category {}: {}", category, e);
-            HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": format!("Failed to serialize settings: {}", e),
-                "category": category,
-                "details": format!("{:?}", e)
+            error!("Failed to get setting value: {}", e);
+            HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Failed to get setting: {}", e)
             }))
         }
     }
 }
 
-// GET /api/visualization/nodes/{setting}
-pub async fn get_node_setting(
+// PUT /api/visualization/settings/{category}/{setting} - Update setting for a specific category and setting
+pub async fn update_setting(
     settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
+    path: web::Path<(String, String)>,
+    value: web::Json<SettingValue>,
 ) -> HttpResponse {
-    let setting_name = path.into_inner();
-    let settings_guard = settings.read().await;
+    let (category, setting) = path.into_inner();
+    debug!("Updating setting for category: {}, setting: {}", category, setting);
     
-    match setting_name.as_str() {
-        "size" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.nodes.base_size 
-        }),
-        "color" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: &settings_guard.nodes.base_color 
-        }),
-        "opacity" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.nodes.opacity 
-        }),
-        "metalness" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.nodes.metalness 
-        }),
-        "roughness" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.nodes.roughness 
-        }),
-        "clearcoat" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.nodes.clearcoat 
-        }),
-        "enableInstancing" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.nodes.enable_instancing 
-        }),
-        "materialType" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: &settings_guard.nodes.material_type 
-        }),
-        "sizeRange" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: &settings_guard.nodes.size_range 
-        }),
-        "sizeByConnections" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.nodes.size_by_connections 
-        }),
-        "highlightColor" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: &settings_guard.nodes.highlight_color 
-        }),
-        "highlightDuration" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.nodes.highlight_duration 
-        }),
-        "enableHoverEffect" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.nodes.enable_hover_effect 
-        }),
-        "hoverScale" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.nodes.hover_scale 
-        }),
-        _ => HttpResponse::NotFound().json(serde_json::json!({
-            "error": format!("Unknown node setting: {}", setting_name)
-        }))
+    // Acquire write lock and log any errors
+    let mut settings_guard = match settings.write().await {
+        guard => {
+            debug!("Successfully acquired settings write lock");
+            guard
+        }
+    };
+
+    // Update setting value in settings object
+    match update_setting_value(&mut *settings_guard, &category, &setting, &value.value) {
+        Ok(_) => {
+            // Save settings to file after successful update
+            if let Err(e) = save_settings_to_file(&*settings_guard) {
+                error!("Failed to save settings to file: {}", e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "Failed to save settings to file"
+                }));
+            }
+            HttpResponse::Ok().json(serde_json::json!({ "status": "success" }))
+        },
+        Err(e) => {
+            error!("Failed to update setting value: {}", e);
+            HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Failed to update setting: {}", e)
+            }))
+        }
     }
 }
 
-// PUT /api/visualization/nodes/{setting}
-pub async fn update_node_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
-    value: web::Json<NodeSettingValue<serde_json::Value>>,
-) -> HttpResponse {
-    update_setting(
-        &settings,
-        "nodes",
-        &path.into_inner(),
-        value.value.clone(),
-    ).await
+// Helper function to get setting value from settings object
+fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Result<Value, String> {
+    let camel_setting = to_camel_case(setting);
+    
+    // Match on category and get setting value
+    let value = match category {
+        "nodes" => serde_json::to_value(&settings.nodes)
+            .map_err(|e| format!("Failed to serialize node settings: {}", e))?
+            .get(&camel_setting)
+            .cloned()
+            .ok_or_else(|| format!("Setting {} not found in nodes", setting))?,
+            
+        "edges" => serde_json::to_value(&settings.edges)
+            .map_err(|e| format!("Failed to serialize edge settings: {}", e))?
+            .get(&camel_setting)
+            .cloned()
+            .ok_or_else(|| format!("Setting {} not found in edges", setting))?,
+            
+        "rendering" => serde_json::to_value(&settings.rendering)
+            .map_err(|e| format!("Failed to serialize rendering settings: {}", e))?
+            .get(&camel_setting)
+            .cloned()
+            .ok_or_else(|| format!("Setting {} not found in rendering", setting))?,
+            
+        "labels" => serde_json::to_value(&settings.labels)
+            .map_err(|e| format!("Failed to serialize labels settings: {}", e))?
+            .get(&camel_setting)
+            .cloned()
+            .ok_or_else(|| format!("Setting {} not found in labels", setting))?,
+            
+        "bloom" => serde_json::to_value(&settings.bloom)
+            .map_err(|e| format!("Failed to serialize bloom settings: {}", e))?
+            .get(&camel_setting)
+            .cloned()
+            .ok_or_else(|| format!("Setting {} not found in bloom", setting))?,
+            
+        _ => return Err(format!("Category {} not found", category))
+    };
+
+    Ok(value)
 }
 
-async fn update_setting<T: Serialize>(
-    settings: &web::Data<Arc<RwLock<Settings>>>,
-    category: &str,
-    setting: &str,
-    value: T,
-) -> HttpResponse {
-    let mut settings_guard = settings.write().await;
-    let snake_setting = to_snake_case(setting);
+// Helper function to update setting value in settings object
+fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, value: &Value) -> Result<(), String> {
+    let camel_setting = to_camel_case(setting);
     
-    if let Err(e) = update_setting_value(&mut settings_guard, category, &snake_setting, &value) {
-        return HttpResponse::BadRequest().json(serde_json::json!({
-            "error": format!("Failed to update setting: {}", e)
-        }));
+    // Match on category and update setting value
+    match category {
+        "nodes" => {
+            let mut nodes = serde_json::to_value(&settings.nodes)
+                .map_err(|e| format!("Failed to serialize node settings: {}", e))?;
+            
+            if let Some(obj) = nodes.as_object_mut() {
+                obj.insert(camel_setting.clone(), value.clone());
+                settings.nodes = serde_json::from_value(nodes)
+                    .map_err(|e| format!("Failed to deserialize node settings: {}", e))?;
+            }
+        },
+        "edges" => {
+            let mut edges = serde_json::to_value(&settings.edges)
+                .map_err(|e| format!("Failed to serialize edge settings: {}", e))?;
+            
+            if let Some(obj) = edges.as_object_mut() {
+                obj.insert(camel_setting.clone(), value.clone());
+                settings.edges = serde_json::from_value(edges)
+                    .map_err(|e| format!("Failed to deserialize edge settings: {}", e))?;
+            }
+        },
+        "rendering" => {
+            let mut rendering = serde_json::to_value(&settings.rendering)
+                .map_err(|e| format!("Failed to serialize rendering settings: {}", e))?;
+            
+            if let Some(obj) = rendering.as_object_mut() {
+                obj.insert(camel_setting.clone(), value.clone());
+                settings.rendering = serde_json::from_value(rendering)
+                    .map_err(|e| format!("Failed to deserialize rendering settings: {}", e))?;
+            }
+        },
+        "labels" => {
+            let mut labels = serde_json::to_value(&settings.labels)
+                .map_err(|e| format!("Failed to serialize labels settings: {}", e))?;
+            
+            if let Some(obj) = labels.as_object_mut() {
+                obj.insert(camel_setting.clone(), value.clone());
+                settings.labels = serde_json::from_value(labels)
+                    .map_err(|e| format!("Failed to deserialize labels settings: {}", e))?;
+            }
+        },
+        "bloom" => {
+            let mut bloom = serde_json::to_value(&settings.bloom)
+                .map_err(|e| format!("Failed to serialize bloom settings: {}", e))?;
+            
+            if let Some(obj) = bloom.as_object_mut() {
+                obj.insert(camel_setting.clone(), value.clone());
+                settings.bloom = serde_json::from_value(bloom)
+                    .map_err(|e| format!("Failed to deserialize bloom settings: {}", e))?;
+            }
+        },
+        _ => return Err(format!("Category {} not found", category))
     }
     
-    // Save settings to file after update
-    if let Err(e) = save_settings_to_file(&settings_guard) {
-        error!("Failed to save settings to file: {}", e);
-        return HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": "Failed to save settings to file"
-        }));
-    }
-    
-    HttpResponse::Ok().json(serde_json::json!({ "value": value }))
-}
-
-// GET /api/visualization/edges/{setting}
-pub async fn get_edge_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
-) -> HttpResponse {
-    let setting_name = path.into_inner();
-    let settings_guard = settings.read().await;
-    
-    match setting_name.as_str() {
-        "width" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.edges.base_width 
-        }),
-        "color" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: &settings_guard.edges.color 
-        }),
-        "opacity" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.edges.opacity 
-        }),
-        "widthRange" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: &settings_guard.edges.width_range 
-        }),
-        "enableArrows" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.edges.enable_arrows 
-        }),
-        "arrowSize" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.edges.arrow_size 
-        }),
-        _ => HttpResponse::NotFound().json(serde_json::json!({
-            "error": format!("Unknown edge setting: {}", setting_name)
-        }))
-    }
-}
-
-// PUT /api/visualization/edges/{setting}
-pub async fn update_edge_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
-    value: web::Json<NodeSettingValue<serde_json::Value>>,
-) -> HttpResponse {
-    update_setting(
-        &settings,
-        "edges",
-        &path.into_inner(),
-        value.value.clone(),
-    ).await
-}
-
-// GET /api/visualization/physics/{setting}
-pub async fn get_physics_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
-) -> HttpResponse {
-    let setting_name = path.into_inner();
-    let settings_guard = settings.read().await;
-    
-    match setting_name.as_str() {
-        "enabled" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.physics.enabled 
-        }),
-        "attractionStrength" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.physics.attraction_strength 
-        }),
-        "repulsionStrength" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.physics.repulsion_strength 
-        }),
-        "springStrength" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.physics.spring_strength 
-        }),
-        "damping" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.physics.damping 
-        }),
-        "maxVelocity" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.physics.max_velocity 
-        }),
-        "collisionRadius" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.physics.collision_radius 
-        }),
-        "boundsSize" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.physics.bounds_size 
-        }),
-        "enableBounds" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.physics.enable_bounds 
-        }),
-        "iterations" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.physics.iterations 
-        }),
-        _ => HttpResponse::NotFound().json(serde_json::json!({
-            "error": format!("Unknown physics setting: {}", setting_name)
-        }))
-    }
-}
-
-// PUT /api/visualization/physics/{setting}
-pub async fn update_physics_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
-    value: web::Json<NodeSettingValue<serde_json::Value>>,
-) -> HttpResponse {
-    update_setting(
-        &settings,
-        "physics",
-        &path.into_inner(),
-        value.value.clone(),
-    ).await
-}
-
-// GET /api/visualization/rendering/{setting}
-pub async fn get_rendering_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
-) -> HttpResponse {
-    let setting_name = path.into_inner();
-    let settings_guard = settings.read().await;
-    
-    match setting_name.as_str() {
-        "ambientLightIntensity" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.rendering.ambient_light_intensity 
-        }),
-        "directionalLightIntensity" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.rendering.directional_light_intensity 
-        }),
-        "environmentIntensity" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.rendering.environment_intensity 
-        }),
-        "enableAmbientOcclusion" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.rendering.enable_ambient_occlusion 
-        }),
-        "enableAntialiasing" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.rendering.enable_antialiasing 
-        }),
-        "enableShadows" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.rendering.enable_shadows 
-        }),
-        "backgroundColor" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: &settings_guard.rendering.background_color 
-        }),
-        _ => HttpResponse::NotFound().json(serde_json::json!({
-            "error": format!("Unknown rendering setting: {}", setting_name)
-        }))
-    }
-}
-
-// PUT /api/visualization/rendering/{setting}
-pub async fn update_rendering_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
-    value: web::Json<NodeSettingValue<serde_json::Value>>,
-) -> HttpResponse {
-    update_setting(
-        &settings,
-        "rendering",
-        &path.into_inner(),
-        value.value.clone(),
-    ).await
-}
-
-// GET /api/visualization/bloom/{setting}
-pub async fn get_bloom_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
-) -> HttpResponse {
-    let setting_name = path.into_inner();
-    let settings_guard = settings.read().await;
-    
-    match setting_name.as_str() {
-        "enabled" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.bloom.enabled 
-        }),
-        "strength" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.bloom.strength 
-        }),
-        "radius" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.bloom.radius 
-        }),
-        "nodeBloomStrength" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.bloom.node_bloom_strength 
-        }),
-        "edgeBloomStrength" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.bloom.edge_bloom_strength 
-        }),
-        "environmentBloomStrength" => HttpResponse::Ok().json(NodeSettingValue { 
-            value: settings_guard.bloom.environment_bloom_strength 
-        }),
-        _ => HttpResponse::NotFound().json(serde_json::json!({
-            "error": format!("Unknown bloom setting: {}", setting_name)
-        }))
-    }
-}
-
-// PUT /api/visualization/bloom/{setting}
-pub async fn update_bloom_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
-    value: web::Json<NodeSettingValue<serde_json::Value>>,
-) -> HttpResponse {
-    update_setting(
-        &settings,
-        "bloom",
-        &path.into_inner(),
-        value.value.clone(),
-    ).await
+    Ok(())
 }
 
 // Register the handlers with the Actix web app
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("/settings/{category}", web::get().to(get_category_settings))
-       .route("/nodes/{setting}", web::get().to(get_node_setting))
-       .route("/nodes/{setting}", web::put().to(update_node_setting))
-       .route("/edges/{setting}", web::get().to(get_edge_setting))
-       .route("/edges/{setting}", web::put().to(update_edge_setting))
-       .route("/physics/{setting}", web::get().to(get_physics_setting))
-       .route("/physics/{setting}", web::put().to(update_physics_setting))
-       .route("/rendering/{setting}", web::get().to(get_rendering_setting))
-       .route("/rendering/{setting}", web::put().to(update_rendering_setting))
-       .route("/bloom/{setting}", web::get().to(get_bloom_setting))
-       .route("/bloom/{setting}", web::put().to(update_bloom_setting));
+    cfg.service(
+        web::scope("/api/visualization")
+            .service(
+                web::resource("/settings/{category}/{setting}")
+                    .route(web::get().to(get_setting))
+                    .route(web::put().to(update_setting))
+            )
+    );
 }
 
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
@@ -520,84 +259,4 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
             Err(e)
         }
     }
-}
-
-fn update_setting_value<T: Serialize>(
-    settings: &mut Settings,
-    category: &str,
-    setting: &str,
-    value: &T,
-) -> Result<(), String> {
-    match category {
-        "nodes" => {
-            match setting {
-                "base_size" => settings.nodes.base_size = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "base_color" => settings.nodes.base_color = serde_json::to_value(value).unwrap().as_str().unwrap().to_string(),
-                "opacity" => settings.nodes.opacity = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "metalness" => settings.nodes.metalness = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "roughness" => settings.nodes.roughness = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "clearcoat" => settings.nodes.clearcoat = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "enable_instancing" => settings.nodes.enable_instancing = serde_json::to_value(value).unwrap().as_bool().unwrap(),
-                "material_type" => settings.nodes.material_type = serde_json::to_value(value).unwrap().as_str().unwrap().to_string(),
-                "size_range" => settings.nodes.size_range = serde_json::to_value(value).unwrap().as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect(),
-                "size_by_connections" => settings.nodes.size_by_connections = serde_json::to_value(value).unwrap().as_bool().unwrap(),
-                "highlight_color" => settings.nodes.highlight_color = serde_json::to_value(value).unwrap().as_str().unwrap().to_string(),
-                "highlight_duration" => settings.nodes.highlight_duration = serde_json::to_value(value).unwrap().as_u64().unwrap() as u32,
-                "enable_hover_effect" => settings.nodes.enable_hover_effect = serde_json::to_value(value).unwrap().as_bool().unwrap(),
-                "hover_scale" => settings.nodes.hover_scale = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                _ => return Err(format!("Unknown node setting: {}", setting)),
-            }
-        },
-        "edges" => {
-            match setting {
-                "base_width" => settings.edges.base_width = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "color" => settings.edges.color = serde_json::to_value(value).unwrap().as_str().unwrap().to_string(),
-                "opacity" => settings.edges.opacity = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "width_range" => settings.edges.width_range = serde_json::to_value(value).unwrap().as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect(),
-                "enable_arrows" => settings.edges.enable_arrows = serde_json::to_value(value).unwrap().as_bool().unwrap(),
-                "arrow_size" => settings.edges.arrow_size = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                _ => return Err(format!("Unknown edge setting: {}", setting)),
-            }
-        },
-        "physics" => {
-            match setting {
-                "enabled" => settings.physics.enabled = serde_json::to_value(value).unwrap().as_bool().unwrap(),
-                "attraction_strength" => settings.physics.attraction_strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "repulsion_strength" => settings.physics.repulsion_strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "spring_strength" => settings.physics.spring_strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "damping" => settings.physics.damping = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "max_velocity" => settings.physics.max_velocity = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "collision_radius" => settings.physics.collision_radius = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "bounds_size" => settings.physics.bounds_size = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "enable_bounds" => settings.physics.enable_bounds = serde_json::to_value(value).unwrap().as_bool().unwrap(),
-                "iterations" => settings.physics.iterations = serde_json::to_value(value).unwrap().as_u64().unwrap() as u32,
-                _ => return Err(format!("Unknown physics setting: {}", setting)),
-            }
-        },
-        "rendering" => {
-            match setting {
-                "ambient_light_intensity" => settings.rendering.ambient_light_intensity = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "directional_light_intensity" => settings.rendering.directional_light_intensity = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "environment_intensity" => settings.rendering.environment_intensity = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "enable_ambient_occlusion" => settings.rendering.enable_ambient_occlusion = serde_json::to_value(value).unwrap().as_bool().unwrap(),
-                "enable_antialiasing" => settings.rendering.enable_antialiasing = serde_json::to_value(value).unwrap().as_bool().unwrap(),
-                "enable_shadows" => settings.rendering.enable_shadows = serde_json::to_value(value).unwrap().as_bool().unwrap(),
-                "background_color" => settings.rendering.background_color = serde_json::to_value(value).unwrap().as_str().unwrap().to_string(),
-                _ => return Err(format!("Unknown rendering setting: {}", setting)),
-            }
-        },
-        "bloom" => {
-            match setting {
-                "enabled" => settings.bloom.enabled = serde_json::to_value(value).unwrap().as_bool().unwrap(),
-                "strength" => settings.bloom.strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "radius" => settings.bloom.radius = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "node_bloom_strength" => settings.bloom.node_bloom_strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "edge_bloom_strength" => settings.bloom.edge_bloom_strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                "environment_bloom_strength" => settings.bloom.environment_bloom_strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
-                _ => return Err(format!("Unknown bloom setting: {}", setting)),
-            }
-        },
-        _ => return Err(format!("Unknown category: {}", category)),
-    }
-    Ok(())
 }
