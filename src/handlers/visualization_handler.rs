@@ -15,31 +15,25 @@ pub struct NodeSettingValue<T> {
     pub value: T,
 }
 
-// GET /api/visualization/settings - Get all settings
-pub async fn get_all_settings(
+// GET /api/visualization/settings/{category} - Get settings for a specific category
+pub async fn get_category_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
 ) -> HttpResponse {
+    let category = path.into_inner();
     let settings_guard = settings.read().await;
-    HttpResponse::Ok().json(&*settings_guard)
-}
-
-// PUT /api/visualization/settings - Update all settings
-pub async fn update_all_settings(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    new_settings: web::Json<Settings>,
-) -> HttpResponse {
-    let mut settings_guard = settings.write().await;
-    *settings_guard = new_settings.into_inner();
     
-    // Save settings to file
-    if let Err(e) = save_settings_to_file(&settings_guard) {
-        error!("Failed to save settings to file: {}", e);
-        return HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": "Failed to save settings to file"
-        }));
+    match category.as_str() {
+        "nodes" => HttpResponse::Ok().json(&settings_guard.nodes),
+        "edges" => HttpResponse::Ok().json(&settings_guard.edges),
+        "rendering" => HttpResponse::Ok().json(&settings_guard.rendering),
+        "labels" => HttpResponse::Ok().json(&settings_guard.labels),
+        "bloom" => HttpResponse::Ok().json(&settings_guard.bloom),
+        "physics" => HttpResponse::Ok().json(&settings_guard.physics),
+        _ => HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Unknown settings category: {}", category)
+        }))
     }
-    
-    HttpResponse::Ok().json(&*settings_guard)
 }
 
 // GET /api/visualization/nodes/{setting}
@@ -344,8 +338,7 @@ pub async fn update_bloom_setting(
 
 // Register the handlers with the Actix web app
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("/settings", web::get().to(get_all_settings))
-       .route("/settings", web::put().to(update_all_settings))
+    cfg.route("/settings/{category}", web::get().to(get_category_settings))
        .route("/nodes/{setting}", web::get().to(get_node_setting))
        .route("/nodes/{setting}", web::put().to(update_node_setting))
        .route("/edges/{setting}", web::get().to(get_edge_setting))
