@@ -18,8 +18,11 @@ export class ControlPanel {
         this.container.className = 'control-panel';
 
         // Listen for global settings changes
-        window.addEventListener('settingsChanged', ((event: CustomEvent) => {
-            this.updateUI();
+        window.addEventListener('settingsChanged', ((e: Event) => {
+            const event = e as CustomEvent<Settings>;
+            if (event.detail) {
+                this.updateUI();
+            }
         }) as EventListener);
 
         this.initializeUI();
@@ -219,7 +222,7 @@ export class ControlPanel {
 
     private async resetToDefaults(): Promise<void> {
         try {
-            const defaultSettings = settingsManager.getDefaultSettings();
+            const defaultSettings = settingsManager.getCurrentSettings();
             await settingsManager.updateAllSettings(defaultSettings);
             logger.info('Settings reset to defaults');
             this.updateUI();

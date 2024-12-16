@@ -12,8 +12,7 @@ import { TextRenderer } from './rendering/textRenderer';
 import { XRSessionManager } from './xr/xrSessionManager';
 import { XRInteraction } from './xr/xrInteraction';
 import { createLogger } from './utils/logger';
-import { WS_URL } from './core/constants';
-import { BinaryPositionUpdateMessage, Settings, SettingValue } from './core/types';
+import { Settings } from './core/types';
 import { ControlPanel } from './ui/ControlPanel';
 
 const logger = createLogger('Application');
@@ -45,7 +44,35 @@ class Application {
             await this.loadSettings();
 
             // Initialize WebSocket for real-time updates
-            this.initializeWebSocket();
+            this.webSocket = new WebSocketService();
+
+            // Setup WebSocket event handler for binary position updates
+            this.webSocket.on('binaryPositionUpdate', (data: any['data']) => {
+                if (data && data.nodes) {
+                    // Convert nodes data to ArrayBuffer for position updates
+                    const buffer = new ArrayBuffer(data.nodes.length * 24); // 6 floats per node
+                    const floatArray = new Float32Array(buffer);
+                    
+                    data.nodes.forEach((node: { data: { position: any; velocity: any } }, index: number) => {
+                        const baseIndex = index * 6;
+                        const pos = node.data.position;
+                        const vel = node.data.velocity;
+                        
+                        // Position
+                        floatArray[baseIndex] = pos.x;
+                        floatArray[baseIndex + 1] = pos.y;
+                        floatArray[baseIndex + 2] = pos.z;
+                        // Velocity
+                        floatArray[baseIndex + 3] = vel.x;
+                        floatArray[baseIndex + 4] = vel.y;
+                        floatArray[baseIndex + 5] = vel.z;
+                    });
+
+                    // Update graph data and visual representation
+                    graphDataManager.updatePositions(buffer);
+                    this.nodeManager.updatePositions(floatArray);
+                }
+            });
 
             // Initialize XR if supported
             await this.initializeXR();
@@ -74,42 +101,6 @@ class Application {
             logger.error('Failed to load settings:', error);
             logger.info('Continuing with default settings');
         }
-    }
-
-    private initializeWebSocket(): void {
-        // Create WebSocket service with environment-aware URL
-        this.webSocket = new WebSocketService(WS_URL);
-
-        // Setup WebSocket event handler for binary position updates
-        this.webSocket.on('binaryPositionUpdate', (data: BinaryPositionUpdateMessage['data']) => {
-            if (data && data.nodes) {
-                // Convert nodes data to ArrayBuffer for position updates
-                const buffer = new ArrayBuffer(data.nodes.length * 24); // 6 floats per node
-                const floatArray = new Float32Array(buffer);
-                
-                data.nodes.forEach((node, index) => {
-                    const baseIndex = index * 6;
-                    const pos = node.data.position;
-                    const vel = node.data.velocity;
-                    
-                    // Position
-                    floatArray[baseIndex] = pos.x;
-                    floatArray[baseIndex + 1] = pos.y;
-                    floatArray[baseIndex + 2] = pos.z;
-                    // Velocity
-                    floatArray[baseIndex + 3] = vel.x;
-                    floatArray[baseIndex + 4] = vel.y;
-                    floatArray[baseIndex + 5] = vel.z;
-                });
-
-                // Update graph data and visual representation
-                graphDataManager.updatePositions(buffer);
-                this.nodeManager.updatePositions(floatArray);
-            }
-        });
-
-        // Connect to server
-        this.webSocket.connect();
     }
 
     private initializeScene(): void {
@@ -186,15 +177,15 @@ class Application {
     }
 
     private setupSettingInput(
-        category: keyof Settings,
+        category: string,
         setting: string,
         type: 'number' | 'color' | 'checkbox'
     ): void {
         const input = document.getElementById(`${category}-${setting}`) as HTMLInputElement;
         if (input) {
             input.addEventListener('change', async () => {
-                let currentValue: SettingValue;
-                let previousValue: SettingValue;
+                let currentValue: any;
+                let previousValue: any;
 
                 if (type === 'checkbox') {
                     previousValue = input.checked;
@@ -208,7 +199,7 @@ class Application {
                 }
 
                 try {
-                    await settingsManager.updateSetting(category, setting, currentValue);
+                    await settingsManager.updateSetting(category as keyof Settings, setting, currentValue);
                 } catch (error) {
                     logger.error(`Failed to update setting ${category}.${setting}:`, error);
                     // Revert UI on error
@@ -288,7 +279,7 @@ class Application {
 
         // Close WebSocket connection if it exists
         if (this.webSocket) {
-            this.webSocket.disconnect();
+            this.webSocket.dispose();
         }
     }
 }
