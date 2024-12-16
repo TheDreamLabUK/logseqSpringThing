@@ -222,8 +222,20 @@ export class ControlPanel {
 
     private async resetToDefaults(): Promise<void> {
         try {
-            const defaultSettings = settingsManager.getCurrentSettings();
-            await settingsManager.updateAllSettings(defaultSettings);
+            const defaultSettings = settingsManager.getDefaultSettings();
+            const categories = ['nodes', 'edges', 'rendering', 'labels', 'bloom', 'physics'] as const;
+            
+            for (const category of categories) {
+                const categorySettings = defaultSettings[category];
+                for (const [setting, value] of Object.entries(categorySettings)) {
+                    try {
+                        await settingsManager.updateSetting(category, setting, value);
+                    } catch (error) {
+                        logger.error(`Failed to reset setting ${category}.${setting}:`, error);
+                    }
+                }
+            }
+            
             logger.info('Settings reset to defaults');
             this.updateUI();
         } catch (error) {
