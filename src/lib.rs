@@ -1,21 +1,23 @@
 #![recursion_limit = "256"]
 
-#[macro_use]
 extern crate log;
 
-// Re-export macros at crate root
-#[macro_use]
+// Declare modules
 pub mod utils;
-
-// Re-export debug settings
-pub use utils::debug_logging::init_debug_settings;
-
-// Module declarations
 pub mod app_state;
 pub mod config;
 pub mod handlers;
 pub mod models;
 pub mod services;
+
+// Re-export debug settings
+pub use crate::utils::debug_logging::init_debug_settings;
+
+// Re-export GPU compute
+pub use crate::utils::gpu_compute::GPUCompute;
+
+// Re-export socket flow handler
+pub use crate::utils::socket_flow_handler::{SocketFlowServer, ws_handler};
 
 // Public re-exports
 pub use app_state::AppState;
@@ -29,8 +31,6 @@ pub use services::file_service::{RealGitHubService, FileService};
 pub use services::perplexity_service::PerplexityService;
 pub use services::ragflow_service::{RAGFlowService, RAGFlowError};
 pub use services::github_service::RealGitHubPRService;
-pub use utils::gpu_compute::GPUCompute;
-pub use utils::socket_flow_handler::{SocketFlowServer, ws_handler};
 
 // Re-export handlers
 pub use handlers::file_handler;

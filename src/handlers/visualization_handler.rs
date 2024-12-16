@@ -109,7 +109,7 @@ pub async fn update_node_setting(
         &settings,
         "nodes",
         &path.into_inner(),
-        value.value,
+        value.value.clone(),
     ).await
 }
 
@@ -182,7 +182,7 @@ pub async fn update_edge_setting(
         &settings,
         "edges",
         &path.into_inner(),
-        value.value,
+        value.value.clone(),
     ).await
 }
 
@@ -241,7 +241,7 @@ pub async fn update_physics_setting(
         &settings,
         "physics",
         &path.into_inner(),
-        value.value,
+        value.value.clone(),
     ).await
 }
 
@@ -291,7 +291,7 @@ pub async fn update_rendering_setting(
         &settings,
         "rendering",
         &path.into_inner(),
-        value.value,
+        value.value.clone(),
     ).await
 }
 
@@ -338,7 +338,7 @@ pub async fn update_bloom_setting(
         &settings,
         "bloom",
         &path.into_inner(),
-        value.value,
+        value.value.clone(),
     ).await
 }
 
@@ -427,69 +427,69 @@ fn update_setting_value<T: Serialize>(
     match category {
         "nodes" => {
             match setting {
-                "base_size" => settings.nodes.base_size = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "base_color" => settings.nodes.base_color = serde_json::Value::from(value).as_str().unwrap().to_string(),
-                "opacity" => settings.nodes.opacity = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "metalness" => settings.nodes.metalness = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "roughness" => settings.nodes.roughness = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "clearcoat" => settings.nodes.clearcoat = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "enable_instancing" => settings.nodes.enable_instancing = serde_json::Value::from(value).as_bool().unwrap(),
-                "material_type" => settings.nodes.material_type = serde_json::Value::from(value).as_str().unwrap().to_string(),
-                "size_range" => settings.nodes.size_range = serde_json::Value::from(value).as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect(),
-                "size_by_connections" => settings.nodes.size_by_connections = serde_json::Value::from(value).as_bool().unwrap(),
-                "highlight_color" => settings.nodes.highlight_color = serde_json::Value::from(value).as_str().unwrap().to_string(),
-                "highlight_duration" => settings.nodes.highlight_duration = serde_json::Value::from(value).as_u64().unwrap() as u32,
-                "enable_hover_effect" => settings.nodes.enable_hover_effect = serde_json::Value::from(value).as_bool().unwrap(),
-                "hover_scale" => settings.nodes.hover_scale = serde_json::Value::from(value).as_f64().unwrap() as f32,
+                "base_size" => settings.nodes.base_size = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "base_color" => settings.nodes.base_color = serde_json::to_value(value).unwrap().as_str().unwrap().to_string(),
+                "opacity" => settings.nodes.opacity = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "metalness" => settings.nodes.metalness = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "roughness" => settings.nodes.roughness = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "clearcoat" => settings.nodes.clearcoat = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "enable_instancing" => settings.nodes.enable_instancing = serde_json::to_value(value).unwrap().as_bool().unwrap(),
+                "material_type" => settings.nodes.material_type = serde_json::to_value(value).unwrap().as_str().unwrap().to_string(),
+                "size_range" => settings.nodes.size_range = serde_json::to_value(value).unwrap().as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect(),
+                "size_by_connections" => settings.nodes.size_by_connections = serde_json::to_value(value).unwrap().as_bool().unwrap(),
+                "highlight_color" => settings.nodes.highlight_color = serde_json::to_value(value).unwrap().as_str().unwrap().to_string(),
+                "highlight_duration" => settings.nodes.highlight_duration = serde_json::to_value(value).unwrap().as_u64().unwrap() as u32,
+                "enable_hover_effect" => settings.nodes.enable_hover_effect = serde_json::to_value(value).unwrap().as_bool().unwrap(),
+                "hover_scale" => settings.nodes.hover_scale = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
                 _ => return Err(format!("Unknown node setting: {}", setting)),
             }
         },
         "edges" => {
             match setting {
-                "base_width" => settings.edges.base_width = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "color" => settings.edges.color = serde_json::Value::from(value).as_str().unwrap().to_string(),
-                "opacity" => settings.edges.opacity = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "width_range" => settings.edges.width_range = serde_json::Value::from(value).as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect(),
-                "enable_arrows" => settings.edges.enable_arrows = serde_json::Value::from(value).as_bool().unwrap(),
-                "arrow_size" => settings.edges.arrow_size = serde_json::Value::from(value).as_f64().unwrap() as f32,
+                "base_width" => settings.edges.base_width = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "color" => settings.edges.color = serde_json::to_value(value).unwrap().as_str().unwrap().to_string(),
+                "opacity" => settings.edges.opacity = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "width_range" => settings.edges.width_range = serde_json::to_value(value).unwrap().as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect(),
+                "enable_arrows" => settings.edges.enable_arrows = serde_json::to_value(value).unwrap().as_bool().unwrap(),
+                "arrow_size" => settings.edges.arrow_size = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
                 _ => return Err(format!("Unknown edge setting: {}", setting)),
             }
         },
         "physics" => {
             match setting {
-                "enabled" => settings.physics.enabled = serde_json::Value::from(value).as_bool().unwrap(),
-                "attraction_strength" => settings.physics.attraction_strength = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "repulsion_strength" => settings.physics.repulsion_strength = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "spring_strength" => settings.physics.spring_strength = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "damping" => settings.physics.damping = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "max_velocity" => settings.physics.max_velocity = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "collision_radius" => settings.physics.collision_radius = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "bounds_size" => settings.physics.bounds_size = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "enable_bounds" => settings.physics.enable_bounds = serde_json::Value::from(value).as_bool().unwrap(),
-                "iterations" => settings.physics.iterations = serde_json::Value::from(value).as_u64().unwrap() as u32,
+                "enabled" => settings.physics.enabled = serde_json::to_value(value).unwrap().as_bool().unwrap(),
+                "attraction_strength" => settings.physics.attraction_strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "repulsion_strength" => settings.physics.repulsion_strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "spring_strength" => settings.physics.spring_strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "damping" => settings.physics.damping = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "max_velocity" => settings.physics.max_velocity = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "collision_radius" => settings.physics.collision_radius = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "bounds_size" => settings.physics.bounds_size = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "enable_bounds" => settings.physics.enable_bounds = serde_json::to_value(value).unwrap().as_bool().unwrap(),
+                "iterations" => settings.physics.iterations = serde_json::to_value(value).unwrap().as_u64().unwrap() as u32,
                 _ => return Err(format!("Unknown physics setting: {}", setting)),
             }
         },
         "rendering" => {
             match setting {
-                "ambient_light_intensity" => settings.rendering.ambient_light_intensity = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "directional_light_intensity" => settings.rendering.directional_light_intensity = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "environment_intensity" => settings.rendering.environment_intensity = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "enable_ambient_occlusion" => settings.rendering.enable_ambient_occlusion = serde_json::Value::from(value).as_bool().unwrap(),
-                "enable_antialiasing" => settings.rendering.enable_antialiasing = serde_json::Value::from(value).as_bool().unwrap(),
-                "enable_shadows" => settings.rendering.enable_shadows = serde_json::Value::from(value).as_bool().unwrap(),
-                "background_color" => settings.rendering.background_color = serde_json::Value::from(value).as_str().unwrap().to_string(),
+                "ambient_light_intensity" => settings.rendering.ambient_light_intensity = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "directional_light_intensity" => settings.rendering.directional_light_intensity = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "environment_intensity" => settings.rendering.environment_intensity = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "enable_ambient_occlusion" => settings.rendering.enable_ambient_occlusion = serde_json::to_value(value).unwrap().as_bool().unwrap(),
+                "enable_antialiasing" => settings.rendering.enable_antialiasing = serde_json::to_value(value).unwrap().as_bool().unwrap(),
+                "enable_shadows" => settings.rendering.enable_shadows = serde_json::to_value(value).unwrap().as_bool().unwrap(),
+                "background_color" => settings.rendering.background_color = serde_json::to_value(value).unwrap().as_str().unwrap().to_string(),
                 _ => return Err(format!("Unknown rendering setting: {}", setting)),
             }
         },
         "bloom" => {
             match setting {
-                "enabled" => settings.bloom.enabled = serde_json::Value::from(value).as_bool().unwrap(),
-                "strength" => settings.bloom.strength = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "radius" => settings.bloom.radius = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "node_bloom_strength" => settings.bloom.node_bloom_strength = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "edge_bloom_strength" => settings.bloom.edge_bloom_strength = serde_json::Value::from(value).as_f64().unwrap() as f32,
-                "environment_bloom_strength" => settings.bloom.environment_bloom_strength = serde_json::Value::from(value).as_f64().unwrap() as f32,
+                "enabled" => settings.bloom.enabled = serde_json::to_value(value).unwrap().as_bool().unwrap(),
+                "strength" => settings.bloom.strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "radius" => settings.bloom.radius = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "node_bloom_strength" => settings.bloom.node_bloom_strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "edge_bloom_strength" => settings.bloom.edge_bloom_strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
+                "environment_bloom_strength" => settings.bloom.environment_bloom_strength = serde_json::to_value(value).unwrap().as_f64().unwrap() as f32,
                 _ => return Err(format!("Unknown bloom setting: {}", setting)),
             }
         },
