@@ -4,16 +4,12 @@
 
 import { 
   WebSocketMessage,
-  RawWebSocketMessage,
   MessageType,
   InitialDataMessage,
-  RawInitialDataMessage,
   BinaryPositionUpdateMessage,
-  RawBinaryPositionUpdateMessage,
   RequestInitialDataMessage,
   EnableBinaryUpdatesMessage,
   PingMessage,
-  transformGraphData,
 } from '../core/types';
 import { WS_RECONNECT_INTERVAL, WS_MESSAGE_QUEUE_SIZE } from '../core/constants';
 import { createLogger } from '../core/utils';
@@ -29,7 +25,6 @@ const VERSION_OFFSET = 1; // Skip version float
 type MessageHandler = (data: any) => void;
 type ErrorHandler = (error: Error) => void;
 type ConnectionHandler = (connected: boolean) => void;
-type NetworkMessage = string | ArrayBuffer | Float32Array;
 
 // Network debug panel
 class NetworkDebugPanel {
@@ -72,7 +67,7 @@ class NetworkDebugPanel {
     document.body.appendChild(this.container);
   }
 
-  addMessage(direction: 'in' | 'out', message: NetworkMessage): void {
+  addMessage(direction: 'in' | 'out', message: string | ArrayBuffer | Float32Array): void {
     const item = document.createElement('li');
     const timestamp = new Date().toISOString().split('T')[1].slice(0, -1);
     const arrow = direction === 'in' ? '←' : '→';
@@ -131,7 +126,6 @@ export class WebSocketService {
       'initialData',
       'requestInitialData',
       'binaryPositionUpdate',
-      'settingsUpdated',
       'enableBinaryUpdates',
       'ping',
       'pong'
@@ -243,15 +237,12 @@ export class WebSocketService {
         case 'pong':
           // Handle pong response if needed
           break;
-        case 'settingsUpdated':
-          this.notifyHandlers('settingsUpdated', message);
-          break;
         default:
           this.notifyHandlers(message.type, message);
       }
       
       if (this.debugPanel) {
-        this.debugPanel.addMessage('in', message);
+        this.debugPanel.addMessage('in', JSON.stringify(message));
       }
     } catch (error) {
       logger.error('Error parsing WebSocket message:', error);
@@ -259,30 +250,14 @@ export class WebSocketService {
     }
   }
 
-  private transformBinaryData(data: any): BinaryPositionUpdateMessage {
-    return {
-      type: 'binaryPositionUpdate',
-      data: {
-        nodes: data.nodes.map((node: any) => ({
-          nodeId: node.nodeId,
-          data: {
-            position: node.data.position,
-            velocity: node.data.velocity
-          }
-        }))
-      }
-    };
-  }
-
   private handleInitialData(message: InitialDataMessage): void {
     this.notifyHandlers('initialData', message.data);
     
-    const enableBinaryUpdates: EnableBinaryUpdatesMessage = { type: 'enableBinaryUpdates' };
+    const enableBinaryUpdates: EnableBinaryUpdatesMessage = { 
+      type: 'enableBinaryUpdates',
+      data: { enabled: true }
+    };
     this.send(enableBinaryUpdates);
-  }
-
-  private handleBinaryUpdate(message: BinaryPositionUpdateMessage): void {
-    this.notifyHandlers('binaryPositionUpdate', message.data);
   }
 
   private notifyHandlers(type: MessageType, data: any): void {
@@ -322,7 +297,10 @@ export class WebSocketService {
     this.stopHeartbeat();
     this.heartbeatInterval = window.setInterval(() => {
       if (this.isConnected && this.ws) {
-        const ping: PingMessage = { type: 'ping' };
+        const ping: PingMessage = { 
+          type: 'ping',
+          timestamp: Date.now()
+        };
         this.send(ping);
       }
     }, HEARTBEAT_INTERVAL);

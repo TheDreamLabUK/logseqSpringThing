@@ -291,9 +291,7 @@ export type MessageType =
   | 'requestInitialData'
   | 'enableBinaryUpdates'
   | 'ping'
-  | 'pong'
-  | 'updateSettings'
-  | 'settingsUpdated';
+  | 'pong';
 
 // Base WebSocket message interface
 export interface BaseWebSocketMessage {
@@ -339,29 +337,13 @@ export interface PongMessage extends BaseWebSocketMessage {
   timestamp: number;
 }
 
-export interface UpdateSettingsMessage extends BaseWebSocketMessage {
-  type: 'updateSettings';
-  data: {
-    settings: Record<string, any>;
-  };
-}
-
-export interface SettingsUpdatedMessage extends BaseWebSocketMessage {
-  type: 'settingsUpdated';
-  data: {
-    settings: Record<string, any>;
-  };
-}
-
 export type WebSocketMessage =
   | InitialDataMessage
   | BinaryPositionUpdateMessage
   | RequestInitialDataMessage
   | EnableBinaryUpdatesMessage
   | PingMessage
-  | PongMessage
-  | UpdateSettingsMessage
-  | SettingsUpdatedMessage;
+  | PongMessage;
 
 // Logger interface
 export interface Logger {

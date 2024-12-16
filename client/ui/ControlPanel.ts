@@ -18,7 +18,7 @@ export class ControlPanel {
         this.initializeUI();
     }
 
-    private initializeUI(): void {
+    private async initializeUI(): Promise<void> {
         // Create header
         const header = document.createElement('div');
         header.className = 'control-panel-header';
@@ -41,6 +41,9 @@ export class ControlPanel {
         resetButton.textContent = 'Reset to Defaults';
         resetButton.onclick = () => this.resetToDefaults();
         this.container.appendChild(resetButton);
+
+        // Initial UI update
+        this.updateUI();
     }
 
     private createCategorySection(category: keyof Settings, settings: any): void {
@@ -72,7 +75,7 @@ export class ControlPanel {
 
         // Convert setting from camelCase to Title Case for display
         const label = document.createElement('label');
-        const settingStr = String(setting); // Convert to string to ensure replace method exists
+        const settingStr = String(setting);
         label.textContent = settingStr
             .replace(/([A-Z])/g, ' $1')
             .replace(/^./, (str: string) => str.toUpperCase());
@@ -80,36 +83,75 @@ export class ControlPanel {
         let input: HTMLElement;
 
         if (typeof value === 'boolean') {
-            input = this.createInputElement('checkbox', value, (e) => {
+            input = this.createInputElement('checkbox', value, async (e) => {
                 const target = e.target as HTMLInputElement;
-                settingsManager.updateSetting(category, setting, target.checked);
+                try {
+                    await settingsManager.updateSetting(category, setting, target.checked);
+                    this.updateUI();
+                } catch (error) {
+                    logger.error('Failed to update setting:', error);
+                    // Revert UI on error
+                    target.checked = !target.checked;
+                }
             });
         } else if (typeof value === 'number') {
-            input = this.createInputElement('number', value, (e) => {
+            input = this.createInputElement('number', value, async (e) => {
                 const target = e.target as HTMLInputElement;
-                settingsManager.updateSetting(category, setting, parseFloat(target.value));
+                const oldValue = value;
+                try {
+                    await settingsManager.updateSetting(category, setting, parseFloat(target.value));
+                    this.updateUI();
+                } catch (error) {
+                    logger.error('Failed to update setting:', error);
+                    // Revert UI on error
+                    target.value = String(oldValue);
+                }
             });
         } else if (typeof value === 'string') {
             if (value.startsWith('#')) {
-                input = this.createInputElement('color', value, (e) => {
+                input = this.createInputElement('color', value, async (e) => {
                     const target = e.target as HTMLInputElement;
-                    settingsManager.updateSetting(category, setting, target.value);
+                    const oldValue = value;
+                    try {
+                        await settingsManager.updateSetting(category, setting, target.value);
+                        this.updateUI();
+                    } catch (error) {
+                        logger.error('Failed to update setting:', error);
+                        // Revert UI on error
+                        target.value = oldValue;
+                    }
                 });
             } else {
-                input = this.createInputElement('text', value, (e) => {
+                input = this.createInputElement('text', value, async (e) => {
                     const target = e.target as HTMLInputElement;
-                    settingsManager.updateSetting(category, setting, target.value);
+                    const oldValue = value;
+                    try {
+                        await settingsManager.updateSetting(category, setting, target.value);
+                        this.updateUI();
+                    } catch (error) {
+                        logger.error('Failed to update setting:', error);
+                        // Revert UI on error
+                        target.value = oldValue;
+                    }
                 });
             }
         } else if (Array.isArray(value)) {
             const arrayContainer = document.createElement('div');
             arrayContainer.className = 'array-input';
             value.forEach((item, index) => {
-                const itemInput = this.createInputElement('number', item, (e) => {
+                const itemInput = this.createInputElement('number', item, async (e) => {
                     const target = e.target as HTMLInputElement;
+                    const oldValue = [...value];
                     const newValue = [...value];
                     newValue[index] = parseFloat(target.value);
-                    settingsManager.updateSetting(category, setting, newValue);
+                    try {
+                        await settingsManager.updateSetting(category, setting, newValue);
+                        this.updateUI();
+                    } catch (error) {
+                        logger.error('Failed to update setting:', error);
+                        // Revert UI on error
+                        target.value = String(oldValue[index]);
+                    }
                 });
                 arrayContainer.appendChild(itemInput);
             });
