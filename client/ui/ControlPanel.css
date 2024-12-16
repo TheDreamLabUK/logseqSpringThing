@@ -4,334 +4,138 @@
     position: fixed;
     top: 20px;
     right: 20px;
-    width: 320px;
-    max-width: calc(100vw - 40px);
-    background: rgba(28, 28, 28, 0.95);
+    width: 300px;
+    max-height: calc(100vh - 40px);
+    background-color: rgba(30, 30, 30, 0.95);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     color: #ffffff;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    overflow-y: auto;
     z-index: 1000;
-    transition: transform 0.3s ease;
-    transform: translateX(100%);
-    overflow: visible;
-}
-
-/* Ensure panel stays within viewport */
-@media (max-width: 360px) {
-    .control-panel {
-        right: 10px;
-        width: calc(100% - 20px);
-        max-width: 320px;
-    }
-}
-
-.control-panel.expanded {
-    transform: translateX(0);
+    padding: 16px;
 }
 
 .control-panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.control-panel-header h3 {
+.control-panel-header h2 {
     margin: 0;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 500;
-}
-
-.toggle-button {
-    position: absolute;
-    left: -40px;
-    top: 10px;
-    width: 30px;
-    height: 30px;
-    background: rgba(28, 28, 28, 0.95);
-    border: none;
-    border-radius: 4px;
-    color: #ffffff;
-    font-size: 20px;
-    cursor: pointer;
-    z-index: 1001;
-    transition: background-color 0.2s;
-}
-
-.toggle-button:hover {
-    background: rgba(40, 40, 40, 0.95);
-}
-
-/* Ensure content stays within panel bounds */
-.control-panel-content {
-    max-height: calc(100vh - 200px);
-    overflow-y: auto;
-    overflow-x: hidden; /* Prevent horizontal scroll */
-    padding: 16px;
-}
-
-/* Ensure inputs don't overflow */
-.setting-item {
-    margin-bottom: 12px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap; /* Allow wrapping on small screens */
-}
-
-.setting-item label {
-    flex: 1;
-    min-width: 100px; /* Ensure labels have minimum width */
-    font-size: 13px;
-    color: #e0e0e0;
-}
-
-.setting-item input[type="range"] {
-    flex: 2;
-    min-width: 100px;
-    max-width: 150px;
-    height: 4px;
-    -webkit-appearance: none;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 2px;
-}
-
-.setting-item input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 12px;
-    height: 12px;
-    background: #ffffff;
-    border-radius: 50%;
-    cursor: pointer;
-}
-
-.setting-item input[type="color"] {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.setting-item input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-}
-
-.setting-item input[type="number"] {
-    width: 60px;
-    padding: 4px 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    color: #ffffff;
-}
-
-.setting-item select {
-    padding: 4px 8px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    color: #ffffff;
-    cursor: pointer;
-    max-width: 150px; /* Prevent select from being too wide */
-}
-
-.setting-value {
-    min-width: 40px;
-    font-size: 12px;
-    color: #a0a0a0;
-    text-align: right;
-}
-
-.settings-group {
-    margin-bottom: 24px;
-}
-
-.settings-group h4 {
-    margin: 0 0 12px 0;
-    font-size: 14px;
-    font-weight: 500;
-    color: #a0a0a0;
-}
-
-.settings-actions {
-    display: flex;
-    gap: 12px;
-    margin-top: 24px;
-    padding-top: 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.primary-button,
-.secondary-button {
-    flex: 1;
-    padding: 8px 16px;
-    border: none;
-    border-radius: 4px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    white-space: nowrap; /* Prevent button text from wrapping */
-}
-
-.primary-button {
-    background: #4a90e2;
-    color: #ffffff;
-}
-
-.primary-button:hover {
-    background: #357abd;
-}
-
-.primary-button:disabled {
-    background: #2c5c8f;
-    cursor: not-allowed;
-}
-
-.secondary-button {
-    background: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
-}
-
-.secondary-button:hover {
-    background: rgba(255, 255, 255, 0.15);
-}
-
-.secondary-button:disabled {
-    background: rgba(255, 255, 255, 0.05);
-    cursor: not-allowed;
-}
-
-.settings-feedback {
-    margin: 8px 0;
-    padding: 8px 12px;
-    border-radius: 4px;
-    font-size: 13px;
-    animation: fadeIn 0.3s ease;
-}
-
-.settings-feedback.success {
-    background: rgba(39, 174, 96, 0.2);
-    color: #2ecc71;
-}
-
-.settings-feedback.error {
-    background: rgba(231, 76, 60, 0.2);
-    color: #e74c3c;
-}
-
-.settings-feedback.fade-out {
-    animation: fadeOut 0.3s ease;
 }
 
 .connection-status {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 8px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
 }
 
 .connection-status.connected {
-    background: #2ecc71;
+    background-color: rgba(39, 174, 96, 0.2);
+    color: #2ecc71;
 }
 
 .connection-status.disconnected {
-    background: #e74c3c;
+    background-color: rgba(231, 76, 60, 0.2);
+    color: #e74c3c;
 }
 
-/* Scrollbar Styles */
-.control-panel-content::-webkit-scrollbar {
+.settings-section {
+    margin-bottom: 24px;
+}
+
+.settings-section h3 {
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    font-weight: 500;
+    color: #bdc3c7;
+}
+
+.setting-container {
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.setting-container label {
+    font-size: 14px;
+    color: #ecf0f1;
+}
+
+.setting-container input[type="text"],
+.setting-container input[type="number"] {
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 6px 8px;
+    color: #ffffff;
+    font-size: 14px;
+    width: 100%;
+}
+
+.setting-container input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+}
+
+.setting-container input[type="color"] {
+    width: 100%;
+    height: 32px;
+    padding: 2px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+
+.array-input {
+    display: flex;
+    gap: 8px;
+}
+
+.array-input input {
+    flex: 1;
+}
+
+.reset-button {
+    width: 100%;
+    padding: 8px 16px;
+    background-color: rgba(231, 76, 60, 0.2);
+    border: 1px solid rgba(231, 76, 60, 0.4);
+    border-radius: 4px;
+    color: #e74c3c;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.reset-button:hover {
+    background-color: rgba(231, 76, 60, 0.3);
+    border-color: rgba(231, 76, 60, 0.6);
+}
+
+/* Scrollbar styles */
+.control-panel::-webkit-scrollbar {
     width: 8px;
 }
 
-.control-panel-content::-webkit-scrollbar-track {
+.control-panel::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 4px;
 }
 
-.control-panel-content::-webkit-scrollbar-thumb {
+.control-panel::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.2);
     border-radius: 4px;
 }
 
-.control-panel-content::-webkit-scrollbar-thumb:hover {
+.control-panel::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.3);
-}
-
-/* Animations */
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-@keyframes fadeOut {
-    from { opacity: 1; transform: translateY(0); }
-    to { opacity: 0; transform: translateY(10px); }
-}
-
-/* Tooltips */
-.setting-item label[data-tooltip] {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-}
-
-.setting-item label[data-tooltip]:hover::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    left: 0;
-    top: 100%;
-    background: rgba(0, 0, 0, 0.9);
-    color: #fff;
-    padding: 6px 10px;
-    border-radius: 4px;
-    font-size: 11px;
-    white-space: nowrap;
-    z-index: 10;
-    pointer-events: none;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-/* Group headers */
-.settings-group h4::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: rgba(255, 255, 255, 0.1);
-    margin-left: 8px;
-}
-
-/* Disabled states */
-.setting-item.disabled {
-    opacity: 0.5;
-    pointer-events: none;
-}
-
-/* Sub-settings indentation */
-.sub-settings {
-    margin-left: 16px;
-    padding-left: 12px;
-    border-left: 2px solid rgba(74, 144, 226, 0.2);
-}
-
-/* Input focus states */
-.setting-item input:focus,
-.setting-item select:focus {
-    outline: none;
-    border-color: #4a90e2;
-}
-
-/* Hover effects */
-.setting-item:hover label {
-    color: #fff;
-}
-
-.setting-item:hover .setting-value {
-    color: #fff;
 }

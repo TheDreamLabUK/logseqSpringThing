@@ -7,6 +7,7 @@ state/graphData.ts
 state/settings.ts
 ui/ControlPanel.css
 ui/ControlPanel.ts
+public/fonts/helvetiker_regular.typeface.json
 public/fonts/Roboto-Regular.woff2
 platform/platformManager.ts
 core/utils.ts

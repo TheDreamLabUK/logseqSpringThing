@@ -118,6 +118,58 @@ services:
           - cloudflared
 ```
 
+## Protocol Details
+
+### REST API
+- Settings Management:
+  - GET/PUT `/api/visualization/{category}/{setting}`
+  - Used for infrequent updates and configuration
+  - JSON format for settings data
+
+- Graph Structure:
+  - Paginated loading of graph data
+  - Endpoints for node/edge queries
+  - Metadata and relationship loading
+
+### WebSocket Protocol
+- Real-time Updates:
+  - Binary format for position/velocity data
+  - Efficient updates for physics simulation
+  - Support for AR mode synchronization
+
+- Message Types:
+  1. Binary Position Updates:
+     - Compact binary format for node positions
+     - Optimized for frequent updates
+     - Includes position, velocity, mass, flags
+  
+  2. Settings Broadcasts:
+     - JSON format for settings changes
+     - Broadcast to all connected clients
+     - Ensures synchronization across devices
+
+  3. Simulation Control:
+     - Mode changes (physics, layout, AR)
+     - Simulation parameters
+     - Real-time control messages
+
+### Data Flow Patterns
+
+1. Initial Load:
+   - REST: Load settings and graph structure
+   - WebSocket: Enable binary updates
+   - Client receives initial graph state
+
+2. Runtime Updates:
+   - Binary position updates via WebSocket
+   - Settings changes via REST + WebSocket broadcast
+   - Simulation control via WebSocket
+
+3. AR Mode:
+   - Bidirectional position updates
+   - Low-latency binary messages
+   - Synchronized state across devices
+
 ## Data Flow
 
 ### Graph Data Loading
@@ -149,19 +201,6 @@ sequenceDiagram
     Client->>WebSocket: Connect for binary updates
     WebSocket-->>Client: Stream position updates
 ```
-
-### Data Flow Patterns
-
-1. Initial Graph Loading:
-   - Client requests paginated graph data
-   - Each page contains nodes, edges, and metadata
-   - Pages are loaded sequentially until complete
-   - Binary updates start after initial load
-
-2. Real-time Updates:
-   - WebSocket connection for binary position updates
-   - Optimized for high-frequency updates
-   - Minimal payload size for AR performance
 
 ## WebSocket Communication
 

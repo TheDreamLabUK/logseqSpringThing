@@ -42,13 +42,138 @@ export interface PlatformCapabilities {
   planeDetection: boolean;
 }
 
-// Integration Settings Types
+// Settings interfaces in camelCase
+export interface AnimationSettings {
+  enableMotionBlur: boolean;
+  enableNodeAnimations: boolean;
+  motionBlurStrength: number;
+  selectionWaveEnabled: boolean;
+  pulseEnabled: boolean;
+  rippleEnabled: boolean;
+  edgeAnimationEnabled: boolean;
+  flowParticlesEnabled: boolean;
+}
+
+export interface ARSettings {
+  dragThreshold: number;
+  enableHandTracking: boolean;
+  enableHaptics: boolean;
+  enableLightEstimation: boolean;
+  enablePassthroughPortal: boolean;
+  enablePlaneDetection: boolean;
+  enableSceneUnderstanding: boolean;
+  gestureSsmoothing: number;
+  handMeshColor: string;
+  handMeshEnabled: boolean;
+  handMeshOpacity: number;
+  handPointSize: number;
+  handRayColor: string;
+  handRayEnabled: boolean;
+  handRayWidth: number;
+  hapticIntensity: number;
+  passthroughBrightness: number;
+  passthroughContrast: number;
+  passthroughOpacity: number;
+  pinchThreshold: number;
+  planeColor: string;
+  planeOpacity: number;
+  portalEdgeColor: string;
+  portalEdgeWidth: number;
+  portalSize: number;
+  roomScale: boolean;
+  rotationThreshold: number;
+  showPlaneOverlay: boolean;
+  snapToFloor: boolean;
+}
+
+export interface AudioSettings {
+  enableAmbientSounds: boolean;
+  enableInteractionSounds: boolean;
+  enableSpatialAudio: boolean;
+}
+
+export interface BloomSettings {
+  edgeBloomStrength: number;
+  enabled: boolean;
+  environmentBloomStrength: number;
+  nodeBloomStrength: number;
+  radius: number;
+  strength: number;
+}
+
+export interface ClientDebugSettings {
+  enableDataDebug: boolean;
+  enableWebsocketDebug: boolean;
+  enabled: boolean;
+  logBinaryHeaders: boolean;
+  logFullJson: boolean;
+}
+
+export interface DefaultSettings {
+  apiClientTimeout: number;
+  enableMetrics: boolean;
+  enableRequestLogging: boolean;
+  logFormat: string;
+  logLevel: string;
+  maxConcurrentRequests: number;
+  maxPayloadSize: number;
+  maxRetries: number;
+  metricsPort: number;
+  retryDelay: number;
+}
+
+export interface EdgeSettings {
+  arrowSize: number;
+  baseWidth: number;
+  color: string;
+  enableArrows: boolean;
+  opacity: number;
+  widthRange: [number, number];
+}
+
 export interface GithubSettings {
   basePath: string;
   owner: string;
-  rateLimitEnabled: boolean;
+  rateLimit: boolean;
   repo: string;
   token: string;
+}
+
+export interface LabelSettings {
+  desktopFontSize: number;
+  enableLabels: boolean;
+  textColor: string;
+}
+
+export interface NetworkSettings {
+  bindAddress: string;
+  domain: string;
+  enableHttp2: boolean;
+  enableRateLimiting: boolean;
+  enableTls: boolean;
+  maxRequestSize: number;
+  minTlsVersion: string;
+  port: number;
+  rateLimitRequests: number;
+  rateLimitWindow: number;
+  tunnelId: string;
+}
+
+export interface NodeSettings {
+  baseColor: string;
+  baseSize: number;
+  clearcoat: number;
+  enableHoverEffect: boolean;
+  enableInstancing: boolean;
+  highlightColor: string;
+  highlightDuration: number;
+  hoverScale: number;
+  materialType: string;
+  metalness: number;
+  opacity: number;
+  roughness: number;
+  sizeByConnections: boolean;
+  sizeRange: [number, number];
 }
 
 export interface OpenAISettings {
@@ -65,316 +190,99 @@ export interface PerplexitySettings {
   frequencyPenalty: number;
   maxTokens: number;
   model: string;
-  presencePenalty: number;
   prompt: string;
   rateLimit: number;
+  presencePenalty: number;
   temperature: number;
   timeout: number;
   topP: number;
 }
 
-export interface RagFlowSettings {
+export interface PhysicsSettings {
+  attractionStrength: number;
+  boundsSize: number;
+  collisionRadius: number;
+  damping: number;
+  enableBounds: boolean;
+  enabled: boolean;
+  iterations: number;
+  maxVelocity: number;
+  repulsionStrength: number;
+  springStrength: number;
+}
+
+export interface RagflowSettings {
   apiKey: string;
   baseUrl: string;
   maxRetries: number;
   timeout: number;
 }
 
-// Client-side visualization settings
-export interface VisualizationSettings {
-  // Node appearance
-  nodeSize: number;
-  nodeColor: string;
-  nodeOpacity: number;
-  metalness: number;
-  roughness: number;
-  clearcoat: number;
-  enableInstancing: boolean;
-  materialType: string;
-  sizeRange: [number, number];
-  sizeByConnections: boolean;
-  highlightColor: string;
-  highlightDuration: number;
-  enableHoverEffect: boolean;
-  hoverScale: number;
-
-  // Edge appearance
-  edgeWidth: number;
-  edgeColor: string;
-  edgeOpacity: number;
-  edgeWidthRange: [number, number];
-  enableArrows: boolean;
-  arrowSize: number;
-
-  // Physics settings
-  physicsEnabled: boolean;
-  attractionStrength: number;
-  repulsionStrength: number;
-  springStrength: number;
-  damping: number;
-  maxVelocity: number;
-  collisionRadius: number;
-  boundsSize: number;
-  enableBounds: boolean;
-  iterations: number;
-
-  // Lighting and environment
+export interface RenderingSettings {
   ambientLightIntensity: number;
+  backgroundColor: string;
   directionalLightIntensity: number;
-  environmentIntensity: number;
   enableAmbientOcclusion: boolean;
   enableAntialiasing: boolean;
   enableShadows: boolean;
-  backgroundColor: string;
-
-  // Visual effects
-  enableBloom: boolean;
-  bloomIntensity: number;
-  bloomRadius: number;
-  nodeBloomStrength: number;
-  edgeBloomStrength: number;
-  environmentBloomStrength: number;
-  enableNodeAnimations: boolean;
-  enableMotionBlur: boolean;
-  motionBlurStrength: number;
-
-  // Labels
-  showLabels: boolean;
-  labelSize: number;
-  labelColor: string;
-
-  // Performance
-  maxFps: number;
-
-  // AR Settings
-  enablePlaneDetection: boolean;
-  enableSceneUnderstanding: boolean;
-  showPlaneOverlay: boolean;
-  planeOpacity: number;
-  planeColor: string;
-  enableLightEstimation: boolean;
-  enableHandTracking: boolean;
-  handMeshEnabled: boolean;
-  handMeshColor: string;
-  handMeshOpacity: number;
-  handRayEnabled: boolean;
-  handRayColor: string;
-  handRayWidth: number;
-  handPointSize: number;
-  gestureSmoothing: number;
-  pinchThreshold: number;
-  dragThreshold: number;
-  rotationThreshold: number;
-  enableHaptics: boolean;
-  hapticIntensity: number;
-  roomScale: boolean;
-  snapToFloor: boolean;
-  passthroughOpacity: number;
-  passthroughBrightness: number;
-  passthroughContrast: number;
-  enablePassthroughPortal: boolean;
-  portalSize: number;
-  portalEdgeColor: string;
-  portalEdgeWidth: number;
+  environmentIntensity: number;
 }
 
-// Server-side settings format
-export interface ServerSettings {
-  animations: {
-    enable_motion_blur: boolean;
-    enable_node_animations: boolean;
-    motion_blur_strength: number;
-  };
-  ar: {
-    drag_threshold: number;
-    enable_hand_tracking: boolean;
-    enable_haptics: boolean;
-    enable_light_estimation: boolean;
-    enable_passthrough_portal: boolean;
-    enable_plane_detection: boolean;
-    enable_scene_understanding: boolean;
-    gesture_smoothing: number;
-    hand_mesh_color: string;
-    hand_mesh_enabled: boolean;
-    hand_mesh_opacity: number;
-    hand_point_size: number;
-    hand_ray_color: string;
-    hand_ray_enabled: boolean;
-    hand_ray_width: number;
-    haptic_intensity: number;
-    passthrough_brightness: number;
-    passthrough_contrast: number;
-    passthrough_opacity: number;
-    pinch_threshold: number;
-    plane_color: string;
-    plane_opacity: number;
-    portal_edge_color: string;
-    portal_edge_width: number;
-    portal_size: number;
-    room_scale: boolean;
-    rotation_threshold: number;
-    show_plane_overlay: boolean;
-    snap_to_floor: boolean;
-  };
-  audio: {
-    enable_ambient_sounds: boolean;
-    enable_interaction_sounds: boolean;
-    enable_spatial_audio: boolean;
-  };
-  bloom: {
-    edge_bloom_strength: number;
-    enabled: boolean;
-    environment_bloom_strength: number;
-    node_bloom_strength: number;
-    radius: number;
-    strength: number;
-  };
-  edges: {
-    arrow_size: number;
-    base_width: number;
-    color: string;
-    enable_arrows: boolean;
-    opacity: number;
-    width_range: [number, number];
-  };
-  labels: {
-    desktop_font_size: number;
-    enable_labels: boolean;
-    text_color: string;
-  };
-  nodes: {
-    base_color: string;
-    base_size: number;
-    clearcoat: number;
-    enable_hover_effect: boolean;
-    enable_instancing: boolean;
-    highlight_color: string;
-    highlight_duration: number;
-    hover_scale: number;
-    material_type: string;
-    metalness: number;
-    opacity: number;
-    roughness: number;
-    size_by_connections: boolean;
-    size_range: [number, number];
-  };
-  physics: {
-    attraction_strength: number;
-    bounds_size: number;
-    collision_radius: number;
-    damping: number;
-    enable_bounds: boolean;
-    enabled: boolean;
-    iterations: number;
-    max_velocity: number;
-    repulsion_strength: number;
-    spring_strength: number;
-  };
-  rendering: {
-    ambient_light_intensity: number;
-    background_color: string;
-    directional_light_intensity: number;
-    enable_ambient_occlusion: boolean;
-    enable_antialiasing: boolean;
-    enable_shadows: boolean;
-    environment_intensity: number;
-  };
+export interface SecuritySettings {
+  allowedOrigins: string[];
+  auditLogPath: string;
+  cookieHttponly: boolean;
+  cookieSamesite: string;
+  cookieSecure: boolean;
+  csrfTokenTimeout: number;
+  enableAuditLogging: boolean;
+  enableRequestValidation: boolean;
+  sessionTimeout: number;
 }
 
-// Client-side visualization settings (mapped from server settings)
-export interface VisualizationSettings {
-  // Node Appearance
-  nodeSize: number;  // maps from nodes.base_size
-  nodeColor: string;  // maps from nodes.base_color
-  nodeOpacity: number;  // maps from nodes.opacity
-  metalness: number;
-  roughness: number;
-  clearcoat: number;
-  enableInstancing: boolean;  // maps from nodes.enable_instancing
-  materialType: string;  // maps from nodes.material_type
-  sizeRange: [number, number];  // maps from nodes.size_range
-  sizeByConnections: boolean;  // maps from nodes.size_by_connections
-  highlightColor: string;  // maps from nodes.highlight_color
-  highlightDuration: number;  // maps from nodes.highlight_duration
-  enableHoverEffect: boolean;  // maps from nodes.enable_hover_effect
-  hoverScale: number;  // maps from nodes.hover_scale
-
-  // Edge Appearance
-  edgeWidth: number;  // maps from edges.base_width
-  edgeColor: string;  // maps from edges.color
-  edgeOpacity: number;  // maps from edges.opacity
-  edgeWidthRange: [number, number];  // maps from edges.width_range
-  enableArrows: boolean;  // maps from edges.enable_arrows
-  arrowSize: number;  // maps from edges.arrow_size
-
-  // Physics Settings
-  physicsEnabled: boolean;  // maps from physics.enabled
-  attractionStrength: number;  // maps from physics.attraction_strength
-  repulsionStrength: number;  // maps from physics.repulsion_strength
-  springStrength: number;  // maps from physics.spring_strength
-  damping: number;  // maps from physics.damping
-  maxVelocity: number;  // maps from physics.max_velocity
-  collisionRadius: number;  // maps from physics.collision_radius
-  boundsSize: number;  // maps from physics.bounds_size
-  enableBounds: boolean;  // maps from physics.enable_bounds
-  iterations: number;  // maps from physics.iterations
-
-  // Rendering Settings
-  ambientLightIntensity: number;  // maps from rendering.ambient_light_intensity
-  directionalLightIntensity: number;  // maps from rendering.directional_light_intensity
-  environmentIntensity: number;  // maps from rendering.environment_intensity
-  enableAmbientOcclusion: boolean;  // maps from rendering.enable_ambient_occlusion
-  enableAntialiasing: boolean;  // maps from rendering.enable_antialiasing
-  enableShadows: boolean;  // maps from rendering.enable_shadows
-  backgroundColor: string;  // maps from rendering.background_color
-
-  // Visual Effects
-  enableBloom: boolean;  // maps from bloom.enabled
-  bloomIntensity: number;  // maps from bloom.strength
-  bloomRadius: number;  // maps from bloom.radius
-  nodeBloomStrength: number;  // maps from bloom.node_bloom_strength
-  edgeBloomStrength: number;  // maps from bloom.edge_bloom_strength
-  environmentBloomStrength: number;  // maps from bloom.environment_bloom_strength
-  enableNodeAnimations: boolean;  // maps from animations.enable_node_animations
-  enableMotionBlur: boolean;  // maps from animations.enable_motion_blur
-  motionBlurStrength: number;  // maps from animations.motion_blur_strength
-
-  // Labels
-  showLabels: boolean;  // maps from labels.enable_labels
-  labelSize: number;  // maps from labels.desktop_font_size / 48
-  labelColor: string;  // maps from labels.text_color
-
-  // AR Settings
-  enablePlaneDetection: boolean;  // maps from ar.enable_plane_detection
-  enableSceneUnderstanding: boolean;  // maps from ar.enable_scene_understanding
-  showPlaneOverlay: boolean;  // maps from ar.show_plane_overlay
-  planeOpacity: number;  // maps from ar.plane_opacity
-  planeColor: string;  // maps from ar.plane_color
-  enableLightEstimation: boolean;  // maps from ar.enable_light_estimation
-  enableHandTracking: boolean;  // maps from ar.enable_hand_tracking
-  handMeshEnabled: boolean;  // maps from ar.hand_mesh_enabled
-  handMeshColor: string;  // maps from ar.hand_mesh_color
-  handMeshOpacity: number;  // maps from ar.hand_mesh_opacity
-  handRayEnabled: boolean;  // maps from ar.hand_ray_enabled
-  handRayColor: string;  // maps from ar.hand_ray_color
-  handRayWidth: number;  // maps from ar.hand_ray_width
-  handPointSize: number;  // maps from ar.hand_point_size
-  gestureSmoothing: number;  // maps from ar.gesture_smoothing
-  pinchThreshold: number;  // maps from ar.pinch_threshold
-  dragThreshold: number;  // maps from ar.drag_threshold
-  rotationThreshold: number;  // maps from ar.rotation_threshold
-  enableHaptics: boolean;  // maps from ar.enable_haptics
-  hapticIntensity: number;  // maps from ar.haptic_intensity
-  roomScale: boolean;  // maps from ar.room_scale
-  snapToFloor: boolean;  // maps from ar.snap_to_floor
-  passthroughOpacity: number;  // maps from ar.passthrough_opacity
-  passthroughBrightness: number;  // maps from ar.passthrough_brightness
-  passthroughContrast: number;  // maps from ar.passthrough_contrast
-  enablePassthroughPortal: boolean;  // maps from ar.enable_passthrough_portal
-  portalSize: number;  // maps from ar.portal_size
-  portalEdgeColor: string;  // maps from ar.portal_edge_color
-  portalEdgeWidth: number;  // maps from ar.portal_edge_width
+export interface ServerDebugSettings {
+  enableDataDebug: boolean;
+  enableWebsocketDebug: boolean;
+  enabled: boolean;
+  logBinaryHeaders: boolean;
+  logFullJson: boolean;
 }
+
+export interface WebsocketSettings {
+  binaryChunkSize: number;
+  compressionEnabled: boolean;
+  compressionThreshold: number;
+  heartbeatInterval: number;
+  heartbeatTimeout: number;
+  maxConnections: number;
+  maxMessageSize: number;
+}
+
+export interface Settings {
+  animations: AnimationSettings;
+  ar: ARSettings;
+  audio: AudioSettings;
+  bloom: BloomSettings;
+  clientDebug: ClientDebugSettings;
+  default: DefaultSettings;
+  edges: EdgeSettings;
+  github: GithubSettings;
+  labels: LabelSettings;
+  network: NetworkSettings;
+  nodes: NodeSettings;
+  openai: OpenAISettings;
+  perplexity: PerplexitySettings;
+  physics: PhysicsSettings;
+  ragflow: RagflowSettings;
+  rendering: RenderingSettings;
+  security: SecuritySettings;
+  serverDebug: ServerDebugSettings;
+  websocket: WebsocketSettings;
+}
+
+export type SettingCategory = keyof Settings;
+export type SettingKey<T extends SettingCategory> = keyof Settings[T];
+export type SettingValue = string | number | boolean | number[] | string[];
 
 // WebSocket message types
 export type MessageType = 
@@ -461,14 +369,14 @@ export interface PongMessage extends WebSocketMessage {
 export interface UpdateSettingsMessage extends WebSocketMessage {
   type: 'updateSettings';
   data: {
-    settings: ServerSettings;
+    settings: Settings;
   };
 }
 
 export interface SettingsUpdatedMessage extends WebSocketMessage {
   type: 'settingsUpdated';
   data: {
-    settings: ServerSettings;
+    settings: Settings;
   };
 }
 

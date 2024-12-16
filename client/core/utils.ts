@@ -24,6 +24,47 @@ export function createLogger(namespace: string): Logger {
   };
 }
 
+// Case conversion utilities
+export const camelToSnakeCase = (str: string): string => {
+  return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+};
+
+export const snakeToCamelCase = (str: string): string => {
+  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+};
+
+export const convertObjectKeysToSnakeCase = (obj: any): any => {
+  if (Array.isArray(obj)) {
+    return obj.map(item => convertObjectKeysToSnakeCase(item));
+  }
+  
+  if (obj !== null && typeof obj === 'object') {
+    return Object.keys(obj).reduce((acc, key) => {
+      const snakeKey = camelToSnakeCase(key);
+      acc[snakeKey] = convertObjectKeysToSnakeCase(obj[key]);
+      return acc;
+    }, {} as any);
+  }
+  
+  return obj;
+};
+
+export const convertObjectKeysToCamelCase = (obj: any): any => {
+  if (Array.isArray(obj)) {
+    return obj.map(item => convertObjectKeysToCamelCase(item));
+  }
+  
+  if (obj !== null && typeof obj === 'object') {
+    return Object.keys(obj).reduce((acc, key) => {
+      const camelKey = snakeToCamelCase(key);
+      acc[camelKey] = convertObjectKeysToCamelCase(obj[key]);
+      return acc;
+    }, {} as any);
+  }
+  
+  return obj;
+};
+
 // Update throttler for performance optimization
 export class UpdateThrottler {
   private lastUpdate: number = 0;
