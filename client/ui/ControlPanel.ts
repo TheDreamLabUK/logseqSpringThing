@@ -3,38 +3,62 @@
  */
 
 import { createLogger } from '../utils/logger';
-import { settingsManager } from '../state/settings';
-import { Settings, NodeSettings, EdgeSettings, PhysicsSettings, RenderingSettings, BloomSettings, AnimationSettings, LabelSettings, ARSettings } from '../state/settings';
+import { settingsManager, Settings } from '../state/settings';
+import './ControlPanel.css';
 
 const logger = createLogger('ControlPanel');
 
 export class ControlPanel {
     private settings: Settings;
     private unsubscribers: (() => void)[] = [];
+    private panel: HTMLElement | null;
+    private expanded: boolean = false;
 
     constructor() {
         this.settings = settingsManager.getCurrentSettings();
+        this.panel = document.getElementById('settings-panel');
+        
+        if (!this.panel) {
+            logger.error('Settings panel element not found');
+            return;
+        }
+
+        this.setupToggleButton();
         this.setupSubscriptions();
         this.setupUI();
+        this.setupEventListeners();
+    }
+
+    private setupToggleButton() {
+        const toggleButton = this.panel?.querySelector('.toggle-button');
+        if (toggleButton) {
+            toggleButton.addEventListener('click', () => this.togglePanel());
+        }
+    }
+
+    private togglePanel() {
+        this.expanded = !this.expanded;
+        if (this.panel) {
+            this.panel.classList.toggle('expanded', this.expanded);
+        }
     }
 
     private setupSubscriptions() {
-        // Subscribe to individual setting changes
-        const categories = ['nodes', 'edges', 'physics', 'rendering', 'bloom', 'animation', 'label', 'ar'] as const;
-        
-        categories.forEach(category => {
-            Object.keys(this.settings[category]).forEach(setting => {
+        // Subscribe to connection status
+        const unsubscribeConnection = settingsManager.subscribeToConnection(this.updateConnectionStatus);
+        this.unsubscribers.push(unsubscribeConnection);
+
+        // Subscribe to all settings
+        Object.keys(this.settings).forEach(category => {
+            const categorySettings = this.settings[category as keyof Settings];
+            Object.keys(categorySettings).forEach(setting => {
                 const unsubscribe = settingsManager.subscribe(category, setting, (value: any) => {
-                    (this.settings[category] as any)[setting] = value;
+                    (this.settings[category as keyof Settings] as any)[setting] = value;
                     this.updateUI(category, setting);
                 });
                 this.unsubscribers.push(unsubscribe);
             });
         });
-
-        // Subscribe to connection status
-        const unsubscribeConnection = settingsManager.subscribeToConnection(this.updateConnectionStatus);
-        this.unsubscribers.push(unsubscribeConnection);
     }
 
     private updateConnectionStatus = (connected: boolean) => {
@@ -47,34 +71,27 @@ export class ControlPanel {
 
     private async updateSetting(category: keyof Settings, setting: string, value: any) {
         try {
-            switch (category) {
-                case 'nodes':
-                    await settingsManager.updateNodeSetting(setting as keyof NodeSettings, value);
-                    break;
-                case 'edges':
-                    await settingsManager.updateEdgeSetting(setting as keyof EdgeSettings, value);
-                    break;
-                case 'physics':
-                    await settingsManager.updatePhysicsSetting(setting as keyof PhysicsSettings, value);
-                    break;
-                case 'rendering':
-                    await settingsManager.updateRenderingSetting(setting as keyof RenderingSettings, value);
-                    break;
-                case 'bloom':
-                    await settingsManager.updateBloomSetting(setting as keyof BloomSettings, value);
-                    break;
-                case 'animation':
-                    await settingsManager.updateAnimationSetting(setting as keyof AnimationSettings, value);
-                    break;
-                case 'label':
-                    await settingsManager.updateLabelSetting(setting as keyof LabelSettings, value);
-                    break;
-                case 'ar':
-                    await settingsManager.updateARSetting(setting as keyof ARSettings, value);
-                    break;
-            }
+            const updateMethod = `update${category.charAt(0).toUpperCase() + category.slice(1)}Setting`;
+            await (settingsManager as any)[updateMethod](setting, value);
+            this.showFeedback('success', `Updated ${category}.${setting}`);
         } catch (error) {
             logger.error(`Failed to update ${String(category)}.${setting}:`, error);
+            this.showFeedback('error', `Failed to update ${category}.${setting}`);
+        }
+    }
+
+    private showFeedback(type: 'success' | 'error', message: string) {
+        const feedback = document.createElement('div');
+        feedback.className = `settings-feedback ${type}`;
+        feedback.textContent = message;
+        
+        const content = this.panel?.querySelector('.control-panel-content');
+        if (content) {
+            content.appendChild(feedback);
+            setTimeout(() => {
+                feedback.classList.add('fade-out');
+                setTimeout(() => feedback.remove(), 300);
+            }, 2000);
         }
     }
 
@@ -85,6 +102,10 @@ export class ControlPanel {
             if (element instanceof HTMLInputElement) {
                 if (element.type === 'checkbox') {
                     element.checked = value;
+                } else if (element.type === 'color') {
+                    element.value = value;
+                } else if (element.type === 'number') {
+                    element.value = value.toString();
                 } else {
                     element.value = value;
                 }
@@ -95,103 +116,144 @@ export class ControlPanel {
     }
 
     private setupUI() {
-        // Create UI sections for each settings category
-        const categories = ['nodes', 'edges', 'physics', 'rendering', 'bloom', 'animation', 'label', 'ar'] as const;
-        
-        const container = document.getElementById('settings-panel');
-        if (!container) return;
+        const content = this.panel?.querySelector('.control-panel-content');
+        if (!content) return;
 
-        categories.forEach(category => {
-            const section = document.createElement('div');
-            section.className = 'settings-section';
-            section.innerHTML = `<h3>${category.charAt(0).toUpperCase() + category.slice(1)} Settings</h3>`;
+        // Clear existing content
+        content.innerHTML = '';
 
-            const settings = this.settings[category];
-            Object.entries(settings).forEach(([setting, value]) => {
-                const settingElement = this.createSettingElement(category, setting, value);
-                section.appendChild(settingElement);
-            });
-
-            container.appendChild(section);
+        // Create sections for each category
+        Object.entries(this.settings).forEach(([category, settings]) => {
+            const section = this.createSection(category, settings);
+            content.appendChild(section);
         });
     }
 
-    private createSettingElement(category: string, setting: string, value: any): HTMLElement {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'setting-item';
+    private createSection(category: string, settings: any): HTMLElement {
+        const section = document.createElement('div');
+        section.className = 'settings-group';
+        
+        const header = document.createElement('h4');
+        header.textContent = this.formatCategoryName(category);
+        section.appendChild(header);
+
+        Object.entries(settings).forEach(([setting, value]) => {
+            const item = this.createSettingItem(category, setting, value);
+            section.appendChild(item);
+        });
+
+        return section;
+    }
+
+    private createSettingItem(category: string, setting: string, value: any): HTMLElement {
+        const item = document.createElement('div');
+        item.className = 'setting-item';
 
         const label = document.createElement('label');
         label.textContent = this.formatSettingName(setting);
+        label.htmlFor = `${category}-${setting}`;
 
-        const input = this.createInputElement(setting, value);
+        const input = this.createInput(category, setting, value);
         input.id = `${category}-${setting}`;
-        input.addEventListener('change', (e) => {
-            const target = e.target as HTMLInputElement;
-            const newValue = target.type === 'checkbox' ? target.checked : 
-                            target.type === 'number' ? parseFloat(target.value) : 
-                            target.value;
-            this.updateSetting(category as keyof Settings, setting, newValue);
-        });
 
-        wrapper.appendChild(label);
-        wrapper.appendChild(input);
-        return wrapper;
+        item.appendChild(label);
+        item.appendChild(input);
+
+        return item;
     }
 
-    private createInputElement(setting: string, value: any): HTMLInputElement | HTMLSelectElement {
+    private createInput(category: string, setting: string, value: any): HTMLElement {
         if (typeof value === 'boolean') {
             const input = document.createElement('input');
             input.type = 'checkbox';
             input.checked = value;
+            input.addEventListener('change', (e) => {
+                const target = e.target as HTMLInputElement;
+                this.updateSetting(category as keyof Settings, setting, target.checked);
+            });
             return input;
-        } else if (typeof value === 'number') {
+        }
+
+        if (typeof value === 'number') {
             const input = document.createElement('input');
             input.type = 'number';
             input.value = value.toString();
-            input.step = '0.1';
+            input.step = setting.includes('opacity') ? '0.1' : '1';
+            input.addEventListener('change', (e) => {
+                const target = e.target as HTMLInputElement;
+                this.updateSetting(category as keyof Settings, setting, parseFloat(target.value));
+            });
             return input;
-        } else if (typeof value === 'string') {
-            if (setting === 'style' || setting === 'shape' || setting === 'texture') {
-                const select = document.createElement('select');
-                const options = this.getOptionsForSetting(setting);
-                options.forEach(opt => {
-                    const option = document.createElement('option');
-                    option.value = opt;
-                    option.textContent = opt;
-                    option.selected = opt === value;
-                    select.appendChild(option);
-                });
-                return select;
-            } else {
+        }
+
+        if (typeof value === 'string') {
+            if (setting.toLowerCase().includes('color')) {
                 const input = document.createElement('input');
-                input.type = setting.toLowerCase().includes('color') ? 'color' : 'text';
+                input.type = 'color';
                 input.value = value;
+                input.addEventListener('change', (e) => {
+                    const target = e.target as HTMLInputElement;
+                    this.updateSetting(category as keyof Settings, setting, target.value);
+                });
                 return input;
             }
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = value;
+            input.addEventListener('change', (e) => {
+                const target = e.target as HTMLInputElement;
+                this.updateSetting(category as keyof Settings, setting, target.value);
+            });
+            return input;
         }
+
+        // For arrays or other types, create a disabled text input
         const input = document.createElement('input');
         input.type = 'text';
-        input.value = value.toString();
+        input.value = JSON.stringify(value);
+        input.disabled = true;
         return input;
     }
 
-    private getOptionsForSetting(setting: string): string[] {
-        switch (setting) {
-            case 'style':
-                return ['solid', 'dashed', 'dotted', 'arrow'];
-            case 'shape':
-                return ['sphere', 'cube', 'cylinder', 'cone'];
-            case 'texture':
-                return ['none', 'smooth', 'rough', 'metallic'];
-            default:
-                return [];
+    private setupEventListeners() {
+        const resetButton = document.getElementById('reset-settings');
+        if (resetButton) {
+            resetButton.addEventListener('click', async () => {
+                try {
+                    this.settings = settingsManager.getCurrentSettings();
+                    await settingsManager.loadAllSettings();
+                    this.showFeedback('success', 'Settings reset to defaults');
+                } catch (error) {
+                    logger.error('Failed to reset settings:', error);
+                    this.showFeedback('error', 'Failed to reset settings');
+                }
+            });
         }
+
+        const saveButton = document.getElementById('save-settings');
+        if (saveButton) {
+            saveButton.addEventListener('click', async () => {
+                try {
+                    await settingsManager.loadAllSettings();
+                    this.showFeedback('success', 'Settings saved');
+                } catch (error) {
+                    logger.error('Failed to save settings:', error);
+                    this.showFeedback('error', 'Failed to save settings');
+                }
+            });
+        }
+    }
+
+    private formatCategoryName(name: string): string {
+        return name.charAt(0).toUpperCase() + name.slice(1) + ' Settings';
     }
 
     private formatSettingName(name: string): string {
         return name
-            .replace(/([A-Z])/g, ' $1')
-            .replace(/^./, str => str.toUpperCase());
+            .split('_')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
     }
 
     dispose() {

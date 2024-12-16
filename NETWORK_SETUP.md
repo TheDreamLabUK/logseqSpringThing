@@ -118,6 +118,51 @@ services:
           - cloudflared
 ```
 
+## Data Flow
+
+### Graph Data Loading
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Nginx
+    participant Backend
+    participant GraphService
+    participant WebSocket
+
+    Client->>+Nginx: GET /graph/data?page=0
+    Nginx->>+Backend: Proxy request
+    Backend->>+GraphService: get_paginated_graph_data(0)
+    GraphService-->>-Backend: Return first page
+    Backend-->>-Nginx: JSON response
+    Nginx-->>-Client: First page of graph data
+
+    loop Load More Pages
+        Client->>+Nginx: GET /graph/data?page=N
+        Nginx->>+Backend: Proxy request
+        Backend->>+GraphService: get_paginated_graph_data(N)
+        GraphService-->>-Backend: Return page N
+        Backend-->>-Nginx: JSON response
+        Nginx-->>-Client: Page N of graph data
+    end
+
+    Note over Client,WebSocket: After initial data loaded
+    Client->>WebSocket: Connect for binary updates
+    WebSocket-->>Client: Stream position updates
+```
+
+### Data Flow Patterns
+
+1. Initial Graph Loading:
+   - Client requests paginated graph data
+   - Each page contains nodes, edges, and metadata
+   - Pages are loaded sequentially until complete
+   - Binary updates start after initial load
+
+2. Real-time Updates:
+   - WebSocket connection for binary position updates
+   - Optimized for high-frequency updates
+   - Minimal payload size for AR performance
+
 ## WebSocket Communication
 
 The system uses a multi-layered approach for WebSocket connections:

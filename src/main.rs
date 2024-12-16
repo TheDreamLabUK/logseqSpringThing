@@ -256,6 +256,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("/api/graph")
                     .route("/data", web::get().to(graph_handler::get_graph_data))
+                    .route("/data/paginated", web::get().to(graph_handler::get_paginated_graph_data))
             )
             .service(
                 web::scope("/api/chat")

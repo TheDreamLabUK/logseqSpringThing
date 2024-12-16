@@ -20,6 +20,27 @@ export default defineConfig(({ mode, command }) => {
           drop_console: isProd,
           drop_debugger: isProd
         }
+      },
+      rollupOptions: {
+        input: {
+          main: resolve(__dirname, 'client/index.html')
+        },
+        output: {
+          assetFileNames: (assetInfo) => {
+            const info = assetInfo.name.split('.');
+            const ext = info[info.length - 1];
+            if (/\.(woff2?|eot|ttf|otf)$/i.test(assetInfo.name)) {
+              return `assets/fonts/[name][extname]`;
+            }
+            if (/\.(css)$/i.test(assetInfo.name)) {
+              return `assets/css/[name][extname]`;
+            }
+            if (/\.(png|jpe?g|gif|svg|ico)$/i.test(assetInfo.name)) {
+              return `assets/images/[name][extname]`;
+            }
+            return `assets/[name][extname]`;
+          }
+        }
       }
     },
 
@@ -49,7 +70,7 @@ export default defineConfig(({ mode, command }) => {
     },
 
     define: {
-      __IS_QUEST__: isQuest,
+      __QUEST__: isQuest,
       __DEV__: !isProd
     }
   };
