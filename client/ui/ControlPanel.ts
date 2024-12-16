@@ -2,321 +2,153 @@
  * Control panel for visualization settings
  */
 
-import { createLogger } from '../utils/logger';
+import { Settings, SettingsCategory, SettingKey, SettingValueType } from '../types/settings';
 import { settingsManager } from '../state/settings';
-import { Settings, SettingKey, SettingValue } from '../core/types';
+import { createLogger } from '../utils/logger';
 
 const logger = createLogger('ControlPanel');
 
 export class ControlPanel {
     private container: HTMLElement;
+    private currentSettings: Settings;
     private unsubscribers: Array<() => void> = [];
 
-    constructor() {
-        this.container = document.createElement('div');
-        this.container.id = 'control-panel';
-        this.container.className = 'control-panel';
-
-        // Listen for global settings changes
-        window.addEventListener('settingsChanged', ((e: Event) => {
-            const event = e as CustomEvent<Settings>;
-            if (event.detail) {
-                this.updateUI();
-            }
-        }) as EventListener);
-
-        this.initializeUI();
+    constructor(container: HTMLElement) {
+        this.container = container;
+        this.currentSettings = settingsManager.getCurrentSettings();
+        this.setupUI();
     }
 
-    public mount(parent: HTMLElement): void {
-        parent.appendChild(this.container);
-        this.updateUI(); // Initial UI update after mounting
+    private async setupUI(): Promise<void> {
+        try {
+            Object.entries(this.currentSettings).forEach(([categoryName, settings]) => {
+                const category = categoryName as SettingsCategory;
+                const categoryContainer = document.createElement('div');
+                categoryContainer.classList.add('settings-category');
+                
+                const categoryTitle = document.createElement('h3');
+                categoryTitle.textContent = category;
+                categoryContainer.appendChild(categoryTitle);
+
+                Object.entries(settings).forEach(([settingName, value]) => {
+                    const setting = settingName as SettingKey<typeof category>;
+                    this.createSettingControl(
+                        category,
+                        setting,
+                        value as SettingValueType<typeof category, typeof setting>,
+                        categoryContainer
+                    );
+                });
+
+                this.container.appendChild(categoryContainer);
+            });
+
+            const resetButton = document.createElement('button');
+            resetButton.textContent = 'Reset to Defaults';
+            resetButton.onclick = () => this.resetToDefaults();
+            this.container.appendChild(resetButton);
+
+        } catch (error) {
+            logger.error('Error setting up UI:', error);
+        }
     }
 
-    private async initializeUI(): Promise<void> {
-        // Create header
-        const header = document.createElement('div');
-        header.className = 'control-panel-header';
-        
-        const title = document.createElement('h2');
-        title.textContent = 'Settings';
-        
-        header.appendChild(title);
-        this.container.appendChild(header);
+    private createSettingControl<T extends SettingsCategory, K extends SettingKey<T>>(
+        category: T,
+        setting: K,
+        value: SettingValueType<T, K>,
+        container: HTMLElement
+    ): void {
+        const controlContainer = document.createElement('div');
+        controlContainer.classList.add('setting-control');
 
-        // Create settings sections
-        const settings = settingsManager.getCurrentSettings();
-        Object.entries(settings).forEach(([category, categorySettings]) => {
-            this.createCategorySection(category as keyof Settings, categorySettings);
-        });
-
-        // Create reset button
-        const resetButton = document.createElement('button');
-        resetButton.className = 'reset-button';
-        resetButton.textContent = 'Reset to Defaults';
-        resetButton.onclick = () => this.resetToDefaults();
-        this.container.appendChild(resetButton);
-
-        // Initial UI update
-        this.updateUI();
-    }
-
-    private createCategorySection(category: keyof Settings, settings: any): void {
-        const section = document.createElement('div');
-        section.className = 'settings-section';
-        
-        // Convert category from camelCase to Title Case for display
-        const title = document.createElement('h3');
-        title.textContent = String(category)
-            .replace(/([A-Z])/g, ' $1')
-            .replace(/^./, (str: string) => str.toUpperCase());
-        section.appendChild(title);
-
-        Object.entries(settings).forEach(([setting, value]) => {
-            const settingElement = this.createSettingElement(
-                category,
-                setting as SettingKey<typeof category>,
-                value as SettingValue
-            );
-            section.appendChild(settingElement);
-        });
-
-        this.container.appendChild(section);
-    }
-
-    private createSettingElement(category: keyof Settings, setting: SettingKey<typeof category>, value: SettingValue): HTMLElement {
-        const container = document.createElement('div');
-        container.className = 'setting-container';
-
-        // Convert setting from camelCase to Title Case for display
         const label = document.createElement('label');
-        const settingStr = String(setting);
-        label.textContent = settingStr
-            .replace(/([A-Z])/g, ' $1')
-            .replace(/^./, (str: string) => str.toUpperCase());
+        label.textContent = String(setting);
+        controlContainer.appendChild(label);
 
-        let input: HTMLElement;
+        let input: HTMLInputElement;
+        
+        switch (typeof value) {
+            case 'boolean':
+                input = document.createElement('input');
+                input.type = 'checkbox';
+                input.checked = value as boolean;
+                break;
 
-        if (typeof value === 'boolean') {
-            input = this.createInputElement('checkbox', value, async (e) => {
-                const target = e.target as HTMLInputElement;
-                try {
-                    await settingsManager.updateSetting(category, setting, target.checked);
-                    this.updateUI();
-                } catch (error) {
-                    logger.error('Failed to update setting:', error);
-                    // Revert UI on error
-                    target.checked = !target.checked;
-                }
-            });
-        } else if (typeof value === 'number') {
-            input = this.createInputElement('number', value, async (e) => {
-                const target = e.target as HTMLInputElement;
-                const oldValue = value;
-                try {
-                    await settingsManager.updateSetting(category, setting, parseFloat(target.value));
-                    this.updateUI();
-                } catch (error) {
-                    logger.error('Failed to update setting:', error);
-                    // Revert UI on error
-                    target.value = String(oldValue);
-                }
-            });
-        } else if (typeof value === 'string') {
-            if (value.startsWith('#')) {
-                input = this.createInputElement('color', value, async (e) => {
-                    const target = e.target as HTMLInputElement;
-                    const oldValue = value;
-                    try {
-                        await settingsManager.updateSetting(category, setting, target.value);
-                        this.updateUI();
-                    } catch (error) {
-                        logger.error('Failed to update setting:', error);
-                        // Revert UI on error
-                        target.value = oldValue;
-                    }
-                });
-            } else {
-                input = this.createInputElement('text', value, async (e) => {
-                    const target = e.target as HTMLInputElement;
-                    const oldValue = value;
-                    try {
-                        await settingsManager.updateSetting(category, setting, target.value);
-                        this.updateUI();
-                    } catch (error) {
-                        logger.error('Failed to update setting:', error);
-                        // Revert UI on error
-                        target.value = oldValue;
-                    }
-                });
-            }
-        } else if (Array.isArray(value)) {
-            const arrayContainer = document.createElement('div');
-            arrayContainer.className = 'array-input';
-            value.forEach((item, index) => {
-                const itemInput = this.createInputElement('number', item, async (e) => {
-                    const target = e.target as HTMLInputElement;
-                    const oldValue = [...value];
-                    const newValue = [...value];
-                    newValue[index] = parseFloat(target.value);
-                    try {
-                        await settingsManager.updateSetting(category, setting, newValue);
-                        this.updateUI();
-                    } catch (error) {
-                        logger.error('Failed to update setting:', error);
-                        // Revert UI on error
-                        target.value = String(oldValue[index]);
-                    }
-                });
-                arrayContainer.appendChild(itemInput);
-            });
-            input = arrayContainer;
-        } else {
-            input = document.createElement('div');
-            input.textContent = 'Unsupported type';
-        }
-
-        container.appendChild(label);
-        container.appendChild(input);
-
-        // Subscribe to changes
-        this.unsubscribers.push(
-            settingsManager.subscribe(category, setting, (newValue) => {
-                if (input instanceof HTMLInputElement) {
-                    if (input.type === 'checkbox') {
-                        input.checked = newValue as boolean;
-                    } else {
-                        input.value = String(newValue);
-                    }
-                } else if (input.className === 'array-input' && Array.isArray(newValue)) {
-                    const inputs = input.getElementsByTagName('input');
-                    for (let i = 0; i < inputs.length; i++) {
-                        inputs[i].value = String(newValue[i]);
-                    }
-                }
-                this.updateUI();
-            })
-        );
-
-        return container;
-    }
-
-    private createInputElement(
-        type: string,
-        value: string | number | boolean,
-        onChange: (e: Event) => void
-    ): HTMLInputElement {
-        const input = document.createElement('input');
-        input.type = type;
-        if (type === 'checkbox') {
-            input.checked = value as boolean;
-        } else {
-            input.value = String(value);
-            if (type === 'number') {
+            case 'number':
+                input = document.createElement('input');
+                input.type = 'number';
+                input.value = String(value);
                 input.step = '0.1';
-            }
+                break;
+
+            case 'string':
+                input = document.createElement('input');
+                if (value.startsWith('#')) {
+                    input.type = 'color';
+                } else {
+                    input.type = 'text';
+                }
+                input.value = value;
+                break;
+
+            default:
+                logger.warn(`Unsupported setting type for ${category}.${String(setting)}`);
+                return;
         }
-        input.onchange = onChange;
-        return input;
+
+        input.onchange = async (event) => {
+            const target = event.target as HTMLInputElement;
+            let newValue: SettingValueType<T, K>;
+
+            switch (target.type) {
+                case 'checkbox':
+                    newValue = target.checked as SettingValueType<T, K>;
+                    break;
+                case 'number':
+                    newValue = parseFloat(target.value) as SettingValueType<T, K>;
+                    break;
+                default:
+                    newValue = target.value as SettingValueType<T, K>;
+            }
+
+            try {
+                await settingsManager.updateSetting(category, setting, newValue);
+            } catch (error) {
+                logger.error(`Error updating setting ${category}.${String(setting)}:`, error);
+                // Revert the UI to the previous value
+                if (target.type === 'checkbox') {
+                    target.checked = value as boolean;
+                } else {
+                    target.value = String(value);
+                }
+            }
+        };
+
+        controlContainer.appendChild(input);
+        container.appendChild(controlContainer);
     }
 
     private async resetToDefaults(): Promise<void> {
         try {
             const defaultSettings = settingsManager.getDefaultSettings();
-            const categories = ['nodes', 'edges', 'rendering', 'labels', 'bloom', 'physics'] as const;
-            
-            for (const category of categories) {
-                const categorySettings = defaultSettings[category];
-                for (const [setting, value] of Object.entries(categorySettings)) {
-                    try {
-                        await settingsManager.updateSetting(category, setting, value);
-                    } catch (error) {
-                        logger.error(`Failed to reset setting ${category}.${setting}:`, error);
-                    }
+            for (const [categoryName, settings] of Object.entries(defaultSettings)) {
+                const category = categoryName as SettingsCategory;
+                for (const [settingName, value] of Object.entries(settings)) {
+                    const setting = settingName as SettingKey<typeof category>;
+                    await settingsManager.updateSetting(
+                        category,
+                        setting,
+                        value as SettingValueType<typeof category, typeof setting>
+                    );
                 }
             }
-            
-            logger.info('Settings reset to defaults');
-            this.updateUI();
         } catch (error) {
-            logger.error('Failed to reset settings:', error);
+            logger.error('Error resetting to defaults:', error);
         }
     }
 
-    private updateUI(): void {
-        // Update all UI elements that depend on settings
-        const settings = settingsManager.getCurrentSettings();
-        
-        // Update theme
-        document.body.style.backgroundColor = settings.rendering.backgroundColor;
-        
-        // Update control panel visibility
-        this.container.style.display = settings.clientDebug.enabled ? 'block' : 'none';
-
-        // Update input elements
-        this.updateInputElements(settings);
-
-        // Update other UI elements
-        this.updateLabels(settings);
-        this.updateEdges(settings);
-        this.updateNodes(settings);
-    }
-
-    private updateInputElements(settings: Settings): void {
-        Object.entries(settings).forEach(([category, categorySettings]) => {
-            if (typeof categorySettings === 'object') {
-                Object.entries(categorySettings).forEach(([setting, value]) => {
-                    const input = this.container.querySelector(`[data-category="${category}"][data-setting="${setting}"]`) as HTMLInputElement;
-                    if (input) {
-                        if (input.type === 'checkbox') {
-                            input.checked = value as boolean;
-                        } else if (input.type === 'color') {
-                            input.value = value as string;
-                        } else {
-                            input.value = String(value);
-                        }
-                    }
-                });
-            }
-        });
-    }
-
-    private updateLabels(settings: Settings): void {
-        const labelElements = document.querySelectorAll('.node-label');
-        labelElements.forEach(label => {
-            if (label instanceof HTMLElement) {
-                label.style.display = settings.labels.enableLabels ? 'block' : 'none';
-                label.style.fontSize = `${settings.labels.desktopFontSize}px`;
-                label.style.color = settings.labels.textColor;
-            }
-        });
-    }
-
-    private updateEdges(settings: Settings): void {
-        const edgeElements = document.querySelectorAll('.edge');
-        edgeElements.forEach(edge => {
-            if (edge instanceof HTMLElement) {
-                edge.style.opacity = settings.edges.opacity.toString();
-                edge.style.stroke = settings.edges.color;
-                edge.style.strokeWidth = settings.edges.baseWidth.toString();
-            }
-        });
-    }
-
-    private updateNodes(settings: Settings): void {
-        const nodeElements = document.querySelectorAll('.node');
-        nodeElements.forEach(node => {
-            if (node instanceof HTMLElement) {
-                node.style.backgroundColor = settings.nodes.baseColor;
-                node.style.opacity = settings.nodes.opacity.toString();
-                const scale = settings.nodes.baseSize;
-                node.style.transform = `scale(${scale})`;
-            }
-        });
-    }
-
-    public unmount(): void {
-        this.container.remove();
+    public dispose(): void {
         this.unsubscribers.forEach(unsubscribe => unsubscribe());
         this.unsubscribers = [];
     }

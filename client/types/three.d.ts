@@ -175,6 +175,8 @@ declare module 'three' {
     rotateX(angle: number): this;
     rotateY(angle: number): this;
     rotateZ(angle: number): this;
+    setAttribute(name: string, attribute: BufferAttribute): this;
+    setIndex(index: BufferAttribute): this;
   }
 
   export class PlaneGeometry extends BufferGeometry {

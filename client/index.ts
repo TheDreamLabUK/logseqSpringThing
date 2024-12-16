@@ -3,6 +3,7 @@
  */
 
 import { platformManager } from './platform/platformManager';
+import { Settings, SettingsCategory, SettingKey, SettingValueType } from './types/settings';
 import { settingsManager } from './state/settings';
 import { graphDataManager } from './state/graphData';
 import { WebSocketService } from './websocket/websocketService';
@@ -12,7 +13,6 @@ import { TextRenderer } from './rendering/textRenderer';
 import { XRSessionManager } from './xr/xrSessionManager';
 import { XRInteraction } from './xr/xrInteraction';
 import { createLogger } from './utils/logger';
-import { Settings } from './core/types';
 import { ControlPanel } from './ui/ControlPanel';
 
 const logger = createLogger('Application');
@@ -34,14 +34,14 @@ class Application {
             // Initialize platform manager
             await platformManager.initialize();
 
+            // Initialize settings
+            await settingsManager.initialize();
+
             // Initialize scene first so we can render nodes when data arrives
             this.initializeScene();
 
             // Load initial graph data from REST endpoint
             await graphDataManager.loadInitialGraphData();
-            
-            // Load settings from REST endpoint
-            await this.loadSettings();
 
             // Initialize WebSocket for real-time updates
             this.webSocket = new WebSocketService();
@@ -77,8 +77,12 @@ class Application {
             // Initialize XR if supported
             await this.initializeXR();
 
-            // Initialize UI components after settings are loaded
-            new ControlPanel();
+            // Initialize UI components
+            const controlPanelContainer = document.getElementById('control-panel');
+            if (!controlPanelContainer) {
+                throw new Error('Control panel container not found');
+            }
+            new ControlPanel(controlPanelContainer);
 
             // Setup UI event listeners
             this.setupUIEventListeners();
@@ -90,37 +94,6 @@ class Application {
         } catch (error) {
             logger.error('Failed to initialize application:', error);
             this.showError('Failed to initialize application');
-        }
-    }
-
-    private async loadSettings(): Promise<void> {
-        try {
-            // Load settings by category
-            const categories = ['nodes', 'edges', 'rendering', 'labels', 'bloom', 'physics'] as const;
-            
-            for (const category of categories) {
-                try {
-                    logger.info(`Loading settings for category: ${category}`);
-                    const response = await fetch(`/api/visualization/settings/${category}`);
-                    if (!response.ok) {
-                        throw new Error(`Failed to fetch ${category} settings: ${response.statusText}`);
-                    }
-                    const data = await response.json();
-                    
-                    // Update settings for this category
-                    Object.entries(data).forEach(([setting, value]) => {
-                        settingsManager.updateSetting(category, setting, value);
-                    });
-                    
-                    logger.info(`Successfully loaded settings for ${category}`);
-                } catch (error) {
-                    logger.error(`Error loading ${category} settings:`, error);
-                    logger.info(`Using default settings for ${category}`);
-                }
-            }
-        } catch (error) {
-            logger.error('Failed to load settings:', error);
-            logger.info('Continuing with default settings');
         }
     }
 
@@ -142,10 +115,7 @@ class Application {
         this.nodeManager = NodeManager.getInstance(this.sceneManager);
 
         // Initialize text renderer
-        this.textRenderer = TextRenderer.getInstance(
-            this.sceneManager.getScene(),
-            this.sceneManager.getCamera()
-        );
+        this.textRenderer = new TextRenderer(this.sceneManager.getCamera());
 
         // Start rendering
         this.sceneManager.start();
@@ -183,78 +153,110 @@ class Application {
 
     private setupSettingsInputListeners(): void {
         // Node appearance settings
-        this.setupSettingInput('nodes', 'baseSize', 'number');
-        this.setupSettingInput('nodes', 'baseColor', 'color');
-        this.setupSettingInput('nodes', 'opacity', 'number');
+        this.setupSettingInput<'nodes', 'baseSize'>('nodes', 'baseSize');
+        this.setupSettingInput<'nodes', 'baseColor'>('nodes', 'baseColor');
+        this.setupSettingInput<'nodes', 'opacity'>('nodes', 'opacity');
 
         // Edge appearance settings
-        this.setupSettingInput('edges', 'baseWidth', 'number');
-        this.setupSettingInput('edges', 'color', 'color');
-        this.setupSettingInput('edges', 'opacity', 'number');
+        this.setupSettingInput<'edges', 'baseWidth'>('edges', 'baseWidth');
+        this.setupSettingInput<'edges', 'baseColor'>('edges', 'baseColor');
+        this.setupSettingInput<'edges', 'opacity'>('edges', 'opacity');
 
         // Visual effects settings
-        this.setupSettingInput('bloom', 'enabled', 'checkbox');
-        this.setupSettingInput('bloom', 'strength', 'number');
+        this.setupSettingInput<'bloom', 'edgeBloomStrength'>('bloom', 'edgeBloomStrength');
+
+        // Physics settings
+        this.setupSettingInput<'physics', 'enabled'>('physics', 'enabled');
+        this.setupSettingInput<'physics', 'springStrength'>('physics', 'springStrength');
     }
 
-    private setupSettingInput(
-        category: string,
-        setting: string,
-        type: 'number' | 'color' | 'checkbox'
+    private setupSettingInput<T extends SettingsCategory, K extends SettingKey<T>>(
+        category: T,
+        setting: K
     ): void {
-        const input = document.getElementById(`${category}-${setting}`) as HTMLInputElement;
+        const input = document.getElementById(`${String(category)}-${String(setting)}`) as HTMLInputElement;
         if (input) {
-            input.addEventListener('change', async () => {
-                let currentValue: any;
-                let previousValue: any;
-
-                if (type === 'checkbox') {
-                    previousValue = input.checked;
-                    currentValue = input.checked;
-                } else if (type === 'number') {
-                    previousValue = input.valueAsNumber;
-                    currentValue = input.valueAsNumber;
-                } else {
-                    previousValue = input.value;
-                    currentValue = input.value;
-                }
+            input.addEventListener('change', async (event) => {
+                const currentValue = (event.target as HTMLInputElement).value;
 
                 try {
-                    await settingsManager.updateSetting(category as keyof Settings, setting, currentValue);
-                } catch (error) {
-                    logger.error(`Failed to update setting ${category}.${setting}:`, error);
-                    // Revert UI on error
-                    if (type === 'checkbox') {
-                        input.checked = previousValue as boolean;
-                    } else {
-                        input.value = String(previousValue);
+                    const response = await fetch(`/api/visualization/settings/${String(category)}/${String(setting)}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ value: currentValue }),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
                     }
-                    this.showError(`Failed to update ${category} ${setting}`);
+
+                    await settingsManager.updateSetting(
+                        category,
+                        setting,
+                        this.parseSettingValue<T, K>(currentValue, category, setting)
+                    );
+                } catch (error) {
+                    logger.error(`Failed to update setting ${String(category)}.${String(setting)}:`, error);
+                    this.showError(`Failed to update ${String(category)} ${String(setting)}`);
                 }
             });
+        }
+    }
+
+    private parseSettingValue<T extends SettingsCategory, K extends SettingKey<T>>(
+        value: string,
+        category: T,
+        setting: K
+    ): SettingValueType<T, K> {
+        const currentSettings = settingsManager.getCurrentSettings();
+        const currentValue = currentSettings[category][setting];
+        
+        switch (typeof currentValue) {
+            case 'number':
+                return Number(value) as SettingValueType<T, K>;
+            case 'boolean':
+                return (value === 'true') as SettingValueType<T, K>;
+            default:
+                return value as SettingValueType<T, K>;
         }
     }
 
     private async saveSettings(): Promise<void> {
         try {
             const currentSettings = settingsManager.getCurrentSettings();
-            const categories = ['nodes', 'edges', 'rendering', 'labels', 'bloom', 'physics'] as const;
+            const categories = ['nodes', 'edges', 'rendering', 'physics', 'labels', 'bloom', 'clientDebug'] as const;
             
             for (const category of categories) {
                 const categorySettings = currentSettings[category];
                 for (const [setting, value] of Object.entries(categorySettings)) {
                     try {
-                        await settingsManager.updateSetting(category, setting, value);
+                        const response = await fetch(`/api/visualization/settings/${String(category)}/${String(setting)}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ value })
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`Failed to update setting: ${response.statusText}`);
+                        }
+
+                        await settingsManager.updateSetting(
+                            category,
+                            setting as keyof Settings[typeof category],
+                            value as SettingValueType<typeof category, keyof Settings[typeof category]>
+                        );
                     } catch (error) {
-                        logger.error(`Failed to update setting ${category}.${setting}:`, error);
+                        logger.error(`Failed to update setting ${String(category)}.${String(setting)}:`, error);
                     }
                 }
             }
-            
-            logger.log('Settings saved successfully');
         } catch (error) {
             logger.error('Failed to save settings:', error);
-            this.showError('Failed to save settings');
+            throw error;
         }
     }
 
