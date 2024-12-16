@@ -291,7 +291,14 @@ export type MessageType =
   | 'requestInitialData'
   | 'enableBinaryUpdates'
   | 'ping'
-  | 'pong';
+  | 'pong'
+  | 'settingsUpdated'
+  | 'graphUpdated';
+
+// Handler types
+export type MessageHandler = (data: any) => void;
+export type ErrorHandler = (error: Error) => void;
+export type ConnectionHandler = (connected: boolean) => void;
 
 // Base WebSocket message interface
 export interface BaseWebSocketMessage {

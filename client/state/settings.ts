@@ -13,9 +13,205 @@ export class SettingsManager {
         this.initializeSettings();
     }
 
-    private getDefaultSettings(): Settings {
-        // ... (keep existing default settings)
-        return this.settings;
+    public getDefaultSettings(): Settings {
+        return {
+            nodes: {
+                baseSize: 1.0,
+                baseColor: '#4CAF50',
+                opacity: 0.8,
+                highlightColor: '#ff4444',
+                clearcoat: 0.5,
+                enableHoverEffect: true,
+                enableInstancing: true,
+                highlightDuration: 500,
+                hoverScale: 1.2,
+                materialType: 'phong',
+                metalness: 0.5,
+                roughness: 0.5,
+                sizeByConnections: false,
+                sizeRange: [0.5, 2.0]
+            },
+            edges: {
+                baseWidth: 0.2,
+                color: '#E0E0E0',
+                opacity: 0.6,
+                arrowSize: 0.2,
+                enableArrows: true,
+                widthRange: [0.1, 0.5]
+            },
+            rendering: {
+                backgroundColor: '#212121',
+                ambientLightIntensity: 0.5,
+                directionalLightIntensity: 0.8,
+                enableAmbientOcclusion: true,
+                enableAntialiasing: true,
+                enableShadows: true,
+                environmentIntensity: 1.0
+            },
+            labels: {
+                enableLabels: true,
+                desktopFontSize: 14,
+                textColor: '#FFFFFF'
+            },
+            clientDebug: {
+                enabled: false,
+                enableDataDebug: false,
+                enableWebsocketDebug: false,
+                logBinaryHeaders: false,
+                logFullJson: false
+            },
+            animations: {
+                enableMotionBlur: true,
+                enableNodeAnimations: true,
+                motionBlurStrength: 0.5,
+                selectionWaveEnabled: true,
+                pulseEnabled: true,
+                rippleEnabled: true,
+                edgeAnimationEnabled: true,
+                flowParticlesEnabled: true
+            },
+            ar: {
+                dragThreshold: 0.1,
+                enableHandTracking: true,
+                enableHaptics: true,
+                enableLightEstimation: true,
+                enablePassthroughPortal: false,
+                enablePlaneDetection: true,
+                enableSceneUnderstanding: true,
+                gestureSsmoothing: 0.5,
+                handMeshColor: '#ffffff',
+                handMeshEnabled: true,
+                handMeshOpacity: 0.5,
+                handPointSize: 5,
+                handRayColor: '#00ff00',
+                handRayEnabled: true,
+                handRayWidth: 2,
+                hapticIntensity: 1.0,
+                passthroughBrightness: 1.0,
+                passthroughContrast: 1.0,
+                passthroughOpacity: 0.8,
+                pinchThreshold: 0.5,
+                planeColor: '#808080',
+                planeOpacity: 0.3,
+                portalEdgeColor: '#00ff00',
+                portalEdgeWidth: 0.02,
+                portalSize: 2.0,
+                roomScale: true,
+                rotationThreshold: 0.1,
+                showPlaneOverlay: true,
+                snapToFloor: true
+            },
+            audio: {
+                enableAmbientSounds: true,
+                enableInteractionSounds: true,
+                enableSpatialAudio: true
+            },
+            bloom: {
+                edgeBloomStrength: 1.0,
+                enabled: true,
+                environmentBloomStrength: 0.5,
+                nodeBloomStrength: 1.0,
+                radius: 0.75,
+                strength: 1.5
+            },
+            default: {
+                apiClientTimeout: 30000,
+                enableMetrics: true,
+                enableRequestLogging: true,
+                logFormat: 'json',
+                logLevel: 'info',
+                maxConcurrentRequests: 10,
+                maxPayloadSize: 1048576,
+                maxRetries: 3,
+                metricsPort: 9090,
+                retryDelay: 1000
+            },
+            github: {
+                basePath: '',
+                owner: '',
+                rateLimit: true,
+                repo: '',
+                token: ''
+            },
+            network: {
+                bindAddress: '0.0.0.0',
+                domain: 'localhost',
+                enableHttp2: true,
+                enableRateLimiting: true,
+                enableTls: false,
+                maxRequestSize: 1048576,
+                minTlsVersion: 'TLS1.2',
+                port: 3000,
+                rateLimitRequests: 100,
+                rateLimitWindow: 60,
+                tunnelId: ''
+            },
+            openai: {
+                apiKey: '',
+                baseUrl: 'https://api.openai.com/v1',
+                model: 'gpt-4',
+                rateLimit: 10,
+                timeout: 30000
+            },
+            perplexity: {
+                apiKey: '',
+                apiUrl: 'https://api.perplexity.ai',
+                frequencyPenalty: 0,
+                maxTokens: 1000,
+                model: 'mixtral-8x7b',
+                prompt: '',
+                rateLimit: 10,
+                presencePenalty: 0,
+                temperature: 0.7,
+                timeout: 30000,
+                topP: 1
+            },
+            physics: {
+                attractionStrength: 1.0,
+                boundsSize: 1000,
+                collisionRadius: 5,
+                damping: 0.5,
+                enableBounds: true,
+                enabled: true,
+                iterations: 1,
+                maxVelocity: 10,
+                repulsionStrength: 100,
+                springStrength: 0.1
+            },
+            ragflow: {
+                apiKey: '',
+                baseUrl: 'http://localhost:8000',
+                maxRetries: 3,
+                timeout: 30000
+            },
+            security: {
+                allowedOrigins: ['*'],
+                auditLogPath: './audit.log',
+                cookieHttponly: true,
+                cookieSamesite: 'Lax',
+                cookieSecure: false,
+                csrfTokenTimeout: 3600,
+                enableAuditLogging: true,
+                enableRequestValidation: true,
+                sessionTimeout: 86400
+            },
+            serverDebug: {
+                enableDataDebug: false,
+                enableWebsocketDebug: false,
+                enabled: false,
+                logBinaryHeaders: false,
+                logFullJson: false
+            },
+            websocket: {
+                binaryChunkSize: 1000,
+                compressionEnabled: true,
+                compressionThreshold: 1024,
+                heartbeatInterval: 30000,
+                heartbeatTimeout: 60000,
+                maxConnections: 1000,
+                maxMessageSize: 1048576
+            }
+        };
     }
 
     private async initializeSettings(): Promise<void> {
@@ -165,16 +361,6 @@ export class SettingsManager {
         // Dispatch a custom event that components can listen to for global settings changes
         const event = new CustomEvent('settingsChanged', { detail: settings });
         window.dispatchEvent(event);
-    }
-
-    private notifyAllSubscribers(): void {
-        Object.entries(this.settings).forEach(([category, categorySettings]) => {
-            if (typeof categorySettings === 'object') {
-                Object.entries(categorySettings).forEach(([setting, value]) => {
-                    this.notifySubscribers(category, setting, value);
-                });
-            }
-        });
     }
 
     private notifySubscribers<T>(category: string, setting: string, value: T): void {

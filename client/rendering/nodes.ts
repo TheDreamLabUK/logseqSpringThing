@@ -48,8 +48,8 @@ export class NodeManager {
   private sceneManager: SceneManager;
 
   // Instanced meshes - initialized with dummy values, properly set in constructor
-  private nodeInstances: THREE.InstancedMesh;
-  private edgeInstances: THREE.InstancedMesh;
+  private nodeInstances!: THREE.InstancedMesh;
+  private edgeInstances!: THREE.InstancedMesh;
 
   // State tracking
   private currentNodes: Node[] = [];
