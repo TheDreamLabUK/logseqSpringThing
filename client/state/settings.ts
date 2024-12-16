@@ -214,94 +214,79 @@ export class SettingsManager {
         };
     }
 
-    private async initializeSettings(): Promise<void> {
+    private async loadSetting(category: keyof Settings, setting: string): Promise<any> {
         try {
-            // Fetch settings by category instead of all at once
-            const categories = ['nodes', 'edges', 'rendering', 'labels'] as const;
-            
-            for (const category of categories) {
-                try {
-                    logger.info(`Loading settings for category: ${category}`);
-                    const response = await fetch(`/api/visualization/settings/${category}`);
-                    if (!response.ok) {
-                        throw new Error(`Failed to fetch ${category} settings: ${response.statusText}`);
-                    }
-                    const data = await response.json();
-                    
-                    // Update settings for this category
-                    this.settings[category] = convertObjectKeysToCamelCase(data);
-                    
-                    // Notify subscribers for this category
-                    Object.entries(this.settings[category]).forEach(([setting, value]) => {
-                        this.notifySubscribers(category, setting, value);
-                    });
-                    
-                    logger.info(`Successfully loaded settings for ${category}`);
-                } catch (error) {
-                    logger.error(`Error loading ${category} settings:`, error);
-                    logger.info(`Using default settings for ${category}`);
-                }
+            const response = await fetch(`/api/visualization/settings/${category}/${setting}`);
+            if (!response.ok) {
+                throw new Error(`Failed to load setting: ${response.statusText}`);
+            }
+            const data = await response.json();
+            return data.value;
+        } catch (error) {
+            logger.error(`Error loading setting ${category}.${setting}:`, error);
+            throw error;
+        }
+    }
+
+    private async saveSetting(category: keyof Settings, setting: string, value: any): Promise<void> {
+        try {
+            const snakeCaseValue = convertObjectKeysToSnakeCase(value);
+            const response = await fetch(`/api/visualization/settings/${category}/${setting}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ value: snakeCaseValue }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to save setting: ${response.statusText}`);
             }
         } catch (error) {
-            logger.error('Failed to initialize settings:', error);
-            // Fall back to default settings on error
-            this.settings = this.getDefaultSettings();
+            logger.error(`Error saving setting ${category}.${setting}:`, error);
+            throw error;
+        }
+    }
+
+    private async initializeSettings() {
+        const categories: Array<keyof Settings> = ['nodes', 'edges', 'rendering', 'labels', 'bloom', 'physics'];
+        for (const category of categories) {
+            const settings = this.settings[category];
+            if (settings) {
+                for (const [setting] of Object.entries(settings)) {
+                    try {
+                        const serverValue = await this.loadSetting(category, setting);
+                        if (serverValue !== undefined) {
+                            const camelCaseValue = typeof serverValue === 'object' 
+                                ? convertObjectKeysToCamelCase(serverValue)
+                                : serverValue;
+                            (this.settings[category] as any)[setting] = camelCaseValue;
+                        }
+                    } catch (error) {
+                        logger.warn(`Failed to load setting ${category}.${setting}, using default value:`, error);
+                    }
+                }
+            }
         }
     }
 
     public async updateSetting(category: keyof Settings, setting: string, value: any): Promise<void> {
         try {
-            // Update local settings first
-            const categorySettings = this.settings[category] as Record<string, any>;
-            const oldValue = categorySettings[setting];
-            categorySettings[setting] = value;
-
-            // Convert category and setting to snake_case for API
-            const snakeCaseCategory = convertObjectKeysToSnakeCase({ [category]: null })[0];
-            const snakeCaseSetting = convertObjectKeysToSnakeCase({ [setting]: null })[0];
-
-            // Prepare the request body with snake_case
-            const requestBody = {
-                value: convertObjectKeysToSnakeCase(value)
-            };
-
-            // Send update to server
-            const response = await fetch(
-                `/api/visualization/${snakeCaseCategory}/${snakeCaseSetting}`,
-                {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(requestBody)
-                }
-            );
-
-            if (!response.ok) {
-                // Revert local change on error
-                categorySettings[setting] = oldValue;
-                throw new Error(`Failed to update setting: ${response.statusText}`);
-            }
-
-            // Notify subscribers of successful update
+            await this.saveSetting(category, setting, value);
+            (this.settings[category] as any)[setting] = value;
             this.notifySubscribers(category, setting, value);
         } catch (error) {
-            logger.error('Error updating setting:', error);
+            logger.error(`Failed to update setting ${category}.${setting}:`, error);
             throw error;
         }
     }
 
     public async getSetting(category: keyof Settings, setting: string): Promise<any> {
         try {
-            // Convert camelCase to snake_case for API request
-            const snakeCaseCategory = convertObjectKeysToSnakeCase({ [category]: null })[0];
-            const snakeCaseSetting = convertObjectKeysToSnakeCase({ [setting]: null })[0];
-
-            const response = await fetch(`/api/visualization/${snakeCaseCategory}/${snakeCaseSetting}`);
+            const response = await fetch(`/api/visualization/settings/${category}/${setting}`);
             if (!response.ok) {
                 throw new Error(`Failed to get setting: ${response.statusText}`);
             }
-
             const data = await response.json();
             const value = convertObjectKeysToCamelCase(data.value);
 
