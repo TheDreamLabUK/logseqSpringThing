@@ -28,27 +28,34 @@ class SettingsManager implements ISettingsManager {
             for (const category of categories) {
                 try {
                     const response = await fetch(`/api/visualization/settings/${category}`);
+                    if (response.status === 404) {
+                        logger.info(`Settings endpoint for ${category} not found, using defaults`);
+                        continue;
+                    }
                     if (!response.ok) {
                         throw new Error(`Failed to fetch ${category} settings: ${response.statusText}`);
                     }
                     const data = await response.json();
                     
                     // Update all settings in this category
-                    for (const [setting, value] of Object.entries(data)) {
-                        if (setting in this.settings[category]) {
-                            (this.settings[category] as any)[setting] = value;
-                            logger.info(`Loaded setting ${category}.${setting} = ${value}`);
-                        }
+                    if (this.settings[category]) {
+                        this.settings[category] = { ...this.settings[category], ...data };
+                        logger.info(`Loaded settings for category ${category}`);
                     }
                 } catch (error) {
-                    logger.error(`Error loading ${category} settings:`, error);
-                    logger.info(`Using default values for ${category} settings`);
+                    if (error instanceof Error && error.message.includes('404')) {
+                        logger.info(`Using default values for ${category} settings`);
+                    } else {
+                        logger.error(`Error loading ${category} settings:`, error);
+                        logger.info(`Using default values for ${category} settings`);
+                    }
                 }
             }
+            
+            this.initialized = true;
         } catch (error) {
             logger.error('Failed to initialize settings:', error);
             logger.info('Using default settings');
-        } finally {
             this.initialized = true;
         }
     }

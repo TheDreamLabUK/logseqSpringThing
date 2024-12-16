@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { Node } from '../core/types';
-import { SceneManager } from './scene';
 import { createLogger } from '../utils/logger';
 import { settingsManager } from '../state/settings';
 import { Settings, NodeSettings, PhysicsSettings } from '../types/settings';
@@ -26,6 +25,7 @@ class DummyMaterial {
     metalness = 0;
     roughness = 0;
     needsUpdate = false;
+    dispose() {} 
 }
 
 export class NodeRenderer {
@@ -98,7 +98,6 @@ export class NodeRenderer {
 
 export class NodeManager {
     private static instance: NodeManager;
-    private readonly sceneManager: SceneManager;
     private currentSettings: Settings;
     private nodeInstances: THREE.InstancedMesh;
     private edgeInstances: THREE.InstancedMesh;
@@ -107,8 +106,7 @@ export class NodeManager {
     private currentNodes: Node[] = [];
     private nodeIndices: Map<string, number> = new Map();
 
-    private constructor(sceneManager: SceneManager) {
-        this.sceneManager = sceneManager;
+    private constructor() {
         this.currentSettings = settingsManager.getCurrentSettings();
         this.nodeRenderer = new NodeRenderer();
 
@@ -226,21 +224,33 @@ export class NodeManager {
         });
     }
 
-    public static getInstance(sceneManager: SceneManager): NodeManager {
+    public static getInstance(): NodeManager {
         if (!NodeManager.instance) {
-            NodeManager.instance = new NodeManager(sceneManager);
+            NodeManager.instance = new NodeManager();
         }
         return NodeManager.instance;
     }
 
     public dispose(): void {
+        if (this.nodeInstances) {
+            if (this.nodeInstances.geometry) {
+                this.nodeInstances.geometry.dispose();
+            }
+            if (this.nodeInstances.material instanceof THREE.Material) {
+                this.nodeInstances.material.dispose();
+            }
+            this.nodeInstances.dispose();
+        }
+        if (this.edgeInstances) {
+            if (this.edgeInstances.geometry) {
+                this.edgeInstances.geometry.dispose();
+            }
+            if (this.edgeInstances.material instanceof THREE.Material) {
+                this.edgeInstances.material.dispose();
+            }
+            this.edgeInstances.dispose();
+        }
         this.unsubscribers.forEach(unsubscribe => unsubscribe());
         this.unsubscribers = [];
-        this.nodeInstances.geometry.dispose();
-        (this.nodeInstances.material as THREE.Material).dispose();
-        this.edgeInstances.geometry.dispose();
-        (this.edgeInstances.material as THREE.Material).dispose();
-        this.sceneManager.remove(this.nodeInstances);
-        this.sceneManager.remove(this.edgeInstances);
     }
 }

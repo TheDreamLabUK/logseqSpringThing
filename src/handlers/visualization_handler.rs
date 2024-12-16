@@ -189,12 +189,67 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
     Ok(())
 }
 
+// GET /api/visualization/settings/{category} - Get all settings for a category
+pub async fn get_category_settings(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let category = path.into_inner();
+    debug!("Getting all settings for category: {}", category);
+    
+    let settings_guard = match settings.read().await {
+        guard => {
+            debug!("Successfully acquired settings read lock");
+            guard
+        }
+    };
+
+    // Get all settings for the category
+    match get_category_settings_value(&*settings_guard, &category) {
+        Ok(value) => {
+            debug!("Successfully retrieved category settings: {:?}", value);
+            HttpResponse::Ok().json(value)
+        },
+        Err(e) => {
+            error!("Failed to get category settings: {}", e);
+            HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Failed to get category settings: {}", e)
+            }))
+        }
+    }
+}
+
+// Helper function to get all settings for a category
+fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Value, String> {
+    let category_snake = to_snake_case(category);
+    
+    // Use reflection to get the category field
+    match serde_json::to_value(settings) {
+        Ok(settings_value) => {
+            if let Some(obj) = settings_value.as_object() {
+                if let Some(category_value) = obj.get(&category_snake) {
+                    Ok(category_value.clone())
+                } else {
+                    Err(format!("Category '{}' not found", category))
+                }
+            } else {
+                Err("Settings is not an object".to_string())
+            }
+        },
+        Err(e) => Err(format!("Failed to serialize settings: {}", e))
+    }
+}
+
 // Register the handlers with the Actix web app
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/api/visualization")
+        web::scope("/api/visualization/settings")
             .service(
-                web::resource("/settings/{category}/{setting}")
+                web::resource("/{category}")
+                    .route(web::get().to(get_category_settings))
+            )
+            .service(
+                web::resource("/{category}/{setting}")
                     .route(web::get().to(get_setting))
                     .route(web::put().to(update_setting))
             )
