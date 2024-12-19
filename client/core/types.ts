@@ -109,19 +109,6 @@ export interface ClientDebugSettings {
   logFullJson: boolean;
 }
 
-export interface DefaultSettings {
-  apiClientTimeout: number;
-  enableMetrics: boolean;
-  enableRequestLogging: boolean;
-  logFormat: string;
-  logLevel: string;
-  maxConcurrentRequests: number;
-  maxPayloadSize: number;
-  maxRetries: number;
-  metricsPort: number;
-  retryDelay: number;
-}
-
 export interface EdgeSettings {
   arrowSize: number;
   baseWidth: number;
@@ -129,14 +116,6 @@ export interface EdgeSettings {
   enableArrows: boolean;
   opacity: number;
   widthRange: [number, number];
-}
-
-export interface GithubSettings {
-  basePath: string;
-  owner: string;
-  rateLimit: boolean;
-  repo: string;
-  token: string;
 }
 
 export interface LabelSettings {
@@ -148,15 +127,7 @@ export interface LabelSettings {
 export interface NetworkSettings {
   bindAddress: string;
   domain: string;
-  enableHttp2: boolean;
-  enableRateLimiting: boolean;
-  enableTls: boolean;
-  maxRequestSize: number;
-  minTlsVersion: string;
   port: number;
-  rateLimitRequests: number;
-  rateLimitWindow: number;
-  tunnelId: string;
 }
 
 export interface NodeSettings {
@@ -176,28 +147,6 @@ export interface NodeSettings {
   sizeRange: [number, number];
 }
 
-export interface OpenAISettings {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-  rateLimit: number;
-  timeout: number;
-}
-
-export interface PerplexitySettings {
-  apiKey: string;
-  apiUrl: string;
-  frequencyPenalty: number;
-  maxTokens: number;
-  model: string;
-  prompt: string;
-  rateLimit: number;
-  presencePenalty: number;
-  temperature: number;
-  timeout: number;
-  topP: number;
-}
-
 export interface PhysicsSettings {
   attractionStrength: number;
   boundsSize: number;
@@ -211,13 +160,6 @@ export interface PhysicsSettings {
   springStrength: number;
 }
 
-export interface RagflowSettings {
-  apiKey: string;
-  baseUrl: string;
-  maxRetries: number;
-  timeout: number;
-}
-
 export interface RenderingSettings {
   ambientLightIntensity: number;
   backgroundColor: string;
@@ -228,33 +170,9 @@ export interface RenderingSettings {
   environmentIntensity: number;
 }
 
-export interface SecuritySettings {
-  allowedOrigins: string[];
-  auditLogPath: string;
-  cookieHttponly: boolean;
-  cookieSamesite: string;
-  cookieSecure: boolean;
-  csrfTokenTimeout: number;
-  enableAuditLogging: boolean;
-  enableRequestValidation: boolean;
-  sessionTimeout: number;
-}
-
-export interface ServerDebugSettings {
-  enableDataDebug: boolean;
-  enableWebsocketDebug: boolean;
-  enabled: boolean;
-  logBinaryHeaders: boolean;
-  logFullJson: boolean;
-}
-
 export interface WebsocketSettings {
-  binaryChunkSize: number;
-  compressionEnabled: boolean;
-  compressionThreshold: number;
   heartbeatInterval: number;
   heartbeatTimeout: number;
-  maxConnections: number;
   maxMessageSize: number;
 }
 
@@ -264,25 +182,44 @@ export interface Settings {
   audio: AudioSettings;
   bloom: BloomSettings;
   clientDebug: ClientDebugSettings;
-  default: DefaultSettings;
   edges: EdgeSettings;
-  github: GithubSettings;
   labels: LabelSettings;
   network: NetworkSettings;
   nodes: NodeSettings;
-  openai: OpenAISettings;
-  perplexity: PerplexitySettings;
   physics: PhysicsSettings;
-  ragflow: RagflowSettings;
   rendering: RenderingSettings;
-  security: SecuritySettings;
-  serverDebug: ServerDebugSettings;
   websocket: WebsocketSettings;
 }
 
 export type SettingCategory = keyof Settings;
 export type SettingKey<T extends SettingCategory> = keyof Settings[T];
 export type SettingValue = string | number | boolean | number[] | string[];
+
+// WebSocket specific error types
+export enum WebSocketErrorType {
+  CONNECTION_FAILED = 'CONNECTION_FAILED',
+  CONNECTION_LOST = 'CONNECTION_LOST',
+  MAX_RETRIES_EXCEEDED = 'MAX_RETRIES_EXCEEDED',
+  MESSAGE_PARSE_ERROR = 'MESSAGE_PARSE_ERROR',
+  SEND_FAILED = 'SEND_FAILED',
+  INVALID_MESSAGE = 'INVALID_MESSAGE',
+  TIMEOUT = 'TIMEOUT'
+}
+
+export interface WebSocketError extends Error {
+  type: WebSocketErrorType;
+  code?: number;
+  details?: any;
+}
+
+// WebSocket connection status
+export enum WebSocketStatus {
+  CONNECTING = 'CONNECTING',
+  CONNECTED = 'CONNECTED',
+  DISCONNECTED = 'DISCONNECTED',
+  RECONNECTING = 'RECONNECTING',
+  FAILED = 'FAILED'
+}
 
 // WebSocket message types
 export type MessageType = 
@@ -293,12 +230,13 @@ export type MessageType =
   | 'ping'
   | 'pong'
   | 'settingsUpdated'
-  | 'graphUpdated';
+  | 'graphUpdated'
+  | 'connectionStatus';  // New type for connection status updates
 
 // Handler types
 export type MessageHandler = (data: any) => void;
-export type ErrorHandler = (error: Error) => void;
-export type ConnectionHandler = (connected: boolean) => void;
+export type ErrorHandler = (error: WebSocketError) => void;
+export type ConnectionHandler = (status: WebSocketStatus, details?: any) => void;
 
 // Base WebSocket message interface
 export interface BaseWebSocketMessage {
@@ -344,13 +282,20 @@ export interface PongMessage extends BaseWebSocketMessage {
   timestamp: number;
 }
 
+export interface ConnectionStatusMessage extends BaseWebSocketMessage {
+  type: 'connectionStatus';
+  status: WebSocketStatus;
+  details?: any;
+}
+
 export type WebSocketMessage =
   | InitialDataMessage
   | BinaryPositionUpdateMessage
   | RequestInitialDataMessage
   | EnableBinaryUpdatesMessage
   | PingMessage
-  | PongMessage;
+  | PongMessage
+  | ConnectionStatusMessage;
 
 // Logger interface
 export interface Logger {

@@ -11,6 +11,9 @@ COPY package.json pnpm-lock.yaml ./
 COPY tsconfig.json tsconfig.node.json vite.config.ts ./
 COPY client ./client
 
+# Create data/public directory for build output
+RUN mkdir -p data/public
+
 # Install dependencies and build
 RUN pnpm install --frozen-lockfile && \
     pnpm run build
@@ -148,7 +151,7 @@ RUN chown -R webxr:webxr /app/venv
 COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/
 COPY settings.toml /app/
 COPY src/utils/compute_forces.ptx /app/compute_forces.ptx
-COPY --from=frontend-builder /app/dist /app/data/public/dist
+COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
 
 # Copy configuration and scripts
 COPY src/generate_audio.py /app/src/

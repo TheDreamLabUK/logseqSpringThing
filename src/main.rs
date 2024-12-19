@@ -1,144 +1,44 @@
 #[macro_use]
 extern crate log;
 
-#[macro_use]
-extern crate webxr;
-
 use webxr::{
-    AppState, Settings, GraphData,
+    AppState, Settings,
     init_debug_settings,
     file_handler, graph_handler, perplexity_handler, ragflow_handler, visualization_handler,
-    RealGitHubService, FileService, PerplexityService, RAGFlowService, RAGFlowError,
-    GraphService, RealGitHubPRService, ws_handler, GPUCompute
+    handlers::socket_flow_handler,
+    RealGitHubService, PerplexityService, RAGFlowService,
+    RealGitHubPRService, GPUCompute, GraphData,
+    log_data, log_warn,
 };
 
-use actix_web::{web, App, HttpServer, middleware, HttpResponse};
+use actix_web::{web, App, HttpServer, middleware};
+use actix_cors::Cors;
 use actix_files::Files;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::collections::HashMap;
-use std::error::Error;
-use cudarc::driver::DriverError;
-use tokio::time::{interval, Duration};
 use dotenvy::dotenv;
 
-#[derive(Debug)]
-pub struct AppError(Box<dyn Error + Send + Sync>);
-
-impl From<Box<dyn Error + Send + Sync>> for AppError {
-    fn from(err: Box<dyn Error + Send + Sync>) -> Self {
-        AppError(err)
-    }
+// Handler configuration functions
+fn configure_file_handler(cfg: &mut web::ServiceConfig) {
+    cfg.service(web::resource("/fetch").to(file_handler::fetch_and_process_files))
+       .service(web::resource("/content/{file_name}").to(file_handler::get_file_content))
+       .service(web::resource("/refresh").to(file_handler::refresh_graph))
+       .service(web::resource("/update").to(file_handler::update_graph));
 }
 
-impl From<RAGFlowError> for AppError {
-    fn from(err: RAGFlowError) -> Self {
-        AppError(Box::new(err))
-    }
+fn configure_graph_handler(cfg: &mut web::ServiceConfig) {
+    cfg.service(web::resource("/data").to(graph_handler::get_graph_data))
+       .service(web::resource("/update").to(graph_handler::update_graph));
 }
 
-impl From<AppError> for std::io::Error {
-    fn from(err: AppError) -> Self {
-        if let Some(io_err) = err.0.downcast_ref::<std::io::Error>() {
-            std::io::Error::new(io_err.kind(), io_err.to_string())
-        } else if let Some(driver_err) = err.0.downcast_ref::<DriverError>() {
-            std::io::Error::new(std::io::ErrorKind::Other, driver_err.to_string())
-        } else {
-            std::io::Error::new(std::io::ErrorKind::Other, err.0.to_string())
-        }
-    }
+fn configure_perplexity_handler(cfg: &mut web::ServiceConfig) {
+    cfg.service(perplexity_handler::handle_perplexity);
 }
 
-fn to_io_error(e: impl std::fmt::Display) -> Box<dyn Error + Send + Sync> {
-    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-}
-
-async fn initialize_cached_graph_data(app_state: &web::Data<AppState>) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let metadata_map = FileService::load_or_create_metadata()
-        .map_err(|e| {
-            log_error!("Failed to load metadata: {}", e);
-            to_io_error(e)
-        })?;
-
-    log_data!("Loaded metadata with {} entries", metadata_map.len());
-    
-    {
-        let mut app_metadata = app_state.metadata.write().await;
-        *app_metadata = metadata_map.clone();
-    }
-
-    log_data!("Building graph from metadata...");
-    let graph_data = GraphService::build_graph_from_metadata(&metadata_map).await
-        .map_err(|e| {
-            log_error!("Failed to build graph from metadata: {}", e);
-            to_io_error(e)
-        })?;
-
-    {
-        let mut graph = app_state.graph_service.graph_data.write().await;
-        *graph = graph_data.clone();
-        graph.metadata = metadata_map;
-        
-        log_data!("Graph initialized with {} nodes and {} edges", 
-            graph.nodes.len(), 
-            graph.edges.len()
-        );
-    }
-
-    Ok(())
-}
-
-async fn update_graph_periodically(app_state: web::Data<AppState>) {
-    let mut interval = interval(Duration::from_secs(43200));
-
-    loop {
-        interval.tick().await;
-        
-        let mut metadata_map = match FileService::load_or_create_metadata() {
-            Ok(map) => map,
-            Err(e) => {
-                log_error!("Failed to load metadata: {}", e);
-                continue;
-            }
-        };
-
-        let settings = app_state.settings.clone();
-        match FileService::fetch_and_process_files(&*app_state.github_service, settings, &mut metadata_map).await {
-            Ok(processed_files) => {
-                if !processed_files.is_empty() {
-                    log_data!("Found {} updated files, updating graph", processed_files.len());
-
-                    {
-                        let mut app_metadata = app_state.metadata.write().await;
-                        *app_metadata = metadata_map.clone();
-                    }
-
-                    let mut graph = app_state.graph_service.graph_data.write().await;
-                    let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
-                        .map(|node| (node.id.clone(), (node.x(), node.y(), node.z())))
-                        .collect();
-                    
-                    graph.metadata = metadata_map.clone();
-
-                    if let Ok(mut new_graph) = GraphService::build_graph_from_metadata(&metadata_map).await {
-                        for node in &mut new_graph.nodes {
-                            if let Some(&(x, y, z)) = old_positions.get(&node.id) {
-                                node.set_x(x);
-                                node.set_y(y);
-                                node.set_z(z);
-                            }
-                        }
-                        *graph = new_graph.clone();
-                    }
-                }
-            },
-            Err(e) => log_error!("Failed to check for updates: {}", e)
-        }
-    }
-}
-
-async fn health_check() -> HttpResponse {
-    HttpResponse::Ok().finish()
+fn configure_ragflow_handler(cfg: &mut web::ServiceConfig) {
+    cfg.service(web::resource("/send").to(ragflow_handler::send_message))
+       .service(web::resource("/init").to(ragflow_handler::init_chat))
+       .service(web::resource("/history/{conversation_id}").to(ragflow_handler::get_chat_history));
 }
 
 #[actix_web::main]
@@ -147,147 +47,144 @@ async fn main() -> std::io::Result<()> {
 
     // Load settings first to get the log level
     let settings = match Settings::new() {
-        Ok(s) => Arc::new(RwLock::new(s)),
+        Ok(s) => {
+            debug!("Successfully loaded settings: {:?}", s);
+            Arc::new(RwLock::new(s))
+        },
         Err(e) => {
             eprintln!("Failed to load settings: {:?}", e);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize settings: {:?}", e)));
         }
     };
 
-    // Initialize debug settings
-    let (debug_enabled, websocket_debug, data_debug) = {
-        let settings_read = settings.read().await;
-        (
-            settings_read.server_debug.enabled,
-            settings_read.server_debug.enable_websocket_debug,
-            settings_read.server_debug.enable_data_debug,
-        )
-    };
+    // Create web::Data instances first
+    let settings_data = web::Data::new(settings.clone());
 
-    // Set default log level
-    std::env::set_var("RUST_LOG", "info");
-    
-    env_logger::init();
-    
-    // Initialize our debug logging system
-    init_debug_settings(debug_enabled, websocket_debug, data_debug);
-
-    log_data!("Initializing services...");
-    
+    // Initialize services
     let settings_read = settings.read().await;
-    let github_service = {
-        Arc::new(RealGitHubService::new(
-            settings_read.github.token.clone(),
-            settings_read.github.owner.clone(),
-            settings_read.github.repo.clone(),
-            settings_read.github.base_path.clone(),
-            settings.clone(),
-        ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?)
+    let github_service: Arc<RealGitHubService> = match RealGitHubService::new(
+        (*settings_read).github.token.clone(),
+        (*settings_read).github.owner.clone(),
+        (*settings_read).github.repo.clone(),
+        (*settings_read).github.base_path.clone(),
+        settings.clone(),
+    ) {
+        Ok(service) => Arc::new(service),
+        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
     };
 
-    let github_pr_service = {
-        Arc::new(RealGitHubPRService::new(
-            settings_read.github.token.clone(),
-            settings_read.github.owner.clone(),
-            settings_read.github.repo.clone(),
-            settings_read.github.base_path.clone(),
-        ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?)
+    let github_pr_service: Arc<RealGitHubPRService> = match RealGitHubPRService::new(
+        (*settings_read).github.token.clone(),
+        (*settings_read).github.owner.clone(),
+        (*settings_read).github.repo.clone(),
+        (*settings_read).github.base_path.clone()
+    ) {
+        Ok(service) => Arc::new(service),
+        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
     };
 
-    let perplexity_service = Arc::new(PerplexityService::new(settings.clone())
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?);
-    
-    let ragflow_service = Arc::new(RAGFlowService::new(settings.clone()).await
-        .map_err(AppError::from)?);
+    let perplexity_service: Arc<PerplexityService> = match PerplexityService::new(settings.clone()).await {
+        Ok(service) => Arc::new(service),
+        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+    };
 
-    log_data!("Creating RAGFlow conversation...");
-    let ragflow_conversation_id = ragflow_service.create_conversation("default_user".to_string()).await
-        .map_err(AppError::from)?;
+    let ragflow_service: Arc<RAGFlowService> = match RAGFlowService::new(settings.clone()).await {
+        Ok(service) => Arc::new(service),
+        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+    };
+    drop(settings_read);
 
+    // Initialize GPU compute
     log_data!("Initializing GPU compute...");
     let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
-       Ok(gpu) => {
+        Ok(gpu) => {
             log_data!("GPU initialization successful");
             Some(gpu)
-        },
+        }
         Err(e) => {
             log_warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
             None
         }
     };
 
+    // Initialize app state
     let app_state = web::Data::new(AppState::new(
         settings.clone(),
-        github_service,
-        perplexity_service,
-        ragflow_service,
+        github_service.clone(),
+        perplexity_service.clone(),
+        ragflow_service.clone(),
         gpu_compute,
-        ragflow_conversation_id,
-        github_pr_service,
+        "default_conversation".to_string(),
+        github_pr_service.clone(),
     ));
 
-    log_data!("Initializing graph with cached data...");
-    if let Err(e) = initialize_cached_graph_data(&app_state).await {
-        log_error!("Failed to initialize graph from cache: {}", e);
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize graph: {}", e)));
+    // Create conversation
+    log_data!("Creating RAGFlow conversation...");
+    if let Err(e) = ragflow_service.create_conversation("default_user".to_string()).await {
+        error!("Failed to create conversation: {}", e);
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
     }
 
-    let update_state = app_state.clone();
-    let update_handle = tokio::spawn(async move {
-        update_graph_periodically(update_state).await;
-    });
+    // Initialize debug settings
+    let (debug_enabled, websocket_debug, data_debug) = {
+        let settings_read = settings.read().await;
+        let debug_settings = (
+            (*settings_read).server_debug.enabled,
+            (*settings_read).server_debug.enable_websocket_debug,
+            (*settings_read).server_debug.enable_data_debug,
+        );
+        debug_settings
+    };
 
-    let bind_address = "0.0.0.0:3000";
+    // Initialize our debug logging system
+    init_debug_settings(debug_enabled, websocket_debug, data_debug);
+
+    // Start the server
+    let bind_address = {
+        let settings_read = settings.read().await;
+        format!("{}:{}", (*settings_read).network.bind_address, (*settings_read).network.port)
+    };
+
     log_data!("Starting HTTP server on {}", bind_address);
 
-    let server = HttpServer::new(move || {
+    HttpServer::new(move || {
+        // Configure CORS
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header()
+            .max_age(3600)
+            .supports_credentials();
+
         App::new()
-            .app_data(app_state.clone())
             .wrap(middleware::Logger::default())
-            .route("/health", web::get().to(health_check))
+            .wrap(cors)
+            .wrap(middleware::Compress::default())
+            .app_data(settings_data.clone())
+            .app_data(app_state.clone())
+            .app_data(web::Data::new(github_service.clone()))
+            .app_data(web::Data::new(perplexity_service.clone()))
+            .app_data(web::Data::new(ragflow_service.clone()))
+            .app_data(web::Data::new(github_pr_service.clone()))
+            .service(
+                web::scope("/api")
+                    .service(web::scope("/files").configure(configure_file_handler))
+                    .service(web::scope("/graph").configure(configure_graph_handler))
+                    .service(web::scope("/perplexity").configure(configure_perplexity_handler))
+                    .service(web::scope("/ragflow").configure(configure_ragflow_handler))
+                    .service(web::scope("/visualization").configure(visualization_handler::config))
+            )
             .service(
                 web::resource("/wss")
-                    .route(web::get().to(ws_handler))
+                    .app_data(web::PayloadConfig::new(1 << 25))  // 32MB max payload
+                    .to(socket_flow_handler::ws_handler)
             )
-            .service(
-                web::scope("/api/files")
-                    .route("/fetch", web::get().to(file_handler::fetch_and_process_files))
-            )
-            .service(
-                web::scope("/api/graph")
-                    .route("/data", web::get().to(graph_handler::get_graph_data))
-                    .route("/data/paginated", web::get().to(graph_handler::get_paginated_graph_data))
-            )
-            .service(
-                web::scope("/api/chat")
-                    .route("/init", web::post().to(ragflow_handler::init_chat))
-                    .route("/message", web::post().to(ragflow_handler::send_message))
-                    .route("/history", web::get().to(ragflow_handler::get_chat_history))
-            )
-            .service(
-                web::scope("/api/visualization")
-                    .configure(visualization_handler::config)  // Use the config function to register both GET and PUT
-            )
-            .service(
-                web::scope("/api/perplexity")
-                    .service(perplexity_handler::handle_perplexity)
-            )
-            .service(
-                Files::new("/", "/app/data/public/dist").index_file("index.html")
-            )
+            .service(Files::new("/", "/app/client").index_file("index.html"))
     })
-    .bind(bind_address)?
-    .run();
+    .bind(&bind_address)?
+    .run()
+    .await?;
 
-    // Run both servers and handle shutdown
-    tokio::select! {
-        _ = server => {
-            log_data!("HTTP server stopped");
-        }
-        _ = update_handle => {
-            log_data!("Update task stopped");
-        }
-    }
-
+    log_data!("HTTP server stopped");
     Ok(())
 }

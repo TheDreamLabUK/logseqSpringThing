@@ -126,26 +126,6 @@ size_range = [
     5,
 ]
 
-[openai]
-api_key = "default_openai_key"
-base_url = "wss://api.openai.com/v1/realtime"
-model = "gpt-4o-realtime-preview-2024-10-01"
-rate_limit = 100
-timeout = 30
-
-[perplexity]
-api_key = "default_perplexity_key"
-api_url = "https://api.perplexity.ai/chat/completions"
-frequency_penalty = 1.0
-max_tokens = 4096
-model = "llama-3.1-sonar-small-128k-online"
-prompt = "You are an AI assistant for LogSeq knowledge summaries via perplexity API. Style: Informative, analytical, optimistic, critical, conversational, authoritative. Markdown: hierarchical headings (- #), minimal bold, italics for book titles, descriptive links [URL](text), images ![alt](path){:width height}, embeds {{type id}}, lists with '-', block refs [[title]], properties property:: value, code blocks ```lang``` and `inline code`, \r newlines, public:: true at start. UK spelling, introduce acronyms once, numeric citations, [[reference]] for sources, minimal emojis, parentheses for asides, collapsed:: true. Focus on emerging tech (decentralization, AI, XR), detail, credible sources, implications, examples, future-oriented. Adhere strictly, ensure accuracy, consistency, large context, refine with feedback."
-rate_limit = 100
-resence_penalty = 0.0
-temperature = 0.5
-timeout = 30
-top_p = 0.9
-
 [physics]
 attraction_strength = 0.015
 bounds_size = 12
@@ -157,12 +137,6 @@ iterations = 500
 max_velocity = 2.5
 repulsion_strength = 1500
 spring_strength = 0.018
-
-[ragflow]
-api_key = "default_ragflow_key"
-base_url = "http://ragflow-server/v1/"
-max_retries = 3
-timeout = 30
 
 [rendering]
 ambient_light_intensity = 0.7

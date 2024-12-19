@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { Node } from '../core/types';
 import { createLogger } from '../utils/logger';
 import { settingsManager } from '../state/settings';
-import { Settings, NodeSettings, PhysicsSettings } from '../types/settings';
+import type { Settings } from '../types/settings';
+import type { NodeSettings, PhysicsSettings } from '../core/types';
 
 const logger = createLogger('NodeManager');
 

@@ -9,6 +9,7 @@ pub mod config;
 pub mod handlers;
 pub mod models;
 pub mod services;
+pub mod types;
 
 // Re-export debug settings
 pub use crate::utils::debug_logging::init_debug_settings;
@@ -17,7 +18,7 @@ pub use crate::utils::debug_logging::init_debug_settings;
 pub use crate::utils::gpu_compute::GPUCompute;
 
 // Re-export socket flow handler
-pub use crate::utils::socket_flow_handler::{SocketFlowServer, ws_handler};
+pub use crate::handlers::socket_flow_handler::{SocketFlowServer, ws_handler};
 
 // Public re-exports
 pub use app_state::AppState;

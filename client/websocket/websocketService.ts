@@ -7,7 +7,10 @@ import {
   MessageHandler,
   ErrorHandler,
   ConnectionHandler,
-  PingMessage
+  PingMessage,
+  WebSocketErrorType,
+  WebSocketError,
+  WebSocketStatus
 } from '../core/types';
 import { WS_RECONNECT_INTERVAL, WS_MESSAGE_QUEUE_SIZE, WS_URL, BINARY_VERSION } from '../core/constants';
 import { createLogger } from '../core/utils';
@@ -48,14 +51,14 @@ export class WebSocketService {
       this.isConnected = true;
       logger.info('WebSocket connected');
       this.flushMessageQueue();
-      this.notifyConnectionHandlers(true);
+      this.notifyConnectionHandlers(WebSocketStatus.CONNECTED);
     };
 
     this.ws.onclose = () => {
       this.isConnected = false;
       logger.info('WebSocket disconnected');
       this.scheduleReconnect();
-      this.notifyConnectionHandlers(false);
+      this.notifyConnectionHandlers(WebSocketStatus.DISCONNECTED);
     };
 
     this.ws.onerror = (error) => {
@@ -144,19 +147,26 @@ export class WebSocketService {
   }
 
   private notifyErrorHandlers(error: Error): void {
+    const wsError = {
+      name: error.name,
+      message: error.message,
+      type: WebSocketErrorType.CONNECTION_FAILED,
+      stack: error.stack
+    } as WebSocketError;
+    
     this.errorHandlers.forEach(handler => {
       try {
-        handler(error);
+        handler(wsError);
       } catch (error) {
         logger.error('Error in error handler:', error);
       }
     });
   }
 
-  private notifyConnectionHandlers(connected: boolean): void {
+  private notifyConnectionHandlers(status: WebSocketStatus): void {
     this.connectionHandlers.forEach(handler => {
       try {
-        handler(connected);
+        handler(status);
       } catch (error) {
         logger.error('Error in connection handler:', error);
       }
@@ -231,7 +241,7 @@ export class WebSocketService {
 
   public onConnectionChange(handler: ConnectionHandler): void {
     this.connectionHandlers.push(handler);
-    handler(this.isConnected);
+    handler(this.isConnected ? WebSocketStatus.CONNECTED : WebSocketStatus.DISCONNECTED);
   }
 
   public off(type: MessageType, handler: MessageHandler): void {

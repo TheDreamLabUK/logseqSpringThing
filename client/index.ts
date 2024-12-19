@@ -3,7 +3,7 @@
  */
 
 import { platformManager } from './platform/platformManager';
-import { Settings, SettingsCategory, SettingKey, SettingValueType } from './types/settings';
+import { Settings, SettingCategory, SettingKey, SettingValueType } from './types/settings';
 import { settingsManager } from './state/settings';
 import { graphDataManager } from './state/graphData';
 import { WebSocketService } from './websocket/websocketService';
@@ -158,9 +158,9 @@ class Application {
         this.setupSettingInput<'nodes', 'opacity'>('nodes', 'opacity');
 
         // Edge appearance settings
-        this.setupSettingInput<'edges', 'baseWidth'>('edges', 'baseWidth');
-        this.setupSettingInput<'edges', 'baseColor'>('edges', 'baseColor');
+        this.setupSettingInput<'edges', 'color'>('edges', 'color');
         this.setupSettingInput<'edges', 'opacity'>('edges', 'opacity');
+        this.setupSettingInput<'edges', 'enableArrows'>('edges', 'enableArrows');
 
         // Visual effects settings
         this.setupSettingInput<'bloom', 'edgeBloomStrength'>('bloom', 'edgeBloomStrength');
@@ -170,7 +170,7 @@ class Application {
         this.setupSettingInput<'physics', 'springStrength'>('physics', 'springStrength');
     }
 
-    private setupSettingInput<T extends SettingsCategory, K extends SettingKey<T>>(
+    private setupSettingInput<T extends SettingCategory, K extends SettingKey<T>>(
         category: T,
         setting: K
     ): void {
@@ -205,7 +205,7 @@ class Application {
         }
     }
 
-    private parseSettingValue<T extends SettingsCategory, K extends SettingKey<T>>(
+    private parseSettingValue<T extends SettingCategory, K extends SettingKey<T>>(
         value: string,
         category: T,
         setting: K

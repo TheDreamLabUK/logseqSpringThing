@@ -9,10 +9,10 @@ export const IS_DEVELOPMENT = !IS_PRODUCTION;
 // WebSocket URLs
 export const WS_URL = IS_PRODUCTION
   ? 'wss://www.visionflow.info/wss'
-  : 'ws://localhost:3000/wss';  // Updated to match server port and path
+  : 'ws://localhost:4000/wss';  // Connect to nginx which proxies to backend
 
 // WebSocket configuration
-export const WS_RECONNECT_INTERVAL = 5000;
+export const WS_RECONNECT_INTERVAL = 30000; // Match server's HEARTBEAT_INTERVAL
 export const WS_MESSAGE_QUEUE_SIZE = 100;
 
 // Binary protocol configuration

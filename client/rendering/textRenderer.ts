@@ -1,4 +1,4 @@
-import { LabelSettings } from '../types/settings';
+import type { LabelSettings } from '../core/types';
 import { settingsManager } from '../state/settings';
 import { createLogger } from '../utils/logger';
 import * as THREE from 'three';

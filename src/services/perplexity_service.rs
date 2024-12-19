@@ -24,6 +24,12 @@ struct PerplexityResponse {
 struct QueryRequest {
     query: String,
     conversation_id: String,
+    model: String,
+    max_tokens: u32,
+    temperature: f32,
+    top_p: f32,
+    presence_penalty: f32,
+    frequency_penalty: f32,
 }
 
 pub struct PerplexityService {
@@ -32,26 +38,41 @@ pub struct PerplexityService {
 }
 
 impl PerplexityService {
-    pub fn new(settings: Arc<RwLock<Settings>>) -> Result<Self, Box<dyn StdError + Send + Sync>> {
+    pub async fn new(settings: Arc<RwLock<Settings>>) -> Result<Self, Box<dyn StdError + Send + Sync>> {
+        let timeout = {
+            let settings_read = settings.read().await;
+            settings_read.perplexity.timeout
+        };
+
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(timeout))
             .build()?;
 
-        Ok(Self { client, settings })
+        Ok(Self { 
+            client,
+            settings: Arc::clone(&settings)
+        })
     }
 
     pub async fn query(&self, query: &str, conversation_id: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
         let settings = self.settings.read().await;
-        let api_url = format!("{}/query", settings.network.domain);
+        let api_url = &settings.perplexity.api_url;
         info!("Sending query to Perplexity API: {}", api_url);
 
         let request = QueryRequest {
             query: query.to_string(),
             conversation_id: conversation_id.to_string(),
+            model: settings.perplexity.model.clone(),
+            max_tokens: settings.perplexity.max_tokens,
+            temperature: settings.perplexity.temperature,
+            top_p: settings.perplexity.top_p,
+            presence_penalty: settings.perplexity.presence_penalty,
+            frequency_penalty: settings.perplexity.frequency_penalty,
         };
 
         let response = self.client
-            .post(&api_url)
+            .post(api_url)
+            .header("Authorization", format!("Bearer {}", settings.perplexity.api_key))
             .json(&request)
             .send()
             .await?;
@@ -76,11 +97,12 @@ impl PerplexityService {
         let content = fs::read_to_string(&file_path)?;
         let settings = self.settings.read().await;
         
-        let api_url = format!("{}/process", settings.network.domain);
+        let api_url = &settings.perplexity.api_url;
         info!("Sending request to Perplexity API: {}", api_url);
 
         let response = self.client
-            .post(&api_url)
+            .post(api_url)
+            .header("Authorization", format!("Bearer {}", settings.perplexity.api_key))
             .json(&content)
             .send()
             .await?;

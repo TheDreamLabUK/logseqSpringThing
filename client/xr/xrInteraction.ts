@@ -79,19 +79,7 @@ export class XRInteraction {
                 logBinaryHeaders: false, 
                 logFullJson: false 
             },
-            default: { 
-                apiClientTimeout: 30, 
-                enableMetrics: true, 
-                enableRequestLogging: true, 
-                logFormat: 'json', 
-                logLevel: 'debug', 
-                maxConcurrentRequests: 5, 
-                maxPayloadSize: 5242880, 
-                maxRetries: 3, 
-                metricsPort: 9090, 
-                retryDelay: 5 
-            },
-            edges: { 
+            edges: {
                 arrowSize: 0.15, 
                 baseWidth: 2, 
                 color: '#917f18', 
@@ -99,30 +87,15 @@ export class XRInteraction {
                 opacity: 1, 
                 widthRange: [1, 4] 
             },
-            github: { 
-                basePath: '', 
-                owner: '', 
-                rateLimit: true, 
-                repo: '', 
-                token: '' 
-            },
-            labels: { 
+            labels: {
                 desktopFontSize: 12, 
                 enableLabels: true, 
                 textColor: '#FFFFFF' 
             },
-            network: { 
-                bindAddress: '0.0.0.0', 
-                domain: 'localhost', 
-                enableHttp2: false, 
-                enableRateLimiting: true, 
-                enableTls: false, 
-                maxRequestSize: 5242880, 
-                minTlsVersion: 'TLS1.2', 
-                port: 3000, 
-                rateLimitRequests: 100, 
-                rateLimitWindow: 60, 
-                tunnelId: '' 
+            network: {
+                bindAddress: '0.0.0.0',
+                domain: 'localhost',
+                port: 3001
             },
             nodes: { 
                 baseColor: '#4A90E2', 
@@ -140,26 +113,6 @@ export class XRInteraction {
                 sizeByConnections: false, 
                 sizeRange: [0.5, 2] 
             },
-            openai: { 
-                apiKey: '', 
-                baseUrl: 'https://api.openai.com/v1', 
-                model: 'gpt-4', 
-                rateLimit: 3, 
-                timeout: 30 
-            },
-            perplexity: { 
-                apiKey: '', 
-                apiUrl: 'https://api.perplexity.ai', 
-                frequencyPenalty: 0, 
-                maxTokens: 1024, 
-                model: 'codellama-34b-instruct', 
-                prompt: '', 
-                presencePenalty: 0, 
-                rateLimit: 3, 
-                temperature: 0.7, 
-                timeout: 30, 
-                topP: 0.95 
-            },
             physics: { 
                 attractionStrength: 0.1, 
                 boundsSize: 100, 
@@ -172,12 +125,6 @@ export class XRInteraction {
                 repulsionStrength: 0.2, 
                 springStrength: 0.1 
             },
-            ragflow: { 
-                apiKey: '', 
-                baseUrl: 'https://api.ragflow.ai', 
-                maxRetries: 3, 
-                timeout: 30 
-            },
             rendering: { 
                 ambientLightIntensity: 0.5, 
                 backgroundColor: '#000000', 
@@ -187,32 +134,10 @@ export class XRInteraction {
                 enableShadows: true, 
                 environmentIntensity: 1 
             },
-            security: { 
-                allowedOrigins: ['*'], 
-                auditLogPath: '', 
-                cookieHttponly: true, 
-                cookieSamesite: 'Lax', 
-                cookieSecure: false, 
-                csrfTokenTimeout: 3600, 
-                enableAuditLogging: false, 
-                enableRequestValidation: true, 
-                sessionTimeout: 86400 
-            },
-            serverDebug: { 
-                enableDataDebug: false, 
-                enableWebsocketDebug: false, 
-                enabled: false, 
-                logBinaryHeaders: false, 
-                logFullJson: false 
-            },
-            websocket: { 
-                binaryChunkSize: 1024, 
-                compressionEnabled: true, 
-                compressionThreshold: 1024, 
-                heartbeatInterval: 30, 
-                heartbeatTimeout: 60, 
-                maxConnections: 1000, 
-                maxMessageSize: 5242880 
+            websocket: {
+                heartbeatInterval: 30,
+                heartbeatTimeout: 60,
+                maxMessageSize: 5242880
             }
         };
         
