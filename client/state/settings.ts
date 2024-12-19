@@ -22,41 +22,49 @@ class SettingsManager implements ISettingsManager {
             return;
         }
 
+        const maxRetries = 3;
+        const retryDelay = 1000; // 1 second
+
         try {
             const categories = Object.keys(this.settings) as SettingCategory[];
             
             for (const category of categories) {
-                try {
-                    const response = await fetch(`/api/visualization/settings/${category}`);
-                    if (response.status === 404) {
-                        logger.info(`Settings endpoint for ${category} not found, using defaults`);
-                        continue;
-                    }
-                    if (!response.ok) {
-                        throw new Error(`Failed to fetch ${category} settings: ${response.statusText}`);
-                    }
-                    const data = await response.json();
-                    
-                    // Update all settings in this category
-                    if (this.settings[category]) {
-                        this.settings[category] = { ...this.settings[category], ...data };
-                        logger.info(`Loaded settings for category ${category}`);
-                    }
-                } catch (error) {
-                    if (error instanceof Error && error.message.includes('404')) {
-                        logger.info(`Using default values for ${category} settings`);
-                    } else {
-                        logger.error(`Error loading ${category} settings:`, error);
-                        logger.info(`Using default values for ${category} settings`);
+                let retries = 0;
+                while (retries < maxRetries) {
+                    try {
+                        const response = await fetch(`/api/visualization/settings/${category}`);
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (this.settings[category]) {
+                                this.settings[category] = { ...this.settings[category], ...data };
+                                logger.info(`Loaded settings for category ${category}`);
+                                break; // Success, exit retry loop
+                            }
+                        } else if (response.status === 404) {
+                            logger.info(`Settings endpoint for ${category} not found, using defaults`);
+                            break; // 404 is expected for some categories, exit retry loop
+                        } else {
+                            throw new Error(`Failed to fetch ${category} settings: ${response.statusText}`);
+                        }
+                    } catch (error) {
+                        retries++;
+                        if (retries === maxRetries) {
+                            logger.error(`Failed to load ${category} settings after ${maxRetries} attempts:`, error);
+                            logger.info(`Using default values for ${category} settings`);
+                        } else {
+                            logger.warn(`Retry ${retries}/${maxRetries} for ${category} settings`);
+                            await new Promise(resolve => setTimeout(resolve, retryDelay));
+                        }
                     }
                 }
             }
             
             this.initialized = true;
+            logger.info('Settings initialization complete');
         } catch (error) {
             logger.error('Failed to initialize settings:', error);
-            logger.info('Using default settings');
-            this.initialized = true;
+            throw error;
         }
     }
 

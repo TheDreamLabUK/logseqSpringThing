@@ -34,7 +34,7 @@ pub struct Settings {
     #[serde(default)]
     pub websocket: WebSocketSettings,
     
-    // Critical service settings from .env
+    // Critical service settings from .env (server-side only)
     #[serde(default)]
     pub network: NetworkSettings,
     #[serde(default)]
@@ -45,6 +45,28 @@ pub struct Settings {
     pub perplexity: PerplexitySettings,
     #[serde(default)]
     pub openai: OpenAISettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct DebugSettings {
+    pub enable_data_debug: bool,
+    pub enable_websocket_debug: bool,
+    pub enabled: bool,
+    pub log_binary_headers: bool,
+    pub log_full_json: bool,
+}
+
+impl Default for DebugSettings {
+    fn default() -> Self {
+        Self {
+            enable_data_debug: false,
+            enable_websocket_debug: false,
+            enabled: false,
+            log_binary_headers: false,
+            log_full_json: false,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -280,29 +302,6 @@ impl Default for BloomSettings {
             node_bloom_strength: 0.2,
             radius: 0.5,
             strength: 1.8,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
-pub struct DebugSettings {
-    pub enable_data_debug: bool,
-    pub enable_websocket_debug: bool,
-    pub enabled: bool,
-    pub log_binary_headers: bool,
-    pub log_full_json: bool,
-}
-
-impl Default for DebugSettings {
-    fn default() -> Self {
-        Self {
-            enable_data_debug: false,
-            enable_websocket_debug: false,
-            enabled: false,
-            log_binary_headers: false,
-            log_full_json: false,
         }
     }
 }

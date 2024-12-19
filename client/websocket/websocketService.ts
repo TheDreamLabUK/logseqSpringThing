@@ -86,13 +86,39 @@ export class WebSocketService {
 
   private handleBinaryMessage(buffer: ArrayBuffer): void {
     try {
-      const view = new Float32Array(buffer);
-      const version = view[0];
+      const dataView = new DataView(buffer);
+      const version = dataView.getFloat32(0, true); // true for little-endian
       
       if (version === BINARY_VERSION) {
-        // Extract node positions and velocities
-        const positions = new Float32Array(buffer.slice(BINARY_HEADER_SIZE));
-        this.notifyHandlers('binaryPositionUpdate', { positions });
+        const nodeCount = (buffer.byteLength - BINARY_HEADER_SIZE) / (7 * 4); // 7 floats per node (id + pos + vel)
+        const positions = new Float32Array(nodeCount * 3);
+        const velocities = new Float32Array(nodeCount * 3);
+        const nodeIds = new Array(nodeCount);
+        
+        // Read node data
+        for (let i = 0; i < nodeCount; i++) {
+          const offset = BINARY_HEADER_SIZE + i * 7 * 4;
+          
+          // Read node ID (stored as a float)
+          const nodeIdFloat = dataView.getFloat32(offset, true);
+          nodeIds[i] = nodeIdFloat.toString();
+          
+          // Read position
+          positions[i * 3] = dataView.getFloat32(offset + 4, true);     // x
+          positions[i * 3 + 1] = dataView.getFloat32(offset + 8, true); // y
+          positions[i * 3 + 2] = dataView.getFloat32(offset + 12, true); // z
+          
+          // Read velocity
+          velocities[i * 3] = dataView.getFloat32(offset + 16, true);     // vx
+          velocities[i * 3 + 1] = dataView.getFloat32(offset + 20, true); // vy
+          velocities[i * 3 + 2] = dataView.getFloat32(offset + 24, true); // vz
+        }
+        
+        this.notifyHandlers('binaryPositionUpdate', { 
+          nodeIds,
+          positions,
+          velocities
+        });
       } else {
         logger.warn(`Unsupported binary message version: ${version}`);
       }
@@ -103,29 +129,39 @@ export class WebSocketService {
 
   private handleJsonMessage(message: any): void {
     try {
-      switch (message.type as MessageType) {
-        case 'settingsUpdated':
-          // Convert snake_case to camelCase and update settings
-          const settings = convertObjectKeysToCamelCase(message.data);
-          this.notifyHandlers('settingsUpdated', settings);
+      // Convert snake_case/kebab-case to camelCase
+      const type = message.type.replace(/-|_./g, x => x.slice(-1).toUpperCase());
+      const data = message.data ? convertObjectKeysToCamelCase(message.data) : undefined;
+      
+      switch (type as MessageType) {
+        case 'updatePositions':
+          this.notifyHandlers('updatePositions', data);
           break;
           
-        case 'graphUpdated':
-          this.notifyHandlers('graphUpdated', message.data);
+        case 'initialData':
+          this.notifyHandlers('initialData', data);
+          break;
+          
+        case 'binaryPositionUpdate':
+          this.notifyHandlers('binaryPositionUpdate', data);
+          break;
+          
+        case 'simulationModeSet':
+          this.notifyHandlers('simulationModeSet', data);
           break;
           
         case 'ping':
           this.send(JSON.stringify({
             type: 'pong',
-            timestamp: (message as PingMessage).timestamp
+            timestamp: Date.now()
           }));
           break;
           
         default:
-          if (this.messageHandlers.has(message.type)) {
-            this.notifyHandlers(message.type, message.data);
+          if (this.messageHandlers.has(type)) {
+            this.notifyHandlers(type, data);
           } else {
-            logger.warn(`Unknown message type: ${message.type}`);
+            logger.warn(`Unknown message type: ${type}`);
           }
       }
     } catch (error) {
