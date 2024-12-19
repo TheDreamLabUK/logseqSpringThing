@@ -188,9 +188,9 @@ fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Va
             .map_err(|e| format!("Failed to serialize audio settings: {}", e))?,
         "physics" => serde_json::to_value(&settings.physics)
             .map_err(|e| format!("Failed to serialize physics settings: {}", e))?,
-        "client-debug" => serde_json::to_value(&settings.client_debug)
+        "clientDebug" => serde_json::to_value(&settings.client_debug)
             .map_err(|e| format!("Failed to serialize client debug settings: {}", e))?,
-        "server-debug" => serde_json::to_value(&settings.server_debug)
+        "serverDebug" => serde_json::to_value(&settings.server_debug)
             .map_err(|e| format!("Failed to serialize server debug settings: {}", e))?,
         "security" => serde_json::to_value(&settings.security)
             .map_err(|e| format!("Failed to serialize security settings: {}", e))?,
@@ -339,7 +339,7 @@ pub async fn get_category_settings(
 // Register the handlers with the Actix web app
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("")
+        web::scope("/api/visualization")
             .route("/settings/{category}/{setting}", web::get().to(get_setting))
             .route("/settings/{category}/{setting}", web::put().to(update_setting))
             .route("/settings/{category}", web::get().to(get_category_settings))

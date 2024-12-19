@@ -4,9 +4,9 @@ extern crate log;
 use webxr::{
     AppState, Settings,
     init_debug_settings,
-    file_handler, graph_handler, perplexity_handler, ragflow_handler, visualization_handler,
+    file_handler, graph_handler, visualization_handler,
     handlers::socket_flow_handler,
-    RealGitHubService, PerplexityService, RAGFlowService,
+    RealGitHubService,
     RealGitHubPRService, GPUCompute, GraphData,
     log_data, log_warn,
 };
@@ -28,17 +28,8 @@ fn configure_file_handler(cfg: &mut web::ServiceConfig) {
 
 fn configure_graph_handler(cfg: &mut web::ServiceConfig) {
     cfg.service(web::resource("/data").to(graph_handler::get_graph_data))
+       .service(web::resource("/data/paginated").to(graph_handler::get_paginated_graph_data))
        .service(web::resource("/update").to(graph_handler::update_graph));
-}
-
-fn configure_perplexity_handler(cfg: &mut web::ServiceConfig) {
-    cfg.service(perplexity_handler::handle_perplexity);
-}
-
-fn configure_ragflow_handler(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::resource("/send").to(ragflow_handler::send_message))
-       .service(web::resource("/init").to(ragflow_handler::init_chat))
-       .service(web::resource("/history/{conversation_id}").to(ragflow_handler::get_chat_history));
 }
 
 #[actix_web::main]
@@ -82,16 +73,6 @@ async fn main() -> std::io::Result<()> {
         Ok(service) => Arc::new(service),
         Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
     };
-
-    let perplexity_service: Arc<PerplexityService> = match PerplexityService::new(settings.clone()).await {
-        Ok(service) => Arc::new(service),
-        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-    };
-
-    let ragflow_service: Arc<RAGFlowService> = match RAGFlowService::new(settings.clone()).await {
-        Ok(service) => Arc::new(service),
-        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-    };
     drop(settings_read);
 
     // Initialize GPU compute
@@ -111,19 +92,12 @@ async fn main() -> std::io::Result<()> {
     let app_state = web::Data::new(AppState::new(
         settings.clone(),
         github_service.clone(),
-        perplexity_service.clone(),
-        ragflow_service.clone(),
+        None,
+        None,
         gpu_compute,
         "default_conversation".to_string(),
         github_pr_service.clone(),
     ));
-
-    // Create conversation
-    log_data!("Creating RAGFlow conversation...");
-    if let Err(e) = ragflow_service.create_conversation("default_user".to_string()).await {
-        error!("Failed to create conversation: {}", e);
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
-    }
 
     // Initialize debug settings
     let (debug_enabled, websocket_debug, data_debug) = {
@@ -163,15 +137,11 @@ async fn main() -> std::io::Result<()> {
             .app_data(settings_data.clone())
             .app_data(app_state.clone())
             .app_data(web::Data::new(github_service.clone()))
-            .app_data(web::Data::new(perplexity_service.clone()))
-            .app_data(web::Data::new(ragflow_service.clone()))
             .app_data(web::Data::new(github_pr_service.clone()))
             .service(
                 web::scope("/api")
                     .service(web::scope("/files").configure(configure_file_handler))
                     .service(web::scope("/graph").configure(configure_graph_handler))
-                    .service(web::scope("/perplexity").configure(configure_perplexity_handler))
-                    .service(web::scope("/ragflow").configure(configure_ragflow_handler))
                     .service(web::scope("/visualization").configure(visualization_handler::config))
             )
             .service(
