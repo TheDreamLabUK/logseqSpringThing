@@ -10,9 +10,16 @@ use crate::utils::socket_flow_messages::{
     BinaryNodeData,
     Message,
 };
+use crate::utils::socket_flow_constants::{
+    HEARTBEAT_INTERVAL as HEARTBEAT_INTERVAL_SECS,
+    CLIENT_TIMEOUT as CLIENT_TIMEOUT_SECS,
+    MAX_CLIENT_TIMEOUT as MAX_CLIENT_TIMEOUT_SECS,
+};
 
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
-const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
+// Convert seconds to Duration
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(HEARTBEAT_INTERVAL_SECS);
+const CLIENT_TIMEOUT: Duration = Duration::from_secs(CLIENT_TIMEOUT_SECS);
+const MAX_CLIENT_TIMEOUT: Duration = Duration::from_secs(MAX_CLIENT_TIMEOUT_SECS);
 
 #[derive(ActixMessage)]
 #[rtype(result = "()")]
@@ -80,10 +87,14 @@ impl SocketFlowServer {
 
     fn heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
         ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
-            if Instant::now().duration_since(act.last_heartbeat) > CLIENT_TIMEOUT {
-                warn!("Client heartbeat timeout");
-                ctx.stop();
-                return;
+            let time_since_last = Instant::now().duration_since(act.last_heartbeat);
+            if time_since_last > CLIENT_TIMEOUT {
+                warn!("Client heartbeat timeout - last heartbeat: {:?} ago", time_since_last);
+                if time_since_last > MAX_CLIENT_TIMEOUT {
+                    warn!("Client exceeded maximum timeout, closing connection");
+                    ctx.stop();
+                    return;
+                }
             }
             ctx.ping(b"");
         });
@@ -173,7 +184,8 @@ pub async fn ws_handler(
     stream: web::Payload,
     app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, Error> {
-    info!("New WebSocket connection request");
+    info!("New WebSocket connection request from {:?}", req.peer_addr());
+    debug!("WebSocket request headers: {:?}", req.headers());
     let socket_server = SocketFlowServer::new(Arc::new(app_state.as_ref().clone()));
     ws::start(socket_server, &req, stream)
 }

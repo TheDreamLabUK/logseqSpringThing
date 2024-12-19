@@ -4,9 +4,10 @@ pub const EDGE_WIDTH: f32 = 0.1;
 pub const MIN_DISTANCE: f32 = 2.0;
 pub const MAX_DISTANCE: f32 = 10.0;
 
-// WebSocket constants
-pub const HEARTBEAT_INTERVAL: u64 = 5; // seconds
-pub const CLIENT_TIMEOUT: u64 = 10; // seconds
+// WebSocket constants - matching nginx configuration
+pub const HEARTBEAT_INTERVAL: u64 = 30; // seconds - matches nginx proxy_connect_timeout
+pub const CLIENT_TIMEOUT: u64 = 60; // seconds - double heartbeat interval for safety
+pub const MAX_CLIENT_TIMEOUT: u64 = 3600; // seconds - matches nginx proxy_read_timeout
 pub const MAX_MESSAGE_SIZE: usize = 100 * 1024 * 1024; // 100MB
 pub const BINARY_CHUNK_SIZE: usize = 64 * 1024; // 64KB
 

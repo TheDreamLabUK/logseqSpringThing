@@ -101,7 +101,7 @@ impl RealGitHubService {
             owner,
             repo,
             base_path,
-            settings,
+            settings: Arc::clone(&settings),
         })
     }
 }
@@ -168,6 +168,7 @@ impl GitHubService for RealGitHubService {
 
         let settings = self.settings.read().await;
         let debug_enabled = settings.server_debug.enabled;
+        let _log_binary = debug_enabled && settings.server_debug.log_binary_headers;
         
         let mut markdown_files = Vec::new();
         
@@ -446,7 +447,6 @@ impl FileService {
     /// Initialize the local markdown directory and metadata structure.
     pub async fn initialize_local_storage(
         github_service: &dyn GitHubService,
-        _settings: Arc<RwLock<Settings>>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         info!("Checking local storage status");
         
@@ -567,7 +567,6 @@ impl FileService {
     /// Handles incremental updates after initial setup
     pub async fn fetch_and_process_files(
         github_service: &dyn GitHubService,
-        _settings: Arc<RwLock<Settings>>,
         metadata_store: &mut MetadataStore,
     ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
         // Ensure directories exist before any operations

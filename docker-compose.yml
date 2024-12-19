@@ -22,11 +22,13 @@ services:
               device_ids: ['0']  # Explicitly use GPU 0
               capabilities: [gpu]
     ports:
-      - "4000:3000"  # Map container port 3000 to host port 4000
+      - "4000:4000"  # Map container nginx port 4000 to host port 4000
     environment:
       - RUST_LOG=info
       - RUST_BACKTRACE=1
       - BIND_ADDRESS=0.0.0.0
+      - PORT=3001  # Explicitly set Rust backend to use port 3001
+      - NGINX_PORT=4000  # Set nginx to use port 4000
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_GPU_UUID:-0}  # Use GPU UUID from launch script
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NODE_ENV=production
@@ -52,6 +54,12 @@ services:
       options:
         max-size: "1g"
         max-file: "5"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -68,8 +76,19 @@ services:
       - TUNNEL_TOKEN=$TUNNEL_TOKEN
       - TUNNEL_METRICS=0.0.0.0:2000
       - TUNNEL_DNS_UPSTREAM=https://1.1.1.1/dns-query,https://1.0.0.1/dns-query
+      - TUNNEL_TRANSPORT_PROTOCOL=http2
+      - TUNNEL_ORIGIN_SERVER=http://webxr-client:4000  # Point to nginx port
+      - TUNNEL_WEBSOCKET_ENABLE=true
+      - TUNNEL_WEBSOCKET_HEARTBEAT_INTERVAL=30s  # Match our heartbeat interval
+      - TUNNEL_WEBSOCKET_TIMEOUT=3600s  # Match our max timeout
     env_file:
       - .env
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "ingress", "validate"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
 
 networks:
   docker_ragflow:

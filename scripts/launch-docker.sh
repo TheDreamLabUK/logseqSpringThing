@@ -125,14 +125,17 @@ verify_client_structure() {
         "$PROJECT_ROOT/client/core/types.ts"
         "$PROJECT_ROOT/client/core/constants.ts"
         "$PROJECT_ROOT/client/core/utils.ts"
+        "$PROJECT_ROOT/client/core/logger.ts"
         "$PROJECT_ROOT/client/websocket/websocketService.ts"
         "$PROJECT_ROOT/client/rendering/scene.ts"
         "$PROJECT_ROOT/client/rendering/nodes.ts"
         "$PROJECT_ROOT/client/rendering/textRenderer.ts"
         "$PROJECT_ROOT/client/state/settings.ts"
         "$PROJECT_ROOT/client/state/graphData.ts"
+        "$PROJECT_ROOT/client/state/defaultSettings.ts"
         "$PROJECT_ROOT/client/xr/xrSessionManager.ts"
         "$PROJECT_ROOT/client/xr/xrInteraction.ts"
+        "$PROJECT_ROOT/client/xr/xrTypes.ts"
         "$PROJECT_ROOT/client/platform/platformManager.ts"
         "$PROJECT_ROOT/client/tsconfig.json"
     )
@@ -218,11 +221,29 @@ check_application_readiness() {
 
     echo -e "${YELLOW}Checking application readiness...${NC}"
     while [ $attempt -le $max_attempts ]; do
-        if timeout 5 curl -s http://localhost:4000/ >/dev/null; then
-            echo -e "${GREEN}Application is ready${NC}"
+        # Check HTTP endpoint
+        if ! timeout 5 curl -s http://localhost:4000/ >/dev/null; then
+            echo "HTTP check attempt $attempt/$max_attempts..."
+            sleep 2
+            attempt=$((attempt + 1))
+            continue
+        fi
+
+        # Check WebSocket endpoint using websocat if available
+        if command -v websocat &> /dev/null; then
+            echo "Testing WebSocket connection..."
+            if timeout 5 websocat "ws://localhost:4000/wss" > /dev/null 2>&1 <<< '{"type":"ping"}'; then
+                echo -e "${GREEN}Application is ready (HTTP + WebSocket)${NC}"
+                return 0
+            else
+                echo "WebSocket check failed, retrying..."
+            fi
+        else
+            echo -e "${YELLOW}websocat not found, skipping WebSocket check${NC}"
+            echo -e "${GREEN}Application is ready (HTTP only)${NC}"
             return 0
         fi
-        echo "Readiness check attempt $attempt/$max_attempts..."
+
         sleep 2
         attempt=$((attempt + 1))
     done
@@ -349,6 +370,10 @@ echo -e "\n${GREEN}🚀 Services are running!${NC}"
 
 echo -e "\nResource Usage:"
 docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
+
+echo -e "\nEndpoints:"
+echo "HTTP:      http://localhost:4000"
+echo "WebSocket: ws://localhost:4000/wss"
 
 echo -e "\nCommands:"
 echo "logs:    $DOCKER_COMPOSE logs -f"

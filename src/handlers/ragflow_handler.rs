@@ -5,7 +5,7 @@ use log::{info, error};
 use actix_web::web::Bytes;
 use std::sync::Arc;
 use futures::StreamExt;
-use crate::services::ragflow_service::RAGFlowError;
+use crate::services::ragflow_service::{RAGFlowError, RAGFlowService};
 
 #[derive(Serialize, Deserialize)]
 pub struct MessageRequest {
@@ -55,8 +55,8 @@ pub async fn send_message(state: web::Data<AppState>, msg: web::Json<MessageRequ
     info!("Sending message to RAGFlow: {}", message_content);
     info!("Quote: {}, Stream: {}, Doc IDs: {:?}", quote, stream, doc_ids);
 
-    // Clone the Arc<RAGFlowService>
-    let ragflow_service = Arc::clone(&state.ragflow_service);
+    // Clone the Arc<RAGFlowService> with explicit type annotation
+    let ragflow_service: Arc<RAGFlowService> = Arc::clone(&state.ragflow_service);
 
     // Call the async send_message function
     match ragflow_service.send_message(conversation_id, message_content, quote, doc_ids, stream).await {

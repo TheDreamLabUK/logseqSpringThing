@@ -55,13 +55,13 @@ impl RAGFlowService {
         Ok(RAGFlowService {
             client,
             api_key: settings.ragflow.api_key.clone(),
-            base_url: settings.ragflow.base_url.clone(),
+            base_url: settings.ragflow.api_base_url.clone(),
         })
     }
 
     pub async fn create_conversation(&self, user_id: String) -> Result<String, RAGFlowError> {
         info!("Creating conversation for user: {}", user_id);
-        let url = format!("{}api/new_conversation", self.base_url);
+        let url = format!("{}/api/new_conversation", self.base_url.trim_end_matches('/'));
         info!("Full URL for create_conversation: {}", url);
         
         let response = self.client.get(&url)
@@ -93,7 +93,7 @@ impl RAGFlowService {
         stream: bool,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String, RAGFlowError>> + Send + 'static>>, RAGFlowError> {
         info!("Sending message to conversation: {}", conversation_id);
-        let url = format!("{}api/completion", self.base_url);
+        let url = format!("{}/api/completion", self.base_url.trim_end_matches('/'));
         info!("Full URL for send_message: {}", url);
         
         let mut request_body = json!({
@@ -148,7 +148,7 @@ impl RAGFlowService {
     }
 
     pub async fn get_conversation_history(&self, conversation_id: String) -> Result<serde_json::Value, RAGFlowError> {
-        let url = format!("{}api/conversation/{}", self.base_url, conversation_id);
+        let url = format!("{}/api/conversation/{}", self.base_url.trim_end_matches('/'), conversation_id);
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .send()

@@ -1,10 +1,10 @@
-import { Settings, SettingsManager as ISettingsManager, SettingsCategory, SettingKey, SettingValueType } from '../types/settings';
+import { Settings, SettingsManager as ISettingsManager, SettingCategory, SettingKey, SettingValueType } from '../types/settings';
 import { defaultSettings } from './defaultSettings';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger('SettingsManager');
 
-type Subscriber<T extends SettingsCategory, K extends SettingKey<T>> = {
+type Subscriber<T extends SettingCategory, K extends SettingKey<T>> = {
     callback: (value: SettingValueType<T, K>) => void;
 };
 
@@ -23,7 +23,7 @@ class SettingsManager implements ISettingsManager {
         }
 
         try {
-            const categories = Object.keys(this.settings) as SettingsCategory[];
+            const categories = Object.keys(this.settings) as SettingCategory[];
             
             for (const category of categories) {
                 try {
@@ -68,7 +68,7 @@ class SettingsManager implements ISettingsManager {
         return defaultSettings;
     }
 
-    public async updateSetting<T extends SettingsCategory, K extends SettingKey<T>>(
+    public async updateSetting<T extends SettingCategory, K extends SettingKey<T>>(
         category: T,
         setting: K,
         value: SettingValueType<T, K>
@@ -106,7 +106,7 @@ class SettingsManager implements ISettingsManager {
         }
     }
 
-    private async saveSettings<T extends SettingsCategory, K extends SettingKey<T>>(
+    private async saveSettings<T extends SettingCategory, K extends SettingKey<T>>(
         category: T,
         setting: K,
         value: SettingValueType<T, K>
@@ -129,7 +129,7 @@ class SettingsManager implements ISettingsManager {
         }
     }
 
-    public subscribe<T extends SettingsCategory, K extends SettingKey<T>>(
+    public subscribe<T extends SettingCategory, K extends SettingKey<T>>(
         category: T,
         setting: K,
         callback: (value: SettingValueType<T, K>) => void
