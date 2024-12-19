@@ -61,6 +61,8 @@ pub struct NetworkSettings {
     pub tunnel_token: String,
     #[serde(default)]
     pub debug_mode: bool,
+    #[serde(default = "default_true")]
+    pub enable_http2: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -674,6 +676,9 @@ impl Settings {
         }
         if let Ok(debug_mode) = std::env::var("DEBUG_MODE") {
             settings.network.debug_mode = debug_mode.parse().unwrap_or(false);
+        }
+        if let Ok(enable_http2) = std::env::var("HTTP2_ENABLED") {
+            settings.network.enable_http2 = enable_http2.parse().unwrap_or(true);
         }
 
         // GitHub settings from environment variables

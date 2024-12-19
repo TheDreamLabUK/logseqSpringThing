@@ -1,6 +1,7 @@
 use crate::AppState;
 use actix_web::{post, web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use log::{error, info};
 
 #[derive(Debug, Deserialize)]
@@ -17,14 +18,19 @@ pub struct PerplexityResponse {
 
 #[post("")]
 pub async fn handle_perplexity(
-    request: web::Json<PerplexityRequest>,
     state: web::Data<AppState>,
+    request: web::Json<PerplexityRequest>,
 ) -> impl Responder {
     info!("Received perplexity request: {:?}", request);
 
-    let perplexity_service = &state.perplexity_service;
-    let conversation_id = request.conversation_id.clone().unwrap_or_else(|| "default".to_string());
+    let perplexity_service = match &state.perplexity_service {
+        Some(service) => service,
+        None => return HttpResponse::ServiceUnavailable().json(json!({
+            "error": "Perplexity service is not available"
+        }))
+    };
 
+    let conversation_id = state.ragflow_conversation_id.clone();
     match perplexity_service.query(&request.query, &conversation_id).await {
         Ok(answer) => {
             let response = PerplexityResponse {

@@ -82,13 +82,6 @@ width_range = [
     3,
 ]
 
-[github]
-base_path = "default_path"
-owner = "default_owner"
-rate_limit = true
-repo = "default_repo"
-token = "default_token"
-
 [labels]
 desktop_font_size = 48
 enable_labels = true

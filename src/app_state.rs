@@ -17,8 +17,8 @@ pub struct AppState {
     pub settings: Arc<RwLock<Settings>>,
     pub metadata: Arc<RwLock<MetadataStore>>,
     pub github_service: Arc<RealGitHubService>,
-    pub perplexity_service: Arc<PerplexityService>,
-    pub ragflow_service: Arc<RAGFlowService>,
+    pub perplexity_service: Option<Arc<PerplexityService>>,
+    pub ragflow_service: Option<Arc<RAGFlowService>>,
     pub ragflow_conversation_id: String,
     pub github_pr_service: Arc<RealGitHubPRService>,
 }
@@ -27,8 +27,8 @@ impl AppState {
     pub fn new(
         settings: Arc<RwLock<Settings>>,
         github_service: Arc<RealGitHubService>,
-        perplexity_service: Arc<PerplexityService>,
-        ragflow_service: Arc<RAGFlowService>,
+        perplexity_service: Option<Arc<PerplexityService>>,
+        ragflow_service: Option<Arc<RAGFlowService>>,
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_conversation_id: String,
         github_pr_service: Arc<RealGitHubPRService>,
