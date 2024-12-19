@@ -59,13 +59,49 @@ fn to_camel_case(s: &str) -> String {
     result
 }
 
+// Convert camelCase or snake_case to kebab-case
+fn to_kebab_case(s: &str) -> String {
+    let mut result = String::new();
+    
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && c.is_uppercase() {
+            result.push('-');
+            result.push(c.to_ascii_lowercase());
+        } else if c == '_' {
+            result.push('-');
+        } else {
+            result.push(c.to_ascii_lowercase());
+        }
+    }
+    result
+}
+
+// Convert kebab-case or camelCase to snake_case
+fn to_snake_case(s: &str) -> String {
+    let mut result = String::new();
+    
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && c.is_uppercase() {
+            result.push('_');
+            result.push(c.to_ascii_lowercase());
+        } else if c == '-' {
+            result.push('_');
+        } else {
+            result.push(c.to_ascii_lowercase());
+        }
+    }
+    result
+}
+
 // Helper function to get setting value from settings object
 fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Result<Value, String> {
     debug!("Attempting to get setting value for category: {}, setting: {}", category, setting);
     
-    // Convert category to camelCase to match struct field names
-    let category_camel = to_camel_case(category);
-    debug!("Converted category '{}' to camelCase: '{}'", category, category_camel);
+    // Convert kebab-case URL parameters to appropriate cases
+    let category_snake = to_snake_case(category);
+    let setting_snake = to_snake_case(setting);
+    debug!("Converted category '{}' to snake_case: '{}'", category, category_snake);
+    debug!("Converted setting '{}' to snake_case: '{}'", setting, setting_snake);
     
     // Convert settings to Value for easier access
     let settings_value = match serde_json::to_value(&settings) {
@@ -81,26 +117,26 @@ fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Resu
     
     debug!("Settings JSON structure: {}", settings_value);
     
-    // Get category object
-    let category_value = match settings_value.get(&category_camel) {
+    // Get category object using snake_case for internal lookup
+    let category_value = match settings_value.get(&category_snake) {
         Some(v) => {
-            debug!("Found category '{}' in settings", category_camel);
+            debug!("Found category '{}' in settings", category_snake);
             v
         },
         None => {
-            error!("Category '{}' not found in settings", category_camel);
+            error!("Category '{}' not found in settings", category_snake);
             return Err(format!("Category '{}' not found", category));
         }
     };
     
-    // Get setting value
-    let setting_value = match category_value.get(setting) {
+    // Get setting value using snake_case for internal lookup
+    let setting_value = match category_value.get(&setting_snake) {
         Some(v) => {
-            debug!("Found setting '{}' in category '{}'", setting, category_camel);
+            debug!("Found setting '{}' in category '{}'", setting_snake, category_snake);
             v
         },
         None => {
-            error!("Setting '{}' not found in category '{}'", setting, category_camel);
+            error!("Setting '{}' not found in category '{}'", setting_snake, category_snake);
             return Err(format!("Setting '{}' not found in category '{}'", setting, category));
         }
     };
@@ -113,9 +149,11 @@ fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Resu
 fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, value: &Value) -> Result<(), String> {
     debug!("Attempting to update setting value for category: {}, setting: {}", category, setting);
     
-    // Convert category to camelCase to match struct field names
-    let category_camel = to_camel_case(category);
-    debug!("Converted category '{}' to camelCase: '{}'", category, category_camel);
+    // Convert kebab-case URL parameters to snake_case for internal lookup
+    let category_snake = to_snake_case(category);
+    let setting_snake = to_snake_case(setting);
+    debug!("Converted category '{}' to snake_case: '{}'", category, category_snake);
+    debug!("Converted setting '{}' to snake_case: '{}'", setting, setting_snake);
     
     // Convert settings to Value for manipulation, using a reference to avoid moving
     let mut settings_value = match serde_json::to_value(&*settings) {
@@ -132,20 +170,20 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
     debug!("Settings JSON structure: {}", settings_value);
     
     // Get category object
-    let category_value = match settings_value.get_mut(&category_camel) {
+    let category_value = match settings_value.get_mut(&category_snake) {
         Some(v) => {
-            debug!("Found category '{}' in settings", category_camel);
+            debug!("Found category '{}' in settings", category_snake);
             v
         },
         None => {
-            error!("Category '{}' not found in settings", category_camel);
+            error!("Category '{}' not found in settings", category_snake);
             return Err(format!("Category '{}' not found", category));
         }
     };
     
     // Update setting value
     if let Some(obj) = category_value.as_object_mut() {
-        obj.insert(setting.to_string(), value.clone());
+        obj.insert(setting_snake.to_string(), value.clone());
         debug!("Updated setting value successfully");
         
         // Convert back to Settings
@@ -161,7 +199,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         }
     } else {
-        error!("Category '{}' is not an object", category_camel);
+        error!("Category '{}' is not an object", category_snake);
         Err(format!("Category '{}' is not an object", category))
     }
 }
@@ -343,7 +381,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/settings/{category}/{setting}", web::get().to(get_setting))
             .route("/settings/{category}/{setting}", web::put().to(update_setting))
             .route("/settings/{category}", web::get().to(get_category_settings))
-    );
+        );
 }
 
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
