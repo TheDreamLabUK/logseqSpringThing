@@ -202,18 +202,6 @@ main() {
         exit 1
     fi
 
-    # Start the Rust backend first (it needs to bind to port 3001)
-    log "Starting webxr..."
-    /app/webxr &
-    RUST_PID=$!
-
-    # Wait for Rust server to be healthy
-    if ! check_service_health 3001 "/health" true; then
-        log "Failed to start Rust server"
-        exit 1
-    fi
-    log "Rust server started successfully"
-
     # Start nginx (it needs to bind to port 4000)
     log "Starting nginx..."
     nginx -t && nginx
@@ -229,8 +217,9 @@ main() {
     fi
     log "nginx started successfully"
 
-    # Monitor both processes
-    wait $RUST_PID
+    # Execute the webxr binary as the main process
+    log "Executing webxr..."
+    exec /app/webxr
 }
 
 # Execute main function

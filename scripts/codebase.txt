@@ -7,7 +7,7 @@ use log::{debug, error};
 use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct Settings {
     // UI/Rendering settings from settings.toml
     #[serde(default)]
@@ -21,9 +21,13 @@ pub struct Settings {
     #[serde(default)]
     pub client_debug: DebugSettings,
     #[serde(default)]
+    pub default: DefaultSettings,
+    #[serde(default)]
     pub edges: EdgeSettings,
     #[serde(default)]
     pub labels: LabelSettings,
+    #[serde(default)]
+    pub network: NetworkSettings,
     #[serde(default)]
     pub nodes: NodeSettings,
     #[serde(default)]
@@ -37,9 +41,7 @@ pub struct Settings {
     #[serde(default)]
     pub websocket: WebSocketSettings,
     
-    // Critical service settings from .env
-    #[serde(default)]
-    pub network: NetworkSettings,
+    // Service settings from .env (server-side only)
     #[serde(default)]
     pub github: GitHubSettings,
     #[serde(default)]
@@ -50,20 +52,94 @@ pub struct Settings {
     pub openai: OpenAISettings,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct DebugSettings {
+    pub enable_data_debug: bool,
+    pub enable_websocket_debug: bool,
+    pub enabled: bool,
+    pub log_binary_headers: bool,
+    pub log_full_json: bool,
+}
+
+impl Default for DebugSettings {
+    fn default() -> Self {
+        Self {
+            enable_data_debug: false,
+            enable_websocket_debug: false,
+            enabled: false,
+            log_binary_headers: false,
+            log_full_json: false,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+#[serde(default)]
+pub struct DefaultSettings {
+    pub api_client_timeout: u32,
+    pub enable_metrics: bool,
+    pub enable_request_logging: bool,
+    pub log_format: String,
+    pub log_level: String,
+    pub max_concurrent_requests: u32,
+    pub max_payload_size: usize,
+    pub max_retries: u32,
+    pub metrics_port: u16,
+    pub retry_delay: u32,
+}
+
+impl Default for DefaultSettings {
+    fn default() -> Self {
+        Self {
+            api_client_timeout: 30,
+            enable_metrics: true,
+            enable_request_logging: true,
+            log_format: "json".to_string(),
+            log_level: "debug".to_string(),
+            max_concurrent_requests: 5,
+            max_payload_size: 5242880,
+            max_retries: 3,
+            metrics_port: 9090,
+            retry_delay: 5,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+#[serde(default)]
 pub struct NetworkSettings {
-    #[serde(default = "default_bind_address")]
     pub bind_address: String,
-    #[serde(default)]
     pub domain: String,
-    #[serde(default = "default_port")]
+    pub enable_http2: bool,
+    pub enable_rate_limiting: bool,
+    pub enable_tls: bool,
+    pub max_request_size: usize,
+    pub min_tls_version: String,
     pub port: u16,
-    #[serde(default)]
+    pub rate_limit_requests: u32,
+    pub rate_limit_window: u32,
     pub tunnel_id: String,
-    #[serde(default)]
-    pub tunnel_token: String,
-    #[serde(default)]
-    pub debug_mode: bool,
+}
+
+impl Default for NetworkSettings {
+    fn default() -> Self {
+        Self {
+            bind_address: "0.0.0.0".to_string(),
+            domain: "localhost".to_string(),
+            enable_http2: false,
+            enable_rate_limiting: true,
+            enable_tls: false,
+            max_request_size: 10485760,
+            min_tls_version: String::new(),
+            port: 3001,
+            rate_limit_requests: 100,
+            rate_limit_window: 60,
+            tunnel_id: "dummy".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -133,14 +209,6 @@ pub struct OpenAISettings {
 }
 
 // Default value functions
-fn default_bind_address() -> String {
-    "0.0.0.0".to_string()
-}
-
-fn default_port() -> u16 {
-    4000
-}
-
 fn default_true() -> bool {
     true
 }
@@ -281,29 +349,6 @@ impl Default for BloomSettings {
             node_bloom_strength: 0.2,
             radius: 0.5,
             strength: 1.8,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
-pub struct DebugSettings {
-    pub enable_data_debug: bool,
-    pub enable_websocket_debug: bool,
-    pub enabled: bool,
-    pub log_binary_headers: bool,
-    pub log_full_json: bool,
-}
-
-impl Default for DebugSettings {
-    fn default() -> Self {
-        Self {
-            enable_data_debug: false,
-            enable_websocket_debug: false,
-            enabled: false,
-            log_binary_headers: false,
-            log_full_json: false,
         }
     }
 }
@@ -511,116 +556,6 @@ impl Default for WebSocketSettings {
     }
 }
 
-// Additional default value functions for UI settings
-#[allow(dead_code)]
-fn default_motion_blur_strength() -> f32 { 0.4 }
-#[allow(dead_code)]
-fn default_drag_threshold() -> f32 { 0.04 }
-#[allow(dead_code)]
-fn default_hand_mesh_opacity() -> f32 { 0.3 }
-#[allow(dead_code)]
-fn default_hand_point_size() -> f32 { 0.01 }
-#[allow(dead_code)]
-fn default_hand_ray_color() -> String { "#FFD700".to_string() }
-#[allow(dead_code)]
-fn default_hand_ray_width() -> f32 { 0.002 }
-#[allow(dead_code)]
-fn default_haptic_intensity() -> f32 { 0.7 }
-#[allow(dead_code)]
-fn default_pinch_threshold() -> f32 { 0.015 }
-#[allow(dead_code)]
-fn default_rotation_threshold() -> f32 { 0.08 }
-#[allow(dead_code)]
-fn default_edge_bloom_strength() -> f32 { 0.3 }
-#[allow(dead_code)]
-fn default_environment_bloom_strength() -> f32 { 0.5 }
-#[allow(dead_code)]
-fn default_node_bloom_strength() -> f32 { 0.2 }
-#[allow(dead_code)]
-fn default_bloom_radius() -> f32 { 0.5 }
-#[allow(dead_code)]
-fn default_bloom_strength() -> f32 { 1.8 }
-#[allow(dead_code)]
-fn default_edge_color() -> String { "#917f18".to_string() }
-#[allow(dead_code)]
-fn default_edge_opacity() -> f32 { 0.6 }
-#[allow(dead_code)]
-fn default_width_range() -> Vec<f32> { vec![1.0, 3.0] }
-#[allow(dead_code)]
-fn default_desktop_font_size() -> u32 { 48 }
-#[allow(dead_code)]
-fn default_text_color() -> String { "#FFFFFF".to_string() }
-#[allow(dead_code)]
-fn default_base_color() -> String { "#c3ab6f".to_string() }
-#[allow(dead_code)]
-fn default_base_size() -> f32 { 1.0 }
-#[allow(dead_code)]
-fn default_highlight_color() -> String { "#822626".to_string() }
-#[allow(dead_code)]
-fn default_highlight_duration() -> u32 { 300 }
-#[allow(dead_code)]
-fn default_hover_scale() -> f32 { 1.2 }
-#[allow(dead_code)]
-fn default_material_type() -> String { "basic".to_string() }
-#[allow(dead_code)]
-fn default_metalness() -> f32 { 0.3 }
-#[allow(dead_code)]
-fn default_node_opacity() -> f32 { 0.4 }
-#[allow(dead_code)]
-fn default_roughness() -> f32 { 0.35 }
-#[allow(dead_code)]
-fn default_size_range() -> Vec<f32> { vec![1.0, 10.0] }
-#[allow(dead_code)]
-fn default_attraction_strength() -> f32 { 0.015 }
-#[allow(dead_code)]
-fn default_bounds_size() -> f32 { 12.0 }
-#[allow(dead_code)]
-fn default_collision_radius() -> f32 { 0.25 }
-#[allow(dead_code)]
-fn default_damping() -> f32 { 0.88 }
-#[allow(dead_code)]
-fn default_iterations() -> u32 { 500 }
-#[allow(dead_code)]
-fn default_max_velocity() -> f32 { 2.5 }
-#[allow(dead_code)]
-fn default_repulsion_strength() -> f32 { 1500.0 }
-#[allow(dead_code)]
-fn default_spring_strength() -> f32 { 0.018 }
-#[allow(dead_code)]
-fn default_ambient_light_intensity() -> f32 { 0.7 }
-#[allow(dead_code)]
-fn default_background_color() -> String { "#000000".to_string() }
-#[allow(dead_code)]
-fn default_directional_light_intensity() -> f32 { 1.0 }
-#[allow(dead_code)]
-fn default_environment_intensity() -> f32 { 1.2 }
-#[allow(dead_code)]
-fn default_audit_log_path() -> String { "/app/logs/audit.log".to_string() }
-#[allow(dead_code)]
-fn default_cookie_samesite() -> String { "Strict".to_string() }
-#[allow(dead_code)]
-fn default_csrf_token_timeout() -> u32 { 3600 }
-#[allow(dead_code)]
-fn default_session_timeout() -> u32 { 3600 }
-#[allow(dead_code)]
-fn default_binary_chunk_size() -> usize { 65536 }
-#[allow(dead_code)]
-fn default_compression_threshold() -> usize { 1024 }
-#[allow(dead_code)]
-fn default_heartbeat_interval() -> u64 { 15000 }
-#[allow(dead_code)]
-fn default_heartbeat_timeout() -> u64 { 60000 }
-#[allow(dead_code)]
-fn default_max_connections() -> usize { 1000 }
-#[allow(dead_code)]
-fn default_max_message_size() -> usize { 100485760 }
-#[allow(dead_code)]
-fn default_reconnect_attempts() -> u32 { 3 }
-#[allow(dead_code)]
-fn default_reconnect_delay() -> u64 { 5000 }
-#[allow(dead_code)]
-fn default_update_rate() -> u32 { 90 }
-
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
         debug!("Initializing settings");
@@ -672,11 +607,8 @@ impl Settings {
         if let Ok(tunnel_id) = std::env::var("TUNNEL_ID") {
             settings.network.tunnel_id = tunnel_id;
         }
-        if let Ok(tunnel_token) = std::env::var("TUNNEL_TOKEN") {
-            settings.network.tunnel_token = tunnel_token;
-        }
-        if let Ok(debug_mode) = std::env::var("DEBUG_MODE") {
-            settings.network.debug_mode = debug_mode.parse().unwrap_or(false);
+        if let Ok(enable_http2) = std::env::var("HTTP2_ENABLED") {
+            settings.network.enable_http2 = enable_http2.parse().unwrap_or(true);
         }
 
         // GitHub settings from environment variables
@@ -788,6 +720,7 @@ impl Default for Settings {
             audio: AudioSettings::default(),
             bloom: BloomSettings::default(),
             client_debug: DebugSettings::default(),
+            default: DefaultSettings::default(),
             edges: EdgeSettings::default(),
             labels: LabelSettings::default(),
             nodes: NodeSettings::default(),
@@ -970,7 +903,7 @@ async fn main() -> std::io::Result<()> {
 
 ----
 app_state.rs
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use tokio::sync::RwLock;
 
 use crate::config::Settings;
@@ -993,6 +926,7 @@ pub struct AppState {
     pub ragflow_service: Option<Arc<RAGFlowService>>,
     pub ragflow_conversation_id: String,
     pub github_pr_service: Arc<RealGitHubPRService>,
+    pub active_connections: Arc<AtomicUsize>,
 }
 
 impl AppState {
@@ -1015,7 +949,16 @@ impl AppState {
             ragflow_service,
             ragflow_conversation_id,
             github_pr_service,
+            active_connections: Arc::new(AtomicUsize::new(0)),
         }
+    }
+
+    pub fn increment_connections(&self) -> usize {
+        self.active_connections.fetch_add(1, Ordering::SeqCst)
+    }
+
+    pub fn decrement_connections(&self) -> usize {
+        self.active_connections.fetch_sub(1, Ordering::SeqCst)
     }
 }
 
@@ -1851,18 +1794,24 @@ impl Node {
     pub fn set_vz(&mut self, val: f32) { self.data.velocity[2] = val; }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
 pub struct BinaryNodeData {
-    pub node_id: String,
-    pub data: NodeData,
+    pub position: [f32; 3],  // x, y, z
+    pub velocity: [f32; 3],  // vx, vy, vz
 }
 
+// Implement DeviceRepr for BinaryNodeData
+unsafe impl DeviceRepr for BinaryNodeData {}
+
+// Implement ValidAsZeroBits for BinaryNodeData
+unsafe impl ValidAsZeroBits for BinaryNodeData {}
+
 impl BinaryNodeData {
-    pub fn from_node_data(node_id: &str, data: &NodeData) -> Self {
+    pub fn from_node_data(data: &NodeData) -> Self {
         Self {
-            node_id: node_id.to_string(),
-            data: *data,
+            position: data.position,
+            velocity: data.velocity,
         }
     }
 }
@@ -1875,24 +1824,16 @@ pub struct UpdatePositionsMessage {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
+#[serde(rename_all = "kebab-case")]
 pub enum Message {
-    #[serde(rename = "updatePositions")]
     UpdatePositions(UpdatePositionsMessage),
-    #[serde(rename = "initialData")]
     InitialData { graph: GraphData },
-    #[serde(rename = "binaryPositionUpdate")]
     BinaryPositionUpdate { nodes: Vec<BinaryNodeData> },
-    #[serde(rename = "simulationModeSet")]
     SimulationModeSet { mode: String },
-    #[serde(rename = "requestInitialData")]
     RequestInitialData,
-    #[serde(rename = "enableBinaryUpdates")]
     EnableBinaryUpdates,
-    #[serde(rename = "setSimulationMode")]
     SetSimulationMode { mode: String },
-    #[serde(rename = "ping")]
     Ping,
-    #[serde(rename = "pong")]
     Pong,
 }
 
@@ -1942,11 +1883,14 @@ use lazy_static::lazy_static;
 
 lazy_static! {
     static ref CAMEL_TO_SNAKE: Regex = Regex::new(r"([a-z0-9])([A-Z])").unwrap();
-    static ref SNAKE_TO_CAMEL: Regex = Regex::new(r"_([a-z])").unwrap();
+    static ref SNAKE_TO_CAMEL: Regex = Regex::new(r"[_-]([a-z])").unwrap();
+    static ref CAMEL_TO_KEBAB: Regex = Regex::new(r"([a-z0-9])([A-Z])").unwrap();
+    static ref SNAKE_TO_KEBAB: Regex = Regex::new(r"_").unwrap();
 }
 
 pub fn to_snake_case(s: &str) -> String {
-    CAMEL_TO_SNAKE.replace_all(s, "${1}_${2}").to_lowercase()
+    let s = s.replace('-', "_");
+    CAMEL_TO_SNAKE.replace_all(&s, "${1}_${2}").to_lowercase()
 }
 
 pub fn to_camel_case(s: &str) -> String {
@@ -1962,6 +1906,13 @@ pub fn to_camel_case(s: &str) -> String {
     }
 }
 
+pub fn to_kebab_case(s: &str) -> String {
+    // First convert to snake case
+    let snake = to_snake_case(s);
+    // Then replace underscores with hyphens
+    SNAKE_TO_KEBAB.replace_all(&snake, "-").to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1971,6 +1922,8 @@ mod tests {
         assert_eq!(to_snake_case("baseSize"), "base_size");
         assert_eq!(to_snake_case("enableHoverEffect"), "enable_hover_effect");
         assert_eq!(to_snake_case("backgroundColor"), "background_color");
+        assert_eq!(to_snake_case("base-size"), "base_size");
+        assert_eq!(to_snake_case("enable-hover-effect"), "enable_hover_effect");
     }
 
     #[test]
@@ -1978,6 +1931,17 @@ mod tests {
         assert_eq!(to_camel_case("base_size"), "baseSize");
         assert_eq!(to_camel_case("enable_hover_effect"), "enableHoverEffect");
         assert_eq!(to_camel_case("background_color"), "backgroundColor");
+        assert_eq!(to_camel_case("base-size"), "baseSize");
+        assert_eq!(to_camel_case("enable-hover-effect"), "enableHoverEffect");
+    }
+
+    #[test]
+    fn test_to_kebab_case() {
+        assert_eq!(to_kebab_case("baseSize"), "base-size");
+        assert_eq!(to_kebab_case("enableHoverEffect"), "enable-hover-effect");
+        assert_eq!(to_kebab_case("backgroundColor"), "background-color");
+        assert_eq!(to_kebab_case("base_size"), "base-size");
+        assert_eq!(to_kebab_case("enable_hover_effect"), "enable-hover-effect");
     }
 }
 
@@ -3571,6 +3535,7 @@ use log::{error, info, debug};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use crate::utils::case_conversion::to_snake_case;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -3600,34 +3565,15 @@ pub struct SettingValue {
     pub value: Value,
 }
 
-// Convert kebab-case or snake_case to camelCase
-fn to_camel_case(s: &str) -> String {
-    let mut result = String::new();
-    let mut capitalize_next = false;
-    
-    for c in s.chars() {
-        if c == '-' || c == '_' {
-            capitalize_next = true;
-        } else if capitalize_next {
-            result.push(c.to_ascii_uppercase());
-            capitalize_next = false;
-        } else if result.is_empty() {
-            result.push(c.to_ascii_lowercase());
-        } else {
-            result.push(c);
-        }
-    }
-    
-    result
-}
-
 // Helper function to get setting value from settings object
 fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Result<Value, String> {
     debug!("Attempting to get setting value for category: {}, setting: {}", category, setting);
     
-    // Convert category to camelCase to match struct field names
-    let category_camel = to_camel_case(category);
-    debug!("Converted category '{}' to camelCase: '{}'", category, category_camel);
+    // Convert kebab-case URL parameters to appropriate cases
+    let category_snake = to_snake_case(category);
+    let setting_snake = to_snake_case(setting);
+    debug!("Converted category '{}' to snake_case: '{}'", category, category_snake);
+    debug!("Converted setting '{}' to snake_case: '{}'", setting, setting_snake);
     
     // Convert settings to Value for easier access
     let settings_value = match serde_json::to_value(&settings) {
@@ -3643,26 +3589,26 @@ fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Resu
     
     debug!("Settings JSON structure: {}", settings_value);
     
-    // Get category object
-    let category_value = match settings_value.get(&category_camel) {
+    // Get category object using snake_case for internal lookup
+    let category_value = match settings_value.get(&category_snake) {
         Some(v) => {
-            debug!("Found category '{}' in settings", category_camel);
+            debug!("Found category '{}' in settings", category_snake);
             v
         },
         None => {
-            error!("Category '{}' not found in settings", category_camel);
+            error!("Category '{}' not found in settings", category_snake);
             return Err(format!("Category '{}' not found", category));
         }
     };
     
-    // Get setting value
-    let setting_value = match category_value.get(setting) {
+    // Get setting value using snake_case for internal lookup
+    let setting_value = match category_value.get(&setting_snake) {
         Some(v) => {
-            debug!("Found setting '{}' in category '{}'", setting, category_camel);
+            debug!("Found setting '{}' in category '{}'", setting_snake, category_snake);
             v
         },
         None => {
-            error!("Setting '{}' not found in category '{}'", setting, category_camel);
+            error!("Setting '{}' not found in category '{}'", setting_snake, category_snake);
             return Err(format!("Setting '{}' not found in category '{}'", setting, category));
         }
     };
@@ -3675,9 +3621,11 @@ fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Resu
 fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, value: &Value) -> Result<(), String> {
     debug!("Attempting to update setting value for category: {}, setting: {}", category, setting);
     
-    // Convert category to camelCase to match struct field names
-    let category_camel = to_camel_case(category);
-    debug!("Converted category '{}' to camelCase: '{}'", category, category_camel);
+    // Convert kebab-case URL parameters to snake_case for internal lookup
+    let category_snake = to_snake_case(category);
+    let setting_snake = to_snake_case(setting);
+    debug!("Converted category '{}' to snake_case: '{}'", category, category_snake);
+    debug!("Converted setting '{}' to snake_case: '{}'", setting, setting_snake);
     
     // Convert settings to Value for manipulation, using a reference to avoid moving
     let mut settings_value = match serde_json::to_value(&*settings) {
@@ -3694,20 +3642,20 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
     debug!("Settings JSON structure: {}", settings_value);
     
     // Get category object
-    let category_value = match settings_value.get_mut(&category_camel) {
+    let category_value = match settings_value.get_mut(&category_snake) {
         Some(v) => {
-            debug!("Found category '{}' in settings", category_camel);
+            debug!("Found category '{}' in settings", category_snake);
             v
         },
         None => {
-            error!("Category '{}' not found in settings", category_camel);
+            error!("Category '{}' not found in settings", category_snake);
             return Err(format!("Category '{}' not found", category));
         }
     };
     
     // Update setting value
     if let Some(obj) = category_value.as_object_mut() {
-        obj.insert(setting.to_string(), value.clone());
+        obj.insert(setting_snake.to_string(), value.clone());
         debug!("Updated setting value successfully");
         
         // Convert back to Settings
@@ -3723,7 +3671,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         }
     } else {
-        error!("Category '{}' is not an object", category_camel);
+        error!("Category '{}' is not an object", category_snake);
         Err(format!("Category '{}' is not an object", category))
     }
 }
@@ -3750,9 +3698,9 @@ fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Va
             .map_err(|e| format!("Failed to serialize audio settings: {}", e))?,
         "physics" => serde_json::to_value(&settings.physics)
             .map_err(|e| format!("Failed to serialize physics settings: {}", e))?,
-        "client-debug" => serde_json::to_value(&settings.client_debug)
+        "clientDebug" => serde_json::to_value(&settings.client_debug)
             .map_err(|e| format!("Failed to serialize client debug settings: {}", e))?,
-        "server-debug" => serde_json::to_value(&settings.server_debug)
+        "serverDebug" => serde_json::to_value(&settings.server_debug)
             .map_err(|e| format!("Failed to serialize server debug settings: {}", e))?,
         "security" => serde_json::to_value(&settings.security)
             .map_err(|e| format!("Failed to serialize security settings: {}", e))?,
@@ -3760,6 +3708,8 @@ fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Va
             .map_err(|e| format!("Failed to serialize websocket settings: {}", e))?,
         "network" => serde_json::to_value(&settings.network)
             .map_err(|e| format!("Failed to serialize network settings: {}", e))?,
+        "default" => serde_json::to_value(&settings.default)
+            .map_err(|e| format!("Failed to serialize default settings: {}", e))?,
         "github" => serde_json::to_value(&settings.github)
             .map_err(|e| format!("Failed to serialize github settings: {}", e))?,
         _ => return Err(format!("Invalid category: {}", category)),
@@ -3901,24 +3851,15 @@ pub async fn get_category_settings(
 // Register the handlers with the Actix web app
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("")
+        web::scope("/api/visualization")
             .route("/settings/{category}/{setting}", web::get().to(get_setting))
             .route("/settings/{category}/{setting}", web::put().to(update_setting))
             .route("/settings/{category}", web::get().to(get_category_settings))
-    );
+        );
 }
 
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
     debug!("Attempting to save settings to file");
-    
-    // Convert settings to TOML
-    let toml_string = match toml::to_string_pretty(&settings) {
-        Ok(s) => s,
-        Err(e) => {
-            error!("Failed to serialize settings to TOML: {}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
-        }
-    };
     
     // Use absolute path from environment or default to /app/settings.toml
     let settings_path = std::env::var("SETTINGS_FILE_PATH")
@@ -3956,6 +3897,15 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
             }
         }
     }
+    
+    // Convert settings to TOML
+    let toml_string = match toml::to_string_pretty(&settings) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to serialize settings to TOML: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
+        }
+    };
     
     // Write to settings.toml
     match fs::write(&settings_path, toml_string) {
@@ -4238,30 +4188,40 @@ use actix_web_actors::ws;
 use log::{error, warn, debug, info};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 
 use crate::app_state::AppState;
-use crate::utils::socket_flow_messages::{
-    BinaryNodeData,
-    Message,
-};
+use crate::utils::socket_flow_messages::{BinaryNodeData, Message};
 use crate::utils::socket_flow_constants::{
     HEARTBEAT_INTERVAL as HEARTBEAT_INTERVAL_SECS,
-    CLIENT_TIMEOUT as CLIENT_TIMEOUT_SECS,
     MAX_CLIENT_TIMEOUT as MAX_CLIENT_TIMEOUT_SECS,
 };
 
 // Convert seconds to Duration
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(HEARTBEAT_INTERVAL_SECS);
-const CLIENT_TIMEOUT: Duration = Duration::from_secs(CLIENT_TIMEOUT_SECS);
 const MAX_CLIENT_TIMEOUT: Duration = Duration::from_secs(MAX_CLIENT_TIMEOUT_SECS);
 
 #[derive(ActixMessage)]
 #[rtype(result = "()")]
 struct SendMessage(String);
 
+#[derive(ActixMessage)]
+#[rtype(result = "()")]
+struct UpdateNodeOrder(Vec<String>);
+
+impl Handler<UpdateNodeOrder> for SocketFlowServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: UpdateNodeOrder, _: &mut Self::Context) {
+        self.node_order = msg.0;
+    }
+}
+
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     last_heartbeat: Instant,
+    node_order: Vec<String>, // Store node IDs in order for binary updates
+    settings: Arc<RwLock<crate::config::Settings>>,
 }
 
 impl Actor for SocketFlowServer {
@@ -4269,7 +4229,13 @@ impl Actor for SocketFlowServer {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         debug!("WebSocket actor started");
+        self.app_state.increment_connections();
         self.heartbeat(ctx);
+    }
+
+    fn stopped(&mut self, _: &mut Self::Context) {
+        debug!("WebSocket actor stopped");
+        self.app_state.decrement_connections();
     }
 }
 
@@ -4312,25 +4278,35 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
 }
 
 impl SocketFlowServer {
-    pub fn new(app_state: Arc<AppState>) -> Self {
+    pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<crate::config::Settings>>) -> Self {
         Self {
             app_state,
             last_heartbeat: Instant::now(),
+            node_order: Vec::new(),
+            settings,
         }
     }
 
     fn heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
-            let time_since_last = Instant::now().duration_since(act.last_heartbeat);
-            if time_since_last > CLIENT_TIMEOUT {
-                warn!("Client heartbeat timeout - last heartbeat: {:?} ago", time_since_last);
-                if time_since_last > MAX_CLIENT_TIMEOUT {
-                    warn!("Client exceeded maximum timeout, closing connection");
-                    ctx.stop();
-                    return;
+        let settings = self.settings.clone();
+        ctx.run_interval(HEARTBEAT_INTERVAL, move |act, ctx| {
+            if let Ok(settings_guard) = settings.try_read() {
+                let time_since_last = Instant::now().duration_since(act.last_heartbeat);
+                let heartbeat_timeout = Duration::from_millis(settings_guard.websocket.heartbeat_timeout);
+                
+                if time_since_last > heartbeat_timeout {
+                    warn!("Client heartbeat timeout - last heartbeat: {:?} ago", time_since_last);
+                    if time_since_last > MAX_CLIENT_TIMEOUT {
+                        warn!("Client exceeded maximum timeout, closing connection");
+                        ctx.stop();
+                        return;
+                    }
                 }
+                
+                // Send ping with timestamp for latency tracking
+                let timestamp = Instant::now().elapsed().as_millis().to_string();
+                ctx.ping(timestamp.as_bytes());
             }
-            ctx.ping(b"");
         });
     }
 
@@ -4340,9 +4316,13 @@ impl SocketFlowServer {
                 debug!("Handling RequestInitialData message");
                 let app_state = self.app_state.clone();
                 let addr = ctx.address();
+                
                 ctx.spawn(
                     async move {
                         let graph = app_state.graph_service.graph_data.read().await;
+                        // Send node order update
+                        let node_order: Vec<String> = graph.nodes.iter().map(|n| n.id.clone()).collect();
+                        addr.do_send(UpdateNodeOrder(node_order));
                         info!("Sending initial graph data: {} nodes, {} edges", 
                             graph.nodes.len(), 
                             graph.edges.len()
@@ -4361,12 +4341,17 @@ impl SocketFlowServer {
             Message::UpdatePositions(update_msg) => {
                 debug!("Handling UpdatePositions message with {} nodes", update_msg.nodes.len());
                 let app_state = self.app_state.clone();
+                let node_order = self.node_order.clone();
                 ctx.spawn(
                     async move {
                         let mut graph = app_state.graph_service.graph_data.write().await;
-                        for node_update in update_msg.nodes {
-                            if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == node_update.node_id) {
-                                node.data = node_update.data;
+                        // Update nodes using array indices
+                        for (i, node_update) in update_msg.nodes.iter().enumerate() {
+                            if i < node_order.len() {
+                                if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == node_order[i]) {
+                                    node.data.position = node_update.position;
+                                    node.data.velocity = node_update.velocity;
+                                }
                             }
                         }
                     }
@@ -4381,7 +4366,7 @@ impl SocketFlowServer {
                     async move {
                         let graph = app_state.graph_service.graph_data.read().await;
                         let binary_nodes: Vec<BinaryNodeData> = graph.nodes.iter()
-                            .map(|node| BinaryNodeData::from_node_data(&node.id, &node.data))
+                            .map(|node| BinaryNodeData::from_node_data(&node.data))
                             .collect();
                         
                         let binary_update = Message::BinaryPositionUpdate {
@@ -4417,10 +4402,27 @@ pub async fn ws_handler(
     req: HttpRequest,
     stream: web::Payload,
     app_state: web::Data<AppState>,
+    settings: web::Data<Arc<RwLock<crate::config::Settings>>>,
 ) -> Result<HttpResponse, Error> {
     info!("New WebSocket connection request from {:?}", req.peer_addr());
     debug!("WebSocket request headers: {:?}", req.headers());
-    let socket_server = SocketFlowServer::new(Arc::new(app_state.as_ref().clone()));
+
+    // Check connection limits
+    if let Ok(settings_guard) = settings.try_read() {
+        let max_connections = settings_guard.websocket.max_connections;
+        let current_connections = app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
+        
+        if current_connections >= max_connections {
+            error!("Connection limit reached: {}/{}", current_connections, max_connections);
+            return Ok(HttpResponse::ServiceUnavailable().finish());
+        }
+    }
+
+    let socket_server = SocketFlowServer::new(
+        app_state.into_inner(),
+        settings.get_ref().clone()
+    );
+    
     ws::start(socket_server, &req, stream)
 }
 
@@ -7112,10 +7114,10 @@ import {
   MessageHandler,
   ErrorHandler,
   ConnectionHandler,
-  PingMessage,
   WebSocketErrorType,
   WebSocketError,
-  WebSocketStatus
+  WebSocketStatus,
+  Node
 } from '../core/types';
 import { WS_RECONNECT_INTERVAL, WS_MESSAGE_QUEUE_SIZE, WS_URL, BINARY_VERSION } from '../core/constants';
 import { createLogger } from '../core/utils';
@@ -7135,18 +7137,81 @@ export class WebSocketService {
   private errorHandlers: ErrorHandler[] = [];
   private connectionHandlers: ConnectionHandler[] = [];
 
+  private settings: {
+    compressionEnabled: boolean;
+    compressionThreshold: number;
+    heartbeatInterval: number;
+    heartbeatTimeout: number;
+    reconnectAttempts: number;
+    reconnectDelay: number;
+  };
+
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private lastPongTime: number = 0;
+  private reconnectCount: number = 0;
+
   constructor() {
+    // Default settings, will be updated from settingsManager
+    this.settings = {
+      compressionEnabled: true,
+      compressionThreshold: 1024,
+      heartbeatInterval: 15000,
+      heartbeatTimeout: 60000,
+      reconnectAttempts: 3,
+      reconnectDelay: 5000
+    };
+
     this.connect();
   }
 
   private connect(): void {
     try {
+      // Note: Browser WebSocket API doesn't support compression options directly
+      // Compression is handled by the server configuration
       this.ws = new WebSocket(WS_URL);
       this.setupEventHandlers();
+      this.startHeartbeat();
     } catch (error) {
       logger.error('WebSocket connection error:', error);
-      this.scheduleReconnect();
+      this.handleConnectionFailure();
     }
+  }
+
+  private startHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+    }
+
+    this.heartbeatTimer = setInterval(() => {
+      if (this.isConnected) {
+        // Check if we haven't received a pong in too long
+        const timeSinceLastPong = Date.now() - this.lastPongTime;
+        if (timeSinceLastPong > this.settings.heartbeatTimeout) {
+          logger.warn('WebSocket heartbeat timeout');
+          this.handleConnectionFailure();
+          return;
+        }
+
+        // Send ping
+        this.send(JSON.stringify({
+          type: 'ping',
+          timestamp: Date.now()
+        }));
+      }
+    }, this.settings.heartbeatInterval);
+  }
+
+  private handleConnectionFailure(): void {
+    this.reconnectCount++;
+    if (this.reconnectCount > this.settings.reconnectAttempts) {
+      logger.error('Max reconnection attempts reached');
+      this.notifyErrorHandlers(new Error('Max reconnection attempts reached'));
+      this.notifyConnectionHandlers(WebSocketStatus.FAILED);
+      return;
+    }
+
+    logger.info(`Reconnection attempt ${this.reconnectCount}/${this.settings.reconnectAttempts}`);
+    this.scheduleReconnect();
   }
 
   private setupEventHandlers(): void {
@@ -7154,21 +7219,32 @@ export class WebSocketService {
 
     this.ws.onopen = () => {
       this.isConnected = true;
+      this.reconnectCount = 0;
+      this.lastPongTime = Date.now();
       logger.info('WebSocket connected');
       this.flushMessageQueue();
       this.notifyConnectionHandlers(WebSocketStatus.CONNECTED);
     };
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (event) => {
       this.isConnected = false;
-      logger.info('WebSocket disconnected');
-      this.scheduleReconnect();
-      this.notifyConnectionHandlers(WebSocketStatus.DISCONNECTED);
+      logger.info(`WebSocket disconnected: ${event.code} - ${event.reason}`);
+      this.handleConnectionFailure();
+      this.notifyConnectionHandlers(WebSocketStatus.DISCONNECTED, {
+        code: event.code,
+        reason: event.reason
+      });
     };
 
     this.ws.onerror = (error) => {
       logger.error('WebSocket error:', error);
-      this.notifyErrorHandlers(new Error('WebSocket error occurred'));
+      const wsError: WebSocketError = {
+        name: 'WebSocketError',
+        message: error instanceof Error ? error.message : 'Unknown WebSocket error',
+        type: WebSocketErrorType.CONNECTION_FAILED,
+        code: (error as any).code
+      };
+      this.notifyErrorHandlers(wsError);
     };
 
     this.ws.onmessage = (event) => {
@@ -7189,15 +7265,45 @@ export class WebSocketService {
     };
   }
 
+  // Map of node IDs to their index in the binary data arrays
+  private nodeIndexMap: Map<string, number> = new Map();
+  
+  private initializeNodeIndexMap(nodes: Node[]): void {
+    this.nodeIndexMap.clear();
+    nodes.forEach((node, index) => {
+      this.nodeIndexMap.set(node.id, index);
+    });
+  }
+
   private handleBinaryMessage(buffer: ArrayBuffer): void {
     try {
-      const view = new Float32Array(buffer);
-      const version = view[0];
+      const dataView = new DataView(buffer);
+      const version = dataView.getFloat32(0, true); // true for little-endian
       
       if (version === BINARY_VERSION) {
-        // Extract node positions and velocities
-        const positions = new Float32Array(buffer.slice(BINARY_HEADER_SIZE));
-        this.notifyHandlers('binaryPositionUpdate', { positions });
+        const nodeCount = (buffer.byteLength - BINARY_HEADER_SIZE) / (6 * 4); // 6 floats per node (pos + vel)
+        const positions = new Float32Array(nodeCount * 3);
+        const velocities = new Float32Array(nodeCount * 3);
+        
+        // Read position and velocity data directly using established node order
+        for (let i = 0; i < nodeCount; i++) {
+          const offset = BINARY_HEADER_SIZE + i * 6 * 4;
+          
+          // Read position
+          positions[i * 3] = dataView.getFloat32(offset, true);      // x
+          positions[i * 3 + 1] = dataView.getFloat32(offset + 4, true);  // y
+          positions[i * 3 + 2] = dataView.getFloat32(offset + 8, true);  // z
+          
+          // Read velocity
+          velocities[i * 3] = dataView.getFloat32(offset + 12, true);    // vx
+          velocities[i * 3 + 1] = dataView.getFloat32(offset + 16, true); // vy
+          velocities[i * 3 + 2] = dataView.getFloat32(offset + 20, true); // vz
+        }
+        
+        this.notifyHandlers('binaryPositionUpdate', { 
+          positions,
+          velocities
+        });
       } else {
         logger.warn(`Unsupported binary message version: ${version}`);
       }
@@ -7208,29 +7314,35 @@ export class WebSocketService {
 
   private handleJsonMessage(message: any): void {
     try {
-      switch (message.type as MessageType) {
-        case 'settingsUpdated':
-          // Convert snake_case to camelCase and update settings
-          const settings = convertObjectKeysToCamelCase(message.data);
-          this.notifyHandlers('settingsUpdated', settings);
+      // Convert snake_case/kebab-case to camelCase
+      const type = message.type.replace(/-|_./g, (x: string) => x.slice(-1).toUpperCase());
+      const data = message.data ? convertObjectKeysToCamelCase(message.data) : undefined;
+      
+      switch (type as MessageType) {
+        case 'initialData':
+          // Initialize node index mapping when receiving initial graph data
+          if (data?.nodes) {
+            this.initializeNodeIndexMap(data.nodes);
+          }
+          this.notifyHandlers('initialData', data);
           break;
           
-        case 'graphUpdated':
-          this.notifyHandlers('graphUpdated', message.data);
-          break;
-          
-        case 'ping':
-          this.send(JSON.stringify({
-            type: 'pong',
-            timestamp: (message as PingMessage).timestamp
-          }));
-          break;
+          case 'ping':
+            this.send(JSON.stringify({
+              type: 'pong',
+              timestamp: Date.now()
+            }));
+            break;
+
+          case 'pong':
+            this.lastPongTime = Date.now();
+            break;
           
         default:
-          if (this.messageHandlers.has(message.type)) {
-            this.notifyHandlers(message.type, message.data);
+          if (this.messageHandlers.has(type)) {
+            this.notifyHandlers(type, data);
           } else {
-            logger.warn(`Unknown message type: ${message.type}`);
+            logger.warn(`Unknown message type: ${type}`);
           }
       }
     } catch (error) {
@@ -7268,10 +7380,10 @@ export class WebSocketService {
     });
   }
 
-  private notifyConnectionHandlers(status: WebSocketStatus): void {
+  private notifyConnectionHandlers(status: WebSocketStatus, details?: any): void {
     this.connectionHandlers.forEach(handler => {
       try {
-        handler(status);
+        handler(status, details);
       } catch (error) {
         logger.error('Error in connection handler:', error);
       }
@@ -7326,10 +7438,24 @@ export class WebSocketService {
       this.reconnectTimeout = null;
     }
 
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+
     // Clear all handlers
     this.messageHandlers.clear();
     this.errorHandlers = [];
     this.connectionHandlers = [];
+  }
+
+  public updateSettings(settings: Partial<typeof this.settings>): void {
+    this.settings = { ...this.settings, ...settings };
+    
+    // Restart heartbeat with new settings if connected
+    if (this.isConnected) {
+      this.startHeartbeat();
+    }
   }
 
   public on(type: MessageType, handler: MessageHandler): void {
@@ -7346,7 +7472,10 @@ export class WebSocketService {
 
   public onConnectionChange(handler: ConnectionHandler): void {
     this.connectionHandlers.push(handler);
-    handler(this.isConnected ? WebSocketStatus.CONNECTED : WebSocketStatus.DISCONNECTED);
+    handler(
+      this.isConnected ? WebSocketStatus.CONNECTED : WebSocketStatus.DISCONNECTED,
+      undefined
+    );
   }
 
   public off(type: MessageType, handler: MessageHandler): void {
@@ -8002,7 +8131,15 @@ export class XRInteraction {
             network: {
                 bindAddress: '0.0.0.0',
                 domain: 'localhost',
-                port: 3001
+                enableHttp2: false,
+                enableRateLimiting: true,
+                enableTls: false,
+                maxRequestSize: 10485760,
+                minTlsVersion: '',
+                port: 3001,
+                rateLimitRequests: 100,
+                rateLimitWindow: 60,
+                tunnelId: 'dummy'
             },
             nodes: { 
                 baseColor: '#4A90E2', 
@@ -8042,9 +8179,46 @@ export class XRInteraction {
                 environmentIntensity: 1 
             },
             websocket: {
-                heartbeatInterval: 30,
-                heartbeatTimeout: 60,
-                maxMessageSize: 5242880
+                binaryChunkSize: 65536,
+                compressionEnabled: true,
+                compressionThreshold: 1024,
+                heartbeatInterval: 15000,
+                heartbeatTimeout: 60000,
+                maxConnections: 1000,
+                maxMessageSize: 100485760,
+                reconnectAttempts: 3,
+                reconnectDelay: 5000,
+                updateRate: 90
+            },
+            default: {
+                apiClientTimeout: 30,
+                enableMetrics: true,
+                enableRequestLogging: true,
+                logFormat: "json",
+                logLevel: "debug",
+                maxConcurrentRequests: 5,
+                maxPayloadSize: 5242880,
+                maxRetries: 3,
+                metricsPort: 9090,
+                retryDelay: 5
+            },
+            security: {
+                allowedOrigins: [],
+                auditLogPath: "/app/logs/audit.log",
+                cookieHttponly: true,
+                cookieSamesite: "Strict",
+                cookieSecure: true,
+                csrfTokenTimeout: 3600,
+                enableAuditLogging: true,
+                enableRequestValidation: true,
+                sessionTimeout: 3600
+            },
+            serverDebug: {
+                enableDataDebug: false,
+                enableWebsocketDebug: false,
+                enabled: true,
+                logBinaryHeaders: false,
+                logFullJson: false
             }
         };
         
@@ -8252,7 +8426,45 @@ export const defaultSettings: Settings = {
     network: {
         bindAddress: "0.0.0.0",
         domain: "localhost",
-        port: 3001
+        enableHttp2: false,
+        enableRateLimiting: true,
+        enableTls: false,
+        maxRequestSize: 10485760,
+        minTlsVersion: "",
+        port: 3001,
+        rateLimitRequests: 100,
+        rateLimitWindow: 60,
+        tunnelId: "dummy"
+    },
+    default: {
+        apiClientTimeout: 30,
+        enableMetrics: true,
+        enableRequestLogging: true,
+        logFormat: "json",
+        logLevel: "debug",
+        maxConcurrentRequests: 5,
+        maxPayloadSize: 5242880,
+        maxRetries: 3,
+        metricsPort: 9090,
+        retryDelay: 5
+    },
+    security: {
+        allowedOrigins: [],
+        auditLogPath: "/app/logs/audit.log",
+        cookieHttponly: true,
+        cookieSamesite: "Strict",
+        cookieSecure: true,
+        csrfTokenTimeout: 3600,
+        enableAuditLogging: true,
+        enableRequestValidation: true,
+        sessionTimeout: 3600
+    },
+    serverDebug: {
+        enableDataDebug: false,
+        enableWebsocketDebug: false,
+        enabled: true,
+        logBinaryHeaders: false,
+        logFullJson: false
     },
     nodes: {
         baseColor: "#c3ab6f",
@@ -8292,9 +8504,16 @@ export const defaultSettings: Settings = {
         environmentIntensity: 1.2
     },
     websocket: {
+        binaryChunkSize: 65536,
+        compressionEnabled: true,
+        compressionThreshold: 1024,
         heartbeatInterval: 15000,
         heartbeatTimeout: 60000,
-        maxMessageSize: 100485760
+        maxConnections: 1000,
+        maxMessageSize: 100485760,
+        reconnectAttempts: 3,
+        reconnectDelay: 5000,
+        updateRate: 90
     }
 };
 
@@ -8640,41 +8859,49 @@ class SettingsManager implements ISettingsManager {
             return;
         }
 
+        const maxRetries = 3;
+        const retryDelay = 1000; // 1 second
+
         try {
             const categories = Object.keys(this.settings) as SettingCategory[];
             
             for (const category of categories) {
-                try {
-                    const response = await fetch(`/api/visualization/settings/${category}`);
-                    if (response.status === 404) {
-                        logger.info(`Settings endpoint for ${category} not found, using defaults`);
-                        continue;
-                    }
-                    if (!response.ok) {
-                        throw new Error(`Failed to fetch ${category} settings: ${response.statusText}`);
-                    }
-                    const data = await response.json();
-                    
-                    // Update all settings in this category
-                    if (this.settings[category]) {
-                        this.settings[category] = { ...this.settings[category], ...data };
-                        logger.info(`Loaded settings for category ${category}`);
-                    }
-                } catch (error) {
-                    if (error instanceof Error && error.message.includes('404')) {
-                        logger.info(`Using default values for ${category} settings`);
-                    } else {
-                        logger.error(`Error loading ${category} settings:`, error);
-                        logger.info(`Using default values for ${category} settings`);
+                let retries = 0;
+                while (retries < maxRetries) {
+                    try {
+                        const response = await fetch(`/api/visualization/settings/${category}`);
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (this.settings[category]) {
+                                this.settings[category] = { ...this.settings[category], ...data };
+                                logger.info(`Loaded settings for category ${category}`);
+                                break; // Success, exit retry loop
+                            }
+                        } else if (response.status === 404) {
+                            logger.info(`Settings endpoint for ${category} not found, using defaults`);
+                            break; // 404 is expected for some categories, exit retry loop
+                        } else {
+                            throw new Error(`Failed to fetch ${category} settings: ${response.statusText}`);
+                        }
+                    } catch (error) {
+                        retries++;
+                        if (retries === maxRetries) {
+                            logger.error(`Failed to load ${category} settings after ${maxRetries} attempts:`, error);
+                            logger.info(`Using default values for ${category} settings`);
+                        } else {
+                            logger.warn(`Retry ${retries}/${maxRetries} for ${category} settings`);
+                            await new Promise(resolve => setTimeout(resolve, retryDelay));
+                        }
                     }
                 }
             }
             
             this.initialized = true;
+            logger.info('Settings initialization complete');
         } catch (error) {
             logger.error('Failed to initialize settings:', error);
-            logger.info('Using default settings');
-            this.initialized = true;
+            throw error;
         }
     }
 
@@ -8972,11 +9199,6 @@ export class ControlPanel {
                 this.container.appendChild(categoryContainer);
             });
 
-            const resetButton = document.createElement('button');
-            resetButton.textContent = 'Reset to Defaults';
-            resetButton.onclick = () => this.resetToDefaults();
-            this.container.appendChild(resetButton);
-
         } catch (error) {
             logger.error('Error setting up UI:', error);
         }
@@ -9094,25 +9316,6 @@ export class ControlPanel {
         }
 
         container.appendChild(controlContainer);
-    }
-
-    private async resetToDefaults(): Promise<void> {
-        try {
-            const defaultSettings = settingsManager.getDefaultSettings();
-            for (const [categoryName, settings] of Object.entries(defaultSettings)) {
-                const category = categoryName as SettingCategory;
-                for (const [settingName, value] of Object.entries(settings)) {
-                    const setting = settingName as SettingKey<typeof category>;
-                    await settingsManager.updateSetting(
-                        category,
-                        setting,
-                        value as SettingValueType<typeof category, typeof setting>
-                    );
-                }
-            }
-        } catch (error) {
-            logger.error('Error resetting to defaults:', error);
-        }
     }
 
     public dispose(): void {
@@ -9944,7 +10147,48 @@ export interface LabelSettings {
 export interface NetworkSettings {
   bindAddress: string;
   domain: string;
+  enableHttp2: boolean;
+  enableRateLimiting: boolean;
+  enableTls: boolean;
+  maxRequestSize: number;
+  minTlsVersion: string;
   port: number;
+  rateLimitRequests: number;
+  rateLimitWindow: number;
+  tunnelId: string;
+}
+
+export interface DefaultSettings {
+  apiClientTimeout: number;
+  enableMetrics: boolean;
+  enableRequestLogging: boolean;
+  logFormat: string;
+  logLevel: string;
+  maxConcurrentRequests: number;
+  maxPayloadSize: number;
+  maxRetries: number;
+  metricsPort: number;
+  retryDelay: number;
+}
+
+export interface SecuritySettings {
+  allowedOrigins: string[];
+  auditLogPath: string;
+  cookieHttponly: boolean;
+  cookieSamesite: string;
+  cookieSecure: boolean;
+  csrfTokenTimeout: number;
+  enableAuditLogging: boolean;
+  enableRequestValidation: boolean;
+  sessionTimeout: number;
+}
+
+export interface ServerDebugSettings {
+  enableDataDebug: boolean;
+  enableWebsocketDebug: boolean;
+  enabled: boolean;
+  logBinaryHeaders: boolean;
+  logFullJson: boolean;
 }
 
 export interface NodeSettings {
@@ -9988,9 +10232,16 @@ export interface RenderingSettings {
 }
 
 export interface WebsocketSettings {
+  binaryChunkSize: number;
+  compressionEnabled: boolean;
+  compressionThreshold: number;
   heartbeatInterval: number;
   heartbeatTimeout: number;
+  maxConnections: number;
   maxMessageSize: number;
+  reconnectAttempts: number;
+  reconnectDelay: number;
+  updateRate: number;
 }
 
 export interface Settings {
@@ -9999,12 +10250,15 @@ export interface Settings {
   audio: AudioSettings;
   bloom: BloomSettings;
   clientDebug: ClientDebugSettings;
+  default: DefaultSettings;
   edges: EdgeSettings;
   labels: LabelSettings;
   network: NetworkSettings;
   nodes: NodeSettings;
   physics: PhysicsSettings;
   rendering: RenderingSettings;
+  security: SecuritySettings;
+  serverDebug: ServerDebugSettings;
   websocket: WebsocketSettings;
 }
 
@@ -10048,7 +10302,9 @@ export type MessageType =
   | 'pong'
   | 'settingsUpdated'
   | 'graphUpdated'
-  | 'connectionStatus';  // New type for connection status updates
+  | 'connectionStatus'
+  | 'updatePositions'
+  | 'simulationModeSet';
 
 // Handler types
 export type MessageHandler = (data: any) => void;
@@ -11550,3 +11806,1222 @@ export class NodeManager {
 }
 
 --END--
+
+=== Docker Configuration ===
+
+
+--- docker-compose.yml ---
+
+name: logseq-xr
+
+services:
+  webxr:
+    build: .
+    image: logseq-xr-image:latest
+    container_name: logseq-xr-webxr
+    read_only: false
+    networks:
+      ragflow:
+        aliases:
+          - logseq-xr-webxr
+          - webxr-client
+    deploy:
+      resources:
+        limits:
+          cpus: '16.0'
+          memory: 64G
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']  # Explicitly use GPU 0
+              capabilities: [gpu]
+    ports:
+      - "4000:4000"  # Map container nginx port 4000 to host port 4000
+    environment:
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+      - BIND_ADDRESS=0.0.0.0
+      - PORT=3001  # Explicitly set Rust backend to use port 3001
+      - NGINX_PORT=4000  # Set nginx to use port 4000
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_GPU_UUID:-0}  # Use GPU UUID from launch script
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NODE_ENV=production
+    env_file:
+      - .env
+    volumes:
+      - ./data/markdown:/app/data/markdown
+      - ./data/piper:/app/data/piper
+      - ./client:/app/client
+      - type: bind
+        source: ./settings.toml
+        target: /app/settings.toml
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 4G
+    user: "webxr:webxr"  # Run container as webxr user
+    restart: unless-stopped
+    stop_grace_period: 30s
+    init: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4000/ || exit 1; curl -f http://localhost:4000/wss || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared-tunnel
+    networks:
+      ragflow:
+        aliases:
+          - cloudflared
+    volumes:
+      - ./config.yml:/etc/cloudflared/config.yml:ro
+    command: tunnel --loglevel info --config /etc/cloudflared/config.yml run
+    restart: unless-stopped
+    stop_grace_period: 10s
+    init: true
+    depends_on:
+      webxr:
+        condition: service_healthy
+    environment:
+      - TUNNEL_TOKEN=$TUNNEL_TOKEN
+      - TUNNEL_METRICS=0.0.0.0:2000
+      - TUNNEL_DNS_UPSTREAM=https://1.1.1.1/dns-query,https://1.0.0.1/dns-query
+      - TUNNEL_TRANSPORT_PROTOCOL=http2
+      - TUNNEL_ORIGIN_SERVER=http://webxr-client:4000  # Point to nginx port
+      - TUNNEL_WEBSOCKET_ENABLE=true
+      - TUNNEL_WEBSOCKET_HEARTBEAT_INTERVAL=30s  # Match our heartbeat interval
+      - TUNNEL_WEBSOCKET_TIMEOUT=3600s  # Match our max timeout
+      - TUNNEL_RETRIES=5
+      - TUNNEL_GRACE_PERIOD=30s
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "cloudflared tunnel ingress validate && cloudflared tunnel status | grep -q 'Active connections'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  ragflow:
+    external: true
+    name: docker_ragflow  # RAGFlow's network name from docker network ls
+
+--- Dockerfile ---
+
+# Stage 1: Frontend Build
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /app
+
+# Install pnpm
+RUN npm install -g pnpm@9.14.2
+
+# Copy package files and configuration
+COPY package.json pnpm-lock.yaml ./
+COPY tsconfig.json tsconfig.node.json vite.config.ts ./
+COPY client ./client
+
+# Create data/public directory for build output
+RUN mkdir -p data/public
+
+# Install dependencies and build
+RUN pnpm install --frozen-lockfile && \
+    pnpm run build
+
+# Stage 2: Rust Dependencies Cache
+FROM nvidia/cuda:12.2.0-devel-ubuntu22.04 AS rust-deps-builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    libssl-dev \
+    pkg-config \
+    libegl1-mesa-dev \
+    libasound2-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.82.0
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /usr/src/app
+
+# Copy Cargo files and entire src directory for proper module resolution
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+
+# Build dependencies and application
+RUN cargo build --release
+
+# Stage 3: Python Dependencies
+FROM python:3.10.12-slim AS python-builder
+
+WORKDIR /app
+
+# Create virtual environment and install dependencies
+RUN python -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
+
+# Install Python packages
+RUN pip install --upgrade pip==23.3.1 wheel==0.41.3 && \
+    pip install \
+    piper-phonemize==1.1.0 \
+    piper-tts==1.2.0 \
+    onnxruntime-gpu==1.16.3
+
+# Stage 4: Final Runtime Image
+FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/venv/bin:${PATH}" \
+    NVIDIA_DRIVER_CAPABILITIES=all \
+    RUST_LOG=info \
+    RUST_BACKTRACE=0 \
+    PORT=4000 \
+    BIND_ADDRESS=0.0.0.0 \
+    NODE_ENV=production \
+    DOMAIN=localhost
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    libssl3 \
+    nginx \
+    libegl1-mesa \
+    libasound2 \
+    python3.10-minimal \
+    python3.10-venv \
+    ca-certificates \
+    mesa-utils \
+    libgl1-mesa-dri \
+    libgl1-mesa-glx \
+    netcat-openbsd \
+    gettext-base \
+    net-tools \
+    iproute2 \
+    procps \
+    lsof \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /usr/share/doc/* \
+    && rm -rf /usr/share/man/*
+
+# Create a non-root user for running the application
+RUN groupadd -g 1000 webxr && \
+    useradd -u 1000 -g webxr -d /app webxr
+
+# Set up nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf.template
+RUN envsubst '${DOMAIN}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && \
+    rm /etc/nginx/nginx.conf.template && \
+    chown -R webxr:webxr /etc/nginx/nginx.conf && \
+    chmod 644 /etc/nginx/nginx.conf
+
+# Set up nginx directories and permissions
+RUN mkdir -p /var/lib/nginx/client_temp \
+             /var/lib/nginx/proxy_temp \
+             /var/lib/nginx/fastcgi_temp \
+             /var/lib/nginx/uwsgi_temp \
+             /var/lib/nginx/scgi_temp \
+             /var/log/nginx \
+             /var/run/nginx \
+             /var/cache/nginx && \
+    chown -R webxr:webxr /var/lib/nginx \
+                         /var/log/nginx \
+                         /var/run/nginx \
+                         /var/cache/nginx \
+                         /etc/nginx && \
+    chmod -R 755 /var/lib/nginx \
+                 /var/log/nginx \
+                 /var/run/nginx \
+                 /var/cache/nginx \
+                 /etc/nginx && \
+    touch /var/log/nginx/error.log \
+          /var/log/nginx/access.log \
+          /var/run/nginx/nginx.pid && \
+    chmod 666 /var/log/nginx/*.log \
+              /var/run/nginx/nginx.pid
+
+# Set up directory structure and permissions
+WORKDIR /app
+
+# Create required directories with proper permissions
+RUN mkdir -p /app/data/public/dist \
+             /app/data/markdown \
+             /app/data/runtime \
+             /app/src/utils \
+             /app/data/piper \
+             /tmp/runtime && \
+    chown -R webxr:webxr /app /tmp/runtime && \
+    chmod -R 755 /app /tmp/runtime
+
+# Copy Python virtual environment
+COPY --from=python-builder /app/venv /app/venv
+RUN chown -R webxr:webxr /app/venv
+
+# Copy built artifacts
+COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/
+COPY settings.toml /app/
+COPY src/utils/compute_forces.ptx /app/compute_forces.ptx
+COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
+
+# Copy configuration and scripts
+COPY src/generate_audio.py /app/src/
+COPY scripts/start.sh /app/start.sh
+
+# Set proper permissions for copied files
+RUN chown -R webxr:webxr /app && \
+    chmod 755 /app/start.sh && \
+    chmod 644 /app/settings.toml && \
+    chmod -R g+w /app
+
+# Switch to non-root user
+USER webxr
+
+# Add security labels
+LABEL org.opencontainers.image.source="https://github.com/yourusername/logseq-xr" \
+      org.opencontainers.image.description="LogseqXR WebXR Graph Visualization" \
+      org.opencontainers.image.licenses="MIT" \
+      security.capabilities="cap_net_bind_service" \
+      security.privileged="false" \
+      security.allow-privilege-escalation="false"
+
+# Expose port
+EXPOSE 4000
+
+# Start application
+ENTRYPOINT ["/app/start.sh"]
+
+--- nginx.conf ---
+
+pid /var/run/nginx/nginx.pid;
+error_log /var/log/nginx/error.log debug;
+
+events {
+    worker_connections 1024;
+    multi_accept on;
+    use epoll;
+}
+
+http {
+    # Basic settings
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    charset utf-8;
+
+    # Add TypeScript MIME type
+    types {
+        application/typescript ts;
+        application/json json;
+    }
+
+    # Default MIME types are included from mime.types
+
+    # Logging
+    log_format debug_format '$remote_addr - $remote_user [$time_local] '
+                          '"$request" $status $body_bytes_sent '
+                          '"$http_referer" "$http_user_agent" '
+                          'rt=$request_time uct="$upstream_connect_time" uht="$upstream_header_time" urt="$upstream_response_time"'
+                          ' ws_status="$upstream_http_upgrade"';  # Added WebSocket status logging
+
+    access_log /var/log/nginx/access.log debug_format;
+
+    # Optimization
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 120;  # Increased to match cloudflared keepAliveTimeout
+    keepalive_requests 100;
+
+    # Gzip settings
+    gzip on;
+    gzip_disable "msie6";
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_buffers 16 8k;
+    gzip_http_version 1.1;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    # WebSocket configuration
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
+    # Upstream backend definition for the Rust server
+    upstream backend {
+        server 127.0.0.1:3001;  # Match PORT=3001 from docker-compose.yml
+        keepalive 32;  # Keep connections alive
+    }
+
+    # Main server configuration
+    server {
+        listen 4000 default_server;  # Listen on port 4000 for external connections
+        server_name _;  # Accept any server name
+        root /app/data/public/dist;  # Set root to built files directory
+
+        # Security headers
+        add_header X-Content-Type-Options nosniff;
+        add_header X-Frame-Options SAMEORIGIN;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header Referrer-Policy "same-origin" always;
+        add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ws: wss: http: https:;" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+        # WebSocket endpoint
+        location /wss {
+            proxy_pass http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # WebSocket specific settings
+            proxy_read_timeout 300s;  # Increased timeout for long-running connections
+            proxy_send_timeout 300s;
+            proxy_connect_timeout 75s;
+            proxy_buffering off;      # Disable buffering for real-time communication
+            proxy_cache off;          # Disable caching for WebSocket connections
+        }
+
+        # API endpoints
+        location /api {
+            proxy_pass http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # API specific settings
+            proxy_read_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_connect_timeout 60s;
+            proxy_buffering on;       # Enable buffering for API responses
+            proxy_buffer_size 128k;
+            proxy_buffers 4 256k;
+            proxy_busy_buffers_size 256k;
+        }
+
+        # Graph endpoints
+        location /graph {
+            proxy_pass http://backend/graph;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_connect_timeout 30s;  # Match HEARTBEAT_INTERVAL
+            add_header Cache-Control "no-store" always;
+        }
+
+        # Static files
+        location / {
+            try_files $uri $uri/ /index.html;
+            expires 1h;
+            add_header Cache-Control "public, no-transform";
+        }
+
+        # Static files with proper MIME types
+        location /assets/ {
+            expires 7d;
+            add_header Cache-Control "public, no-transform" always;
+            try_files $uri =404;
+            access_log off;
+        }
+
+        # Error pages
+        error_page 404 /404.html;
+        error_page 500 502 503 504 /50x.html;
+        location = /50x.html {
+            root /usr/share/nginx/html;
+        }
+    }
+}
+
+--- scripts/launch-docker.sh ---
+
+#!/bin/bash
+
+set -e
+
+# Determine script location and project root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Function to log messages with timestamps
+log() {
+    echo -e "[$(date "+%Y-%m-%d %H:%M:%S")] $1"
+}
+
+# Function to check pnpm security
+check_pnpm_security() {
+    log "${YELLOW}Running pnpm security audit...${NC}"
+    
+    # Run pnpm audit and capture the output
+    local audit_output=$(pnpm audit 2>&1)
+    local audit_exit=$?
+    
+    # Count critical vulnerabilities, ensuring we have a valid integer
+    local critical_count
+    critical_count=$(echo "$audit_output" | grep -i "critical" | grep -o '[0-9]\+ vulnerabilities' | awk '{print $1}')
+    critical_count=${critical_count:-0}  # Default to 0 if empty
+    
+    echo "$audit_output"
+    
+    if [ "$critical_count" -gt 0 ]; then
+        log "${RED}Found $critical_count critical vulnerabilities!${NC}"
+        return 1
+    elif [ "$audit_exit" -ne 0 ]; then
+        log "${YELLOW}Found non-critical vulnerabilities${NC}"
+    else
+        log "${GREEN}No critical vulnerabilities found${NC}"
+    fi
+    return 0
+}
+
+# Function to check TypeScript compilation
+check_typescript() {
+    log "${YELLOW}Running TypeScript type check...${NC}"
+    if ! pnpm run type-check; then
+        log "${RED}TypeScript check failed${NC}"
+        return 1
+    fi
+    log "${GREEN}TypeScript check passed${NC}"
+    return 0
+}
+
+# Function to check Rust security
+check_rust_security() {
+    log "${YELLOW}Running cargo audit...${NC}"
+    
+    # Run cargo audit and capture the output
+    local audit_output=$(cargo audit 2>&1)
+    local audit_exit=$?
+    
+    # Count critical vulnerabilities, ensuring we have a valid integer
+    local critical_count
+    critical_count=$(echo "$audit_output" | grep -i "critical" | wc -l)
+    critical_count=${critical_count:-0}  # Default to 0 if empty
+    
+    echo "$audit_output"
+    
+    if [ "$critical_count" -gt 0 ]; then
+        log "${RED}Found $critical_count critical vulnerabilities!${NC}"
+        return 1
+    elif [ "$audit_exit" -ne 0 ]; then
+        log "${YELLOW}Found non-critical vulnerabilities${NC}"
+    else
+        log "${GREEN}No critical vulnerabilities found${NC}"
+    fi
+    return 0
+}
+
+# Function to read settings from TOML file
+read_settings() {
+    local settings_file="$PROJECT_ROOT/settings.toml"
+    # Extract domain and port from settings.toml
+    export DOMAIN=$(grep "domain = " "$settings_file" | cut -d'"' -f2)
+    export PORT=$(grep "port = " "$settings_file" | awk '{print $3}')
+    
+    if [ -z "$DOMAIN" ] || [ -z "$PORT" ]; then
+        log "${RED}Error: DOMAIN or PORT not set in settings.toml. Please check your configuration.${NC}"
+        exit 1
+    fi
+}
+
+# Function to check system resources
+check_system_resources() {
+    log "${YELLOW}Checking GPU availability...${NC}"
+    if ! command -v nvidia-smi &> /dev/null; then
+        log "${RED}Error: nvidia-smi not found${NC}"
+        exit 1
+    fi
+    
+    # Check GPU memory
+    local gpu_info=$(nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader)
+    echo "$gpu_info"
+    
+    # Check if any GPU has enough memory (at least 4GB free)
+    local has_enough_memory=false
+    while IFS=, read -r used total; do
+        used=$(echo "$used" | tr -d ' MiB')
+        total=$(echo "$total" | tr -d ' MiB')
+        free=$((total - used))
+        if [ "$free" -gt 4096 ]; then
+            has_enough_memory=true
+            break
+        fi
+    done <<< "$gpu_info"
+    
+    if [ "$has_enough_memory" = false ]; then
+        log "${RED}Error: No GPU with sufficient free memory (need at least 4GB)${NC}"
+        exit 1
+    fi
+}
+
+# Function to check Docker setup
+check_docker() {
+    if ! command -v docker &> /dev/null; then
+        log "${RED}Error: Docker is not installed${NC}"
+        exit 1
+    fi
+
+    if docker compose version &> /dev/null; then
+        DOCKER_COMPOSE="docker compose"
+    elif docker-compose version &> /dev/null; then
+        DOCKER_COMPOSE="docker-compose"
+    else
+        log "${RED}Error: Docker Compose not found${NC}"
+        exit 1
+    fi
+}
+
+# Function to verify client directory structure
+verify_client_structure() {
+    log "${YELLOW}Verifying client directory structure...${NC}"
+    
+    local required_files=(
+        "$PROJECT_ROOT/client/index.html"
+        "$PROJECT_ROOT/client/index.ts"
+        "$PROJECT_ROOT/client/core/types.ts"
+        "$PROJECT_ROOT/client/core/constants.ts"
+        "$PROJECT_ROOT/client/core/utils.ts"
+        "$PROJECT_ROOT/client/core/logger.ts"
+        "$PROJECT_ROOT/client/websocket/websocketService.ts"
+        "$PROJECT_ROOT/client/rendering/scene.ts"
+        "$PROJECT_ROOT/client/rendering/nodes.ts"
+        "$PROJECT_ROOT/client/rendering/textRenderer.ts"
+        "$PROJECT_ROOT/client/state/settings.ts"
+        "$PROJECT_ROOT/client/state/graphData.ts"
+        "$PROJECT_ROOT/client/state/defaultSettings.ts"
+        "$PROJECT_ROOT/client/xr/xrSessionManager.ts"
+        "$PROJECT_ROOT/client/xr/xrInteraction.ts"
+        "$PROJECT_ROOT/client/xr/xrTypes.ts"
+        "$PROJECT_ROOT/client/platform/platformManager.ts"
+        "$PROJECT_ROOT/client/tsconfig.json"
+    )
+    
+    for file in "${required_files[@]}"; do
+        if [ ! -f "$file" ]; then
+            log "${RED}Error: Required file $file not found${NC}"
+            return 1
+        fi
+    done
+    
+    log "${GREEN}Client directory structure verified${NC}"
+    return 0
+}
+
+# Function to clean up existing processes
+cleanup_existing_processes() {
+    log "${YELLOW}Cleaning up...${NC}"
+    
+    # Save logs before cleanup if there was a failure
+    if [ -n "${SAVE_LOGS:-}" ]; then
+        local log_dir="$PROJECT_ROOT/logs/$(date +%Y%m%d_%H%M%S)"
+        mkdir -p "$log_dir"
+        $DOCKER_COMPOSE logs --no-color > "$log_dir/docker-compose.log"
+        log "${YELLOW}Logs saved to $log_dir${NC}"
+    fi
+    
+    # Stop and remove all containers from the compose project
+    $DOCKER_COMPOSE down --remove-orphans --timeout 30
+    
+    # Clean up any orphaned containers
+    for container in "logseq-xr-webxr" "cloudflared-tunnel"; do
+        if docker ps -a | grep -q "$container"; then
+            log "Removing container $container..."
+            docker rm -f "$container" || true
+        fi
+    done
+
+    # Clean up ports
+    for port in $PORT 4000 3001; do
+        if netstat -tuln | grep -q ":$port "; then
+            local pid=$(lsof -ti ":$port")
+            if [ ! -z "$pid" ]; then
+                log "Killing process using port $port (PID: $pid)"
+                kill -15 $pid 2>/dev/null || kill -9 $pid
+            fi
+        fi
+    done
+    
+    # Clean up old volumes and images
+    log "Cleaning up Docker resources..."
+    docker volume ls -q | grep "logseqXR" | xargs -r docker volume rm
+    docker image prune -f
+    
+    sleep 2
+}
+
+# Function to check RAGFlow network availability
+check_ragflow_network() {
+    log "${YELLOW}Checking RAGFlow network availability...${NC}"
+    if ! docker network ls | grep -q "docker_ragflow"; then
+        log "${RED}Error: RAGFlow network (docker_ragflow) not found${NC}"
+        log "${YELLOW}Please ensure RAGFlow is running in ../ragflow/docker${NC}"
+        log "${YELLOW}You can check the network with: docker network ls${NC}"
+        return 1
+    fi
+    log "${GREEN}RAGFlow network is available${NC}"
+    return 0
+}
+
+# Function to check application readiness
+check_application_readiness() {
+    local max_attempts=60
+    local attempt=1
+    local wait=2
+
+    log "${YELLOW}Checking application readiness...${NC}"
+    
+    # Install websocat if not available
+    if ! command -v websocat &> /dev/null; then
+        log "${YELLOW}Installing websocat for WebSocket testing...${NC}"
+        if command -v cargo &> /dev/null; then
+            cargo install websocat
+        else
+            log "${RED}Error: Neither websocat nor cargo found. Cannot test WebSocket connection.${NC}"
+            return 1
+        fi
+    fi
+
+    while [ $attempt -le $max_attempts ]; do
+        local ready=true
+        local status_msg=""
+
+        # Check HTTP endpoint
+        if ! timeout 5 curl -s http://localhost:4000/ >/dev/null; then
+            ready=false
+            status_msg="HTTP endpoint not ready"
+        fi
+
+        # Check WebSocket endpoint
+        if [ "$ready" = true ]; then
+            log "${YELLOW}Testing WebSocket connection...${NC}"
+            if ! timeout 5 websocat "ws://localhost:4000/wss" > /dev/null 2>&1 <<< '{"type":"ping"}'; then
+                ready=false
+                status_msg="WebSocket endpoint not ready"
+            fi
+        fi
+
+        # Optional RAGFlow connectivity check
+        if [ "$ready" = true ]; then
+            if timeout 5 curl -s http://ragflow-server/v1/health >/dev/null; then
+                log "${GREEN}RAGFlow service is accessible${NC}"
+            else
+                log "${YELLOW}Note: RAGFlow service is not accessible - some features will be limited${NC}"
+            fi
+        fi
+
+        if [ "$ready" = true ]; then
+            log "${GREEN}All services are ready${NC}"
+            return 0
+        fi
+
+        log "${YELLOW}Attempt $attempt/$max_attempts: $status_msg${NC}"
+        
+        if [ $attempt -eq $((max_attempts/2)) ]; then
+            log "${YELLOW}Still waiting for services. Recent logs:${NC}"
+            $DOCKER_COMPOSE logs --tail=20
+        fi
+
+        sleep $wait
+        attempt=$((attempt + 1))
+    done
+
+    log "${RED}Application failed to become ready. Dumping logs...${NC}"
+    SAVE_LOGS=1
+    $DOCKER_COMPOSE logs
+    return 1
+}
+
+# Function to ensure cloudflared is running and healthy
+ensure_cloudflared() {
+    local max_attempts=3
+    local attempt=1
+    local success=false
+
+    while [ $attempt -le $max_attempts ] && [ "$success" = false ]; do
+        log "\n${YELLOW}Checking cloudflared status (Attempt $attempt/$max_attempts)...${NC}"
+        
+        if ! docker ps | grep -q cloudflared-tunnel; then
+            log "${YELLOW}Cloudflared tunnel not running, starting it...${NC}"
+            $DOCKER_COMPOSE up -d cloudflared
+            sleep 10
+        fi
+
+        # Check container health status
+        local health_status=$(docker inspect --format='{{.State.Health.Status}}' cloudflared-tunnel 2>/dev/null || echo "unknown")
+        
+        if [ "$health_status" = "healthy" ]; then
+            log "${GREEN}Cloudflared tunnel is healthy${NC}"
+            success=true
+            break
+        fi
+
+        # Validate ingress configuration
+        log "${YELLOW}Validating cloudflared ingress configuration...${NC}"
+        if ! docker exec cloudflared-tunnel cloudflared tunnel ingress validate; then
+            log "${RED}Ingress validation failed${NC}"
+            if [ $attempt -lt $max_attempts ]; then
+                log "${YELLOW}Restarting cloudflared...${NC}"
+                $DOCKER_COMPOSE restart cloudflared
+                sleep 10
+                attempt=$((attempt + 1))
+                continue
+            else
+                log "${RED}Failed to validate cloudflared configuration after $max_attempts attempts${NC}"
+                return 1
+            fi
+        fi
+
+        attempt=$((attempt + 1))
+    done
+
+    if [ "$success" = true ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function to handle cleanup on exit
+cleanup_and_exit() {
+    log "\n${YELLOW}Received shutdown signal. Cleaning up...${NC}"
+    SAVE_LOGS=1
+    cleanup_existing_processes
+    exit 0
+}
+
+# Set up trap for cleanup
+trap cleanup_and_exit INT TERM
+
+# Change to project root directory
+cd "$PROJECT_ROOT"
+
+# Check environment
+if [ ! -f .env ]; then
+    log "${RED}Error: .env file not found in $PROJECT_ROOT${NC}"
+    exit 1
+fi
+
+# Source .env file
+set -a
+source .env
+set +a
+
+# Read settings from TOML
+read_settings
+
+# Initial setup
+check_docker
+check_system_resources
+
+# Verify client structure
+if ! verify_client_structure; then
+    log "${RED}Client structure verification failed${NC}"
+    exit 1
+fi
+
+# Run security checks
+log "\n${YELLOW}Running security checks...${NC}"
+check_pnpm_security || true
+check_typescript || exit 1
+check_rust_security || true
+
+cleanup_existing_processes
+
+# Check RAGFlow network before starting
+if ! check_ragflow_network; then
+    log "${RED}Cannot proceed without RAGFlow network${NC}"
+    exit 1
+fi
+
+# Build and start services
+log "${YELLOW}Building and starting services...${NC}"
+$DOCKER_COMPOSE build --pull --no-cache
+$DOCKER_COMPOSE up -d
+
+# Check application readiness
+if ! check_application_readiness; then
+    log "${RED}Application failed to start properly${NC}"
+    cleanup_existing_processes
+    exit 1
+fi
+
+# Ensure cloudflared is running and healthy
+if ! ensure_cloudflared; then
+    log "${RED}Failed to ensure cloudflared is running and healthy${NC}"
+    cleanup_existing_processes
+    exit 1
+fi
+
+# Print final status
+log "\n${GREEN}🚀 Services are running!${NC}"
+
+log "\nResource Usage:"
+docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
+
+log "\nEndpoints:"
+echo "HTTP:      http://localhost:4000"
+echo "WebSocket: ws://localhost:4000/wss"
+
+log "\nCommands:"
+echo "logs:    $DOCKER_COMPOSE logs -f"
+echo "stop:    $DOCKER_COMPOSE down"
+echo "restart: $DOCKER_COMPOSE restart"
+
+# Keep script running to show logs
+log "\n${YELLOW}Showing logs (Ctrl+C to exit)...${NC}"
+$DOCKER_COMPOSE logs -f &
+
+# Wait for signal
+wait
+
+--- scripts/start.sh ---
+
+#!/bin/bash
+set -euo pipefail
+
+# Function to log messages with timestamps
+log() {
+    echo "[$(date "+%Y-%m-%d %H:%M:%S")] $1"
+}
+
+# Function to check if a service is healthy
+check_service_health() {
+    local port=$1
+    local endpoint=${2:-"/"}
+    local websocket=${3:-false}
+    local retries=30
+    local wait=2
+
+    log "Checking health for service on port $port..."
+    
+    while [ $retries -gt 0 ]; do
+        # Check if port is open
+        if ! timeout 1 bash -c "cat < /dev/null > /dev/tcp/0.0.0.0/$port" 2>/dev/null; then
+            retries=$((retries-1))
+            if [ $retries -eq 0 ]; then
+                log "Error: Port $port is not available"
+                return 1
+            fi
+            log "Port $port not ready, retrying in $wait seconds... ($retries attempts left)"
+            sleep $wait
+            continue
+        fi
+
+        # Check HTTP endpoint
+        if ! curl -s -f --max-time 5 "http://localhost:$port$endpoint" > /dev/null; then
+            retries=$((retries-1))
+            if [ $retries -eq 0 ]; then
+                log "Error: Service health check failed on port $port"
+                return 1
+            fi
+            log "Service not ready, retrying in $wait seconds... ($retries attempts left)"
+            sleep $wait
+            continue
+        fi
+
+        # Check WebSocket endpoint if required
+        if [ "$websocket" = true ] && ! curl -s -f --max-time 5 -N -H "Connection: Upgrade" -H "Upgrade: websocket" "http://localhost:$port/wss" > /dev/null; then
+            retries=$((retries-1))
+            if [ $retries -eq 0 ]; then
+                log "Error: WebSocket health check failed on port $port"
+                return 1
+            fi
+            log "WebSocket not ready, retrying in $wait seconds... ($retries attempts left)"
+            sleep $wait
+            continue
+        fi
+
+        log "Service on port $port is healthy"
+        return 0
+    done
+
+    return 1
+}
+
+# Function to check RAGFlow connectivity with retries
+check_ragflow() {
+    log "Checking RAGFlow connectivity..."
+    local retries=5
+    local wait=10
+    while [ $retries -gt 0 ]; do
+        if curl -s -f --max-time 5 "http://ragflow-server/v1/" > /dev/null; then
+            log "RAGFlow server is reachable"
+            return 0
+        else
+            retries=$((retries-1))
+            if [ $retries -eq 0 ]; then
+                log "Warning: Cannot reach RAGFlow server after multiple attempts"
+                return 1
+            fi
+            log "RAGFlow not ready, retrying in $wait seconds... ($retries attempts left)"
+            sleep $wait
+        fi
+    done
+}
+
+# Function to verify production build
+verify_build() {
+    log "Verifying production build..."
+    if [ ! -d "/app/data/public/dist" ]; then
+        log "Error: Production build directory not found"
+        return 1
+    fi
+    
+    if [ ! -f "/app/data/public/dist/index.html" ]; then
+        log "Error: Production build index.html not found"
+        return 1
+    fi
+    
+    log "Production build verified"
+    return 0
+}
+
+# Function to verify settings file permissions
+verify_settings_permissions() {
+    log "Verifying settings.toml permissions..."
+    
+    # Check if settings.toml exists
+    if [ ! -f "/app/settings.toml" ]; then
+        log "Error: settings.toml not found"
+        return 1
+    fi
+    
+    # Check if file is readable
+    if [ ! -r "/app/settings.toml" ]; then
+        log "Error: settings.toml is not readable"
+        return 1
+    fi
+    
+    # Check if file is writable
+    if [ ! -w "/app/settings.toml" ]; then
+        log "Error: settings.toml is not writable"
+        return 1
+    fi
+    
+    log "settings.toml permissions verified"
+    return 0
+}
+
+# Set up runtime environment
+setup_runtime() {
+    log "Setting up runtime environment..."
+
+    # Set up XDG_RUNTIME_DIR
+    export XDG_RUNTIME_DIR="/tmp/runtime"
+    mkdir -p "$XDG_RUNTIME_DIR"
+    chmod 700 "$XDG_RUNTIME_DIR"
+
+    # Verify GPU is available
+    if ! command -v nvidia-smi &> /dev/null; then
+        log "Error: nvidia-smi not found. GPU support is required."
+        return 1
+    fi
+
+    # Check GPU is accessible
+    if ! nvidia-smi &> /dev/null; then
+        log "Error: Cannot access NVIDIA GPU. Check device is properly passed to container."
+        return 1
+    fi
+
+    log "Runtime environment configured successfully"
+    return 0
+}
+
+# Function to cleanup processes
+cleanup() {
+    log "Cleaning up processes..."
+    
+    # Kill nginx gracefully if running
+    if pgrep nginx > /dev/null; then
+        log "Stopping nginx..."
+        nginx -s quit
+        sleep 2
+        # Force kill if still running
+        pkill -9 nginx || true
+    fi
+    
+    # Kill Rust backend if running
+    if [ -n "${RUST_PID:-}" ]; then
+        log "Stopping Rust backend..."
+        kill -TERM $RUST_PID 2>/dev/null || true
+        sleep 2
+        # Force kill if still running
+        kill -9 $RUST_PID 2>/dev/null || true
+    fi
+    
+    log "Cleanup complete"
+}
+
+# Main script execution starts here
+main() {
+    # Set up trap for cleanup
+    trap cleanup EXIT INT TERM
+
+    # Verify settings file permissions
+    if ! verify_settings_permissions; then
+        log "Failed to verify settings.toml permissions"
+        exit 1
+    fi
+
+    # Set up runtime environment
+    if ! setup_runtime; then
+        log "Failed to set up runtime environment"
+        exit 1
+    fi
+
+    # Check RAGFlow availability (optional)
+    if ! check_ragflow; then
+        log "Warning: RAGFlow server not available - some features may be limited"
+    fi
+
+    # Verify production build
+    if ! verify_build; then
+        log "Failed to verify production build"
+        exit 1
+    fi
+
+    # Start the Rust backend first (it needs to bind to port 3001)
+    log "Starting webxr..."
+    /app/webxr &
+    RUST_PID=$!
+
+    # Wait for Rust server to be healthy
+    if ! check_service_health 3001 "/health" true; then
+        log "Failed to start Rust server"
+        exit 1
+    fi
+    log "Rust server started successfully"
+
+    # Start nginx (it needs to bind to port 4000)
+    log "Starting nginx..."
+    nginx -t && nginx
+    if [ $? -ne 0 ]; then
+        log "Failed to start nginx"
+        exit 1
+    fi
+
+    # Wait for nginx to be healthy
+    if ! check_service_health 4000 "/" true; then
+        log "Failed to verify nginx is running"
+        exit 1
+    fi
+    log "nginx started successfully"
+
+    # Monitor both processes
+    wait $RUST_PID
+}
+
+# Execute main function
+main
+
+
+=== Docker Network Configuration ===
+
+
+--- docker network inspect docker_ragflow ---
+
+[
+    {
+        "Name": "docker_ragflow",
+        "Id": "a7bc515a66f9014dfe7b39dc55eb933f4620c1536e5ff801fa5f92c8c36060b3",
+        "Created": "2024-12-06T11:41:33.959442093Z",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv6": false,
+        "IPAM": {
+            "Driver": "default",
+            "Options": null,
+            "Config": [
+                {
+                    "Subnet": "172.19.0.0/16",
+                    "Gateway": "172.19.0.1"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Ingress": false,
+        "ConfigFrom": {
+            "Network": ""
+        },
+        "ConfigOnly": false,
+        "Containers": {
+            "050e83ac5ba86056c50aed0b600ff55fcd3bc36f967ee24f7e689ca7c0060c21": {
+                "Name": "ragflow-minio",
+                "EndpointID": "26463d0b47222668be4c44aff9f778c9829c4378f3ebd92a09e704757277abd0",
+                "MacAddress": "02:42:ac:13:00:03",
+                "IPv4Address": "172.19.0.3/16",
+                "IPv6Address": ""
+            },
+            "13e854731b088029534bb105fde19b582d0fd401f8d4f1bd10e1326c8ad704d7": {
+                "Name": "ragflow-es-01",
+                "EndpointID": "35962a244d7b8e1cca54f4663b177e54fa10e299943aabba9796efc5dfdaa1b7",
+                "MacAddress": "02:42:ac:13:00:05",
+                "IPv4Address": "172.19.0.5/16",
+                "IPv6Address": ""
+            },
+            "43c333886de1ef9ed3fd3a8d5ec2f17710a3f2c62aeffcd94e58f6d3d9157f8b": {
+                "Name": "ragflow-server",
+                "EndpointID": "eb13cbe145fe756d3d86d45af26558bbdf6d5375283f72e41cfaa97ff7307305",
+                "MacAddress": "02:42:ac:13:00:06",
+                "IPv4Address": "172.19.0.6/16",
+                "IPv6Address": ""
+            },
+            "4b8b481d4b8d3bdf7be932788bb958a5bce06b903efc54daa68a3ef726e862e4": {
+                "Name": "ragflow-mysql",
+                "EndpointID": "53ef4a3bae59d487b5073e6f81f78466b06397146089360d2edec84408aebcc4",
+                "MacAddress": "02:42:ac:13:00:02",
+                "IPv4Address": "172.19.0.2/16",
+                "IPv6Address": ""
+            },
+            "58544e030da235b95c482cb12a8354622ac033ce22d95d244cf4d5f597d7b442": {
+                "Name": "ragflow-redis",
+                "EndpointID": "05980d6ebe36a2b75f3972c5b5e52844504f417b7c033288558c6715731c0a90",
+                "MacAddress": "02:42:ac:13:00:04",
+                "IPv4Address": "172.19.0.4/16",
+                "IPv6Address": ""
+            },
+            "f4e572b8701b21202292db62f4903e7128738faffde697fee964be0704300d1e": {
+                "Name": "logseq-xr-webxr",
+                "EndpointID": "619d5c68ab0a3a7312f567ebdc7c766ce364d3b39947032d0805917e7305db21",
+                "MacAddress": "02:42:ac:13:00:07",
+                "IPv4Address": "172.19.0.7/16",
+                "IPv6Address": ""
+            }
+        },
+        "Options": {},
+        "Labels": {
+            "com.docker.compose.network": "ragflow",
+            "com.docker.compose.project": "docker",
+            "com.docker.compose.version": "2.29.7"
+        }
+    }
+]

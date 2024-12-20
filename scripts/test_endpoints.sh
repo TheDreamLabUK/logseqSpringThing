@@ -1,278 +1,249 @@
 #!/bin/bash
 
+# Enable error reporting
+set -e
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Test configuration
-declare -A HOST_CONFIGS=(
-    ["localhost:4000"]="http"
-    ["172.19.0.8:4000"]="http"
-    ["www.visionflow.info"]="https"
-)
+# Configuration
+CONTAINER_NAME="logseq-xr-webxr"
+BACKEND_PORT=3001
+NGINX_PORT=4000
+PUBLIC_DOMAIN="www.visionflow.info"
+RAGFLOW_NETWORK="docker_ragflow"
+TIMEOUT=5
 
-# Function to log messages with timestamps
+# Function to log messages
 log() {
-    echo -e "[$(date "+%Y-%m-%d %H:%M:%S")] $1"
+    printf "[%s] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$1"
 }
 
-# Function to check required tools
-check_requirements() {
-    local missing_tools=()
-
-    # Check for curl
-    if ! command -v curl &> /dev/null; then
-        missing_tools+=("curl")
-    fi
-
-    # Check for websocat
-    if ! command -v websocat &> /dev/null; then
-        missing_tools+=("websocat")
-    fi
-
-    # Check for docker
-    if ! command -v docker &> /dev/null; then
-        missing_tools+=("docker")
-    fi
-
-    # If any tools are missing, print instructions and exit
-    if [ ${#missing_tools[@]} -ne 0 ]; then
-        log "${RED}Missing required tools:${NC}"
-        for tool in "${missing_tools[@]}"; do
-            case $tool in
-                "curl")
-                    echo "- curl: Install using your package manager (apt install curl)"
-                    ;;
-                "websocat")
-                    echo "- websocat: Install using cargo (cargo install websocat)"
-                    ;;
-                "docker")
-                    echo "- docker: Follow installation guide at https://docs.docker.com/engine/install/"
-                    ;;
-            esac
-        done
-        exit 1
-    fi
+# Function to safely execute docker commands with timeout
+docker_exec() {
+    timeout $TIMEOUT docker exec "$CONTAINER_NAME" $@ 2>&1 || echo "Command timed out after ${TIMEOUT}s"
 }
 
-# Function to check Docker network and container status
-check_docker_status() {
-    log "${YELLOW}Checking Docker status...${NC}"
-
-    # Check if docker_ragflow network exists
-    if ! docker network ls | grep -q "docker_ragflow"; then
-        log "${RED}Error: docker_ragflow network not found${NC}"
-        log "Create it with: docker network create docker_ragflow"
-        exit 1
-    fi
-
-    # Check if required containers are running
-    local required_containers=("logseq-xr-webxr" "ragflow-server")
-    local missing_containers=()
-
-    for container in "${required_containers[@]}"; do
-        if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-            missing_containers+=("$container")
-        fi
-    done
-
-    if [ ${#missing_containers[@]} -ne 0 ]; then
-        log "${RED}Error: Required containers not running:${NC}"
-        printf '%s\n' "${missing_containers[@]}"
-        exit 1
-    fi
-
-    log "${GREEN}Docker network and containers are ready${NC}"
+# Function to check if port is open
+check_port() {
+    local host="$1"
+    local port="$2"
+    timeout $TIMEOUT bash -c "echo > /dev/tcp/$host/$port" 2>/dev/null
+    return $?
 }
 
-# Function to get base URL for a host
-get_base_url() {
-    local host=$1
-    local protocol=${HOST_CONFIGS[$host]}
-    echo "${protocol}://${host}"
-}
-
-# Function to get WebSocket URL for a host
-get_ws_url() {
-    local host=$1
-    local protocol=${HOST_CONFIGS[$host]}
-    if [[ $protocol == "https" ]]; then
-        echo "wss://${host}/wss"
-    else
-        echo "ws://${host}/wss"
-    fi
-}
-
-# Function to test REST endpoints for a given host
-test_rest_endpoints() {
-    local host=$1
-    local base_url=$(get_base_url "$host")
+# Function to test endpoint and show response
+test_endpoint() {
+    local url="$1"
+    local description="$2"
+    local extra_opts="${3:-}"
+    local expected_content="${4:-}"
     
-    log "${YELLOW}Testing REST endpoints on ${host}...${NC}"
-
-    # Array of endpoints to test with their expected response patterns
-    declare -A endpoints=(
-        ["/api/files/fetch"]="nodes"
-        ["/api/graph/data"]="nodes"
-        ["/api/graph/data/paginated?page=0&page-size=100"]="nodes"
-        ["/api/visualization/settings/client-debug"]="enable"
-        ["/api/visualization/settings/server-debug"]="enable"
-        ["/api/visualization/settings/nodes/base-size"]="value"
-        ["/api/ragflow/init"]="conversation"
-        ["/api/perplexity/models"]="models"
-    )
-
-    local failed=0
-    for endpoint in "${!endpoints[@]}"; do
-        local expected="${endpoints[$endpoint]}"
-        log "Testing ${endpoint}..."
-        
-        response=$(curl -sk "${base_url}${endpoint}")
-        if [[ $response == *"${expected}"* ]]; then
-            log "${GREEN}✓ ${endpoint} working${NC}"
-        else
-            log "${RED}✗ ${endpoint} failed${NC}"
-            log "Response: ${response}"
-            ((failed++))
-        fi
-    done
-
-    # Test POST endpoints
-    log "Testing POST endpoints..."
-
-    # Test graph update endpoint
-    update_response=$(curl -sk -X POST "${base_url}/api/graph/update" \
-        -H "Content-Type: application/json" \
-        -d '{"nodes":[],"edges":[]}')
-    if [[ $update_response != *"error"* ]]; then
-        log "${GREEN}✓ POST /api/graph/update working${NC}"
-    else
-        log "${RED}✗ POST /api/graph/update failed${NC}"
-        ((failed++))
-    fi
-
-    # Test RAGFlow message endpoint
-    ragflow_response=$(curl -sk -X POST "${base_url}/api/ragflow/send" \
-        -H "Content-Type: application/json" \
-        -d '{"conversation_id":"test","messages":[{"role":"user","content":"test"}]}')
-    if [[ $ragflow_response != *"error"* ]]; then
-        log "${GREEN}✓ POST /api/ragflow/send working${NC}"
-    else
-        log "${RED}✗ POST /api/ragflow/send failed${NC}"
-        ((failed++))
-    fi
-
-    return $failed
-}
-
-# Function to test WebSocket connection for a given host
-test_websocket() {
-    local host=$1
-    local ws_url=$(get_ws_url "$host")
+    log "${BLUE}Testing $description...${NC}"
+    log "URL: $url"
     
-    log "${YELLOW}Testing WebSocket connection on ${host}...${NC}"
-
-    # Additional options for secure WebSocket
-    local ws_opts=""
-    if [[ ${HOST_CONFIGS[$host]} == "https" ]]; then
-        ws_opts="--no-verify"
-    fi
-
-    # Test initial connection
-    log "Testing WebSocket connection establishment..."
-    if ! timeout 5 websocat $ws_opts "$ws_url" > /dev/null 2>&1 <<< '{"type":"ping"}'; then
-        log "${RED}✗ WebSocket connection failed${NC}"
+    # First check if port is open
+    local port=$(echo "$url" | sed -n 's/.*:\([0-9]\+\).*/\1/p')
+    local host=$(echo "$url" | sed -n 's/.*\/\/\([^:\/]*\).*/\1/p')
+    
+    if [ -n "$port" ] && ! check_port "$host" "$port"; then
+        log "${RED}✗ Port $port is not open on $host${NC}"
         return 1
     fi
-    log "${GREEN}✓ WebSocket connection successful${NC}"
-
-    # Test message types
-    declare -A messages=(
-        ["ping"]='{"type":"ping"}'
-        ["enableBinaryUpdates"]='{"type":"enableBinaryUpdates","data":{"enabled":true}}'
-        ["requestInitialData"]='{"type":"requestInitialData"}'
-    )
-
-    local failed=0
-    for msg_type in "${!messages[@]}"; do
-        log "Testing ${msg_type} message..."
-        if echo "${messages[$msg_type]}" | websocat $ws_opts "$ws_url" --binary -n1 > /dev/null; then
-            log "${GREEN}✓ ${msg_type} message handled successfully${NC}"
-        else
-            log "${RED}✗ ${msg_type} message failed${NC}"
-            ((failed++))
-        fi
-    done
-
-    # Test error handling
-    log "Testing invalid message handling..."
-    if echo "invalid json" | websocat $ws_opts "$ws_url" -n1 2>&1 | grep -q "error"; then
-        log "${GREEN}✓ Invalid message handled correctly${NC}"
+    
+    # Then try the request
+    local response
+    if [[ -n "$extra_opts" ]]; then
+        response=$(curl -v -m $TIMEOUT -s $extra_opts "$url" 2>&1)
     else
-        log "${RED}✗ Invalid message handling failed${NC}"
+        response=$(curl -v -m $TIMEOUT -s "$url" 2>&1)
+    fi
+    local status=$?
+    
+    if [ $status -eq 0 ]; then
+        log "${GREEN}✓ $description successful${NC}"
+        log "Response: $response"
+        
+        # Check for expected content if provided
+        if [ -n "$expected_content" ] && ! echo "$response" | grep -q "$expected_content"; then
+            log "${RED}✗ Expected content not found: $expected_content${NC}"
+            return 1
+        fi
+        
+        return 0
+    else
+        log "${RED}✗ $description failed (status: $status)${NC}"
+        log "Response: $response"
+        return 1
+    fi
+}
+
+# Function to check Nginx logs
+check_nginx_logs() {
+    log "${BLUE}Checking Nginx logs...${NC}"
+    docker_exec tail -n 50 /var/log/nginx/error.log || true
+    docker_exec tail -n 50 /var/log/nginx/access.log || true
+}
+
+# Function to check static files
+check_static_files() {
+    log "${BLUE}Checking static files in container...${NC}"
+    docker_exec ls -la /app/client || true
+    docker_exec cat /app/client/index.html || true
+}
+
+# Function to test backend health
+test_backend() {
+    log "\n${BLUE}=== Testing Internal Backend (Port $BACKEND_PORT) ===${NC}"
+    local failed=0
+    
+    # Check if container is running
+    if ! docker ps | grep -q "$CONTAINER_NAME"; then
+        log "${RED}Container $CONTAINER_NAME is not running${NC}"
+        docker ps
+        return 1
+    fi
+    
+    # Test internal endpoints
+    local response=$(docker_exec curl -s "http://localhost:$BACKEND_PORT/api/graph/data")
+    if [ $? -eq 0 ] && [ -n "$response" ]; then
+        log "${GREEN}✓ Backend /api/graph/data accessible${NC}"
+        log "Response: $response"
+    else
+        log "${RED}✗ Backend /api/graph/data failed${NC}"
         ((failed++))
     fi
-
+    
+    response=$(docker_exec curl -s "http://localhost:$BACKEND_PORT/api/graph/data/paginated?page=0&page_size=10")
+    if [ $? -eq 0 ] && [ -n "$response" ]; then
+        log "${GREEN}✓ Backend /api/graph/data/paginated accessible${NC}"
+        log "Response: $response"
+    else
+        log "${RED}✗ Backend /api/graph/data/paginated failed${NC}"
+        ((failed++))
+    fi
+    
     return $failed
 }
 
-# Function to test all endpoints on all hosts
-test_all_endpoints() {
-    local total_failed=0
+# Function to test nginx
+test_nginx() {
+    log "\n${BLUE}=== Testing Nginx Proxy (Port $NGINX_PORT) ===${NC}"
+    local failed=0
+    
+    # Check if nginx is running
+    if ! docker_exec pgrep nginx > /dev/null; then
+        log "${RED}Nginx is not running in container${NC}"
+        return 1
+    fi
+    
+    # Check nginx config
+    log "Checking Nginx configuration..."
+    docker_exec nginx -t || true
+    
+    # Check static files
+    check_static_files
+    
+    # Test static file serving
+    test_endpoint "http://localhost:$NGINX_PORT/" "Nginx static files" "" "<!DOCTYPE html>" || ((failed++))
+    test_endpoint "http://localhost:$NGINX_PORT/index.html" "Nginx index.html" "" "<!DOCTYPE html>" || ((failed++))
+    
+    # Test API endpoint
+    test_endpoint "http://localhost:$NGINX_PORT/api/graph/data" "Nginx API proxy" || ((failed++))
+    
+    # Check logs if there were failures
+    if [ $failed -gt 0 ]; then
+        check_nginx_logs
+    fi
+    
+    return $failed
+}
 
-    for host in "${!HOST_CONFIGS[@]}"; do
-        echo
-        log "${YELLOW}Testing host: ${host} (${HOST_CONFIGS[$host]})${NC}"
-        echo "================================"
+# Function to test network
+test_network() {
+    log "\n${BLUE}=== Testing RAGFlow Network ===${NC}"
+    local failed=0
+    
+    # Get container IP
+    local ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER_NAME")
+    if [ -z "$ip" ]; then
+        log "${RED}Failed to get container IP${NC}"
+        return 1
+    fi
+    log "Container IP: $ip"
+    
+    # Test network connectivity
+    test_endpoint "http://$ip:$NGINX_PORT/api/graph/data" "Network API connectivity" || ((failed++))
+    test_endpoint "http://$ip:$NGINX_PORT/" "Network static files" "" "<!DOCTYPE html>" || ((failed++))
+    
+    # Test DNS resolution
+    local dns_response=$(docker run --rm --network "$RAGFLOW_NETWORK" alpine nslookup webxr-client)
+    if [ $? -eq 0 ]; then
+        log "${GREEN}✓ DNS resolution working${NC}"
+        log "DNS Response: $dns_response"
+    else
+        log "${RED}✗ DNS resolution failed${NC}"
+        log "DNS Response: $dns_response"
+        ((failed++))
+    fi
+    
+    return $failed
+}
 
-        # Test REST endpoints
-        test_rest_endpoints "$host"
-        local rest_failed=$?
-        ((total_failed += rest_failed))
-
-        # Test WebSocket
-        test_websocket "$host"
-        local ws_failed=$?
-        ((total_failed += ws_failed))
-
-        echo
-        log "${YELLOW}Results for ${host}:${NC}"
-        echo "REST Tests: $([ $rest_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($rest_failed failed)${NC}")"
-        echo "WebSocket Tests: $([ $ws_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($ws_failed failed)${NC}")"
-        echo "--------------------------------"
-    done
-
-    return $total_failed
+# Function to test public URL
+test_public() {
+    log "\n${BLUE}=== Testing Public URL ===${NC}"
+    local failed=0
+    
+    # Test HTTPS endpoint
+    test_endpoint "https://$PUBLIC_DOMAIN/api/graph/data" "Public API" "-k" || ((failed++))
+    
+    # Test static files
+    test_endpoint "https://$PUBLIC_DOMAIN/" "Public static files" "-k" "<!DOCTYPE html>" || ((failed++))
+    test_endpoint "https://$PUBLIC_DOMAIN/index.html" "Public index.html" "-k" "<!DOCTYPE html>" || ((failed++))
+    
+    return $failed
 }
 
 # Main execution
 main() {
     log "${YELLOW}Starting comprehensive endpoint tests...${NC}"
-
-    # Check for required tools
-    check_requirements
-
-    # Check Docker status
-    check_docker_status
-
-    echo "Testing endpoints on the following hosts:"
-    for host in "${!HOST_CONFIGS[@]}"; do
-        echo "- ${host} (${HOST_CONFIGS[$host]})"
-    done
+    local total_failed=0
+    
+    # Run tests in order
+    test_backend
+    local backend_failed=$?
+    ((total_failed += backend_failed))
+    
+    test_nginx
+    local nginx_failed=$?
+    ((total_failed += nginx_failed))
+    
+    test_network
+    local network_failed=$?
+    ((total_failed += network_failed))
+    
+    test_public
+    local public_failed=$?
+    ((total_failed += public_failed))
+    
+    # Print summary
     echo
-
-    test_all_endpoints
-    local total_failed=$?
-
-    echo
-    log "${YELLOW}Final Summary:${NC}"
+    log "${YELLOW}Test Summary:${NC}"
+    echo "Backend Tests: $([ $backend_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($backend_failed failed)${NC}")"
+    echo "Nginx Tests: $([ $nginx_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($nginx_failed failed)${NC}")"
+    echo "Network Tests: $([ $network_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($network_failed failed)${NC}")"
+    echo "Public URL Tests: $([ $public_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($public_failed failed)${NC}")"
+    
     if [ $total_failed -eq 0 ]; then
         log "${GREEN}All tests passed successfully!${NC}"
         exit 0
     else
-        log "${RED}${total_failed} tests failed across all hosts${NC}"
+        log "${RED}${total_failed} tests failed${NC}"
         exit 1
     fi
 }
