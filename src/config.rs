@@ -131,7 +131,7 @@ impl Default for NetworkSettings {
             enable_tls: false,
             max_request_size: 10485760,
             min_tls_version: String::new(),
-            port: 3000,
+            port: 3001,
             rate_limit_requests: 100,
             rate_limit_window: 60,
             tunnel_id: "dummy".to_string(),

@@ -8252,7 +8252,7 @@ export const defaultSettings: Settings = {
     network: {
         bindAddress: "0.0.0.0",
         domain: "localhost",
-        port: 3000
+        port: 3001
     },
     nodes: {
         baseColor: "#c3ab6f",

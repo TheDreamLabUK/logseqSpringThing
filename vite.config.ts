@@ -53,7 +53,7 @@ export default defineConfig(({ mode, command }) => {
     },
 
     server: {
-      port: 3000,
+      port: 3001,
       host: true,
       proxy: {
         '/wss': {  // Updated from /ws to /wss to match nginx

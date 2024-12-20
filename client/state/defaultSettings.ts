@@ -83,7 +83,7 @@ export const defaultSettings: Settings = {
         enableTls: false,
         maxRequestSize: 10485760,
         minTlsVersion: "",
-        port: 3000,
+        port: 3001,
         rateLimitRequests: 100,
         rateLimitWindow: 60,
         tunnelId: "dummy"
