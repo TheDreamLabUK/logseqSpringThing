@@ -6,34 +6,79 @@ log() {
     echo "[$(date "+%Y-%m-%d %H:%M:%S")] $1"
 }
 
-# Function to check if a port is available
-wait_for_port() {
+# Function to check if a service is healthy
+check_service_health() {
     local port=$1
-    local retries=60
-    local wait=5
-    while ! timeout 1 bash -c "cat < /dev/null > /dev/tcp/0.0.0.0/$port" 2>/dev/null && [ $retries -gt 0 ]; do
-        log "Waiting for port $port to become available... ($retries retries left)"
-        sleep $wait
-        retries=$((retries-1))
+    local endpoint=${2:-"/"}
+    local websocket=${3:-false}
+    local retries=30
+    local wait=2
+
+    log "Checking health for service on port $port..."
+    
+    while [ $retries -gt 0 ]; do
+        # Check if port is open
+        if ! timeout 1 bash -c "cat < /dev/null > /dev/tcp/0.0.0.0/$port" 2>/dev/null; then
+            retries=$((retries-1))
+            if [ $retries -eq 0 ]; then
+                log "Error: Port $port is not available"
+                return 1
+            fi
+            log "Port $port not ready, retrying in $wait seconds... ($retries attempts left)"
+            sleep $wait
+            continue
+        fi
+
+        # Check HTTP endpoint
+        if ! curl -s -f --max-time 5 "http://localhost:$port$endpoint" > /dev/null; then
+            retries=$((retries-1))
+            if [ $retries -eq 0 ]; then
+                log "Error: Service health check failed on port $port"
+                return 1
+            fi
+            log "Service not ready, retrying in $wait seconds... ($retries attempts left)"
+            sleep $wait
+            continue
+        fi
+
+        # Check WebSocket endpoint if required
+        if [ "$websocket" = true ] && ! curl -s -f --max-time 5 -N -H "Connection: Upgrade" -H "Upgrade: websocket" "http://localhost:$port/wss" > /dev/null; then
+            retries=$((retries-1))
+            if [ $retries -eq 0 ]; then
+                log "Error: WebSocket health check failed on port $port"
+                return 1
+            fi
+            log "WebSocket not ready, retrying in $wait seconds... ($retries attempts left)"
+            sleep $wait
+            continue
+        fi
+
+        log "Service on port $port is healthy"
+        return 0
     done
-    if [ $retries -eq 0 ]; then
-        log "Timeout waiting for port $port"
-        return 1
-    fi
-    log "Port $port is available"
-    return 0
+
+    return 1
 }
 
-# Function to check RAGFlow connectivity
+# Function to check RAGFlow connectivity with retries
 check_ragflow() {
     log "Checking RAGFlow connectivity..."
-    if curl -s -f --max-time 5 "http://ragflow-server/v1/" > /dev/null; then
-        log "RAGFlow server is reachable"
-        return 0
-    else
-        log "Warning: Cannot reach RAGFlow server"
-        return 1
-    fi
+    local retries=5
+    local wait=10
+    while [ $retries -gt 0 ]; do
+        if curl -s -f --max-time 5 "http://ragflow-server/v1/" > /dev/null; then
+            log "RAGFlow server is reachable"
+            return 0
+        else
+            retries=$((retries-1))
+            if [ $retries -eq 0 ]; then
+                log "Warning: Cannot reach RAGFlow server after multiple attempts"
+                return 1
+            fi
+            log "RAGFlow not ready, retrying in $wait seconds... ($retries attempts left)"
+            sleep $wait
+        fi
+    done
 }
 
 # Function to verify production build
@@ -104,8 +149,36 @@ setup_runtime() {
     return 0
 }
 
+# Function to cleanup processes
+cleanup() {
+    log "Cleaning up processes..."
+    
+    # Kill nginx gracefully if running
+    if pgrep nginx > /dev/null; then
+        log "Stopping nginx..."
+        nginx -s quit
+        sleep 2
+        # Force kill if still running
+        pkill -9 nginx || true
+    fi
+    
+    # Kill Rust backend if running
+    if [ -n "${RUST_PID:-}" ]; then
+        log "Stopping Rust backend..."
+        kill -TERM $RUST_PID 2>/dev/null || true
+        sleep 2
+        # Force kill if still running
+        kill -9 $RUST_PID 2>/dev/null || true
+    fi
+    
+    log "Cleanup complete"
+}
+
 # Main script execution starts here
 main() {
+    # Set up trap for cleanup
+    trap cleanup EXIT INT TERM
+
     # Verify settings file permissions
     if ! verify_settings_permissions; then
         log "Failed to verify settings.toml permissions"
@@ -129,15 +202,14 @@ main() {
         exit 1
     fi
 
-    # Start the Rust backend first (it needs to bind to port 3000)
+    # Start the Rust backend first (it needs to bind to port 3001)
     log "Starting webxr..."
     /app/webxr &
     RUST_PID=$!
 
-    # Wait for Rust server to be ready
-    if ! wait_for_port 3000; then
+    # Wait for Rust server to be healthy
+    if ! check_service_health 3001 "/health" true; then
         log "Failed to start Rust server"
-        kill $RUST_PID
         exit 1
     fi
     log "Rust server started successfully"
@@ -147,7 +219,12 @@ main() {
     nginx -t && nginx
     if [ $? -ne 0 ]; then
         log "Failed to start nginx"
-        kill $RUST_PID
+        exit 1
+    fi
+
+    # Wait for nginx to be healthy
+    if ! check_service_health 4000 "/" true; then
+        log "Failed to verify nginx is running"
         exit 1
     fi
     log "nginx started successfully"

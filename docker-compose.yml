@@ -7,7 +7,7 @@ services:
     container_name: logseq-xr-webxr
     read_only: false
     networks:
-      docker_ragflow:
+      ragflow:
         aliases:
           - logseq-xr-webxr
           - webxr-client
@@ -49,29 +49,36 @@ services:
           size: 4G
     user: "webxr:webxr"  # Run container as webxr user
     restart: unless-stopped
+    stop_grace_period: 30s
+    init: true
     logging:
       driver: "json-file"
       options:
         max-size: "1g"
         max-file: "5"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
+      test: ["CMD-SHELL", "curl -f http://localhost:4000/ || exit 1; curl -f http://localhost:4000/wss || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared-tunnel
     networks:
-      docker_ragflow:
+      ragflow:
         aliases:
           - cloudflared
     volumes:
       - ./config.yml:/etc/cloudflared/config.yml:ro
     command: tunnel --loglevel info --config /etc/cloudflared/config.yml run
     restart: unless-stopped
+    stop_grace_period: 10s
+    init: true
+    depends_on:
+      webxr:
+        condition: service_healthy
     environment:
       - TUNNEL_TOKEN=$TUNNEL_TOKEN
       - TUNNEL_METRICS=0.0.0.0:2000
@@ -81,15 +88,18 @@ services:
       - TUNNEL_WEBSOCKET_ENABLE=true
       - TUNNEL_WEBSOCKET_HEARTBEAT_INTERVAL=30s  # Match our heartbeat interval
       - TUNNEL_WEBSOCKET_TIMEOUT=3600s  # Match our max timeout
+      - TUNNEL_RETRIES=5
+      - TUNNEL_GRACE_PERIOD=30s
     env_file:
       - .env
     healthcheck:
-      test: ["CMD", "cloudflared", "tunnel", "ingress", "validate"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
+      test: ["CMD-SHELL", "cloudflared tunnel ingress validate && cloudflared tunnel status | grep -q 'Active connections'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 networks:
-  docker_ragflow:
+  ragflow:
     external: true
+    name: docker_ragflow  # RAGFlow's network name from docker network ls

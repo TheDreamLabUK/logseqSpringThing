@@ -206,14 +206,6 @@ pub struct OpenAISettings {
 }
 
 // Default value functions
-fn default_bind_address() -> String {
-    "0.0.0.0".to_string()
-}
-
-fn default_port() -> u16 {
-    4000
-}
-
 fn default_true() -> bool {
     true
 }
@@ -561,116 +553,6 @@ impl Default for WebSocketSettings {
     }
 }
 
-// Additional default value functions for UI settings
-#[allow(dead_code)]
-fn default_motion_blur_strength() -> f32 { 0.4 }
-#[allow(dead_code)]
-fn default_drag_threshold() -> f32 { 0.04 }
-#[allow(dead_code)]
-fn default_hand_mesh_opacity() -> f32 { 0.3 }
-#[allow(dead_code)]
-fn default_hand_point_size() -> f32 { 0.01 }
-#[allow(dead_code)]
-fn default_hand_ray_color() -> String { "#FFD700".to_string() }
-#[allow(dead_code)]
-fn default_hand_ray_width() -> f32 { 0.002 }
-#[allow(dead_code)]
-fn default_haptic_intensity() -> f32 { 0.7 }
-#[allow(dead_code)]
-fn default_pinch_threshold() -> f32 { 0.015 }
-#[allow(dead_code)]
-fn default_rotation_threshold() -> f32 { 0.08 }
-#[allow(dead_code)]
-fn default_edge_bloom_strength() -> f32 { 0.3 }
-#[allow(dead_code)]
-fn default_environment_bloom_strength() -> f32 { 0.5 }
-#[allow(dead_code)]
-fn default_node_bloom_strength() -> f32 { 0.2 }
-#[allow(dead_code)]
-fn default_bloom_radius() -> f32 { 0.5 }
-#[allow(dead_code)]
-fn default_bloom_strength() -> f32 { 1.8 }
-#[allow(dead_code)]
-fn default_edge_color() -> String { "#917f18".to_string() }
-#[allow(dead_code)]
-fn default_edge_opacity() -> f32 { 0.6 }
-#[allow(dead_code)]
-fn default_width_range() -> Vec<f32> { vec![1.0, 3.0] }
-#[allow(dead_code)]
-fn default_desktop_font_size() -> u32 { 48 }
-#[allow(dead_code)]
-fn default_text_color() -> String { "#FFFFFF".to_string() }
-#[allow(dead_code)]
-fn default_base_color() -> String { "#c3ab6f".to_string() }
-#[allow(dead_code)]
-fn default_base_size() -> f32 { 1.0 }
-#[allow(dead_code)]
-fn default_highlight_color() -> String { "#822626".to_string() }
-#[allow(dead_code)]
-fn default_highlight_duration() -> u32 { 300 }
-#[allow(dead_code)]
-fn default_hover_scale() -> f32 { 1.2 }
-#[allow(dead_code)]
-fn default_material_type() -> String { "basic".to_string() }
-#[allow(dead_code)]
-fn default_metalness() -> f32 { 0.3 }
-#[allow(dead_code)]
-fn default_node_opacity() -> f32 { 0.4 }
-#[allow(dead_code)]
-fn default_roughness() -> f32 { 0.35 }
-#[allow(dead_code)]
-fn default_size_range() -> Vec<f32> { vec![1.0, 10.0] }
-#[allow(dead_code)]
-fn default_attraction_strength() -> f32 { 0.015 }
-#[allow(dead_code)]
-fn default_bounds_size() -> f32 { 12.0 }
-#[allow(dead_code)]
-fn default_collision_radius() -> f32 { 0.25 }
-#[allow(dead_code)]
-fn default_damping() -> f32 { 0.88 }
-#[allow(dead_code)]
-fn default_iterations() -> u32 { 500 }
-#[allow(dead_code)]
-fn default_max_velocity() -> f32 { 2.5 }
-#[allow(dead_code)]
-fn default_repulsion_strength() -> f32 { 1500.0 }
-#[allow(dead_code)]
-fn default_spring_strength() -> f32 { 0.018 }
-#[allow(dead_code)]
-fn default_ambient_light_intensity() -> f32 { 0.7 }
-#[allow(dead_code)]
-fn default_background_color() -> String { "#000000".to_string() }
-#[allow(dead_code)]
-fn default_directional_light_intensity() -> f32 { 1.0 }
-#[allow(dead_code)]
-fn default_environment_intensity() -> f32 { 1.2 }
-#[allow(dead_code)]
-fn default_audit_log_path() -> String { "/app/logs/audit.log".to_string() }
-#[allow(dead_code)]
-fn default_cookie_samesite() -> String { "Strict".to_string() }
-#[allow(dead_code)]
-fn default_csrf_token_timeout() -> u32 { 3600 }
-#[allow(dead_code)]
-fn default_session_timeout() -> u32 { 3600 }
-#[allow(dead_code)]
-fn default_binary_chunk_size() -> usize { 65536 }
-#[allow(dead_code)]
-fn default_compression_threshold() -> usize { 1024 }
-#[allow(dead_code)]
-fn default_heartbeat_interval() -> u64 { 15000 }
-#[allow(dead_code)]
-fn default_heartbeat_timeout() -> u64 { 60000 }
-#[allow(dead_code)]
-fn default_max_connections() -> usize { 1000 }
-#[allow(dead_code)]
-fn default_max_message_size() -> usize { 100485760 }
-#[allow(dead_code)]
-fn default_reconnect_attempts() -> u32 { 3 }
-#[allow(dead_code)]
-fn default_reconnect_delay() -> u64 { 5000 }
-#[allow(dead_code)]
-fn default_update_rate() -> u32 { 90 }
-
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
         debug!("Initializing settings");
@@ -721,12 +603,6 @@ impl Settings {
         }
         if let Ok(tunnel_id) = std::env::var("TUNNEL_ID") {
             settings.network.tunnel_id = tunnel_id;
-        }
-        if let Ok(tunnel_token) = std::env::var("TUNNEL_TOKEN") {
-            settings.network.tunnel_token = tunnel_token;
-        }
-        if let Ok(debug_mode) = std::env::var("DEBUG_MODE") {
-            settings.network.debug_mode = debug_mode.parse().unwrap_or(false);
         }
         if let Ok(enable_http2) = std::env::var("HTTP2_ENABLED") {
             settings.network.enable_http2 = enable_http2.parse().unwrap_or(true);
