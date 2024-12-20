@@ -84,13 +84,40 @@ check_ragflow() {
 # Function to verify production build
 verify_build() {
     log "Verifying production build..."
+    
+    # Check build directory exists and is accessible
     if [ ! -d "/app/data/public/dist" ]; then
         log "Error: Production build directory not found"
         return 1
     fi
     
-    if [ ! -f "/app/data/public/dist/index.html" ]; then
-        log "Error: Production build index.html not found"
+    if [ ! -r "/app/data/public/dist" ]; then
+        log "Error: Production build directory is not readable"
+        return 1
+    fi
+    
+    # Check required files exist
+    local required_files=(
+        "index.html"
+        "assets"
+    )
+    
+    for file in "${required_files[@]}"; do
+        if [ ! -e "/app/data/public/dist/$file" ]; then
+            log "Error: Required file/directory '$file' not found in build directory"
+            return 1
+        fi
+    done
+    
+    # Check directory is not empty
+    if [ -z "$(ls -A /app/data/public/dist)" ]; then
+        log "Error: Production build directory is empty"
+        return 1
+    fi
+    
+    # Check permissions
+    if [ ! -r "/app/data/public/dist/index.html" ]; then
+        log "Error: index.html is not readable"
         return 1
     fi
     
@@ -210,14 +237,14 @@ main() {
         exit 1
     fi
 
-    # Wait for nginx to be healthy
-    if ! check_service_health 4000 "/" true; then
+    # Basic nginx HTTP check (not WebSocket since that requires webxr to be running)
+    if ! curl -s -f --max-time 5 "http://localhost:4000/" > /dev/null; then
         log "Failed to verify nginx is running"
         exit 1
     fi
     log "nginx started successfully"
 
-    # Execute the webxr binary as the main process
+    # Execute the webxr binary as the main process (which will enable WebSocket endpoints)
     log "Executing webxr..."
     exec /app/webxr
 }
