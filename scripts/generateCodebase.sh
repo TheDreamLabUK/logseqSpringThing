@@ -24,6 +24,33 @@ export_and_combine() {
     rm client.txt
 }
 
+# Export Docker and deployment configuration
+export_docker_config() {
+    echo -e "\n\n=== Docker Configuration ===\n" >> codebase.txt
+    
+    echo -e "\n--- docker-compose.yml ---\n" >> codebase.txt
+    cat ../docker-compose.yml >> codebase.txt
+    
+    echo -e "\n--- Dockerfile ---\n" >> codebase.txt
+    cat ../Dockerfile >> codebase.txt
+    
+    echo -e "\n--- nginx.conf ---\n" >> codebase.txt
+    cat ../nginx.conf >> codebase.txt
+    
+    echo -e "\n--- scripts/launch-docker.sh ---\n" >> codebase.txt
+    cat ../scripts/launch-docker.sh >> codebase.txt
+    
+    echo -e "\n--- scripts/start.sh ---\n" >> codebase.txt
+    cat ../scripts/start.sh >> codebase.txt
+}
+
+# Export Docker network information
+export_network_info() {
+    echo -e "\n\n=== Docker Network Configuration ===\n" >> codebase.txt
+    echo -e "\n--- docker network inspect docker_ragflow ---\n" >> codebase.txt
+    docker network inspect docker_ragflow >> codebase.txt 2>/dev/null || echo "Unable to fetch network info - docker daemon not running or network doesn't exist" >> codebase.txt
+}
+
 # Main execution
 if [ ! -d "$EXPORT_REPO" ]; then
     echo "Error: Export repository not found at $EXPORT_REPO"
@@ -40,4 +67,8 @@ activate_venv
 export_and_combine
 deactivate
 
-echo "Successfully generated codebase.txt"
+# Add Docker configuration and network info
+export_docker_config
+export_network_info
+
+echo "Successfully generated codebase.txt with Docker configuration and network info"
