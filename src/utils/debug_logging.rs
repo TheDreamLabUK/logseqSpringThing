@@ -84,25 +84,60 @@ macro_rules! log_data {
 
 // Helper functions for common debug scenarios
 pub fn log_ws_message(data: WsDebugData) {
-    if WEBSOCKET_DEBUG.load(Ordering::SeqCst) {
-        match data {
-            WsDebugData::Binary { data, is_initial, node_count } => {
-                debug!("[WS] Binary message: {} bytes, initial: {}, nodes: {}", 
-                    data.len(), is_initial, node_count);
-            },
-            WsDebugData::Json(value) => {
-                debug!("[WS] JSON message: {}", value);
-            },
-            WsDebugData::Text(text) => {
-                debug!("[WS] Text message: {}", text);
+    if !WEBSOCKET_DEBUG.load(Ordering::SeqCst) {
+        return;
+    }
+
+    match data {
+        WsDebugData::Binary { data, is_initial, node_count } => {
+            debug!(
+                "WebSocket Binary Message:\n  Size: {} bytes\n  Initial: {}\n  Node Count: {}\n  Header: {:?}",
+                data.len(),
+                is_initial,
+                node_count,
+                &data[..std::cmp::min(data.len(), 32)]
+            );
+        },
+        WsDebugData::Json(value) => {
+            if let Ok(pretty) = serde_json::to_string_pretty(&value) {
+                debug!("WebSocket JSON Message:\n{}", pretty);
+            } else {
+                debug!("WebSocket JSON Message: {}", value);
             }
+        },
+        WsDebugData::Text(text) => {
+            debug!("WebSocket Text Message: {}", text);
         }
     }
 }
 
 pub fn log_data_operation(operation: &str, details: &str) {
-    if DATA_DEBUG.load(Ordering::SeqCst) {
-        debug!("[DATA] {} - {}", operation, details);
+    if !DATA_DEBUG.load(Ordering::SeqCst) {
+        return;
+    }
+    debug!("Data Operation - {}: {}", operation, details);
+}
+
+pub fn log_binary_headers(data: &[u8], context: &str) {
+    if !DEBUG_MODE.load(Ordering::SeqCst) {
+        return;
+    }
+    debug!(
+        "Binary Headers [{}]:\n  Size: {} bytes\n  Header: {:?}",
+        context,
+        data.len(),
+        &data[..std::cmp::min(data.len(), 32)]
+    );
+}
+
+pub fn log_json_data(context: &str, value: &Value) {
+    if !DEBUG_MODE.load(Ordering::SeqCst) {
+        return;
+    }
+    if let Ok(pretty) = serde_json::to_string_pretty(value) {
+        debug!("JSON Data [{}]:\n{}", context, pretty);
+    } else {
+        debug!("JSON Data [{}]: {}", context, value);
     }
 }
 

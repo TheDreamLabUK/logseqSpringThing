@@ -1,15 +1,14 @@
 use crate::config::Settings;
 use actix_web::{web, HttpResponse};
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use std::fs;
-use std::path::PathBuf;
-use toml;
 use log::{error, info, debug};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use crate::utils::case_conversion::{to_snake_case, to_camel_case};
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use crate::utils::case_conversion::to_snake_case;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -285,35 +284,31 @@ pub async fn get_category_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
     path: web::Path<String>,
 ) -> HttpResponse {
+    let settings_read = settings.read().await;
+    let debug_enabled = settings_read.server_debug.enabled;
+    let log_json = debug_enabled && settings_read.server_debug.log_full_json;
+    
     let category = path.into_inner();
-    debug!("Getting all settings for category: {}", category);
-
-    let settings_guard = match settings.read().await {
-        guard => {
-            debug!("Successfully acquired settings read lock");
-            guard
-        }
-    };
-
-    match get_category_settings_value(&*settings_guard, &category) {
-        Ok(settings_value) => {
-            debug!("Successfully retrieved category settings: {:?}", settings_value);
-            let settings_hash: HashMap<String, Value> = settings_value
-                .as_object()
-                .map(|map| map.iter().map(|(k, v)| (to_camel_case(k), v.clone())).collect())
+    match get_category_settings_value(&settings_read, &category) {
+        Ok(value) => {
+            if log_json {
+                debug!("Category '{}' settings: {}", category, serde_json::to_string_pretty(&value).unwrap_or_default());
+            }
+            let settings_map: HashMap<String, Value> = value.as_object()
+                .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
                 .unwrap_or_default();
             
             HttpResponse::Ok().json(CategorySettingsResponse {
-                category,
-                settings: settings_hash,
+                category: category.clone(),
+                settings: settings_map,
                 success: true,
                 error: None,
             })
         },
         Err(e) => {
-            error!("Failed to get category settings: {}", e);
+            error!("Failed to get category settings for '{}': {}", category, e);
             HttpResponse::NotFound().json(CategorySettingsResponse {
-                category,
+                category: category.clone(),
                 settings: HashMap::new(),
                 success: false,
                 error: Some(e),
