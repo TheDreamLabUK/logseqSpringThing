@@ -1,4 +1,4 @@
-use actix::{Actor, StreamHandler, ActorContext, AsyncContext, WrapFuture, Handler, Message as ActixMessage};
+use actix::{Actor, StreamHandler, ActorContext, AsyncContext, Handler, Message as ActixMessage, ActorFutureExt};
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use log::{error, warn, debug, info};
@@ -33,6 +33,7 @@ impl Handler<UpdateNodeOrder> for SocketFlowServer {
     }
 }
 
+#[derive(Clone)]
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     last_heartbeat: Instant,
@@ -49,7 +50,7 @@ impl Actor for SocketFlowServer {
         self.heartbeat(ctx);
     }
 
-    fn stopped(&mut self, _: &mut Self::Context) {
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
         debug!("WebSocket actor stopped");
         self.app_state.decrement_connections();
     }
@@ -76,12 +77,31 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
             Ok(ws::Message::Text(text)) => {
                 debug!("Received text message: {}", text);
                 match serde_json::from_str::<Message>(&text) {
-                    Ok(message) => self.handle_message(message, ctx),
+                    Ok(message) => {
+                        let this = self.clone();
+                        let fut = async move {
+                            this.handle_message(message).await
+                        };
+                        ctx.spawn(actix::fut::wrap_future(fut).map(|result, _, ctx: &mut ws::WebsocketContext<SocketFlowServer>| {
+                            if let Some(response) = result {
+                                ctx.text(response);
+                            }
+                        }));
+                    }
                     Err(e) => error!("Failed to parse message: {}", e),
                 }
             }
-            Ok(ws::Message::Binary(_)) => {
-                warn!("Unexpected binary message");
+            Ok(ws::Message::Binary(data)) => {
+                let settings = self.settings.clone();
+                let fut = async move {
+                    let settings = settings.read().await;
+                    let debug_enabled = settings.server_debug.enabled;
+                    if debug_enabled {
+                        debug!("Received binary message of size: {}", data.len());
+                    }
+                    // Process binary message
+                };
+                ctx.spawn(actix::fut::wrap_future(fut));
             }
             Ok(ws::Message::Close(reason)) => {
                 debug!("WebSocket closing with reason: {:?}", reason);
@@ -122,93 +142,94 @@ impl SocketFlowServer {
                 // Send ping with timestamp for latency tracking
                 let timestamp = Instant::now().elapsed().as_millis().to_string();
                 ctx.ping(timestamp.as_bytes());
+            } else {
+                error!("Failed to acquire settings lock in heartbeat");
             }
         });
     }
 
-    fn handle_message(&mut self, message: Message, ctx: &mut ws::WebsocketContext<Self>) {
+    async fn handle_message(&self, message: Message) -> Option<String> {
+        let settings = self.settings.read().await;
+        let debug_enabled = settings.server_debug.enabled;
+        let log_binary = debug_enabled && settings.server_debug.log_binary_headers;
+        let log_json = debug_enabled && settings.server_debug.log_full_json;
+        
         match message {
-            Message::RequestInitialData => {
-                debug!("Handling RequestInitialData message");
-                let app_state = self.app_state.clone();
-                let addr = ctx.address();
-                
-                ctx.spawn(
-                    async move {
-                        let graph = app_state.graph_service.graph_data.read().await;
-                        // Send node order update
-                        let node_order: Vec<String> = graph.nodes.iter().map(|n| n.id.clone()).collect();
-                        addr.do_send(UpdateNodeOrder(node_order));
-                        info!("Sending initial graph data: {} nodes, {} edges", 
-                            graph.nodes.len(), 
-                            graph.edges.len()
-                        );
-                        
-                        let initial_data = Message::InitialData { 
-                            graph: (*graph).clone() 
-                        };
-                        if let Ok(message) = serde_json::to_string(&initial_data) {
-                            addr.do_send(SendMessage(message));
-                        }
-                    }
-                    .into_actor(self)
-                );
-            }
+            Message::BinaryPositionUpdate { nodes } => {
+                if log_binary {
+                    debug!("Binary position update with {} nodes", nodes.len());
+                }
+                None
+            },
             Message::UpdatePositions(update_msg) => {
-                debug!("Handling UpdatePositions message with {} nodes", update_msg.nodes.len());
-                let app_state = self.app_state.clone();
-                let node_order = self.node_order.clone();
-                ctx.spawn(
-                    async move {
-                        let mut graph = app_state.graph_service.graph_data.write().await;
-                        // Update nodes using array indices
-                        for (i, node_update) in update_msg.nodes.iter().enumerate() {
-                            if i < node_order.len() {
-                                if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == node_order[i]) {
-                                    node.data.position = node_update.position;
-                                    node.data.velocity = node_update.velocity;
-                                }
-                            }
-                        }
+                if log_json {
+                    debug!("Update positions message: {:?}", update_msg);
+                }
+                None
+            },
+            Message::InitialData { graph } => {
+                if log_json {
+                    debug!("Initial data message with graph: {:?}", graph);
+                }
+                None
+            },
+            Message::SimulationModeSet { mode } => {
+                debug!("Simulation mode set to: {}", mode);
+                None
+            },
+            Message::RequestInitialData => {
+                debug!("Received request for initial data");
+                let graph = self.app_state.graph_service.graph_data.read().await;
+                let initial_data = Message::InitialData { 
+                    graph: (*graph).clone() 
+                };
+                
+                if let Ok(message) = serde_json::to_string(&initial_data) {
+                    if log_json {
+                        debug!("Full JSON message: {}", message);
                     }
-                    .into_actor(self)
-                );
-            }
+                    Some(message)
+                } else {
+                    None
+                }
+            },
             Message::EnableBinaryUpdates => {
-                debug!("Handling EnableBinaryUpdates message");
-                let app_state = self.app_state.clone();
-                let addr = ctx.address();
-                ctx.spawn(
-                    async move {
-                        let graph = app_state.graph_service.graph_data.read().await;
-                        let binary_nodes: Vec<BinaryNodeData> = graph.nodes.iter()
-                            .map(|node| BinaryNodeData::from_node_data(&node.data))
-                            .collect();
-                        
-                        let binary_update = Message::BinaryPositionUpdate {
-                            nodes: binary_nodes
-                        };
-                        if let Ok(message) = serde_json::to_string(&binary_update) {
-                            addr.do_send(SendMessage(message));
-                        }
+                debug!("Binary updates enabled");
+                let graph = self.app_state.graph_service.graph_data.read().await;
+                let binary_nodes: Vec<BinaryNodeData> = graph.nodes.iter()
+                    .map(|node| BinaryNodeData::from_node_data(&node.data))
+                    .collect();
+                
+                let binary_update = Message::BinaryPositionUpdate {
+                    nodes: binary_nodes
+                };
+                
+                if let Ok(message) = serde_json::to_string(&binary_update) {
+                    if log_json {
+                        debug!("Full JSON message: {}", message);
                     }
-                    .into_actor(self)
-                );
-            }
+                    Some(message)
+                } else {
+                    None
+                }
+            },
             Message::SetSimulationMode { mode } => {
                 debug!("Setting simulation mode to: {}", mode);
                 if let Ok(message) = serde_json::to_string(&Message::SimulationModeSet { mode }) {
-                    ctx.text(message);
+                    if log_json {
+                        debug!("Full JSON message: {}", message);
+                    }
+                    return Some(message);
                 }
-            }
+                None
+            },
             Message::Ping => {
-                debug!("Handling Ping message");
-                if let Ok(message) = serde_json::to_string(&Message::Pong) {
-                    ctx.text(message);
-                }
-            }
-            _ => {
-                warn!("Unhandled message type");
+                debug!("Received ping");
+                return Some("pong".to_string());
+            },
+            Message::Pong => {
+                debug!("Received pong");
+                None
             }
         }
     }
@@ -224,14 +245,16 @@ pub async fn ws_handler(
     debug!("WebSocket request headers: {:?}", req.headers());
 
     // Check connection limits
-    if let Ok(settings_guard) = settings.try_read() {
-        let max_connections = settings_guard.websocket.max_connections;
-        let current_connections = app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
-        
-        if current_connections >= max_connections {
-            error!("Connection limit reached: {}/{}", current_connections, max_connections);
-            return Ok(HttpResponse::ServiceUnavailable().finish());
-        }
+    let settings_guard = settings.get_ref().try_read().map_err(|_| {
+        error!("Failed to acquire settings lock");
+        actix_web::error::ErrorServiceUnavailable("Internal server error")
+    })?;
+    let max_connections = settings_guard.websocket.max_connections;
+    let current_connections = app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
+    
+    if current_connections >= max_connections {
+        error!("Connection limit reached: {}/{}", current_connections, max_connections);
+        return Ok(HttpResponse::ServiceUnavailable().finish());
     }
 
     let socket_server = SocketFlowServer::new(
