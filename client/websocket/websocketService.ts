@@ -7,10 +7,10 @@ import {
   MessageHandler,
   ErrorHandler,
   ConnectionHandler,
-  PingMessage,
   WebSocketErrorType,
   WebSocketError,
-  WebSocketStatus
+  WebSocketStatus,
+  Node
 } from '../core/types';
 import { WS_RECONNECT_INTERVAL, WS_MESSAGE_QUEUE_SIZE, WS_URL, BINARY_VERSION } from '../core/constants';
 import { createLogger } from '../core/utils';
@@ -84,38 +84,42 @@ export class WebSocketService {
     };
   }
 
+  // Map of node IDs to their index in the binary data arrays
+  private nodeIndexMap: Map<string, number> = new Map();
+  
+  private initializeNodeIndexMap(nodes: Node[]): void {
+    this.nodeIndexMap.clear();
+    nodes.forEach((node, index) => {
+      this.nodeIndexMap.set(node.id, index);
+    });
+  }
+
   private handleBinaryMessage(buffer: ArrayBuffer): void {
     try {
       const dataView = new DataView(buffer);
       const version = dataView.getFloat32(0, true); // true for little-endian
       
       if (version === BINARY_VERSION) {
-        const nodeCount = (buffer.byteLength - BINARY_HEADER_SIZE) / (7 * 4); // 7 floats per node (id + pos + vel)
+        const nodeCount = (buffer.byteLength - BINARY_HEADER_SIZE) / (6 * 4); // 6 floats per node (pos + vel)
         const positions = new Float32Array(nodeCount * 3);
         const velocities = new Float32Array(nodeCount * 3);
-        const nodeIds = new Array(nodeCount);
         
-        // Read node data
+        // Read position and velocity data directly using established node order
         for (let i = 0; i < nodeCount; i++) {
-          const offset = BINARY_HEADER_SIZE + i * 7 * 4;
-          
-          // Read node ID (stored as a float)
-          const nodeIdFloat = dataView.getFloat32(offset, true);
-          nodeIds[i] = nodeIdFloat.toString();
+          const offset = BINARY_HEADER_SIZE + i * 6 * 4;
           
           // Read position
-          positions[i * 3] = dataView.getFloat32(offset + 4, true);     // x
-          positions[i * 3 + 1] = dataView.getFloat32(offset + 8, true); // y
-          positions[i * 3 + 2] = dataView.getFloat32(offset + 12, true); // z
+          positions[i * 3] = dataView.getFloat32(offset, true);      // x
+          positions[i * 3 + 1] = dataView.getFloat32(offset + 4, true);  // y
+          positions[i * 3 + 2] = dataView.getFloat32(offset + 8, true);  // z
           
           // Read velocity
-          velocities[i * 3] = dataView.getFloat32(offset + 16, true);     // vx
-          velocities[i * 3 + 1] = dataView.getFloat32(offset + 20, true); // vy
-          velocities[i * 3 + 2] = dataView.getFloat32(offset + 24, true); // vz
+          velocities[i * 3] = dataView.getFloat32(offset + 12, true);    // vx
+          velocities[i * 3 + 1] = dataView.getFloat32(offset + 16, true); // vy
+          velocities[i * 3 + 2] = dataView.getFloat32(offset + 20, true); // vz
         }
         
         this.notifyHandlers('binaryPositionUpdate', { 
-          nodeIds,
           positions,
           velocities
         });
@@ -130,24 +134,16 @@ export class WebSocketService {
   private handleJsonMessage(message: any): void {
     try {
       // Convert snake_case/kebab-case to camelCase
-      const type = message.type.replace(/-|_./g, x => x.slice(-1).toUpperCase());
+      const type = message.type.replace(/-|_./g, (x: string) => x.slice(-1).toUpperCase());
       const data = message.data ? convertObjectKeysToCamelCase(message.data) : undefined;
       
       switch (type as MessageType) {
-        case 'updatePositions':
-          this.notifyHandlers('updatePositions', data);
-          break;
-          
         case 'initialData':
+          // Initialize node index mapping when receiving initial graph data
+          if (data?.nodes) {
+            this.initializeNodeIndexMap(data.nodes);
+          }
           this.notifyHandlers('initialData', data);
-          break;
-          
-        case 'binaryPositionUpdate':
-          this.notifyHandlers('binaryPositionUpdate', data);
-          break;
-          
-        case 'simulationModeSet':
-          this.notifyHandlers('simulationModeSet', data);
           break;
           
         case 'ping':

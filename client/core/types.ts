@@ -231,7 +231,9 @@ export type MessageType =
   | 'pong'
   | 'settingsUpdated'
   | 'graphUpdated'
-  | 'connectionStatus';  // New type for connection status updates
+  | 'connectionStatus'
+  | 'updatePositions'
+  | 'simulationModeSet';
 
 // Handler types
 export type MessageHandler = (data: any) => void;
