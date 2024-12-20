@@ -74,9 +74,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 10s
     init: true
-    depends_on:
-      webxr:
-        condition: service_healthy
+    depends_on: []  # Remove dependency on webxr
     environment:
       - TUNNEL_TOKEN=$TUNNEL_TOKEN
       - TUNNEL_METRICS=0.0.0.0:2000
@@ -90,13 +88,6 @@ services:
       - TUNNEL_GRACE_PERIOD=30s
     env_file:
       - .env
-    healthcheck:
-      test: ["CMD-SHELL", "cloudflared tunnel ingress validate && cloudflared tunnel status | grep -q 'Active connections'"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
 networks:
   ragflow:
     external: true

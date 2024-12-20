@@ -300,56 +300,6 @@ check_application_readiness() {
     return 1
 }
 
-# Function to ensure cloudflared is running and healthy
-ensure_cloudflared() {
-    local max_attempts=3
-    local attempt=1
-    local success=false
-
-    while [ $attempt -le $max_attempts ] && [ "$success" = false ]; do
-        log "\n${YELLOW}Checking cloudflared status (Attempt $attempt/$max_attempts)...${NC}"
-        
-        if ! docker ps | grep -q cloudflared-tunnel; then
-            log "${YELLOW}Cloudflared tunnel not running, starting it...${NC}"
-            $DOCKER_COMPOSE up -d cloudflared
-            sleep 10
-        fi
-
-        # Check container health status
-        local health_status=$(docker inspect --format='{{.State.Health.Status}}' cloudflared-tunnel 2>/dev/null || echo "unknown")
-        
-        if [ "$health_status" = "healthy" ]; then
-            log "${GREEN}Cloudflared tunnel is healthy${NC}"
-            success=true
-            break
-        fi
-
-        # Validate ingress configuration
-        log "${YELLOW}Validating cloudflared ingress configuration...${NC}"
-        if ! docker exec cloudflared-tunnel cloudflared tunnel ingress validate; then
-            log "${RED}Ingress validation failed${NC}"
-            if [ $attempt -lt $max_attempts ]; then
-                log "${YELLOW}Restarting cloudflared...${NC}"
-                $DOCKER_COMPOSE restart cloudflared
-                sleep 10
-                attempt=$((attempt + 1))
-                continue
-            else
-                log "${RED}Failed to validate cloudflared configuration after $max_attempts attempts${NC}"
-                return 1
-            fi
-        fi
-
-        attempt=$((attempt + 1))
-    done
-
-    if [ "$success" = true ]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
 # Function to handle cleanup on exit
 cleanup_and_exit() {
     log "\n${YELLOW}Received shutdown signal. Cleaning up...${NC}"
@@ -410,13 +360,6 @@ $DOCKER_COMPOSE up -d
 # Check application readiness
 if ! check_application_readiness; then
     log "${RED}Application failed to start properly${NC}"
-    cleanup_existing_processes
-    exit 1
-fi
-
-# Ensure cloudflared is running and healthy
-if ! ensure_cloudflared; then
-    log "${RED}Failed to ensure cloudflared is running and healthy${NC}"
     cleanup_existing_processes
     exit 1
 fi
