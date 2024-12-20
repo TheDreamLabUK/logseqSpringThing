@@ -324,12 +324,9 @@ pub async fn get_category_settings(
 
 // Register the handlers with the Actix web app
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api/visualization")
-            .route("/settings/{category}/{setting}", web::get().to(get_setting))
-            .route("/settings/{category}/{setting}", web::put().to(update_setting))
-            .route("/settings/{category}", web::get().to(get_category_settings))
-        );
+    cfg.route("/settings/{category}/{setting}", web::get().to(get_setting))
+       .route("/settings/{category}/{setting}", web::put().to(update_setting))
+       .route("/settings/{category}", web::get().to(get_category_settings));
 }
 
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
