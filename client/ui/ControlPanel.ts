@@ -43,11 +43,6 @@ export class ControlPanel {
                 this.container.appendChild(categoryContainer);
             });
 
-            const resetButton = document.createElement('button');
-            resetButton.textContent = 'Reset to Defaults';
-            resetButton.onclick = () => this.resetToDefaults();
-            this.container.appendChild(resetButton);
-
         } catch (error) {
             logger.error('Error setting up UI:', error);
         }
@@ -165,25 +160,6 @@ export class ControlPanel {
         }
 
         container.appendChild(controlContainer);
-    }
-
-    private async resetToDefaults(): Promise<void> {
-        try {
-            const defaultSettings = settingsManager.getDefaultSettings();
-            for (const [categoryName, settings] of Object.entries(defaultSettings)) {
-                const category = categoryName as SettingCategory;
-                for (const [settingName, value] of Object.entries(settings)) {
-                    const setting = settingName as SettingKey<typeof category>;
-                    await settingsManager.updateSetting(
-                        category,
-                        setting,
-                        value as SettingValueType<typeof category, typeof setting>
-                    );
-                }
-            }
-        } catch (error) {
-            logger.error('Error resetting to defaults:', error);
-        }
     }
 
     public dispose(): void {

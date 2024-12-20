@@ -118,18 +118,9 @@ main() {
         exit 1
     fi
 
-    # Wait for RAGFlow to be available
-    log "Waiting for RAGFlow server..."
-    retries=24
-    while ! check_ragflow && [ $retries -gt 0 ]; do
-        log "Retrying RAGFlow connection... ($retries attempts left)"
-        retries=$((retries-1))
-        sleep 5
-    done
-
-    if [ $retries -eq 0 ]; then
-        log "Failed to connect to RAGFlow server after multiple attempts"
-        exit 1
+    # Check RAGFlow availability (optional)
+    if ! check_ragflow; then
+        log "Warning: RAGFlow server not available - some features may be limited"
     fi
 
     # Verify production build
@@ -138,18 +129,31 @@ main() {
         exit 1
     fi
 
-    # Start nginx
+    # Start the Rust backend first (it needs to bind to port 3000)
+    log "Starting webxr..."
+    /app/webxr &
+    RUST_PID=$!
+
+    # Wait for Rust server to be ready
+    if ! wait_for_port 3000; then
+        log "Failed to start Rust server"
+        kill $RUST_PID
+        exit 1
+    fi
+    log "Rust server started successfully"
+
+    # Start nginx (it needs to bind to port 4000)
     log "Starting nginx..."
     nginx -t && nginx
     if [ $? -ne 0 ]; then
         log "Failed to start nginx"
+        kill $RUST_PID
         exit 1
     fi
     log "nginx started successfully"
 
-    # Start the Rust backend
-    log "Starting webxr..."
-    exec /app/webxr
+    # Monitor both processes
+    wait $RUST_PID
 }
 
 # Execute main function

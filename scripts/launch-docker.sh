@@ -380,6 +380,18 @@ echo "logs:    $DOCKER_COMPOSE logs -f"
 echo "stop:    $DOCKER_COMPOSE down"
 echo "restart: $DOCKER_COMPOSE restart"
 
+# Handle Ctrl+C gracefully
+cleanup_and_exit() {
+    echo -e "\n${YELLOW}Received shutdown signal. Cleaning up...${NC}"
+    $DOCKER_COMPOSE down
+    exit 0
+}
+
+trap cleanup_and_exit INT TERM
+
 # Keep script running to show logs
 echo -e "\n${YELLOW}Showing logs (Ctrl+C to exit)...${NC}"
-$DOCKER_COMPOSE logs -f
+$DOCKER_COMPOSE logs -f &
+
+# Wait for signal
+wait
