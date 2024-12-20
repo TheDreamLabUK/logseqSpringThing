@@ -182,6 +182,8 @@ fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Va
             .map_err(|e| format!("Failed to serialize websocket settings: {}", e))?,
         "network" => serde_json::to_value(&settings.network)
             .map_err(|e| format!("Failed to serialize network settings: {}", e))?,
+        "default" => serde_json::to_value(&settings.default)
+            .map_err(|e| format!("Failed to serialize default settings: {}", e))?,
         "github" => serde_json::to_value(&settings.github)
             .map_err(|e| format!("Failed to serialize github settings: {}", e))?,
         _ => return Err(format!("Invalid category: {}", category)),
@@ -333,15 +335,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
     debug!("Attempting to save settings to file");
     
-    // Convert settings to TOML
-    let toml_string = match toml::to_string_pretty(&settings) {
-        Ok(s) => s,
-        Err(e) => {
-            error!("Failed to serialize settings to TOML: {}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
-        }
-    };
-    
     // Use absolute path from environment or default to /app/settings.toml
     let settings_path = std::env::var("SETTINGS_FILE_PATH")
         .map(PathBuf::from)
@@ -378,6 +371,15 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
             }
         }
     }
+    
+    // Convert settings to TOML
+    let toml_string = match toml::to_string_pretty(&settings) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to serialize settings to TOML: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
+        }
+    };
     
     // Write to settings.toml
     match fs::write(&settings_path, toml_string) {

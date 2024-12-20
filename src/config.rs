@@ -4,7 +4,7 @@ use log::{debug, error};
 use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct Settings {
     // UI/Rendering settings from settings.toml
     #[serde(default)]
@@ -18,9 +18,13 @@ pub struct Settings {
     #[serde(default)]
     pub client_debug: DebugSettings,
     #[serde(default)]
+    pub default: DefaultSettings,
+    #[serde(default)]
     pub edges: EdgeSettings,
     #[serde(default)]
     pub labels: LabelSettings,
+    #[serde(default)]
+    pub network: NetworkSettings,
     #[serde(default)]
     pub nodes: NodeSettings,
     #[serde(default)]
@@ -34,9 +38,7 @@ pub struct Settings {
     #[serde(default)]
     pub websocket: WebSocketSettings,
     
-    // Critical service settings from .env (server-side only)
-    #[serde(default)]
-    pub network: NetworkSettings,
+    // Service settings from .env (server-side only)
     #[serde(default)]
     pub github: GitHubSettings,
     #[serde(default)]
@@ -69,22 +71,72 @@ impl Default for DebugSettings {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+#[serde(default)]
+pub struct DefaultSettings {
+    pub api_client_timeout: u32,
+    pub enable_metrics: bool,
+    pub enable_request_logging: bool,
+    pub log_format: String,
+    pub log_level: String,
+    pub max_concurrent_requests: u32,
+    pub max_payload_size: usize,
+    pub max_retries: u32,
+    pub metrics_port: u16,
+    pub retry_delay: u32,
+}
+
+impl Default for DefaultSettings {
+    fn default() -> Self {
+        Self {
+            api_client_timeout: 30,
+            enable_metrics: true,
+            enable_request_logging: true,
+            log_format: "json".to_string(),
+            log_level: "debug".to_string(),
+            max_concurrent_requests: 5,
+            max_payload_size: 5242880,
+            max_retries: 3,
+            metrics_port: 9090,
+            retry_delay: 5,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+#[serde(default)]
 pub struct NetworkSettings {
-    #[serde(default = "default_bind_address")]
     pub bind_address: String,
-    #[serde(default)]
     pub domain: String,
-    #[serde(default = "default_port")]
-    pub port: u16,
-    #[serde(default)]
-    pub tunnel_id: String,
-    #[serde(default)]
-    pub tunnel_token: String,
-    #[serde(default)]
-    pub debug_mode: bool,
-    #[serde(default = "default_true")]
     pub enable_http2: bool,
+    pub enable_rate_limiting: bool,
+    pub enable_tls: bool,
+    pub max_request_size: usize,
+    pub min_tls_version: String,
+    pub port: u16,
+    pub rate_limit_requests: u32,
+    pub rate_limit_window: u32,
+    pub tunnel_id: String,
+}
+
+impl Default for NetworkSettings {
+    fn default() -> Self {
+        Self {
+            bind_address: "0.0.0.0".to_string(),
+            domain: "localhost".to_string(),
+            enable_http2: false,
+            enable_rate_limiting: true,
+            enable_tls: false,
+            max_request_size: 10485760,
+            min_tls_version: String::new(),
+            port: 3000,
+            rate_limit_requests: 100,
+            rate_limit_window: 60,
+            tunnel_id: "dummy".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -789,6 +841,7 @@ impl Default for Settings {
             audio: AudioSettings::default(),
             bloom: BloomSettings::default(),
             client_debug: DebugSettings::default(),
+            default: DefaultSettings::default(),
             edges: EdgeSettings::default(),
             labels: LabelSettings::default(),
             nodes: NodeSettings::default(),

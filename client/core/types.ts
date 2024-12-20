@@ -127,7 +127,48 @@ export interface LabelSettings {
 export interface NetworkSettings {
   bindAddress: string;
   domain: string;
+  enableHttp2: boolean;
+  enableRateLimiting: boolean;
+  enableTls: boolean;
+  maxRequestSize: number;
+  minTlsVersion: string;
   port: number;
+  rateLimitRequests: number;
+  rateLimitWindow: number;
+  tunnelId: string;
+}
+
+export interface DefaultSettings {
+  apiClientTimeout: number;
+  enableMetrics: boolean;
+  enableRequestLogging: boolean;
+  logFormat: string;
+  logLevel: string;
+  maxConcurrentRequests: number;
+  maxPayloadSize: number;
+  maxRetries: number;
+  metricsPort: number;
+  retryDelay: number;
+}
+
+export interface SecuritySettings {
+  allowedOrigins: string[];
+  auditLogPath: string;
+  cookieHttponly: boolean;
+  cookieSamesite: string;
+  cookieSecure: boolean;
+  csrfTokenTimeout: number;
+  enableAuditLogging: boolean;
+  enableRequestValidation: boolean;
+  sessionTimeout: number;
+}
+
+export interface ServerDebugSettings {
+  enableDataDebug: boolean;
+  enableWebsocketDebug: boolean;
+  enabled: boolean;
+  logBinaryHeaders: boolean;
+  logFullJson: boolean;
 }
 
 export interface NodeSettings {
@@ -171,9 +212,16 @@ export interface RenderingSettings {
 }
 
 export interface WebsocketSettings {
+  binaryChunkSize: number;
+  compressionEnabled: boolean;
+  compressionThreshold: number;
   heartbeatInterval: number;
   heartbeatTimeout: number;
+  maxConnections: number;
   maxMessageSize: number;
+  reconnectAttempts: number;
+  reconnectDelay: number;
+  updateRate: number;
 }
 
 export interface Settings {
@@ -182,12 +230,15 @@ export interface Settings {
   audio: AudioSettings;
   bloom: BloomSettings;
   clientDebug: ClientDebugSettings;
+  default: DefaultSettings;
   edges: EdgeSettings;
   labels: LabelSettings;
   network: NetworkSettings;
   nodes: NodeSettings;
   physics: PhysicsSettings;
   rendering: RenderingSettings;
+  security: SecuritySettings;
+  serverDebug: ServerDebugSettings;
   websocket: WebsocketSettings;
 }
 
