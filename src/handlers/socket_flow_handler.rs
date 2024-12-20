@@ -6,10 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::app_state::AppState;
-use crate::utils::socket_flow_messages::{
-    BinaryNodeData,
-    Message,
-};
+use crate::utils::socket_flow_messages::{BinaryNodeData, Message};
 use crate::utils::socket_flow_constants::{
     HEARTBEAT_INTERVAL as HEARTBEAT_INTERVAL_SECS,
     CLIENT_TIMEOUT as CLIENT_TIMEOUT_SECS,
@@ -25,9 +22,22 @@ const MAX_CLIENT_TIMEOUT: Duration = Duration::from_secs(MAX_CLIENT_TIMEOUT_SECS
 #[rtype(result = "()")]
 struct SendMessage(String);
 
+#[derive(ActixMessage)]
+#[rtype(result = "()")]
+struct UpdateNodeOrder(Vec<String>);
+
+impl Handler<UpdateNodeOrder> for SocketFlowServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: UpdateNodeOrder, _: &mut Self::Context) {
+        self.node_order = msg.0;
+    }
+}
+
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     last_heartbeat: Instant,
+    node_order: Vec<String>, // Store node IDs in order for binary updates
 }
 
 impl Actor for SocketFlowServer {
@@ -82,6 +92,7 @@ impl SocketFlowServer {
         Self {
             app_state,
             last_heartbeat: Instant::now(),
+            node_order: Vec::new(),
         }
     }
 
@@ -106,9 +117,13 @@ impl SocketFlowServer {
                 debug!("Handling RequestInitialData message");
                 let app_state = self.app_state.clone();
                 let addr = ctx.address();
+                
                 ctx.spawn(
                     async move {
                         let graph = app_state.graph_service.graph_data.read().await;
+                        // Send node order update
+                        let node_order: Vec<String> = graph.nodes.iter().map(|n| n.id.clone()).collect();
+                        addr.do_send(UpdateNodeOrder(node_order));
                         info!("Sending initial graph data: {} nodes, {} edges", 
                             graph.nodes.len(), 
                             graph.edges.len()
@@ -127,12 +142,17 @@ impl SocketFlowServer {
             Message::UpdatePositions(update_msg) => {
                 debug!("Handling UpdatePositions message with {} nodes", update_msg.nodes.len());
                 let app_state = self.app_state.clone();
+                let node_order = self.node_order.clone();
                 ctx.spawn(
                     async move {
                         let mut graph = app_state.graph_service.graph_data.write().await;
-                        for node_update in update_msg.nodes {
-                            if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == node_update.node_id) {
-                                node.data = node_update.data;
+                        // Update nodes using array indices
+                        for (i, node_update) in update_msg.nodes.iter().enumerate() {
+                            if i < node_order.len() {
+                                if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == node_order[i]) {
+                                    node.data.position = node_update.position;
+                                    node.data.velocity = node_update.velocity;
+                                }
                             }
                         }
                     }
@@ -147,7 +167,7 @@ impl SocketFlowServer {
                     async move {
                         let graph = app_state.graph_service.graph_data.read().await;
                         let binary_nodes: Vec<BinaryNodeData> = graph.nodes.iter()
-                            .map(|node| BinaryNodeData::from_node_data(&node.id, &node.data))
+                            .map(|node| BinaryNodeData::from_node_data(&node.data))
                             .collect();
                         
                         let binary_update = Message::BinaryPositionUpdate {

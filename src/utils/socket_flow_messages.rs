@@ -108,7 +108,6 @@ impl Node {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
 pub struct BinaryNodeData {
-    pub node_id: f32,     // Node ID as float for binary transmission
     pub position: [f32; 3],  // x, y, z
     pub velocity: [f32; 3],  // vx, vy, vz
 }
@@ -120,15 +119,8 @@ unsafe impl DeviceRepr for BinaryNodeData {}
 unsafe impl ValidAsZeroBits for BinaryNodeData {}
 
 impl BinaryNodeData {
-    pub fn from_node_data(node_id: &str, data: &NodeData) -> Self {
-        // Convert string ID to float for binary transmission
-        // This is a simple hash function that should work for our needs
-        let id_float = node_id.bytes().fold(0.0f32, |acc, b| {
-            acc + (b as f32) / 255.0
-        });
-
+    pub fn from_node_data(data: &NodeData) -> Self {
         Self {
-            node_id: id_float,
             position: data.position,
             velocity: data.velocity,
         }
@@ -143,24 +135,16 @@ pub struct UpdatePositionsMessage {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
+#[serde(rename_all = "kebab-case")]
 pub enum Message {
-    #[serde(rename = "updatePositions")]
     UpdatePositions(UpdatePositionsMessage),
-    #[serde(rename = "initialData")]
     InitialData { graph: GraphData },
-    #[serde(rename = "binaryPositionUpdate")]
     BinaryPositionUpdate { nodes: Vec<BinaryNodeData> },
-    #[serde(rename = "simulationModeSet")]
     SimulationModeSet { mode: String },
-    #[serde(rename = "requestInitialData")]
     RequestInitialData,
-    #[serde(rename = "enableBinaryUpdates")]
     EnableBinaryUpdates,
-    #[serde(rename = "setSimulationMode")]
     SetSimulationMode { mode: String },
-    #[serde(rename = "ping")]
     Ping,
-    #[serde(rename = "pong")]
     Pong,
 }
 

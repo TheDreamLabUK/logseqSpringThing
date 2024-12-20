@@ -9,6 +9,7 @@ use log::{error, info, debug};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use crate::utils::case_conversion::to_snake_case;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,61 +37,6 @@ pub struct CategorySettingsResponse {
 #[serde(rename_all = "camelCase")]
 pub struct SettingValue {
     pub value: Value,
-}
-
-// Convert kebab-case or snake_case to camelCase
-fn to_camel_case(s: &str) -> String {
-    let mut result = String::new();
-    let mut capitalize_next = false;
-    
-    for c in s.chars() {
-        if c == '-' || c == '_' {
-            capitalize_next = true;
-        } else if capitalize_next {
-            result.push(c.to_ascii_uppercase());
-            capitalize_next = false;
-        } else if result.is_empty() {
-            result.push(c.to_ascii_lowercase());
-        } else {
-            result.push(c);
-        }
-    }
-    
-    result
-}
-
-// Convert camelCase or snake_case to kebab-case
-fn to_kebab_case(s: &str) -> String {
-    let mut result = String::new();
-    
-    for (i, c) in s.chars().enumerate() {
-        if i > 0 && c.is_uppercase() {
-            result.push('-');
-            result.push(c.to_ascii_lowercase());
-        } else if c == '_' {
-            result.push('-');
-        } else {
-            result.push(c.to_ascii_lowercase());
-        }
-    }
-    result
-}
-
-// Convert kebab-case or camelCase to snake_case
-fn to_snake_case(s: &str) -> String {
-    let mut result = String::new();
-    
-    for (i, c) in s.chars().enumerate() {
-        if i > 0 && c.is_uppercase() {
-            result.push('_');
-            result.push(c.to_ascii_lowercase());
-        } else if c == '-' {
-            result.push('_');
-        } else {
-            result.push(c.to_ascii_lowercase());
-        }
-    }
-    result
 }
 
 // Helper function to get setting value from settings object
