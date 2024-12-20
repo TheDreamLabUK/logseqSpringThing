@@ -41,8 +41,6 @@ services:
       - type: bind
         source: ./settings.toml
         target: /app/settings.toml
-        bind:
-          create_host_path: true
       - type: tmpfs
         target: /tmp
         tmpfs:

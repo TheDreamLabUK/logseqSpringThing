@@ -7,16 +7,13 @@ authors = ["Your Name <your.email@example.com>"]
 
 [dependencies]
 # Web framework and WebSocket
-actix-web = { version = "4.5", features = ["compress-gzip", "rustls"] }
-actix-cors = "0.7"
-actix-files = "0.6"
-actix-ws = "0.2.5"
-actix = "0.13"
-actix-web-actors = "4.3"
+actix-web = { version = "=4.5.1", features = ["compress-gzip"] }
+actix-cors = "=0.7.0"
+actix-files = "=0.6.5"
+actix = "=0.13.1"
+actix-web-actors = "=4.3.0"
 tungstenite = "0.21"
-rustls = "0.21.11"
-rustls-pemfile = "1.0"
-tokio-tungstenite = { version = "0.21", features = ["rustls"] }
+tokio-tungstenite = { version = "0.21" }
 
 # Async runtime
 tokio = { version = "1.32", features = ["full"] }
@@ -48,7 +45,7 @@ naga = { version = "0.13", features = ["wgsl-in", "spv-out", "wgsl-out"] }
 cudarc = "0.10"
 
 # HTTP client and API
-reqwest = { version = "0.11", features = ["json", "stream", "rustls-tls"] }
+reqwest = { version = "0.11", features = ["json", "stream"] }
 async-openai = "0.14"
 backoff = { version = "0.4", features = ["tokio"] }
 
@@ -93,3 +90,10 @@ strip = true
 
 [profile.dev]
 opt-level = 1
+
+[package.metadata.rust-version]
+min = "1.70.0"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

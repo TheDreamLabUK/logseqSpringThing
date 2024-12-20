@@ -90,6 +90,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-glx \
     netcat-openbsd \
     gettext-base \
+    net-tools \
+    iproute2 \
+    procps \
+    lsof \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /usr/share/doc/* \
     && rm -rf /usr/share/man/*
@@ -176,10 +180,6 @@ LABEL org.opencontainers.image.source="https://github.com/yourusername/logseq-xr
 
 # Expose port
 EXPOSE 4000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:4000/ || exit 1
 
 # Start application
 ENTRYPOINT ["/app/start.sh"]
