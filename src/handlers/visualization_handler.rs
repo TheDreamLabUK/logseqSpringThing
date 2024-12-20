@@ -9,7 +9,7 @@ use log::{error, info, debug};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use crate::utils::case_conversion::to_snake_case;
+use crate::utils::case_conversion::{to_snake_case, to_camel_case};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -300,7 +300,7 @@ pub async fn get_category_settings(
             debug!("Successfully retrieved category settings: {:?}", settings_value);
             let settings_hash: HashMap<String, Value> = settings_value
                 .as_object()
-                .map(|map| map.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                .map(|map| map.iter().map(|(k, v)| (to_camel_case(k), v.clone())).collect())
                 .unwrap_or_default();
             
             HttpResponse::Ok().json(CategorySettingsResponse {

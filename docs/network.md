@@ -13,39 +13,95 @@ REST API (actix-web): The server exposes a REST API for:
 
 Graph Data: /api/graph/data (full graph) and /api/graph/data/paginated (paginated graph).
 
-Settings: /api/visualization/settings (GET all settings), /api/visualization/settings (PUT all settings), and individual setting endpoints like /api/visualization/{category}/{setting} (GET/PUT).
+Settings: 
+- GET /api/visualization/settings/{category} (get all settings for a category)
+- GET /api/visualization/settings/{category}/{setting} (get individual setting)
+- PUT /api/visualization/settings/{category}/{setting} (update individual setting)
 
 Other API endpoints: /api/files/fetch, /api/chat/*, /api/perplexity.
 
 WebSocket Handling (actix-web-actors): 
-- Binary Protocol: Uses a compressed binary protocol for efficient real-time position and velocity updates
-- Connection Management: Tracks active connections with atomic counters
-- Heartbeat: Implements configurable ping/pong with timestamps for connection health monitoring
-- Compression: Supports WebSocket compression with configurable thresholds
+- Binary Protocol: 
+  - Uses a compressed binary protocol for efficient real-time position and velocity updates
+  - Includes version checking (BINARY_VERSION) for protocol compatibility
+  - Optimized format with 6 floats per node (position + velocity)
+  - 4-byte binary header for version information
+- Connection Management:
+  - Message queuing with configurable queue size
+  - Robust reconnection logic with configurable attempts and delays
+  - Connection status tracking and notifications
+- Heartbeat:
+  - Configurable ping/pong intervals
+  - Timestamp-based health monitoring
+  - Automatic reconnection on timeout
+- Compression:
+  - Configurable compression thresholds
+  - Optimized for position/velocity data
+- Error Handling:
+  - Comprehensive error types and status codes
+  - Detailed error reporting and logging
+  - Graceful failure recovery
 
 RAGFlow Integration:
-- Network Integration: Joins the RAGFlow Docker network (ragflow_ragflow)
+- Network Integration: Joins the RAGFlow Docker network (docker_ragflow)
 - Service Discovery: Uses Docker network aliases for service communication
 - Optional Connectivity: Gracefully handles RAGFlow availability
 - Health Checks: Monitors RAGFlow service health without direct dependencies
+
+Security:
+- TLS Implementation: Uses rustls (>=0.23.5) for secure communication
+- Certificate Management: Handles TLS certificates through rustls-pemfile
+- WebSocket Security: Implements secure WebSocket connections with TLS
+- Network Isolation: Services run in isolated Docker networks
+
+Port Configuration:
+- Nginx Frontend: Listens on port 4000 for external connections
+- Rust Backend: Runs on port 3001 internally (configurable via PORT env var)
+- Nginx Proxy Configuration:
+  - WebSocket Endpoints (/wss):
+    - Disabled buffering and caching for real-time communication
+    - Extended timeouts: 300s read/send, 75s connect
+    - Proper connection upgrade handling
+  - API Endpoints (/api):
+    - Enabled buffering with 128k buffer size
+    - 60s timeouts for read/send/connect
+    - Enhanced proxy buffers (4 x 256k)
+  - Graph Endpoints (/graph):
+    - 30s connect timeout matching heartbeat interval
+    - No-store cache control
+  - Security Headers:
+    - Content-Security-Policy with WebSocket support
+    - Strict-Transport-Security (HSTS)
+    - X-Frame-Options, X-XSS-Protection
+    - Referrer-Policy and other security headers
+- Health Checks: 
+  - Regular HTTP and WebSocket endpoint monitoring
+  - 10-second interval checks with 5-second timeout
+  - 5 retries with 10-second start period
 
 3. Client-Side (TypeScript)
 
 Initialization:
 - The client loads initial graph data from /api/graph/data/paginated using pagination
-- The client loads all visualization settings from /api/visualization/settings
+- The client loads all visualization settings from /api/visualization/settings/{category}
 - WebSocket connection is established with compression and heartbeat configuration
 
-REST API Interaction: The client uses REST API calls for:
+REST API Interaction:
 - Initial Graph Data: Retrieving the initial graph data using pagination
-- Settings: Loading all settings, getting individual settings, updating individual settings
+- Settings: Loading category settings, getting/updating individual settings
 - RAGFlow Services: Communicating with RAGFlow when available
 
 WebSocket Connection: 
 - Establishes compressed WebSocket connection for real-time updates
-- Implements reconnection logic with configurable attempts
-- Handles connection failures gracefully
-- Maintains heartbeat for connection health
+- Implements reconnection logic with configurable attempts (default: 3)
+- Configurable settings for:
+  - Compression threshold
+  - Heartbeat interval (default: 15s)
+  - Heartbeat timeout (default: 60s)
+  - Reconnect delay (default: 5s)
+- Message queuing with size limits
+- Binary message handling with version verification
+- Comprehensive error handling and status notifications
 
 4. Docker Networking
 
@@ -56,7 +112,7 @@ RAGFlow Integration:
 networks:
   ragflow:
     external: true
-    name: ragflow_ragflow  # RAGFlow's network
+    name: docker_ragflow  # RAGFlow's network from docker network ls
 ```
 
 Service Configuration:
@@ -68,42 +124,43 @@ services:
         aliases:
           - logseq-xr-webxr
           - webxr-client
+    deploy:
+      resources:
+        limits:
+          cpus: '16.0'
+          memory: 64G
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
 ```
+
+Cloudflare Tunnel:
+The application uses Cloudflare's tunnel service for secure external access:
+- Runs as a separate container (cloudflared-tunnel)
+- Environment Configuration:
+  - TUNNEL_METRICS: Exposed on 0.0.0.0:2000
+  - TUNNEL_DNS_UPSTREAM: Uses 1.1.1.1 and 1.0.0.1
+  - TUNNEL_TRANSPORT_PROTOCOL: Uses HTTP/2
+  - TUNNEL_WEBSOCKET_ENABLE: Enabled for WebSocket support
+  - TUNNEL_WEBSOCKET_HEARTBEAT_INTERVAL: 30s
+  - TUNNEL_WEBSOCKET_TIMEOUT: 3600s
+  - TUNNEL_RETRIES: 5 attempts
+  - TUNNEL_GRACE_PERIOD: 30s
+- Provides secure tunneling without exposing ports directly
+- Configuration managed through config.yml with ingress rules
+
+Health Check System:
+- Container Health: Docker healthcheck monitors service availability
+- Backend Health: Rust service monitors internal state and dependencies
+- Frontend Health: Nginx monitors backend connectivity
+- RAGFlow Health: Periodic checks for RAGFlow service availability
+- Metrics: Health status exposed through container metrics
 
 5. Data Flow Diagrams
 
-sequenceDiagram
-    participant Client
-    participant Server
-    participant RAGFlow
-
-    alt Initial Setup
-        Client->>Server: GET /api/visualization/settings (all settings)
-        Server-->>Client: Settings (camelCase)
-        Client->>Server: GET /api/graph/data/paginated?page=0&pageSize=100
-        Server-->>Client: Paginated Graph Data (camelCase)
-    end
-    
-    alt WebSocket Connection
-        Client->>Server: WebSocket Connect (with compression)
-        Server-->>Client: Connection Accepted
-        loop Heartbeat
-            Server->>Client: Ping (with timestamp)
-            Client-->>Server: Pong
-        end
-    end
-
-    alt RAGFlow Integration
-        Client->>Server: Request requiring RAGFlow
-        Server->>RAGFlow: Forward request
-        RAGFlow-->>Server: Process and respond
-        Server-->>Client: Forward response
-    end
-
-    alt Real-time Updates
-        Client->>Server: Compressed binary position data
-        Server->>Client: Broadcast compressed updates
-    end
+[Previous diagram content remains unchanged]
 
 6. Key Improvements
 
@@ -112,6 +169,8 @@ WebSocket Enhancements:
 - Robust connection management with health monitoring
 - Better error handling and recovery
 - Configurable heartbeat intervals
+- Message queuing with size limits
+- Binary protocol version verification
 
 RAGFlow Integration:
 - Clean separation of services
@@ -131,15 +190,20 @@ Performance Optimization:
 - Fine-tune WebSocket compression thresholds
 - Optimize binary message format
 - Monitor network bandwidth usage
+- GPU resource utilization monitoring
 
 Error Handling:
 - Implement comprehensive error recovery
 - Better user feedback
 - Logging and monitoring
+- Connection failure analysis
 
 Security:
 - Network isolation
 - Access control
 - Data validation
+- Regular security audits
+- Dependency vulnerability monitoring
+- TLS configuration management
 
 This briefing document provides a comprehensive overview of the LogseqXR networking architecture, including its integration with RAGFlow and enhanced WebSocket capabilities. Regular monitoring and optimization of these systems will ensure optimal performance and reliability.

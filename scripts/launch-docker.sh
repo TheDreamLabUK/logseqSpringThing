@@ -300,16 +300,14 @@ check_application_readiness() {
     return 1
 }
 
-# Function to handle cleanup on exit
-cleanup_and_exit() {
-    log "\n${YELLOW}Received shutdown signal. Cleaning up...${NC}"
-    SAVE_LOGS=1
-    cleanup_existing_processes
+# Function to handle exit
+handle_exit() {
+    log "\n${YELLOW}Exiting to shell. Containers will continue running.${NC}"
     exit 0
 }
 
-# Set up trap for cleanup
-trap cleanup_and_exit INT TERM
+# Set up trap for clean exit
+trap handle_exit INT TERM
 
 # Change to project root directory
 cd "$PROJECT_ROOT"
