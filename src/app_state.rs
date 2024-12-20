@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use tokio::sync::RwLock;
 
 use crate::config::Settings;
@@ -21,6 +21,7 @@ pub struct AppState {
     pub ragflow_service: Option<Arc<RAGFlowService>>,
     pub ragflow_conversation_id: String,
     pub github_pr_service: Arc<RealGitHubPRService>,
+    pub active_connections: Arc<AtomicUsize>,
 }
 
 impl AppState {
@@ -43,6 +44,15 @@ impl AppState {
             ragflow_service,
             ragflow_conversation_id,
             github_pr_service,
+            active_connections: Arc::new(AtomicUsize::new(0)),
         }
+    }
+
+    pub fn increment_connections(&self) -> usize {
+        self.active_connections.fetch_add(1, Ordering::SeqCst)
+    }
+
+    pub fn decrement_connections(&self) -> usize {
+        self.active_connections.fetch_sub(1, Ordering::SeqCst)
     }
 }

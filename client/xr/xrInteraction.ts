@@ -95,7 +95,15 @@ export class XRInteraction {
             network: {
                 bindAddress: '0.0.0.0',
                 domain: 'localhost',
-                port: 3001
+                enableHttp2: false,
+                enableRateLimiting: true,
+                enableTls: false,
+                maxRequestSize: 10485760,
+                minTlsVersion: '',
+                port: 3001,
+                rateLimitRequests: 100,
+                rateLimitWindow: 60,
+                tunnelId: 'dummy'
             },
             nodes: { 
                 baseColor: '#4A90E2', 
@@ -135,9 +143,46 @@ export class XRInteraction {
                 environmentIntensity: 1 
             },
             websocket: {
-                heartbeatInterval: 30,
-                heartbeatTimeout: 60,
-                maxMessageSize: 5242880
+                binaryChunkSize: 65536,
+                compressionEnabled: true,
+                compressionThreshold: 1024,
+                heartbeatInterval: 15000,
+                heartbeatTimeout: 60000,
+                maxConnections: 1000,
+                maxMessageSize: 100485760,
+                reconnectAttempts: 3,
+                reconnectDelay: 5000,
+                updateRate: 90
+            },
+            default: {
+                apiClientTimeout: 30,
+                enableMetrics: true,
+                enableRequestLogging: true,
+                logFormat: "json",
+                logLevel: "debug",
+                maxConcurrentRequests: 5,
+                maxPayloadSize: 5242880,
+                maxRetries: 3,
+                metricsPort: 9090,
+                retryDelay: 5
+            },
+            security: {
+                allowedOrigins: [],
+                auditLogPath: "/app/logs/audit.log",
+                cookieHttponly: true,
+                cookieSamesite: "Strict",
+                cookieSecure: true,
+                csrfTokenTimeout: 3600,
+                enableAuditLogging: true,
+                enableRequestValidation: true,
+                sessionTimeout: 3600
+            },
+            serverDebug: {
+                enableDataDebug: false,
+                enableWebsocketDebug: false,
+                enabled: true,
+                logBinaryHeaders: false,
+                logFullJson: false
             }
         };
         

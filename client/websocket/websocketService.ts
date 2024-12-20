@@ -30,18 +30,81 @@ export class WebSocketService {
   private errorHandlers: ErrorHandler[] = [];
   private connectionHandlers: ConnectionHandler[] = [];
 
+  private settings: {
+    compressionEnabled: boolean;
+    compressionThreshold: number;
+    heartbeatInterval: number;
+    heartbeatTimeout: number;
+    reconnectAttempts: number;
+    reconnectDelay: number;
+  };
+
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private lastPongTime: number = 0;
+  private reconnectCount: number = 0;
+
   constructor() {
+    // Default settings, will be updated from settingsManager
+    this.settings = {
+      compressionEnabled: true,
+      compressionThreshold: 1024,
+      heartbeatInterval: 15000,
+      heartbeatTimeout: 60000,
+      reconnectAttempts: 3,
+      reconnectDelay: 5000
+    };
+
     this.connect();
   }
 
   private connect(): void {
     try {
+      // Note: Browser WebSocket API doesn't support compression options directly
+      // Compression is handled by the server configuration
       this.ws = new WebSocket(WS_URL);
       this.setupEventHandlers();
+      this.startHeartbeat();
     } catch (error) {
       logger.error('WebSocket connection error:', error);
-      this.scheduleReconnect();
+      this.handleConnectionFailure();
     }
+  }
+
+  private startHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+    }
+
+    this.heartbeatTimer = setInterval(() => {
+      if (this.isConnected) {
+        // Check if we haven't received a pong in too long
+        const timeSinceLastPong = Date.now() - this.lastPongTime;
+        if (timeSinceLastPong > this.settings.heartbeatTimeout) {
+          logger.warn('WebSocket heartbeat timeout');
+          this.handleConnectionFailure();
+          return;
+        }
+
+        // Send ping
+        this.send(JSON.stringify({
+          type: 'ping',
+          timestamp: Date.now()
+        }));
+      }
+    }, this.settings.heartbeatInterval);
+  }
+
+  private handleConnectionFailure(): void {
+    this.reconnectCount++;
+    if (this.reconnectCount > this.settings.reconnectAttempts) {
+      logger.error('Max reconnection attempts reached');
+      this.notifyErrorHandlers(new Error('Max reconnection attempts reached'));
+      this.notifyConnectionHandlers(WebSocketStatus.FAILED);
+      return;
+    }
+
+    logger.info(`Reconnection attempt ${this.reconnectCount}/${this.settings.reconnectAttempts}`);
+    this.scheduleReconnect();
   }
 
   private setupEventHandlers(): void {
@@ -49,21 +112,32 @@ export class WebSocketService {
 
     this.ws.onopen = () => {
       this.isConnected = true;
+      this.reconnectCount = 0;
+      this.lastPongTime = Date.now();
       logger.info('WebSocket connected');
       this.flushMessageQueue();
       this.notifyConnectionHandlers(WebSocketStatus.CONNECTED);
     };
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (event) => {
       this.isConnected = false;
-      logger.info('WebSocket disconnected');
-      this.scheduleReconnect();
-      this.notifyConnectionHandlers(WebSocketStatus.DISCONNECTED);
+      logger.info(`WebSocket disconnected: ${event.code} - ${event.reason}`);
+      this.handleConnectionFailure();
+      this.notifyConnectionHandlers(WebSocketStatus.DISCONNECTED, {
+        code: event.code,
+        reason: event.reason
+      });
     };
 
     this.ws.onerror = (error) => {
       logger.error('WebSocket error:', error);
-      this.notifyErrorHandlers(new Error('WebSocket error occurred'));
+      const wsError: WebSocketError = {
+        name: 'WebSocketError',
+        message: error instanceof Error ? error.message : 'Unknown WebSocket error',
+        type: WebSocketErrorType.CONNECTION_FAILED,
+        code: (error as any).code
+      };
+      this.notifyErrorHandlers(wsError);
     };
 
     this.ws.onmessage = (event) => {
@@ -146,12 +220,16 @@ export class WebSocketService {
           this.notifyHandlers('initialData', data);
           break;
           
-        case 'ping':
-          this.send(JSON.stringify({
-            type: 'pong',
-            timestamp: Date.now()
-          }));
-          break;
+          case 'ping':
+            this.send(JSON.stringify({
+              type: 'pong',
+              timestamp: Date.now()
+            }));
+            break;
+
+          case 'pong':
+            this.lastPongTime = Date.now();
+            break;
           
         default:
           if (this.messageHandlers.has(type)) {
@@ -195,10 +273,10 @@ export class WebSocketService {
     });
   }
 
-  private notifyConnectionHandlers(status: WebSocketStatus): void {
+  private notifyConnectionHandlers(status: WebSocketStatus, details?: any): void {
     this.connectionHandlers.forEach(handler => {
       try {
-        handler(status);
+        handler(status, details);
       } catch (error) {
         logger.error('Error in connection handler:', error);
       }
@@ -253,10 +331,24 @@ export class WebSocketService {
       this.reconnectTimeout = null;
     }
 
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+
     // Clear all handlers
     this.messageHandlers.clear();
     this.errorHandlers = [];
     this.connectionHandlers = [];
+  }
+
+  public updateSettings(settings: Partial<typeof this.settings>): void {
+    this.settings = { ...this.settings, ...settings };
+    
+    // Restart heartbeat with new settings if connected
+    if (this.isConnected) {
+      this.startHeartbeat();
+    }
   }
 
   public on(type: MessageType, handler: MessageHandler): void {
@@ -273,7 +365,10 @@ export class WebSocketService {
 
   public onConnectionChange(handler: ConnectionHandler): void {
     this.connectionHandlers.push(handler);
-    handler(this.isConnected ? WebSocketStatus.CONNECTED : WebSocketStatus.DISCONNECTED);
+    handler(
+      this.isConnected ? WebSocketStatus.CONNECTED : WebSocketStatus.DISCONNECTED,
+      undefined
+    );
   }
 
   public off(type: MessageType, handler: MessageHandler): void {

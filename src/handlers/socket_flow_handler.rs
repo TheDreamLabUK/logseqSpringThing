@@ -4,18 +4,17 @@ use actix_web_actors::ws;
 use log::{error, warn, debug, info};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
 
 use crate::app_state::AppState;
 use crate::utils::socket_flow_messages::{BinaryNodeData, Message};
 use crate::utils::socket_flow_constants::{
     HEARTBEAT_INTERVAL as HEARTBEAT_INTERVAL_SECS,
-    CLIENT_TIMEOUT as CLIENT_TIMEOUT_SECS,
     MAX_CLIENT_TIMEOUT as MAX_CLIENT_TIMEOUT_SECS,
 };
 
 // Convert seconds to Duration
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(HEARTBEAT_INTERVAL_SECS);
-const CLIENT_TIMEOUT: Duration = Duration::from_secs(CLIENT_TIMEOUT_SECS);
 const MAX_CLIENT_TIMEOUT: Duration = Duration::from_secs(MAX_CLIENT_TIMEOUT_SECS);
 
 #[derive(ActixMessage)]
@@ -38,6 +37,7 @@ pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     last_heartbeat: Instant,
     node_order: Vec<String>, // Store node IDs in order for binary updates
+    settings: Arc<RwLock<crate::config::Settings>>,
 }
 
 impl Actor for SocketFlowServer {
@@ -45,7 +45,13 @@ impl Actor for SocketFlowServer {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         debug!("WebSocket actor started");
+        self.app_state.increment_connections();
         self.heartbeat(ctx);
+    }
+
+    fn stopped(&mut self, _: &mut Self::Context) {
+        debug!("WebSocket actor stopped");
+        self.app_state.decrement_connections();
     }
 }
 
@@ -88,26 +94,35 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
 }
 
 impl SocketFlowServer {
-    pub fn new(app_state: Arc<AppState>) -> Self {
+    pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<crate::config::Settings>>) -> Self {
         Self {
             app_state,
             last_heartbeat: Instant::now(),
             node_order: Vec::new(),
+            settings,
         }
     }
 
     fn heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
-            let time_since_last = Instant::now().duration_since(act.last_heartbeat);
-            if time_since_last > CLIENT_TIMEOUT {
-                warn!("Client heartbeat timeout - last heartbeat: {:?} ago", time_since_last);
-                if time_since_last > MAX_CLIENT_TIMEOUT {
-                    warn!("Client exceeded maximum timeout, closing connection");
-                    ctx.stop();
-                    return;
+        let settings = self.settings.clone();
+        ctx.run_interval(HEARTBEAT_INTERVAL, move |act, ctx| {
+            if let Ok(settings_guard) = settings.try_read() {
+                let time_since_last = Instant::now().duration_since(act.last_heartbeat);
+                let heartbeat_timeout = Duration::from_millis(settings_guard.websocket.heartbeat_timeout);
+                
+                if time_since_last > heartbeat_timeout {
+                    warn!("Client heartbeat timeout - last heartbeat: {:?} ago", time_since_last);
+                    if time_since_last > MAX_CLIENT_TIMEOUT {
+                        warn!("Client exceeded maximum timeout, closing connection");
+                        ctx.stop();
+                        return;
+                    }
                 }
+                
+                // Send ping with timestamp for latency tracking
+                let timestamp = Instant::now().elapsed().as_millis().to_string();
+                ctx.ping(timestamp.as_bytes());
             }
-            ctx.ping(b"");
         });
     }
 
@@ -203,9 +218,26 @@ pub async fn ws_handler(
     req: HttpRequest,
     stream: web::Payload,
     app_state: web::Data<AppState>,
+    settings: web::Data<Arc<RwLock<crate::config::Settings>>>,
 ) -> Result<HttpResponse, Error> {
     info!("New WebSocket connection request from {:?}", req.peer_addr());
     debug!("WebSocket request headers: {:?}", req.headers());
-    let socket_server = SocketFlowServer::new(Arc::new(app_state.as_ref().clone()));
+
+    // Check connection limits
+    if let Ok(settings_guard) = settings.try_read() {
+        let max_connections = settings_guard.websocket.max_connections;
+        let current_connections = app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
+        
+        if current_connections >= max_connections {
+            error!("Connection limit reached: {}/{}", current_connections, max_connections);
+            return Ok(HttpResponse::ServiceUnavailable().finish());
+        }
+    }
+
+    let socket_server = SocketFlowServer::new(
+        app_state.into_inner(),
+        settings.get_ref().clone()
+    );
+    
     ws::start(socket_server, &req, stream)
 }

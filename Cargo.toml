@@ -7,7 +7,7 @@ authors = ["Your Name <your.email@example.com>"]
 
 [dependencies]
 # Web framework and WebSocket
-actix-web = { version = "4.4", features = ["compress-brotli", "compress-gzip", "rustls"] }
+actix-web = { version = "4.4", features = ["compress-gzip", "rustls"] }
 actix-cors = "0.6"
 actix-files = "0.6"
 actix-ws = "0.2"
@@ -62,37 +62,18 @@ lazy_static = "1.4"
 sha1 = "0.10"
 url = "2.5"
 
-# Audio Processing
-cpal = "0.15"
-rodio = "0.17"
-symphonia = { version = "0.5", features = ["mp3", "wav"] }
-pyo3 = { version = "0.19", features = ["auto-initialize"], optional = true }
-
-# 3D/WebXR/Graphics
+# Math/Linear Algebra (needed for GPU compute)
 nalgebra = "0.32"
-kiss3d = "0.35"
-gl = "0.14"
-glow = "0.12"
+
+# WebGL (minimal features needed for GPU compute visualization)
 web-sys = { version = "0.3", features = [
     "WebGl2RenderingContext",
     "WebGlBuffer",
     "WebGlProgram",
     "WebGlShader",
     "WebGlUniformLocation",
-    "XrSystem",
-    "XrSession",
-    "XrSessionMode",
-    "XrReferenceSpace",
-    "XrReferenceSpaceType",
-    "XrFrame",
-    "XrPose",
-    "XrView",
-    "XrViewerPose",
-    "XrWebGlLayer",
-    "Navigator",
     "Window"
 ]}
-js-sys = "0.3"
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -102,7 +83,6 @@ pretty_assertions = "1.4"
 [features]
 default = ["gpu"]
 gpu = []
-python = ["dep:pyo3"]
 
 [profile.release]
 opt-level = 3
