@@ -17,6 +17,13 @@ use crate::utils::socket_flow_constants::{
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(HEARTBEAT_INTERVAL_SECS);
 const MAX_CLIENT_TIMEOUT: Duration = Duration::from_secs(MAX_CLIENT_TIMEOUT_SECS);
 
+#[derive(Debug)]
+enum WebSocketResponse {
+    Text(String),
+    Binary(Vec<u8>),
+    None,
+}
+
 #[derive(ActixMessage)]
 #[rtype(result = "()")]
 struct SendMessage(String);
@@ -56,6 +63,7 @@ impl Actor for SocketFlowServer {
         let current = self.app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
         info!("[WS] Active connections: {}", current);
         self.heartbeat(ctx);
+        self.start_position_updates(ctx);
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
@@ -112,14 +120,31 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                         let fut = async move {
                             this.handle_message(message).await
                         };
-                        ctx.spawn(actix::fut::wrap_future(fut).map(move |result, _, ctx: &mut ws::WebsocketContext<SocketFlowServer>| {
-                            if let Some(response) = result {
-                                if let Ok(settings) = settings.try_read() {
-                                    if settings.server_debug.enabled {
-                                        info!("[WS] Sending response: {}", response);
+                        ctx.spawn(actix::fut::wrap_future(fut).map(move |response, _, ctx: &mut ws::WebsocketContext<SocketFlowServer>| {
+                            match response {
+                                WebSocketResponse::Text(text) => {
+                                    if let Ok(settings) = settings.try_read() {
+                                        if settings.server_debug.enabled {
+                                            info!("[WS] Sending text response: {}", text);
+                                        }
+                                    }
+                                    ctx.text(text);
+                                }
+                                WebSocketResponse::Binary(data) => {
+                                    if let Ok(settings) = settings.try_read() {
+                                        if settings.server_debug.enabled {
+                                            info!("[WS] Sending binary response: {} bytes", data.len());
+                                        }
+                                    }
+                                    ctx.binary(data);
+                                }
+                                WebSocketResponse::None => {
+                                    if let Ok(settings) = settings.try_read() {
+                                        if settings.server_debug.enabled {
+                                            info!("[WS] No response to send");
+                                        }
                                     }
                                 }
-                                ctx.text(response);
                             }
                         }));
                     }
@@ -156,6 +181,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
 }
 
 impl SocketFlowServer {
+    const POSITION_UPDATE_INTERVAL: Duration = Duration::from_millis(16); // ~60fps
+
     pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<crate::config::Settings>>) -> Self {
         Self {
             app_state,
@@ -163,6 +190,50 @@ impl SocketFlowServer {
             node_order: Vec::new(),
             settings,
         }
+    }
+
+    fn start_position_updates(&self, ctx: &mut ws::WebsocketContext<Self>) {
+        let app_state = self.app_state.clone();
+        let settings = self.settings.clone();
+
+        ctx.run_interval(Self::POSITION_UPDATE_INTERVAL, move |_, ctx| {
+            let fut = async move {
+                let graph = app_state.graph_service.graph_data.read().await;
+                let binary_nodes: Vec<BinaryNodeData> = graph.nodes.iter()
+                    .map(|node| BinaryNodeData::from_node_data(&node.data))
+                    .collect();
+
+                // Create binary message
+                let version: i32 = 1;
+                let mut buffer = Vec::with_capacity(4 + binary_nodes.len() * std::mem::size_of::<BinaryNodeData>());
+                
+                // Write version header (4 bytes)
+                buffer.extend_from_slice(&version.to_le_bytes());
+                
+                // Write node data
+                for node in binary_nodes {
+                    buffer.extend_from_slice(&node.position[0].to_le_bytes());
+                    buffer.extend_from_slice(&node.position[1].to_le_bytes());
+                    buffer.extend_from_slice(&node.position[2].to_le_bytes());
+                    buffer.extend_from_slice(&node.velocity[0].to_le_bytes());
+                    buffer.extend_from_slice(&node.velocity[1].to_le_bytes());
+                    buffer.extend_from_slice(&node.velocity[2].to_le_bytes());
+                }
+
+                if let Ok(settings) = settings.try_read() {
+                    if settings.server_debug.enabled && settings.server_debug.log_binary_headers {
+                        info!("[WS] Sending position update: {} nodes, {} bytes", 
+                            binary_nodes.len(), buffer.len());
+                    }
+                }
+
+                buffer
+            };
+
+            ctx.spawn(actix::fut::wrap_future(fut).map(|buffer, _, ctx| {
+                ctx.binary(buffer);
+            }));
+        });
     }
 
     fn heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
@@ -197,7 +268,7 @@ impl SocketFlowServer {
         });
     }
 
-    async fn handle_message(&self, message: Message) -> Option<String> {
+    async fn handle_message(&self, message: Message) -> WebSocketResponse {
         let settings = self.settings.read().await;
         let debug_enabled = settings.server_debug.enabled;
         let log_binary = debug_enabled && settings.server_debug.log_binary_headers;
@@ -208,23 +279,23 @@ impl SocketFlowServer {
                 if log_binary {
                     info!("[WS] Binary position update with {} nodes", nodes.len());
                 }
-                None
+                WebSocketResponse::None
             },
             Message::UpdatePositions(update_msg) => {
                 if log_json {
                     info!("[WS] Update positions message: {:?}", update_msg);
                 }
-                None
+                WebSocketResponse::None
             },
             Message::InitialData { graph } => {
                 if log_json {
                     info!("[WS] Initial data message with graph: {:?}", graph);
                 }
-                None
+                WebSocketResponse::None
             },
             Message::SimulationModeSet { mode } => {
                 info!("[WS] Simulation mode set to: {}", mode);
-                None
+                WebSocketResponse::None
             },
             Message::RequestInitialData => {
                 info!("[WS] Received request for initial data");
@@ -233,13 +304,17 @@ impl SocketFlowServer {
                     graph: (*graph).clone() 
                 };
                 
-                if let Ok(message) = serde_json::to_string(&initial_data) {
-                    if log_json {
-                        info!("[WS] Full JSON message: {}", message);
+                match serde_json::to_string(&initial_data) {
+                    Ok(message) => {
+                        if log_json {
+                            info!("[WS] Full JSON message: {}", message);
+                        }
+                        WebSocketResponse::Text(message)
                     }
-                    Some(message)
-                } else {
-                    None
+                    Err(e) => {
+                        error!("[WS] Failed to serialize initial data: {}", e);
+                        WebSocketResponse::None
+                    }
                 }
             },
             Message::EnableBinaryUpdates => {
@@ -248,37 +323,57 @@ impl SocketFlowServer {
                 let binary_nodes: Vec<BinaryNodeData> = graph.nodes.iter()
                     .map(|node| BinaryNodeData::from_node_data(&node.data))
                     .collect();
+
+                // Create binary message
+                let version: i32 = 1; // Protocol version
+                let mut buffer = Vec::with_capacity(4 + binary_nodes.len() * std::mem::size_of::<BinaryNodeData>());
                 
-                let binary_update = Message::BinaryPositionUpdate {
-                    nodes: binary_nodes
-                };
+                // Write version header (4 bytes)
+                buffer.extend_from_slice(&version.to_le_bytes());
                 
-                if let Ok(message) = serde_json::to_string(&binary_update) {
-                    if log_json {
-                        info!("[WS] Full JSON message: {}", message);
-                    }
-                    Some(message)
-                } else {
-                    None
+                // Write node data
+                for node in binary_nodes {
+                    // Write position (12 bytes)
+                    buffer.extend_from_slice(&node.position[0].to_le_bytes());
+                    buffer.extend_from_slice(&node.position[1].to_le_bytes());
+                    buffer.extend_from_slice(&node.position[2].to_le_bytes());
+                    
+                    // Write velocity (12 bytes)
+                    buffer.extend_from_slice(&node.velocity[0].to_le_bytes());
+                    buffer.extend_from_slice(&node.velocity[1].to_le_bytes());
+                    buffer.extend_from_slice(&node.velocity[2].to_le_bytes());
                 }
+
+                if log_binary {
+                    info!("[WS] Sending binary update: {} nodes, {} bytes", 
+                        binary_nodes.len(), buffer.len());
+                    info!("[WS] Binary header: version={}", version);
+                }
+
+                WebSocketResponse::Binary(buffer)
             },
             Message::SetSimulationMode { mode } => {
                 info!("[WS] Setting simulation mode to: {}", mode);
-                if let Ok(message) = serde_json::to_string(&Message::SimulationModeSet { mode }) {
-                    if log_json {
-                        info!("[WS] Full JSON message: {}", message);
+                match serde_json::to_string(&Message::SimulationModeSet { mode }) {
+                    Ok(message) => {
+                        if log_json {
+                            info!("[WS] Full JSON message: {}", message);
+                        }
+                        WebSocketResponse::Text(message)
                     }
-                    return Some(message);
+                    Err(e) => {
+                        error!("[WS] Failed to serialize simulation mode: {}", e);
+                        WebSocketResponse::None
+                    }
                 }
-                None
             },
             Message::Ping => {
                 info!("[WS] Received ping");
-                return Some("pong".to_string());
+                WebSocketResponse::Text("pong".to_string())
             },
             Message::Pong => {
                 info!("[WS] Received pong");
-                None
+                WebSocketResponse::None
             }
         }
     }
@@ -351,4 +446,3 @@ pub async fn ws_handler(
             Err(e)
         }
     }
-}
