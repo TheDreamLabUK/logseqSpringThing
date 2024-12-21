@@ -15,6 +15,7 @@ import {
 import { WS_RECONNECT_INTERVAL, WS_MESSAGE_QUEUE_SIZE, WS_URL, BINARY_VERSION } from '../core/constants';
 import { createLogger } from '../core/utils';
 import { convertObjectKeysToCamelCase } from '../core/utils';
+import { settingsManager } from '../state/settings';
 
 const logger = createLogger('WebSocketService');
 
@@ -53,6 +54,12 @@ export class WebSocketService {
       reconnectAttempts: 3,
       reconnectDelay: 5000
     };
+
+    // Get debug settings from settings manager
+    const debugSettings = settingsManager.get('clientDebug');
+    if (debugSettings.enabled && debugSettings.enableWebsocketDebug) {
+      logger.info('WebSocket debug logging enabled');
+    }
 
     this.connect();
   }
@@ -115,6 +122,17 @@ export class WebSocketService {
       this.reconnectCount = 0;
       this.lastPongTime = Date.now();
       logger.info('WebSocket connected');
+      
+      const debugSettings = settingsManager.get('clientDebug');
+      if (debugSettings.enabled && debugSettings.enableWebsocketDebug) {
+        logger.debug('WebSocket connection details:', {
+          url: this.ws?.url,
+          protocol: this.ws?.protocol,
+          readyState: this.ws?.readyState,
+          extensions: this.ws?.extensions
+        });
+      }
+
       this.flushMessageQueue();
       this.notifyConnectionHandlers(WebSocketStatus.CONNECTED);
     };
@@ -122,6 +140,17 @@ export class WebSocketService {
     this.ws.onclose = (event) => {
       this.isConnected = false;
       logger.info(`WebSocket disconnected: ${event.code} - ${event.reason}`);
+      
+      const debugSettings = settingsManager.get('clientDebug');
+      if (debugSettings.enabled && debugSettings.enableWebsocketDebug) {
+        logger.debug('WebSocket close details:', {
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       this.handleConnectionFailure();
       this.notifyConnectionHandlers(WebSocketStatus.DISCONNECTED, {
         code: event.code,
@@ -131,6 +160,20 @@ export class WebSocketService {
 
     this.ws.onerror = (error) => {
       logger.error('WebSocket error:', error);
+      
+      const debugSettings = settingsManager.get('clientDebug');
+      if (debugSettings.enabled && debugSettings.enableWebsocketDebug) {
+        logger.debug('WebSocket error details:', {
+          error: error instanceof Error ? {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+          } : error,
+          readyState: this.ws?.readyState,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       const wsError: WebSocketError = {
         name: 'WebSocketError',
         message: error instanceof Error ? error.message : 'Unknown WebSocket error',
@@ -141,6 +184,16 @@ export class WebSocketService {
     };
 
     this.ws.onmessage = (event) => {
+      const debugSettings = settingsManager.get('clientDebug');
+      if (debugSettings.enabled && debugSettings.enableWebsocketDebug) {
+        const isBinary = event.data instanceof Blob;
+        logger.debug('WebSocket message received:', {
+          type: isBinary ? 'binary' : 'text',
+          size: isBinary ? event.data.size : event.data.length,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       try {
         if (event.data instanceof Blob) {
           // Handle binary message

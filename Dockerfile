@@ -32,18 +32,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Rust
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.82.0
+# Install Rust with better error handling
+RUN curl --retry 5 --retry-delay 2 --retry-connrefused https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.82.0
 ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Configure cargo for better network resilience
+RUN mkdir -p ~/.cargo && \
+    echo '[net]' >> ~/.cargo/config && \
+    echo 'retry = 5' >> ~/.cargo/config && \
+    echo 'git-fetch-with-cli = true' >> ~/.cargo/config
 
 WORKDIR /usr/src/app
 
-# Copy Cargo files and entire src directory for proper module resolution
+# Copy Cargo files first for better layer caching
 COPY Cargo.toml Cargo.lock ./
-COPY src ./src
 
-# Build dependencies and application
-RUN cargo build --release
+# Create dummy src directory and build dependencies
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
+    cargo build --release && \
+    rm -rf src target/release/deps/logseq_xr*
+
+# Now copy the real source code and build
+COPY src ./src
+RUN cargo build --release --jobs $(nproc) || \
+    (sleep 2 && cargo build --release --jobs $(nproc)) || \
+    (sleep 5 && cargo build --release --jobs 1)
 
 # Stage 3: Python Dependencies
 FROM python:3.10.12-slim AS python-builder
