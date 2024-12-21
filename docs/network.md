@@ -63,10 +63,15 @@ Port Configuration:
 - Nginx Frontend: Listens on port 4000 for external connections
 - Rust Backend: Runs on port 3001 internally (configurable via PORT env var)
 - Nginx Proxy Configuration:
-  - WebSocket Endpoints (/wss):
+  - WebSocket Binary Protocol (/wss):
     - Disabled buffering and caching for real-time communication
-    - Extended timeouts: 300s read/send, 75s connect
+    - Extended timeouts: 3600s read/send, 75s connect
     - Proper connection upgrade handling
+    - Optimized for binary data streaming
+  - WebSocket Control API (/api/visualization/settings):
+    - Standard API timeouts: 60s read/send/connect
+    - Enabled buffering for REST responses
+    - Handles WebSocket configuration updates
   - API Endpoints (/api):
     - Enabled buffering with 128k buffer size
     - 60s timeouts for read/send/connect
@@ -89,7 +94,15 @@ Port Configuration:
 Initialization:
 - The client loads initial graph data from /api/graph/data/paginated using pagination
 - The client loads all visualization settings from /api/visualization/settings/{category}
-- WebSocket connection is established with compression and heartbeat configuration
+- WebSocket initialization follows a two-step process:
+  1. Control Setup (/api/visualization/settings/websocket):
+     - Load WebSocket configuration settings
+     - Configure compression and heartbeat parameters
+     - Set up error handling and reconnection policies
+  2. Binary Connection (/wss):
+     - Establish WebSocket connection for real-time updates
+     - Use binary protocol for position/velocity data
+     - Handle heartbeat and connection lifecycle
 
 REST API Interaction:
 - Initial Graph Data: Retrieving the initial graph data using pagination
