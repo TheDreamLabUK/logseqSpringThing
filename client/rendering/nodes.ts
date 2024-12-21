@@ -7,11 +7,7 @@ import type { NodeSettings, PhysicsSettings } from '../core/types';
 
 const logger = createLogger('NodeManager');
 
-const NODE_SEGMENTS = 32;
-const EDGE_SEGMENTS = 8;
-const BINARY_VERSION = 1.0;
 const FLOATS_PER_NODE = 6;  // x, y, z, vx, vy, vz
-const VERSION_OFFSET = 1;    // Skip version float
 
 // Reusable vectors and matrices
 const matrix = new THREE.Matrix4();
@@ -35,7 +31,7 @@ export class NodeRenderer {
         });
 
         this.mesh = new THREE.Mesh(
-            new THREE.SphereGeometry(1, NODE_SEGMENTS, NODE_SEGMENTS),
+            new THREE.SphereGeometry(1, 32, 32),
             this.material
         );
 
@@ -98,8 +94,8 @@ export class NodeManager {
         this.currentSettings = settingsManager.getCurrentSettings();
         this.nodeRenderer = new NodeRenderer();
 
-        const nodeGeometry = new THREE.SphereGeometry(1, NODE_SEGMENTS, NODE_SEGMENTS);
-        const edgeGeometry = new THREE.CylinderGeometry(0.1, 0.1, 1, EDGE_SEGMENTS);
+        const nodeGeometry = new THREE.SphereGeometry(1, 32, 32);
+        const edgeGeometry = new THREE.CylinderGeometry(0.1, 0.1, 1, 8);
         edgeGeometry.rotateX(Math.PI / 2);
 
         this.nodeInstances = new THREE.InstancedMesh(
@@ -125,42 +121,37 @@ export class NodeManager {
         });
     }
 
-    public updatePositions(floatArray: Float32Array): void {
-        try {
-            const version = floatArray[0];
-            if (version !== BINARY_VERSION) {
-                logger.warn(`Received binary data version ${version}, expected ${BINARY_VERSION}`);
-                return;
-            }
+    public updatePositions(positions: Float32Array): void {
+        if (!this.nodeInstances) return;
 
-            const nodeCount = Math.floor((floatArray.length - VERSION_OFFSET) / FLOATS_PER_NODE);
-            if (nodeCount > this.currentNodes.length) {
-                logger.warn(`Received more nodes than currently tracked: ${nodeCount} > ${this.currentNodes.length}`);
-                return;
-            }
-
-            for (let i = 0; i < nodeCount; i++) {
-                const baseIndex = VERSION_OFFSET + (i * FLOATS_PER_NODE);
-                position.set(
-                    floatArray[baseIndex],
-                    floatArray[baseIndex + 1],
-                    floatArray[baseIndex + 2]
-                );
-
-                matrix.compose(position, quaternion, scale);
-                this.nodeInstances.setMatrixAt(i, matrix);
-
-                const node = this.currentNodes[i];
-                if (node) {
-                    node.data.position.x = floatArray[baseIndex];
-                    node.data.position.y = floatArray[baseIndex + 1];
-                    node.data.position.z = floatArray[baseIndex + 2];
-                }
-            }
-
-            this.nodeInstances.instanceMatrix.needsUpdate = true;
-        } catch (error) {
-            logger.error('Error updating positions:', error);
+        const count = Math.min(positions.length / FLOATS_PER_NODE, this.nodeInstances.count);
+        
+        for (let i = 0; i < count; i++) {
+            const baseIndex = i * FLOATS_PER_NODE;
+            
+            // Update position
+            position.set(
+                positions[baseIndex],
+                positions[baseIndex + 1],
+                positions[baseIndex + 2]
+            );
+            
+            // Set initial scale based on settings
+            const baseSize = this.currentSettings.nodes.baseSize || 1;
+            scale.set(baseSize, baseSize, baseSize);
+            
+            // Update instance matrix
+            matrix.compose(position, quaternion, scale);
+            this.nodeInstances.setMatrixAt(i, matrix);
+        }
+        
+        this.nodeInstances.instanceMatrix.needsUpdate = true;
+        
+        // Force a render update
+        if (this.currentSettings.animations.enableNodeAnimations) {
+            requestAnimationFrame(() => {
+                this.nodeInstances.instanceMatrix.needsUpdate = true;
+            });
         }
     }
 

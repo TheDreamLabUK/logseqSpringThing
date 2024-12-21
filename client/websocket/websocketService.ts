@@ -176,25 +176,12 @@ export class WebSocketService {
         this.isConnecting = false;
         this.reconnectAttempts = 0;
         
-        // Request initial data immediately after connection
-        try {
-          const initialRequest = {
-            type: 'requestInitialData'
-          };
-          this.send(JSON.stringify(initialRequest));
-          logger.info('Sent initial data request', { type: initialRequest.type });
-
-          // Enable binary updates
-          const enableBinary = {
-            type: 'enableBinaryUpdates',
-            data: { enabled: true }
-          };
-          this.send(JSON.stringify(enableBinary));
-          logger.info('Enabled binary updates', { type: enableBinary.type, enabled: true });
-        } catch (error) {
-          logger.error('Failed to send initialization messages:', error);
-        }
-
+        // Request binary updates immediately after connection
+        this.send(JSON.stringify({
+          type: 'enableBinaryUpdates',
+          enabled: true
+        }));
+        
         this.startHeartbeat();
         this.notifyConnectionHandlers();
 
