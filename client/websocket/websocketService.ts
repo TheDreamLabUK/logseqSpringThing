@@ -9,8 +9,7 @@ import {
   ConnectionHandler,
   WebSocketErrorType,
   WebSocketError,
-  WebSocketStatus,
-  Node
+  WebSocketStatus
 } from '../core/types';
 import { WS_RECONNECT_INTERVAL, WS_MESSAGE_QUEUE_SIZE, WS_URL, BINARY_VERSION } from '../core/constants';
 import { createLogger } from '../core/utils';
@@ -56,8 +55,10 @@ export class WebSocketService {
     };
 
     // Get debug settings from settings manager
-    const debugSettings = settingsManager.get('clientDebug');
-    if (debugSettings.enabled && debugSettings.enableWebsocketDebug) {
+    const settings = settingsManager.getCurrentSettings();
+    const debugEnabled = settings.clientDebug.enabled;
+    const websocketDebug = settings.clientDebug.enableWebsocketDebug;
+    if (debugEnabled && websocketDebug) {
       logger.info('WebSocket debug logging enabled');
     }
 
@@ -121,16 +122,11 @@ export class WebSocketService {
       this.isConnected = true;
       this.reconnectCount = 0;
       this.lastPongTime = Date.now();
-      logger.info('WebSocket connected');
-      
-      const debugSettings = settingsManager.get('clientDebug');
-      if (debugSettings.enabled && debugSettings.enableWebsocketDebug) {
-        logger.debug('WebSocket connection details:', {
-          url: this.ws?.url,
-          protocol: this.ws?.protocol,
-          readyState: this.ws?.readyState,
-          extensions: this.ws?.extensions
-        });
+      const settings = settingsManager.getCurrentSettings();
+      const debugEnabled = settings.clientDebug.enabled;
+      const websocketDebug = settings.clientDebug.enableWebsocketDebug;
+      if (debugEnabled && websocketDebug) {
+        logger.info('WebSocket connected');
       }
 
       this.flushMessageQueue();
@@ -140,9 +136,10 @@ export class WebSocketService {
     this.ws.onclose = (event) => {
       this.isConnected = false;
       logger.info(`WebSocket disconnected: ${event.code} - ${event.reason}`);
-      
-      const debugSettings = settingsManager.get('clientDebug');
-      if (debugSettings.enabled && debugSettings.enableWebsocketDebug) {
+      const settings = settingsManager.getCurrentSettings();
+      const debugEnabled = settings.clientDebug.enabled;
+      const websocketDebug = settings.clientDebug.enableWebsocketDebug;
+      if (debugEnabled && websocketDebug) {
         logger.debug('WebSocket close details:', {
           code: event.code,
           reason: event.reason,
@@ -160,9 +157,10 @@ export class WebSocketService {
 
     this.ws.onerror = (error) => {
       logger.error('WebSocket error:', error);
-      
-      const debugSettings = settingsManager.get('clientDebug');
-      if (debugSettings.enabled && debugSettings.enableWebsocketDebug) {
+      const settings = settingsManager.getCurrentSettings();
+      const debugEnabled = settings.clientDebug.enabled;
+      const websocketDebug = settings.clientDebug.enableWebsocketDebug;
+      if (debugEnabled && websocketDebug) {
         logger.debug('WebSocket error details:', {
           error: error instanceof Error ? {
             name: error.name,
@@ -184,8 +182,10 @@ export class WebSocketService {
     };
 
     this.ws.onmessage = (event) => {
-      const debugSettings = settingsManager.get('clientDebug');
-      if (debugSettings.enabled && debugSettings.enableWebsocketDebug) {
+      const settings = settingsManager.getCurrentSettings();
+      const debugEnabled = settings.clientDebug.enabled;
+      const websocketDebug = settings.clientDebug.enableWebsocketDebug;
+      if (debugEnabled && websocketDebug) {
         const isBinary = event.data instanceof Blob;
         logger.debug('WebSocket message received:', {
           type: isBinary ? 'binary' : 'text',
@@ -209,16 +209,6 @@ export class WebSocketService {
         logger.error('Error handling WebSocket message:', error);
       }
     };
-  }
-
-  // Map of node IDs to their index in the binary data arrays
-  private nodeIndexMap: Map<string, number> = new Map();
-  
-  private initializeNodeIndexMap(nodes: Node[]): void {
-    this.nodeIndexMap.clear();
-    nodes.forEach((node, index) => {
-      this.nodeIndexMap.set(node.id, index);
-    });
   }
 
   private handleBinaryMessage(buffer: ArrayBuffer): void {
@@ -259,40 +249,42 @@ export class WebSocketService {
   }
 
   private handleJsonMessage(message: any): void {
-    try {
-      // Convert snake_case/kebab-case to camelCase
-      const type = message.type.replace(/-|_./g, (x: string) => x.slice(-1).toUpperCase());
-      const data = message.data ? convertObjectKeysToCamelCase(message.data) : undefined;
-      
-      switch (type as MessageType) {
-        case 'initialData':
-          // Initialize node index mapping when receiving initial graph data
-          if (data?.nodes) {
-            this.initializeNodeIndexMap(data.nodes);
-          }
-          this.notifyHandlers('initialData', data);
-          break;
-          
-          case 'ping':
-            this.send(JSON.stringify({
-              type: 'pong',
-              timestamp: Date.now()
-            }));
-            break;
+    const settings = settingsManager.getCurrentSettings();
+    const debugEnabled = settings.clientDebug.enabled;
+    const websocketDebug = settings.clientDebug.enableWebsocketDebug;
+    const logFullJson = settings.clientDebug.logFullJson;
+    if (debugEnabled && websocketDebug && logFullJson) {
+      logger.debug('Handling JSON message:', message);
+    }
 
-          case 'pong':
-            this.lastPongTime = Date.now();
-            break;
-          
-        default:
-          if (this.messageHandlers.has(type)) {
-            this.notifyHandlers(type, data);
-          } else {
-            logger.warn(`Unknown message type: ${type}`);
-          }
+    try {
+      // Convert snake_case to camelCase
+      const camelCaseMessage = convertObjectKeysToCamelCase(message);
+
+      if (!camelCaseMessage.type) {
+        logger.error('Invalid message format: missing type');
+        return;
       }
+
+      if (camelCaseMessage.type === 'ping') {
+        this.send(JSON.stringify({ type: 'pong' }));
+        return;
+      }
+
+      if (debugEnabled && websocketDebug) {
+        logger.debug(`Processing message type: ${camelCaseMessage.type}`, {
+          messageSize: JSON.stringify(message).length,
+          hasData: !!camelCaseMessage.data,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      this.notifyHandlers(camelCaseMessage.type, camelCaseMessage.data);
     } catch (error) {
       logger.error('Error handling JSON message:', error);
+      if (debugEnabled && websocketDebug) {
+        logger.debug('Failed message:', message);
+      }
     }
   }
 
