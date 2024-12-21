@@ -196,43 +196,50 @@ impl SocketFlowServer {
         let app_state = self.app_state.clone();
         let settings = self.settings.clone();
 
-        ctx.run_interval(Self::POSITION_UPDATE_INTERVAL, move |_, ctx| {
-            let fut = async move {
-                let graph = app_state.graph_service.graph_data.read().await;
-                let binary_nodes: Vec<BinaryNodeData> = graph.nodes.iter()
-                    .map(|node| BinaryNodeData::from_node_data(&node.data))
-                    .collect();
+        ctx.run_interval(Self::POSITION_UPDATE_INTERVAL, {
+            let app_state = app_state.clone();
+            let settings = settings.clone();
+            move |_, ctx| {
+                let app_state_inner = app_state.clone();
+                let settings_inner = settings.clone();
+                let fut = async move {
+                    let graph = app_state_inner.graph_service.graph_data.read().await;
+                    let binary_nodes: Vec<BinaryNodeData> = graph.nodes.iter()
+                        .map(|node| BinaryNodeData::from_node_data(&node.data))
+                        .collect();
 
-                // Create binary message
-                let version: i32 = 1;
-                let mut buffer = Vec::with_capacity(4 + binary_nodes.len() * std::mem::size_of::<BinaryNodeData>());
-                
-                // Write version header (4 bytes)
-                buffer.extend_from_slice(&version.to_le_bytes());
-                
-                // Write node data
-                for node in binary_nodes {
-                    buffer.extend_from_slice(&node.position[0].to_le_bytes());
-                    buffer.extend_from_slice(&node.position[1].to_le_bytes());
-                    buffer.extend_from_slice(&node.position[2].to_le_bytes());
-                    buffer.extend_from_slice(&node.velocity[0].to_le_bytes());
-                    buffer.extend_from_slice(&node.velocity[1].to_le_bytes());
-                    buffer.extend_from_slice(&node.velocity[2].to_le_bytes());
-                }
-
-                if let Ok(settings) = settings.try_read() {
-                    if settings.server_debug.enabled && settings.server_debug.log_binary_headers {
-                        info!("[WS] Sending position update: {} nodes, {} bytes", 
-                            binary_nodes.len(), buffer.len());
+                    // Create binary message
+                    let version: i32 = 1;
+                    let mut buffer = Vec::with_capacity(4 + binary_nodes.len() * std::mem::size_of::<BinaryNodeData>());
+                    
+                    // Write version header (4 bytes)
+                    buffer.extend_from_slice(&version.to_le_bytes());
+                    
+                    // Write node data
+                    let node_count = binary_nodes.len();
+                    for node in &binary_nodes {
+                        buffer.extend_from_slice(&node.position[0].to_le_bytes());
+                        buffer.extend_from_slice(&node.position[1].to_le_bytes());
+                        buffer.extend_from_slice(&node.position[2].to_le_bytes());
+                        buffer.extend_from_slice(&node.velocity[0].to_le_bytes());
+                        buffer.extend_from_slice(&node.velocity[1].to_le_bytes());
+                        buffer.extend_from_slice(&node.velocity[2].to_le_bytes());
                     }
-                }
 
-                buffer
-            };
+                    if let Ok(settings) = settings_inner.try_read() {
+                        if settings.server_debug.enabled && settings.server_debug.log_binary_headers {
+                            info!("[WS] Sending position update: {} nodes, {} bytes", 
+                                node_count, buffer.len());
+                        }
+                    }
 
-            ctx.spawn(actix::fut::wrap_future(fut).map(|buffer, _, ctx| {
-                ctx.binary(buffer);
-            }));
+                    buffer
+                };
+
+                ctx.spawn(actix::fut::wrap_future(fut).map(|buffer, _, ctx: &mut ws::WebsocketContext<SocketFlowServer>| {
+                    ctx.binary(buffer);
+                }));
+            }
         });
     }
 
@@ -332,7 +339,8 @@ impl SocketFlowServer {
                 buffer.extend_from_slice(&version.to_le_bytes());
                 
                 // Write node data
-                for node in binary_nodes {
+                let node_count = binary_nodes.len();
+                for node in &binary_nodes {
                     // Write position (12 bytes)
                     buffer.extend_from_slice(&node.position[0].to_le_bytes());
                     buffer.extend_from_slice(&node.position[1].to_le_bytes());
@@ -346,7 +354,7 @@ impl SocketFlowServer {
 
                 if log_binary {
                     info!("[WS] Sending binary update: {} nodes, {} bytes", 
-                        binary_nodes.len(), buffer.len());
+                        node_count, buffer.len());
                     info!("[WS] Binary header: version={}", version);
                 }
 
@@ -446,3 +454,4 @@ pub async fn ws_handler(
             Err(e)
         }
     }
+}
