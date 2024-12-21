@@ -3,7 +3,7 @@ import type { Settings } from '../types/settings';
 export const defaultSettings: Settings = {
     animations: {
         enableMotionBlur: false,
-        enableNodeAnimations: false,
+        enableNodeAnimations: true,
         motionBlurStrength: 0.4,
         selectionWaveEnabled: false,
         pulseEnabled: false,

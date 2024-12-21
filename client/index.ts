@@ -45,9 +45,24 @@ class Application {
             // Initialize scene first so we can render nodes when data arrives
             this.initializeScene();
 
+            // Track initialization state
+            let graphDataLoaded = false;
+            let websocketConnected = false;
+            let binaryUpdatesEnabled = false;
+
+            // Function to check if we can hide loading overlay
+            const checkInitComplete = () => {
+                if (graphDataLoaded && websocketConnected && binaryUpdatesEnabled) {
+                    this.hideLoadingOverlay();
+                    logger.info('All initialization checks passed, application ready');
+                }
+            };
+
             try {
                 // Load initial graph data from REST endpoint
                 await graphDataManager.loadInitialGraphData();
+                graphDataLoaded = true;
+                checkInitComplete();
             } catch (graphError) {
                 logger.error('Failed to load graph data:', graphError);
                 // Continue initialization even if graph data fails
@@ -57,8 +72,31 @@ class Application {
                 // Initialize WebSocket for real-time updates
                 this.webSocket = new WebSocketService();
 
+                // Setup WebSocket event handlers
+                this.webSocket.onMessage('connectionStatus', (data: { status: string, details?: any }) => {
+                    logger.info('WebSocket connection status:', data);
+                    if (data.status === 'CONNECTED') {
+                        websocketConnected = true;
+                        checkInitComplete();
+                    }
+                });
+
+                this.webSocket.onMessage('enableBinaryUpdates', (data: { enabled: boolean }) => {
+                    logger.info('Binary updates status:', data);
+                    // Update graph data manager binary state
+                    graphDataManager.setBinaryUpdatesEnabled(data.enabled);
+                    if (data.enabled) {
+                        binaryUpdatesEnabled = true;
+                        checkInitComplete();
+                        // Request initial data after binary updates are enabled
+                        this.webSocket.send(JSON.stringify({
+                            type: 'requestInitialData'
+                        }));
+                    }
+                });
+
                 // Setup WebSocket event handler for binary position updates
-                this.webSocket.on('binaryPositionUpdate', (data: any['data']) => {
+                this.webSocket.onMessage('binaryPositionUpdate', (data: any['data']) => {
                     if (data && data.nodes) {
                         // Convert nodes data to ArrayBuffer for position updates
                         const buffer = new ArrayBuffer(data.nodes.length * 24); // 6 floats per node
@@ -308,41 +346,32 @@ class Application {
     }
 
     private hideLoadingOverlay(): void {
-        const loadingOverlay = document.getElementById('loading-overlay');
-        if (loadingOverlay) {
-            loadingOverlay.style.opacity = '0';
+        const overlay = document.querySelector('.loading-overlay');
+        if (overlay && overlay instanceof HTMLElement) {
+            overlay.style.opacity = '0';
             setTimeout(() => {
-                loadingOverlay.style.display = 'none';
-            }, 500);
+                overlay.style.display = 'none';
+            }, 500); // Match this with CSS transition duration
         }
     }
 
     private showError(message: string): void {
-        const errorDiv = document.createElement('div');
-        errorDiv.style.cssText = `
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(255, 0, 0, 0.8);
-            color: white;
-            padding: 15px;
-            border-radius: 5px;
-            z-index: 1000;
-            text-align: center;
-            font-family: Arial, sans-serif;
-            font-size: 14px;
-            max-width: 80%;
-            word-wrap: break-word;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        `;
-        errorDiv.textContent = message;
-        document.body.appendChild(errorDiv);
-        setTimeout(() => {
-            errorDiv.style.opacity = '0';
-            errorDiv.style.transition = 'opacity 0.5s ease-out';
-            setTimeout(() => errorDiv.remove(), 500);
-        }, 5000);
+        const overlay = document.querySelector('.loading-overlay');
+        if (overlay && overlay instanceof HTMLElement) {
+            const spinner = overlay.querySelector('.spinner');
+            if (spinner) {
+                spinner.remove();
+            }
+            
+            const error = document.createElement('div');
+            error.className = 'error-message';
+            error.textContent = message;
+            overlay.appendChild(error);
+            
+            // Keep the overlay visible
+            overlay.style.display = 'flex';
+            overlay.style.opacity = '1';
+        }
     }
 
     dispose(): void {

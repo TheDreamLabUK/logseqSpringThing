@@ -280,6 +280,7 @@ export type MessageType =
   | 'binaryPositionUpdate'
   | 'requestInitialData'
   | 'enableBinaryUpdates'
+  | 'binaryUpdateStatus'
   | 'ping'
   | 'pong'
   | 'settingsUpdated'

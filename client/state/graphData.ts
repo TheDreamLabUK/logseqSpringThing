@@ -138,10 +138,40 @@ export class GraphDataManager {
   }
 
   private setupBinaryUpdates(): void {
-    // Only start binary updates after initial data is loaded
-    if (this.nodes.size > 0) {
-      this.binaryUpdatesEnabled = true;
-      logger.log('Binary updates enabled');
+    if (this.binaryUpdatesEnabled) {
+      // Initialize node positions if they don't have positions yet
+      this.nodes.forEach(node => {
+        if (!node.data.position) {
+          node.data.position = {
+            x: (Math.random() - 0.5) * 20,
+            y: (Math.random() - 0.5) * 20,
+            z: (Math.random() - 0.5) * 20
+          };
+        }
+        if (!node.data.velocity) {
+          node.data.velocity = { x: 0, y: 0, z: 0 };
+        }
+      });
+
+      // Create initial position buffer
+      const buffer = new ArrayBuffer(this.nodes.size * NODE_POSITION_SIZE);
+      const positions = new Float32Array(buffer);
+      
+      let index = 0;
+      this.nodes.forEach(node => {
+        positions[index * 6] = node.data.position.x;
+        positions[index * 6 + 1] = node.data.position.y;
+        positions[index * 6 + 2] = node.data.position.z;
+        positions[index * 6 + 3] = node.data.velocity.x;
+        positions[index * 6 + 4] = node.data.velocity.y;
+        positions[index * 6 + 5] = node.data.velocity.z;
+        index++;
+      });
+
+      // Notify listeners of initial positions
+      this.positionUpdateListeners.forEach(listener => {
+        listener(positions);
+      });
     }
   }
 
@@ -329,6 +359,20 @@ export class GraphDataManager {
       } catch (error) {
         logger.error('Error in position update listener:', error);
       }
+    });
+  }
+
+  public setBinaryUpdatesEnabled(enabled: boolean): void {
+    this.binaryUpdatesEnabled = enabled;
+    logger.info(`Binary updates ${enabled ? 'enabled' : 'disabled'}`);
+    
+    // Notify listeners of state change
+    this.updateListeners.forEach(listener => {
+      listener({
+        nodes: Array.from(this.nodes.values()),
+        edges: Array.from(this.edges.values()),
+        metadata: { ...this.metadata, binaryUpdatesEnabled: enabled }
+      });
     });
   }
 }
