@@ -8,7 +8,7 @@ export const IS_DEVELOPMENT = !IS_PRODUCTION;
 
 // WebSocket URLs
 export const WS_URL = IS_PRODUCTION
-  ? 'wss://www.visionflow.info/wss'
+  ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/wss`
   : 'ws://localhost:4000/wss';  // Connect to nginx which proxies to backend
 
 // WebSocket configuration
