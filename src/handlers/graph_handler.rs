@@ -3,6 +3,7 @@ use crate::AppState;
 use serde::{Serialize, Deserialize};
 use log::{info, debug, error, warn};
 use std::collections::HashMap;
+use std::sync::Arc;
 use crate::models::metadata::Metadata;
 use crate::utils::socket_flow_messages::Node;
 use crate::services::file_service::FileService;
@@ -192,7 +193,7 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
     };
     
     // Fetch and process new files
-    match FileService::fetch_and_process_files(&*state.github_service, &mut metadata).await {
+    match FileService::fetch_and_process_files(&*state.github_service, Arc::clone(&state.settings), &mut metadata).await {
         Ok(processed_files) => {
             if processed_files.is_empty() {
                 debug!("No new files to process");

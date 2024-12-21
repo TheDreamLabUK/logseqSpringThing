@@ -18,8 +18,8 @@ use tokio::time::sleep;
 use actix_web::web;
 
 // Constants
-const METADATA_PATH: &str = "data/markdown/metadata.json";
-pub const MARKDOWN_DIR: &str = "data/markdown";
+const METADATA_PATH: &str = "/app/data/markdown/metadata.json";
+pub const MARKDOWN_DIR: &str = "/app/data/markdown";
 const GITHUB_API_DELAY: Duration = Duration::from_millis(100); // Rate limiting delay
 const MIN_NODE_SIZE: f64 = 5.0;
 const MAX_NODE_SIZE: f64 = 50.0;
@@ -168,7 +168,6 @@ impl GitHubService for RealGitHubService {
 
         let settings = self.settings.read().await;
         let debug_enabled = settings.server_debug.enabled;
-        let _log_binary = debug_enabled && settings.server_debug.log_binary_headers;
         
         let mut markdown_files = Vec::new();
         
@@ -188,7 +187,7 @@ impl GitHubService for RealGitHubService {
                     Ok(time) => Some(time),
                     Err(e) => {
                         error!("Failed to get last modified time for {}: {}", name, e);
-                        None
+                        continue;
                     }
                 };
                 
@@ -269,7 +268,7 @@ impl GitHubService for RealGitHubService {
         if !status.is_success() {
             let error_text = response.text().await?;
             error!("Failed to get last modified time. Status: {}, Error: {}", status, error_text);
-            return Ok(Utc::now()); // Fallback to current time
+            return Err(format!("GitHub API error: {} - {}", status, error_text).into());
         }
 
         let commits: Vec<serde_json::Value> = response.json().await?;
@@ -278,11 +277,18 @@ impl GitHubService for RealGitHubService {
             if let Some(commit) = last_commit["commit"]["committer"]["date"].as_str() {
                 if let Ok(date) = DateTime::parse_from_rfc3339(commit) {
                     return Ok(date.with_timezone(&Utc));
+                } else {
+                    error!("Failed to parse commit date: {}", commit);
+                    return Err("Failed to parse commit date from GitHub response".into());
                 }
+            } else {
+                error!("No committer date found in commit data");
+                return Err("No committer date found in GitHub response".into());
             }
+        } else {
+            error!("No commits found for file: {}", file_path);
+            return Err(format!("No commit history found for file: {}", file_path).into());
         }
-        
-        Ok(Utc::now())
     }
 }
 
@@ -406,7 +412,7 @@ impl FileService {
         };
         
         size.max(MIN_NODE_SIZE).min(MAX_NODE_SIZE)
-}
+    }
 
     /// Extract references to other files based on their names (case insensitive)
     fn extract_references(content: &str, valid_nodes: &[String]) -> HashMap<String, ReferenceInfo> {
@@ -447,6 +453,7 @@ impl FileService {
     /// Initialize the local markdown directory and metadata structure.
     pub async fn initialize_local_storage(
         github_service: &dyn GitHubService,
+        _settings: Arc<RwLock<Settings>>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         info!("Checking local storage status");
         
@@ -558,15 +565,70 @@ impl FileService {
         false
     }
 
-    /// Ensures all required directories exist
+    /// Ensures all required directories exist with proper permissions
     fn ensure_directories() -> Result<(), Box<dyn StdError + Send + Sync>> {
-        fs::create_dir_all(MARKDOWN_DIR)?;
-        Ok(())
+        // Create parent data directory first
+        let data_dir = Path::new("/app/data");
+        if !data_dir.exists() {
+            info!("Creating data directory at {:?}", data_dir);
+            fs::create_dir_all(data_dir)?;
+            // Set permissions to allow writing
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(data_dir, fs::Permissions::from_mode(0o777))?;
+            }
+        }
+
+        // Create markdown directory
+        let markdown_dir = Path::new(MARKDOWN_DIR);
+        if !markdown_dir.exists() {
+            info!("Creating markdown directory at {:?}", markdown_dir);
+            fs::create_dir_all(markdown_dir)?;
+            // Set permissions to allow writing
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(markdown_dir, fs::Permissions::from_mode(0o777))?;
+            }
+        }
+
+        // Create metadata directory if it doesn't exist
+        let metadata_dir = Path::new(METADATA_PATH).parent().unwrap();
+        if !metadata_dir.exists() {
+            info!("Creating metadata directory at {:?}", metadata_dir);
+            fs::create_dir_all(metadata_dir)?;
+            // Set permissions to allow writing
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(metadata_dir, fs::Permissions::from_mode(0o777))?;
+            }
+        }
+
+        // Verify permissions by attempting to create a test file
+        let test_file = format!("{}/test_permissions", MARKDOWN_DIR);
+        match fs::write(&test_file, "test") {
+            Ok(_) => {
+                info!("Successfully wrote test file to {}", test_file);
+                fs::remove_file(&test_file)?;
+                info!("Successfully removed test file");
+                info!("Directory permissions verified");
+                Ok(())
+            },
+            Err(e) => {
+                error!("Failed to verify directory permissions: {}", e);
+                error!("Current directory: {:?}", std::env::current_dir()?);
+                error!("Directory contents: {:?}", fs::read_dir(MARKDOWN_DIR)?);
+                Err(Box::new(e))
+            }
+        }
     }
 
     /// Handles incremental updates after initial setup
     pub async fn fetch_and_process_files(
         github_service: &dyn GitHubService,
+        _settings: Arc<RwLock<Settings>>,
         metadata_store: &mut MetadataStore,
     ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
         // Ensure directories exist before any operations
@@ -637,7 +699,7 @@ impl FileService {
                         node_size,
                         hyperlink_count: Self::count_hyperlinks(&content),
                         sha1: Self::calculate_sha1(&content),
-                        last_modified: file_meta.last_modified.unwrap_or_else(|| Utc::now()),
+                        last_modified: file_meta.last_modified.expect("Last modified time should be present"),
                         perplexity_link: String::new(),
                         last_perplexity_process: None,
                         topic_counts,

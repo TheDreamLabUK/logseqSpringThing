@@ -9,6 +9,7 @@ use webxr::{
     RealGitHubService,
     RealGitHubPRService, GPUCompute, GraphData,
     log_data, log_warn,
+    services::file_service::FileService,
 };
 
 use actix_web::{web, App, HttpServer, middleware};
@@ -112,6 +113,14 @@ async fn main() -> std::io::Result<()> {
 
     // Initialize our debug logging system
     init_debug_settings(debug_enabled, websocket_debug, data_debug);
+
+    // Initialize local storage and fetch files from GitHub
+    info!("Initializing local storage and fetching files from GitHub...");
+    if let Err(e) = FileService::initialize_local_storage(&*github_service, settings.clone()).await {
+        error!("Failed to initialize local storage: {}", e);
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize local storage: {}", e)));
+    }
+    info!("Local storage initialization complete");
 
     // Start the server
     let bind_address = {
