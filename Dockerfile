@@ -145,7 +145,13 @@ RUN mkdir -p /app/data/public/dist \
              /app/data/piper \
              /tmp/runtime && \
     chown -R webxr:webxr /app /tmp/runtime && \
-    chmod -R 755 /app /tmp/runtime
+    chmod -R 755 /app /tmp/runtime && \
+    # Ensure data/markdown is writable by webxr user
+    chmod 777 /app/data/markdown
+
+# Create necessary directories and set permissions
+RUN mkdir -p /app/data/markdown /app/data/metadata && \
+    chmod -R 777 /app/data
 
 # Copy Python virtual environment
 COPY --from=python-builder /app/venv /app/venv

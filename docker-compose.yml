@@ -45,7 +45,7 @@ services:
         target: /tmp
         tmpfs:
           size: 4G
-    user: "webxr:webxr"  # Run container as webxr user
+    user: "${UID:-1000}:${GID:-1000}"  # Use host user's UID/GID or default to 1000
     restart: unless-stopped
     stop_grace_period: 30s
     init: true
