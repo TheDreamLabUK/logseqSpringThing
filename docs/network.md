@@ -21,11 +21,16 @@ Settings:
 Other API endpoints: /api/files/fetch, /api/chat/*, /api/perplexity.
 
 WebSocket Handling (actix-web-actors): 
-- Binary Protocol: 
+- Binary Protocol (/wss endpoint): 
   - Uses a compressed binary protocol for efficient real-time position and velocity updates
   - Includes version checking (BINARY_VERSION) for protocol compatibility
   - Optimized format with 6 floats per node (position + velocity)
   - 4-byte binary header for version information
+- WebSocket Control API (/api/visualization/settings/):
+  - REST-based control plane for WebSocket configuration
+  - Manages compression settings, heartbeat intervals, and protocol versions
+  - Allows runtime updates to WebSocket behavior without connection disruption
+  - Separates control logic from high-frequency data updates
 - Connection Management:
   - Message queuing with configurable queue size
   - Robust reconnection logic with configurable attempts and delays

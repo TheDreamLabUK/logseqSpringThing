@@ -87,8 +87,11 @@ class Application {
             // Setup UI event listeners
             this.setupUIEventListeners();
 
-            // Hide loading overlay
-            this.hideLoadingOverlay();
+            // Subscribe to graph data updates
+            graphDataManager.subscribe(() => {
+                // Hide loading overlay after initial data is loaded
+                this.hideLoadingOverlay();
+            });
 
             logger.log('Application initialized successfully');
         } catch (error) {
