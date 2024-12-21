@@ -114,11 +114,16 @@ class Application {
         // Initialize node manager
         this.nodeManager = NodeManager.getInstance();
 
+        // Add node meshes to scene
+        const nodeMeshes = this.nodeManager.getAllNodeMeshes();
+        nodeMeshes.forEach(mesh => this.sceneManager.add(mesh));
+
         // Initialize text renderer
         this.textRenderer = new TextRenderer(this.sceneManager.getCamera());
 
         // Start rendering
         this.sceneManager.start();
+        logger.log('Scene initialized with node meshes');
     }
 
     private async initializeXR(): Promise<void> {

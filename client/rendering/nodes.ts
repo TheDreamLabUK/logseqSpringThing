@@ -19,38 +19,25 @@ const quaternion = new THREE.Quaternion();
 const position = new THREE.Vector3();
 const scale = new THREE.Vector3(1, 1, 1);
 
-// Dummy implementation for testing
-class DummyMaterial {
-    color = { set: (_: string) => {} };
-    opacity = 1;
-    metalness = 0;
-    roughness = 0;
-    needsUpdate = false;
-    dispose() {} 
-}
-
 export class NodeRenderer {
-    public readonly material: THREE.Material | DummyMaterial;
+    public readonly material: THREE.Material;
     protected currentSettings: Settings;
     public mesh: THREE.Mesh;
 
     constructor() {
         this.currentSettings = settingsManager.getCurrentSettings();
-        this.material = new DummyMaterial();
+        this.material = new THREE.MeshPhongMaterial({
+            color: 0x4fc3f7,
+            shininess: 30,
+            specular: 0x004ba0,
+            transparent: true,
+            opacity: 0.9,
+        });
 
-        // Create mesh with proper material type checking
-        if (this.material instanceof THREE.Material) {
-            this.mesh = new THREE.Mesh(
-                new THREE.SphereGeometry(1, NODE_SEGMENTS, NODE_SEGMENTS),
-                this.material
-            );
-        } else {
-            // Handle dummy material case
-            this.mesh = new THREE.Mesh(
-                new THREE.SphereGeometry(1, NODE_SEGMENTS, NODE_SEGMENTS),
-                new THREE.MeshBasicMaterial({ color: 0xffffff })
-            );
-        }
+        this.mesh = new THREE.Mesh(
+            new THREE.SphereGeometry(1, NODE_SEGMENTS, NODE_SEGMENTS),
+            this.material
+        );
 
         this.setupSettingsSubscriptions();
     }
@@ -71,7 +58,7 @@ export class NodeRenderer {
                     // Other settings handled elsewhere
                     break;
             }
-            (this.material as DummyMaterial).needsUpdate = true;
+            (this.material as any).needsUpdate = true;
         } catch (error) {
             logger.error(`Error applying node setting change for ${String(setting)}:`, error);
         }
@@ -117,7 +104,7 @@ export class NodeManager {
 
         this.nodeInstances = new THREE.InstancedMesh(
             nodeGeometry,
-            this.nodeRenderer.material as THREE.Material,
+            this.nodeRenderer.material,
             10000
         );
 

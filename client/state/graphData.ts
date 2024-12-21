@@ -58,7 +58,13 @@ export class GraphDataManager {
       // Start binary updates only after initial data is loaded
       this.setupBinaryUpdates();
 
-      logger.log('Initial graph data loaded');
+      // Notify listeners of initial data
+      this.notifyUpdateListeners();
+
+      logger.log('Initial graph data loaded:', {
+        nodes: this.nodes.size,
+        edges: this.edges.size
+      });
     } catch (error) {
       logger.error('Failed to load initial graph data:', error);
       throw error;
