@@ -77,13 +77,26 @@ export class GraphDataManager {
       }
 
       const data = await response.json();
+      logger.debug('Received graph data:', {
+        nodesCount: data.nodes?.length || 0,
+        edgesCount: data.edges?.length || 0,
+        totalPages: data.total_pages,
+        currentPage: this.currentPage,
+        metadata: data.metadata
+      });
+      
+      if (!data.nodes || !Array.isArray(data.nodes)) {
+        throw new Error('Invalid graph data: nodes array is missing or invalid');
+      }
       
       // Update graph with new nodes and edges
       data.nodes.forEach((node: Node) => this.nodes.set(node.id, node));
-      data.edges.forEach((edge: Edge) => {
-        const edgeId = this.createEdgeId(edge.source, edge.target);
-        this.edges.set(edgeId, edge);
-      });
+      if (data.edges && Array.isArray(data.edges)) {
+        data.edges.forEach((edge: Edge) => {
+          const edgeId = this.createEdgeId(edge.source, edge.target);
+          this.edges.set(edgeId, edge);
+        });
+      }
 
       // Update pagination state
       this.currentPage++;
@@ -91,16 +104,16 @@ export class GraphDataManager {
 
       // Update metadata if it's the first page
       if (this.currentPage === 1) {
-        this.metadata = data.metadata;
+        this.metadata = data.metadata || {};
       }
 
       // Notify listeners
       this.notifyUpdateListeners();
 
-      logger.log(`Loaded page ${this.currentPage} with ${data.nodes.length} nodes and ${data.edges.length} edges`);
+      logger.info(`Loaded page ${this.currentPage} with ${data.nodes.length} nodes and ${data.edges?.length || 0} edges`);
     } catch (error) {
-      logger.error('Failed to load graph page:', error);
-      throw error;
+      logger.error('Failed to load graph data:', error);
+      this.hasMorePages = false;  // Stop trying to load more pages on error
     } finally {
       this.loadingNodes = false;
     }
