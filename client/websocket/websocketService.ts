@@ -2,34 +2,42 @@
  * WebSocket service for real-time communication
  */
 
-import { 
+import {
   MessageType,
   MessageHandler,
   ErrorHandler,
   ConnectionHandler,
-  WebSocketErrorType,
-  WebSocketError,
-  WebSocketStatus
+  WebSocketStatus,
+  WebSocketError as CoreWebSocketError,
+  WebSocketErrorType as CoreWebSocketErrorType
 } from '../core/types';
-import { WS_RECONNECT_INTERVAL, WS_MESSAGE_QUEUE_SIZE, WS_URL, BINARY_VERSION } from '../core/constants';
-import { createLogger } from '../core/utils';
-import { convertObjectKeysToCamelCase } from '../core/utils';
+import { WS_MESSAGE_QUEUE_SIZE, WS_URL, BINARY_VERSION } from '../core/constants';
+import { createLogger } from '../utils/logger';
 import { settingsManager } from '../state/settings';
 
 const logger = createLogger('WebSocketService');
 
-// Constants
-const BINARY_HEADER_SIZE = 4; // 1 float * 4 bytes
+// WebSocket error class
+export class WebSocketError extends Error implements CoreWebSocketError {
+  constructor(
+    public readonly type: CoreWebSocketErrorType,
+    public readonly originalError?: Error,
+    public readonly code?: number,
+    public readonly details?: any
+  ) {
+    super(originalError?.message || type);
+    this.name = 'WebSocketError';
+  }
+}
 
 export class WebSocketService {
   private ws: WebSocket | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
-  private messageQueue: Array<ArrayBuffer | string> = [];
+  private messageQueue: Array<string> = [];
   private isConnected = false;
   private messageHandlers: Map<MessageType, MessageHandler[]> = new Map();
   private errorHandlers: ErrorHandler[] = [];
   private connectionHandlers: ConnectionHandler[] = [];
-
   private settings: {
     compressionEnabled: boolean;
     compressionThreshold: number;
@@ -38,7 +46,6 @@ export class WebSocketService {
     reconnectAttempts: number;
     reconnectDelay: number;
   };
-
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private lastPongTime: number = 0;
   private reconnectCount: number = 0;
@@ -58,24 +65,12 @@ export class WebSocketService {
     const settings = settingsManager.getCurrentSettings();
     const debugEnabled = settings.clientDebug.enabled;
     const websocketDebug = settings.clientDebug.enableWebsocketDebug;
+    
     if (debugEnabled && websocketDebug) {
       logger.info('WebSocket debug logging enabled');
     }
 
     this.connect();
-  }
-
-  private connect(): void {
-    try {
-      // Note: Browser WebSocket API doesn't support compression options directly
-      // Compression is handled by the server configuration
-      this.ws = new WebSocket(WS_URL);
-      this.setupEventHandlers();
-      this.startHeartbeat();
-    } catch (error) {
-      logger.error('WebSocket connection error:', error);
-      this.handleConnectionFailure();
-    }
   }
 
   private startHeartbeat(): void {
@@ -89,7 +84,12 @@ export class WebSocketService {
         const timeSinceLastPong = Date.now() - this.lastPongTime;
         if (timeSinceLastPong > this.settings.heartbeatTimeout) {
           logger.warn('WebSocket heartbeat timeout');
-          this.handleConnectionFailure();
+          this.handleConnectionFailure(new WebSocketError(
+            CoreWebSocketErrorType.TIMEOUT,
+            new Error('Heartbeat timeout'),
+            1001,
+            { timeSinceLastPong }
+          ));
           return;
         }
 
@@ -102,218 +102,240 @@ export class WebSocketService {
     }, this.settings.heartbeatInterval);
   }
 
-  private handleConnectionFailure(): void {
-    this.reconnectCount++;
-    if (this.reconnectCount > this.settings.reconnectAttempts) {
-      logger.error('Max reconnection attempts reached');
-      this.notifyErrorHandlers(new Error('Max reconnection attempts reached'));
-      this.notifyConnectionHandlers(WebSocketStatus.FAILED);
-      return;
-    }
+  private connect(): void {
+    try {
+      const settings = settingsManager.getCurrentSettings();
+      const debugEnabled = settings.clientDebug.enabled;
+      const websocketDebug = settings.clientDebug.enableWebsocketDebug;
 
-    logger.info(`Reconnection attempt ${this.reconnectCount}/${this.settings.reconnectAttempts}`);
-    this.scheduleReconnect();
+      if (debugEnabled && websocketDebug) {
+        logger.info('Attempting WebSocket connection to:', WS_URL);
+        logger.debug('Current WebSocket state:', {
+          isConnected: this.isConnected,
+          reconnectCount: this.reconnectCount,
+          queueSize: this.messageQueue.length
+        });
+      }
+
+      this.ws = new WebSocket(WS_URL);
+      this.setupEventHandlers();
+      this.startHeartbeat();
+    } catch (error) {
+      logger.error('WebSocket connection error:', error);
+      this.handleConnectionFailure(new WebSocketError(
+        CoreWebSocketErrorType.CONNECTION_FAILED,
+        error instanceof Error ? error : new Error('Failed to create WebSocket'),
+        1006
+      ));
+    }
   }
 
   private setupEventHandlers(): void {
-    if (!this.ws) return;
+    if (!this.ws) {
+      logger.error('Cannot setup event handlers: WebSocket is null');
+      return;
+    }
+
+    const settings = settingsManager.getCurrentSettings();
+    const debugEnabled = settings.clientDebug.enabled;
+    const websocketDebug = settings.clientDebug.enableWebsocketDebug;
 
     this.ws.onopen = () => {
+      if (debugEnabled && websocketDebug) {
+        logger.info('WebSocket connection established successfully');
+        logger.debug('Connection details:', {
+          url: WS_URL,
+          protocol: this.ws?.protocol,
+          readyState: this.ws?.readyState,
+          extensions: this.ws?.extensions
+        });
+      }
+
       this.isConnected = true;
       this.reconnectCount = 0;
       this.lastPongTime = Date.now();
-      const settings = settingsManager.getCurrentSettings();
-      const debugEnabled = settings.clientDebug.enabled;
-      const websocketDebug = settings.clientDebug.enableWebsocketDebug;
-      if (debugEnabled && websocketDebug) {
-        logger.info('WebSocket connected');
-      }
+      this.notifyConnectionHandlers(WebSocketStatus.CONNECTED);
+
+      // Send initial handshake message
+      this.send(JSON.stringify({
+        type: 'handshake',
+        version: BINARY_VERSION,
+        timestamp: Date.now()
+      }));
 
       this.flushMessageQueue();
-      this.notifyConnectionHandlers(WebSocketStatus.CONNECTED);
     };
 
     this.ws.onclose = (event) => {
-      this.isConnected = false;
-      logger.info(`WebSocket disconnected: ${event.code} - ${event.reason}`);
-      const settings = settingsManager.getCurrentSettings();
-      const debugEnabled = settings.clientDebug.enabled;
-      const websocketDebug = settings.clientDebug.enableWebsocketDebug;
       if (debugEnabled && websocketDebug) {
-        logger.debug('WebSocket close details:', {
+        logger.warn('WebSocket connection closed:', {
           code: event.code,
           reason: event.reason,
           wasClean: event.wasClean,
-          timestamp: new Date().toISOString()
+          timestamp: Date.now()
         });
       }
 
-      this.handleConnectionFailure();
+      this.isConnected = false;
       this.notifyConnectionHandlers(WebSocketStatus.DISCONNECTED, {
         code: event.code,
-        reason: event.reason
+        reason: event.reason,
+        wasClean: event.wasClean
       });
+      this.handleConnectionFailure(new WebSocketError(
+        CoreWebSocketErrorType.CONNECTION_LOST,
+        new Error(event.reason || 'Connection closed'),
+        event.code
+      ));
     };
 
     this.ws.onerror = (error) => {
-      logger.error('WebSocket error:', error);
-      const settings = settingsManager.getCurrentSettings();
-      const debugEnabled = settings.clientDebug.enabled;
-      const websocketDebug = settings.clientDebug.enableWebsocketDebug;
       if (debugEnabled && websocketDebug) {
-        logger.debug('WebSocket error details:', {
-          error: error instanceof Error ? {
-            name: error.name,
-            message: error.message,
-            stack: error.stack
-          } : error,
+        logger.error('WebSocket error:', error);
+        logger.debug('WebSocket state at error:', {
           readyState: this.ws?.readyState,
-          timestamp: new Date().toISOString()
+          isConnected: this.isConnected,
+          reconnectCount: this.reconnectCount,
+          lastPongTime: this.lastPongTime
         });
       }
 
-      const wsError: WebSocketError = {
-        name: 'WebSocketError',
-        message: error instanceof Error ? error.message : 'Unknown WebSocket error',
-        type: WebSocketErrorType.CONNECTION_FAILED,
-        code: (error as any).code
-      };
-      this.notifyErrorHandlers(wsError);
+      this.notifyErrorHandlers(new WebSocketError(
+        CoreWebSocketErrorType.CONNECTION_FAILED,
+        error instanceof Error ? error : new Error('Unknown WebSocket error'),
+        1006
+      ));
     };
 
     this.ws.onmessage = (event) => {
-      const settings = settingsManager.getCurrentSettings();
-      const debugEnabled = settings.clientDebug.enabled;
-      const websocketDebug = settings.clientDebug.enableWebsocketDebug;
       if (debugEnabled && websocketDebug) {
-        const isBinary = event.data instanceof Blob;
         logger.debug('WebSocket message received:', {
-          type: isBinary ? 'binary' : 'text',
-          size: isBinary ? event.data.size : event.data.length,
-          timestamp: new Date().toISOString()
+          type: 'text',
+          size: event.data.length
         });
       }
 
       try {
-        if (event.data instanceof Blob) {
-          // Handle binary message
-          event.data.arrayBuffer().then(buffer => {
-            this.handleBinaryMessage(buffer);
-          });
-        } else {
-          // Handle JSON message
-          const message = JSON.parse(event.data);
-          this.handleJsonMessage(message);
+        const message = JSON.parse(event.data);
+        if (debugEnabled && websocketDebug) {
+          logger.debug('Parsed WebSocket message:', message);
         }
+        this.handleJsonMessage(message);
       } catch (error) {
-        logger.error('Error handling WebSocket message:', error);
+        logger.error('Failed to parse WebSocket message:', error);
+        this.notifyErrorHandlers(new WebSocketError(
+          CoreWebSocketErrorType.MESSAGE_PARSE_ERROR,
+          error instanceof Error ? error : new Error('Failed to parse message'),
+          1007
+        ));
       }
     };
   }
 
-  private handleBinaryMessage(buffer: ArrayBuffer): void {
-    try {
-      const dataView = new DataView(buffer);
-      const version = dataView.getFloat32(0, true); // true for little-endian
-      
-      if (version === BINARY_VERSION) {
-        const nodeCount = (buffer.byteLength - BINARY_HEADER_SIZE) / (6 * 4); // 6 floats per node (pos + vel)
-        const positions = new Float32Array(nodeCount * 3);
-        const velocities = new Float32Array(nodeCount * 3);
-        
-        // Read position and velocity data directly using established node order
-        for (let i = 0; i < nodeCount; i++) {
-          const offset = BINARY_HEADER_SIZE + i * 6 * 4;
-          
-          // Read position
-          positions[i * 3] = dataView.getFloat32(offset, true);      // x
-          positions[i * 3 + 1] = dataView.getFloat32(offset + 4, true);  // y
-          positions[i * 3 + 2] = dataView.getFloat32(offset + 8, true);  // z
-          
-          // Read velocity
-          velocities[i * 3] = dataView.getFloat32(offset + 12, true);    // vx
-          velocities[i * 3 + 1] = dataView.getFloat32(offset + 16, true); // vy
-          velocities[i * 3 + 2] = dataView.getFloat32(offset + 20, true); // vz
-        }
-        
-        this.notifyHandlers('binaryPositionUpdate', { 
-          positions,
-          velocities
-        });
-      } else {
-        logger.warn(`Unsupported binary message version: ${version}`);
-      }
-    } catch (error) {
-      logger.error('Error handling binary message:', error);
+  private handleConnectionFailure(error: WebSocketError): void {
+    const settings = settingsManager.getCurrentSettings();
+    const debugEnabled = settings.clientDebug.enabled;
+    const websocketDebug = settings.clientDebug.enableWebsocketDebug;
+
+    if (debugEnabled && websocketDebug) {
+      logger.warn('Handling connection failure:', {
+        reconnectCount: this.reconnectCount,
+        maxAttempts: this.settings.reconnectAttempts,
+        error: error.message
+      });
     }
+
+    this.reconnectCount++;
+    if (this.reconnectCount > this.settings.reconnectAttempts) {
+      logger.error('Max reconnection attempts reached');
+      this.notifyErrorHandlers(new WebSocketError(
+        CoreWebSocketErrorType.MAX_RETRIES_EXCEEDED,
+        new Error('Maximum reconnection attempts reached'),
+        1011,
+        { attempts: this.reconnectCount }
+      ));
+      this.notifyConnectionHandlers(WebSocketStatus.FAILED);
+      return;
+    }
+
+    this.notifyConnectionHandlers(WebSocketStatus.RECONNECTING);
+
+    if (debugEnabled && websocketDebug) {
+      logger.info(`Reconnection attempt ${this.reconnectCount}/${this.settings.reconnectAttempts}`);
+    }
+    this.scheduleReconnect();
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+    }
+
+    this.reconnectTimeout = setTimeout(() => {
+      this.connect();
+    }, this.settings.reconnectDelay);
   }
 
   private handleJsonMessage(message: any): void {
     const settings = settingsManager.getCurrentSettings();
     const debugEnabled = settings.clientDebug.enabled;
     const websocketDebug = settings.clientDebug.enableWebsocketDebug;
-    const logFullJson = settings.clientDebug.logFullJson;
-    if (debugEnabled && websocketDebug && logFullJson) {
-      logger.debug('Handling JSON message:', message);
+
+    if (!message || !message.type) {
+      if (debugEnabled && websocketDebug) {
+        logger.warn('Invalid message format:', message);
+      }
+      this.notifyErrorHandlers(new WebSocketError(
+        CoreWebSocketErrorType.INVALID_MESSAGE,
+        new Error('Invalid message format: missing type'),
+        1003
+      ));
+      return;
     }
 
-    try {
-      // Convert snake_case to camelCase
-      const camelCaseMessage = convertObjectKeysToCamelCase(message);
+    // Convert snake_case to camelCase if needed
+    const processedMessage = typeof message === 'object' ? 
+      Object.keys(message).reduce((acc: any, key: string) => {
+        acc[key.replace(/_([a-z])/g, g => g[1].toUpperCase())] = message[key];
+        return acc;
+      }, {}) : message;
 
-      if (!camelCaseMessage.type) {
-        logger.error('Invalid message format: missing type');
-        return;
-      }
-
-      if (camelCaseMessage.type === 'ping') {
-        this.send(JSON.stringify({ type: 'pong' }));
-        return;
-      }
-
+    // Handle pong messages for heartbeat
+    if (processedMessage.type === 'pong') {
+      this.lastPongTime = Date.now();
       if (debugEnabled && websocketDebug) {
-        logger.debug(`Processing message type: ${camelCaseMessage.type}`, {
-          messageSize: JSON.stringify(message).length,
-          hasData: !!camelCaseMessage.data,
-          timestamp: new Date().toISOString()
+        logger.debug('Received pong:', {
+          timestamp: processedMessage.timestamp,
+          latency: Date.now() - processedMessage.timestamp
         });
       }
-
-      this.notifyHandlers(camelCaseMessage.type, camelCaseMessage.data);
-    } catch (error) {
-      logger.error('Error handling JSON message:', error);
-      if (debugEnabled && websocketDebug) {
-        logger.debug('Failed message:', message);
-      }
+      return;
     }
-  }
 
-  private notifyHandlers(type: MessageType, data: any): void {
-    const handlers = this.messageHandlers.get(type);
+    // Notify message handlers
+    const handlers = this.messageHandlers.get(processedMessage.type as MessageType);
     if (handlers) {
       handlers.forEach(handler => {
         try {
-          handler(data);
+          handler(processedMessage);
         } catch (error) {
-          logger.error(`Error in ${type} handler:`, error);
+          logger.error('Error in message handler:', error);
+          this.notifyErrorHandlers(new WebSocketError(
+            CoreWebSocketErrorType.MESSAGE_PARSE_ERROR,
+            error instanceof Error ? error : new Error('Error in message handler'),
+            1011
+          ));
         }
       });
     }
   }
 
-  private notifyErrorHandlers(error: Error): void {
-    const wsError = {
-      name: error.name,
-      message: error.message,
-      type: WebSocketErrorType.CONNECTION_FAILED,
-      stack: error.stack
-    } as WebSocketError;
-    
+  private notifyErrorHandlers(error: CoreWebSocketError): void {
     this.errorHandlers.forEach(handler => {
       try {
-        handler(wsError);
-      } catch (error) {
-        logger.error('Error in error handler:', error);
+        handler(error);
+      } catch (handlerError) {
+        logger.error('Error in error handler:', handlerError);
       }
     });
   }
@@ -328,16 +350,6 @@ export class WebSocketService {
     });
   }
 
-  private scheduleReconnect(): void {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-    }
-    
-    this.reconnectTimeout = setTimeout(() => {
-      this.connect();
-    }, WS_RECONNECT_INTERVAL);
-  }
-
   private flushMessageQueue(): void {
     while (this.messageQueue.length > 0 && this.isConnected) {
       const message = this.messageQueue.shift();
@@ -347,61 +359,40 @@ export class WebSocketService {
     }
   }
 
-  public send(data: string | ArrayBuffer): void {
-    if (this.isConnected && this.ws) {
-      try {
-        this.ws.send(data);
-      } catch (error) {
-        logger.error('Error sending WebSocket message:', error);
+  public send(data: string): void {
+    if (!this.isConnected) {
+      if (this.messageQueue.length < WS_MESSAGE_QUEUE_SIZE) {
         this.messageQueue.push(data);
+      } else {
+        logger.warn('Message queue full, dropping message');
       }
-    } else {
-      this.messageQueue.push(data);
+      return;
     }
-    
-    // Trim message queue if it gets too large
-    if (this.messageQueue.length > WS_MESSAGE_QUEUE_SIZE) {
-      this.messageQueue = this.messageQueue.slice(-WS_MESSAGE_QUEUE_SIZE);
+
+    try {
+      this.ws?.send(data);
+    } catch (error) {
+      logger.error('Error sending message:', error);
+      this.notifyErrorHandlers(new WebSocketError(
+        CoreWebSocketErrorType.SEND_FAILED,
+        error instanceof Error ? error : new Error('Failed to send message'),
+        1011
+      ));
+      this.handleConnectionFailure(new WebSocketError(
+        CoreWebSocketErrorType.CONNECTION_LOST,
+        error instanceof Error ? error : new Error('Connection lost after send failure'),
+        1006
+      ));
     }
   }
 
-  public dispose(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-    
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
+  // Alias for backward compatibility
+  public on = this.onMessage;
 
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
-
-    // Clear all handlers
-    this.messageHandlers.clear();
-    this.errorHandlers = [];
-    this.connectionHandlers = [];
-  }
-
-  public updateSettings(settings: Partial<typeof this.settings>): void {
-    this.settings = { ...this.settings, ...settings };
-    
-    // Restart heartbeat with new settings if connected
-    if (this.isConnected) {
-      this.startHeartbeat();
-    }
-  }
-
-  public on(type: MessageType, handler: MessageHandler): void {
-    if (!this.messageHandlers.has(type)) {
-      this.messageHandlers.set(type, []);
-    }
-    const handlers = this.messageHandlers.get(type)!;
+  public onMessage(type: MessageType, handler: MessageHandler): void {
+    const handlers = this.messageHandlers.get(type) || [];
     handlers.push(handler);
+    this.messageHandlers.set(type, handlers);
   }
 
   public onError(handler: ErrorHandler): void {
@@ -416,27 +407,18 @@ export class WebSocketService {
     );
   }
 
-  public off(type: MessageType, handler: MessageHandler): void {
-    const handlers = this.messageHandlers.get(type);
-    if (handlers) {
-      const index = handlers.indexOf(handler);
-      if (index !== -1) {
-        handlers.splice(index, 1);
-      }
-    }
-  }
+  // Alias for backward compatibility
+  public dispose = this.disconnect;
 
-  public offError(handler: ErrorHandler): void {
-    const index = this.errorHandlers.indexOf(handler);
-    if (index !== -1) {
-      this.errorHandlers.splice(index, 1);
+  public disconnect(): void {
+    if (this.ws) {
+      this.ws.close();
     }
-  }
-
-  public offConnectionChange(handler: ConnectionHandler): void {
-    const index = this.connectionHandlers.indexOf(handler);
-    if (index !== -1) {
-      this.connectionHandlers.splice(index, 1);
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+    }
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
     }
   }
 }

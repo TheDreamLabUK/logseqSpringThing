@@ -1,5 +1,4 @@
 import { Settings, SettingsManager as ISettingsManager, SettingCategory, SettingKey, SettingValueType } from '../types/settings';
-import { defaultSettings } from './defaultSettings';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger('SettingsManager');
@@ -13,7 +12,7 @@ class SettingsManager implements ISettingsManager {
     private subscribers: Map<string, Array<Subscriber<any, any>>> = new Map();
     private initialized: boolean = false;
 
-    constructor() {
+    constructor(defaultSettings: Settings) {
         this.settings = { ...defaultSettings };
     }
 
@@ -73,7 +72,7 @@ class SettingsManager implements ISettingsManager {
     }
 
     public getDefaultSettings(): Settings {
-        return defaultSettings;
+        return this.settings;
     }
 
     public async updateSetting<T extends SettingCategory, K extends SettingKey<T>>(
@@ -166,7 +165,178 @@ class SettingsManager implements ISettingsManager {
     }
 }
 
-export const settingsManager = new SettingsManager();
+// Default settings that match settings.toml structure
+export const defaultSettings: Settings = {
+  animations: {
+    enableMotionBlur: false,
+    enableNodeAnimations: false,
+    motionBlurStrength: 0.4,
+    selectionWaveEnabled: false,
+    pulseEnabled: false,
+    rippleEnabled: false,
+    edgeAnimationEnabled: false,
+    flowParticlesEnabled: false
+  },
+  ar: {
+    dragThreshold: 0.04,
+    enableHandTracking: true,
+    enableHaptics: true,
+    enableLightEstimation: true,
+    enablePassthroughPortal: false,
+    enablePlaneDetection: true,
+    enableSceneUnderstanding: true,
+    gestureSsmoothing: 0.9,
+    handMeshColor: '#FFD700',
+    handMeshEnabled: true,
+    handMeshOpacity: 0.3,
+    handPointSize: 0.01,
+    handRayColor: '#FFD700',
+    handRayEnabled: true,
+    handRayWidth: 0.002,
+    hapticIntensity: 0.7,
+    passthroughBrightness: 1,
+    passthroughContrast: 1,
+    passthroughOpacity: 1,
+    pinchThreshold: 0.015,
+    planeColor: '#4A90E2',
+    planeOpacity: 0.3,
+    portalEdgeColor: '#FFD700',
+    portalEdgeWidth: 0.02,
+    portalSize: 1,
+    roomScale: true,
+    rotationThreshold: 0.08,
+    showPlaneOverlay: true,
+    snapToFloor: true
+  },
+  audio: {
+    enableAmbientSounds: false,
+    enableInteractionSounds: false,
+    enableSpatialAudio: false
+  },
+  bloom: {
+    edgeBloomStrength: 0.3,
+    enabled: false,
+    environmentBloomStrength: 0.5,
+    nodeBloomStrength: 0.2,
+    radius: 0.5,
+    strength: 1.8
+  },
+  clientDebug: {
+    enabled: true,
+    enableWebsocketDebug: true,
+    enableDataDebug: true,
+    logBinaryHeaders: true,
+    logFullJson: true
+  },
+  default: {
+    apiClientTimeout: 30,
+    enableMetrics: true,
+    enableRequestLogging: true,
+    logFormat: 'json',
+    logLevel: 'debug',
+    maxConcurrentRequests: 5,
+    maxPayloadSize: 5242880,
+    maxRetries: 3,
+    metricsPort: 9090,
+    retryDelay: 5
+  },
+  edges: {
+    arrowSize: 0.15,
+    baseWidth: 2,
+    color: '#917f18',
+    enableArrows: false,
+    opacity: 0.6,
+    widthRange: [1, 3]
+  },
+  labels: {
+    desktopFontSize: 48,
+    enableLabels: true,
+    textColor: '#FFFFFF'
+  },
+  network: {
+    bindAddress: '0.0.0.0',
+    domain: 'localhost',
+    enableHttp2: false,
+    enableRateLimiting: true,
+    enableTls: false,
+    maxRequestSize: 10485760,
+    minTlsVersion: '',
+    port: 3001,
+    rateLimitRequests: 100,
+    rateLimitWindow: 60,
+    tunnelId: 'dummy'
+  },
+  nodes: {
+    baseColor: '#4CAF50',
+    baseSize: 2.5,
+    clearcoat: 1,
+    enableHoverEffect: true,
+    enableInstancing: true,
+    highlightColor: '#ff4444',
+    highlightDuration: 500,
+    hoverScale: 1.2,
+    materialType: 'phong',
+    metalness: 0.5,
+    opacity: 0.7,
+    roughness: 0.5,
+    sizeByConnections: true,
+    sizeRange: [0.15, 0.4]
+  },
+  physics: {
+    attractionStrength: 0.1,
+    boundsSize: 100,
+    collisionRadius: 1,
+    damping: 0.8,
+    enableBounds: true,
+    enabled: true,
+    iterations: 1,
+    maxVelocity: 10,
+    repulsionStrength: 0.2,
+    springStrength: 0.1
+  },
+  rendering: {
+    ambientLightIntensity: 0.5,
+    backgroundColor: '#212121',
+    directionalLightIntensity: 0.8,
+    enableAmbientOcclusion: true,
+    enableAntialiasing: true,
+    enableShadows: true,
+    environmentIntensity: 1
+  },
+  security: {
+    allowedOrigins: ['*'],
+    auditLogPath: '',
+    cookieHttponly: true,
+    cookieSamesite: 'Strict',
+    cookieSecure: true,
+    csrfTokenTimeout: 3600,
+    enableAuditLogging: true,
+    enableRequestValidation: true,
+    sessionTimeout: 86400
+  },
+  serverDebug: {
+    enabled: true,
+    enableWebsocketDebug: true,
+    enableDataDebug: true,
+    logBinaryHeaders: true,
+    logFullJson: true
+  },
+  websocket: {
+    binaryChunkSize: 1000,
+    compressionEnabled: true,
+    compressionThreshold: 1024,
+    heartbeatInterval: 15000,
+    heartbeatTimeout: 60000,
+    maxConnections: 1000,
+    maxMessageSize: 1048576,
+    reconnectAttempts: 3,
+    reconnectDelay: 5000,
+    updateRate: 60
+  }
+};
 
 // Re-export Settings interface
 export type { Settings } from '../types/settings';
+
+// Initialize settings from settings.toml
+export const settingsManager = new SettingsManager(defaultSettings);

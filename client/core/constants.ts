@@ -7,16 +7,14 @@ export const IS_PRODUCTION = window.location.hostname === 'www.visionflow.info';
 export const IS_DEVELOPMENT = !IS_PRODUCTION;
 
 // WebSocket URLs
-export const WS_URL = IS_PRODUCTION
-  ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/wss`
-  : 'ws://localhost:4000/wss';  // Connect to nginx which proxies to backend
+export const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/wss`;
 
 // WebSocket configuration
 export const WS_RECONNECT_INTERVAL = 30000; // Match server's HEARTBEAT_INTERVAL
-export const WS_MESSAGE_QUEUE_SIZE = 100;
+export const WS_MESSAGE_QUEUE_SIZE = 1000;
 
 // Binary protocol configuration
-export const BINARY_VERSION = 1.0;
+export const BINARY_VERSION = 1;
 export const FLOATS_PER_NODE = 6;  // x, y, z, vx, vy, vz
 export const VERSION_OFFSET = 1;    // Skip version float
 export const BINARY_CHUNK_SIZE = 1000; // Number of nodes to process in one chunk

@@ -52,7 +52,19 @@ export class GraphDataManager {
       this.hasMorePages = true;
       this.loadingNodes = false;
 
-      // Load first page
+      // First, update the graph data from the backend
+      const updateResponse = await fetch('/api/graph/update', {
+        method: 'POST',
+      });
+
+      if (!updateResponse.ok) {
+        throw new Error(`Failed to update graph data: ${updateResponse.status} ${updateResponse.statusText}`);
+      }
+
+      const updateResult = await updateResponse.json();
+      logger.log('Graph update result:', updateResult);
+
+      // Then load the first page
       await this.loadNextPage();
       
       // Start binary updates only after initial data is loaded
@@ -106,17 +118,12 @@ export class GraphDataManager {
 
       // Update pagination state
       this.currentPage++;
-      this.hasMorePages = this.currentPage < data.total_pages;
+      this.hasMorePages = this.currentPage < data.totalPages;
 
-      // Update metadata if it's the first page
-      if (this.currentPage === 1) {
-        this.metadata = data.metadata || {};
-      }
-
-      // Notify listeners
+      // Notify listeners of updated data
       this.notifyUpdateListeners();
 
-      logger.info(`Loaded page ${this.currentPage} with ${data.nodes.length} nodes and ${data.edges?.length || 0} edges`);
+      logger.log(`Loaded page ${this.currentPage} of graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
     } catch (error) {
       logger.error('Failed to load graph data:', error);
       this.hasMorePages = false;  // Stop trying to load more pages on error
