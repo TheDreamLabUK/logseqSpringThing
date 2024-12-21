@@ -40,52 +40,67 @@ class Application {
             // Initialize scene first so we can render nodes when data arrives
             this.initializeScene();
 
-            // Load initial graph data from REST endpoint
-            await graphDataManager.loadInitialGraphData();
+            try {
+                // Load initial graph data from REST endpoint
+                await graphDataManager.loadInitialGraphData();
+            } catch (graphError) {
+                logger.error('Failed to load graph data:', graphError);
+                // Continue initialization even if graph data fails
+            }
 
-            // Initialize WebSocket for real-time updates
-            this.webSocket = new WebSocketService();
+            try {
+                // Initialize WebSocket for real-time updates
+                this.webSocket = new WebSocketService();
 
-            // Setup WebSocket event handler for binary position updates
-            this.webSocket.on('binaryPositionUpdate', (data: any['data']) => {
-                if (data && data.nodes) {
-                    // Convert nodes data to ArrayBuffer for position updates
-                    const buffer = new ArrayBuffer(data.nodes.length * 24); // 6 floats per node
-                    const floatArray = new Float32Array(buffer);
-                    
-                    data.nodes.forEach((node: { data: { position: any; velocity: any } }, index: number) => {
-                        const baseIndex = index * 6;
-                        const pos = node.data.position;
-                        const vel = node.data.velocity;
+                // Setup WebSocket event handler for binary position updates
+                this.webSocket.on('binaryPositionUpdate', (data: any['data']) => {
+                    if (data && data.nodes) {
+                        // Convert nodes data to ArrayBuffer for position updates
+                        const buffer = new ArrayBuffer(data.nodes.length * 24); // 6 floats per node
+                        const floatArray = new Float32Array(buffer);
                         
-                        // Position
-                        floatArray[baseIndex] = pos.x;
-                        floatArray[baseIndex + 1] = pos.y;
-                        floatArray[baseIndex + 2] = pos.z;
-                        // Velocity
-                        floatArray[baseIndex + 3] = vel.x;
-                        floatArray[baseIndex + 4] = vel.y;
-                        floatArray[baseIndex + 5] = vel.z;
-                    });
+                        data.nodes.forEach((node: { data: { position: any; velocity: any } }, index: number) => {
+                            const baseIndex = index * 6;
+                            const pos = node.data.position;
+                            const vel = node.data.velocity;
+                            
+                            // Position
+                            floatArray[baseIndex] = pos.x;
+                            floatArray[baseIndex + 1] = pos.y;
+                            floatArray[baseIndex + 2] = pos.z;
+                            // Velocity
+                            floatArray[baseIndex + 3] = vel.x;
+                            floatArray[baseIndex + 4] = vel.y;
+                            floatArray[baseIndex + 5] = vel.z;
+                        });
 
-                    // Update graph data and visual representation
-                    graphDataManager.updatePositions(buffer);
-                    this.nodeManager.updatePositions(floatArray);
-                }
-            });
+                        // Update graph data and visual representation
+                        graphDataManager.updatePositions(buffer);
+                        this.nodeManager.updatePositions(floatArray);
+                    }
+                });
+            } catch (wsError) {
+                logger.error('Failed to initialize WebSocket:', wsError);
+                // Continue initialization even if WebSocket fails
+            }
 
-            // Initialize XR if supported
-            await this.initializeXR();
+            try {
+                // Initialize XR if supported
+                await this.initializeXR();
+            } catch (xrError) {
+                logger.error('Failed to initialize XR:', xrError);
+                // Continue initialization even if XR fails
+            }
 
             // Initialize UI components
             const controlPanelContainer = document.getElementById('control-panel');
             if (!controlPanelContainer) {
-                throw new Error('Control panel container not found');
+                logger.warn('Control panel container not found, skipping UI initialization');
+            } else {
+                new ControlPanel(controlPanelContainer);
+                // Setup UI event listeners
+                this.setupUIEventListeners();
             }
-            new ControlPanel(controlPanelContainer);
-
-            // Setup UI event listeners
-            this.setupUIEventListeners();
 
             // Subscribe to graph data updates
             graphDataManager.subscribe(() => {
@@ -94,9 +109,13 @@ class Application {
             });
 
             logger.log('Application initialized successfully');
+            // Always hide loading overlay after initialization
+            this.hideLoadingOverlay();
         } catch (error) {
             logger.error('Failed to initialize application:', error);
             this.showError('Failed to initialize application');
+            // Still try to hide loading overlay
+            this.hideLoadingOverlay();
         }
     }
 
@@ -284,28 +303,41 @@ class Application {
     }
 
     private hideLoadingOverlay(): void {
-        const overlay = document.querySelector('.loading-overlay');
-        if (overlay) {
-            overlay.remove();
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) {
+            loadingOverlay.style.opacity = '0';
+            setTimeout(() => {
+                loadingOverlay.style.display = 'none';
+            }, 500);
         }
     }
 
     private showError(message: string): void {
-        logger.error(message);
         const errorDiv = document.createElement('div');
         errorDiv.style.cssText = `
             position: fixed;
             top: 20px;
-            right: 20px;
-            background: rgba(255, 0, 0, 0.8);
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 0, 0, 0.8);
             color: white;
             padding: 15px;
             border-radius: 5px;
             z-index: 1000;
+            text-align: center;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            max-width: 80%;
+            word-wrap: break-word;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         `;
         errorDiv.textContent = message;
         document.body.appendChild(errorDiv);
-        setTimeout(() => errorDiv.remove(), 5000);
+        setTimeout(() => {
+            errorDiv.style.opacity = '0';
+            errorDiv.style.transition = 'opacity 0.5s ease-out';
+            setTimeout(() => errorDiv.remove(), 500);
+        }, 5000);
     }
 
     dispose(): void {

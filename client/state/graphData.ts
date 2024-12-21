@@ -53,16 +53,20 @@ export class GraphDataManager {
       this.loadingNodes = false;
 
       // First, update the graph data from the backend
-      const updateResponse = await fetch('/api/graph/update', {
-        method: 'POST',
-      });
+      try {
+        const updateResponse = await fetch('/api/graph/update', {
+          method: 'POST',
+        });
 
-      if (!updateResponse.ok) {
-        throw new Error(`Failed to update graph data: ${updateResponse.status} ${updateResponse.statusText}`);
+        if (!updateResponse.ok) {
+          logger.warn(`Graph update returned ${updateResponse.status}, continuing with initial load`);
+        } else {
+          const updateResult = await updateResponse.json();
+          logger.log('Graph update result:', updateResult);
+        }
+      } catch (updateError) {
+        logger.warn('Graph update failed, continuing with initial load:', updateError);
       }
-
-      const updateResult = await updateResponse.json();
-      logger.log('Graph update result:', updateResult);
 
       // Then load the first page
       await this.loadNextPage();
@@ -79,7 +83,8 @@ export class GraphDataManager {
       });
     } catch (error) {
       logger.error('Failed to load initial graph data:', error);
-      throw error;
+      // Don't throw here, allow app to continue with empty graph
+      this.notifyUpdateListeners();
     }
   }
 
