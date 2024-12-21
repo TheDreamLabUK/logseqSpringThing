@@ -12,7 +12,7 @@ use crate::models::edge::Edge;
 use crate::models::metadata::MetadataStore;
 use crate::app_state::AppState;
 use crate::utils::gpu_compute::GPUCompute;
-use crate::models::simulation_params::SimulationParams;
+use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
 use crate::models::pagination::PaginatedGraphData;
 
 #[derive(Clone)]
@@ -22,9 +22,44 @@ pub struct GraphService {
 
 impl GraphService {
     pub fn new() -> Self {
-        Self {
+        let graph_service = Self {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
-        }
+        };
+
+        // Start simulation loop
+        let graph_data = graph_service.graph_data.clone();
+        tokio::spawn(async move {
+            let mut params = SimulationParams {
+                iterations: 1,  // One iteration per frame
+                spring_length: 100.0,  // Default spring length
+                spring_strength: 0.1,  // Gentler forces for continuous updates
+                repulsion: 50.0,  // Reduced repulsion
+                attraction: 0.5,  // Reduced attraction
+                damping: 0.8,  // More damping for stability
+                time_step: 0.016,  // 60fps
+                phase: SimulationPhase::Dynamic,
+                mode: SimulationMode::Local,  // Use CPU for continuous updates
+            };
+
+            loop {
+                // Update positions
+                let mut graph = graph_data.write().await;
+                if let Err(e) = Self::calculate_layout_cpu(
+                    &mut graph,
+                    params.iterations,
+                    params.spring_strength,
+                    params.damping
+                ) {
+                    warn!("[Graph] Error updating positions: {}", e);
+                }
+                drop(graph); // Release lock
+
+                // Sleep for ~16ms (60fps)
+                tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
+            }
+        });
+
+        graph_service
     }
 
     pub async fn build_graph_from_metadata(metadata: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
@@ -219,13 +254,13 @@ impl GraphService {
             },
             None => {
                 warn!("GPU not available. Falling back to CPU-based layout calculation.");
-                Self::calculate_layout_cpu(graph, params.iterations, params.spring_strength, params.damping);
+                Self::calculate_layout_cpu(graph, params.iterations, params.spring_strength, params.damping)?;
                 Ok(())
             }
         }
     }
 
-    fn calculate_layout_cpu(graph: &mut GraphData, iterations: u32, spring_strength: f32, damping: f32) {
+    fn calculate_layout_cpu(graph: &mut GraphData, iterations: u32, spring_strength: f32, damping: f32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let repulsion_strength = spring_strength * 10000.0;
         
         for _ in 0..iterations {
@@ -311,6 +346,7 @@ impl GraphService {
                 node.set_z(z);
             }
         }
+        Ok(())
     }
 
     pub async fn get_paginated_graph_data(

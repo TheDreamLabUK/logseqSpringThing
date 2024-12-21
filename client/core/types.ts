@@ -222,6 +222,7 @@ export interface WebsocketSettings {
   reconnectAttempts: number;
   reconnectDelay: number;
   updateRate: number;
+  url: string; // Added url property for WebSocket endpoint configuration
 }
 
 export interface Settings {
@@ -250,6 +251,7 @@ export type SettingValue = string | number | boolean | number[] | string[];
 export enum WebSocketErrorType {
   CONNECTION_FAILED = 'CONNECTION_FAILED',
   CONNECTION_LOST = 'CONNECTION_LOST',
+  CONNECTION_ERROR = 'CONNECTION_ERROR', // Added CONNECTION_ERROR type
   MAX_RETRIES_EXCEEDED = 'MAX_RETRIES_EXCEEDED',
   MESSAGE_PARSE_ERROR = 'MESSAGE_PARSE_ERROR',
   SEND_FAILED = 'SEND_FAILED',

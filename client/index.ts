@@ -12,7 +12,7 @@ import { NodeManager } from './rendering/nodes';
 import { TextRenderer } from './rendering/textRenderer';
 import { XRSessionManager } from './xr/xrSessionManager';
 import { XRInteraction } from './xr/xrInteraction';
-import { createLogger } from './utils/logger';
+import { createLogger, setDebugEnabled } from './utils/logger';
 import { ControlPanel } from './ui/ControlPanel';
 
 const logger = createLogger('Application');
@@ -36,6 +36,11 @@ class Application {
 
             // Initialize settings
             await settingsManager.initialize();
+            
+            // Update logger debug state from settings
+            const settings = settingsManager.getCurrentSettings();
+            setDebugEnabled(settings.clientDebug.enabled);
+            logger.info('Debug logging ' + (settings.clientDebug.enabled ? 'enabled' : 'disabled'));
 
             // Initialize scene first so we can render nodes when data arrives
             this.initializeScene();

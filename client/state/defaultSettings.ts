@@ -165,6 +165,7 @@ export const defaultSettings: Settings = {
         maxMessageSize: 100485760,
         reconnectAttempts: 3,
         reconnectDelay: 5000,
-        updateRate: 90
+        updateRate: 90,
+        url: '/wss'  // Default WebSocket endpoint
     }
 };
