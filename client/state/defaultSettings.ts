@@ -112,9 +112,9 @@ export const defaultSettings: Settings = {
         sessionTimeout: 3600
     },
     serverDebug: {
+        enabled: false,
         enableDataDebug: false,
         enableWebsocketDebug: false,
-        enabled: true,
         logBinaryHeaders: false,
         logFullJson: false
     },
@@ -156,16 +156,15 @@ export const defaultSettings: Settings = {
         environmentIntensity: 1.2
     },
     websocket: {
+        heartbeatInterval: 30,
+        heartbeatTimeout: 60,
+        reconnectAttempts: 3,
+        reconnectDelay: 5000,
         binaryChunkSize: 65536,
         compressionEnabled: true,
         compressionThreshold: 1024,
-        heartbeatInterval: 15000,
-        heartbeatTimeout: 60000,
         maxConnections: 1000,
         maxMessageSize: 100485760,
-        reconnectAttempts: 3,
-        reconnectDelay: 5000,
-        updateRate: 90,
-        url: '/wss'  // Default WebSocket endpoint
+        updateRate: 90
     }
 };

@@ -18,7 +18,7 @@ pub use crate::utils::debug_logging::init_debug_settings;
 pub use crate::utils::gpu_compute::GPUCompute;
 
 // Re-export socket flow handler
-pub use crate::handlers::socket_flow_handler::{SocketFlowServer, ws_handler};
+pub use crate::handlers::socket_flow_handler::{SocketFlowServer, socket_flow_handler};
 
 // Public re-exports
 pub use app_state::AppState;

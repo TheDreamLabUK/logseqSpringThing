@@ -19,6 +19,18 @@ unsafe impl DeviceRepr for NodeData {}
 // Implement ValidAsZeroBits for NodeData
 unsafe impl ValidAsZeroBits for NodeData {}
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PingMessage {
+    pub type_: String,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PongMessage {
+    pub type_: String,
+    pub timestamp: u64,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
@@ -128,24 +140,13 @@ impl BinaryNodeData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdatePositionsMessage {
-    pub nodes: Vec<BinaryNodeData>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", content = "data")]
-#[serde(rename_all = "kebab-case")]
+#[serde(tag = "type")]
 pub enum Message {
-    UpdatePositions(UpdatePositionsMessage),
-    InitialData { graph: GraphData },
-    BinaryPositionUpdate { nodes: Vec<BinaryNodeData> },
-    SimulationModeSet { mode: String },
-    RequestInitialData,
-    EnableBinaryUpdates,
-    SetSimulationMode { mode: String },
-    Ping,
-    Pong,
+    #[serde(rename = "ping")]
+    Ping { timestamp: u64 },
+    
+    #[serde(rename = "pong")]
+    Pong { timestamp: u64 },
 }
 
 // Forward declarations to avoid circular dependencies
