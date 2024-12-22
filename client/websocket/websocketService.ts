@@ -229,12 +229,23 @@ export class WebSocketService {
     this.binaryUpdateHandler = handler;
   }
 
-  public dispose() {
-    this.disconnect();
+  public dispose(): void {
+    this.close();
+    this.messageHandlers.clear();
+    this.binaryUpdateHandler = null;
   }
 
-  public disconnect() {
-    this.cleanup();
+  public close(): void {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;

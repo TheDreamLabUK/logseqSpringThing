@@ -9,9 +9,7 @@ import { graphDataManager } from './state/graphData';
 import { WebSocketService } from './websocket/websocketService';
 import { SceneManager } from './rendering/scene';
 import { NodeManager } from './rendering/nodes';
-import { TextRenderer } from './rendering/textRenderer';
 import { XRSessionManager } from './xr/xrSessionManager';
-import { XRInteraction } from './xr/xrInteraction';
 import { createLogger, setDebugEnabled } from './utils/logger';
 import { ControlPanel } from './ui/ControlPanel';
 
@@ -21,9 +19,7 @@ class Application {
     private webSocket!: WebSocketService;
     private sceneManager!: SceneManager;
     private nodeManager!: NodeManager;
-    private textRenderer!: TextRenderer;
     private xrManager: XRSessionManager | null = null;
-    private xrInteraction: XRInteraction | null = null;
 
     constructor() {
         this.initializeApplication();
@@ -164,9 +160,9 @@ class Application {
 
     private initializeScene(): void {
         // Get canvas element
-        const container = document.getElementById('canvas-container');
+        const container = document.getElementById('scene-container');
         if (!container) {
-            throw new Error('Canvas container not found');
+            throw new Error('Scene container not found');
         }
 
         // Create canvas
@@ -183,9 +179,6 @@ class Application {
         const nodeMeshes = this.nodeManager.getAllNodeMeshes();
         nodeMeshes.forEach(mesh => this.sceneManager.add(mesh));
 
-        // Initialize text renderer
-        this.textRenderer = new TextRenderer(this.sceneManager.getCamera());
-
         // Start rendering
         this.sceneManager.start();
         logger.log('Scene initialized with node meshes');
@@ -195,11 +188,6 @@ class Application {
         if (platformManager.getCapabilities().xrSupported) {
             // Initialize XR manager
             this.xrManager = XRSessionManager.getInstance(this.sceneManager);
-
-            // Initialize XR interaction
-            if (this.xrManager && this.nodeManager) {
-                this.xrInteraction = XRInteraction.getInstance(this.xrManager, this.nodeManager);
-            }
 
             // Setup XR button
             const xrButton = document.getElementById('xr-button');
@@ -375,21 +363,31 @@ class Application {
     }
 
     dispose(): void {
-        // Dispose of managers in reverse order of initialization
-        settingsManager.dispose();
-        this.xrInteraction?.dispose();
-        this.xrManager?.dispose();
-        this.textRenderer.dispose();
-        this.nodeManager.dispose();
-        this.sceneManager.dispose();
-
         // Stop rendering
-        this.sceneManager.stop();
+        if (this.sceneManager) {
+            SceneManager.cleanup();
+        }
 
-        // Close WebSocket connection if it exists
+        // Dispose of WebSocket
         if (this.webSocket) {
             this.webSocket.dispose();
         }
+
+        // Clear graph data
+        graphDataManager.clear();
+
+        // Dispose of XR
+        if (this.xrManager) {
+            this.xrManager.dispose();
+        }
+
+        // Remove canvas
+        const container = document.getElementById('scene-container');
+        if (container) {
+            container.innerHTML = '';
+        }
+
+        logger.log('Application disposed');
     }
 }
 

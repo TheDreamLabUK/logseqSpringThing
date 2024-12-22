@@ -103,8 +103,8 @@ export class GraphDataManager {
       logger.debug('Received graph data:', {
         nodesCount: data.nodes?.length || 0,
         edgesCount: data.edges?.length || 0,
-        totalPages: data.total_pages,
-        currentPage: this.currentPage,
+        totalPages: data.totalPages,
+        currentPage: data.currentPage,
         metadata: data.metadata
       });
       
@@ -122,8 +122,8 @@ export class GraphDataManager {
       }
 
       // Update pagination state
-      this.currentPage++;
-      this.hasMorePages = this.currentPage < data.totalPages;
+      this.currentPage = data.currentPage;
+      this.hasMorePages = data.currentPage < data.totalPages;
 
       // Notify listeners of updated data
       this.notifyUpdateListeners();

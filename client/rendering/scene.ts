@@ -96,6 +96,13 @@ export class SceneManager {
     return SceneManager.instance;
   }
 
+  static cleanup(): void {
+    if (SceneManager.instance) {
+      SceneManager.instance.dispose();
+      SceneManager.instance = null as any;
+    }
+  }
+
   private setupLighting(): void {
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     this.scene.add(ambientLight);
@@ -177,17 +184,69 @@ export class SceneManager {
   dispose(): void {
     this.stop();
     
-    window.removeEventListener('resize', this.handleResize.bind(this));
+    // Remove event listeners
+    const boundResize = this.handleResize.bind(this);
+    window.removeEventListener('resize', boundResize);
 
-    this.renderer.dispose();
-    this.scene.traverse((object) => {
-      if (object instanceof THREE.Mesh) {
-        object.geometry.dispose();
-        if (object.material instanceof THREE.Material) {
-          object.material.dispose();
-        }
+    // Dispose of post-processing
+    if (this.composer) {
+      // Dispose of render targets
+      this.composer.renderTarget1.dispose();
+      this.composer.renderTarget2.dispose();
+      
+      // Clear passes
+      this.composer.passes.length = 0;
+    }
+
+    // Dispose of bloom pass resources
+    if (this.bloomPass) {
+      // Dispose of any textures or materials used by the bloom pass
+      if ((this.bloomPass as any).renderTargetsHorizontal) {
+        (this.bloomPass as any).renderTargetsHorizontal.forEach((target: any) => {
+          if (target && target.dispose) target.dispose();
+        });
       }
-    });
+      if ((this.bloomPass as any).renderTargetsVertical) {
+        (this.bloomPass as any).renderTargetsVertical.forEach((target: any) => {
+          if (target && target.dispose) target.dispose();
+        });
+      }
+      if ((this.bloomPass as any).materialHorizontal) {
+        (this.bloomPass as any).materialHorizontal.dispose();
+      }
+      if ((this.bloomPass as any).materialVertical) {
+        (this.bloomPass as any).materialVertical.dispose();
+      }
+    }
+
+    // Dispose of controls
+    if (this.controls) {
+      this.controls.dispose();
+    }
+
+    // Dispose of renderer and materials
+    if (this.renderer) {
+      this.renderer.dispose();
+      this.renderer.domElement.remove();
+      (this.renderer.domElement as any).width = 0;
+      (this.renderer.domElement as any).height = 0;
+    }
+
+    // Dispose of scene objects
+    if (this.scene) {
+      this.scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          if (object.geometry) object.geometry.dispose();
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              object.material.forEach(material => material.dispose());
+            } else {
+              object.material.dispose();
+            }
+          }
+        }
+      });
+    }
 
     logger.log('Scene manager disposed');
   }
