@@ -56,10 +56,10 @@ export class ControlPanel {
         setting: K,
         value: SettingValue<T, K>
     ): void {
-        const categoryEl = this.container.querySelector(`.settings-category[data-category="${category}"]`);
+        const categoryEl = this.container.querySelector(`.settings-group[data-category="${category}"]`);
         if (!categoryEl) return;
 
-        const settingEl = categoryEl.querySelector(`.setting-control[data-setting="${String(setting)}"]`);
+        const settingEl = categoryEl.querySelector(`.setting-item[data-setting="${String(setting)}"]`);
         if (!settingEl) return;
 
         const input = settingEl.querySelector('input');
@@ -88,6 +88,9 @@ export class ControlPanel {
 
     private async setupUI(): Promise<void> {
         try {
+            // Clear any existing content
+            this.container.innerHTML = '';
+            
             // Add control panel container
             this.container.classList.add('control-panel');
 
@@ -96,8 +99,7 @@ export class ControlPanel {
             header.classList.add('control-panel-header');
             header.innerHTML = `
                 <h3>Settings</h3>
-                <div class="connection-status">
-                    <div class="status-indicator"></div>
+                <div class="connection-status disconnected">
                     <span id="connection-status">Disconnected</span>
                 </div>
             `;
@@ -124,11 +126,11 @@ export class ControlPanel {
         settings: Settings[T]
     ): HTMLElement {
         const element = document.createElement('div');
-        element.classList.add('settings-category');
+        element.classList.add('settings-group');
         element.dataset.category = category;
         
         const title = this.formatTitle(category);
-        element.innerHTML = `<h3>${title}</h3>`;
+        element.innerHTML = `<h4>${title}</h4>`;
 
         Object.entries(settings).forEach(([key, value]) => {
             const settingKey = key as SettingsKey<T>;
@@ -149,7 +151,7 @@ export class ControlPanel {
         value: SettingValue<T, K>
     ): HTMLElement {
         const control = document.createElement('div');
-        control.classList.add('setting-control');
+        control.classList.add('setting-item');
         control.dataset.setting = String(key);
 
         const label = document.createElement('label');
@@ -158,7 +160,7 @@ export class ControlPanel {
 
         if (Array.isArray(value)) {
             const arrayControl = document.createElement('div');
-            arrayControl.classList.add('array-control');
+            arrayControl.classList.add('array-inputs');
             value.forEach((item, index) => {
                 const input = document.createElement('input');
                 input.type = typeof item === 'number' ? 'number' : 'text';
@@ -166,7 +168,7 @@ export class ControlPanel {
                 input.dataset.index = index.toString();
 
                 // Update settings on input change
-                input.addEventListener('change', async () => {
+                input.addEventListener('input', async () => {
                     const newValue = input.type === 'number' ? parseFloat(input.value) : input.value;
                     const newArray = [...value];
                     newArray[index] = newValue;
@@ -194,7 +196,7 @@ export class ControlPanel {
             control.appendChild(input);
 
             // Update settings on input change
-            input.addEventListener('change', async () => {
+            input.addEventListener('input', async () => {
                 let newValue: SettingValue<T, K>;
                 if (input.type === 'checkbox') {
                     newValue = input.checked as SettingValue<T, K>;
@@ -234,7 +236,7 @@ export class ControlPanel {
     }
 
     private setupWebSocketStatus(): void {
-        const statusIndicator = this.container.querySelector('.status-indicator');
+        const statusIndicator = this.container.querySelector('.connection-status');
         const statusText = this.container.querySelector('#connection-status');
         
         if (statusIndicator && statusText) {
@@ -245,17 +247,17 @@ export class ControlPanel {
                 const ws = new WebSocket(wsUrl.toString());
                 
                 ws.onopen = () => {
-                    statusIndicator.classList.add('connected');
+                    statusIndicator.classList.remove('disconnected');
                     statusText.textContent = 'Connected';
                 };
                 
                 ws.onclose = () => {
-                    statusIndicator.classList.remove('connected');
+                    statusIndicator.classList.add('disconnected');
                     statusText.textContent = 'Disconnected';
                 };
                 
                 ws.onerror = () => {
-                    statusIndicator.classList.remove('connected');
+                    statusIndicator.classList.add('disconnected');
                     statusText.textContent = 'Error';
                 };
             } catch (error) {

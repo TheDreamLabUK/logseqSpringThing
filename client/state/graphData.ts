@@ -71,9 +71,6 @@ export class GraphDataManager {
       // Then load the first page
       await this.loadNextPage();
       
-      // Start binary updates only after initial data is loaded
-      this.setupBinaryUpdates();
-
       // Notify listeners of initial data
       this.notifyUpdateListeners();
 
@@ -137,119 +134,81 @@ export class GraphDataManager {
     }
   }
 
-  private setupBinaryUpdates(): void {
-    if (this.binaryUpdatesEnabled) {
-      // Initialize node positions if they don't have positions yet
-      this.nodes.forEach(node => {
-        if (!node.data.position) {
-          node.data.position = {
-            x: (Math.random() - 0.5) * 20,
-            y: (Math.random() - 0.5) * 20,
-            z: (Math.random() - 0.5) * 20
-          };
+  /**
+   * Initialize or update the graph data
+   */
+  updateGraphData(data: any): void {
+    // Update nodes
+    if (data.nodes && Array.isArray(data.nodes)) {
+      data.nodes.forEach((node: Node) => {
+        // Preserve existing position if available, otherwise use server position or generate random
+        const existingNode = this.nodes.get(node.id);
+        if (!existingNode) {
+          // If server didn't provide position, generate random position
+          if (!node.data?.position) {
+            node.data = node.data || {};
+            node.data.position = {
+              x: (Math.random() - 0.5) * 100,  // Increased spread
+              y: (Math.random() - 0.5) * 100,
+              z: (Math.random() - 0.5) * 100
+            };
+          }
+          // Initialize velocity if not present
+          if (!node.data.velocity) {
+            node.data.velocity = { x: 0, y: 0, z: 0 };
+          }
         }
-        if (!node.data.velocity) {
-          node.data.velocity = { x: 0, y: 0, z: 0 };
-        }
-      });
-
-      // Create initial position buffer
-      const buffer = new ArrayBuffer(this.nodes.size * NODE_POSITION_SIZE);
-      const positions = new Float32Array(buffer);
-      
-      let index = 0;
-      this.nodes.forEach(node => {
-        positions[index * 6] = node.data.position.x;
-        positions[index * 6 + 1] = node.data.position.y;
-        positions[index * 6 + 2] = node.data.position.z;
-        positions[index * 6 + 3] = node.data.velocity.x;
-        positions[index * 6 + 4] = node.data.velocity.y;
-        positions[index * 6 + 5] = node.data.velocity.z;
-        index++;
-      });
-
-      // Notify listeners of initial positions
-      this.positionUpdateListeners.forEach(listener => {
-        listener(positions);
+        this.nodes.set(node.id, node);
       });
     }
+
+    // Update edges
+    if (data.edges && Array.isArray(data.edges)) {
+      data.edges.forEach((edge: Edge) => {
+        const edgeId = this.createEdgeId(edge.source, edge.target);
+        this.edges.set(edgeId, edge);
+      });
+    }
+
+    // Update metadata
+    if (data.metadata) {
+      this.metadata = { ...this.metadata, ...data.metadata };
+    }
+
+    // Enable binary updates if we have nodes and it's not already enabled
+    if (this.nodes.size > 0 && !this.binaryUpdatesEnabled) {
+      this.setupBinaryUpdates();
+    }
+
+    // Notify listeners of updates
+    this.notifyUpdateListeners();
+  }
+
+  /**
+   * Setup binary position updates
+   */
+  private setupBinaryUpdates(): void {
+    this.binaryUpdatesEnabled = true;
+    // Initialize positions for existing nodes if needed
+    this.nodes.forEach(node => {
+      if (!node.data?.position) {
+        node.data = node.data || {};
+        node.data.position = {
+          x: (Math.random() - 0.5) * 100,
+          y: (Math.random() - 0.5) * 100,
+          z: (Math.random() - 0.5) * 100
+        };
+      }
+      if (!node.data.velocity) {
+        node.data.velocity = { x: 0, y: 0, z: 0 };
+      }
+    });
+    logger.log('Binary updates enabled');
   }
 
   public async loadMoreIfNeeded(): Promise<void> {
     if (this.hasMorePages && !this.loadingNodes) {
       await this.loadNextPage();
-    }
-  }
-
-  /**
-   * Initialize or update the graph data
-   */
-  updateGraphData(data: any): void {
-    logger.log('Received graph data update');
-
-    // Clear existing data
-    this.nodes.clear();
-    this.edges.clear();
-
-    // Store nodes in Map for O(1) access
-    if (data.nodes && Array.isArray(data.nodes)) {
-      data.nodes.forEach((node: any) => {
-        // Convert position array to object if needed
-        let position;
-        if (Array.isArray(node.position)) {
-          position = {
-            x: node.position[0] || 0,
-            y: node.position[1] || 0,
-            z: node.position[2] || 0
-          };
-        } else {
-          position = node.position || { x: 0, y: 0, z: 0 };
-        }
-
-        logger.log(`Processing node ${node.id} with position:`, position);
-
-        this.nodes.set(node.id, {
-          ...node,
-          position,
-          label: node.label || node.id
-        });
-      });
-
-      // Store edges in Map
-      if (Array.isArray(data.edges)) {
-        data.edges.forEach((edge: Edge) => {
-          const edgeId = this.createEdgeId(edge.source, edge.target);
-          this.edges.set(edgeId, edge);
-        });
-      }
-
-      // Update metadata
-      this.metadata = data.metadata || {};
-
-      // Notify listeners
-      this.notifyUpdateListeners();
-      logger.log(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
-
-      // Enable binary updates after initial data is received
-      if (!this.binaryUpdatesEnabled) {
-        this.enableBinaryUpdates();
-      }
-    } else {
-      logger.warn('Invalid graph data format received');
-    }
-  }
-
-  /**
-   * Enable binary position updates
-   */
-  private enableBinaryUpdates(): void {
-    // Send message to server to enable binary updates
-    if (window.ws && window.ws.readyState === WebSocket.OPEN) {
-      window.ws.send(JSON.stringify({ type: 'enableBinaryUpdates' }));
-      this.binaryUpdatesEnabled = true;
-      logger.log('Enabled binary updates');
-    } else {
-      logger.warn('WebSocket not ready, cannot enable binary updates');
     }
   }
 
