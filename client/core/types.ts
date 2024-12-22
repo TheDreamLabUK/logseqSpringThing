@@ -164,9 +164,9 @@ export interface SecuritySettings {
 }
 
 export interface ServerDebugSettings {
+  enabled: boolean;
   enableDataDebug: boolean;
   enableWebsocketDebug: boolean;
-  enabled: boolean;
   logBinaryHeaders: boolean;
   logFullJson: boolean;
 }
@@ -211,20 +211,6 @@ export interface RenderingSettings {
   environmentIntensity: number;
 }
 
-export interface WebsocketSettings {
-  binaryChunkSize: number;
-  compressionEnabled: boolean;
-  compressionThreshold: number;
-  heartbeatInterval: number;
-  heartbeatTimeout: number;
-  maxConnections: number;
-  maxMessageSize: number;
-  reconnectAttempts: number;
-  reconnectDelay: number;
-  updateRate: number;
-  url: string; // Added url property for WebSocket endpoint configuration
-}
-
 export interface Settings {
   animations: AnimationSettings;
   ar: ARSettings;
@@ -240,94 +226,33 @@ export interface Settings {
   rendering: RenderingSettings;
   security: SecuritySettings;
   serverDebug: ServerDebugSettings;
-  websocket: WebsocketSettings;
+  websocket: WebSocketSettings;
 }
 
 export type SettingCategory = keyof Settings;
 export type SettingKey<T extends SettingCategory> = keyof Settings[T];
 export type SettingValue = string | number | boolean | number[] | string[];
 
-// WebSocket specific error types
-export enum WebSocketErrorType {
-  CONNECTION_FAILED = 'CONNECTION_FAILED',
-  CONNECTION_LOST = 'CONNECTION_LOST',
-  CONNECTION_ERROR = 'CONNECTION_ERROR', // Added CONNECTION_ERROR type
-  MAX_RETRIES_EXCEEDED = 'MAX_RETRIES_EXCEEDED',
-  MESSAGE_PARSE_ERROR = 'MESSAGE_PARSE_ERROR',
-  SEND_FAILED = 'SEND_FAILED',
-  INVALID_MESSAGE = 'INVALID_MESSAGE',
-  TIMEOUT = 'TIMEOUT'
-}
-
-export interface WebSocketError extends Error {
-  type: WebSocketErrorType;
-  code?: number;
-  details?: any;
-}
-
-// WebSocket connection status
-export enum WebSocketStatus {
-  CONNECTING = 'CONNECTING',
-  CONNECTED = 'CONNECTED',
-  DISCONNECTED = 'DISCONNECTED',
-  RECONNECTING = 'RECONNECTING',
-  FAILED = 'FAILED'
-}
-
 // WebSocket message types
 export type MessageType = 
-  | 'initialData'
-  | 'binaryPositionUpdate'
-  | 'requestInitialData'
-  | 'enableBinaryUpdates'
-  | 'binaryUpdateStatus'
-  | 'ping'
-  | 'pong'
-  | 'settingsUpdated'
-  | 'graphUpdated'
-  | 'connectionStatus'
-  | 'updatePositions'
-  | 'simulationModeSet';
-
-// Handler types
-export type MessageHandler = (data: any) => void;
-export type ErrorHandler = (error: WebSocketError) => void;
-export type ConnectionHandler = (status: WebSocketStatus, details?: any) => void;
+  | 'binaryPositionUpdate'  // Real-time position/velocity data
+  | 'ping'                  // Connection health check
+  | 'pong'                 // Connection health response
+  | 'connectionStatus'     // Connection status updates
+  | 'enableBinaryUpdates'; // Enable/disable binary updates
 
 // Base WebSocket message interface
 export interface BaseWebSocketMessage {
   type: MessageType;
 }
 
-export interface InitialDataMessage extends BaseWebSocketMessage {
-  type: 'initialData';
-  data: {
-    nodes: Node[];
-    edges: Edge[];
-  };
-}
-
+// Binary position update message (server -> client)
 export interface BinaryPositionUpdateMessage extends BaseWebSocketMessage {
   type: 'binaryPositionUpdate';
-  data: {
-    nodes: {
-      nodeId: string;
-      data: NodeData;
-    }[];
-  };
+  data: ArrayBuffer;  // Raw binary data (24 bytes per node: 6 floats x 4 bytes)
 }
 
-export interface RequestInitialDataMessage extends BaseWebSocketMessage {
-  type: 'requestInitialData';
-}
-
-export interface EnableBinaryUpdatesMessage extends BaseWebSocketMessage {
-  type: 'enableBinaryUpdates';
-  data: {
-    enabled: boolean;
-  };
-}
-
+// Connection health messages
 export interface PingMessage extends BaseWebSocketMessage {
   type: 'ping';
   timestamp: number;
@@ -338,20 +263,40 @@ export interface PongMessage extends BaseWebSocketMessage {
   timestamp: number;
 }
 
-export interface ConnectionStatusMessage extends BaseWebSocketMessage {
-  type: 'connectionStatus';
-  status: WebSocketStatus;
-  details?: any;
+export type WebSocketMessage =
+  | BinaryPositionUpdateMessage
+  | PingMessage
+  | PongMessage;
+
+// WebSocket settings
+export interface WebSocketSettings {
+  url: string;                   // WebSocket server URL
+  heartbeatInterval: number;     // Ping interval in seconds (default: 30)
+  heartbeatTimeout: number;      // Connection timeout in seconds (default: 60)
+  reconnectAttempts: number;     // Max reconnection attempts (default: 3)
+  reconnectDelay: number;        // Delay between reconnects in ms (default: 5000)
+  binaryChunkSize: number;       // Size of binary chunks
+  compressionEnabled: boolean;   // Enable/disable compression
+  compressionThreshold: number;  // Compression threshold
+  maxConnections: number;        // Maximum connections
+  maxMessageSize: number;        // Maximum message size
+  updateRate: number;           // Update rate in Hz
 }
 
-export type WebSocketMessage =
-  | InitialDataMessage
-  | BinaryPositionUpdateMessage
-  | RequestInitialDataMessage
-  | EnableBinaryUpdatesMessage
-  | PingMessage
-  | PongMessage
-  | ConnectionStatusMessage;
+// WebSocket error types
+export enum WebSocketErrorType {
+  CONNECTION_ERROR = 'CONNECTION_ERROR',       // Failed to establish connection
+  CONNECTION_LOST = 'CONNECTION_LOST',         // Connection was lost
+  TIMEOUT = 'TIMEOUT',                        // Connection timed out
+  BINARY_FORMAT_ERROR = 'BINARY_FORMAT_ERROR', // Invalid binary data format
+}
+
+export interface WebSocketError {
+  type: WebSocketErrorType;
+  message: string;
+  code?: number;
+  details?: any;
+}
 
 // Logger interface
 export interface Logger {

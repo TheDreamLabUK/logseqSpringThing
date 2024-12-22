@@ -392,4 +392,9 @@ impl GraphService {
             current_page: page as u32,
         })
     }
+
+    pub async fn get_node_positions(&self) -> Vec<Node> {
+        let graph = self.graph_data.read().await;
+        graph.nodes.clone()
+    }
 }

@@ -10,6 +10,7 @@ use webxr::{
     RealGitHubPRService, GPUCompute, GraphData,
     log_data, log_warn,
     services::file_service::FileService,
+    socket_flow_handler,
 };
 
 use actix_web::{web, App, HttpServer, middleware};
@@ -156,7 +157,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::resource("/wss")
                     .app_data(web::PayloadConfig::new(1 << 25))  // 32MB max payload
-                    .to(socket_flow_handler::ws_handler)
+                    .route(web::get().to(socket_flow_handler))
             )
             .service(Files::new("/", "/app/client").index_file("index.html"))
     })

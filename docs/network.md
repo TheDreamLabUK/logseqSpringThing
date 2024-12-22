@@ -3,11 +3,11 @@ This document outlines the networking architecture and data flow for the LogseqX
 
 1. Overall Architecture
 
-The application follows a client-server model, with the server responsible for data storage, processing, and settings management, while the client handles visualization and user interaction. Communication occurs through REST API calls for initial setup and settings management, and WebSockets for real-time position updates. The application integrates with RAGFlow as a separate service for advanced data processing.
+The application follows a client-server model, with the server responsible for data storage, processing, and settings management, while the client handles visualization and user interaction. Communication occurs through REST API calls for initial setup and settings management, and WebSockets for real-time position updates. 
 
 2. Server-Side (Rust)
 
-Data Storage: Graph data (nodes, edges, metadata) is stored on the server, potentially in a database or file system. Settings are stored in settings.toml and are updated in real-time.
+Data Storage: Graph data (nodes, edges, metadata) is stored on the server, in a file system. Settings are stored in settings.toml and are updated in real-time in groups of settings only when those settings are updated.
 
 REST API (actix-web): The server exposes a REST API for:
 
@@ -22,26 +22,22 @@ Other API endpoints: /api/files/fetch, /api/chat/*, /api/perplexity.
 
 WebSocket Handling (actix-web-actors): 
 - Binary Protocol (/wss endpoint): 
-  - Uses a compressed binary protocol for efficient real-time position and velocity updates
-  - Includes version checking (BINARY_VERSION) for protocol compatibility
+  - Uses a binary protocol for efficient real-time position and velocity updates
   - Optimized format with 6 floats per node (position + velocity)
-  - 4-byte binary header for version information
 - WebSocket Control API (/api/visualization/settings/):
   - REST-based control plane for WebSocket configuration
-  - Manages compression settings, heartbeat intervals, and protocol versions
+  - Manages settings, heartbeat intervals
   - Allows runtime updates to WebSocket behavior without connection disruption
   - Separates control logic from high-frequency data updates
 - Connection Management:
   - Message queuing with configurable queue size
+  - Configurable update rate (framerate)
   - Robust reconnection logic with configurable attempts and delays
   - Connection status tracking and notifications
 - Heartbeat:
   - Configurable ping/pong intervals
   - Timestamp-based health monitoring
   - Automatic reconnection on timeout
-- Compression:
-  - Configurable compression thresholds
-  - Optimized for position/velocity data
 - Error Handling:
   - Comprehensive error types and status codes
   - Detailed error reporting and logging
@@ -54,10 +50,7 @@ RAGFlow Integration:
 - Health Checks: Monitors RAGFlow service health without direct dependencies
 
 Security:
-- TLS Implementation: Uses rustls (>=0.23.5) for secure communication
-- Certificate Management: Handles TLS certificates through rustls-pemfile
-- WebSocket Security: Implements secure WebSocket connections with TLS
-- Network Isolation: Services run in isolated Docker networks
+- Handled by cloudflared tunnel and docker
 
 Port Configuration:
 - Nginx Frontend: Listens on port 4000 for external connections
@@ -79,11 +72,6 @@ Port Configuration:
   - Graph Endpoints (/graph):
     - 30s connect timeout matching heartbeat interval
     - No-store cache control
-  - Security Headers:
-    - Content-Security-Policy with WebSocket support
-    - Strict-Transport-Security (HSTS)
-    - X-Frame-Options, X-XSS-Protection
-    - Referrer-Policy and other security headers
 - Health Checks: 
   - Regular HTTP and WebSocket endpoint monitoring
   - 10-second interval checks with 5-second timeout
@@ -97,7 +85,6 @@ Initialization:
 - WebSocket initialization follows a two-step process:
   1. Control Setup (/api/visualization/settings/websocket):
      - Load WebSocket configuration settings
-     - Configure compression and heartbeat parameters
      - Set up error handling and reconnection policies
   2. Binary Connection (/wss):
      - Establish WebSocket connection for real-time updates
@@ -107,13 +94,11 @@ Initialization:
 REST API Interaction:
 - Initial Graph Data: Retrieving the initial graph data using pagination
 - Settings: Loading category settings, getting/updating individual settings
-- RAGFlow Services: Communicating with RAGFlow when available
 
-WebSocket Connection: 
+WebSocket Connection and it's REST management system: 
 - Establishes compressed WebSocket connection for real-time updates
 - Implements reconnection logic with configurable attempts (default: 3)
 - Configurable settings for:
-  - Compression threshold
   - Heartbeat interval (default: 15s)
   - Heartbeat timeout (default: 60s)
   - Reconnect delay (default: 5s)
@@ -176,52 +161,16 @@ Health Check System:
 - RAGFlow Health: Periodic checks for RAGFlow service availability
 - Metrics: Health status exposed through container metrics
 
-5. Data Flow Diagrams
-
-[Previous diagram content remains unchanged]
-
-6. Key Improvements
-
-WebSocket Enhancements:
-- Compression support for efficient data transfer
-- Robust connection management with health monitoring
-- Better error handling and recovery
-- Configurable heartbeat intervals
-- Message queuing with size limits
-- Binary protocol version verification
-
-RAGFlow Integration:
-- Clean separation of services
-- Network-level integration
-- Graceful handling of service availability
-- Clear error messaging
-
-Settings Management:
-- Real-time updates
-- Immediate persistence
-- Efficient broadcast mechanism
-- Better error handling
-
-7. Remaining Considerations
-
-Performance Optimization:
-- Fine-tune WebSocket compression thresholds
-- Optimize binary message format
-- Monitor network bandwidth usage
-- GPU resource utilization monitoring
-
-Error Handling:
-- Implement comprehensive error recovery
-- Better user feedback
-- Logging and monitoring
-- Connection failure analysis
-
-Security:
-- Network isolation
-- Access control
-- Data validation
-- Regular security audits
-- Dependency vulnerability monitoring
-- TLS configuration management
-
-This briefing document provides a comprehensive overview of the LogseqXR networking architecture, including its integration with RAGFlow and enhanced WebSocket capabilities. Regular monitoring and optimization of these systems will ensure optimal performance and reliability.
+Clear Protocol Definition:
+Binary format details (24 bytes per node)
+Exact message types (binary updates, ping/pong)
+Simplified Configuration:
+Clear separation between REST and WebSocket responsibilities
+Performance Focus:
+Direct binary transmission
+No JSON overhead
+Efficient TypedArray usage
+Clear Client Flow:
+Step-by-step initialization process
+Explicit data flow patterns
+Error handling and performance considerations
