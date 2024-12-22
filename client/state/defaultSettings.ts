@@ -156,6 +156,7 @@ export const defaultSettings: Settings = {
         environmentIntensity: 1.2
     },
     websocket: {
+        url: '/wss',  
         heartbeatInterval: 30,
         heartbeatTimeout: 60,
         reconnectAttempts: 3,

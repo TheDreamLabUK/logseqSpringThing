@@ -1,7 +1,6 @@
 import {
   MessageType,
   WebSocketMessage,
-  WebSocketErrorType,
   WebSocketSettings,
 } from '../core/types';
 import { createLogger } from '../utils/logger';
@@ -9,11 +8,11 @@ import { createLogger } from '../utils/logger';
 const logger = createLogger('WebSocketService');
 
 const DEFAULT_SETTINGS: WebSocketSettings = {
-  url: 'ws://localhost:8080/wss',  // Default WebSocket URL
-  heartbeatInterval: 30,           // 30 seconds
-  heartbeatTimeout: 60,            // 60 seconds
-  reconnectAttempts: 3,           // 3 attempts
-  reconnectDelay: 5000,           // 5 seconds
+  url: '/wss',
+  heartbeatInterval: 30,
+  heartbeatTimeout: 60,
+  reconnectAttempts: 3,
+  reconnectDelay: 5000,
   binaryChunkSize: 65536,
   compressionEnabled: true,
   compressionThreshold: 1024,
@@ -48,35 +47,18 @@ export class WebSocketService {
     this.connect();
   }
 
-  // Compatibility methods for existing code
-  public onMessage(type: MessageType, handler: MessageHandler) {
-    const handlers = this.messageHandlers.get(type) || [];
-    handlers.push(handler);
-    this.messageHandlers.set(type, handlers);
-  }
-
-  public send(data: string) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(data);
-    }
-  }
-
-  // Alias for disconnect for backward compatibility
-  public dispose() {
-    this.disconnect();
-  }
-
-  public onBinaryUpdate(handler: BinaryUpdateHandler) {
-    this.binaryUpdateHandler = handler;
-  }
-
   private connect() {
     if (this.ws?.readyState === WebSocket.CONNECTING || this.isReconnecting) {
       return;
     }
 
     try {
-      this.ws = new WebSocket(this.settings.url);
+      // Get WebSocket URL from settings
+      const wsUrl = new URL(this.settings.url, window.location.href);
+      wsUrl.protocol = wsUrl.protocol.replace('http', 'ws');
+      const fullUrl = wsUrl.toString();
+
+      this.ws = new WebSocket(fullUrl);
       this.ws.binaryType = 'arraybuffer';
 
       this.ws.onopen = this.handleOpen.bind(this);
@@ -95,35 +77,17 @@ export class WebSocketService {
     this.reconnectAttempts = 0;
     this.isReconnecting = false;
     this.lastPongTime = Date.now();
-    
-    // Notify connection status handlers
-    const handlers = this.messageHandlers.get('connectionStatus' as MessageType);
-    if (handlers) {
-      handlers.forEach(h => h({ status: 'CONNECTED' }));
-    }
   }
 
   private handleClose(event: CloseEvent) {
     this.cleanup();
-    
-    // Notify connection status handlers
-    const handlers = this.messageHandlers.get('connectionStatus' as MessageType);
-    if (handlers) {
-      handlers.forEach(h => h({ status: 'DISCONNECTED', details: event }));
-    }
-
     if (!event.wasClean) {
       this.attemptReconnect();
     }
   }
 
   private handleError(event: Event) {
-    const error = {
-      type: WebSocketErrorType.CONNECTION_ERROR,
-      message: 'WebSocket connection error',
-      details: event
-    };
-    logger.error('WebSocket error:', error);
+    logger.error('WebSocket error:', event);
     this.cleanup();
     this.attemptReconnect();
   }
@@ -162,15 +126,8 @@ export class WebSocketService {
         handlers.forEach(h => h(message));
       }
 
-      switch (message.type) {
-        case 'ping':
-          this.handlePing(message);
-          break;
-        case 'pong':
-          // Already updated lastPongTime
-          break;
-        default:
-          logger.warn('Unhandled message type:', message.type);
+      if (message.type === 'ping') {
+        this.handlePing(message);
       }
     } catch (error) {
       logger.error('Failed to parse message:', error);
@@ -253,6 +210,27 @@ export class WebSocketService {
       logger.info(`Reconnecting... Attempt ${this.reconnectAttempts}`);
       this.connect();
     }, this.settings.reconnectDelay);
+  }
+
+  // Compatibility methods for existing code
+  public onMessage(type: MessageType, handler: MessageHandler) {
+    const handlers = this.messageHandlers.get(type) || [];
+    handlers.push(handler);
+    this.messageHandlers.set(type, handlers);
+  }
+
+  public send(data: string) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(data);
+    }
+  }
+
+  public onBinaryUpdate(handler: BinaryUpdateHandler) {
+    this.binaryUpdateHandler = handler;
+  }
+
+  public dispose() {
+    this.disconnect();
   }
 
   public disconnect() {
