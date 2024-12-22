@@ -226,7 +226,6 @@ export interface Settings {
   rendering: RenderingSettings;
   security: SecuritySettings;
   serverDebug: ServerDebugSettings;
-  websocket: WebSocketSettings;
 }
 
 export type SettingCategory = keyof Settings;

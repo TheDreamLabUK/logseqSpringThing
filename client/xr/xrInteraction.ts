@@ -142,19 +142,6 @@ export class XRInteraction {
                 enableShadows: true, 
                 environmentIntensity: 1 
             },
-            websocket: {
-                binaryChunkSize: 65536,
-                compressionEnabled: true,
-                compressionThreshold: 1024,
-                heartbeatInterval: 15000,
-                heartbeatTimeout: 60000,
-                maxConnections: 1000,
-                maxMessageSize: 100485760,
-                reconnectAttempts: 3,
-                reconnectDelay: 5000,
-                updateRate: 90,
-                url: '/wss'  // Default WebSocket endpoint
-            },
             default: {
                 apiClientTimeout: 30,
                 enableMetrics: true,
@@ -179,9 +166,9 @@ export class XRInteraction {
                 sessionTimeout: 3600
             },
             serverDebug: {
+                enabled: false,
                 enableDataDebug: false,
                 enableWebsocketDebug: false,
-                enabled: true,
                 logBinaryHeaders: false,
                 logFullJson: false
             }

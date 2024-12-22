@@ -154,18 +154,5 @@ export const defaultSettings: Settings = {
         enableAntialiasing: true,
         enableShadows: false,
         environmentIntensity: 1.2
-    },
-    websocket: {
-        url: '/wss',  
-        heartbeatInterval: 30,
-        heartbeatTimeout: 60,
-        reconnectAttempts: 3,
-        reconnectDelay: 5000,
-        binaryChunkSize: 65536,
-        compressionEnabled: true,
-        compressionThreshold: 1024,
-        maxConnections: 1000,
-        maxMessageSize: 100485760,
-        updateRate: 90
     }
 };
