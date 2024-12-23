@@ -2,10 +2,10 @@ use actix_web::{get, put, web, HttpResponse};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use log::{debug, error};
+use std::collections::HashMap;
 
 use crate::config::Settings;
-use super::common::{SettingResponse, CategorySettingsResponse, CategorySettingsUpdate, get_setting_value, update_setting_value, get_category_settings, update_category_settings};
+use super::common::{SettingResponse, CategorySettingsResponse, CategorySettingsUpdate, get_setting_value, update_setting_value, get_category_settings_value};
 
 #[get("/{category}")]
 async fn get_visualization_category(
@@ -15,16 +15,22 @@ async fn get_visualization_category(
     let category = path.into_inner();
     let settings = settings.read().await;
     
-    match get_category_settings(&settings, &category) {
-        Ok(settings) => HttpResponse::Ok().json(CategorySettingsResponse {
-            category: category.clone(),
-            settings,
-            success: true,
-            error: None,
-        }),
+    match get_category_settings_value(&settings, &category) {
+        Ok(value) => {
+            let settings_map: HashMap<String, Value> = value.as_object()
+                .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                .unwrap_or_default();
+            
+            HttpResponse::Ok().json(CategorySettingsResponse {
+                category: category.clone(),
+                settings: settings_map,
+                success: true,
+                error: None,
+            })
+        },
         Err(e) => HttpResponse::BadRequest().json(CategorySettingsResponse {
             category,
-            settings: Value::Null,
+            settings: HashMap::new(),
             success: false,
             error: Some(e),
         }),
@@ -39,21 +45,23 @@ async fn update_visualization_category(
 ) -> HttpResponse {
     let category = path.into_inner();
     let mut settings = settings.write().await;
-    
-    match update_category_settings(&mut settings, &category, update.into_inner()) {
-        Ok(updated_settings) => HttpResponse::Ok().json(CategorySettingsResponse {
-            category: category.clone(),
-            settings: updated_settings,
-            success: true,
-            error: None,
-        }),
-        Err(e) => HttpResponse::BadRequest().json(CategorySettingsResponse {
-            category,
-            settings: Value::Null,
-            success: false,
-            error: Some(e),
-        }),
+    let mut success = true;
+    let mut error_msg = None;
+
+    for (setting, value) in update.settings.iter() {
+        if let Err(e) = update_setting_value(&mut settings, &category, setting, value) {
+            success = false;
+            error_msg = Some(e);
+            break;
+        }
     }
+
+    HttpResponse::Ok().json(CategorySettingsResponse {
+        category,
+        settings: update.settings.clone(),
+        success,
+        error: error_msg,
+    })
 }
 
 #[get("/{category}/{setting}")]
@@ -91,7 +99,7 @@ async fn update_visualization_setting(
     let (category, setting) = path.into_inner();
     let mut settings = settings.write().await;
     
-    match update_setting_value::<serde_json::Value>(&mut settings, &category, &setting, &value) {
+    match update_setting_value(&mut settings, &category, &setting, &value) {
         Ok(_) => HttpResponse::Ok().json(SettingResponse {
             category: category.clone(),
             setting: setting.clone(),

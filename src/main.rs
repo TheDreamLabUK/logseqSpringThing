@@ -1,13 +1,18 @@
-use crate::{
-    config::Settings,
+use log::{debug, info};
+use env_logger;
+use webxr::{
+    Settings,
     handlers::{
         file_handler,
         graph_handler,
         settings,
-        socket_flow_handler::{self, socket_flow_handler},
+        socket_flow_handler::socket_flow_handler,
     },
-    services::file_service::FileService,
-    app_state::AppState,
+    AppState,
+    services::{
+        file_service::RealGitHubService,
+        github_service::RealGitHubPRService,
+    },
 };
 
 use actix_web::{web, App, HttpServer, middleware};
@@ -16,27 +21,13 @@ use actix_files::Files;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use dotenvy::dotenv;
-
-// Handler configuration functions
-fn configure_file_handler(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::resource("/fetch").to(file_handler::fetch_and_process_files))
-       .service(web::resource("/content/{file_name}").to(file_handler::get_file_content))
-       .service(web::resource("/refresh").to(file_handler::refresh_graph))
-       .service(web::resource("/update").to(file_handler::update_graph));
-}
-
-fn configure_graph_handler(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::resource("/data").to(graph_handler::get_graph_data))
-       .service(web::resource("/data/paginated").to(graph_handler::get_paginated_graph_data))
-       .service(
-           web::resource("/update")
-               .route(web::post().to(graph_handler::update_graph))
-       );
-}
+use std::env;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
+    env_logger::init();
+    info!("Starting LogseqXR server");
 
     // Load settings first to get the log level
     let settings = match Settings::new() {
@@ -50,9 +41,46 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // Create web::Data instances first
-    let settings_data = web::Data::new(settings.clone());
-    let app_state = web::Data::new(AppState::new());
+    // Load environment variables
+    let github_token = env::var("GITHUB_TOKEN")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("GITHUB_TOKEN not set: {}", e)))?;
+    let github_owner = env::var("GITHUB_OWNER")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("GITHUB_OWNER not set: {}", e)))?;
+    let github_repo = env::var("GITHUB_REPO")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("GITHUB_REPO not set: {}", e)))?;
+    let github_base_path = env::var("GITHUB_BASE_PATH").unwrap_or_else(|_| String::from(""));
+
+    // Initialize GitHub services
+    let github_service = Arc::new(RealGitHubService::new(
+        github_token.clone(),
+        github_owner.clone(),
+        github_repo.clone(),
+        github_base_path.clone(),
+        settings.clone(),
+    ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHub service: {}", e)))?);
+
+    let github_pr_service = Arc::new(RealGitHubPRService::new(
+        github_token,
+        github_owner,
+        github_repo,
+        github_base_path,
+    ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHub PR service: {}", e)))?);
+    
+    // Optional services
+    let perplexity_service = None; // Initialize if needed
+    let ragflow_service = None; // Initialize if needed
+    let gpu_compute = None; // Initialize if needed
+    
+    // Create AppState with initialized services
+    let app_state = web::Data::new(AppState::new(
+        settings.clone(),
+        github_service,
+        perplexity_service,
+        ragflow_service,
+        gpu_compute,
+        String::from("default"), // ragflow_conversation_id
+        github_pr_service,
+    ));
 
     // Configure app with services
     HttpServer::new(move || {
@@ -63,7 +91,6 @@ async fn main() -> std::io::Result<()> {
                 .allow_any_header()
                 .max_age(3600))
             .wrap(middleware::Logger::default())
-            .app_data(settings_data.clone())
             .app_data(app_state.clone())
             .service(
                 web::scope("/api")

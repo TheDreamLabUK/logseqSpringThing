@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::utils::case_conversion::to_snake_case;
+use crate::handlers::settings::common::{get_category_settings_value, set_field_value};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,7 +70,7 @@ fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Resu
     // Special handling for nested settings
     match category_snake.as_str() {
         "hologram" => {
-            if let Some(hologram) = settings_value.get("visualization").and_then(|v| v.get("hologram")) {
+            if let Some(hologram) = settings_value.get("hologram") {
                 if let Some(setting_value) = hologram.get(&setting_snake) {
                     debug!("Found hologram setting '{}': {:?}", setting_snake, setting_value);
                     return Ok(setting_value.clone());
@@ -135,9 +136,9 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
                         return Ok(());
                     }
                 },
-                "max_reconnect_attempts" => {
+                "reconnect_attempts" => {
                     if let Some(v) = value.as_u64() {
-                        settings.websocket.max_reconnect_attempts = v as u32;
+                        settings.websocket.reconnect_attempts = v as u32;
                         return Ok(());
                     }
                 },
@@ -164,10 +165,9 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
         Ok(v) => {
             match category_snake.as_str() {
                 "hologram" => {
-                    if let Some(hologram) = &mut settings.visualization.hologram {
-                        if let Err(e) = set_field_value(hologram, &setting_snake, v) {
-                            return Err(format!("Failed to set hologram setting: {}", e));
-                        }
+                    let hologram = &mut settings.hologram;
+                    if let Err(e) = set_field_value(hologram, &setting_snake, v) {
+                        return Err(format!("Failed to set hologram setting: {}", e));
                     }
                 },
                 _ => {

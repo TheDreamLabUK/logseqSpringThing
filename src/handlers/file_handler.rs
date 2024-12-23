@@ -1,4 +1,4 @@
-use actix_web::{web, Error as ActixError, HttpResponse};
+use actix_web::{web::{self, ServiceConfig}, Error as ActixError, HttpResponse};
 use serde_json::json;
 use log::{info, debug, error};
 
@@ -150,6 +150,13 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
             }))
         }
     }
+}
+
+pub fn config(cfg: &mut ServiceConfig) {
+    cfg.service(web::resource("/fetch").to(fetch_and_process_files))
+       .service(web::resource("/content/{file_name}").to(get_file_content))
+       .service(web::resource("/refresh").to(refresh_graph))
+       .service(web::resource("/update").to(update_graph));
 }
 
 pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, ActixError> {

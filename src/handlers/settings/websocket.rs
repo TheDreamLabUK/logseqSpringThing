@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use log::{debug, error};
 
 use crate::config::Settings;
 use super::common::{SettingResponse, get_setting_value, update_setting_value};
@@ -12,7 +11,7 @@ use super::common::{SettingResponse, get_setting_value, update_setting_value};
 pub struct WebSocketSettings {
     pub heartbeat_interval: u64,
     pub heartbeat_timeout: u64,
-    pub max_reconnect_attempts: u32,
+    pub reconnect_attempts: u32,
     pub reconnect_delay: u64,
     pub update_rate: u32,
 }
@@ -52,7 +51,7 @@ async fn update_websocket_setting(
     let setting = path.into_inner();
     let mut settings = settings.write().await;
     
-    match update_setting_value::<serde_json::Value>(&mut settings, "websocket", &setting, &value) {
+    match update_setting_value(&mut settings, "websocket", &setting, &value) {
         Ok(_) => HttpResponse::Ok().json(SettingResponse {
             category: "websocket".to_string(),
             setting: setting.clone(),

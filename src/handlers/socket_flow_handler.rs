@@ -14,7 +14,7 @@ use crate::config::Settings;
 pub struct WebSocketSettings {
     pub heartbeat_interval: u64,
     pub heartbeat_timeout: u64,
-    pub max_reconnect_attempts: u32,
+    pub reconnect_attempts: u32,
     pub reconnect_delay: u64,
     pub update_rate: u32,
 }
@@ -49,7 +49,7 @@ impl SocketFlowServer {
         WebSocketSettings {
             heartbeat_interval: settings.websocket.heartbeat_interval,
             heartbeat_timeout: settings.websocket.heartbeat_timeout,
-            max_reconnect_attempts: settings.websocket.max_reconnect_attempts,
+            reconnect_attempts: settings.websocket.reconnect_attempts,
             reconnect_delay: settings.websocket.reconnect_delay,
             update_rate: settings.websocket.update_rate,
         }
@@ -138,7 +138,7 @@ pub async fn get_websocket_settings(
     let ws_settings = WebSocketSettings {
         heartbeat_interval: settings.websocket.heartbeat_interval,
         heartbeat_timeout: settings.websocket.heartbeat_timeout,
-        max_reconnect_attempts: settings.websocket.max_reconnect_attempts,
+        reconnect_attempts: settings.websocket.reconnect_attempts,
         reconnect_delay: settings.websocket.reconnect_delay,
         update_rate: settings.websocket.update_rate,
     };
@@ -154,7 +154,7 @@ pub async fn update_websocket_settings(
     
     settings.websocket.heartbeat_interval = new_settings.heartbeat_interval;
     settings.websocket.heartbeat_timeout = new_settings.heartbeat_timeout;
-    settings.websocket.max_reconnect_attempts = new_settings.max_reconnect_attempts;
+    settings.websocket.reconnect_attempts = new_settings.reconnect_attempts;
     settings.websocket.reconnect_delay = new_settings.reconnect_delay;
     settings.websocket.update_rate = new_settings.update_rate;
     

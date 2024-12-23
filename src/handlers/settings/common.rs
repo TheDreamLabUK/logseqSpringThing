@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use crate::config::Settings;
-use log::{debug, error};
 use crate::utils::case_conversion::to_snake_case;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -32,128 +31,146 @@ pub struct CategorySettingsUpdate {
     pub settings: HashMap<String, Value>,
 }
 
-// Helper function to get all settings in a category
-pub fn get_category_settings(settings: &Settings, category: &str) -> Result<HashMap<String, Value>, String> {
-    debug!("Attempting to get all settings for category: {}", category);
-    
-    // Convert kebab-case URL parameter to snake_case
+pub fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Value, String> {
     let category_snake = to_snake_case(category);
     
     // Convert settings to Value for easier access
-    let settings_value = serde_json::to_value(&settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-    
-    // Get category object
-    let category_value = settings_value.get(&category_snake)
-        .ok_or_else(|| format!("Category '{}' not found", category))?;
-    
-    // Convert category value to HashMap
-    if let Some(obj) = category_value.as_object() {
-        Ok(obj.clone())
-    } else {
-        Err(format!("Category '{}' is not an object", category))
-    }
-}
-
-// Helper function to update all settings in a category
-pub fn update_category_settings(
-    settings: &mut Settings,
-    category: &str,
-    update: CategorySettingsUpdate
-) -> Result<HashMap<String, Value>, String> {
-    debug!("Attempting to update all settings for category: {}", category);
-    
-    // Convert kebab-case URL parameter to snake_case
-    let category_snake = to_snake_case(category);
-    
-    // Convert settings to Value for manipulation
     let settings_value = serde_json::to_value(settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-    
-    let mut settings_map = settings_value.as_object()
-        .ok_or("Settings is not an object")?
-        .clone();
-    
-    // Get category object
-    let category_value = settings_map.get_mut(&category_snake)
-        .ok_or_else(|| format!("Category '{}' not found", category))?;
-    
-    if let Some(obj) = category_value.as_object_mut() {
-        // Update each setting in the category
-        for (key, value) in update.settings {
-            let key_snake = to_snake_case(&key);
-            if obj.contains_key(&key_snake) {
-                obj.insert(key_snake, value);
-            } else {
-                return Err(format!("Setting '{}' not found in category '{}'", key, category));
+
+    // Special handling for nested settings
+    match category_snake.as_str() {
+        "hologram" => {
+            if let Some(hologram) = settings_value.get("hologram") {
+                return Ok(hologram.clone());
             }
-        }
-        
-        // Update the settings object
-        *settings = serde_json::from_value(serde_json::Value::Object(settings_map))?;
-        
-        // Return the updated category settings
-        Ok(obj.clone())
-    } else {
-        Err(format!("Category '{}' is not an object", category))
+        },
+        "websocket" => {
+            if let Some(websocket) = settings_value.get("websocket") {
+                return Ok(websocket.clone());
+            }
+        },
+        _ => {}
     }
+
+    // Regular category lookup
+    settings_value.get(&category_snake)
+        .cloned()
+        .ok_or_else(|| format!("Category '{}' not found", category))
 }
 
-// Helper function to get setting value from settings object
 pub fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Result<Value, String> {
-    debug!("Attempting to get setting value for category: {}, setting: {}", category, setting);
-    
-    // Convert kebab-case URL parameters to snake_case
     let category_snake = to_snake_case(category);
     let setting_snake = to_snake_case(setting);
     
-    // Convert settings to Value for easier access
-    let settings_value = serde_json::to_value(&settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-    
-    // Get category object
-    let category_value = settings_value.get(&category_snake)
-        .ok_or_else(|| format!("Category '{}' not found", category))?;
-    
-    // Get setting value
-    category_value.get(&setting_snake)
-        .ok_or_else(|| format!("Setting '{}' not found in category '{}'", setting, category))
-        .map(|v| v.clone())
-}
-
-// Helper function to update setting value in settings object
-pub fn update_setting_value<T: serde::de::DeserializeOwned>(
-    settings: &mut Settings,
-    category: &str,
-    setting: &str,
-    value: &Value
-) -> Result<(), String> {
-    debug!("Attempting to update setting value for category: {}, setting: {}", category, setting);
-    
-    // Convert kebab-case URL parameters to snake_case
-    let category_snake = to_snake_case(category);
-    let setting_snake = to_snake_case(setting);
-    
-    // Deserialize the value
-    let typed_value: T = serde_json::from_value(value.clone())
-        .map_err(|e| format!("Invalid value for setting: {}", e))?;
-    
-    // Update the setting using reflection
     let settings_value = serde_json::to_value(settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
     
-    let mut settings_map = settings_value.as_object()
-        .ok_or("Settings is not an object")?
-        .clone();
+    match category_snake.as_str() {
+        "hologram" => {
+            if let Some(hologram) = settings_value.get("hologram") {
+                if let Some(setting_value) = hologram.get(&setting_snake) {
+                    return Ok(setting_value.clone());
+                }
+            }
+        },
+        "websocket" => {
+            if let Some(websocket) = settings_value.get("websocket") {
+                if let Some(setting_value) = websocket.get(&setting_snake) {
+                    return Ok(setting_value.clone());
+                }
+            }
+        },
+        _ => {}
+    }
     
-    let category_value = settings_map.get_mut(&category_snake)
+    let category_value = settings_value.get(&category_snake)
         .ok_or_else(|| format!("Category '{}' not found", category))?;
     
-    if let Some(obj) = category_value.as_object_mut() {
-        obj.insert(setting_snake, serde_json::to_value(typed_value)?);
-        *settings = serde_json::from_value(serde_json::Value::Object(settings_map))?;
-        Ok(())
-    } else {
-        Err(format!("Category '{}' is not an object", category))
+    category_value.get(&setting_snake)
+        .cloned()
+        .ok_or_else(|| format!("Setting '{}' not found in category '{}'", setting, category))
+}
+
+pub fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, value: &Value) -> Result<(), String> {
+    let category_snake = to_snake_case(category);
+    let setting_snake = to_snake_case(setting);
+    
+    match category_snake.as_str() {
+        "websocket" => {
+            match setting_snake.as_str() {
+                "heartbeat_interval" => {
+                    if let Some(v) = value.as_u64() {
+                        settings.websocket.heartbeat_interval = v;
+                        return Ok(());
+                    }
+                },
+                "heartbeat_timeout" => {
+                    if let Some(v) = value.as_u64() {
+                        settings.websocket.heartbeat_timeout = v;
+                        return Ok(());
+                    }
+                },
+                "reconnect_attempts" => {
+                    if let Some(v) = value.as_u64() {
+                        settings.websocket.reconnect_attempts = v as u32;
+                        return Ok(());
+                    }
+                },
+                "reconnect_delay" => {
+                    if let Some(v) = value.as_u64() {
+                        settings.websocket.reconnect_delay = v;
+                        return Ok(());
+                    }
+                },
+                "update_rate" => {
+                    if let Some(v) = value.as_u64() {
+                        settings.websocket.update_rate = v as u32;
+                        return Ok(());
+                    }
+                },
+                _ => {}
+            }
+        },
+        _ => {}
     }
+    
+    match serde_json::from_value(value.clone()) {
+        Ok(v) => {
+            match category_snake.as_str() {
+                "hologram" => {
+                    let hologram = &mut settings.hologram;
+                    if let Err(e) = set_field_value(hologram, &setting_snake, v) {
+                        return Err(format!("Failed to set hologram setting: {}", e));
+                    }
+                },
+                _ => {
+                    if let Err(e) = set_field_value(settings, &category_snake, v) {
+                        return Err(format!("Failed to set setting: {}", e));
+                    }
+                }
+            }
+            Ok(())
+        },
+        Err(e) => Err(format!("Invalid value for setting: {}", e))
+    }
+}
+
+pub fn set_field_value<T>(obj: &mut T, field: &str, value: Value) -> Result<(), String> 
+where
+    T: serde::Serialize + serde::de::DeserializeOwned,
+{
+    let mut map = serde_json::to_value(&*obj)
+        .map_err(|e| format!("Failed to serialize object: {}", e))?
+        .as_object()
+        .ok_or_else(|| "Failed to convert object to map".to_string())?
+        .clone();
+
+    map.insert(field.to_string(), value);
+
+    let value = Value::Object(map);
+    *obj = serde_json::from_value(value)
+        .map_err(|e| format!("Failed to deserialize updated object: {}", e))?;
+
+    Ok(())
 }
