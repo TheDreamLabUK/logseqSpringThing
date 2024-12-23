@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, Map};
 use std::collections::HashMap;
+use log::{error, debug};
 use crate::config::Settings;
 use crate::utils::case_conversion::to_snake_case;
 
@@ -32,70 +33,77 @@ pub struct CategorySettingsUpdate {
 }
 
 pub fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Value, String> {
+    debug!("Getting settings for category: {}", category);
     let category_snake = to_snake_case(category);
     
     // Convert settings to Value for easier access
     let settings_value = serde_json::to_value(settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+        .map_err(|e| {
+            error!("Failed to serialize settings: {}", e);
+            format!("Failed to serialize settings: {}", e)
+        })?;
 
-    // Special handling for nested settings
+    // Handle visualization categories
     match category_snake.as_str() {
-        "hologram" => {
-            if let Some(hologram) = settings_value.get("hologram") {
-                return Ok(hologram.clone());
+        "visualization" => {
+            // For visualization category, combine nodes, edges, bloom, etc.
+            let mut combined = Map::new();
+            let subcategories = ["nodes", "edges", "bloom", "physics", "rendering", "labels", "animations"];
+            
+            for subcat in subcategories.iter() {
+                if let Some(subcat_value) = settings_value.get(subcat) {
+                    combined.insert(subcat.to_string(), subcat_value.clone());
+                }
+            }
+            
+            if !combined.is_empty() {
+                return Ok(Value::Object(combined));
             }
         },
-        "websocket" => {
-            if let Some(websocket) = settings_value.get("websocket") {
-                return Ok(websocket.clone());
+        "nodes" | "edges" | "bloom" | "physics" | "rendering" | "labels" | "animations" | "hologram" | "websocket" => {
+            if let Some(value) = settings_value.get(&category_snake) {
+                debug!("Found settings for category: {}", category_snake);
+                return Ok(value.clone());
             }
         },
         _ => {}
     }
 
-    // Regular category lookup
-    settings_value.get(&category_snake)
-        .cloned()
-        .ok_or_else(|| format!("Category '{}' not found", category))
+    error!("Category '{}' not found", category);
+    Err(format!("Category '{}' not found", category))
 }
 
 pub fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Result<Value, String> {
+    debug!("Getting setting value for {}.{}", category, setting);
     let category_snake = to_snake_case(category);
     let setting_snake = to_snake_case(setting);
     
     let settings_value = serde_json::to_value(settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+        .map_err(|e| {
+            error!("Failed to serialize settings: {}", e);
+            format!("Failed to serialize settings: {}", e)
+        })?;
     
-    match category_snake.as_str() {
-        "hologram" => {
-            if let Some(hologram) = settings_value.get("hologram") {
-                if let Some(setting_value) = hologram.get(&setting_snake) {
-                    return Ok(setting_value.clone());
-                }
-            }
-        },
-        "websocket" => {
-            if let Some(websocket) = settings_value.get("websocket") {
-                if let Some(setting_value) = websocket.get(&setting_snake) {
-                    return Ok(setting_value.clone());
-                }
-            }
-        },
-        _ => {}
+    // Handle all valid categories
+    if let Some(category_value) = settings_value.get(&category_snake) {
+        if let Some(setting_value) = category_value.get(&setting_snake) {
+            debug!("Found value for {}.{}", category_snake, setting_snake);
+            return Ok(setting_value.clone());
+        }
+        error!("Setting '{}' not found in category '{}'", setting_snake, category_snake);
+        return Err(format!("Setting '{}' not found in category '{}'", setting, category));
     }
     
-    let category_value = settings_value.get(&category_snake)
-        .ok_or_else(|| format!("Category '{}' not found", category))?;
-    
-    category_value.get(&setting_snake)
-        .cloned()
-        .ok_or_else(|| format!("Setting '{}' not found in category '{}'", setting, category))
+    error!("Category '{}' not found", category);
+    Err(format!("Category '{}' not found", category))
 }
 
 pub fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, value: &Value) -> Result<(), String> {
+    debug!("Updating setting {}.{}", category, setting);
     let category_snake = to_snake_case(category);
     let setting_snake = to_snake_case(setting);
     
+    // Handle special cases that need type conversion
     match category_snake.as_str() {
         "websocket" => {
             match setting_snake.as_str() {
@@ -135,24 +143,31 @@ pub fn update_setting_value(settings: &mut Settings, category: &str, setting: &s
         _ => {}
     }
     
+    // Handle general case using serde
     match serde_json::from_value(value.clone()) {
         Ok(v) => {
             match category_snake.as_str() {
                 "hologram" => {
                     let hologram = &mut settings.hologram;
                     if let Err(e) = set_field_value(hologram, &setting_snake, v) {
+                        error!("Failed to set hologram setting: {}", e);
                         return Err(format!("Failed to set hologram setting: {}", e));
                     }
                 },
                 _ => {
                     if let Err(e) = set_field_value(settings, &category_snake, v) {
+                        error!("Failed to set setting: {}", e);
                         return Err(format!("Failed to set setting: {}", e));
                     }
                 }
             }
+            debug!("Successfully updated setting {}.{}", category_snake, setting_snake);
             Ok(())
         },
-        Err(e) => Err(format!("Invalid value for setting: {}", e))
+        Err(e) => {
+            error!("Invalid value for setting: {}", e);
+            Err(format!("Invalid value for setting: {}", e))
+        }
     }
 }
 

@@ -1,8 +1,9 @@
 import { Settings } from '../types/settings';
 import { createLogger } from '../core/logger';
-import { buildApiUrl } from '../core/api';
+import { buildSettingsUrl } from '../core/api';
 import { defaultSettings } from './defaultSettings';
 import { SettingsPath, SettingValue, SettingsCategory } from '../types/settings/utils';
+import { convertObjectKeysToCamelCase, convertObjectKeysToSnakeCase } from '../core/utils';
 
 const logger = createLogger('SettingsStore');
 
@@ -67,14 +68,15 @@ export class SettingsStore {
             let retries = 0;
             while (retries < maxRetries) {
                 try {
-                    const response = await fetch(buildApiUrl(`visualization/settings/${category}`));
+                    const response = await fetch(buildSettingsUrl(category));
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
                     
                     const data = await response.json();
                     if (data.success && data.settings) {
-                        this.settings[category] = data.settings;
+                        // Convert snake_case keys from API to camelCase for client
+                        this.settings[category] = convertObjectKeysToCamelCase(data.settings);
                     }
                     break;
                 } catch (error) {
@@ -112,12 +114,15 @@ export class SettingsStore {
                 const [category, ...rest] = path.split('.');
                 const value = this.get(path);
 
+                // Convert camelCase keys to snake_case for API
+                const apiValue = convertObjectKeysToSnakeCase({ value }).value;
+
                 const response = await fetch(
-                    buildApiUrl(`visualization/settings/${category}/${rest.join('/')}`),
+                    buildSettingsUrl(category, rest.join('_')),
                     {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ value })
+                        body: JSON.stringify({ value: apiValue })
                     }
                 );
 

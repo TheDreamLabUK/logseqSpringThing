@@ -16,7 +16,7 @@ export function buildApiUrl(path: string): string {
 
 // Helper function to build settings URL
 export function buildSettingsUrl(category: string, setting?: string): string {
-    const base = `visualization/settings/${category}`;
+    const base = `settings/${category}`;
     return buildApiUrl(setting ? `${base}/${setting}` : base);
 }
 
