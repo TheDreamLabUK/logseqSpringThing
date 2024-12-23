@@ -4,11 +4,12 @@
 
 import { GraphData, Node, Edge } from '../core/types';
 import { createLogger } from '../core/utils';
+import { buildApiUrl } from '../core/api';
 
 const logger = createLogger('GraphDataManager');
 
 // Constants
-const THROTTLE_INTERVAL = 16;  // ~60fps max
+const THROTTLE_INTERVAL = 16;  // ~60fps
 const BINARY_VERSION = 1.0;
 const NODE_POSITION_SIZE = 24;  // 6 floats * 4 bytes
 const BINARY_HEADER_SIZE = 4;   // 1 float * 4 bytes
@@ -54,7 +55,7 @@ export class GraphDataManager {
 
       // First, update the graph data from the backend
       try {
-        const updateResponse = await fetch('/api/graph/update', {
+        const updateResponse = await fetch(buildApiUrl('graph/update'), {
           method: 'POST',
         });
 
@@ -90,7 +91,7 @@ export class GraphDataManager {
 
     try {
       this.loadingNodes = true;
-      const response = await fetch(`/api/graph/data/paginated?page=${this.currentPage}&pageSize=${this.pageSize}`);
+      const response = await fetch(buildApiUrl(`graph/data/paginated?page=${this.currentPage}&pageSize=${this.pageSize}`));
       
       if (!response.ok) {
         throw new Error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);

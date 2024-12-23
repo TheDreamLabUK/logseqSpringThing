@@ -1,6 +1,7 @@
 import { Settings } from '../core/types';
 import { createLogger } from '../utils/logger';
 import { defaultSettings } from './defaultSettings';
+import { buildApiUrl } from '../core/api';
 
 const logger = createLogger('SettingsManager');
 
@@ -32,7 +33,7 @@ export class SettingsManager {
                 let retries = 0;
                 while (retries < maxRetries) {
                     try {
-                        const response = await fetch(`/api/settings/${category}`);
+                        const response = await fetch(buildApiUrl(`visualization/settings/${category}`));
                         
                         if (response.ok) {
                             const data = await response.json();
@@ -109,7 +110,7 @@ export class SettingsManager {
                 }
             };
 
-            const response = await fetch(`/api/settings/${category}`, {
+            const response = await fetch(buildApiUrl(`visualization/settings/${category}`), {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -158,7 +159,7 @@ export class SettingsManager {
                 settings
             };
 
-            const response = await fetch(`/api/settings/${category}`, {
+            const response = await fetch(buildApiUrl(`visualization/settings/${category}`), {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

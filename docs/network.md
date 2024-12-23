@@ -89,21 +89,30 @@ Port Configuration:
 
 3. Client-Side (TypeScript)
 
+API Configuration:
+- Centralized API URL management through buildApiUrl helper
+- Environment-aware URL handling for development and production
+- Consistent path resolution across all components
+- WebSocket URL management through buildWsUrl helper
+
 Initialization:
 - The client loads initial graph data from /api/graph/data/paginated using pagination
 - The client loads all visualization settings from /api/visualization/settings/{category}
+- All API paths are built using buildApiUrl helper for consistency
 - WebSocket initialization follows a two-step process:
   1. Control Setup (/api/visualization/settings/websocket):
      - Load WebSocket configuration settings
      - Set up error handling and reconnection policies
   2. Binary Connection (/wss):
-     - Establish WebSocket connection for real-time updates
+     - Establish WebSocket connection using buildWsUrl helper
      - Use binary protocol for position/velocity data
      - Handle heartbeat and connection lifecycle
 
 REST API Interaction:
 - Initial Graph Data: Retrieving the initial graph data using pagination
 - Settings: Loading category settings, getting/updating individual settings
+- All API requests use relative paths through buildApiUrl helper
+- Environment-aware URL handling for development and production
 
 WebSocket Connection and it's REST management system: 
 - Establishes compressed WebSocket connection for real-time updates
