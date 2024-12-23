@@ -83,9 +83,14 @@ export const defaultSettings: Settings = {
         widthRange: [1, 5]
     },
     labels: {
-        desktopFontSize: 14,
+        desktopFontSize: 48,
         enableLabels: true,
-        textColor: '#ffffff'
+        textColor: '#FFFFFF',
+        textOutlineColor: '#000000',
+        textOutlineWidth: 0.1,
+        textResolution: 512,
+        textPadding: 16,
+        billboardMode: 'camera' as const
     },
     network: {
         bindAddress: '127.0.0.1',
@@ -101,20 +106,15 @@ export const defaultSettings: Settings = {
         tunnelId: ''
     },
     nodes: {
-        baseColor: '#ffffff',
+        baseColor: '#00ff00',
         baseSize: 1,
-        clearcoat: 0.5,
-        enableHoverEffect: true,
-        enableInstancing: true,
-        highlightColor: '#00ff00',
-        highlightDuration: 500,
-        hoverScale: 1.2,
-        materialType: 'standard',
+        sizeRange: [0.5, 2.0],
+        enableMetadataShape: true,
+        colorRangeAge: ['#ff0000', '#00ff00'],
+        colorRangeLinks: ['#0000ff', '#ff00ff'],
         metalness: 0.5,
-        opacity: 1,
-        roughness: 0.5,
-        sizeByConnections: true,
-        sizeRange: [0.5, 2]
+        roughness: 0.2,
+        opacity: 0.8
     },
     physics: {
         attractionStrength: 0.1,
@@ -154,6 +154,25 @@ export const defaultSettings: Settings = {
         enableWebsocketDebug: false,
         logBinaryHeaders: false,
         logFullJson: false
+    },
+    hologram: {
+        xrQuality: 'medium' as const,
+        desktopQuality: 'high' as const,
+        ringCount: 3,
+        ringColor: '#00FFFF',
+        ringOpacity: 0.5,
+        ringSizes: [1.0, 1.5, 2.0],
+        ringRotationSpeed: 0.1,
+        enableBuckminster: true,
+        buckminsterScale: 1.0,
+        buckminsterOpacity: 0.3,
+        enableGeodesic: true,
+        geodesicScale: 1.2,
+        geodesicOpacity: 0.4,
+        enableTriangleSphere: true,
+        triangleSphereScale: 1.1,
+        triangleSphereOpacity: 0.35,
+        globalRotationSpeed: 0.05
     },
     websocket: {
         url: 'ws://localhost:3000/ws',

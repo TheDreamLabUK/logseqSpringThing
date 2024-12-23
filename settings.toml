@@ -82,10 +82,36 @@ width_range = [
     3,
 ]
 
+[hologram]
+xr_quality = "medium"
+desktop_quality = "high"
+ring_count = 3
+ring_color = "#00FFFF"
+ring_opacity = 0.5
+ring_sizes = [1.0, 1.5, 2.0]
+ring_rotation_speed = 0.1
+enable_buckminster = true
+buckminster_scale = 1.0
+buckminster_opacity = 0.3
+enable_geodesic = true
+geodesic_scale = 1.2
+geodesic_opacity = 0.4
+enable_triangle_sphere = true
+triangle_sphere_scale = 1.1
+triangle_sphere_opacity = 0.35
+global_rotation_speed = 0.05
+
 [labels]
 desktop_font_size = 48
 enable_labels = true
 text_color = "#FFFFFF"
+# Text rendering
+text_rendering_mode = "sdf"    # SDF for sharp AR text
+text_resolution = 64           # Higher for better readability
+text_padding = 4              # Padding for SDF rendering
+text_outline_width = 0.4      # For better AR visibility
+text_outline_color = "#000000"
+billboard_mode = "camera"      # enum: camera, vertical
 
 [network]
 bind_address = "0.0.0.0"
@@ -118,6 +144,20 @@ size_range = [
     1,
     5,
 ]
+# Metadata visualization
+use_metadata_size = true     # Size from metadata
+use_metadata_shape = true    # Shape based on commit age
+use_metadata_color = true    # Color from hyperlink richness
+# Shape parameters
+shape_age_ranges = [         # Days old
+    7,                      # Recent: Sphere
+    30,                     # Month: Dodecahedron
+    90,                     # Quarter: Icosahedron
+    365                     # Year+: Octahedron
+]
+# Color parameters
+hyperlink_color_min = "#c3ab6f"  # Few links
+hyperlink_color_max = "#822626"  # Many links
 
 [physics]
 attraction_strength = 0.015

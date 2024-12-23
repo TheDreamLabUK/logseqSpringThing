@@ -6,9 +6,17 @@ export interface Vector3 {
   z: number;
 }
 
+export interface NodeMetadata {
+  name?: string;
+  lastModified?: number;
+  links?: string[];
+  references?: string[];
+}
+
 export interface NodeData {
   position: Vector3;
   velocity: Vector3;
+  metadata?: NodeMetadata;
 }
 
 export interface Node {
@@ -118,10 +126,47 @@ export interface EdgeSettings {
   widthRange: [number, number];
 }
 
+export interface HologramSettings {
+  xrQuality: 'low' | 'medium' | 'high';
+  desktopQuality: 'low' | 'medium' | 'high';
+  ringCount: number;
+  ringColor: string;
+  ringOpacity: number;
+  ringSizes: number[];
+  ringRotationSpeed: number;
+  enableBuckminster: boolean;
+  buckminsterScale: number;
+  buckminsterOpacity: number;
+  enableGeodesic: boolean;
+  geodesicScale: number;
+  geodesicOpacity: number;
+  enableTriangleSphere: boolean;
+  triangleSphereScale: number;
+  triangleSphereOpacity: number;
+  globalRotationSpeed: number;
+}
+
 export interface LabelSettings {
   desktopFontSize: number;
   enableLabels: boolean;
   textColor: string;
+  textOutlineColor: string;
+  textOutlineWidth: number;
+  textResolution: number;
+  textPadding: number;
+  billboardMode: 'camera' | 'up';
+}
+
+export interface NodeSettings {
+  baseColor: string;
+  baseSize: number;
+  sizeRange: [number, number];
+  enableMetadataShape: boolean;
+  colorRangeAge: [string, string];
+  colorRangeLinks: [string, string];
+  metalness: number;
+  roughness: number;
+  opacity: number;
 }
 
 export interface NetworkSettings {
@@ -171,23 +216,6 @@ export interface ServerDebugSettings {
   logFullJson: boolean;
 }
 
-export interface NodeSettings {
-  baseColor: string;
-  baseSize: number;
-  clearcoat: number;
-  enableHoverEffect: boolean;
-  enableInstancing: boolean;
-  highlightColor: string;
-  highlightDuration: number;
-  hoverScale: number;
-  materialType: string;
-  metalness: number;
-  opacity: number;
-  roughness: number;
-  sizeByConnections: boolean;
-  sizeRange: [number, number];
-}
-
 export interface PhysicsSettings {
   attractionStrength: number;
   boundsSize: number;
@@ -233,6 +261,7 @@ export interface Settings {
   clientDebug: ClientDebugSettings;
   default: DefaultSettings;
   edges: EdgeSettings;
+  hologram: HologramSettings;
   labels: LabelSettings;
   network: NetworkSettings;
   nodes: NodeSettings;
