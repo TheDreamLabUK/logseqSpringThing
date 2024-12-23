@@ -82,6 +82,11 @@ async fn main() -> std::io::Result<()> {
         github_pr_service,
     ));
 
+    // Use PORT env var with fallback to 3001 as specified in docs
+    let port = env::var("PORT").unwrap_or_else(|_| "3001".to_string());
+    let bind_addr = format!("0.0.0.0:{}", port);
+    info!("Binding to {}", bind_addr);
+
     // Configure app with services
     HttpServer::new(move || {
         App::new()
@@ -105,7 +110,7 @@ async fn main() -> std::io::Result<()> {
             )
             .service(Files::new("/", "static").index_file("index.html"))
     })
-    .bind("0.0.0.0:8080")?
+    .bind(bind_addr)?
     .run()
     .await
 }

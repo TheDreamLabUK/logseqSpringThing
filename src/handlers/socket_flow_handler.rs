@@ -1,58 +1,57 @@
 use std::sync::Arc;
+use std::time::Instant;
 use actix::prelude::*;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use tokio::sync::RwLock;
-use log::{info, warn, debug};
+use log::{info, warn, debug, error};
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
-use crate::utils::socket_flow_messages::{PingMessage, PongMessage};
+use crate::utils::socket_flow_messages::{Message, BinaryNodeData};
+use crate::utils::socket_flow_constants::{
+    HEARTBEAT_INTERVAL,
+    CLIENT_TIMEOUT,
+    MAX_CLIENT_TIMEOUT,
+    POSITION_UPDATE_RATE
+};
 use crate::config::Settings;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebSocketSettings {
-    pub heartbeat_interval: u64,
-    pub heartbeat_timeout: u64,
-    pub reconnect_attempts: u32,
-    pub reconnect_delay: u64,
     pub update_rate: u32,
 }
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     settings: Arc<RwLock<Settings>>,
-    last_ping: Option<u64>,
+    last_heartbeat: Instant,
+    connection_alive: bool,
 }
 
 impl SocketFlowServer {
-    const POSITION_UPDATE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(16);
-
     pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<Settings>>) -> Self {
         Self {
             app_state,
             settings,
-            last_ping: None,
+            last_heartbeat: Instant::now(),
+            connection_alive: true,
         }
     }
 
-    fn handle_ping(&mut self, msg: PingMessage) -> PongMessage {
-        self.last_ping = Some(msg.timestamp);
-        PongMessage {
-            type_: "pong".to_string(),
-            timestamp: msg.timestamp,
-        }
-    }
-
-    pub async fn get_settings(&self) -> WebSocketSettings {
-        let settings = self.settings.read().await;
-        WebSocketSettings {
-            heartbeat_interval: settings.websocket.heartbeat_interval,
-            heartbeat_timeout: settings.websocket.heartbeat_timeout,
-            reconnect_attempts: settings.websocket.reconnect_attempts,
-            reconnect_delay: settings.websocket.reconnect_delay,
-            update_rate: settings.websocket.update_rate,
-        }
+    fn heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
+        ctx.run_interval(std::time::Duration::from_secs(HEARTBEAT_INTERVAL), |act, ctx| {
+            if Instant::now().duration_since(act.last_heartbeat) > std::time::Duration::from_secs(CLIENT_TIMEOUT) {
+                warn!("[WebSocket] Client heartbeat timeout");
+                if Instant::now().duration_since(act.last_heartbeat) > std::time::Duration::from_secs(MAX_CLIENT_TIMEOUT) {
+                    error!("[WebSocket] Client exceeded maximum timeout, closing connection");
+                    act.connection_alive = false;
+                    ctx.stop();
+                    return;
+                }
+            }
+            ctx.ping(b"");
+        });
     }
 }
 
@@ -62,10 +61,21 @@ impl Actor for SocketFlowServer {
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("[WebSocket] Client connected");
         
+        // Start heartbeat
+        self.heartbeat(ctx);
+        
         // Clone Arc references for the interval closure
         let app_state = self.app_state.clone();
         
-        ctx.run_interval(Self::POSITION_UPDATE_INTERVAL, move |_actor, ctx| {
+        // Calculate update interval based on rate
+        let update_interval = std::time::Duration::from_millis((1000.0 / POSITION_UPDATE_RATE as f64) as u64);
+        
+        ctx.run_interval(update_interval, move |actor, ctx| {
+            if !actor.connection_alive {
+                ctx.stop();
+                return;
+            }
+
             // Get current node positions and velocities
             let app_state_clone = app_state.clone();
             
@@ -92,7 +102,7 @@ impl Actor for SocketFlowServer {
             };
             
             // Convert the future to an actix future and handle it
-            let fut = fut.into_actor(_actor);
+            let fut = fut.into_actor(actor);
             ctx.spawn(fut.map(|binary_data, _actor, ctx| {
                 ctx.binary(binary_data);
             }));
@@ -106,24 +116,31 @@ impl Actor for SocketFlowServer {
 
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        if !self.connection_alive {
+            ctx.stop();
+            return;
+        }
+
         match msg {
             Ok(ws::Message::Ping(msg)) => {
+                self.last_heartbeat = Instant::now();
                 ctx.pong(&msg);
             }
-            Ok(ws::Message::Text(text)) => {
-                if let Ok(ping_msg) = serde_json::from_str::<PingMessage>(&text) {
-                    let pong = self.handle_ping(ping_msg);
-                    if let Ok(response) = serde_json::to_string(&pong) {
-                        ctx.text(response);
-                    }
-                }
+            Ok(ws::Message::Pong(_)) => {
+                self.last_heartbeat = Instant::now();
             }
             Ok(ws::Message::Binary(_)) => {
-                warn!("[WebSocket] Unexpected binary message");
+                warn!("[WebSocket] Unexpected binary message from client");
             }
             Ok(ws::Message::Close(reason)) => {
                 info!("[WebSocket] Client disconnected: {:?}", reason);
+                self.connection_alive = false;
                 ctx.close(reason);
+                ctx.stop();
+            }
+            Err(e) => {
+                error!("[WebSocket] Protocol error: {}", e);
+                self.connection_alive = false;
                 ctx.stop();
             }
             _ => {}
@@ -136,10 +153,6 @@ pub async fn get_websocket_settings(
 ) -> Result<HttpResponse, Error> {
     let settings = settings.read().await;
     let ws_settings = WebSocketSettings {
-        heartbeat_interval: settings.websocket.heartbeat_interval,
-        heartbeat_timeout: settings.websocket.heartbeat_timeout,
-        reconnect_attempts: settings.websocket.reconnect_attempts,
-        reconnect_delay: settings.websocket.reconnect_delay,
         update_rate: settings.websocket.update_rate,
     };
     
@@ -151,14 +164,8 @@ pub async fn update_websocket_settings(
     new_settings: web::Json<WebSocketSettings>
 ) -> Result<HttpResponse, Error> {
     let mut settings = settings.write().await;
-    
-    settings.websocket.heartbeat_interval = new_settings.heartbeat_interval;
-    settings.websocket.heartbeat_timeout = new_settings.heartbeat_timeout;
-    settings.websocket.reconnect_attempts = new_settings.reconnect_attempts;
-    settings.websocket.reconnect_delay = new_settings.reconnect_delay;
     settings.websocket.update_rate = new_settings.update_rate;
-    
-    debug!("Updated WebSocket settings: {:?}", new_settings);
+    debug!("Updated WebSocket update rate to: {}", new_settings.update_rate);
     Ok(HttpResponse::Ok().json(new_settings.0))
 }
 

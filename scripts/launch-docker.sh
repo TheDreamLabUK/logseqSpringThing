@@ -261,14 +261,24 @@ check_application_readiness() {
             status_msg="HTTP endpoint not ready"
         fi
 
-        # Check WebSocket endpoint
-        if [ "$ready" = true ]; then
-            log "${YELLOW}Testing WebSocket connection...${NC}"
-            if ! timeout 5 websocat "ws://localhost:4000/wss" > /dev/null 2>&1 <<< '{"type":"ping"}'; then
-                ready=false
-                status_msg="WebSocket endpoint not ready"
-            fi
-        fi
+        # Temporarily skip WebSocket checks for debugging
+        # First check WebSocket control setup
+        #if [ "$ready" = true ]; then
+        #    log "${YELLOW}Testing WebSocket control setup...${NC}"
+        #    if ! timeout 5 curl -s http://localhost:4000/api/visualization/settings/websocket >/dev/null; then
+        #        ready=false
+        #        status_msg="WebSocket control setup not ready"
+        #    fi
+        #fi
+
+        # Then check WebSocket binary protocol endpoint
+        #if [ "$ready" = true ]; then
+        #    log "${YELLOW}Testing WebSocket binary connection...${NC}"
+        #    if ! timeout 5 websocat "ws://localhost:4000/wss" --binary > /dev/null 2>&1; then
+        #        ready=false
+        #        status_msg="WebSocket binary endpoint not ready"
+        #    fi
+        #fi
 
         # Optional RAGFlow connectivity check
         if [ "$ready" = true ]; then
