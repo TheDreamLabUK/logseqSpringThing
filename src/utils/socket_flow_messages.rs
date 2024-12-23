@@ -148,6 +148,3 @@ pub enum Message {
     #[serde(rename = "pong")]
     Pong { timestamp: u64 },
 }
-
-// Forward declarations to avoid circular dependencies
-use crate::models::graph::GraphData;

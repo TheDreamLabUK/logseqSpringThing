@@ -29,7 +29,7 @@ impl GraphService {
         // Start simulation loop
         let graph_data = graph_service.graph_data.clone();
         tokio::spawn(async move {
-            let mut params = SimulationParams {
+            let params = SimulationParams {
                 iterations: 1,  // One iteration per frame
                 spring_length: 100.0,  // Default spring length
                 spring_strength: 0.1,  // Gentler forces for continuous updates

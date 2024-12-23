@@ -14,9 +14,17 @@ REST API (actix-web): The server exposes a REST API for:
 Graph Data: /api/graph/data (full graph) and /api/graph/data/paginated (paginated graph).
 
 Settings: 
-- GET /api/visualization/settings/{category} (get all settings for a category)
-- GET /api/visualization/settings/{category}/{setting} (get individual setting)
-- PUT /api/visualization/settings/{category}/{setting} (update individual setting)
+- GET /api/settings/{category} (get all settings for a category)
+- PUT /api/settings/{category} (update all settings for a category)
+- PUT /api/settings/websocket/update-rate (update WebSocket frame rate)
+
+Settings Management:
+- Centralized settings management through SettingsManager
+- Real-time updates with async RwLock for thread safety
+- Automatic persistence to settings.toml
+- Category-based organization (animations, ar, audio, etc.)
+- WebSocket settings controlled via dedicated endpoints
+- Settings changes trigger immediate effect across all components
 
 Other API endpoints: /api/files/fetch, /api/chat/*, /api/perplexity.
 

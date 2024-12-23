@@ -1,5 +1,5 @@
 use crate::config::Settings;
-use actix_web::{web, HttpResponse};
+use actix_web::{get, put, web, HttpResponse};
 use log::{error, info, debug};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::RwLock;
 use tokio::sync::RwLock;
 use crate::utils::case_conversion::to_snake_case;
 
@@ -198,88 +197,80 @@ fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Va
     Ok(value)
 }
 
-// GET /api/settings/{category}
-#[get("/api/settings/{category}")]
+// GET /api/visualization/settings/{category}
+#[get("/settings/{category}")]
 pub async fn get_category_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
+    path: web::Path<String>
 ) -> HttpResponse {
     let category = path.into_inner();
-    let settings = settings.read().unwrap();
-    
-    match get_category_settings_value(&settings, &category) {
-        Ok(value) => HttpResponse::Ok().json(CategorySettingsResponse {
-            category: category.clone(),
-            settings: value.as_object().unwrap_or(&serde_json::Map::new()).clone(),
-            success: true,
-            error: None,
-        }),
-        Err(e) => HttpResponse::BadRequest().json(CategorySettingsResponse {
-            category,
-            settings: HashMap::new(),
-            success: false,
-            error: Some(e),
-        }),
-    }
-}
+    debug!("Getting settings for category: {}", category);
 
-// PUT /api/settings/{category}
-#[put("/api/settings/{category}")]
-pub async fn update_category_settings(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
-    update: web::Json<CategorySettingsUpdate>,
-) -> HttpResponse {
-    let category = path.into_inner();
-    let mut settings = settings.write().unwrap();
-    
-    // Convert category to snake_case for internal use
-    let category_snake = to_snake_case(&category);
-    
-    // Update all settings in the category
-    let mut success = true;
-    let mut error_msg = None;
-    
-    for (key, value) in update.settings.iter() {
-        if let Err(e) = update_setting_value(&mut settings, &category_snake, key, value) {
-            success = false;
-            error_msg = Some(format!("Failed to update setting {}: {}", key, e));
-            break;
+    let settings_guard = settings.read().await;
+    match get_category_settings_value(&settings_guard, &category) {
+        Ok(value) => {
+            let settings_map: HashMap<String, Value> = value.as_object()
+                .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                .unwrap_or_default();
+            
+            HttpResponse::Ok().json(CategorySettingsResponse {
+                category,
+                settings: settings_map,
+                success: true,
+                error: None,
+            })
         }
-    }
-    
-    if success {
-        if let Err(e) = save_settings_to_file(&settings) {
-            HttpResponse::InternalServerError().json(CategorySettingsResponse {
+        Err(e) => {
+            error!("Failed to get category settings: {}", e);
+            HttpResponse::BadRequest().json(CategorySettingsResponse {
                 category,
                 settings: HashMap::new(),
                 success: false,
-                error: Some(format!("Failed to save settings: {}", e)),
+                error: Some(e),
             })
-        } else {
-            match get_category_settings_value(&settings, &category_snake) {
-                Ok(value) => HttpResponse::Ok().json(CategorySettingsResponse {
-                    category,
-                    settings: value.as_object().unwrap_or(&serde_json::Map::new()).clone(),
-                    success: true,
-                    error: None,
-                }),
-                Err(e) => HttpResponse::InternalServerError().json(CategorySettingsResponse {
-                    category,
-                    settings: HashMap::new(),
-                    success: false,
-                    error: Some(e),
-                }),
-            }
         }
-    } else {
-        HttpResponse::BadRequest().json(CategorySettingsResponse {
-            category,
-            settings: HashMap::new(),
-            success: false,
-            error: error_msg,
-        })
     }
+}
+
+// PUT /api/visualization/settings/{category}
+#[put("/settings/{category}")]
+pub async fn update_category_settings(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
+    update: web::Json<CategorySettingsUpdate>
+) -> HttpResponse {
+    let category = path.into_inner();
+    debug!("Updating settings for category: {}", category);
+
+    let mut settings_guard = settings.write().await;
+    let settings_map: HashMap<String, Value> = update.settings.clone();
+
+    let mut success = true;
+    let mut error_msg = None;
+
+    for (setting, value) in settings_map {
+        if let Err(e) = update_setting_value(&mut settings_guard, &category, &setting, &value) {
+            error!("Failed to update setting {}.{}: {}", category, setting, e);
+            success = false;
+            error_msg = Some(e);
+            break;
+        }
+    }
+
+    if success {
+        if let Err(e) = save_settings_to_file(&settings_guard) {
+            error!("Failed to save settings to file: {}", e);
+            success = false;
+            error_msg = Some(format!("Failed to save settings: {}", e));
+        }
+    }
+
+    HttpResponse::Ok().json(CategorySettingsResponse {
+        category,
+        settings: update.settings.clone(),
+        success,
+        error: error_msg,
+    })
 }
 
 // GET /api/visualization/settings/{category}/{setting}
@@ -374,9 +365,15 @@ pub async fn update_setting(
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(get_category_settings)
        .service(update_category_settings)
-       .route("/api/visualization/settings/{category}/{setting}", web::get().to(get_setting))
-       .route("/api/visualization/settings/{category}/{setting}", web::put().to(update_setting))
-       .route("/api/settings/websocket/update-rate", web::put().to(update_websocket_rate));
+       .service(
+           web::resource("/settings/{category}/{setting}")
+               .route(web::get().to(get_setting))
+               .route(web::put().to(update_setting))
+       )
+       .service(
+           web::resource("/settings/websocket/update-rate")
+               .route(web::put().to(update_websocket_rate))
+       );
 }
 
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
@@ -444,9 +441,9 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
 // PUT /api/settings/websocket/update-rate
 pub async fn update_websocket_rate(
     rate: web::Json<u32>,
-    settings: web::Data<RwLock<Settings>>,
+    settings: web::Data<Arc<RwLock<Settings>>>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let mut settings = settings.write().unwrap();
+    let mut settings = settings.write().await;
     settings.websocket.update_rate = rate.into_inner();
     if let Err(e) = save_settings_to_file(&*settings) {
         error!("Failed to save settings to file: {}", e);
