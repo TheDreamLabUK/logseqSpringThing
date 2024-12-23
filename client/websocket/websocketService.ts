@@ -97,6 +97,24 @@ export class WebSocketService {
         return this.isConnected && this.ws?.readyState === WebSocket.OPEN;
     }
 
+    public sendNodeUpdates(updates: Array<{ id: string; position: { x: number; y: number; z: number } }>): void {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            logger.warn('WebSocket not connected, cannot send node updates');
+            return;
+        }
+
+        // Convert updates to Float32Array for efficient binary transmission
+        const float32Array = new Float32Array(updates.length * 3); // 3 floats per position
+        updates.forEach((update, index) => {
+            const baseIndex = index * 3;
+            float32Array[baseIndex] = update.position.x;
+            float32Array[baseIndex + 1] = update.position.y;
+            float32Array[baseIndex + 2] = update.position.z;
+        });
+
+        this.ws.send(float32Array.buffer);
+    }
+
     public dispose(): void {
         if (this.reconnectTimeout !== null) {
             window.clearTimeout(this.reconnectTimeout);

@@ -101,14 +101,14 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api")
                     .service(web::scope("/files").configure(file_handler::config))
                     .service(web::scope("/graph").configure(graph_handler::config))
-                    .service(web::scope("/visualization").configure(settings::config))
+                    .service(web::scope("/visualization/settings").configure(settings::config))
             )
             .service(
                 web::resource("/wss")
                     .app_data(web::PayloadConfig::new(1 << 25))  // 32MB max payload
                     .route(web::get().to(socket_flow_handler))
             )
-            .service(Files::new("/", "static").index_file("index.html"))
+            .service(Files::new("/", "data/public/dist").index_file("index.html"))
     })
     .bind(bind_addr)?
     .run()

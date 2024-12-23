@@ -50,11 +50,35 @@ class Application {
                 this.webSocket = WebSocketService.getInstance();
 
                 // Setup binary position update handler
-                this.webSocket.onBinaryMessage((positions) => {
-                    // Update graph data with positions
-                    graphDataManager.updatePositions(positions);
-                    // Update visual representation
-                    this.nodeManager.updatePositions(positions);
+                this.webSocket.onBinaryMessage((nodes) => {
+                    // Convert NodeData[] to ArrayBuffer for graph data manager
+                    const float32Array = new Float32Array(nodes.length * 6); // 6 floats per node (position + velocity)
+                    nodes.forEach((node, i) => {
+                        const baseIndex = i * 6;
+                        // Position
+                        float32Array[baseIndex] = node.position[0];
+                        float32Array[baseIndex + 1] = node.position[1];
+                        float32Array[baseIndex + 2] = node.position[2];
+                        // Velocity
+                        float32Array[baseIndex + 3] = node.velocity[0];
+                        float32Array[baseIndex + 4] = node.velocity[1];
+                        float32Array[baseIndex + 5] = node.velocity[2];
+                    });
+
+                    // Update graph data with positions as ArrayBuffer
+                    graphDataManager.updatePositions(float32Array.buffer);
+                    
+                    // Create Float32Array for node manager with just positions
+                    const positionsArray = new Float32Array(nodes.length * 3); // 3 floats per position
+                    nodes.forEach((node, i) => {
+                        const baseIndex = i * 3;
+                        positionsArray[baseIndex] = node.position[0];
+                        positionsArray[baseIndex + 1] = node.position[1];
+                        positionsArray[baseIndex + 2] = node.position[2];
+                    });
+                    
+                    // Update visual representation with Float32Array
+                    this.nodeManager.updatePositions(positionsArray);
                 });
 
             } catch (error) {

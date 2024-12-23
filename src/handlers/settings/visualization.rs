@@ -7,12 +7,11 @@ use std::collections::HashMap;
 use crate::config::Settings;
 use super::common::{SettingResponse, CategorySettingsResponse, CategorySettingsUpdate, get_setting_value, update_setting_value, get_category_settings_value};
 
-#[get("/{category}")]
-async fn get_visualization_category(
+#[get("")]
+async fn get_visualization_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
 ) -> HttpResponse {
-    let category = path.into_inner();
+    let category = "visualization".to_string();
     let settings = settings.read().await;
     
     match get_category_settings_value(&settings, &category) {
@@ -37,13 +36,12 @@ async fn get_visualization_category(
     }
 }
 
-#[put("/{category}")]
-async fn update_visualization_category(
+#[put("")]
+async fn update_visualization_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
     update: web::Json<CategorySettingsUpdate>,
 ) -> HttpResponse {
-    let category = path.into_inner();
+    let category = "visualization".to_string();
     let mut settings = settings.write().await;
     let mut success = true;
     let mut error_msg = None;
@@ -64,12 +62,13 @@ async fn update_visualization_category(
     })
 }
 
-#[get("/{category}/{setting}")]
+#[get("/{setting}")]
 async fn get_visualization_setting(
     settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<(String, String)>,
+    path: web::Path<String>,
 ) -> HttpResponse {
-    let (category, setting) = path.into_inner();
+    let setting = path.into_inner();
+    let category = "visualization".to_string();
     let settings = settings.read().await;
     
     match get_setting_value(&settings, &category, &setting) {
@@ -90,13 +89,14 @@ async fn get_visualization_setting(
     }
 }
 
-#[put("/{category}/{setting}")]
+#[put("/{setting}")]
 async fn update_visualization_setting(
     settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<(String, String)>,
+    path: web::Path<String>,
     value: web::Json<Value>,
 ) -> HttpResponse {
-    let (category, setting) = path.into_inner();
+    let setting = path.into_inner();
+    let category = "visualization".to_string();
     let mut settings = settings.write().await;
     
     match update_setting_value(&mut settings, &category, &setting, &value) {
@@ -118,8 +118,8 @@ async fn update_visualization_setting(
 }
 
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(get_visualization_category)
-       .service(update_visualization_category)
+    cfg.service(get_visualization_settings)
+       .service(update_visualization_settings)
        .service(get_visualization_setting)
        .service(update_visualization_setting);
 }
