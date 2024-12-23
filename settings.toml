@@ -160,7 +160,7 @@ log_full_json = false
 
 [websocket]
 binary_chunk_size = 65536
-compression_enabled = fasle
+compression_enabled = false
 compression_threshold = 1024
 heartbeat_interval = 15000
 heartbeat_timeout = 60000
