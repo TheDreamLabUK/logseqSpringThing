@@ -1,5 +1,5 @@
 import { Color, DoubleSide, Material, MeshBasicMaterial, MeshPhongMaterial } from 'three';
-import { Settings } from '../../core/types';
+import { Settings } from '../../types/settings';
 import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
 
 export class MaterialFactory {
@@ -22,9 +22,9 @@ export class MaterialFactory {
         }
 
         const material = new MeshBasicMaterial({
-            color: settings.nodes.baseColor,
+            color: settings.visualization.nodes.baseColor,
             transparent: true,
-            opacity: settings.nodes.opacity
+            opacity: settings.visualization.nodes.opacity
         });
 
         this.materialCache.set(cacheKey, material);
@@ -74,8 +74,8 @@ export class MaterialFactory {
 
         const material = new HologramShaderMaterial({
             uniforms: {
-                color: { value: new Color(settings.hologram.ringColor) },
-                opacity: { value: settings.hologram.ringOpacity },
+                color: { value: new Color(settings.visualization.hologram.ringColor) },
+                opacity: { value: settings.visualization.hologram.ringOpacity },
                 time: { value: 0 },
                 pulseSpeed: { value: 1.0 },
                 pulseIntensity: { value: 0.2 }
@@ -93,13 +93,13 @@ export class MaterialFactory {
         switch (type) {
             case 'node-basic':
             case 'node-phong':
-                (material as MeshBasicMaterial | MeshPhongMaterial).color.set(settings.nodes.baseColor);
-                material.opacity = settings.nodes.opacity;
+                (material as MeshBasicMaterial | MeshPhongMaterial).color.set(settings.visualization.nodes.baseColor);
+                material.opacity = settings.visualization.nodes.opacity;
                 break;
             case 'hologram':
                 const hologramMaterial = material as HologramShaderMaterial;
-                hologramMaterial.uniforms.color.value = new Color(settings.hologram.ringColor);
-                hologramMaterial.uniforms.opacity.value = settings.hologram.ringOpacity;
+                hologramMaterial.uniforms.color.value = new Color(settings.visualization.hologram.ringColor);
+                hologramMaterial.uniforms.opacity.value = settings.visualization.hologram.ringOpacity;
                 break;
         }
     }

@@ -144,16 +144,16 @@ export class ControlPanel {
         this.container.appendChild(group);
     }
 
-    private createSettingsElements(container: HTMLElement, path: string, settings: Record<string, any>): void {
+    private createSettingsElements(container: HTMLElement, path: SettingsPath, settings: Record<string, any>): void {
         Object.entries(settings).forEach(([key, value]) => {
             if (!isSettingsObject(value)) {
-                const settingElement = this.createSettingElement(`${path}.${key}`, value);
+                const settingElement = this.createSettingElement(`${path}.${key}` as SettingsPath, value);
                 container.appendChild(settingElement);
             }
         });
     }
 
-    private createSettingElement(path: string, value: SettingValue): HTMLElement {
+    private createSettingElement(path: SettingsPath, value: SettingValue): HTMLElement {
         const container = document.createElement('div');
         container.className = 'setting-item';
 
@@ -167,7 +167,7 @@ export class ControlPanel {
         return container;
     }
 
-    private createInputElement(path: string, value: SettingValue): HTMLElement {
+    private createInputElement(path: SettingsPath, value: SettingValue): HTMLElement {
         const input = document.createElement('input');
         const inputType = getSettingInputType(value);
         input.type = inputType;
@@ -189,7 +189,7 @@ export class ControlPanel {
         return input;
     }
 
-    private async handleSettingChange(path: string, event: Event): Promise<void> {
+    private async handleSettingChange(path: SettingsPath, event: Event): Promise<void> {
         const target = event.target as HTMLInputElement;
         let value: SettingValue;
 
@@ -213,7 +213,7 @@ export class ControlPanel {
         }
     }
 
-    private revertSettingValue(path: string, input: HTMLInputElement): void {
+    private revertSettingValue(path: SettingsPath, input: HTMLInputElement): void {
         const value = settingsManager.get(path);
         if (input.type === 'checkbox') {
             input.checked = value as boolean;
@@ -232,7 +232,7 @@ export class ControlPanel {
         });
     }
 
-    private updateSettingElement(path: string, value: SettingValue): void {
+    private updateSettingElement(path: SettingsPath, value: SettingValue): void {
         const input = document.getElementById(path) as HTMLInputElement;
         if (input) {
             if (input.type === 'checkbox') {

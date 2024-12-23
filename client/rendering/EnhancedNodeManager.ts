@@ -9,7 +9,8 @@ import {
     Quaternion,
     WebGLRenderer
 } from 'three';
-import { Node, Settings } from '../core/types';
+import { Node } from '../core/types';
+import { Settings } from '../types/settings';
 import { MetadataVisualizer } from './MetadataVisualizer';
 import { HologramManager } from './HologramManager';
 import { XRHandWithHaptics } from '../types/xr';
@@ -45,7 +46,7 @@ export class EnhancedNodeManager {
         this.hologramManager = new HologramManager(scene, renderer, settings);
         scene.add(this.hologramManager.getGroup());
 
-        const geometry = this.geometryFactory.getNodeGeometry('high');
+        const geometry = this.geometryFactory.getNodeGeometry(this.settings.xr.quality);
         const material = this.materialFactory.getNodeMaterial(settings);
 
         this.nodeInstances = new InstancedMesh(geometry, material, 1000);
@@ -76,7 +77,7 @@ export class EnhancedNodeManager {
 
             const matrix = new Matrix4();
 
-            if (this.settings.nodes.enableMetadataShape) {
+            if (this.settings.visualization.nodes.enableMetadataShape) {
                 const nodeMesh = this.metadataVisualizer.createNodeMesh(metadata);
                 nodeMesh.position.set(metadata.position.x, metadata.position.y, metadata.position.z);
                 this.scene.add(nodeMesh);
@@ -105,14 +106,14 @@ export class EnhancedNodeManager {
     }
 
     private calculateNodeScale(importance: number): number {
-        const [min, max] = this.settings.nodes.sizeRange;
+        const [min, max] = this.settings.visualization.nodes.sizeRange;
         return min + (max - min) * importance;
     }
 
     update(deltaTime: number) {
         this.hologramManager.update(deltaTime);
 
-        if (this.settings.animations.enableNodeAnimations) {
+        if (this.settings.visualization.animations.enableNodeAnimations) {
             this.nodeInstances.instanceMatrix.needsUpdate = true;
             this.scene.traverse(child => {
                 if (child instanceof Mesh) {

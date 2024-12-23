@@ -1,4 +1,4 @@
-import { Settings } from '../core/types';
+import { Settings } from '../types/settings';
 import { createLogger } from '../core/logger';
 
 const logger = createLogger('SettingsObserver');

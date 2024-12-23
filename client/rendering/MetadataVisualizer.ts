@@ -12,7 +12,7 @@ import {
 import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
 import { Metadata } from '../types/metadata';
-import { Settings } from '../core/types';
+import { Settings } from '../types/settings';
 import { defaultSettings } from '../state/defaultSettings';
 
 export class MetadataVisualizer {
@@ -20,7 +20,7 @@ export class MetadataVisualizer {
     private readonly scene: Scene;
     private readonly geometryFactory: GeometryFactory;
     private readonly materialFactory: MaterialFactory;
-    private readonly settings: Settings;
+    private settings: Settings;
     private nodes: Map<string, Mesh> = new Map();
 
     constructor(camera: PerspectiveCamera, scene: Scene, settings: Settings = defaultSettings) {
@@ -32,7 +32,7 @@ export class MetadataVisualizer {
     }
 
     public createNodeMesh(metadata: Metadata): Mesh {
-        const geometry = this.geometryFactory.getNodeGeometry(this.settings.hologram.desktopQuality);
+        const geometry = this.geometryFactory.getNodeGeometry(this.settings.xr.quality);
         const material = this.materialFactory.getMetadataMaterial();
         
         const mesh = new Mesh(geometry, material);

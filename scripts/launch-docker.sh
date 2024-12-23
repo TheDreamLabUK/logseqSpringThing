@@ -160,8 +160,9 @@ verify_client_structure() {
         "$PROJECT_ROOT/client/state/defaultSettings.ts"
         "$PROJECT_ROOT/client/xr/xrSessionManager.ts"
         "$PROJECT_ROOT/client/xr/xrInteraction.ts"
-        "$PROJECT_ROOT/client/xr/xrTypes.ts"
         "$PROJECT_ROOT/client/platform/platformManager.ts"
+        "$PROJECT_ROOT/client/types/gestures.ts"
+        "$PROJECT_ROOT/client/types/xr.ts"
         "$PROJECT_ROOT/client/tsconfig.json"
     )
     

@@ -3,7 +3,6 @@ import { Node } from '../core/types';
 import { createLogger } from '../core/logger';
 import { settingsManager } from '../state/settings';
 import type { Settings } from '../types/settings';
-import type { NodeSettings, PhysicsSettings } from '../core/types';
 import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
 import { SettingsObserver } from '../state/SettingsObserver';
@@ -34,14 +33,14 @@ export class NodeRenderer {
 
         this.material = this.materialFactory.getPhongNodeMaterial();
         this.mesh = new THREE.Mesh(
-            this.geometryFactory.getNodeGeometry('high'),
+            this.geometryFactory.getNodeGeometry(this.currentSettings.xr.quality),
             this.material
         );
 
         this.setupSettingsSubscriptions();
     }
 
-    public handleSettingChange(setting: keyof NodeSettings, value: any): void {
+    public handleSettingChange(setting: keyof Settings['visualization']['nodes'], value: any): void {
         try {
             switch (setting) {
                 case 'baseColor':
@@ -60,7 +59,7 @@ export class NodeRenderer {
         }
     }
 
-    public handlePhysicsSettingChange(setting: keyof PhysicsSettings, value: any): void {
+    public handlePhysicsSettingChange(setting: keyof Settings['visualization']['physics'], value: any): void {
         // Dummy implementation for now
         logger.debug(`Physics setting change: ${String(setting)} = ${value}`);
     }
@@ -68,11 +67,17 @@ export class NodeRenderer {
     private setupSettingsSubscriptions(): void {
         this.settingsObserver.subscribe('NodeRenderer', (settings) => {
             this.currentSettings = settings;
-            Object.keys(settings.nodes).forEach(setting => {
-                this.handleSettingChange(setting as keyof NodeSettings, settings.nodes[setting as keyof NodeSettings]);
+            Object.keys(settings.visualization.nodes).forEach(setting => {
+                this.handleSettingChange(
+                    setting as keyof Settings['visualization']['nodes'],
+                    settings.visualization.nodes[setting as keyof Settings['visualization']['nodes']]
+                );
             });
-            Object.keys(settings.physics).forEach(setting => {
-                this.handlePhysicsSettingChange(setting as keyof PhysicsSettings, settings.physics[setting as keyof PhysicsSettings]);
+            Object.keys(settings.visualization.physics).forEach(setting => {
+                this.handlePhysicsSettingChange(
+                    setting as keyof Settings['visualization']['physics'],
+                    settings.visualization.physics[setting as keyof Settings['visualization']['physics']]
+                );
             });
         });
     }
@@ -98,13 +103,13 @@ export class NodeManager {
         this.nodeRenderer = new NodeRenderer();
 
         this.nodeInstances = new THREE.InstancedMesh(
-            this.geometryFactory.getNodeGeometry('high'),
+            this.geometryFactory.getNodeGeometry(this.currentSettings.xr.quality),
             this.nodeRenderer.material,
             10000
         );
 
         this.edgeInstances = new THREE.InstancedMesh(
-            this.geometryFactory.getHologramGeometry('ring', 'medium'),
+            this.geometryFactory.getHologramGeometry('ring', this.currentSettings.xr.quality),
             this.materialFactory.getMetadataMaterial(),
             30000
         );
@@ -142,7 +147,7 @@ export class NodeManager {
             );
             
             // Set initial scale based on settings
-            const baseSize = this.currentSettings.nodes.baseSize || 1;
+            const baseSize = this.currentSettings.visualization.nodes.baseSize || 1;
             scale.set(baseSize, baseSize, baseSize);
             
             // Update instance matrix
@@ -153,7 +158,7 @@ export class NodeManager {
         this.nodeInstances.instanceMatrix.needsUpdate = true;
         
         // Force a render update
-        if (this.currentSettings.animations.enableNodeAnimations) {
+        if (this.currentSettings.visualization.animations.enableNodeAnimations) {
             requestAnimationFrame(() => {
                 this.nodeInstances.instanceMatrix.needsUpdate = true;
             });

@@ -5,7 +5,7 @@ import {
     Vector3,
     WebGLRenderer
 } from 'three';
-import { Settings } from '../core/types';
+import { Settings } from '../types/settings';
 import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
 import { HologramShaderMaterial } from './materials/HologramShaderMaterial';
@@ -37,52 +37,52 @@ export class HologramManager {
             }
         }
 
-        const quality = this.isXRMode ? this.settings.hologram.xrQuality : this.settings.hologram.desktopQuality;
+        const quality = this.isXRMode ? 'high' : this.settings.xr.quality;
         const material = this.materialFactory.getHologramMaterial(this.settings);
 
-        for (let i = 0; i < this.settings.hologram.ringCount; i++) {
+        for (let i = 0; i < this.settings.visualization.hologram.ringCount; i++) {
             const ring = new Mesh(
                 this.geometryFactory.getHologramGeometry('ring', quality),
                 material.clone()
             );
-            const scale = this.settings.hologram.ringSizes[i] || 20;
+            const scale = this.settings.visualization.hologram.ringSizes[i] || 20;
             ring.scale.set(scale, scale, scale);
             ring.rotateX(Math.PI / 2 * i);
             ring.rotateY(Math.PI / 4 * i);
-            ring.userData.rotationSpeed = this.settings.hologram.ringRotationSpeed * (i + 1);
+            ring.userData.rotationSpeed = this.settings.visualization.hologram.ringRotationSpeed * (i + 1);
             this.group.add(ring);
         }
 
-        if (this.settings.hologram.enableBuckminster) {
+        if (this.settings.visualization.hologram.enableBuckminster) {
             const mesh = new Mesh(
                 this.geometryFactory.getHologramGeometry('buckminster', quality),
                 material.clone()
             );
-            const scale = this.settings.hologram.buckminsterScale;
+            const scale = this.settings.visualization.hologram.buckminsterScale;
             mesh.scale.set(scale, scale, scale);
-            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.hologram.buckminsterOpacity;
+            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.buckminsterOpacity;
             this.group.add(mesh);
         }
 
-        if (this.settings.hologram.enableGeodesic) {
+        if (this.settings.visualization.hologram.enableGeodesic) {
             const mesh = new Mesh(
                 this.geometryFactory.getHologramGeometry('geodesic', quality),
                 material.clone()
             );
-            const scale = this.settings.hologram.geodesicScale;
+            const scale = this.settings.visualization.hologram.geodesicScale;
             mesh.scale.set(scale, scale, scale);
-            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.hologram.geodesicOpacity;
+            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.geodesicOpacity;
             this.group.add(mesh);
         }
 
-        if (this.settings.hologram.enableTriangleSphere) {
+        if (this.settings.visualization.hologram.enableTriangleSphere) {
             const mesh = new Mesh(
                 this.geometryFactory.getHologramGeometry('triangleSphere', quality),
                 material.clone()
             );
-            const scale = this.settings.hologram.triangleSphereScale;
+            const scale = this.settings.visualization.hologram.triangleSphereScale;
             mesh.scale.set(scale, scale, scale);
-            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.hologram.triangleSphereOpacity;
+            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.triangleSphereOpacity;
             this.group.add(mesh);
         }
     }
@@ -117,7 +117,7 @@ export class HologramManager {
     update(deltaTime: number) {
         this.group.traverse(child => {
             if (child instanceof Mesh) {
-                child.rotateY((child.userData.rotationSpeed || this.settings.hologram.globalRotationSpeed) * deltaTime);
+                child.rotateY((child.userData.rotationSpeed || this.settings.visualization.hologram.globalRotationSpeed) * deltaTime);
                 if (child.material instanceof HologramShaderMaterial) {
                     child.material.uniforms.time.value += deltaTime;
                 }
@@ -125,8 +125,8 @@ export class HologramManager {
         });
     }
 
-    updateSettings(newSettings: Partial<Settings>) {
-        Object.assign(this.settings, newSettings);
+    updateSettings(newSettings: Settings) {
+        this.settings = newSettings;
         this.materialFactory.updateMaterial('hologram', this.settings);
         this.createHolograms();
     }

@@ -3,7 +3,8 @@
  */
 
 import { platformManager } from './platform/platformManager';
-import { Settings, SettingCategory, SettingKey } from './types/settings';
+import { Settings } from './types/settings';
+import { SettingValue } from './types/settings/utils';
 import { settingsManager } from './state/settings';
 import { graphDataManager } from './state/graphData';
 import { WebSocketService } from './websocket/websocketService';
@@ -35,8 +36,8 @@ class Application {
             
             // Update logger debug state from settings
             const settings = settingsManager.getCurrentSettings();
-            setDebugEnabled(settings.clientDebug.enabled);
-            logger.info('Debug logging ' + (settings.clientDebug.enabled ? 'enabled' : 'disabled'));
+            setDebugEnabled(settings.system.debug.enabled);
+            logger.info('Debug logging ' + (settings.system.debug.enabled ? 'enabled' : 'disabled'));
 
             // Initialize scene first so we can render nodes when data arrives
             this.initializeScene();
@@ -46,13 +47,13 @@ class Application {
                 await graphDataManager.loadInitialGraphData();
                 
                 // Initialize WebSocket for real-time position updates
-                this.webSocket = new WebSocketService();
+                this.webSocket = WebSocketService.getInstance();
 
                 // Setup binary position update handler
-                this.webSocket.onBinaryMessage((positions, velocities) => {
-                    // Update graph data with both positions and velocities
+                this.webSocket.onBinaryMessage((positions) => {
+                    // Update graph data with positions
                     graphDataManager.updatePositions(positions);
-                    // Update visual representation with just positions
+                    // Update visual representation
                     this.nodeManager.updatePositions(positions);
                 });
 
@@ -148,27 +149,23 @@ class Application {
     }
 
     private setupSettingsInputListeners(): void {
-        // Node appearance settings
-        this.setupSettingInput<'nodes', 'baseSize'>('nodes', 'baseSize');
-        this.setupSettingInput<'nodes', 'baseColor'>('nodes', 'baseColor');
-        this.setupSettingInput<'nodes', 'opacity'>('nodes', 'opacity');
+        const visualizationSettings = {
+            nodes: ['baseSize', 'baseColor', 'opacity'],
+            edges: ['color', 'opacity', 'enableArrows'],
+            bloom: ['edgeBloomStrength'],
+            physics: ['enabled', 'springStrength']
+        } as const;
 
-        // Edge appearance settings
-        this.setupSettingInput<'edges', 'color'>('edges', 'color');
-        this.setupSettingInput<'edges', 'opacity'>('edges', 'opacity');
-        this.setupSettingInput<'edges', 'enableArrows'>('edges', 'enableArrows');
-
-        // Visual effects settings
-        this.setupSettingInput<'bloom', 'edgeBloomStrength'>('bloom', 'edgeBloomStrength');
-
-        // Physics settings
-        this.setupSettingInput<'physics', 'enabled'>('physics', 'enabled');
-        this.setupSettingInput<'physics', 'springStrength'>('physics', 'springStrength');
+        for (const [category, settings] of Object.entries(visualizationSettings)) {
+            for (const setting of settings) {
+                this.setupSettingInput(category, setting);
+            }
+        }
     }
 
-    private setupSettingInput<T extends SettingCategory, K extends SettingKey<T>>(
-        category: T,
-        setting: K
+    private setupSettingInput(
+        category: string,
+        setting: string
     ): void {
         const input = document.getElementById(`${String(category)}-${String(setting)}`) as HTMLInputElement;
         if (input) {
@@ -188,11 +185,9 @@ class Application {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
 
-                    await settingsManager.updateSetting(
-                        category,
-                        setting,
-                        this.parseSettingValue<T, K>(currentValue, category, setting)
-                    );
+                    const path = `visualization.${category}.${setting}` as const;
+                    const parsedValue = this.parseSettingValue(currentValue, category, setting);
+                    await settingsManager.updateSetting(path, parsedValue);
                 } catch (error) {
                     logger.error(`Failed to update setting ${String(category)}.${String(setting)}:`, error);
                     this.showError(`Failed to update ${String(category)} ${String(setting)}`);
@@ -201,32 +196,50 @@ class Application {
         }
     }
 
-    private parseSettingValue<T extends SettingCategory, K extends SettingKey<T>>(
+    private parseSettingValue(
         value: string,
-        category: T,
-        setting: K
-    ): Settings[T][K] {
+        category: string,
+        setting: string
+    ): any {
         const currentSettings = settingsManager.getCurrentSettings();
-        const currentValue = currentSettings[category][setting];
+        const categorySettings = currentSettings.visualization[category as keyof Settings['visualization']];
+        if (!categorySettings || typeof categorySettings !== 'object') {
+            throw new Error(`Invalid category: ${category}`);
+        }
+        
+        const currentValue = (categorySettings as any)[setting];
+        
+        if (currentValue === undefined) {
+            throw new Error(`Invalid setting path: visualization.${category}.${setting}`);
+        }
         
         switch (typeof currentValue) {
             case 'number':
-                return Number(value) as Settings[T][K];
+                return Number(value);
             case 'boolean':
-                return (value === 'true') as Settings[T][K];
+                return value === 'true';
             default:
-                return value as Settings[T][K];
+                return value;
         }
     }
 
     private async saveSettings(): Promise<void> {
         try {
             const currentSettings = settingsManager.getCurrentSettings();
-            const categories = ['nodes', 'edges', 'rendering', 'physics', 'labels', 'bloom', 'clientDebug'] as const;
+            const visualizationSettings = currentSettings.visualization;
             
-            for (const category of categories) {
-                const categorySettings = currentSettings[category];
-                for (const [setting, value] of Object.entries(categorySettings)) {
+            for (const [category, settings] of Object.entries(visualizationSettings)) {
+                if (typeof settings !== 'object' || !settings) continue;
+                
+                for (const [setting, value] of Object.entries(settings)) {
+                    // Skip if value is an object (nested settings)
+                    if (typeof value === 'object' && value !== null) continue;
+                    
+                    // Only process primitive values that match SettingValue type
+                    if (typeof value !== 'string' && 
+                        typeof value !== 'number' && 
+                        typeof value !== 'boolean' && 
+                        !Array.isArray(value)) continue;
                     try {
                         const response = await fetch(`/api/visualization/settings/${String(category)}/${String(setting)}`, {
                             method: 'PUT',
@@ -240,11 +253,8 @@ class Application {
                             throw new Error(`Failed to update setting: ${response.statusText}`);
                         }
 
-                        await settingsManager.updateSetting(
-                            category,
-                            setting as keyof Settings[typeof category],
-                            value as Settings[typeof category][keyof Settings[typeof category]]
-                        );
+                        const path = `visualization.${category}.${setting}` as const;
+                        await settingsManager.updateSetting(path, value as SettingValue);
                     } catch (error) {
                         logger.error(`Failed to update setting ${String(category)}.${String(setting)}:`, error);
                     }

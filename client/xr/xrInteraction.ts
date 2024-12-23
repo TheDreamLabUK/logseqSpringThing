@@ -1,13 +1,15 @@
 import * as THREE from 'three';
 import { NodeManager } from '../rendering/nodes';
 import { XRSessionManager } from './xrSessionManager';
-import { Settings, Platform, Node } from '../core/types';
-import { SettingsManager } from '../state/settings';
+import { Platform, Node } from '../core/types';
+import { Settings } from '../types/settings';
 import { XRHandWithHaptics } from '../types/xr';
 import { platformManager } from '../platform/platformManager';
 import { createLogger } from '../core/logger';
 import { SettingsStore } from '../state/SettingsStore';
 import { defaultSettings } from '../state/defaultSettings';
+import { HandGestureType } from '../types/gestures';
+import { WebSocketService } from '../websocket/websocketService';
 
 const logger = createLogger('XRInteraction');
 
@@ -30,16 +32,22 @@ export class XRInteraction {
     private settingsStore: SettingsStore;
     private selectedNodeId: string | null = null;
     private worldPosition = new THREE.Vector3();
+    private websocketService: WebSocketService;
+    private handGestureStates: Map<number, HandGestureType> = new Map();
+    private updateBatch: Map<string, THREE.Vector3> = new Map();
+    private batchUpdateTimeout: NodeJS.Timeout | null = null;
 
-    private constructor(xrManager: XRSessionManager, nodeManager: NodeManager, settingsManager: SettingsManager) {
+    private constructor(xrManager: XRSessionManager, nodeManager: NodeManager) {
         this.xrManager = xrManager;
         this.nodeManager = nodeManager;
         this.settingsStore = SettingsStore.getInstance();
         this.settings = defaultSettings;
+        this.websocketService = WebSocketService.getInstance();
         
         this.setupXRControllers();
         this.setupHandTracking();
         this.setupPlatformListeners();
+        this.setupSettingsSubscription();
     }
 
     private setupPlatformListeners(): void {
@@ -83,18 +91,42 @@ export class XRInteraction {
         this.hands = [];
     }
 
-    public static getInstance(xrManager: XRSessionManager, nodeManager: NodeManager, settingsManager: SettingsManager): XRInteraction {
-        if (!XRInteraction.instance) {
-            XRInteraction.instance = new XRInteraction(xrManager, nodeManager, settingsManager);
-        }
-        return XRInteraction.instance;
+    private setupSettingsSubscription(): void {
+        // Subscribe to all XR input settings changes
+        const inputSettings = [
+            'enableHandTracking',
+            'enableHaptics',
+            'hapticIntensity',
+            'dragThreshold',
+            'pinchThreshold',
+            'rotationThreshold',
+            'interactionRadius'
+        ];
+
+        inputSettings.forEach(setting => {
+            this.settingsStore.subscribe(`xr.input.${setting}`, (value) => {
+                if (this.settings.xr) {
+                    this.settings = {
+                        ...this.settings,
+                        xr: {
+                            ...this.settings.xr,
+                            input: {
+                                ...this.settings.xr.input,
+                                [setting]: value
+                            }
+                        }
+                    };
+                }
+                this.updateXRFeatures();
+            });
+        });
     }
 
     private setupXRControllers(): void {
         this.xrManager.onControllerAdded((controller: THREE.Group) => {
             controller.userData.platform = platformManager.getPlatform();
             this.controllers.push(controller);
-            if (controller.userData.hapticActuator && this.settings.ar.enableHaptics) {
+            if (controller.userData.hapticActuator && this.settings.xr.input.enableHaptics) {
                 this.triggerHapticFeedback(controller, 0.5, 50);
             }
         });
@@ -112,28 +144,49 @@ export class XRInteraction {
             logger.info('Hand tracking not supported on this platform');
             return;
         }
+        // Hand tracking is now handled internally
+        // No need to register with XRSessionManager
+    }
 
-        this.xrManager.onHandAdded((hand: XRHandWithHaptics) => {
-            hand.userData.platform = platformManager.getPlatform();
-            this.hands.push(hand);
+    private flushPositionUpdates(): void {
+        if (this.updateBatch.size === 0) return;
+
+        const updates = Array.from(this.updateBatch.entries()).map(([id, position]) => ({
+            id,
+            position: { x: position.x, y: position.y, z: position.z }
+        }));
+
+        // Update each node position individually
+        updates.forEach(update => {
+            const newPosition = new THREE.Vector3(update.position.x, update.position.y, update.position.z);
+            this.nodeManager.updateNodePosition(update.id, newPosition);
         });
 
-        this.xrManager.onHandRemoved((hand: XRHandWithHaptics) => {
-            const index = this.hands.indexOf(hand);
-            if (index !== -1) {
-                this.hands.splice(index, 1);
-            }
-        });
+        this.websocketService.sendNodeUpdates(updates);
+        this.updateBatch.clear();
+    }
+
+    private queuePositionUpdate(nodeId: string, position: THREE.Vector3): void {
+        this.updateBatch.set(nodeId, position.clone());
+        
+        if (this.batchUpdateTimeout) {
+            clearTimeout(this.batchUpdateTimeout);
+        }
+
+        this.batchUpdateTimeout = setTimeout(() => {
+            this.flushPositionUpdates();
+            this.batchUpdateTimeout = null;
+        }, 16); // ~60fps
     }
 
     private async triggerHapticFeedback(controller: THREE.Group, intensity: number, duration: number): Promise<void> {
-        if (!this.settings.ar.enableHaptics) return;
+        if (!this.settings.xr.input.enableHaptics) return;
 
         const hapticActuator = controller.userData.hapticActuator as HapticActuator;
         if (hapticActuator) {
             try {
                 await hapticActuator.pulse(
-                    intensity * this.settings.ar.hapticIntensity,
+                    intensity * this.settings.xr.input.hapticIntensity,
                     duration
                 );
             } catch (error) {
@@ -142,14 +195,21 @@ export class XRInteraction {
         }
     }
 
+    public static getInstance(xrManager: XRSessionManager, nodeManager: NodeManager): XRInteraction {
+        if (!XRInteraction.instance) {
+            XRInteraction.instance = new XRInteraction(xrManager, nodeManager);
+        }
+        return XRInteraction.instance;
+    }
+
     public update(): void {
-        if (!this.settings.ar.enableHandTracking && !this.controllers.length) {
+        if (!this.settings.xr.input.enableHandTracking && !this.controllers.length) {
             return;
         }
 
         // Update hand interactions
         this.hands.forEach(hand => {
-            if (hand.pinchStrength > this.settings.ar.pinchThreshold) {
+            if (hand.pinchStrength > this.settings.xr.input.pinchThreshold) {
                 this.handlePinchGesture(hand);
             }
         });
@@ -166,46 +226,48 @@ export class XRInteraction {
         const indexTip = hand.hand.joints['index-finger-tip'];
         if (!indexTip) return;
 
-        (indexTip as WorldObject3D).getWorldPosition(this.worldPosition);
+        try {
+            (indexTip as WorldObject3D).getWorldPosition(this.worldPosition);
 
-        if (this.lastInteractorPosition.distanceTo(this.worldPosition) > this.settings.ar.dragThreshold) {
-            // Find closest node if none selected
-            if (!this.selectedNodeId) {
-                this.selectedNodeId = this.findClosestNode(this.worldPosition);
-            }
+            if (this.lastInteractorPosition.distanceTo(this.worldPosition) > this.settings.xr.input.dragThreshold) {
+                if (!this.selectedNodeId) {
+                    this.selectedNodeId = this.findClosestNode(this.worldPosition);
+                }
 
-            // Update selected node position
-            if (this.selectedNodeId) {
-                this.nodeManager.updateNodePosition(this.selectedNodeId, this.worldPosition);
-                this.lastInteractorPosition.copy(this.worldPosition);
+                if (this.selectedNodeId) {
+                    this.queuePositionUpdate(this.selectedNodeId, this.worldPosition);
+                    this.lastInteractorPosition.copy(this.worldPosition);
 
-                // Trigger haptic feedback if available
-                if (hand.userData.hapticActuator && this.settings.ar.enableHaptics) {
-                    this.triggerHapticFeedback(hand, 0.3, 30);
+                    if (hand.userData.hapticActuator && this.settings.xr.input.enableHaptics) {
+                        this.triggerHapticFeedback(hand, 0.3, 30);
+                    }
                 }
             }
+        } catch (error) {
+            logger.error('Error handling pinch gesture:', error);
         }
     }
 
     private handleControllerInteraction(controller: THREE.Group): void {
-        (controller as WorldObject3D).getWorldPosition(this.worldPosition);
+        try {
+            (controller as WorldObject3D).getWorldPosition(this.worldPosition);
 
-        if (this.lastInteractorPosition.distanceTo(this.worldPosition) > this.settings.ar.dragThreshold) {
-            // Find closest node if none selected
-            if (!this.selectedNodeId) {
-                this.selectedNodeId = this.findClosestNode(this.worldPosition);
-            }
+            if (this.lastInteractorPosition.distanceTo(this.worldPosition) > this.settings.xr.input.dragThreshold) {
+                if (!this.selectedNodeId) {
+                    this.selectedNodeId = this.findClosestNode(this.worldPosition);
+                }
 
-            // Update selected node position
-            if (this.selectedNodeId) {
-                this.nodeManager.updateNodePosition(this.selectedNodeId, this.worldPosition);
-                this.lastInteractorPosition.copy(this.worldPosition);
+                if (this.selectedNodeId) {
+                    this.queuePositionUpdate(this.selectedNodeId, this.worldPosition);
+                    this.lastInteractorPosition.copy(this.worldPosition);
 
-                // Trigger haptic feedback
-                if (controller.userData.hapticActuator && this.settings.ar.enableHaptics) {
-                    this.triggerHapticFeedback(controller, 0.3, 30);
+                    if (controller.userData.hapticActuator && this.settings.xr.input.enableHaptics) {
+                        this.triggerHapticFeedback(controller, 0.3, 30);
+                    }
                 }
             }
+        } catch (error) {
+            logger.error('Error handling controller interaction:', error);
         }
     }
 
@@ -223,7 +285,7 @@ export class XRInteraction {
                 node.data.position.z
             );
             const distance = position.distanceTo(nodePos);
-            if (distance < closestDistance && distance < (this.settings.ar.interactionRadius || 0.5)) {
+            if (distance < closestDistance && distance < (this.settings.xr.input.interactionRadius || 0.5)) {
                 closestDistance = distance;
                 closestNode = node;
             }
@@ -233,8 +295,33 @@ export class XRInteraction {
     }
 
     public dispose(): void {
+        if (this.batchUpdateTimeout) {
+            clearTimeout(this.batchUpdateTimeout);
+            this.batchUpdateTimeout = null;
+        }
+
+        // Flush any remaining updates
+        this.flushPositionUpdates();
+
+        // Clear subscriptions
+        // Unsubscribe from all XR input settings
+        [
+            'enableHandTracking',
+            'enableHaptics',
+            'hapticIntensity',
+            'dragThreshold',
+            'pinchThreshold',
+            'rotationThreshold',
+            'interactionRadius'
+        ].forEach(setting => {
+            this.settingsStore.unsubscribe(`xr.input.${setting}`, () => {});
+        });
+
+        // Clear data structures
         this.controllers = [];
         this.hands = [];
+        this.handGestureStates.clear();
+        this.updateBatch.clear();
         this.lastInteractorPosition.set(0, 0, 0);
         this.selectedNodeId = null;
         XRInteraction.instance = null;

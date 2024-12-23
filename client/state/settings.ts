@@ -8,8 +8,7 @@ import {
     SettingValue,
     getSettingValue,
     setSettingValue,
-    isValidSettingPath,
-    getSettingCategory
+    isValidSettingPath
 } from '../types/settings/utils';
 
 const logger = createLogger('SettingsManager');
