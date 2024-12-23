@@ -41,86 +41,24 @@ class Application {
             // Initialize scene first so we can render nodes when data arrives
             this.initializeScene();
 
-            // Track initialization state
-            let graphDataLoaded = false;
-            let websocketConnected = false;
-            let binaryUpdatesEnabled = false;
-
-            // Function to check if we can hide loading overlay
-            const checkInitComplete = () => {
-                if (graphDataLoaded && websocketConnected && binaryUpdatesEnabled) {
-                    this.hideLoadingOverlay();
-                    logger.info('All initialization checks passed, application ready');
-                }
-            };
-
             try {
                 // Load initial graph data from REST endpoint
                 await graphDataManager.loadInitialGraphData();
-                graphDataLoaded = true;
-                checkInitComplete();
-            } catch (graphError) {
-                logger.error('Failed to load graph data:', graphError);
-                // Continue initialization even if graph data fails
-            }
-
-            try {
-                // Initialize WebSocket for real-time updates
+                
+                // Initialize WebSocket for real-time position updates
                 this.webSocket = new WebSocketService();
 
-                // Setup WebSocket event handlers
-                this.webSocket.onMessage('connectionStatus', (data: { status: string, details?: any }) => {
-                    logger.info('WebSocket connection status:', data);
-                    if (data.status === 'CONNECTED') {
-                        websocketConnected = true;
-                        checkInitComplete();
-                    }
+                // Setup binary position update handler
+                this.webSocket.onBinaryMessage((positions, velocities) => {
+                    // Update graph data with both positions and velocities
+                    graphDataManager.updatePositions(positions);
+                    // Update visual representation with just positions
+                    this.nodeManager.updatePositions(positions);
                 });
 
-                this.webSocket.onMessage('enableBinaryUpdates', (data: { enabled: boolean }) => {
-                    logger.info('Binary updates status:', data);
-                    // Update graph data manager binary state
-                    graphDataManager.setBinaryUpdatesEnabled(data.enabled);
-                    if (data.enabled) {
-                        binaryUpdatesEnabled = true;
-                        checkInitComplete();
-                        // Request initial data after binary updates are enabled
-                        this.webSocket.send(JSON.stringify({
-                            type: 'requestInitialData'
-                        }));
-                    }
-                });
-
-                // Setup WebSocket event handler for binary position updates
-                this.webSocket.onMessage('binaryPositionUpdate', (data: any['data']) => {
-                    if (data && data.nodes) {
-                        // Convert nodes data to ArrayBuffer for position updates
-                        const buffer = new ArrayBuffer(data.nodes.length * 24); // 6 floats per node
-                        const floatArray = new Float32Array(buffer);
-                        
-                        data.nodes.forEach((node: { data: { position: any; velocity: any } }, index: number) => {
-                            const baseIndex = index * 6;
-                            const pos = node.data.position;
-                            const vel = node.data.velocity;
-                            
-                            // Position
-                            floatArray[baseIndex] = pos.x;
-                            floatArray[baseIndex + 1] = pos.y;
-                            floatArray[baseIndex + 2] = pos.z;
-                            // Velocity
-                            floatArray[baseIndex + 3] = vel.x;
-                            floatArray[baseIndex + 4] = vel.y;
-                            floatArray[baseIndex + 5] = vel.z;
-                        });
-
-                        // Update graph data and visual representation
-                        graphDataManager.updatePositions(buffer);
-                        this.nodeManager.updatePositions(floatArray);
-                    }
-                });
-            } catch (wsError) {
-                logger.error('Failed to initialize WebSocket:', wsError);
-                // Continue initialization even if WebSocket fails
+            } catch (error) {
+                logger.error('Failed to initialize data services:', error);
+                this.showError('Failed to initialize data services');
             }
 
             try {
@@ -148,7 +86,7 @@ class Application {
             });
 
             logger.log('Application initialized successfully');
-            // Always hide loading overlay after initialization
+            // Hide loading overlay after initialization
             this.hideLoadingOverlay();
         } catch (error) {
             logger.error('Failed to initialize application:', error);

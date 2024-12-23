@@ -22,6 +22,8 @@ pub struct Settings {
     #[serde(default)]
     pub edges: EdgeSettings,
     #[serde(default)]
+    pub hologram: HologramSettings,
+    #[serde(default)]
     pub labels: LabelSettings,
     #[serde(default)]
     pub network: NetworkSettings,
@@ -283,6 +285,7 @@ pub struct ARSettings {
     pub hand_ray_enabled: bool,
     pub hand_ray_width: f32,
     pub haptic_intensity: f32,
+    pub interaction_radius: f32,
     pub passthrough_brightness: f32,
     pub passthrough_contrast: f32,
     pub passthrough_opacity: f32,
@@ -308,7 +311,7 @@ impl Default for ARSettings {
             enable_passthrough_portal: false,
             enable_plane_detection: true,
             enable_scene_understanding: true,
-            gesture_smoothing: 0.5,
+            gesture_smoothing: 0.9,
             hand_mesh_color: "#FFD700".to_string(),
             hand_mesh_enabled: true,
             hand_mesh_opacity: 0.3,
@@ -317,15 +320,16 @@ impl Default for ARSettings {
             hand_ray_enabled: true,
             hand_ray_width: 0.002,
             haptic_intensity: 0.7,
+            interaction_radius: 0.5,
             passthrough_brightness: 1.0,
             passthrough_contrast: 1.0,
-            passthrough_opacity: 0.8,
+            passthrough_opacity: 1.0,
             pinch_threshold: 0.015,
-            plane_color: "#808080".to_string(),
-            plane_opacity: 0.5,
-            portal_edge_color: "#00FF00".to_string(),
+            plane_color: "#4A90E2".to_string(),
+            plane_opacity: 0.3,
+            portal_edge_color: "#FFD700".to_string(),
             portal_edge_width: 0.02,
-            portal_size: 2.0,
+            portal_size: 1.0,
             room_scale: true,
             rotation_threshold: 0.08,
             show_plane_overlay: true,
@@ -406,6 +410,12 @@ pub struct LabelSettings {
     pub desktop_font_size: u32,
     pub enable_labels: bool,
     pub text_color: String,
+    pub text_rendering_mode: String,
+    pub text_resolution: u32,
+    pub text_padding: u32,
+    pub text_outline_width: f32,
+    pub text_outline_color: String,
+    pub billboard_mode: String,
 }
 
 impl Default for LabelSettings {
@@ -414,6 +424,12 @@ impl Default for LabelSettings {
             desktop_font_size: 48,
             enable_labels: true,
             text_color: "#FFFFFF".to_string(),
+            text_rendering_mode: "sdf".to_string(),
+            text_resolution: 64,
+            text_padding: 4,
+            text_outline_width: 0.4,
+            text_outline_color: "#000000".to_string(),
+            billboard_mode: "camera".to_string(),
         }
     }
 }
@@ -424,6 +440,7 @@ impl Default for LabelSettings {
 pub struct NodeSettings {
     pub base_color: String,
     pub base_size: f32,
+    pub clearcoat: f32,
     pub enable_hover_effect: bool,
     pub enable_instancing: bool,
     pub highlight_color: String,
@@ -435,6 +452,12 @@ pub struct NodeSettings {
     pub roughness: f32,
     pub size_by_connections: bool,
     pub size_range: Vec<f32>,
+    pub use_metadata_size: bool,
+    pub use_metadata_shape: bool,
+    pub use_metadata_color: bool,
+    pub shape_age_ranges: Vec<u32>,
+    pub hyperlink_color_min: String,
+    pub hyperlink_color_max: String,
 }
 
 impl Default for NodeSettings {
@@ -442,6 +465,7 @@ impl Default for NodeSettings {
         Self {
             base_color: "#c3ab6f".to_string(),
             base_size: 1.0,
+            clearcoat: 1.0,
             enable_hover_effect: false,
             enable_instancing: false,
             highlight_color: "#822626".to_string(),
@@ -452,7 +476,13 @@ impl Default for NodeSettings {
             opacity: 0.4,
             roughness: 0.35,
             size_by_connections: true,
-            size_range: vec![1.0, 10.0],
+            size_range: vec![1.0, 5.0],
+            use_metadata_size: true,
+            use_metadata_shape: true,
+            use_metadata_color: true,
+            shape_age_ranges: vec![7, 30, 90, 365],
+            hyperlink_color_min: "#c3ab6f".to_string(),
+            hyperlink_color_max: "#822626".to_string(),
         }
     }
 }
@@ -544,6 +574,53 @@ impl Default for SecuritySettings {
             enable_audit_logging: true,
             enable_request_validation: true,
             session_timeout: 3600,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+#[serde(default)]
+pub struct HologramSettings {
+    pub xr_quality: String,
+    pub desktop_quality: String,
+    pub ring_count: u32,
+    pub ring_color: String,
+    pub ring_opacity: f32,
+    pub ring_sizes: Vec<f32>,
+    pub ring_rotation_speed: f32,
+    pub enable_buckminster: bool,
+    pub buckminster_scale: f32,
+    pub buckminster_opacity: f32,
+    pub enable_geodesic: bool,
+    pub geodesic_scale: f32,
+    pub geodesic_opacity: f32,
+    pub enable_triangle_sphere: bool,
+    pub triangle_sphere_scale: f32,
+    pub triangle_sphere_opacity: f32,
+    pub global_rotation_speed: f32,
+}
+
+impl Default for HologramSettings {
+    fn default() -> Self {
+        Self {
+            xr_quality: "medium".to_string(),
+            desktop_quality: "high".to_string(),
+            ring_count: 3,
+            ring_color: "#00FFFF".to_string(),
+            ring_opacity: 0.5,
+            ring_sizes: vec![1.0, 1.5, 2.0],
+            ring_rotation_speed: 0.1,
+            enable_buckminster: true,
+            buckminster_scale: 1.0,
+            buckminster_opacity: 0.3,
+            enable_geodesic: true,
+            geodesic_scale: 1.2,
+            geodesic_opacity: 0.4,
+            enable_triangle_sphere: true,
+            triangle_sphere_scale: 1.1,
+            triangle_sphere_opacity: 0.35,
+            global_rotation_speed: 0.05,
         }
     }
 }
@@ -747,6 +824,7 @@ impl Default for Settings {
             client_debug: DebugSettings::default(),
             default: DefaultSettings::default(),
             edges: EdgeSettings::default(),
+            hologram: HologramSettings::default(),
             labels: LabelSettings::default(),
             nodes: NodeSettings::default(),
             physics: PhysicsSettings::default(),

@@ -12,7 +12,7 @@ import {
 import { Node, Settings } from '../core/types';
 import { MetadataVisualizer } from './MetadataVisualizer';
 import { HologramManager } from './HologramManager';
-import { XRHandWithHaptics } from '../xr/xrTypes';
+import { XRHandWithHaptics } from '../types/xr';
 import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
 

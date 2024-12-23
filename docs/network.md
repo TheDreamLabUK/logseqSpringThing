@@ -33,31 +33,24 @@ Other API endpoints: /api/files/fetch, /api/chat/*, /api/perplexity.
 WebSocket Handling (actix-web-actors): 
 - Binary Protocol (/wss endpoint): 
   - Uses a binary protocol for efficient real-time position and velocity updates
+  - Bi directional during node interaction events at the client
   - Optimized format with 6 floats per node (position + velocity)
 - WebSocket Control API (/api/visualization/settings/):
   - REST-based control plane for WebSocket configuration
-  - Manages settings, heartbeat intervals
+  - Manages settings, ping pong
   - Allows runtime updates to WebSocket behavior without connection disruption
   - Separates control logic from high-frequency data updates
 - Connection Management:
-  - Message queuing with configurable queue size
   - Configurable update rate (framerate)
   - Robust reconnection logic with configurable attempts and delays
   - Connection status tracking and notifications
 - Heartbeat:
   - Configurable ping/pong intervals
-  - Timestamp-based health monitoring
   - Automatic reconnection on timeout
 - Error Handling:
   - Comprehensive error types and status codes
   - Detailed error reporting and logging
   - Graceful failure recovery
-
-RAGFlow Integration:
-- Network Integration: Joins the RAGFlow Docker network (docker_ragflow)
-- Service Discovery: Uses Docker network aliases for service communication
-- Optional Connectivity: Gracefully handles RAGFlow availability
-- Health Checks: Monitors RAGFlow service health without direct dependencies
 
 Security:
 - Handled by cloudflared tunnel and docker
@@ -115,15 +108,8 @@ REST API Interaction:
 - Environment-aware URL handling for development and production
 
 WebSocket Connection and it's REST management system: 
-- Establishes compressed WebSocket connection for real-time updates
+- Establishes WebSocket connection for real-time updates
 - Implements reconnection logic with configurable attempts (default: 3)
-- Configurable settings for:
-  - Heartbeat interval (default: 15s)
-  - Heartbeat timeout (default: 60s)
-  - Reconnect delay (default: 5s)
-- Message queuing with size limits
-- Binary message handling with version verification
-- Comprehensive error handling and status notifications
 
 4. Docker Networking
 
@@ -177,11 +163,9 @@ Health Check System:
 - Container Health: Docker healthcheck monitors service availability
 - Backend Health: Rust service monitors internal state and dependencies
 - Frontend Health: Nginx monitors backend connectivity
-- RAGFlow Health: Periodic checks for RAGFlow service availability
 - Metrics: Health status exposed through container metrics
 
 Clear Protocol Definition:
-Binary format details (24 bytes per node)
 Exact message types (binary updates, ping/pong)
 Simplified Configuration:
 Clear separation between REST and WebSocket responsibilities

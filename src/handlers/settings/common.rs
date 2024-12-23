@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use crate::config::Settings;
 use log::{debug, error};
 use crate::utils::case_conversion::to_snake_case;
@@ -19,7 +20,7 @@ pub struct SettingResponse {
 #[serde(rename_all = "camelCase")]
 pub struct CategorySettingsResponse {
     pub category: String,
-    pub settings: std::collections::HashMap<String, Value>,
+    pub settings: HashMap<String, Value>,
     pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -28,7 +29,74 @@ pub struct CategorySettingsResponse {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CategorySettingsUpdate {
-    pub settings: std::collections::HashMap<String, Value>,
+    pub settings: HashMap<String, Value>,
+}
+
+// Helper function to get all settings in a category
+pub fn get_category_settings(settings: &Settings, category: &str) -> Result<HashMap<String, Value>, String> {
+    debug!("Attempting to get all settings for category: {}", category);
+    
+    // Convert kebab-case URL parameter to snake_case
+    let category_snake = to_snake_case(category);
+    
+    // Convert settings to Value for easier access
+    let settings_value = serde_json::to_value(&settings)
+        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+    
+    // Get category object
+    let category_value = settings_value.get(&category_snake)
+        .ok_or_else(|| format!("Category '{}' not found", category))?;
+    
+    // Convert category value to HashMap
+    if let Some(obj) = category_value.as_object() {
+        Ok(obj.clone())
+    } else {
+        Err(format!("Category '{}' is not an object", category))
+    }
+}
+
+// Helper function to update all settings in a category
+pub fn update_category_settings(
+    settings: &mut Settings,
+    category: &str,
+    update: CategorySettingsUpdate
+) -> Result<HashMap<String, Value>, String> {
+    debug!("Attempting to update all settings for category: {}", category);
+    
+    // Convert kebab-case URL parameter to snake_case
+    let category_snake = to_snake_case(category);
+    
+    // Convert settings to Value for manipulation
+    let settings_value = serde_json::to_value(settings)
+        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+    
+    let mut settings_map = settings_value.as_object()
+        .ok_or("Settings is not an object")?
+        .clone();
+    
+    // Get category object
+    let category_value = settings_map.get_mut(&category_snake)
+        .ok_or_else(|| format!("Category '{}' not found", category))?;
+    
+    if let Some(obj) = category_value.as_object_mut() {
+        // Update each setting in the category
+        for (key, value) in update.settings {
+            let key_snake = to_snake_case(&key);
+            if obj.contains_key(&key_snake) {
+                obj.insert(key_snake, value);
+            } else {
+                return Err(format!("Setting '{}' not found in category '{}'", key, category));
+            }
+        }
+        
+        // Update the settings object
+        *settings = serde_json::from_value(serde_json::Value::Object(settings_map))?;
+        
+        // Return the updated category settings
+        Ok(obj.clone())
+    } else {
+        Err(format!("Category '{}' is not an object", category))
+    }
 }
 
 // Helper function to get setting value from settings object

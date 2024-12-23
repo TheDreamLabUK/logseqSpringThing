@@ -8,6 +8,7 @@ import { createLogger } from '../core/utils';
 import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
+import { XRHandWithHaptics } from '../types/xr';
 
 const _logger = createLogger('XRSessionManager');
 
@@ -48,6 +49,8 @@ export class XRSessionManager {
   private xrAnimationFrameCallback: ((frame: XRFrame) => void) | null = null;
   private controllerAddedCallback: ((controller: THREE.Group) => void) | null = null;
   private controllerRemovedCallback: ((controller: THREE.Group) => void) | null = null;
+  private handAddedCallback: ((hand: XRHandWithHaptics) => void) | null = null;
+  private handRemovedCallback: ((hand: XRHandWithHaptics) => void) | null = null;
 
   private constructor(sceneManager: SceneManager) {
     this.sceneManager = sceneManager;
@@ -424,6 +427,22 @@ export class XRSessionManager {
 
   private notifyControllerRemoved(controller: THREE.Group): void {
     this.controllerRemovedCallback?.(controller);
+  }
+
+  public onHandAdded(callback: (hand: XRHandWithHaptics) => void): void {
+    this.handAddedCallback = callback;
+  }
+
+  public onHandRemoved(callback: (hand: XRHandWithHaptics) => void): void {
+    this.handRemovedCallback = callback;
+  }
+
+  private notifyHandAdded(hand: XRHandWithHaptics): void {
+    this.handAddedCallback?.(hand);
+  }
+
+  private notifyHandRemoved(hand: XRHandWithHaptics): void {
+    this.handRemovedCallback?.(hand);
   }
 
   /**

@@ -1,12 +1,22 @@
 import * as THREE from 'three';
 import { NodeManager } from '../rendering/nodes';
 import { XRSessionManager } from './xrSessionManager';
-import { Settings } from '../core/types';
+import { Settings, Platform, Node } from '../core/types';
 import { SettingsManager } from '../state/settings';
-import { XRHandWithHaptics } from './xrTypes';
+import { XRHandWithHaptics } from '../types/xr';
+import { platformManager } from '../platform/platformManager';
+import { createLogger } from '../core/logger';
+import { SettingsStore } from '../state/SettingsStore';
+import { defaultSettings } from '../state/defaultSettings';
+
+const logger = createLogger('XRInteraction');
 
 interface HapticActuator {
     pulse: (intensity: number, duration: number) => Promise<boolean>;
+}
+
+interface WorldObject3D extends THREE.Object3D {
+    getWorldPosition(target: THREE.Vector3): THREE.Vector3;
 }
 
 export class XRInteraction {
@@ -17,16 +27,60 @@ export class XRInteraction {
     private lastInteractorPosition = new THREE.Vector3();
     private hands: XRHandWithHaptics[] = [];
     private settings: Settings;
-    private settingsManager: SettingsManager;
+    private settingsStore: SettingsStore;
+    private selectedNodeId: string | null = null;
+    private worldPosition = new THREE.Vector3();
 
     private constructor(xrManager: XRSessionManager, nodeManager: NodeManager, settingsManager: SettingsManager) {
         this.xrManager = xrManager;
         this.nodeManager = nodeManager;
-        this.settingsManager = settingsManager;
-        this.settings = this.settingsManager.getCurrentSettings();
+        this.settingsStore = SettingsStore.getInstance();
+        this.settings = defaultSettings;
         
         this.setupXRControllers();
         this.setupHandTracking();
+        this.setupPlatformListeners();
+    }
+
+    private setupPlatformListeners(): void {
+        platformManager.on('platformChange', (platform: Platform) => {
+            logger.info(`Platform changed to ${platform}`);
+            this.updateXRFeatures();
+        });
+    }
+
+    private updateXRFeatures(): void {
+        const platform = platformManager.getPlatform();
+        const capabilities = platformManager.getCapabilities();
+
+        // Update hand tracking based on platform capabilities
+        if (capabilities.handTracking) {
+            this.setupHandTracking();
+        } else {
+            this.disableHandTracking();
+        }
+
+        // Update haptics based on platform capabilities
+        this.controllers.forEach(controller => {
+            if (controller.userData) {
+                controller.userData.platform = platform;
+            }
+        });
+
+        this.hands.forEach(hand => {
+            if (hand.userData) {
+                hand.userData.platform = platform;
+            }
+        });
+    }
+
+    private disableHandTracking(): void {
+        this.hands.forEach(hand => {
+            if (hand.parent) {
+                hand.parent.remove(hand);
+            }
+        });
+        this.hands = [];
     }
 
     public static getInstance(xrManager: XRSessionManager, nodeManager: NodeManager, settingsManager: SettingsManager): XRInteraction {
@@ -38,8 +92,9 @@ export class XRInteraction {
 
     private setupXRControllers(): void {
         this.xrManager.onControllerAdded((controller: THREE.Group) => {
+            controller.userData.platform = platformManager.getPlatform();
             this.controllers.push(controller);
-            if (controller.userData.hapticActuator) {
+            if (controller.userData.hapticActuator && this.settings.ar.enableHaptics) {
                 this.triggerHapticFeedback(controller, 0.5, 50);
             }
         });
@@ -53,14 +108,44 @@ export class XRInteraction {
     }
 
     private setupHandTracking(): void {
-        if (!this.settings.ar.enableHandTracking) return;
+        if (!platformManager.getCapabilities().handTracking) {
+            logger.info('Hand tracking not supported on this platform');
+            return;
+        }
 
-        // Hand tracking is handled by the XRSessionManager directly
-        this.hands = [];
+        this.xrManager.onHandAdded((hand: XRHandWithHaptics) => {
+            hand.userData.platform = platformManager.getPlatform();
+            this.hands.push(hand);
+        });
+
+        this.xrManager.onHandRemoved((hand: XRHandWithHaptics) => {
+            const index = this.hands.indexOf(hand);
+            if (index !== -1) {
+                this.hands.splice(index, 1);
+            }
+        });
+    }
+
+    private async triggerHapticFeedback(controller: THREE.Group, intensity: number, duration: number): Promise<void> {
+        if (!this.settings.ar.enableHaptics) return;
+
+        const hapticActuator = controller.userData.hapticActuator as HapticActuator;
+        if (hapticActuator) {
+            try {
+                await hapticActuator.pulse(
+                    intensity * this.settings.ar.hapticIntensity,
+                    duration
+                );
+            } catch (error) {
+                logger.warn('Failed to trigger haptic feedback:', error);
+            }
+        }
     }
 
     public update(): void {
-        if (!this.settings.ar.enableHandTracking) return;
+        if (!this.settings.ar.enableHandTracking && !this.controllers.length) {
+            return;
+        }
 
         // Update hand interactions
         this.hands.forEach(hand => {
@@ -71,7 +156,9 @@ export class XRInteraction {
 
         // Update controller interactions
         this.controllers.forEach(controller => {
-            this.handleControllerInteraction(controller);
+            if (controller.userData.isSelecting) {
+                this.handleControllerInteraction(controller);
+            }
         });
     }
 
@@ -79,75 +166,77 @@ export class XRInteraction {
         const indexTip = hand.hand.joints['index-finger-tip'];
         if (!indexTip) return;
 
-        const position = new THREE.Vector3();
-        position.setFromMatrixPosition(indexTip.matrixWorld);
+        (indexTip as WorldObject3D).getWorldPosition(this.worldPosition);
 
-        // Calculate movement delta
-        const delta = position.clone().sub(this.lastInteractorPosition);
-        
-        // Update node position based on hand movement
-        if (delta.length() > this.settings.ar.dragThreshold) {
-            // Get all nodes and update their positions
-            const nodes = this.nodeManager.getAllNodeMeshes();
-            nodes.forEach(nodeMesh => {
-                const currentPos = this.nodeManager.getNodePosition(nodeMesh.userData.nodeId);
-                const newPos = currentPos.add(delta);
-                this.nodeManager.updateNodePosition(nodeMesh.userData.nodeId, newPos);
-            });
+        if (this.lastInteractorPosition.distanceTo(this.worldPosition) > this.settings.ar.dragThreshold) {
+            // Find closest node if none selected
+            if (!this.selectedNodeId) {
+                this.selectedNodeId = this.findClosestNode(this.worldPosition);
+            }
 
-            if (this.settings.ar.enableHaptics) {
-                this.triggerHapticFeedback(hand, this.settings.ar.hapticIntensity, 50);
+            // Update selected node position
+            if (this.selectedNodeId) {
+                this.nodeManager.updateNodePosition(this.selectedNodeId, this.worldPosition);
+                this.lastInteractorPosition.copy(this.worldPosition);
+
+                // Trigger haptic feedback if available
+                if (hand.userData.hapticActuator && this.settings.ar.enableHaptics) {
+                    this.triggerHapticFeedback(hand, 0.3, 30);
+                }
             }
         }
-
-        this.lastInteractorPosition.copy(position);
     }
 
     private handleControllerInteraction(controller: THREE.Group): void {
-        const position = new THREE.Vector3();
-        position.setFromMatrixPosition(controller.matrixWorld);
+        (controller as WorldObject3D).getWorldPosition(this.worldPosition);
 
-        // Calculate movement delta
-        const delta = position.clone().sub(this.lastInteractorPosition);
-        
-        // Update node position based on controller movement
-        if (delta.length() > this.settings.ar.dragThreshold) {
-            // Get all nodes and update their positions
-            const nodes = this.nodeManager.getAllNodeMeshes();
-            nodes.forEach(nodeMesh => {
-                const currentPos = this.nodeManager.getNodePosition(nodeMesh.userData.nodeId);
-                const newPos = currentPos.add(delta);
-                this.nodeManager.updateNodePosition(nodeMesh.userData.nodeId, newPos);
-            });
+        if (this.lastInteractorPosition.distanceTo(this.worldPosition) > this.settings.ar.dragThreshold) {
+            // Find closest node if none selected
+            if (!this.selectedNodeId) {
+                this.selectedNodeId = this.findClosestNode(this.worldPosition);
+            }
 
-            if (this.settings.ar.enableHaptics && controller.userData.hapticActuator) {
-                this.triggerHapticFeedback(controller, this.settings.ar.hapticIntensity, 50);
+            // Update selected node position
+            if (this.selectedNodeId) {
+                this.nodeManager.updateNodePosition(this.selectedNodeId, this.worldPosition);
+                this.lastInteractorPosition.copy(this.worldPosition);
+
+                // Trigger haptic feedback
+                if (controller.userData.hapticActuator && this.settings.ar.enableHaptics) {
+                    this.triggerHapticFeedback(controller, 0.3, 30);
+                }
+            }
+        }
+    }
+
+    private findClosestNode(position: THREE.Vector3): string | null {
+        const nodes = this.nodeManager.getCurrentNodes() as Array<Node>;
+        let closestNode: Node | null = null;
+        let closestDistance = Infinity;
+
+        for (const node of nodes as Array<Node>) {
+            if (!node || !node.data || !node.data.position) continue;
+            
+            const nodePos = new THREE.Vector3(
+                node.data.position.x,
+                node.data.position.y,
+                node.data.position.z
+            );
+            const distance = position.distanceTo(nodePos);
+            if (distance < closestDistance && distance < (this.settings.ar.interactionRadius || 0.5)) {
+                closestDistance = distance;
+                closestNode = node;
             }
         }
 
-        this.lastInteractorPosition.copy(position);
-    }
-
-    private triggerHapticFeedback(device: THREE.Group | XRHandWithHaptics, intensity: number, duration: number): void {
-        if (!this.settings.ar.enableHaptics) return;
-
-        if ('hapticActuators' in device) {
-            const hapticActuators = device.hapticActuators as HapticActuator[];
-            hapticActuators.forEach((actuator: HapticActuator) => {
-                actuator.pulse(intensity, duration).catch((error: Error) => {
-                    console.warn('Failed to trigger haptic feedback:', error);
-                });
-            });
-        } else if (device.userData.hapticActuator) {
-            device.userData.hapticActuator.pulse(intensity, duration).catch((error: Error) => {
-                console.warn('Failed to trigger haptic feedback:', error);
-            });
-        }
+        return closestNode?.id || null;
     }
 
     public dispose(): void {
         this.controllers = [];
         this.hands = [];
+        this.lastInteractorPosition.set(0, 0, 0);
+        this.selectedNodeId = null;
         XRInteraction.instance = null;
     }
 }

@@ -92,6 +92,7 @@ export interface ARSettings {
   rotationThreshold: number;
   showPlaneOverlay: boolean;
   snapToFloor: boolean;
+  interactionRadius: number;
 }
 
 export interface AudioSettings {

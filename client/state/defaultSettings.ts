@@ -28,6 +28,7 @@ export const defaultSettings: Settings = {
         handRayEnabled: true,
         handRayWidth: 2,
         hapticIntensity: 0.5,
+        interactionRadius: 0.5,
         passthroughBrightness: 1,
         passthroughContrast: 1,
         passthroughOpacity: 1,
@@ -151,7 +152,7 @@ export const defaultSettings: Settings = {
     serverDebug: {
         enabled: false,
         enableDataDebug: false,
-        enableWebsocketDebug: false,
+        enableWebsocketWebsocketDebug: false,
         logBinaryHeaders: false,
         logFullJson: false
     },

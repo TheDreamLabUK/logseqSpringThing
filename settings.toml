@@ -25,6 +25,7 @@ hand_ray_color = "#FFD700"
 hand_ray_enabled = true
 hand_ray_width = 0.002
 haptic_intensity = 0.7
+interaction_radius = 0.5
 passthrough_brightness = 1
 passthrough_contrast = 1
 passthrough_opacity = 1
@@ -77,10 +78,7 @@ base_width = 2
 color = "#917f18"
 enable_arrows = false
 opacity = 0.6
-width_range = [
-    1,
-    3,
-]
+width_range = [1, 3]
 
 [hologram]
 xr_quality = "medium"
@@ -105,13 +103,12 @@ global_rotation_speed = 0.05
 desktop_font_size = 48
 enable_labels = true
 text_color = "#FFFFFF"
-# Text rendering
-text_rendering_mode = "sdf"    # SDF for sharp AR text
-text_resolution = 64           # Higher for better readability
-text_padding = 4              # Padding for SDF rendering
-text_outline_width = 0.4      # For better AR visibility
+text_rendering_mode = "sdf"
+text_resolution = 64
+text_padding = 4
+text_outline_width = 0.4
 text_outline_color = "#000000"
-billboard_mode = "camera"      # enum: camera, vertical
+billboard_mode = "camera"
 
 [network]
 bind_address = "0.0.0.0"
@@ -140,24 +137,13 @@ metalness = 0.3
 opacity = 0.4
 roughness = 0.35
 size_by_connections = true
-size_range = [
-    1,
-    5,
-]
-# Metadata visualization
-use_metadata_size = true     # Size from metadata
-use_metadata_shape = true    # Shape based on commit age
-use_metadata_color = true    # Color from hyperlink richness
-# Shape parameters
-shape_age_ranges = [         # Days old
-    7,                      # Recent: Sphere
-    30,                     # Month: Dodecahedron
-    90,                     # Quarter: Icosahedron
-    365                     # Year+: Octahedron
-]
-# Color parameters
-hyperlink_color_min = "#c3ab6f"  # Few links
-hyperlink_color_max = "#822626"  # Many links
+size_range = [1, 5]
+use_metadata_size = true
+use_metadata_shape = true
+use_metadata_color = true
+shape_age_ranges = [7, 30, 90, 365]
+hyperlink_color_min = "#c3ab6f"
+hyperlink_color_max = "#822626"
 
 [physics]
 attraction_strength = 0.015
