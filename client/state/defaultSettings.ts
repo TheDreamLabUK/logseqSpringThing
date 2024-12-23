@@ -1,191 +1,180 @@
-import type { Settings } from '../types/settings';
+import { Settings } from '../types/settings';
 
 export const defaultSettings: Settings = {
-    animations: {
-        enableMotionBlur: false,
-        enableNodeAnimations: true,
-        motionBlurStrength: 0.5,
-        selectionWaveEnabled: false,
-        pulseEnabled: false,
-        rippleEnabled: false,
-        edgeAnimationEnabled: false,
-        flowParticlesEnabled: false
+    visualization: {
+        animations: {
+            enableMotionBlur: false,
+            enableNodeAnimations: true,
+            motionBlurStrength: 0.5,
+            selectionWaveEnabled: false,
+            pulseEnabled: false,
+            rippleEnabled: false,
+            edgeAnimationEnabled: false,
+            flowParticlesEnabled: false
+        },
+        bloom: {
+            enabled: true,
+            strength: 0.5,
+            radius: 1,
+            edgeBloomStrength: 0.5,
+            nodeBloomStrength: 0.5,
+            environmentBloomStrength: 0.5
+        },
+        edges: {
+            arrowSize: 3,
+            baseWidth: 2,
+            color: '#ffffff',
+            enableArrows: true,
+            opacity: 0.8,
+            widthRange: [1, 5]
+        },
+        hologram: {
+            ringCount: 3,
+            ringColor: '#00FFFF',
+            ringOpacity: 0.5,
+            ringSizes: [1.0, 1.5, 2.0],
+            ringRotationSpeed: 0.1,
+            enableBuckminster: true,
+            buckminsterScale: 1.0,
+            buckminsterOpacity: 0.3,
+            enableGeodesic: true,
+            geodesicScale: 1.2,
+            geodesicOpacity: 0.4,
+            enableTriangleSphere: true,
+            triangleSphereScale: 1.1,
+            triangleSphereOpacity: 0.35,
+            globalRotationSpeed: 0.05
+        },
+        labels: {
+            enableLabels: true,
+            textColor: '#FFFFFF',
+            textOutlineColor: '#000000',
+            textOutlineWidth: 0.1,
+            textResolution: 512,
+            textPadding: 16,
+            desktopFontSize: 48,
+            billboardMode: 'camera'
+        },
+        nodes: {
+            baseColor: '#00ff00',
+            baseSize: 1,
+            sizeRange: [0.5, 2.0],
+            enableMetadataShape: true,
+            colorRangeAge: ['#ff0000', '#00ff00'],
+            colorRangeLinks: ['#0000ff', '#ff00ff'],
+            metalness: 0.5,
+            roughness: 0.2,
+            opacity: 0.8
+        },
+        physics: {
+            enabled: true,
+            attractionStrength: 0.1,
+            repulsionStrength: 0.1,
+            springStrength: 0.1,
+            damping: 0.5,
+            iterations: 1,
+            maxVelocity: 10,
+            collisionRadius: 1,
+            enableBounds: true,
+            boundsSize: 100
+        },
+        rendering: {
+            ambientLightIntensity: 0.5,
+            directionalLightIntensity: 0.8,
+            environmentIntensity: 1,
+            backgroundColor: '#000000',
+            enableAmbientOcclusion: true,
+            enableAntialiasing: true,
+            enableShadows: true
+        }
     },
-    ar: {
-        dragThreshold: 0.02,
-        enableHandTracking: true,
-        enableHaptics: true,
-        enableLightEstimation: true,
-        enablePassthroughPortal: false,
-        enablePlaneDetection: true,
-        enableSceneUnderstanding: true,
-        gestureSsmoothing: 0.5,
-        handMeshColor: '#ffffff',
-        handMeshEnabled: true,
-        handMeshOpacity: 0.5,
-        handPointSize: 5,
-        handRayColor: '#00ff00',
-        handRayEnabled: true,
-        handRayWidth: 2,
-        hapticIntensity: 0.5,
-        interactionRadius: 0.5,
-        passthroughBrightness: 1,
-        passthroughContrast: 1,
-        passthroughOpacity: 1,
-        pinchThreshold: 0.7,
-        planeColor: '#808080',
-        planeOpacity: 0.5,
-        portalEdgeColor: '#ffffff',
-        portalEdgeWidth: 2,
-        portalSize: 2,
+    xr: {
+        mode: 'immersive-ar',
         roomScale: true,
-        rotationThreshold: 0.1,
-        showPlaneOverlay: true,
-        snapToFloor: true
+        spaceType: 'local-floor',
+        quality: 'medium',
+        input: {
+            enableHandTracking: true,
+            enableHaptics: true,
+            hapticIntensity: 0.5,
+            dragThreshold: 0.02,
+            pinchThreshold: 0.7,
+            rotationThreshold: 0.1,
+            interactionRadius: 0.5
+        },
+        visuals: {
+            handMeshEnabled: true,
+            handMeshColor: '#ffffff',
+            handMeshOpacity: 0.5,
+            handPointSize: 5,
+            handRayEnabled: true,
+            handRayColor: '#00ff00',
+            handRayWidth: 2,
+            gestureSsmoothing: 0.5
+        },
+        environment: {
+            enableLightEstimation: true,
+            enablePlaneDetection: true,
+            enableSceneUnderstanding: true,
+            planeColor: '#808080',
+            planeOpacity: 0.5,
+            showPlaneOverlay: true,
+            snapToFloor: true
+        },
+        passthrough: {
+            enabled: false,
+            opacity: 1,
+            brightness: 1,
+            contrast: 1,
+            portalSize: 2,
+            portalEdgeColor: '#ffffff',
+            portalEdgeWidth: 2
+        }
     },
-    audio: {
-        enableAmbientSounds: false,
-        enableInteractionSounds: true,
-        enableSpatialAudio: true
-    },
-    bloom: {
-        edgeBloomStrength: 0.5,
-        enabled: true,
-        environmentBloomStrength: 0.5,
-        nodeBloomStrength: 0.5,
-        radius: 1,
-        strength: 0.5
-    },
-    clientDebug: {
-        enableDataDebug: false,
-        enableWebsocketDebug: false,
-        enabled: false,
-        logBinaryHeaders: false,
-        logFullJson: false
-    },
-    default: {
-        apiClientTimeout: 30000,
-        enableMetrics: true,
-        enableRequestLogging: true,
-        logFormat: 'json',
-        logLevel: 'info',
-        maxConcurrentRequests: 100,
-        maxPayloadSize: 10485760,
-        maxRetries: 3,
-        metricsPort: 9090,
-        retryDelay: 1000
-    },
-    edges: {
-        arrowSize: 3,
-        baseWidth: 2,
-        color: '#ffffff',
-        enableArrows: true,
-        opacity: 0.8,
-        widthRange: [1, 5]
-    },
-    labels: {
-        desktopFontSize: 48,
-        enableLabels: true,
-        textColor: '#FFFFFF',
-        textOutlineColor: '#000000',
-        textOutlineWidth: 0.1,
-        textResolution: 512,
-        textPadding: 16,
-        billboardMode: 'camera' as const
-    },
-    network: {
-        bindAddress: '127.0.0.1',
-        domain: 'localhost',
-        enableHttp2: true,
-        enableRateLimiting: true,
-        enableTls: false,
-        maxRequestSize: 10485760,
-        minTlsVersion: 'TLS1.2',
-        port: 3000,
-        rateLimitRequests: 100,
-        rateLimitWindow: 60,
-        tunnelId: ''
-    },
-    nodes: {
-        baseColor: '#00ff00',
-        baseSize: 1,
-        sizeRange: [0.5, 2.0],
-        enableMetadataShape: true,
-        colorRangeAge: ['#ff0000', '#00ff00'],
-        colorRangeLinks: ['#0000ff', '#ff00ff'],
-        metalness: 0.5,
-        roughness: 0.2,
-        opacity: 0.8
-    },
-    physics: {
-        attractionStrength: 0.1,
-        boundsSize: 100,
-        collisionRadius: 1,
-        damping: 0.5,
-        enableBounds: true,
-        enabled: true,
-        iterations: 1,
-        maxVelocity: 10,
-        repulsionStrength: 0.1,
-        springStrength: 0.1
-    },
-    rendering: {
-        ambientLightIntensity: 0.5,
-        backgroundColor: '#000000',
-        directionalLightIntensity: 0.8,
-        enableAmbientOcclusion: true,
-        enableAntialiasing: true,
-        enableShadows: true,
-        environmentIntensity: 1
-    },
-    security: {
-        allowedOrigins: ['http://localhost:3000'],
-        auditLogPath: './audit.log',
-        cookieHttponly: true,
-        cookieSamesite: 'Lax',
-        cookieSecure: false,
-        csrfTokenTimeout: 3600,
-        enableAuditLogging: true,
-        enableRequestValidation: true,
-        sessionTimeout: 86400
-    },
-    serverDebug: {
-        enabled: false,
-        enableDataDebug: false,
-        enableWebsocketWebsocketDebug: false,
-        logBinaryHeaders: false,
-        logFullJson: false
-    },
-    hologram: {
-        xrQuality: 'medium' as const,
-        desktopQuality: 'high' as const,
-        ringCount: 3,
-        ringColor: '#00FFFF',
-        ringOpacity: 0.5,
-        ringSizes: [1.0, 1.5, 2.0],
-        ringRotationSpeed: 0.1,
-        enableBuckminster: true,
-        buckminsterScale: 1.0,
-        buckminsterOpacity: 0.3,
-        enableGeodesic: true,
-        geodesicScale: 1.2,
-        geodesicOpacity: 0.4,
-        enableTriangleSphere: true,
-        triangleSphereScale: 1.1,
-        triangleSphereOpacity: 0.35,
-        globalRotationSpeed: 0.05
-    },
-    websocket: {
-        url: 'ws://localhost:3000/ws',
-        heartbeatInterval: 15000,
-        heartbeatTimeout: 60000,
-        reconnectAttempts: 3,
-        reconnectDelay: 5000,
-        binaryChunkSize: 65536,
-        compressionEnabled: true,
-        compressionThreshold: 1024,
-        maxConnections: 1000,
-        maxMessageSize: 100485760,
-        updateRate: 30
+    system: {
+        network: {
+            bindAddress: '127.0.0.1',
+            domain: 'localhost',
+            port: 3000,
+            enableHttp2: true,
+            enableTls: false,
+            minTlsVersion: 'TLS1.2',
+            maxRequestSize: 10485760,
+            enableRateLimiting: true,
+            rateLimitRequests: 100,
+            rateLimitWindow: 60,
+            tunnelId: ''
+        },
+        websocket: {
+            url: 'ws://localhost:3000/ws',
+            heartbeatInterval: 15000,
+            heartbeatTimeout: 60000,
+            reconnectAttempts: 3,
+            reconnectDelay: 5000,
+            binaryChunkSize: 65536,
+            compressionEnabled: true,
+            compressionThreshold: 1024,
+            maxConnections: 1000,
+            maxMessageSize: 100485760,
+            updateRate: 30
+        },
+        security: {
+            allowedOrigins: ['http://localhost:3000'],
+            auditLogPath: './audit.log',
+            cookieHttponly: true,
+            cookieSamesite: 'Lax',
+            cookieSecure: false,
+            csrfTokenTimeout: 3600,
+            enableAuditLogging: true,
+            enableRequestValidation: true,
+            sessionTimeout: 86400
+        },
+        debug: {
+            enabled: false,
+            enableDataDebug: false,
+            enableWebsocketDebug: false,
+            logBinaryHeaders: false,
+            logFullJson: false
+        }
     }
 };

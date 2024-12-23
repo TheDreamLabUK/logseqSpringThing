@@ -1,13 +1,12 @@
-import { Settings } from '../core/types';
+import { Settings } from '../types/settings';
 import { createLogger } from '../core/logger';
 import { buildApiUrl } from '../core/api';
 import { defaultSettings } from './defaultSettings';
+import { SettingsPath, SettingValue, SettingsCategory } from '../types/settings/utils';
 
 const logger = createLogger('SettingsStore');
 
-export type SettingPath = string;
-export type SettingValue = any;
-export type SettingsChangeCallback = (path: SettingPath, value: SettingValue) => void;
+type SettingsChangeCallback = (path: SettingsPath, value: SettingValue) => void;
 
 interface SettingsStoreOptions {
     autoSave?: boolean;
@@ -17,8 +16,8 @@ interface SettingsStoreOptions {
 export class SettingsStore {
     private static instance: SettingsStore;
     private settings: Settings;
-    private subscribers: Map<SettingPath, Set<SettingsChangeCallback>>;
-    private pendingChanges: Set<SettingPath>;
+    private subscribers: Map<SettingsPath, Set<SettingsChangeCallback>>;
+    private pendingChanges: Set<SettingsPath>;
     private syncTimer: NodeJS.Timeout | null;
     private initialized: boolean;
     private options: Required<SettingsStoreOptions>;
@@ -60,7 +59,7 @@ export class SettingsStore {
     }
 
     private async loadAllSettings(): Promise<void> {
-        const categories = Object.keys(this.settings) as Array<keyof Settings>;
+        const categories: SettingsCategory[] = ['visualization', 'xr', 'system'];
         const maxRetries = 3;
         const retryDelay = 1000;
 
@@ -75,7 +74,7 @@ export class SettingsStore {
                     
                     const data = await response.json();
                     if (data.success && data.settings) {
-                        this.updateCategorySettings(category, data.settings);
+                        this.settings[category] = data.settings;
                     }
                     break;
                 } catch (error) {
@@ -87,27 +86,6 @@ export class SettingsStore {
                     await new Promise(resolve => setTimeout(resolve, retryDelay));
                 }
             }
-        }
-    }
-
-    private updateCategorySettings<T extends keyof Settings>(
-        category: T,
-        newSettings: Partial<Settings[T]>
-    ): void {
-        const currentSettings = { ...this.settings[category] };
-        let hasChanges = false;
-
-        Object.entries(newSettings).forEach(([key, value]) => {
-            const settingKey = key as keyof Settings[T];
-            if (value !== undefined && value !== currentSettings[settingKey]) {
-                (currentSettings as any)[settingKey] = value;
-                hasChanges = true;
-                this.notifySubscribers(`${category}.${key}`, value);
-            }
-        });
-
-        if (hasChanges) {
-            this.settings[category] = currentSettings;
         }
     }
 
@@ -131,11 +109,11 @@ export class SettingsStore {
 
         try {
             const updatePromises = changes.map(async path => {
-                const [category, key] = path.split('.');
+                const [category, ...rest] = path.split('.');
                 const value = this.get(path);
 
                 const response = await fetch(
-                    buildApiUrl(`visualization/settings/${category}/${key}`),
+                    buildApiUrl(`visualization/settings/${category}/${rest.join('/')}`),
                     {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -151,12 +129,11 @@ export class SettingsStore {
             await Promise.all(updatePromises);
         } catch (error) {
             logger.error('Error syncing settings:', error);
-            // Re-add failed changes to pending changes
             changes.forEach(path => this.pendingChanges.add(path));
         }
     }
 
-    subscribe(path: SettingPath, callback: SettingsChangeCallback): () => void {
+    subscribe(path: SettingsPath, callback: SettingsChangeCallback): () => void {
         if (!this.subscribers.has(path)) {
             this.subscribers.set(path, new Set());
         }
@@ -164,7 +141,7 @@ export class SettingsStore {
         return () => this.unsubscribe(path, callback);
     }
 
-    unsubscribe(path: SettingPath, callback: SettingsChangeCallback): void {
+    unsubscribe(path: SettingsPath, callback: SettingsChangeCallback): void {
         const callbacks = this.subscribers.get(path);
         if (callbacks) {
             callbacks.delete(callback);
@@ -174,7 +151,7 @@ export class SettingsStore {
         }
     }
 
-    private notifySubscribers(path: SettingPath, value: SettingValue): void {
+    private notifySubscribers(path: SettingsPath, value: SettingValue): void {
         const callbacks = this.subscribers.get(path);
         if (callbacks) {
             callbacks.forEach(callback => {
@@ -187,26 +164,24 @@ export class SettingsStore {
         }
     }
 
-    get<T extends keyof Settings, K extends keyof Settings[T]>(
-        path: `${T}.${string & K}`
-    ): Settings[T][K] {
-        const [category, key] = path.split('.') as [T, K];
-        return this.settings[category][key];
+    get(path: SettingsPath): SettingValue {
+        const parts = path.split('.');
+        return parts.reduce((obj: any, key) => obj && obj[key], this.settings);
     }
 
-    set<T extends keyof Settings, K extends keyof Settings[T]>(
-        path: `${T}.${string & K}`,
-        value: Settings[T][K]
-    ): void {
-        const [category, key] = path.split('.') as [T, K];
-        if (this.settings[category][key] !== value) {
-            this.settings[category][key] = value;
+    set(path: SettingsPath, value: SettingValue): void {
+        const parts = path.split('.');
+        const lastKey = parts.pop()!;
+        const target = parts.reduce((obj: any, key) => obj && obj[key], this.settings);
+        
+        if (target) {
+            target[lastKey] = value;
             this.pendingChanges.add(path);
             this.notifySubscribers(path, value);
         }
     }
 
-    getCategory<T extends keyof Settings>(category: T): Settings[T] {
+    getCategory(category: SettingsCategory): Settings[typeof category] {
         return { ...this.settings[category] };
     }
 

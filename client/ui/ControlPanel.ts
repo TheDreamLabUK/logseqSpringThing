@@ -1,7 +1,17 @@
-import { Settings } from '../core/types';
+import { Settings } from '../types/settings';
 import { settingsManager } from '../state/settings';
 import { platformManager } from '../platform/platformManager';
 import { createLogger } from '../core/logger';
+import {
+    SettingsCategory,
+    SettingsPath,
+    SettingValue,
+    formatSettingName,
+    getSettingInputType,
+    getStepValue,
+    isSettingsObject,
+    getAllSettingPaths
+} from '../types/settings/utils';
 import './ControlPanel.css';
 import { NodeManager } from '../rendering/nodes';
 
@@ -31,12 +41,11 @@ export class ControlPanel {
             const nodeManager = NodeManager.getInstance();
             const nodes = nodeManager.getCurrentNodes();
             
-            // Randomize positions within a reasonable sphere
             const radius = 50;
             nodes.forEach(node => {
                 const theta = Math.random() * Math.PI * 2;
                 const phi = Math.acos(2 * Math.random() - 1);
-                const r = radius * Math.cbrt(Math.random()); // Cube root for more uniform distribution
+                const r = radius * Math.cbrt(Math.random());
 
                 node.data.position = {
                     x: r * Math.sin(phi) * Math.cos(theta),
@@ -45,7 +54,6 @@ export class ControlPanel {
                 };
             });
 
-            // Update node positions
             nodeManager.updateNodes(nodes);
             logger.info('Node positions randomized');
         };
@@ -55,177 +63,177 @@ export class ControlPanel {
     }
 
     private initializePanel(): void {
-        // Create settings sections
-        const categories = Object.keys(this.settings) as Array<keyof Settings>;
-        categories.forEach(category => {
-            const section = this.createSettingsSection(category);
-            this.container.appendChild(section);
-        });
-
-        // Add platform-specific settings
-        if (platformManager.getCapabilities().xrSupported) {
-            this.addXRSettings();
-        }
-    }
-
-    private createSettingsSection(category: keyof Settings): HTMLElement {
-        const section = document.createElement('div');
-        section.className = 'settings-group';
+        // Create main sections
+        this.createSettingsGroup('visualization', 'Visualization');
         
-        const title = document.createElement('h4');
-        title.textContent = this.formatCategoryName(String(category));
-        section.appendChild(title);
+        if (platformManager.getCapabilities().xrSupported) {
+            this.createXRSettingsSection();
+        }
+        
+        this.createSettingsGroup('system', 'System');
+    }
 
-        const settings = this.settings[category];
-        Object.entries(settings).forEach(([key, value]) => {
-            const settingElement = this.createSettingElement(
-                category,
-                key as keyof Settings[typeof category],
-                value as Settings[typeof category][keyof Settings[typeof category]]
-            );
-            section.appendChild(settingElement);
+    private createXRSettingsSection(): void {
+        const xrSection = document.createElement('div');
+        xrSection.className = 'settings-group';
+        
+        const title = document.createElement('h3');
+        title.textContent = 'XR Settings';
+        xrSection.appendChild(title);
+
+        // Add XR mode toggle
+        const xrToggle = document.createElement('button');
+        xrToggle.id = 'xr-toggle';
+        xrToggle.textContent = 'Enter XR';
+        xrToggle.className = 'xr-toggle-button';
+        xrToggle.addEventListener('click', () => {
+            window.dispatchEvent(new CustomEvent('toggleXR'));
+        });
+        xrSection.appendChild(xrToggle);
+
+        // Create subsections for XR settings
+        const subsections = [
+            { key: 'input', title: 'Input & Interaction' },
+            { key: 'visuals', title: 'Visual Settings' },
+            { key: 'environment', title: 'Environment' },
+            { key: 'passthrough', title: 'Passthrough' }
+        ];
+
+        subsections.forEach(({ key, title }) => {
+            const subsection = document.createElement('div');
+            subsection.className = 'settings-subsection';
+            
+            const subtitle = document.createElement('h4');
+            subtitle.textContent = title;
+            subsection.appendChild(subtitle);
+
+            const settings = this.settings.xr[key as keyof typeof this.settings.xr];
+            if (settings && typeof settings === 'object') {
+                this.createSettingsElements(subsection, `xr.${key}`, settings);
+            }
+            
+            xrSection.appendChild(subsection);
         });
 
-        return section;
+        this.container.appendChild(xrSection);
     }
 
-    private formatCategoryName(category: string): string {
-        return category
-            .split(/(?=[A-Z])/)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
+    private createSettingsGroup(category: SettingsCategory, title: string): void {
+        const group = document.createElement('div');
+        group.className = 'settings-group';
+        
+        const groupTitle = document.createElement('h3');
+        groupTitle.textContent = title;
+        group.appendChild(groupTitle);
+
+        const categorySettings = this.settings[category];
+        Object.entries(categorySettings).forEach(([key, value]) => {
+            if (isSettingsObject(value)) {
+                const subsection = document.createElement('div');
+                subsection.className = 'settings-subsection';
+                
+                const subtitle = document.createElement('h4');
+                subtitle.textContent = formatSettingName(key);
+                subsection.appendChild(subtitle);
+
+                this.createSettingsElements(subsection, `${category}.${key}`, value);
+                group.appendChild(subsection);
+            }
+        });
+
+        this.container.appendChild(group);
     }
 
-    private createSettingElement<T extends keyof Settings, K extends keyof Settings[T]>(
-        category: T,
-        key: K,
-        value: Settings[T][K]
-    ): HTMLElement {
+    private createSettingsElements(container: HTMLElement, path: string, settings: Record<string, any>): void {
+        Object.entries(settings).forEach(([key, value]) => {
+            if (!isSettingsObject(value)) {
+                const settingElement = this.createSettingElement(`${path}.${key}`, value);
+                container.appendChild(settingElement);
+            }
+        });
+    }
+
+    private createSettingElement(path: string, value: SettingValue): HTMLElement {
         const container = document.createElement('div');
         container.className = 'setting-item';
 
         const label = document.createElement('label');
-        label.textContent = this.formatSettingName(String(key));
+        label.textContent = formatSettingName(path.split('.').pop()!);
         container.appendChild(label);
 
-        const input = this.createInputElement(category, key, value);
+        const input = this.createInputElement(path, value);
         container.appendChild(input);
 
         return container;
     }
 
-    private formatSettingName(setting: string): string {
-        return setting
-            .split(/(?=[A-Z])|_/)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-            .join(' ');
-    }
+    private createInputElement(path: string, value: SettingValue): HTMLElement {
+        const input = document.createElement('input');
+        const inputType = getSettingInputType(value);
+        input.type = inputType;
 
-    private createInputElement<T extends keyof Settings, K extends keyof Settings[T]>(
-        category: T,
-        key: K,
-        value: Settings[T][K]
-    ): HTMLElement {
-        let input: HTMLElement;
-
-        switch (typeof value) {
-            case 'boolean':
-                input = document.createElement('input');
-                input.setAttribute('type', 'checkbox');
-                (input as HTMLInputElement).checked = value as boolean;
+        switch (inputType) {
+            case 'checkbox':
+                input.checked = value as boolean;
                 break;
-
             case 'number':
-                input = document.createElement('input');
-                input.setAttribute('type', 'number');
-                input.setAttribute('step', '0.1');
-                (input as HTMLInputElement).value = String(value);
+                input.value = String(value);
+                input.step = getStepValue(path.split('.').pop()!);
                 break;
-
-            case 'string':
-                if (this.isColorSetting(String(key))) {
-                    input = document.createElement('input');
-                    input.setAttribute('type', 'color');
-                    (input as HTMLInputElement).value = value as string;
-                } else {
-                    input = document.createElement('input');
-                    input.setAttribute('type', 'text');
-                    (input as HTMLInputElement).value = value as string;
-                }
-                break;
-
             default:
-                logger.warn(`Unsupported setting type for ${String(key)}: ${typeof value}`);
-                input = document.createElement('span');
-                input.textContent = 'Unsupported setting type';
-                break;
+                input.value = String(value);
         }
 
-        input.id = `${String(category)}-${String(key)}`;
-        input.addEventListener('change', (event) => this.handleSettingChange(category, key, event));
-
+        input.id = path;
+        input.addEventListener('change', (event) => this.handleSettingChange(path, event));
         return input;
     }
 
-    private isColorSetting(key: string): boolean {
-        return key.toLowerCase().includes('color');
-    }
-
-    private async handleSettingChange<T extends keyof Settings, K extends keyof Settings[T]>(
-        category: T,
-        key: K,
-        event: Event
-    ): Promise<void> {
+    private async handleSettingChange(path: string, event: Event): Promise<void> {
         const target = event.target as HTMLInputElement;
-        let value: Settings[T][K];
+        let value: SettingValue;
 
         switch (target.type) {
             case 'checkbox':
-                value = target.checked as Settings[T][K];
+                value = target.checked;
                 break;
             case 'number':
-                value = parseFloat(target.value) as Settings[T][K];
+                value = parseFloat(target.value);
                 break;
             default:
-                value = target.value as Settings[T][K];
+                value = target.value;
         }
 
         try {
-            await settingsManager.updateSetting(category, key, value);
-            logger.info(`Updated setting ${String(category)}.${String(key)} to ${value}`);
+            await settingsManager.updateSetting(path, value);
+            logger.info(`Updated setting ${path} to ${value}`);
         } catch (error) {
-            logger.error(`Failed to update setting ${String(category)}.${String(key)}:`, error);
-            // Revert input to current setting value
-            const currentValue = this.settings[category][key];
-            if (target.type === 'checkbox') {
-                target.checked = currentValue as boolean;
-            } else {
-                target.value = String(currentValue);
-            }
+            logger.error(`Failed to update setting ${path}:`, error);
+            this.revertSettingValue(path, target);
+        }
+    }
+
+    private revertSettingValue(path: string, input: HTMLInputElement): void {
+        const value = settingsManager.get(path);
+        if (input.type === 'checkbox') {
+            input.checked = value as boolean;
+        } else {
+            input.value = String(value);
         }
     }
 
     private setupSettingsSubscriptions(): void {
-        // Subscribe to all settings
-        Object.keys(this.settings).forEach(category => {
-            const categoryKey = category as keyof Settings;
-            const categorySettings = this.settings[categoryKey];
-            Object.keys(categorySettings).forEach(setting => {
-                const settingKey = setting as keyof Settings[typeof categoryKey];
-                const unsubscribe = settingsManager.subscribe(
-                    categoryKey,
-                    settingKey,
-                    (value: Settings[typeof categoryKey][typeof settingKey]) => {
-                        this.updateSettingElement(category, setting, value);
-                    }
-                );
-                this.unsubscribers.push(unsubscribe);
+        const paths = getAllSettingPaths(this.settings);
+        paths.forEach(path => {
+            const unsubscribe = settingsManager.subscribe(path, (value) => {
+                this.updateSettingElement(path, value);
             });
+            this.unsubscribers.push(unsubscribe);
         });
     }
 
-    private updateSettingElement(category: string, setting: string, value: unknown): void {
-        const input = document.getElementById(`${category}-${setting}`) as HTMLInputElement;
+    private updateSettingElement(path: string, value: SettingValue): void {
+        const input = document.getElementById(path) as HTMLInputElement;
         if (input) {
             if (input.type === 'checkbox') {
                 input.checked = value as boolean;
@@ -235,31 +243,7 @@ export class ControlPanel {
         }
     }
 
-    private addXRSettings(): void {
-        // Add XR-specific settings section
-        const xrSection = document.createElement('div');
-        xrSection.className = 'settings-group';
-        
-        const title = document.createElement('h4');
-        title.textContent = 'XR Settings';
-        xrSection.appendChild(title);
-
-        // Add XR mode toggle
-        const xrToggle = document.createElement('button');
-        xrToggle.id = 'xr-toggle';
-        xrToggle.textContent = 'Enter XR';
-        xrToggle.addEventListener('click', () => {
-            // XR mode toggle logic handled by XRManager
-            const event = new CustomEvent('toggleXR');
-            window.dispatchEvent(event);
-        });
-        xrSection.appendChild(xrToggle);
-
-        this.container.appendChild(xrSection);
-    }
-
     public dispose(): void {
-        // Clean up subscribers
         this.unsubscribers.forEach(unsubscribe => unsubscribe());
         this.unsubscribers = [];
     }

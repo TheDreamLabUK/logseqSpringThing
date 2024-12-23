@@ -1,7 +1,16 @@
-import { Settings, SettingCategory } from '../core/types';
+import { Settings } from '../types/settings';
 import { createLogger } from '../core/logger';
 import { SettingsStore } from './SettingsStore';
 import { defaultSettings } from './defaultSettings';
+import {
+    SettingsCategory,
+    SettingsPath,
+    SettingValue,
+    getSettingValue,
+    setSettingValue,
+    isValidSettingPath,
+    getSettingCategory
+} from '../types/settings/utils';
 
 const logger = createLogger('SettingsManager');
 
@@ -33,51 +42,66 @@ export class SettingsManager {
         return this.settings;
     }
 
-    public async updateSetting<T extends keyof Settings, K extends keyof Settings[T]>(
-        category: T,
-        key: K,
-        value: Settings[T][K]
-    ): Promise<void> {
-        this.settings[category][key] = value;
-        this.set(category, key, value);
+    public async updateSetting(path: SettingsPath, value: SettingValue): Promise<void> {
+        if (!isValidSettingPath(path)) {
+            throw new Error(`Invalid settings path: ${path}`);
+        }
+
+        try {
+            setSettingValue(this.settings, path, value);
+            await this.store.set(path, value);
+            logger.debug(`Updated setting ${path} to ${value}`);
+        } catch (error) {
+            logger.error(`Failed to update setting ${path}:`, error);
+            throw error;
+        }
     }
 
-    public get<T extends keyof Settings, K extends keyof Settings[T]>(
-        category: T,
-        key: K
-    ): Settings[T][K] {
-        return this.store.get(`${category}.${key as string & K}`);
+    public get(path: SettingsPath): SettingValue {
+        if (!isValidSettingPath(path)) {
+            throw new Error(`Invalid settings path: ${path}`);
+        }
+        return getSettingValue(this.settings, path);
     }
 
-    public set<T extends keyof Settings, K extends keyof Settings[T]>(
-        category: T,
-        key: K,
-        value: Settings[T][K]
-    ): void {
-        this.store.set(`${category}.${key as string & K}`, value);
+    public getCategory(category: SettingsCategory): Settings[typeof category] {
+        return this.settings[category];
     }
 
-    public getCategory<T extends keyof Settings>(category: T): Settings[T] {
-        return this.store.getCategory(category);
+    public subscribe(path: SettingsPath, callback: (value: SettingValue) => void): () => void {
+        if (!isValidSettingPath(path)) {
+            throw new Error(`Invalid settings path: ${path}`);
+        }
+
+        return this.store.subscribe(path, (_, value) => {
+            try {
+                callback(value);
+            } catch (error) {
+                logger.error(`Error in settings subscriber for ${path}:`, error);
+            }
+        });
     }
 
-    public subscribe<T extends keyof Settings, K extends keyof Settings[T]>(
-        category: T,
-        key: K,
-        callback: (value: Settings[T][K]) => void
-    ): () => void {
-        return this.store.subscribe(
-            `${category}.${key as string & K}`,
-            (_, value) => callback(value)
-        );
+    public onSettingChange(path: SettingsPath, callback: (value: SettingValue) => void): () => void {
+        return this.subscribe(path, callback);
     }
 
-    public onSettingChange<T extends keyof Settings, K extends keyof Settings[T]>(
-        category: T,
-        key: K,
-        callback: (value: Settings[T][K]) => void
-    ): () => void {
-        return this.subscribe(category, key, callback);
+    public async batchUpdate(updates: Array<{ path: SettingsPath; value: SettingValue }>): Promise<void> {
+        for (const { path, value } of updates) {
+            if (!isValidSettingPath(path)) {
+                throw new Error(`Invalid settings path: ${path}`);
+            }
+            setSettingValue(this.settings, path, value);
+        }
+
+        try {
+            await Promise.all(
+                updates.map(({ path, value }) => this.store.set(path, value))
+            );
+        } catch (error) {
+            logger.error('Failed to apply batch updates:', error);
+            throw error;
+        }
     }
 
     public dispose(): void {
