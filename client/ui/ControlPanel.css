@@ -121,6 +121,32 @@
     border-color: rgba(231, 76, 60, 0.6);
 }
 
+.randomize-button-container {
+    padding: 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #ccc;
+}
+
+.randomize-button {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    color: white;
+    background-color: #2196f3;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.randomize-button:hover {
+    background-color: #1976d2;
+}
+
+.randomize-button:active {
+    background-color: #0d47a1;
+}
+
 /* Scrollbar styles */
 .control-panel::-webkit-scrollbar {
     width: 8px;

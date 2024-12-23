@@ -1,16 +1,13 @@
-#[macro_use]
-extern crate log;
-
-use webxr::{
-    AppState, Settings,
-    init_debug_settings,
-    file_handler, graph_handler, visualization_handler,
-    handlers::socket_flow_handler,
-    RealGitHubService,
-    RealGitHubPRService, GPUCompute, GraphData,
-    log_data, log_warn,
+use crate::{
+    config::Settings,
+    handlers::{
+        file_handler,
+        graph_handler,
+        settings,
+        socket_flow_handler::{self, socket_flow_handler},
+    },
     services::file_service::FileService,
-    socket_flow_handler,
+    app_state::AppState,
 };
 
 use actix_web::{web, App, HttpServer, middleware};
@@ -55,119 +52,33 @@ async fn main() -> std::io::Result<()> {
 
     // Create web::Data instances first
     let settings_data = web::Data::new(settings.clone());
+    let app_state = web::Data::new(AppState::new());
 
-    // Initialize services
-    let settings_read = settings.read().await;
-    let github_service: Arc<RealGitHubService> = match RealGitHubService::new(
-        (*settings_read).github.token.clone(),
-        (*settings_read).github.owner.clone(),
-        (*settings_read).github.repo.clone(),
-        (*settings_read).github.base_path.clone(),
-        settings.clone(),
-    ) {
-        Ok(service) => Arc::new(service),
-        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-    };
-
-    let github_pr_service: Arc<RealGitHubPRService> = match RealGitHubPRService::new(
-        (*settings_read).github.token.clone(),
-        (*settings_read).github.owner.clone(),
-        (*settings_read).github.repo.clone(),
-        (*settings_read).github.base_path.clone()
-    ) {
-        Ok(service) => Arc::new(service),
-        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-    };
-    drop(settings_read);
-
-    // Initialize GPU compute
-    log_data!("Initializing GPU compute...");
-    let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
-        Ok(gpu) => {
-            log_data!("GPU initialization successful");
-            Some(gpu)
-        }
-        Err(e) => {
-            log_warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
-            None
-        }
-    };
-
-    // Initialize app state
-    let app_state = web::Data::new(AppState::new(
-        settings.clone(),
-        github_service.clone(),
-        None,
-        None,
-        gpu_compute,
-        "default_conversation".to_string(),
-        github_pr_service.clone(),
-    ));
-
-    // Initialize debug settings
-    let (debug_enabled, websocket_debug, data_debug) = {
-        let settings_read = settings.read().await;
-        let debug_settings = (
-            (*settings_read).server_debug.enabled,
-            (*settings_read).server_debug.enable_websocket_debug,
-            (*settings_read).server_debug.enable_data_debug,
-        );
-        debug_settings
-    };
-
-    // Initialize our debug logging system
-    init_debug_settings(debug_enabled, websocket_debug, data_debug);
-
-    // Initialize local storage and fetch files from GitHub
-    info!("Initializing local storage and fetching files from GitHub...");
-    if let Err(e) = FileService::initialize_local_storage(&*github_service, settings.clone()).await {
-        error!("Failed to initialize local storage: {}", e);
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize local storage: {}", e)));
-    }
-    info!("Local storage initialization complete");
-
-    // Start the server
-    let bind_address = {
-        let settings_read = settings.read().await;
-        format!("{}:{}", (*settings_read).network.bind_address, (*settings_read).network.port)
-    };
-
-    log_data!("Starting HTTP server on {}", bind_address);
-
+    // Configure app with services
     HttpServer::new(move || {
-        // Configure CORS
-        let cors = Cors::default()
-            .allow_any_origin()
-            .allow_any_method()
-            .allow_any_header()
-            .max_age(3600)
-            .supports_credentials();
-
         App::new()
+            .wrap(Cors::default()
+                .allow_any_origin()
+                .allow_any_method()
+                .allow_any_header()
+                .max_age(3600))
             .wrap(middleware::Logger::default())
-            .wrap(cors)
-            .wrap(middleware::Compress::default())
             .app_data(settings_data.clone())
             .app_data(app_state.clone())
-            .app_data(web::Data::new(github_service.clone()))
-            .app_data(web::Data::new(github_pr_service.clone()))
             .service(
                 web::scope("/api")
-                    .service(web::scope("/files").configure(configure_file_handler))
-                    .service(web::scope("/graph").configure(configure_graph_handler))
-                    .service(web::scope("/visualization").configure(visualization_handler::config))
+                    .service(web::scope("/files").configure(file_handler::config))
+                    .service(web::scope("/graph").configure(graph_handler::config))
+                    .service(web::scope("/visualization").configure(settings::config))
             )
             .service(
                 web::resource("/wss")
                     .app_data(web::PayloadConfig::new(1 << 25))  // 32MB max payload
                     .route(web::get().to(socket_flow_handler))
             )
-            .service(Files::new("/", "/app/client").index_file("index.html"))
+            .service(Files::new("/", "static").index_file("index.html"))
     })
-    .bind(&bind_address)?
+    .bind("0.0.0.0:8080")?
     .run()
-    .await?;
-
-    log_data!("HTTP server stopped");
-    Ok(())
+    .await
 }

@@ -196,6 +196,30 @@ export class NodeManager {
         }
     }
 
+    public getCurrentNodes(): Node[] {
+        return [...this.currentNodes];
+    }
+
+    public updateNodes(nodes: Node[]): void {
+        this.currentNodes = nodes;
+        const positions = new Float32Array(nodes.length * FLOATS_PER_NODE);
+        
+        nodes.forEach((node, index) => {
+            const baseIndex = index * FLOATS_PER_NODE;
+            positions[baseIndex] = node.data.position.x;
+            positions[baseIndex + 1] = node.data.position.y;
+            positions[baseIndex + 2] = node.data.position.z;
+            // Velocity components (if needed)
+            positions[baseIndex + 3] = 0;
+            positions[baseIndex + 4] = 0;
+            positions[baseIndex + 5] = 0;
+            
+            this.nodeIndices.set(node.id, index);
+        });
+        
+        this.updatePositions(positions);
+    }
+
     public dispose(): void {
         if (this.nodeInstances) {
             this.nodeInstances.geometry.dispose();

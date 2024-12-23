@@ -3,6 +3,7 @@ import { settingsManager } from '../state/settings';
 import { platformManager } from '../platform/platformManager';
 import { createLogger } from '../core/logger';
 import './ControlPanel.css';
+import { NodeManager } from '../rendering/nodes';
 
 const logger = createLogger('ControlPanel');
 
@@ -14,8 +15,43 @@ export class ControlPanel {
     constructor(container: HTMLElement) {
         this.container = container;
         this.settings = settingsManager.getCurrentSettings();
+        this.addRandomizeButton();
         this.initializePanel();
         this.setupSettingsSubscriptions();
+    }
+
+    private addRandomizeButton(): void {
+        const buttonContainer = document.createElement('div');
+        buttonContainer.className = 'randomize-button-container';
+
+        const button = document.createElement('button');
+        button.textContent = 'Randomize Node Positions';
+        button.className = 'randomize-button';
+        button.onclick = () => {
+            const nodeManager = NodeManager.getInstance();
+            const nodes = nodeManager.getCurrentNodes();
+            
+            // Randomize positions within a reasonable sphere
+            const radius = 50;
+            nodes.forEach(node => {
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                const r = radius * Math.cbrt(Math.random()); // Cube root for more uniform distribution
+
+                node.data.position = {
+                    x: r * Math.sin(phi) * Math.cos(theta),
+                    y: r * Math.sin(phi) * Math.sin(theta),
+                    z: r * Math.cos(phi)
+                };
+            });
+
+            // Update node positions
+            nodeManager.updateNodes(nodes);
+            logger.info('Node positions randomized');
+        };
+
+        buttonContainer.appendChild(button);
+        this.container.insertBefore(buttonContainer, this.container.firstChild);
     }
 
     private initializePanel(): void {

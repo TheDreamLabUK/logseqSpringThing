@@ -1,182 +1,163 @@
 import * as THREE from 'three';
-import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
-import { Font } from 'three/examples/jsm/loaders/FontLoader';
+import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
+import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { NodeMetadata } from '../types/metadata';
 
 export class MetadataVisualizer {
-    private static readonly SHAPES = {
+    private readonly geometries = {
         SPHERE: new THREE.SphereGeometry(1, 32, 32),
-        DODECAHEDRON: new THREE.DodecahedronGeometry(1),
         ICOSAHEDRON: new THREE.IcosahedronGeometry(1),
         OCTAHEDRON: new THREE.OctahedronGeometry(1)
     };
 
-    private readonly font: Font;
-    private readonly textMaterial: THREE.ShaderMaterial;
+    private font: Font | null = null;
+    private fontLoader: FontLoader;
+    private readonly fontPath = '/fonts/helvetiker_regular.typeface.json';
+    private readonly labelScale = 0.1;
+    private readonly labelHeight = 0.1;
     private readonly labelGroup: THREE.Group;
 
     constructor(
-        private readonly scene: THREE.Scene,
         private readonly camera: THREE.Camera,
         private readonly settings: any
     ) {
+        this.fontLoader = new FontLoader();
+        this.loadFont();
         this.labelGroup = new THREE.Group();
-        scene.add(this.labelGroup);
+    }
 
-        // Initialize SDF text shader
-        this.textMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                uColor: { value: new THREE.Color(settings.labels.text_color) },
-                uOutlineColor: { value: new THREE.Color(settings.labels.text_outline_color) },
-                uOutlineWidth: { value: settings.labels.text_outline_width },
-                uOpacity: { value: 1.0 }
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                void main() {
-                    vUv = uv;
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 uColor;
-                uniform vec3 uOutlineColor;
-                uniform float uOutlineWidth;
-                uniform float uOpacity;
-                varying vec2 vUv;
-                
-                void main() {
-                    float distance = texture2D(uMap, vUv).a;
-                    float alpha = smoothstep(0.5 - uOutlineWidth, 0.5 + uOutlineWidth, distance);
-                    vec3 color = mix(uOutlineColor, uColor, smoothstep(0.5 - uOutlineWidth, 0.5, distance));
-                    gl_FragColor = vec4(color, alpha * uOpacity);
-                }
-            `,
-            transparent: true,
-            side: THREE.DoubleSide,
-            depthWrite: false
+    private async loadFont(): Promise<void> {
+        try {
+            this.font = await this.fontLoader.loadAsync(this.fontPath);
+        } catch (error) {
+            console.error('Failed to load font:', error);
+        }
+    }
+
+    public async createTextMesh(text: string): Promise<THREE.Mesh | null> {
+        if (!this.font) {
+            console.warn('Font not loaded yet');
+            return null;
+        }
+
+        const geometry = new TextGeometry(text, {
+            font: this.font,
+            size: 1,
+            height: this.labelHeight,
+            curveSegments: 4,
+            bevelEnabled: false
         });
+
+        const material = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.scale.set(this.labelScale, this.labelScale, this.labelScale);
+
+        // Center the text
+        geometry.computeBoundingBox();
+        const textWidth = geometry.boundingBox!.max.x - geometry.boundingBox!.min.x;
+        mesh.position.x = -textWidth * this.labelScale / 2;
+
+        return mesh;
     }
 
     public createNodeVisual(metadata: NodeMetadata): THREE.Mesh {
         const geometry = this.getGeometryFromAge(metadata.commitAge);
         const material = this.createMaterialFromHyperlinks(metadata.hyperlinkCount);
         const mesh = new THREE.Mesh(geometry, material);
-        
-        // Set size from metadata
-        const scale = this.calculateNodeScale(metadata.importance);
-        mesh.scale.setScalar(scale);
 
-        // Add label
-        this.createLabel(mesh, metadata.name);
+        const scale = this.calculateScale(metadata.importance);
+        mesh.scale.set(scale, scale, scale);
+
+        mesh.position.set(
+            metadata.position.x,
+            metadata.position.y,
+            metadata.position.z
+        );
 
         return mesh;
     }
 
-    private getGeometryFromAge(ageInDays: number): THREE.BufferGeometry {
-        const ranges = this.settings.nodes.shape_age_ranges;
-        
-        if (ageInDays <= ranges[0]) return MetadataVisualizer.SHAPES.SPHERE;
-        if (ageInDays <= ranges[1]) return MetadataVisualizer.SHAPES.DODECAHEDRON;
-        if (ageInDays <= ranges[2]) return MetadataVisualizer.SHAPES.ICOSAHEDRON;
-        return MetadataVisualizer.SHAPES.OCTAHEDRON;
+    private getGeometryFromAge(age: number): THREE.BufferGeometry {
+        if (age < 7) return this.geometries.SPHERE;
+        if (age < 30) return this.geometries.ICOSAHEDRON;
+        return this.geometries.OCTAHEDRON;
     }
 
-    private createMaterialFromHyperlinks(linkCount: number): THREE.Material {
-        const minColor = new THREE.Color(this.settings.nodes.hyperlink_color_min);
-        const maxColor = new THREE.Color(this.settings.nodes.hyperlink_color_max);
-        
-        // Normalize link count (assuming max of 100 links)
-        const t = Math.min(linkCount / 100, 1);
-        const color = new THREE.Color().lerpColors(minColor, maxColor, t);
+    private createMaterialFromHyperlinks(count: number): THREE.Material {
+        const hue = Math.min(count / 10, 1) * 0.3; // 0 to 0.3 range
+        const color = new THREE.Color().setHSL(hue, 0.7, 0.5);
 
-        return new THREE.MeshStandardMaterial({
+        return new THREE.MeshPhongMaterial({
             color: color,
-            metalness: this.settings.nodes.metalness,
-            roughness: this.settings.nodes.roughness,
+            shininess: 30,
             transparent: true,
-            opacity: this.settings.nodes.opacity
+            opacity: 0.9
         });
     }
 
-    private calculateNodeScale(importance: number): number {
-        const [min, max] = this.settings.nodes.size_range;
+    private calculateScale(importance: number): number {
+        const [min, max] = this.settings.nodes.sizeRange;
         return min + (max - min) * Math.min(importance, 1);
     }
 
-    private createLabel(nodeMesh: THREE.Mesh, text: string): void {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d')!;
-        
-        // Configure for SDF rendering
-        canvas.width = this.settings.labels.text_resolution;
-        canvas.height = this.settings.labels.text_resolution;
-        
-        ctx.font = `${this.settings.labels.desktop_font_size}px Arial`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        
-        // Draw text with padding for SDF
-        ctx.fillText(text, 
-            canvas.width / 2, 
-            canvas.height / 2, 
-            canvas.width - this.settings.labels.text_padding * 2
-        );
+    public async createMetadataLabel(metadata: NodeMetadata): Promise<THREE.Group> {
+        const group = new THREE.Group();
 
-        // Create texture and geometry
-        const texture = new THREE.CanvasTexture(canvas);
-        const geometry = new THREE.PlaneGeometry(1, 1);
-        const material = this.textMaterial.clone();
-        material.uniforms.uMap = { value: texture };
+        // Create text for name
+        const nameMesh = await this.createTextMesh(metadata.name);
+        if (nameMesh) {
+            nameMesh.position.y = 1.2;
+            group.add(nameMesh);
+        }
 
-        const label = new THREE.Mesh(geometry, material);
-        
-        // Position above node
-        label.position.copy(nodeMesh.position);
-        label.position.y += nodeMesh.scale.y + 0.5;
-        
+        // Create text for commit age
+        const ageMesh = await this.createTextMesh(`${Math.round(metadata.commitAge)} days`);
+        if (ageMesh) {
+            ageMesh.position.y = 0.8;
+            group.add(ageMesh);
+        }
+
+        // Create text for hyperlink count
+        const linksMesh = await this.createTextMesh(`${metadata.hyperlinkCount} links`);
+        if (linksMesh) {
+            linksMesh.position.y = 0.4;
+            group.add(linksMesh);
+        }
+
         // Billboard behavior
-        if (this.settings.labels.billboard_mode === 'camera') {
-            label.onBeforeRender = () => {
-                label.quaternion.copy(this.camera.quaternion);
+        if (this.settings.labels?.billboard_mode === 'camera') {
+            group.onBeforeRender = () => {
+                group.quaternion.copy(this.camera.quaternion);
             };
         } else {
             // Vertical billboard - only rotate around Y
-            label.onBeforeRender = () => {
+            group.onBeforeRender = () => {
                 const cameraPos = this.camera.position.clone();
-                cameraPos.y = label.position.y;
-                label.lookAt(cameraPos);
+                cameraPos.y = group.position.y;
+                group.lookAt(cameraPos);
             };
         }
 
-        this.labelGroup.add(label);
+        return group;
     }
 
     public dispose(): void {
         // Clean up geometries
-        Object.values(MetadataVisualizer.SHAPES).forEach(geometry => {
-            geometry.dispose();
-        });
-
-        // Clean up materials and textures
-        this.labelGroup.traverse((object) => {
-            if (object instanceof THREE.Mesh) {
-                object.geometry.dispose();
-                if (object.material instanceof THREE.Material) {
-                    object.material.dispose();
-                }
-                if (object.material instanceof THREE.ShaderMaterial) {
-                    Object.values(object.material.uniforms).forEach(uniform => {
-                        if (uniform.value instanceof THREE.Texture) {
-                            uniform.value.dispose();
-                        }
-                    });
+        Object.values(this.geometries).forEach(geometry => geometry.dispose());
+        
+        // Clean up label group
+        this.labelGroup.traverse(child => {
+            if (child instanceof THREE.Mesh) {
+                child.geometry.dispose();
+                if (child.material instanceof THREE.Material) {
+                    child.material.dispose();
                 }
             }
         });
-
-        // Remove from scene
-        this.scene.remove(this.labelGroup);
     }
 }

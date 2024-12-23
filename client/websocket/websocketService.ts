@@ -1,5 +1,7 @@
 import { createLogger } from '../core/logger';
-import { buildWsUrl } from '../core/api';
+import { buildWsUrl, buildSettingsUrl } from '../core/api';
+import { WebSocketSettings } from '../core/types';
+import { snakeToCamelCase } from '../core/utils';
 
 const logger = createLogger('WebSocketService');
 
@@ -18,7 +20,55 @@ export class WebSocketService {
     private reconnectTimer: NodeJS.Timeout | null = null;
 
     constructor() {
-        this.connect();
+        this.loadSettings().then(() => this.connect());
+    }
+
+    private async loadSettings(): Promise<void> {
+        try {
+            // Load each WebSocket setting individually
+            const settings: Partial<WebSocketSettings> = {};
+            const settingKeys = [
+                'heartbeat-interval',
+                'heartbeat-timeout',
+                'max-reconnect-attempts',
+                'reconnect-delay',
+                'update-rate'
+            ];
+
+            await Promise.all(
+                settingKeys.map(async (setting) => {
+                    try {
+                        const response = await fetch(buildSettingsUrl('websocket', setting));
+                        if (!response.ok) {
+                            throw new Error(`Failed to load setting ${setting}: ${response.statusText}`);
+                        }
+                        const data = await response.json();
+                        const camelKey = snakeToCamelCase(setting.replace(/-/g, '_'));
+                        (settings as any)[camelKey] = data.value;
+                    } catch (error) {
+                        logger.error(`Error loading WebSocket setting ${setting}:`, error);
+                    }
+                })
+            );
+
+            this.updateSettings(settings);
+        } catch (error) {
+            logger.error('Error loading WebSocket settings:', error);
+        }
+    }
+
+    private updateSettings(settings: Partial<WebSocketSettings>): void {
+        this.heartbeatInterval = settings.heartbeatInterval ?? 15000;
+        this.heartbeatTimeout = settings.heartbeatTimeout ?? 60000;
+        this.maxReconnectAttempts = settings.reconnectAttempts ?? 3;
+        this.reconnectDelay = settings.reconnectDelay ?? 5000;
+        
+        logger.debug('Updated WebSocket settings:', {
+            heartbeatInterval: this.heartbeatInterval,
+            heartbeatTimeout: this.heartbeatTimeout,
+            maxReconnectAttempts: this.maxReconnectAttempts,
+            reconnectDelay: this.reconnectDelay
+        });
     }
 
     private connect(): void {
@@ -26,40 +76,47 @@ export class WebSocketService {
             const wsUrl = buildWsUrl();
             this.ws = new WebSocket(wsUrl);
             
-            this.ws.onopen = () => {
-                logger.info('WebSocket connection established');
-                this.reconnectAttempts = 0;
-                this.startHeartbeat();
-            };
-
-            this.ws.onclose = () => {
-                logger.info('WebSocket connection closed');
-                this.handleDisconnect();
-            };
-
-            this.ws.onerror = (error) => {
-                logger.error('WebSocket error:', error);
-                this.handleDisconnect();
-            };
-
-            this.ws.onmessage = (event) => {
-                try {
-                    const message = JSON.parse(event.data);
-                    if (message.type === 'heartbeat') {
-                        this.handleHeartbeat();
-                    } else {
-                        const handler = this.messageHandlers.get(message.type);
-                        if (handler) {
-                            handler(message.data);
-                        }
-                    }
-                } catch (error) {
-                    logger.error('Error handling WebSocket message:', error);
-                }
-            };
+            this.ws.onopen = this.onopen.bind(this);
+            this.ws.onclose = this.onclose.bind(this);
+            this.ws.onerror = this.onerror.bind(this);
+            this.ws.onmessage = this.onmessage.bind(this);
+            
+            logger.debug('Attempting WebSocket connection to:', wsUrl);
         } catch (error) {
             logger.error('Error creating WebSocket connection:', error);
             this.handleDisconnect();
+        }
+    }
+
+    private onopen(): void {
+        logger.info('WebSocket connection established');
+        this.reconnectAttempts = 0;
+        this.startHeartbeat();
+    }
+
+    private onclose(): void {
+        logger.info('WebSocket connection closed');
+        this.handleDisconnect();
+    }
+
+    private onerror(error: Event): void {
+        logger.error('WebSocket error:', error);
+        this.handleDisconnect();
+    }
+
+    private onmessage(event: MessageEvent): void {
+        try {
+            const message = JSON.parse(event.data);
+            if (message.type === 'heartbeat') {
+                this.handleHeartbeat();
+            } else {
+                const handler = this.messageHandlers.get(message.type);
+                if (handler) {
+                    handler(message.data);
+                }
+            }
+        } catch (error) {
+            logger.error('Error handling WebSocket message:', error);
         }
     }
 

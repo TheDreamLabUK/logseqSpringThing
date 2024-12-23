@@ -14,8 +14,15 @@ export function buildApiUrl(path: string): string {
     return `${API_BASE}${path}`;
 }
 
-// Helper function to build WebSocket URLs
+// Helper function to build settings URL
+export function buildSettingsUrl(category: string, setting?: string): string {
+    const base = `visualization/settings/${category}`;
+    return buildApiUrl(setting ? `${base}/${setting}` : base);
+}
+
+// Helper function to build WebSocket URL
 export function buildWsUrl(): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${window.location.host}/wss`;
+    const host = window.location.host;
+    return `${protocol}//${host}/wss`;
 }

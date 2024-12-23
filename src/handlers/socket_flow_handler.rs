@@ -3,21 +3,32 @@ use actix::prelude::*;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use tokio::sync::RwLock;
-use log::{info, warn};
+use log::{info, warn, debug};
+use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
 use crate::utils::socket_flow_messages::{PingMessage, PongMessage};
+use crate::config::Settings;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WebSocketSettings {
+    pub heartbeat_interval: u64,
+    pub heartbeat_timeout: u64,
+    pub max_reconnect_attempts: u32,
+    pub reconnect_delay: u64,
+    pub update_rate: u32,
+}
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
-    settings: Arc<RwLock<crate::config::Settings>>,
+    settings: Arc<RwLock<Settings>>,
     last_ping: Option<u64>,
 }
 
 impl SocketFlowServer {
     const POSITION_UPDATE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(16);
 
-    pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<crate::config::Settings>>) -> Self {
+    pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<Settings>>) -> Self {
         Self {
             app_state,
             settings,
@@ -30,6 +41,17 @@ impl SocketFlowServer {
         PongMessage {
             type_: "pong".to_string(),
             timestamp: msg.timestamp,
+        }
+    }
+
+    pub async fn get_settings(&self) -> WebSocketSettings {
+        let settings = self.settings.read().await;
+        WebSocketSettings {
+            heartbeat_interval: settings.websocket.heartbeat_interval,
+            heartbeat_timeout: settings.websocket.heartbeat_timeout,
+            max_reconnect_attempts: settings.websocket.max_reconnect_attempts,
+            reconnect_delay: settings.websocket.reconnect_delay,
+            update_rate: settings.websocket.update_rate,
         }
     }
 }
@@ -109,11 +131,42 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
     }
 }
 
+pub async fn get_websocket_settings(
+    settings: web::Data<Arc<RwLock<Settings>>>
+) -> Result<HttpResponse, Error> {
+    let settings = settings.read().await;
+    let ws_settings = WebSocketSettings {
+        heartbeat_interval: settings.websocket.heartbeat_interval,
+        heartbeat_timeout: settings.websocket.heartbeat_timeout,
+        max_reconnect_attempts: settings.websocket.max_reconnect_attempts,
+        reconnect_delay: settings.websocket.reconnect_delay,
+        update_rate: settings.websocket.update_rate,
+    };
+    
+    Ok(HttpResponse::Ok().json(ws_settings))
+}
+
+pub async fn update_websocket_settings(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    new_settings: web::Json<WebSocketSettings>
+) -> Result<HttpResponse, Error> {
+    let mut settings = settings.write().await;
+    
+    settings.websocket.heartbeat_interval = new_settings.heartbeat_interval;
+    settings.websocket.heartbeat_timeout = new_settings.heartbeat_timeout;
+    settings.websocket.max_reconnect_attempts = new_settings.max_reconnect_attempts;
+    settings.websocket.reconnect_delay = new_settings.reconnect_delay;
+    settings.websocket.update_rate = new_settings.update_rate;
+    
+    debug!("Updated WebSocket settings: {:?}", new_settings);
+    Ok(HttpResponse::Ok().json(new_settings.0))
+}
+
 pub async fn socket_flow_handler(
     req: HttpRequest,
     stream: web::Payload,
     app_state: web::Data<AppState>,
-    settings: web::Data<Arc<RwLock<crate::config::Settings>>>,
+    settings: web::Data<Arc<RwLock<Settings>>>,
 ) -> Result<HttpResponse, Error> {
     let server = SocketFlowServer::new(app_state.into_inner(), settings.get_ref().clone());
     ws::start(server, &req, stream)
