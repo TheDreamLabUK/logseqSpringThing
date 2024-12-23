@@ -31,7 +31,10 @@ fn configure_file_handler(cfg: &mut web::ServiceConfig) {
 fn configure_graph_handler(cfg: &mut web::ServiceConfig) {
     cfg.service(web::resource("/data").to(graph_handler::get_graph_data))
        .service(web::resource("/data/paginated").to(graph_handler::get_paginated_graph_data))
-       .service(web::resource("/update").to(graph_handler::update_graph));
+       .service(
+           web::resource("/update")
+               .route(web::post().to(graph_handler::update_graph))
+       );
 }
 
 #[actix_web::main]
