@@ -1,6 +1,6 @@
 import type { LabelSettings } from '../core/types';
 import { settingsManager } from '../state/settings';
-import { createLogger } from '../utils/logger';
+import { createLogger } from '../core/logger';
 import * as THREE from 'three';
 
 const logger = createLogger('TextRenderer');

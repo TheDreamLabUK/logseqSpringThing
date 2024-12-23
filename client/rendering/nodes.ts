@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import { Node } from '../core/types';
-import { createLogger } from '../utils/logger';
+import { createLogger } from '../core/logger';
 import { settingsManager } from '../state/settings';
 import type { Settings } from '../types/settings';
 import type { NodeSettings, PhysicsSettings } from '../core/types';
+import { GeometryFactory } from './factories/GeometryFactory';
+import { MaterialFactory } from './factories/MaterialFactory';
+import { SettingsObserver } from '../state/SettingsObserver';
 
 const logger = createLogger('NodeManager');
 
@@ -19,19 +22,19 @@ export class NodeRenderer {
     public readonly material: THREE.Material;
     protected currentSettings: Settings;
     public mesh: THREE.Mesh;
+    private readonly materialFactory: MaterialFactory;
+    private readonly geometryFactory: GeometryFactory;
+    private readonly settingsObserver: SettingsObserver;
 
     constructor() {
         this.currentSettings = settingsManager.getCurrentSettings();
-        this.material = new THREE.MeshPhongMaterial({
-            color: 0x4fc3f7,
-            shininess: 30,
-            specular: 0x004ba0,
-            transparent: true,
-            opacity: 0.9,
-        });
+        this.materialFactory = MaterialFactory.getInstance();
+        this.geometryFactory = GeometryFactory.getInstance();
+        this.settingsObserver = SettingsObserver.getInstance();
 
+        this.material = this.materialFactory.getPhongNodeMaterial();
         this.mesh = new THREE.Mesh(
-            new THREE.SphereGeometry(1, 32, 32),
+            this.geometryFactory.getNodeGeometry('high'),
             this.material
         );
 
@@ -42,10 +45,8 @@ export class NodeRenderer {
         try {
             switch (setting) {
                 case 'baseColor':
-                    this.material.color.set(value as string);
-                    break;
                 case 'opacity':
-                    this.material.opacity = value as number;
+                    this.materialFactory.updateMaterial('node-phong', this.currentSettings);
                     break;
                 case 'baseSize':
                     this.mesh.scale.set(value, value, value);
@@ -54,7 +55,6 @@ export class NodeRenderer {
                     // Other settings handled elsewhere
                     break;
             }
-            (this.material as any).needsUpdate = true;
         } catch (error) {
             logger.error(`Error applying node setting change for ${String(setting)}:`, error);
         }
@@ -66,15 +66,13 @@ export class NodeRenderer {
     }
 
     private setupSettingsSubscriptions(): void {
-        Object.keys(this.currentSettings.nodes).forEach(setting => {
-            settingsManager.subscribe('nodes', setting as keyof NodeSettings, (value) => {
-                this.handleSettingChange(setting as keyof NodeSettings, value);
+        this.settingsObserver.subscribe('NodeRenderer', (settings) => {
+            this.currentSettings = settings;
+            Object.keys(settings.nodes).forEach(setting => {
+                this.handleSettingChange(setting as keyof NodeSettings, settings.nodes[setting as keyof NodeSettings]);
             });
-        });
-
-        Object.keys(this.currentSettings.physics).forEach(setting => {
-            settingsManager.subscribe('physics', setting as keyof PhysicsSettings, (value) => {
-                this.handlePhysicsSettingChange(setting as keyof PhysicsSettings, value);
+            Object.keys(settings.physics).forEach(setting => {
+                this.handlePhysicsSettingChange(setting as keyof PhysicsSettings, settings.physics[setting as keyof PhysicsSettings]);
             });
         });
     }
@@ -85,40 +83,47 @@ export class NodeManager {
     private currentSettings: Settings;
     private nodeInstances: THREE.InstancedMesh;
     private edgeInstances: THREE.InstancedMesh;
-    private unsubscribers: Array<() => void> = [];
     private nodeRenderer: NodeRenderer;
     private currentNodes: Node[] = [];
     private nodeIndices: Map<string, number> = new Map();
+    private readonly materialFactory: MaterialFactory;
+    private readonly geometryFactory: GeometryFactory;
+    private readonly settingsObserver: SettingsObserver;
 
     private constructor() {
         this.currentSettings = settingsManager.getCurrentSettings();
+        this.materialFactory = MaterialFactory.getInstance();
+        this.geometryFactory = GeometryFactory.getInstance();
+        this.settingsObserver = SettingsObserver.getInstance();
         this.nodeRenderer = new NodeRenderer();
 
-        const nodeGeometry = new THREE.SphereGeometry(1, 32, 32);
-        const edgeGeometry = new THREE.CylinderGeometry(0.1, 0.1, 1, 8);
-        edgeGeometry.rotateX(Math.PI / 2);
-
         this.nodeInstances = new THREE.InstancedMesh(
-            nodeGeometry,
+            this.geometryFactory.getNodeGeometry('high'),
             this.nodeRenderer.material,
             10000
         );
 
         this.edgeInstances = new THREE.InstancedMesh(
-            edgeGeometry,
-            this.createEdgeMaterial(),
+            this.geometryFactory.getHologramGeometry('ring', 'medium'),
+            this.materialFactory.getMetadataMaterial(),
             30000
         );
 
         this.setupSettingsSubscriptions();
     }
 
-    private createEdgeMaterial(): THREE.Material {
-        return new THREE.MeshBasicMaterial({
-            transparent: true,
-            opacity: this.currentSettings.edges.opacity,
-            color: this.currentSettings.nodes.baseColor,
+    private setupSettingsSubscriptions(): void {
+        this.settingsObserver.subscribe('NodeManager', (settings) => {
+            this.currentSettings = settings;
+            this.materialFactory.updateMaterial('metadata', settings);
         });
+    }
+
+    public static getInstance(): NodeManager {
+        if (!NodeManager.instance) {
+            NodeManager.instance = new NodeManager();
+        }
+        return NodeManager.instance;
     }
 
     public updatePositions(positions: Float32Array): void {
@@ -179,57 +184,26 @@ export class NodeManager {
 
         const node = this.currentNodes[index];
         if (node) {
-            node.data.position = { x: newPosition.x, y: newPosition.y, z: newPosition.z };
+            node.data.position = {
+                x: newPosition.x,
+                y: newPosition.y,
+                z: newPosition.z
+            };
+
+            matrix.compose(newPosition, quaternion, scale);
+            this.nodeInstances.setMatrixAt(index, matrix);
+            this.nodeInstances.instanceMatrix.needsUpdate = true;
         }
-
-        matrix.compose(newPosition, quaternion, scale);
-        this.nodeInstances.setMatrixAt(index, matrix);
-        this.nodeInstances.instanceMatrix.needsUpdate = true;
-    }
-
-    private setupSettingsSubscriptions(): void {
-        Object.keys(this.currentSettings.nodes).forEach(setting => {
-            const unsubscribe = settingsManager.subscribe('nodes', setting as keyof NodeSettings, (value) => {
-                this.nodeRenderer.handleSettingChange(setting as keyof NodeSettings, value);
-            });
-            this.unsubscribers.push(unsubscribe);
-        });
-
-        Object.keys(this.currentSettings.physics).forEach(setting => {
-            const unsubscribe = settingsManager.subscribe('physics', setting as keyof PhysicsSettings, (value) => {
-                this.nodeRenderer.handlePhysicsSettingChange(setting as keyof PhysicsSettings, value);
-            });
-            this.unsubscribers.push(unsubscribe);
-        });
-    }
-
-    public static getInstance(): NodeManager {
-        if (!NodeManager.instance) {
-            NodeManager.instance = new NodeManager();
-        }
-        return NodeManager.instance;
     }
 
     public dispose(): void {
         if (this.nodeInstances) {
-            if (this.nodeInstances.geometry) {
-                this.nodeInstances.geometry.dispose();
-            }
-            if (this.nodeInstances.material instanceof THREE.Material) {
-                this.nodeInstances.material.dispose();
-            }
-            this.nodeInstances.dispose();
+            this.nodeInstances.geometry.dispose();
+            this.nodeInstances.material.dispose();
         }
         if (this.edgeInstances) {
-            if (this.edgeInstances.geometry) {
-                this.edgeInstances.geometry.dispose();
-            }
-            if (this.edgeInstances.material instanceof THREE.Material) {
-                this.edgeInstances.material.dispose();
-            }
-            this.edgeInstances.dispose();
+            this.edgeInstances.geometry.dispose();
+            this.edgeInstances.material.dispose();
         }
-        this.unsubscribers.forEach(unsubscribe => unsubscribe());
-        this.unsubscribers = [];
     }
 }

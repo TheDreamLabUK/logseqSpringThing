@@ -1,78 +1,154 @@
-import * as THREE from 'three';
+import { 
+    Color, 
+    Matrix4, 
+    Mesh, 
+    PerspectiveCamera, 
+    Scene, 
+    Vector3, 
+    Material,
+    MeshBasicMaterial,
+    Quaternion
+} from 'three';
+import { GeometryFactory } from './factories/GeometryFactory';
+import { MaterialFactory } from './factories/MaterialFactory';
+import { Metadata } from '../types/metadata';
 import { Settings } from '../core/types';
+import { defaultSettings } from '../state/defaultSettings';
 
 export class MetadataVisualizer {
-    private readonly geometries = {
-        complex: new THREE.IcosahedronGeometry(1, 2),
-        medium: new THREE.SphereGeometry(1, 16, 12),
-        simple: new THREE.BoxGeometry(1, 1, 1)
-    };
+    private readonly camera: PerspectiveCamera;
+    private readonly scene: Scene;
+    private readonly geometryFactory: GeometryFactory;
+    private readonly materialFactory: MaterialFactory;
+    private readonly settings: Settings;
+    private nodes: Map<string, Mesh> = new Map();
 
-    private readonly material = new THREE.MeshBasicMaterial({
-        color: new THREE.Color('#00ff00'),
-        transparent: true,
-        opacity: 0.8,
-        side: THREE.DoubleSide
-    });
+    constructor(camera: PerspectiveCamera, scene: Scene, settings: Settings = defaultSettings) {
+        this.camera = camera;
+        this.scene = scene;
+        this.settings = settings;
+        this.geometryFactory = GeometryFactory.getInstance();
+        this.materialFactory = MaterialFactory.getInstance();
+    }
 
-    constructor(
-        private readonly camera: THREE.PerspectiveCamera,
-        private readonly settings: Settings
-    ) {}
-
-    createNodeMesh(metadata: { name: string; commitAge: number; hyperlinkCount: number; importance: number; position: THREE.Vector3 }) {
-        const geometry = this.selectGeometry(metadata.importance);
-        const mesh = new THREE.Mesh(geometry, this.createNodeMaterial(metadata));
-
-        mesh.scale.set(
-            this.settings.nodes.sizeRange[0],
-            this.settings.nodes.sizeRange[0],
-            this.settings.nodes.sizeRange[0]
+    public createNodeMesh(metadata: Metadata): Mesh {
+        const geometry = this.geometryFactory.getNodeGeometry(this.settings.hologram.desktopQuality);
+        const material = this.materialFactory.getMetadataMaterial();
+        
+        const mesh = new Mesh(geometry, material);
+        mesh.position.set(
+            metadata.position?.x || 0,
+            metadata.position?.y || 0,
+            metadata.position?.z || 0
         );
-
-        mesh.position.copy(metadata.position);
-
-        this.billboardUpdate(mesh);
-
+        
+        this.nodes.set(metadata.id, mesh);
+        this.scene.add(mesh);
+        
         return mesh;
     }
 
-    private selectGeometry(importance: number): THREE.BufferGeometry {
-        if (importance > 0.7) return this.geometries.complex;
-        if (importance > 0.3) return this.geometries.medium;
-        return this.geometries.simple;
-    }
-
-    private createNodeMaterial(metadata: { name: string; commitAge: number; hyperlinkCount: number }): THREE.Material {
-        const ageColor = new THREE.Color(this.settings.nodes.colorRangeAge[0]);
-        const linkColor = new THREE.Color(this.settings.nodes.colorRangeLinks[0]);
-        const linkInfluence = Math.min(metadata.hyperlinkCount / 10, 1); // 10 links max
-
-        const finalColor = new THREE.Color().copy(ageColor).lerp(linkColor, linkInfluence);
-
-        const material = new THREE.MeshBasicMaterial({
-            color: finalColor,
-            transparent: true,
-            opacity: this.settings.nodes.opacity
+    public dispose(): void {
+        this.nodes.forEach(mesh => {
+            this.scene.remove(mesh);
+            mesh.geometry.dispose();
+            if (Array.isArray(mesh.material)) {
+                mesh.material.forEach(m => m.dispose());
+            } else {
+                mesh.material.dispose();
+            }
         });
-
-        return material;
+        this.nodes.clear();
     }
 
-    private billboardUpdate(mesh: THREE.Mesh) {
-        const updateQuaternion = () => {
-            mesh.quaternion.set(
-                this.camera.quaternion.x,
-                this.camera.quaternion.y,
-                this.camera.quaternion.z,
-                this.camera.quaternion.w
-            );
-        };
-        (mesh as any).onBeforeRender = updateQuaternion;
-    }
+    public updateNodeMetadata(
+        mesh: Mesh,
+        _age: number,
+        linkCount: number,
+        material: Material
+    ): void {
+        // Calculate color based on link count
+        if (material instanceof MeshBasicMaterial) {
+            // Simple color interpolation based on link count
+            const intensity = Math.min(linkCount / 10, 1); // Cap at 10 links
+            
+            // Convert RGB values to hex
+            const red = Math.floor(intensity * 255);
+            const green = Math.floor((1 - intensity) * 255);
+            const blue = 0;
+            const hexColor = (red << 16) | (green << 8) | blue;
+            
+            // Create and assign color
+            const newColor = new Color(hexColor);
+            material.color = newColor;
+        }
 
-    dispose() {
-        Object.values(this.geometries).forEach(geometry => geometry.dispose());
-        this.material.dispose();
+        // Update mesh orientation to face camera
+        const meshPosition = mesh.position;
+        const cameraPosition = this.camera.position;
+
+        // Calculate direction from mesh to camera
+        const direction = new Vector3()
+            .subVectors(cameraPosition, meshPosition)
+            .normalize();
+
+        // Calculate up vector (world up)
+        const up = new Vector3(0, 1, 0);
+
+        // Calculate right vector
+        const right = new Vector3()
+            .crossVectors(up, direction)
+            .normalize();
+
+        // Recalculate up vector to ensure orthogonality
+        up.crossVectors(direction, right).normalize();
+
+        // Create rotation matrix
+        const rotationMatrix = new Matrix4();
+        rotationMatrix.elements = [
+            right.x, up.x, direction.x, 0,
+            right.y, up.y, direction.y, 0,
+            right.z, up.z, direction.z, 0,
+            0, 0, 0, 1
+        ];
+
+        // Create quaternion from direction
+        const quaternion = new Quaternion();
+        const m = rotationMatrix.elements;
+        const trace = m[0] + m[5] + m[10];
+
+        if (trace > 0) {
+            const s = 0.5 / Math.sqrt(trace + 1.0);
+            quaternion.w = 0.25 / s;
+            quaternion.x = (m[6] - m[9]) * s;
+            quaternion.y = (m[8] - m[2]) * s;
+            quaternion.z = (m[1] - m[4]) * s;
+        } else {
+            if (m[0] > m[5] && m[0] > m[10]) {
+                const s = 2.0 * Math.sqrt(1.0 + m[0] - m[5] - m[10]);
+                quaternion.w = (m[6] - m[9]) / s;
+                quaternion.x = 0.25 * s;
+                quaternion.y = (m[1] + m[4]) / s;
+                quaternion.z = (m[8] + m[2]) / s;
+            } else if (m[5] > m[10]) {
+                const s = 2.0 * Math.sqrt(1.0 + m[5] - m[0] - m[10]);
+                quaternion.w = (m[8] - m[2]) / s;
+                quaternion.x = (m[1] + m[4]) / s;
+                quaternion.y = 0.25 * s;
+                quaternion.z = (m[6] + m[9]) / s;
+            } else {
+                const s = 2.0 * Math.sqrt(1.0 + m[10] - m[0] - m[5]);
+                quaternion.w = (m[1] - m[4]) / s;
+                quaternion.x = (m[8] + m[2]) / s;
+                quaternion.y = (m[6] + m[9]) / s;
+                quaternion.z = 0.25 * s;
+            }
+        }
+
+        // Apply rotation
+        mesh.quaternion.x = quaternion.x;
+        mesh.quaternion.y = quaternion.y;
+        mesh.quaternion.z = quaternion.z;
+        mesh.quaternion.w = quaternion.w;
     }
 }

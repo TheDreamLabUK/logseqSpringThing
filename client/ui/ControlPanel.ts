@@ -1,303 +1,229 @@
 import { Settings } from '../core/types';
 import { settingsManager } from '../state/settings';
-import { defaultSettings } from '../state/defaultSettings';
-import { createLogger } from '../utils/logger';
+import { platformManager } from '../platform/platformManager';
+import { createLogger } from '../core/logger';
+import './ControlPanel.css';
 
 const logger = createLogger('ControlPanel');
 
-type SettingsKey<T extends keyof Settings> = keyof Settings[T];
-type SettingValue<T extends keyof Settings, K extends SettingsKey<T>> = Settings[T][K];
-
 export class ControlPanel {
     private container: HTMLElement;
-    private currentSettings: Settings;
+    private settings: Settings;
     private unsubscribers: Array<() => void> = [];
 
     constructor(container: HTMLElement) {
         this.container = container;
-        // Start with default settings
-        this.currentSettings = { ...defaultSettings };
-        this.setupUI();
-        this.setupWebSocketStatus();
-        this.initializeSettings();
+        this.settings = settingsManager.getCurrentSettings();
+        this.initializePanel();
+        this.setupSettingsSubscriptions();
     }
 
-    private async initializeSettings(): Promise<void> {
-        try {
-            // Subscribe to settings changes
-            Object.keys(this.currentSettings).forEach(category => {
-                const categoryKey = category as keyof Settings;
-                const settings = this.currentSettings[categoryKey];
-                Object.keys(settings).forEach(setting => {
-                    const settingKey = setting as SettingsKey<typeof categoryKey>;
-                    const unsubscribe = settingsManager.subscribe(
-                        categoryKey,
-                        settingKey,
-                        (value: SettingValue<typeof categoryKey, typeof settingKey>) => {
-                            this.updateSettingUI(categoryKey, settingKey, value);
-                        }
-                    );
-                    this.unsubscribers.push(unsubscribe);
-                });
-            });
-
-            // Initialize settings manager
-            await settingsManager.initialize();
-            // Update UI with current settings
-            this.currentSettings = settingsManager.getCurrentSettings();
-            this.updateAllSettings();
-        } catch (error) {
-            logger.error('Error initializing settings:', error);
-        }
-    }
-
-    private updateSettingUI<T extends keyof Settings, K extends SettingsKey<T>>(
-        category: T,
-        setting: K,
-        value: SettingValue<T, K>
-    ): void {
-        const categoryEl = this.container.querySelector(`.settings-group[data-category="${category}"]`);
-        if (!categoryEl) return;
-
-        const settingEl = categoryEl.querySelector(`.setting-item[data-setting="${String(setting)}"]`);
-        if (!settingEl) return;
-
-        const input = settingEl.querySelector('input');
-        if (!input) return;
-
-        if (input.type === 'checkbox' && typeof value === 'boolean') {
-            (input as HTMLInputElement).checked = value;
-        } else {
-            input.value = String(value);
-        }
-    }
-
-    private updateAllSettings(): void {
-        Object.entries(this.currentSettings).forEach(([category, settings]) => {
-            const categoryKey = category as keyof Settings;
-            Object.entries(settings).forEach(([setting, value]) => {
-                const settingKey = setting as SettingsKey<typeof categoryKey>;
-                this.updateSettingUI(
-                    categoryKey,
-                    settingKey,
-                    value as SettingValue<typeof categoryKey, typeof settingKey>
-                );
-            });
+    private initializePanel(): void {
+        // Create settings sections
+        const categories = Object.keys(this.settings) as Array<keyof Settings>;
+        categories.forEach(category => {
+            const section = this.createSettingsSection(category);
+            this.container.appendChild(section);
         });
-    }
 
-    private async setupUI(): Promise<void> {
-        try {
-            // Clear any existing content
-            this.container.innerHTML = '';
-            
-            // Add control panel container
-            this.container.classList.add('control-panel');
-
-            // Add header
-            const header = document.createElement('div');
-            header.classList.add('control-panel-header');
-            header.innerHTML = `
-                <h3>Settings</h3>
-                <div class="connection-status disconnected">
-                    <span id="connection-status">Disconnected</span>
-                </div>
-            `;
-            this.container.appendChild(header);
-
-            // Add content container
-            const content = document.createElement('div');
-            content.classList.add('control-panel-content');
-            this.container.appendChild(content);
-
-            // Add settings categories
-            (Object.keys(this.currentSettings) as Array<keyof Settings>).forEach(category => {
-                const categorySettings = this.currentSettings[category];
-                const categoryElement = this.createCategoryElement(category, categorySettings);
-                content.appendChild(categoryElement);
-            });
-        } catch (error) {
-            logger.error('Error setting up UI:', error);
+        // Add platform-specific settings
+        if (platformManager.getCapabilities().xrSupported) {
+            this.addXRSettings();
         }
     }
 
-    private createCategoryElement<T extends keyof Settings>(
-        category: T,
-        settings: Settings[T]
-    ): HTMLElement {
-        const element = document.createElement('div');
-        element.classList.add('settings-group');
-        element.dataset.category = category;
+    private createSettingsSection(category: keyof Settings): HTMLElement {
+        const section = document.createElement('div');
+        section.className = 'settings-group';
         
-        const title = this.formatTitle(category);
-        element.innerHTML = `<h4>${title}</h4>`;
+        const title = document.createElement('h4');
+        title.textContent = this.formatCategoryName(String(category));
+        section.appendChild(title);
 
+        const settings = this.settings[category];
         Object.entries(settings).forEach(([key, value]) => {
-            const settingKey = key as SettingsKey<T>;
-            const control = this.createSettingControl(category, settingKey, value);
-            element.appendChild(control);
+            const settingElement = this.createSettingElement(
+                category,
+                key as keyof Settings[typeof category],
+                value as Settings[typeof category][keyof Settings[typeof category]]
+            );
+            section.appendChild(settingElement);
         });
 
-        return element;
+        return section;
     }
 
-    private formatTitle(str: string): string {
-        return str.replace(/([A-Z])/g, ' $1').trim();
+    private formatCategoryName(category: string): string {
+        return category
+            .split(/(?=[A-Z])/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
     }
 
-    private createSettingControl<T extends keyof Settings, K extends keyof Settings[T]>(
+    private createSettingElement<T extends keyof Settings, K extends keyof Settings[T]>(
         category: T,
         key: K,
         value: Settings[T][K]
     ): HTMLElement {
-        const control = document.createElement('div');
-        control.classList.add('setting-item');
-        control.dataset.setting = String(key);
+        const container = document.createElement('div');
+        container.className = 'setting-item';
 
         const label = document.createElement('label');
-        label.textContent = this.formatTitle(String(key));
-        control.appendChild(label);
+        label.textContent = this.formatSettingName(String(key));
+        container.appendChild(label);
 
-        // Special handling for websocket update rate (FPS)
-        type WebSocketCategory = Extract<keyof Settings, 'websocket'>;
-        if (category === 'websocket' as T && 
-            category === ('websocket' as WebSocketCategory) && 
-            key === 'updateRate' as K) {
-            const select = document.createElement('select');
-            const fpsOptions = [1, 30, 60, 90];
-            
-            fpsOptions.forEach(fps => {
-                const option = document.createElement('option');
-                option.value = String(fps);
-                option.textContent = `${fps} FPS`;
-                if (fps === value) {
-                    option.selected = true;
-                }
-                select.appendChild(option);
-            });
+        const input = this.createInputElement(category, key, value);
+        container.appendChild(input);
 
-            select.addEventListener('change', async () => {
-                const newValue = parseInt(select.value, 10);
-                await this.updateSetting(
-                    category as WebSocketCategory,
-                    key as keyof Settings[WebSocketCategory],
-                    newValue as Settings[WebSocketCategory][keyof Settings[WebSocketCategory]]
-                );
-            });
-
-            control.appendChild(select);
-            return control;
-        }
-
-        if (Array.isArray(value)) {
-            const arrayControl = document.createElement('div');
-            arrayControl.classList.add('array-inputs');
-            value.forEach((item, index) => {
-                const input = document.createElement('input');
-                input.type = typeof item === 'number' ? 'number' : 'text';
-                input.value = String(item);
-                input.dataset.index = index.toString();
-
-                // Update settings on input change
-                input.addEventListener('input', async () => {
-                    const newValue = input.type === 'number' ? parseFloat(input.value) : input.value;
-                    const newArray = [...value];
-                    newArray[index] = newValue;
-                    await this.updateSetting(category, key, newArray as Settings[T][K]);
-                });
-
-                arrayControl.appendChild(input);
-            });
-            control.appendChild(arrayControl);
-        } else {
-            const input = document.createElement('input');
-            switch (typeof value) {
-                case 'boolean':
-                    input.type = 'checkbox';
-                    input.checked = value;
-                    break;
-                case 'number':
-                    input.type = 'number';
-                    input.value = String(value);
-                    break;
-                default:
-                    input.type = 'text';
-                    input.value = String(value);
-            }
-            control.appendChild(input);
-
-            // Update settings on input change
-            input.addEventListener('input', async () => {
-                let newValue: Settings[T][K];
-                if (input.type === 'checkbox') {
-                    newValue = input.checked as Settings[T][K];
-                } else if (input.type === 'number') {
-                    newValue = parseFloat(input.value) as Settings[T][K];
-                } else {
-                    newValue = input.value as Settings[T][K];
-                }
-                await this.updateSetting(category, key, newValue);
-            });
-        }
-
-        return control;
+        return container;
     }
 
-    private async updateSetting<T extends keyof Settings, K extends keyof Settings[T]>(
+    private formatSettingName(setting: string): string {
+        return setting
+            .split(/(?=[A-Z])|_/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ');
+    }
+
+    private createInputElement<T extends keyof Settings, K extends keyof Settings[T]>(
         category: T,
         key: K,
         value: Settings[T][K]
+    ): HTMLElement {
+        let input: HTMLElement;
+
+        switch (typeof value) {
+            case 'boolean':
+                input = document.createElement('input');
+                input.setAttribute('type', 'checkbox');
+                (input as HTMLInputElement).checked = value as boolean;
+                break;
+
+            case 'number':
+                input = document.createElement('input');
+                input.setAttribute('type', 'number');
+                input.setAttribute('step', '0.1');
+                (input as HTMLInputElement).value = String(value);
+                break;
+
+            case 'string':
+                if (this.isColorSetting(String(key))) {
+                    input = document.createElement('input');
+                    input.setAttribute('type', 'color');
+                    (input as HTMLInputElement).value = value as string;
+                } else {
+                    input = document.createElement('input');
+                    input.setAttribute('type', 'text');
+                    (input as HTMLInputElement).value = value as string;
+                }
+                break;
+
+            default:
+                logger.warn(`Unsupported setting type for ${String(key)}: ${typeof value}`);
+                input = document.createElement('span');
+                input.textContent = 'Unsupported setting type';
+                break;
+        }
+
+        input.id = `${String(category)}-${String(key)}`;
+        input.addEventListener('change', (event) => this.handleSettingChange(category, key, event));
+
+        return input;
+    }
+
+    private isColorSetting(key: string): boolean {
+        return key.toLowerCase().includes('color');
+    }
+
+    private async handleSettingChange<T extends keyof Settings, K extends keyof Settings[T]>(
+        category: T,
+        key: K,
+        event: Event
     ): Promise<void> {
+        const target = event.target as HTMLInputElement;
+        let value: Settings[T][K];
+
+        switch (target.type) {
+            case 'checkbox':
+                value = target.checked as Settings[T][K];
+                break;
+            case 'number':
+                value = parseFloat(target.value) as Settings[T][K];
+                break;
+            default:
+                value = target.value as Settings[T][K];
+        }
+
         try {
-            // Update local settings
-            if (this.currentSettings[category]) {
-                (this.currentSettings[category] as any)[key] = value;
-            }
-            // Update server settings
-            await settingsManager.updateSetting(
-                category,
-                key,
-                value
-            );
+            await settingsManager.updateSetting(category, key, value);
+            logger.info(`Updated setting ${String(category)}.${String(key)} to ${value}`);
         } catch (error) {
-            logger.error('Error updating setting:', error);
-            // Revert UI to current setting value
-            this.updateSettingUI(category, key, (this.currentSettings[category] as any)[key]);
+            logger.error(`Failed to update setting ${String(category)}.${String(key)}:`, error);
+            // Revert input to current setting value
+            const currentValue = this.settings[category][key];
+            if (target.type === 'checkbox') {
+                target.checked = currentValue as boolean;
+            } else {
+                target.value = String(currentValue);
+            }
         }
     }
 
-    private setupWebSocketStatus(): void {
-        const statusIndicator = this.container.querySelector('.connection-status');
-        const statusText = this.container.querySelector('#connection-status');
-        
-        if (statusIndicator && statusText) {
-            try {
-                // Use the default WebSocket URL
-                const wsUrl = new URL('/wss', window.location.href);
-                wsUrl.protocol = wsUrl.protocol.replace('http', 'ws');
-                const ws = new WebSocket(wsUrl.toString());
-                
-                ws.onopen = () => {
-                    statusIndicator.classList.remove('disconnected');
-                    statusText.textContent = 'Connected';
-                };
-                
-                ws.onclose = () => {
-                    statusIndicator.classList.add('disconnected');
-                    statusText.textContent = 'Disconnected';
-                };
-                
-                ws.onerror = () => {
-                    statusIndicator.classList.add('disconnected');
-                    statusText.textContent = 'Error';
-                };
-            } catch (error) {
-                logger.error('Error setting up WebSocket:', error);
+    private setupSettingsSubscriptions(): void {
+        // Subscribe to all settings
+        Object.keys(this.settings).forEach(category => {
+            const categoryKey = category as keyof Settings;
+            const categorySettings = this.settings[categoryKey];
+            Object.keys(categorySettings).forEach(setting => {
+                const settingKey = setting as keyof Settings[typeof categoryKey];
+                const unsubscribe = settingsManager.subscribe(
+                    categoryKey,
+                    settingKey,
+                    (value: Settings[typeof categoryKey][typeof settingKey]) => {
+                        this.updateSettingElement(category, setting, value);
+                    }
+                );
+                this.unsubscribers.push(unsubscribe);
+            });
+        });
+    }
+
+    private updateSettingElement(category: string, setting: string, value: unknown): void {
+        const input = document.getElementById(`${category}-${setting}`) as HTMLInputElement;
+        if (input) {
+            if (input.type === 'checkbox') {
+                input.checked = value as boolean;
+            } else {
+                input.value = String(value);
             }
         }
+    }
+
+    private addXRSettings(): void {
+        // Add XR-specific settings section
+        const xrSection = document.createElement('div');
+        xrSection.className = 'settings-group';
+        
+        const title = document.createElement('h4');
+        title.textContent = 'XR Settings';
+        xrSection.appendChild(title);
+
+        // Add XR mode toggle
+        const xrToggle = document.createElement('button');
+        xrToggle.id = 'xr-toggle';
+        xrToggle.textContent = 'Enter XR';
+        xrToggle.addEventListener('click', () => {
+            // XR mode toggle logic handled by XRManager
+            const event = new CustomEvent('toggleXR');
+            window.dispatchEvent(event);
+        });
+        xrSection.appendChild(xrToggle);
+
+        this.container.appendChild(xrSection);
     }
 
     public dispose(): void {
+        // Clean up subscribers
         this.unsubscribers.forEach(unsubscribe => unsubscribe());
         this.unsubscribers = [];
     }

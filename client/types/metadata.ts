@@ -1,4 +1,5 @@
 export interface NodeMetadata {
+    id: string;              // Unique identifier
     name: string;
     commitAge: number;        // Age in days
     hyperlinkCount: number;   // Number of hyperlinks
@@ -9,3 +10,6 @@ export interface NodeMetadata {
         z: number;
     };
 }
+
+// Alias for backward compatibility and clarity
+export type Metadata = NodeMetadata;

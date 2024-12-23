@@ -3,14 +3,14 @@
  */
 
 import { platformManager } from './platform/platformManager';
-import { Settings, SettingCategory, SettingKey, SettingValueType } from './types/settings';
+import { Settings, SettingCategory, SettingKey } from './types/settings';
 import { settingsManager } from './state/settings';
 import { graphDataManager } from './state/graphData';
 import { WebSocketService } from './websocket/websocketService';
 import { SceneManager } from './rendering/scene';
 import { NodeManager } from './rendering/nodes';
 import { XRSessionManager } from './xr/xrSessionManager';
-import { createLogger, setDebugEnabled } from './utils/logger';
+import { createLogger, setDebugEnabled } from './core/logger';
 import { ControlPanel } from './ui/ControlPanel';
 
 const logger = createLogger('Application');
@@ -66,7 +66,7 @@ class Application {
 
             try {
                 // Initialize WebSocket for real-time updates
-                this.webSocket = new WebSocketService(settingsManager);
+                this.webSocket = new WebSocketService();
 
                 // Setup WebSocket event handlers
                 this.webSocket.onMessage('connectionStatus', (data: { status: string, details?: any }) => {
@@ -267,17 +267,17 @@ class Application {
         value: string,
         category: T,
         setting: K
-    ): SettingValueType<T, K> {
+    ): Settings[T][K] {
         const currentSettings = settingsManager.getCurrentSettings();
         const currentValue = currentSettings[category][setting];
         
         switch (typeof currentValue) {
             case 'number':
-                return Number(value) as SettingValueType<T, K>;
+                return Number(value) as Settings[T][K];
             case 'boolean':
-                return (value === 'true') as SettingValueType<T, K>;
+                return (value === 'true') as Settings[T][K];
             default:
-                return value as SettingValueType<T, K>;
+                return value as Settings[T][K];
         }
     }
 
@@ -305,7 +305,7 @@ class Application {
                         await settingsManager.updateSetting(
                             category,
                             setting as keyof Settings[typeof category],
-                            value as SettingValueType<typeof category, keyof Settings[typeof category]>
+                            value as Settings[typeof category][keyof Settings[typeof category]]
                         );
                     } catch (error) {
                         logger.error(`Failed to update setting ${String(category)}.${String(setting)}:`, error);

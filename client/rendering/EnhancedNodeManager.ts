@@ -1,20 +1,20 @@
-import * as THREE from 'three';
 import {
     Scene,
     PerspectiveCamera,
     InstancedMesh,
-    SphereBufferGeometry,
-    MeshBasicMaterial,
     Matrix4,
     Vector3,
     Mesh,
     Object3D,
-    Quaternion
+    Quaternion,
+    WebGLRenderer
 } from 'three';
 import { Node, Settings } from '../core/types';
 import { MetadataVisualizer } from './MetadataVisualizer';
 import { HologramManager } from './HologramManager';
 import { XRHandWithHaptics } from '../xr/xrTypes';
+import { GeometryFactory } from './factories/GeometryFactory';
+import { MaterialFactory } from './factories/MaterialFactory';
 
 export class EnhancedNodeManager {
     private readonly nodeInstances: InstancedMesh;
@@ -22,22 +22,31 @@ export class EnhancedNodeManager {
     private readonly hologramManager: HologramManager;
     private readonly nodeDataMap = new Map<string, Matrix4>();
     private readonly quaternion = new Quaternion();
+    private readonly camera: PerspectiveCamera;
+    private readonly geometryFactory: GeometryFactory;
+    private readonly materialFactory: MaterialFactory;
 
     constructor(
         private readonly scene: Scene,
-        private readonly camera: PerspectiveCamera,
-        private readonly currentSettings: Settings
+        renderer: WebGLRenderer,
+        private readonly settings: Settings
     ) {
-        this.metadataVisualizer = new MetadataVisualizer(camera, currentSettings);
-        this.hologramManager = new HologramManager(scene, camera, currentSettings);
+        // Get the camera from the scene
+        const camera = scene.children.find(child => child instanceof PerspectiveCamera) as PerspectiveCamera;
+        if (!camera) {
+            throw new Error('No PerspectiveCamera found in scene');
+        }
+        this.camera = camera;
+
+        this.geometryFactory = GeometryFactory.getInstance();
+        this.materialFactory = MaterialFactory.getInstance();
+
+        this.metadataVisualizer = new MetadataVisualizer(this.camera, this.scene, this.settings);
+        this.hologramManager = new HologramManager(scene, renderer, settings);
         scene.add(this.hologramManager.getGroup());
 
-        const geometry = new THREE.SphereGeometry(1, 32, 32);
-        const material = new MeshBasicMaterial({
-            color: this.currentSettings.nodes.baseColor,
-            transparent: true,
-            opacity: this.currentSettings.nodes.opacity
-        });
+        const geometry = this.geometryFactory.getNodeGeometry('high');
+        const material = this.materialFactory.getNodeMaterial(settings);
 
         this.nodeInstances = new InstancedMesh(geometry, material, 1000);
         this.nodeInstances.count = 0;
@@ -45,7 +54,7 @@ export class EnhancedNodeManager {
     }
 
     handleSettingsUpdate(settings: Settings) {
-        this.updateMaterials(settings);
+        this.materialFactory.updateMaterial('node-basic', settings);
     }
 
     updateNodes(nodes: Node[]) {
@@ -53,26 +62,28 @@ export class EnhancedNodeManager {
 
         nodes.forEach((node, index) => {
             const metadata = {
+                id: node.id,
                 name: node.data.metadata?.name || '',
                 commitAge: this.calculateCommitAge(node.data.metadata?.lastModified || Date.now()),
                 hyperlinkCount: node.data.metadata?.links?.length || 0,
                 importance: this.calculateImportance(node),
-                position: new Vector3(
-                    node.data.position.x,
-                    node.data.position.y,
-                    node.data.position.z
-                )
+                position: {
+                    x: node.data.position.x,
+                    y: node.data.position.y,
+                    z: node.data.position.z
+                }
             };
 
             const matrix = new Matrix4();
 
-            if (this.currentSettings.nodes.enableMetadataShape) {
+            if (this.settings.nodes.enableMetadataShape) {
                 const nodeMesh = this.metadataVisualizer.createNodeMesh(metadata);
-                nodeMesh.position.copy(metadata.position);
+                nodeMesh.position.set(metadata.position.x, metadata.position.y, metadata.position.z);
                 this.scene.add(nodeMesh);
             } else {
                 const scale = this.calculateNodeScale(metadata.importance);
-                matrix.compose(metadata.position, this.quaternion, new Vector3(scale, scale, scale));
+                const position = new Vector3(metadata.position.x, metadata.position.y, metadata.position.z);
+                matrix.compose(position, this.quaternion, new Vector3(scale, scale, scale));
                 this.nodeInstances.setMatrixAt(index, matrix);
             }
 
@@ -94,27 +105,20 @@ export class EnhancedNodeManager {
     }
 
     private calculateNodeScale(importance: number): number {
-        const [min, max] = this.currentSettings.nodes.sizeRange;
+        const [min, max] = this.settings.nodes.sizeRange;
         return min + (max - min) * importance;
     }
 
     update(deltaTime: number) {
         this.hologramManager.update(deltaTime);
 
-        if (this.currentSettings.animations.enableNodeAnimations) {
+        if (this.settings.animations.enableNodeAnimations) {
             this.nodeInstances.instanceMatrix.needsUpdate = true;
             this.scene.traverse(child => {
                 if (child instanceof Mesh) {
                     child.rotateY(0.001 * deltaTime);
                 }
             });
-        }
-    }
-
-    private updateMaterials(settings: Settings) {
-        const material = this.nodeInstances.material as MeshBasicMaterial;
-        if (material && settings.nodes.baseColor) {
-            material.color.set(settings.nodes.baseColor);
         }
     }
 

@@ -1,5 +1,5 @@
 import { Settings } from '../core/types';
-import { createLogger } from '../utils/logger';
+import { createLogger } from '../core/logger';
 import { defaultSettings } from './defaultSettings';
 import { buildApiUrl } from '../core/api';
 
@@ -243,7 +243,7 @@ export class SettingsManager {
     }
 
     public getDefaultSettings(): Settings {
-        return this.settings;
+        return defaultSettings;
     }
 }
 
