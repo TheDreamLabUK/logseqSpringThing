@@ -1,14 +1,21 @@
 import * as THREE from 'three';
 
-export interface XRHandWithHaptics {
+export interface XRHandWithHaptics extends THREE.Group {
+    hapticActuators?: {
+        pulse: (intensity: number, duration: number) => Promise<boolean>;
+    }[];
     hand: {
         joints: {
             [key: string]: THREE.Object3D;
         };
     };
-    hapticActuators: any[];
     pinchStrength: number;
     gripStrength: number;
+    userData: {
+        hapticActuator?: {
+            pulse: (intensity: number, duration: number) => Promise<boolean>;
+        };
+    };
 }
 
 export interface XRControllerState {

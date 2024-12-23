@@ -4,7 +4,7 @@ export const defaultSettings: Settings = {
     animations: {
         enableMotionBlur: false,
         enableNodeAnimations: true,
-        motionBlurStrength: 0.4,
+        motionBlurStrength: 0.5,
         selectionWaveEnabled: false,
         pulseEnabled: false,
         rippleEnabled: false,
@@ -12,7 +12,7 @@ export const defaultSettings: Settings = {
         flowParticlesEnabled: false
     },
     ar: {
-        dragThreshold: 0.04,
+        dragThreshold: 0.02,
         enableHandTracking: true,
         enableHaptics: true,
         enableLightEstimation: true,
@@ -20,40 +20,40 @@ export const defaultSettings: Settings = {
         enablePlaneDetection: true,
         enableSceneUnderstanding: true,
         gestureSsmoothing: 0.5,
-        handMeshColor: "#FFD700",
+        handMeshColor: '#ffffff',
         handMeshEnabled: true,
-        handMeshOpacity: 0.3,
-        handPointSize: 0.01,
-        handRayColor: "#FFD700",
+        handMeshOpacity: 0.5,
+        handPointSize: 5,
+        handRayColor: '#00ff00',
         handRayEnabled: true,
-        handRayWidth: 0.002,
-        hapticIntensity: 0.7,
-        passthroughBrightness: 1.0,
-        passthroughContrast: 1.0,
-        passthroughOpacity: 0.8,
-        pinchThreshold: 0.015,
-        planeColor: "#808080",
+        handRayWidth: 2,
+        hapticIntensity: 0.5,
+        passthroughBrightness: 1,
+        passthroughContrast: 1,
+        passthroughOpacity: 1,
+        pinchThreshold: 0.7,
+        planeColor: '#808080',
         planeOpacity: 0.5,
-        portalEdgeColor: "#00FF00",
-        portalEdgeWidth: 0.02,
-        portalSize: 2.0,
+        portalEdgeColor: '#ffffff',
+        portalEdgeWidth: 2,
+        portalSize: 2,
         roomScale: true,
-        rotationThreshold: 0.08,
+        rotationThreshold: 0.1,
         showPlaneOverlay: true,
         snapToFloor: true
     },
     audio: {
-        enableSpatialAudio: false,
-        enableInteractionSounds: false,
-        enableAmbientSounds: false
+        enableAmbientSounds: false,
+        enableInteractionSounds: true,
+        enableSpatialAudio: true
     },
     bloom: {
-        edgeBloomStrength: 0.3,
-        enabled: false,
+        edgeBloomStrength: 0.5,
+        enabled: true,
         environmentBloomStrength: 0.5,
-        nodeBloomStrength: 0.2,
-        radius: 0.5,
-        strength: 1.8
+        nodeBloomStrength: 0.5,
+        radius: 1,
+        strength: 0.5
     },
     clientDebug: {
         enableDataDebug: false,
@@ -62,54 +62,91 @@ export const defaultSettings: Settings = {
         logBinaryHeaders: false,
         logFullJson: false
     },
+    default: {
+        apiClientTimeout: 30000,
+        enableMetrics: true,
+        enableRequestLogging: true,
+        logFormat: 'json',
+        logLevel: 'info',
+        maxConcurrentRequests: 100,
+        maxPayloadSize: 10485760,
+        maxRetries: 3,
+        metricsPort: 9090,
+        retryDelay: 1000
+    },
     edges: {
-        arrowSize: 0.2,
+        arrowSize: 3,
         baseWidth: 2,
-        color: "#917f18",
-        enableArrows: false,
-        opacity: 0.6,
-        widthRange: [1, 3]
+        color: '#ffffff',
+        enableArrows: true,
+        opacity: 0.8,
+        widthRange: [1, 5]
     },
     labels: {
-        desktopFontSize: 48,
+        desktopFontSize: 14,
         enableLabels: true,
-        textColor: "#FFFFFF"
+        textColor: '#ffffff'
     },
     network: {
-        bindAddress: "0.0.0.0",
-        domain: "localhost",
-        enableHttp2: false,
+        bindAddress: '127.0.0.1',
+        domain: 'localhost',
+        enableHttp2: true,
         enableRateLimiting: true,
         enableTls: false,
         maxRequestSize: 10485760,
-        minTlsVersion: "",
-        port: 3001,
+        minTlsVersion: 'TLS1.2',
+        port: 3000,
         rateLimitRequests: 100,
         rateLimitWindow: 60,
-        tunnelId: "dummy"
+        tunnelId: ''
     },
-    default: {
-        apiClientTimeout: 30,
-        enableMetrics: true,
-        enableRequestLogging: true,
-        logFormat: "json",
-        logLevel: "debug",
-        maxConcurrentRequests: 5,
-        maxPayloadSize: 5242880,
-        maxRetries: 3,
-        metricsPort: 9090,
-        retryDelay: 5
+    nodes: {
+        baseColor: '#ffffff',
+        baseSize: 1,
+        clearcoat: 0.5,
+        enableHoverEffect: true,
+        enableInstancing: true,
+        highlightColor: '#00ff00',
+        highlightDuration: 500,
+        hoverScale: 1.2,
+        materialType: 'standard',
+        metalness: 0.5,
+        opacity: 1,
+        roughness: 0.5,
+        sizeByConnections: true,
+        sizeRange: [0.5, 2]
+    },
+    physics: {
+        attractionStrength: 0.1,
+        boundsSize: 100,
+        collisionRadius: 1,
+        damping: 0.5,
+        enableBounds: true,
+        enabled: true,
+        iterations: 1,
+        maxVelocity: 10,
+        repulsionStrength: 0.1,
+        springStrength: 0.1
+    },
+    rendering: {
+        ambientLightIntensity: 0.5,
+        backgroundColor: '#000000',
+        directionalLightIntensity: 0.8,
+        enableAmbientOcclusion: true,
+        enableAntialiasing: true,
+        enableShadows: true,
+        environmentIntensity: 1
     },
     security: {
-        allowedOrigins: [],
-        auditLogPath: "/app/logs/audit.log",
+        allowedOrigins: ['http://localhost:3000'],
+        auditLogPath: './audit.log',
         cookieHttponly: true,
-        cookieSamesite: "Strict",
-        cookieSecure: true,
+        cookieSamesite: 'Lax',
+        cookieSecure: false,
         csrfTokenTimeout: 3600,
         enableAuditLogging: true,
         enableRequestValidation: true,
-        sessionTimeout: 3600
+        sessionTimeout: 86400
     },
     serverDebug: {
         enabled: false,
@@ -118,41 +155,17 @@ export const defaultSettings: Settings = {
         logBinaryHeaders: false,
         logFullJson: false
     },
-    nodes: {
-        baseColor: "#c3ab6f",
-        baseSize: 1,
-        clearcoat: 0.5,
-        enableHoverEffect: false,
-        enableInstancing: false,
-        highlightColor: "#822626",
-        highlightDuration: 300,
-        hoverScale: 1.2,
-        materialType: "basic",
-        metalness: 0.3,
-        opacity: 0.4,
-        roughness: 0.35,
-        sizeByConnections: true,
-        sizeRange: [1, 10]
-    },
-    physics: {
-        attractionStrength: 0.015,
-        boundsSize: 12,
-        collisionRadius: 0.25,
-        damping: 0.88,
-        enableBounds: true,
-        enabled: false,
-        iterations: 500,
-        maxVelocity: 2.5,
-        repulsionStrength: 1500,
-        springStrength: 0.018
-    },
-    rendering: {
-        ambientLightIntensity: 0.7,
-        backgroundColor: "#000000",
-        directionalLightIntensity: 1,
-        enableAmbientOcclusion: false,
-        enableAntialiasing: true,
-        enableShadows: false,
-        environmentIntensity: 1.2
+    websocket: {
+        url: 'ws://localhost:3000/ws',
+        heartbeatInterval: 15000,
+        heartbeatTimeout: 60000,
+        reconnectAttempts: 3,
+        reconnectDelay: 5000,
+        binaryChunkSize: 65536,
+        compressionEnabled: true,
+        compressionThreshold: 1024,
+        maxConnections: 1000,
+        maxMessageSize: 100485760,
+        updateRate: 30
     }
 };

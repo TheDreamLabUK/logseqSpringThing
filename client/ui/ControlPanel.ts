@@ -145,10 +145,10 @@ export class ControlPanel {
         return str.replace(/([A-Z])/g, ' $1').trim();
     }
 
-    private createSettingControl<T extends keyof Settings, K extends SettingsKey<T>>(
+    private createSettingControl<T extends keyof Settings, K extends keyof Settings[T]>(
         category: T,
         key: K,
-        value: SettingValue<T, K>
+        value: Settings[T][K]
     ): HTMLElement {
         const control = document.createElement('div');
         control.classList.add('setting-item');
@@ -157,6 +157,37 @@ export class ControlPanel {
         const label = document.createElement('label');
         label.textContent = this.formatTitle(String(key));
         control.appendChild(label);
+
+        // Special handling for websocket update rate (FPS)
+        type WebSocketCategory = Extract<keyof Settings, 'websocket'>;
+        if (category === 'websocket' as T && 
+            category === ('websocket' as WebSocketCategory) && 
+            key === 'updateRate' as K) {
+            const select = document.createElement('select');
+            const fpsOptions = [1, 30, 60, 90];
+            
+            fpsOptions.forEach(fps => {
+                const option = document.createElement('option');
+                option.value = String(fps);
+                option.textContent = `${fps} FPS`;
+                if (fps === value) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+
+            select.addEventListener('change', async () => {
+                const newValue = parseInt(select.value, 10);
+                await this.updateSetting(
+                    category as WebSocketCategory,
+                    key as keyof Settings[WebSocketCategory],
+                    newValue as Settings[WebSocketCategory][keyof Settings[WebSocketCategory]]
+                );
+            });
+
+            control.appendChild(select);
+            return control;
+        }
 
         if (Array.isArray(value)) {
             const arrayControl = document.createElement('div');
@@ -172,7 +203,7 @@ export class ControlPanel {
                     const newValue = input.type === 'number' ? parseFloat(input.value) : input.value;
                     const newArray = [...value];
                     newArray[index] = newValue;
-                    await this.updateSetting(category, key, newArray as SettingValue<T, K>);
+                    await this.updateSetting(category, key, newArray as Settings[T][K]);
                 });
 
                 arrayControl.appendChild(input);
@@ -197,13 +228,13 @@ export class ControlPanel {
 
             // Update settings on input change
             input.addEventListener('input', async () => {
-                let newValue: SettingValue<T, K>;
+                let newValue: Settings[T][K];
                 if (input.type === 'checkbox') {
-                    newValue = input.checked as SettingValue<T, K>;
+                    newValue = input.checked as Settings[T][K];
                 } else if (input.type === 'number') {
-                    newValue = parseFloat(input.value) as SettingValue<T, K>;
+                    newValue = parseFloat(input.value) as Settings[T][K];
                 } else {
-                    newValue = input.value as SettingValue<T, K>;
+                    newValue = input.value as Settings[T][K];
                 }
                 await this.updateSetting(category, key, newValue);
             });
@@ -212,10 +243,10 @@ export class ControlPanel {
         return control;
     }
 
-    private async updateSetting<T extends keyof Settings, K extends SettingsKey<T>>(
+    private async updateSetting<T extends keyof Settings, K extends keyof Settings[T]>(
         category: T,
         key: K,
-        value: SettingValue<T, K>
+        value: Settings[T][K]
     ): Promise<void> {
         try {
             // Update local settings

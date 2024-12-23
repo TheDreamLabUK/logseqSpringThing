@@ -1,18 +1,19 @@
-import { Settings, SettingsManager as ISettingsManager, SettingCategory, SettingKey, SettingValueType } from '../types/settings';
+import { Settings } from '../core/types';
 import { createLogger } from '../utils/logger';
+import { defaultSettings } from './defaultSettings';
 
 const logger = createLogger('SettingsManager');
 
-type Subscriber<T extends SettingCategory, K extends SettingKey<T>> = {
-    callback: (value: SettingValueType<T, K>) => void;
-};
+interface Subscriber<T extends keyof Settings, K extends keyof Settings[T]> {
+    callback: (value: Settings[T][K]) => void;
+}
 
-class SettingsManager implements ISettingsManager {
+export class SettingsManager {
     private settings: Settings;
     private subscribers: Map<string, Array<Subscriber<any, any>>> = new Map();
     private initialized: boolean = false;
 
-    constructor(defaultSettings: Settings) {
+    constructor() {
         this.settings = { ...defaultSettings };
     }
 
@@ -25,24 +26,55 @@ class SettingsManager implements ISettingsManager {
         const retryDelay = 1000; // 1 second
 
         try {
-            const categories = Object.keys(this.settings) as SettingCategory[];
+            const categories = Object.keys(this.settings) as Array<keyof Settings>;
             
             for (const category of categories) {
                 let retries = 0;
                 while (retries < maxRetries) {
                     try {
-                        const response = await fetch(`/api/visualization/settings/${category}`);
+                        const response = await fetch(`/api/settings/${category}`);
                         
                         if (response.ok) {
                             const data = await response.json();
-                            if (this.settings[category]) {
-                                this.settings[category] = { ...this.settings[category], ...data };
+                            if (data.success && data.settings) {
+                                // Type-safe update of settings
+                                const currentSettings = { ...this.settings[category] };
+                                const newSettings = data.settings as Partial<Settings[typeof category]>;
+                                
+                                // Merge settings in a type-safe way
+                                Object.keys(newSettings).forEach(key => {
+                                    const settingKey = key as keyof Settings[typeof category];
+                                    const value = newSettings[settingKey];
+                                    if (value !== undefined) {
+                                        (currentSettings as any)[settingKey] = value;
+                                    }
+                                });
+                                
+                                // Update the settings object
+                                this.settings = {
+                                    ...this.settings,
+                                    [category]: currentSettings
+                                };
+                                
+                                // Notify subscribers
+                                Object.keys(newSettings).forEach(key => {
+                                    const settingKey = key as keyof Settings[typeof category];
+                                    const value = newSettings[settingKey];
+                                    if (value !== undefined) {
+                                        this.notifySubscribers(
+                                            category,
+                                            settingKey,
+                                            value as Settings[typeof category][typeof settingKey]
+                                        );
+                                    }
+                                });
+                                
                                 logger.info(`Loaded settings for category ${category}`);
-                                break; // Success, exit retry loop
+                                break;
                             }
                         } else if (response.status === 404) {
                             logger.info(`Settings endpoint for ${category} not found, using defaults`);
-                            break; // 404 is expected for some categories, exit retry loop
+                            break;
                         } else {
                             throw new Error(`Failed to fetch ${category} settings: ${response.statusText}`);
                         }
@@ -50,96 +82,137 @@ class SettingsManager implements ISettingsManager {
                         retries++;
                         if (retries === maxRetries) {
                             logger.error(`Failed to load ${category} settings after ${maxRetries} attempts:`, error);
-                            logger.info(`Using default values for ${category} settings`);
-                        } else {
-                            logger.warn(`Retry ${retries}/${maxRetries} for ${category} settings`);
-                            await new Promise(resolve => setTimeout(resolve, retryDelay));
+                            break;
                         }
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
                     }
                 }
             }
             
             this.initialized = true;
-            logger.info('Settings initialization complete');
         } catch (error) {
             logger.error('Failed to initialize settings:', error);
             throw error;
         }
     }
 
-    public getCurrentSettings(): Settings {
-        return this.settings;
-    }
-
-    public getDefaultSettings(): Settings {
-        return this.settings;
-    }
-
-    public async updateSetting<T extends SettingCategory, K extends SettingKey<T>>(
+    public async updateSetting<T extends keyof Settings, K extends keyof Settings[T]>(
         category: T,
-        setting: K,
-        value: SettingValueType<T, K>
+        key: K,
+        value: Settings[T][K]
     ): Promise<void> {
         try {
-            if (!(category in this.settings)) {
-                throw new Error(`Invalid category: ${category}`);
-            }
-
-            const categorySettings = this.settings[category];
-            if (!(String(setting) in categorySettings)) {
-                throw new Error(`Invalid setting: ${String(setting)} in category ${category}`);
-            }
-
-            // Update the setting
-            (this.settings[category] as any)[setting] = value;
-
-            // Notify subscribers
-            const key = `${category}.${String(setting)}`;
-            const subscribers = this.subscribers.get(key) || [];
-            subscribers.forEach(sub => {
-                try {
-                    sub.callback(value);
-                } catch (error) {
-                    logger.error(`Error in subscriber callback for ${key}:`, error);
+            // Create a partial update for the category
+            const update = {
+                settings: {
+                    [key]: value
                 }
-            });
+            };
 
-            // Save settings to backend
-            await this.saveSettings(category, setting, value);
-
-        } catch (error) {
-            logger.error(`Error updating setting ${category}.${String(setting)}:`, error);
-            throw error;
-        }
-    }
-
-    private async saveSettings<T extends SettingCategory, K extends SettingKey<T>>(
-        category: T,
-        setting: K,
-        value: SettingValueType<T, K>
-    ): Promise<void> {
-        try {
-            const response = await fetch(`/api/visualization/settings/${category}/${String(setting)}`, {
+            const response = await fetch(`/api/settings/${category}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ value }),
+                body: JSON.stringify(update),
             });
 
             if (!response.ok) {
-                throw new Error(`Failed to save setting: ${response.statusText}`);
+                throw new Error(`Failed to update setting: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            if (data.success) {
+                // Update local state safely
+                this.settings = {
+                    ...this.settings,
+                    [category]: {
+                        ...this.settings[category],
+                        ...data.settings
+                    }
+                };
+                
+                // Notify subscribers of all updated settings
+                Object.keys(data.settings).forEach(settingKey => {
+                    const updatedKey = settingKey as K;
+                    const updatedValue = data.settings[updatedKey];
+                    if (updatedValue !== undefined) {
+                        this.notifySubscribers(category, updatedKey, updatedValue as Settings[T][K]);
+                    }
+                });
+            } else {
+                throw new Error(data.error || 'Failed to update setting');
             }
         } catch (error) {
-            logger.error(`Error saving setting ${category}.${String(setting)}:`, error);
+            logger.error(`Failed to update setting ${String(key)} in ${category}:`, error);
             throw error;
         }
     }
 
-    public subscribe<T extends SettingCategory, K extends SettingKey<T>>(
+    public async updateCategorySettings<T extends keyof Settings>(
+        category: T,
+        settings: Partial<Settings[T]>
+    ): Promise<void> {
+        try {
+            const update = {
+                settings
+            };
+
+            const response = await fetch(`/api/settings/${category}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(update),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to update category settings: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            if (data.success) {
+                // Update local state with all returned settings
+                this.settings = {
+                    ...this.settings,
+                    [category]: {
+                        ...this.settings[category],
+                        ...data.settings
+                    }
+                };
+                // Notify subscribers of all updated settings
+                Object.keys(data.settings).forEach(setting => {
+                    this.notifySubscribers(category, setting as keyof Settings[T], data.settings[setting]);
+                });
+            } else {
+                throw new Error(data.error || 'Failed to update category settings');
+            }
+        } catch (error) {
+            logger.error(`Failed to update settings for category ${category}:`, error);
+            throw error;
+        }
+    }
+
+    private notifySubscribers<T extends keyof Settings, K extends keyof Settings[T]>(
         category: T,
         setting: K,
-        callback: (value: SettingValueType<T, K>) => void
+        value: Settings[T][K]
+    ): void {
+        const key = `${category}.${String(setting)}`;
+        const subscribers = this.subscribers.get(key) || [];
+        subscribers.forEach(sub => {
+            try {
+                sub.callback(value);
+            } catch (error) {
+                logger.error(`Error in subscriber callback for ${key}:`, error);
+            }
+        });
+    }
+
+    public subscribe<T extends keyof Settings, K extends keyof Settings[T]>(
+        category: T,
+        setting: K,
+        callback: (value: Settings[T][K]) => void
     ): () => void {
         const key = `${category}.${String(setting)}`;
         if (!this.subscribers.has(key)) {
@@ -163,168 +236,18 @@ class SettingsManager implements ISettingsManager {
     public dispose(): void {
         this.subscribers.clear();
     }
+
+    public getCurrentSettings(): Settings {
+        return this.settings;
+    }
+
+    public getDefaultSettings(): Settings {
+        return this.settings;
+    }
 }
 
-// Default settings that match settings.toml structure
-export const defaultSettings: Settings = {
-  animations: {
-    enableMotionBlur: false,
-    enableNodeAnimations: false,
-    motionBlurStrength: 0.4,
-    selectionWaveEnabled: false,
-    pulseEnabled: false,
-    rippleEnabled: false,
-    edgeAnimationEnabled: false,
-    flowParticlesEnabled: false
-  },
-  ar: {
-    dragThreshold: 0.04,
-    enableHandTracking: true,
-    enableHaptics: true,
-    enableLightEstimation: true,
-    enablePassthroughPortal: false,
-    enablePlaneDetection: true,
-    enableSceneUnderstanding: true,
-    gestureSsmoothing: 0.9,
-    handMeshColor: '#FFD700',
-    handMeshEnabled: true,
-    handMeshOpacity: 0.3,
-    handPointSize: 0.01,
-    handRayColor: '#FFD700',
-    handRayEnabled: true,
-    handRayWidth: 0.002,
-    hapticIntensity: 0.7,
-    passthroughBrightness: 1,
-    passthroughContrast: 1,
-    passthroughOpacity: 1,
-    pinchThreshold: 0.015,
-    planeColor: '#4A90E2',
-    planeOpacity: 0.3,
-    portalEdgeColor: '#FFD700',
-    portalEdgeWidth: 0.02,
-    portalSize: 1,
-    roomScale: true,
-    rotationThreshold: 0.08,
-    showPlaneOverlay: true,
-    snapToFloor: true
-  },
-  audio: {
-    enableAmbientSounds: false,
-    enableInteractionSounds: false,
-    enableSpatialAudio: false
-  },
-  bloom: {
-    edgeBloomStrength: 0.3,
-    enabled: false,
-    environmentBloomStrength: 0.5,
-    nodeBloomStrength: 0.2,
-    radius: 0.5,
-    strength: 1.8
-  },
-  clientDebug: {
-    enabled: true,
-    enableWebsocketDebug: true,
-    enableDataDebug: true,
-    logBinaryHeaders: true,
-    logFullJson: true
-  },
-  default: {
-    apiClientTimeout: 30,
-    enableMetrics: true,
-    enableRequestLogging: true,
-    logFormat: 'json',
-    logLevel: 'debug',
-    maxConcurrentRequests: 5,
-    maxPayloadSize: 5242880,
-    maxRetries: 3,
-    metricsPort: 9090,
-    retryDelay: 5
-  },
-  edges: {
-    arrowSize: 0.15,
-    baseWidth: 2,
-    color: '#917f18',
-    enableArrows: false,
-    opacity: 0.6,
-    widthRange: [1, 3]
-  },
-  labels: {
-    desktopFontSize: 48,
-    enableLabels: true,
-    textColor: '#FFFFFF'
-  },
-  network: {
-    bindAddress: '0.0.0.0',
-    domain: 'localhost',
-    enableHttp2: false,
-    enableRateLimiting: true,
-    enableTls: false,
-    maxRequestSize: 10485760,
-    minTlsVersion: '',
-    port: 3001,
-    rateLimitRequests: 100,
-    rateLimitWindow: 60,
-    tunnelId: 'dummy'
-  },
-  nodes: {
-    baseColor: '#4CAF50',
-    baseSize: 2.5,
-    clearcoat: 1,
-    enableHoverEffect: true,
-    enableInstancing: true,
-    highlightColor: '#ff4444',
-    highlightDuration: 500,
-    hoverScale: 1.2,
-    materialType: 'phong',
-    metalness: 0.5,
-    opacity: 0.7,
-    roughness: 0.5,
-    sizeByConnections: true,
-    sizeRange: [0.15, 0.4]
-  },
-  physics: {
-    attractionStrength: 0.1,
-    boundsSize: 100,
-    collisionRadius: 1,
-    damping: 0.8,
-    enableBounds: true,
-    enabled: true,
-    iterations: 1,
-    maxVelocity: 10,
-    repulsionStrength: 0.2,
-    springStrength: 0.1
-  },
-  rendering: {
-    ambientLightIntensity: 0.5,
-    backgroundColor: '#212121',
-    directionalLightIntensity: 0.8,
-    enableAmbientOcclusion: true,
-    enableAntialiasing: true,
-    enableShadows: true,
-    environmentIntensity: 1
-  },
-  security: {
-    allowedOrigins: ['*'],
-    auditLogPath: '',
-    cookieHttponly: true,
-    cookieSamesite: 'Strict',
-    cookieSecure: true,
-    csrfTokenTimeout: 3600,
-    enableAuditLogging: true,
-    enableRequestValidation: true,
-    sessionTimeout: 86400
-  },
-  serverDebug: {
-    enabled: false,
-    enableDataDebug: false,
-    enableWebsocketDebug: false,
-    logBinaryHeaders: false,
-    logFullJson: false
-  }
-};
-
 // Re-export Settings interface
-export type { Settings } from '../types/settings';
+export type { Settings } from '../core/types';
 
 // Initialize settings from settings.toml
-export const settingsManager = new SettingsManager(defaultSettings);
+export const settingsManager = new SettingsManager();

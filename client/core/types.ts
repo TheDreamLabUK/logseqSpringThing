@@ -211,6 +211,20 @@ export interface RenderingSettings {
   environmentIntensity: number;
 }
 
+export interface WebSocketSettings {
+  url: string;                   // WebSocket server URL
+  heartbeatInterval: number;     // Ping interval in seconds (default: 30)
+  heartbeatTimeout: number;      // Connection timeout in seconds (default: 60)
+  reconnectAttempts: number;     // Max reconnection attempts (default: 3)
+  reconnectDelay: number;        // Delay between reconnects in ms (default: 5000)
+  binaryChunkSize: number;       // Size of binary chunks
+  compressionEnabled: boolean;   // Enable/disable compression
+  compressionThreshold: number;  // Compression threshold
+  maxConnections: number;        // Maximum connections
+  maxMessageSize: number;        // Maximum message size
+  updateRate: number;           // Update rate in Hz
+}
+
 export interface Settings {
   animations: AnimationSettings;
   ar: ARSettings;
@@ -226,6 +240,7 @@ export interface Settings {
   rendering: RenderingSettings;
   security: SecuritySettings;
   serverDebug: ServerDebugSettings;
+  websocket: WebSocketSettings;
 }
 
 export type SettingCategory = keyof Settings;
@@ -266,21 +281,6 @@ export type WebSocketMessage =
   | BinaryPositionUpdateMessage
   | PingMessage
   | PongMessage;
-
-// WebSocket settings
-export interface WebSocketSettings {
-  url: string;                   // WebSocket server URL
-  heartbeatInterval: number;     // Ping interval in seconds (default: 30)
-  heartbeatTimeout: number;      // Connection timeout in seconds (default: 60)
-  reconnectAttempts: number;     // Max reconnection attempts (default: 3)
-  reconnectDelay: number;        // Delay between reconnects in ms (default: 5000)
-  binaryChunkSize: number;       // Size of binary chunks
-  compressionEnabled: boolean;   // Enable/disable compression
-  compressionThreshold: number;  // Compression threshold
-  maxConnections: number;        // Maximum connections
-  maxMessageSize: number;        // Maximum message size
-  updateRate: number;           // Update rate in Hz
-}
 
 // WebSocket error types
 export enum WebSocketErrorType {

@@ -66,7 +66,7 @@ class Application {
 
             try {
                 // Initialize WebSocket for real-time updates
-                this.webSocket = new WebSocketService();
+                this.webSocket = new WebSocketService(settingsManager);
 
                 // Setup WebSocket event handlers
                 this.webSocket.onMessage('connectionStatus', (data: { status: string, details?: any }) => {

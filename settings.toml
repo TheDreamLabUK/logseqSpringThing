@@ -160,12 +160,12 @@ log_full_json = false
 
 [websocket]
 binary_chunk_size = 65536
-compression_enabled = true
+compression_enabled = fasle
 compression_threshold = 1024
 heartbeat_interval = 15000
 heartbeat_timeout = 60000
-max_connections = 1000
+max_connections = 100
 max_message_size = 100485760
 reconnect_attempts = 3
 reconnect_delay = 5000
-update_rate = 90
+update_rate = 1

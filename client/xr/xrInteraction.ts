@@ -1,8 +1,13 @@
 import * as THREE from 'three';
-import { XRHandWithHaptics } from './xrTypes';
 import { NodeManager } from '../rendering/nodes';
 import { XRSessionManager } from './xrSessionManager';
 import { Settings } from '../core/types';
+import { SettingsManager } from '../state/settings';
+import { XRHandWithHaptics } from './xrTypes';
+
+interface HapticActuator {
+    pulse: (intensity: number, duration: number) => Promise<boolean>;
+}
 
 export class XRInteraction {
     private static instance: XRInteraction | null = null;
@@ -12,175 +17,21 @@ export class XRInteraction {
     private lastInteractorPosition = new THREE.Vector3();
     private hands: XRHandWithHaptics[] = [];
     private settings: Settings;
+    private settingsManager: SettingsManager;
 
-    private constructor(xrManager: XRSessionManager, nodeManager: NodeManager) {
+    private constructor(xrManager: XRSessionManager, nodeManager: NodeManager, settingsManager: SettingsManager) {
         this.xrManager = xrManager;
         this.nodeManager = nodeManager;
-        
-        this.settings = {
-            animations: { 
-                enableMotionBlur: false, 
-                enableNodeAnimations: false, 
-                motionBlurStrength: 0.4, 
-                selectionWaveEnabled: false, 
-                pulseEnabled: false, 
-                rippleEnabled: false, 
-                edgeAnimationEnabled: false, 
-                flowParticlesEnabled: false 
-            },
-            ar: {
-                dragThreshold: 0.04,
-                enableHandTracking: true,
-                enableHaptics: true,
-                enableLightEstimation: true,
-                enablePassthroughPortal: false,
-                enablePlaneDetection: true,
-                enableSceneUnderstanding: true,
-                gestureSsmoothing: 0.9,
-                handMeshColor: '#FFD700',
-                handMeshEnabled: true,
-                handMeshOpacity: 0.3,
-                handPointSize: 0.01,
-                handRayColor: '#FFD700',
-                handRayEnabled: true,
-                handRayWidth: 0.002,
-                hapticIntensity: 0.7,
-                passthroughBrightness: 1,
-                passthroughContrast: 1,
-                passthroughOpacity: 1,
-                pinchThreshold: 0.015,
-                planeColor: '#4A90E2',
-                planeOpacity: 0.3,
-                portalEdgeColor: '#FFD700',
-                portalEdgeWidth: 0.02,
-                portalSize: 1,
-                roomScale: true,
-                rotationThreshold: 0.08,
-                showPlaneOverlay: true,
-                snapToFloor: true
-            },
-            audio: { 
-                enableAmbientSounds: false, 
-                enableInteractionSounds: false, 
-                enableSpatialAudio: false 
-            },
-            bloom: { 
-                edgeBloomStrength: 0.3, 
-                enabled: false, 
-                environmentBloomStrength: 0.5, 
-                nodeBloomStrength: 0.2, 
-                radius: 0.5, 
-                strength: 1.8 
-            },
-            clientDebug: { 
-                enableDataDebug: false, 
-                enableWebsocketDebug: false, 
-                enabled: false, 
-                logBinaryHeaders: false, 
-                logFullJson: false 
-            },
-            edges: {
-                arrowSize: 0.15, 
-                baseWidth: 2, 
-                color: '#917f18', 
-                enableArrows: false, 
-                opacity: 1, 
-                widthRange: [1, 4] 
-            },
-            labels: {
-                desktopFontSize: 12, 
-                enableLabels: true, 
-                textColor: '#FFFFFF' 
-            },
-            network: {
-                bindAddress: '0.0.0.0',
-                domain: 'localhost',
-                enableHttp2: false,
-                enableRateLimiting: true,
-                enableTls: false,
-                maxRequestSize: 10485760,
-                minTlsVersion: '',
-                port: 3001,
-                rateLimitRequests: 100,
-                rateLimitWindow: 60,
-                tunnelId: 'dummy'
-            },
-            nodes: { 
-                baseColor: '#4A90E2', 
-                baseSize: 1, 
-                clearcoat: 0.5, 
-                enableHoverEffect: true, 
-                enableInstancing: true, 
-                highlightColor: '#FFD700', 
-                highlightDuration: 500, 
-                hoverScale: 1.2, 
-                materialType: 'standard', 
-                metalness: 0.5, 
-                opacity: 1, 
-                roughness: 0.5, 
-                sizeByConnections: false, 
-                sizeRange: [0.5, 2] 
-            },
-            physics: { 
-                attractionStrength: 0.1, 
-                boundsSize: 100, 
-                collisionRadius: 1, 
-                damping: 0.5, 
-                enableBounds: true, 
-                enabled: true, 
-                iterations: 1, 
-                maxVelocity: 10, 
-                repulsionStrength: 0.2, 
-                springStrength: 0.1 
-            },
-            rendering: { 
-                ambientLightIntensity: 0.5, 
-                backgroundColor: '#000000', 
-                directionalLightIntensity: 1, 
-                enableAmbientOcclusion: true, 
-                enableAntialiasing: true, 
-                enableShadows: true, 
-                environmentIntensity: 1 
-            },
-            default: {
-                apiClientTimeout: 30,
-                enableMetrics: true,
-                enableRequestLogging: true,
-                logFormat: "json",
-                logLevel: "debug",
-                maxConcurrentRequests: 5,
-                maxPayloadSize: 5242880,
-                maxRetries: 3,
-                metricsPort: 9090,
-                retryDelay: 5
-            },
-            security: {
-                allowedOrigins: [],
-                auditLogPath: "/app/logs/audit.log",
-                cookieHttponly: true,
-                cookieSamesite: "Strict",
-                cookieSecure: true,
-                csrfTokenTimeout: 3600,
-                enableAuditLogging: true,
-                enableRequestValidation: true,
-                sessionTimeout: 3600
-            },
-            serverDebug: {
-                enabled: false,
-                enableDataDebug: false,
-                enableWebsocketDebug: false,
-                logBinaryHeaders: false,
-                logFullJson: false
-            }
-        };
+        this.settingsManager = settingsManager;
+        this.settings = this.settingsManager.getCurrentSettings();
         
         this.setupXRControllers();
         this.setupHandTracking();
     }
 
-    public static getInstance(xrManager: XRSessionManager, nodeManager: NodeManager): XRInteraction {
+    public static getInstance(xrManager: XRSessionManager, nodeManager: NodeManager, settingsManager: SettingsManager): XRInteraction {
         if (!XRInteraction.instance) {
-            XRInteraction.instance = new XRInteraction(xrManager, nodeManager);
+            XRInteraction.instance = new XRInteraction(xrManager, nodeManager, settingsManager);
         }
         return XRInteraction.instance;
     }
@@ -281,11 +132,16 @@ export class XRInteraction {
         if (!this.settings.ar.enableHaptics) return;
 
         if ('hapticActuators' in device) {
-            device.hapticActuators.forEach(actuator => {
-                actuator.pulse(intensity, duration);
+            const hapticActuators = device.hapticActuators as HapticActuator[];
+            hapticActuators.forEach((actuator: HapticActuator) => {
+                actuator.pulse(intensity, duration).catch((error: Error) => {
+                    console.warn('Failed to trigger haptic feedback:', error);
+                });
             });
         } else if (device.userData.hapticActuator) {
-            device.userData.hapticActuator.pulse(intensity, duration);
+            device.userData.hapticActuator.pulse(intensity, duration).catch((error: Error) => {
+                console.warn('Failed to trigger haptic feedback:', error);
+            });
         }
     }
 

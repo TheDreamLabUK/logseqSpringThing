@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::RwLock;
 use tokio::sync::RwLock;
 use crate::utils::case_conversion::to_snake_case;
 
@@ -29,6 +30,12 @@ pub struct CategorySettingsResponse {
     pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CategorySettingsUpdate {
+    pub settings: HashMap<String, Value>,
 }
 
 // Request/Response structures for individual settings
@@ -191,6 +198,90 @@ fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Va
     Ok(value)
 }
 
+// GET /api/settings/{category}
+#[get("/api/settings/{category}")]
+pub async fn get_category_settings(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let category = path.into_inner();
+    let settings = settings.read().unwrap();
+    
+    match get_category_settings_value(&settings, &category) {
+        Ok(value) => HttpResponse::Ok().json(CategorySettingsResponse {
+            category: category.clone(),
+            settings: value.as_object().unwrap_or(&serde_json::Map::new()).clone(),
+            success: true,
+            error: None,
+        }),
+        Err(e) => HttpResponse::BadRequest().json(CategorySettingsResponse {
+            category,
+            settings: HashMap::new(),
+            success: false,
+            error: Some(e),
+        }),
+    }
+}
+
+// PUT /api/settings/{category}
+#[put("/api/settings/{category}")]
+pub async fn update_category_settings(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+    path: web::Path<String>,
+    update: web::Json<CategorySettingsUpdate>,
+) -> HttpResponse {
+    let category = path.into_inner();
+    let mut settings = settings.write().unwrap();
+    
+    // Convert category to snake_case for internal use
+    let category_snake = to_snake_case(&category);
+    
+    // Update all settings in the category
+    let mut success = true;
+    let mut error_msg = None;
+    
+    for (key, value) in update.settings.iter() {
+        if let Err(e) = update_setting_value(&mut settings, &category_snake, key, value) {
+            success = false;
+            error_msg = Some(format!("Failed to update setting {}: {}", key, e));
+            break;
+        }
+    }
+    
+    if success {
+        if let Err(e) = save_settings_to_file(&settings) {
+            HttpResponse::InternalServerError().json(CategorySettingsResponse {
+                category,
+                settings: HashMap::new(),
+                success: false,
+                error: Some(format!("Failed to save settings: {}", e)),
+            })
+        } else {
+            match get_category_settings_value(&settings, &category_snake) {
+                Ok(value) => HttpResponse::Ok().json(CategorySettingsResponse {
+                    category,
+                    settings: value.as_object().unwrap_or(&serde_json::Map::new()).clone(),
+                    success: true,
+                    error: None,
+                }),
+                Err(e) => HttpResponse::InternalServerError().json(CategorySettingsResponse {
+                    category,
+                    settings: HashMap::new(),
+                    success: false,
+                    error: Some(e),
+                }),
+            }
+        }
+    } else {
+        HttpResponse::BadRequest().json(CategorySettingsResponse {
+            category,
+            settings: HashMap::new(),
+            success: false,
+            error: error_msg,
+        })
+    }
+}
+
 // GET /api/visualization/settings/{category}/{setting}
 pub async fn get_setting(
     settings: web::Data<Arc<RwLock<Settings>>>,
@@ -279,49 +370,13 @@ pub async fn update_setting(
     }
 }
 
-// GET /api/visualization/settings/{category}
-pub async fn get_category_settings(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
-) -> HttpResponse {
-    let settings_read = settings.read().await;
-    let debug_enabled = settings_read.server_debug.enabled;
-    let log_json = debug_enabled && settings_read.server_debug.log_full_json;
-    
-    let category = path.into_inner();
-    match get_category_settings_value(&settings_read, &category) {
-        Ok(value) => {
-            if log_json {
-                debug!("Category '{}' settings: {}", category, serde_json::to_string_pretty(&value).unwrap_or_default());
-            }
-            let settings_map: HashMap<String, Value> = value.as_object()
-                .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-                .unwrap_or_default();
-            
-            HttpResponse::Ok().json(CategorySettingsResponse {
-                category: category.clone(),
-                settings: settings_map,
-                success: true,
-                error: None,
-            })
-        },
-        Err(e) => {
-            error!("Failed to get category settings for '{}': {}", category, e);
-            HttpResponse::NotFound().json(CategorySettingsResponse {
-                category: category.clone(),
-                settings: HashMap::new(),
-                success: false,
-                error: Some(e),
-            })
-        }
-    }
-}
-
 // Register the handlers with the Actix web app
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("/settings/{category}/{setting}", web::get().to(get_setting))
-       .route("/settings/{category}/{setting}", web::put().to(update_setting))
-       .route("/settings/{category}", web::get().to(get_category_settings));
+    cfg.service(get_category_settings)
+       .service(update_category_settings)
+       .route("/api/visualization/settings/{category}/{setting}", web::get().to(get_setting))
+       .route("/api/visualization/settings/{category}/{setting}", web::put().to(update_setting))
+       .route("/api/settings/websocket/update-rate", web::put().to(update_websocket_rate));
 }
 
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
@@ -384,4 +439,24 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
             Err(e)
         }
     }
+}
+
+// PUT /api/settings/websocket/update-rate
+pub async fn update_websocket_rate(
+    rate: web::Json<u32>,
+    settings: web::Data<RwLock<Settings>>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let mut settings = settings.write().unwrap();
+    settings.websocket.update_rate = rate.into_inner();
+    if let Err(e) = save_settings_to_file(&*settings) {
+        error!("Failed to save settings to file: {}", e);
+        return Ok(HttpResponse::InternalServerError().json(SettingResponse {
+            category: "websocket".to_string(),
+            setting: "update-rate".to_string(),
+            value: Value::Null,
+            success: false,
+            error: Some("Failed to persist settings".to_string()),
+        }));
+    }
+    Ok(HttpResponse::Ok().finish())
 }

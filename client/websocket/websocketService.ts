@@ -4,22 +4,9 @@ import {
   WebSocketSettings,
 } from '../core/types';
 import { createLogger } from '../utils/logger';
+import { SettingsManager } from '../state/settings';
 
 const logger = createLogger('WebSocketService');
-
-const DEFAULT_SETTINGS: WebSocketSettings = {
-  url: '/wss',
-  heartbeatInterval: 30,
-  heartbeatTimeout: 60,
-  reconnectAttempts: 3,
-  reconnectDelay: 5000,
-  binaryChunkSize: 65536,
-  compressionEnabled: true,
-  compressionThreshold: 1024,
-  maxConnections: 1000,
-  maxMessageSize: 100485760,
-  updateRate: 90
-};
 
 interface Node {
   data: {
@@ -41,10 +28,17 @@ export class WebSocketService {
   private binaryUpdateHandler: BinaryUpdateHandler | null = null;
   private isReconnecting = false;
   private messageHandlers: Map<MessageType, MessageHandler[]> = new Map();
+  private settingsManager: SettingsManager;
 
-  constructor(settings: Partial<WebSocketSettings> = {}) {
-    this.settings = { ...DEFAULT_SETTINGS, ...settings };
+  constructor(settingsManager: SettingsManager) {
+    this.settingsManager = settingsManager;
+    this.settings = settingsManager.getCurrentSettings().websocket;
     this.connect();
+    
+    // Subscribe to websocket settings changes
+    this.settingsManager.subscribe('websocket', 'updateRate', () => {
+      this.settings = this.settingsManager.getCurrentSettings().websocket;
+    });
   }
 
   private connect() {
