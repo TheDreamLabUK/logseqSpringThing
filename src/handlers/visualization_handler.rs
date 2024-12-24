@@ -152,7 +152,11 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
 // Helper function to get all settings for a category
 fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Value, String> {
     debug!("Getting settings for category: {}", category);
-    let value = match category {
+    // Convert incoming category to snake_case for internal lookup
+    let category_snake = to_snake_case(&category);
+    debug!("Looking up settings for category: {} (snake_case: {})", category, category_snake);
+
+    let value = match category_snake.as_str() {
         "nodes" => serde_json::to_value(&settings.nodes)
             .map_err(|e| format!("Failed to serialize node settings: {}", e))?,
         "edges" => serde_json::to_value(&settings.edges)
@@ -171,9 +175,9 @@ fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Va
             .map_err(|e| format!("Failed to serialize audio settings: {}", e))?,
         "physics" => serde_json::to_value(&settings.physics)
             .map_err(|e| format!("Failed to serialize physics settings: {}", e))?,
-        "clientDebug" => serde_json::to_value(&settings.client_debug)
+        "client_debug" => serde_json::to_value(&settings.client_debug)
             .map_err(|e| format!("Failed to serialize client debug settings: {}", e))?,
-        "serverDebug" => serde_json::to_value(&settings.server_debug)
+        "server_debug" => serde_json::to_value(&settings.server_debug)
             .map_err(|e| format!("Failed to serialize server debug settings: {}", e))?,
         "security" => serde_json::to_value(&settings.security)
             .map_err(|e| format!("Failed to serialize security settings: {}", e))?,
@@ -319,9 +323,12 @@ pub async fn get_category_settings(
 
 // Register the handlers with the Actix web app
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.route("/settings/{category}/{setting}", web::get().to(get_setting))
-       .route("/settings/{category}/{setting}", web::put().to(update_setting))
-       .route("/settings/{category}", web::get().to(get_category_settings));
+    cfg.service(
+        web::scope("/visualization")
+            .route("/settings/{category}/{setting}", web::get().to(get_setting))
+            .route("/settings/{category}/{setting}", web::put().to(update_setting))
+            .route("/settings/{category}", web::get().to(get_category_settings))
+    );
 }
 
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
