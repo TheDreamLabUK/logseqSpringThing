@@ -1,16 +1,20 @@
 use log::{debug, info};
 use env_logger;
 
-use crate::config::Settings;
-use crate::handlers::{
-    file_handler,
-    graph_handler,
-    socket_flow_handler::socket_flow_handler,
-    visualization_handler,
+use webxr::{
+    config::Settings,
+    handlers::{
+        file_handler,
+        graph_handler,
+        socket_flow_handler::socket_flow_handler,
+        visualization_handler,
+    },
+    app_state::AppState,
+    services::{
+        file_service::RealGitHubService,
+        github_service::RealGitHubPRService,
+    },
 };
-use crate::app_state::AppState;
-use crate::services::file_service::RealGitHubService;
-use crate::services::github_service::RealGitHubPRService;
 
 use actix_web::{web, App, HttpServer, middleware};
 use actix_cors::Cors;
@@ -69,7 +73,7 @@ async fn main() -> std::io::Result<()> {
     let gpu_compute = None; // Initialize if needed
     
     // Create AppState with initialized services
-    let app_state = web::Data::new(AppState::new(
+    let app_state: web::Data<AppState> = web::Data::new(AppState::new(
         settings.clone(),
         github_service,
         perplexity_service,
