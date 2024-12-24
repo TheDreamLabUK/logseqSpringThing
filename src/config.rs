@@ -468,6 +468,8 @@ impl Default for BloomSettings {
 #[serde(rename_all = "snake_case")]
 #[serde(default)]
 pub struct EdgeSettings {
+    pub arrow_size: f32,
+    pub base_width: f32,
     pub color: String,
     pub enable_arrows: bool,
     pub opacity: f32,
@@ -477,6 +479,8 @@ pub struct EdgeSettings {
 impl Default for EdgeSettings {
     fn default() -> Self {
         Self {
+            arrow_size: 0.2,
+            base_width: 2.0,
             color: "#917f18".to_string(),
             enable_arrows: false,
             opacity: 0.6,
@@ -547,7 +551,7 @@ impl Default for NodeSettings {
         Self {
             base_color: "#c3ab6f".to_string(),
             base_size: 1.0,
-            clearcoat: 1.0,
+            clearcoat: 0.5,
             enable_hover_effect: false,
             enable_instancing: false,
             highlight_color: "#822626".to_string(),

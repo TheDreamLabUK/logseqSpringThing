@@ -99,9 +99,12 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state.clone())
             .service(
                 web::scope("/api")
-                    .service(web::scope("/files").configure(file_handler::config))
-                    .service(web::scope("/graph").configure(graph_handler::config))
-                    .service(web::scope("/settings").configure(settings::config))
+                    .service(web::scope("/files").configure(configure_file_handler))
+                    .service(web::scope("/graph").configure(configure_graph_handler))
+                    .service(
+                        web::scope("/visualization")
+                            .configure(visualization_handler::config)
+                    )
             )
             .service(
                 web::resource("/wss")
