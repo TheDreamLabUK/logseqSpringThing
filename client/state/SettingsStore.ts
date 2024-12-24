@@ -1,5 +1,6 @@
 import { Settings } from '../types/settings';
 import { createLogger } from '../core/logger';
+import { defaultSettings } from './defaultSettings';
 
 const logger = createLogger('SettingsStore');
 
@@ -26,7 +27,8 @@ export class SettingsStore {
     private constructor(
         private readonly options: SettingsStoreOptions = defaultSettingsStoreOptions
     ) {
-        this.settings = {} as Settings;
+        // Initialize with default settings
+        this.settings = { ...defaultSettings };
     }
 
     public static getInstance(options?: SettingsStoreOptions): SettingsStore {
@@ -42,13 +44,24 @@ export class SettingsStore {
         }
 
         try {
-            const response = await fetch('/api/settings');
-            if (!response.ok) {
-                throw new Error(`Failed to fetch settings: ${response.statusText}`);
+            // Try to fetch settings from API
+            try {
+                const response = await fetch('/api/settings');
+                if (response.ok) {
+                    const flatSettings = await response.json();
+                    this.settings = this.unflattenSettings(flatSettings);
+                    logger.info('Settings loaded from API');
+                } else {
+                    // If API fails, use default settings
+                    logger.warn('Failed to fetch settings from API, using defaults');
+                    this.settings = defaultSettings;
+                }
+            } catch (error) {
+                // If fetch fails completely, use default settings
+                logger.warn('API not available, using default settings:', error);
+                this.settings = defaultSettings;
             }
 
-            const flatSettings = await response.json();
-            this.settings = this.unflattenSettings(flatSettings);
             this.initialized = true;
             logger.info('SettingsStore initialized');
 
@@ -60,7 +73,9 @@ export class SettingsStore {
             }
         } catch (error) {
             logger.error('Failed to initialize SettingsStore:', error);
-            throw error;
+            // Even if something goes wrong, initialize with defaults
+            this.settings = defaultSettings;
+            this.initialized = true;
         }
     }
 

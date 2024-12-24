@@ -16,7 +16,7 @@ const logger = createLogger('SettingsManager');
 export class SettingsManager {
     private store: SettingsStore;
     private initialized: boolean = false;
-    private settings: Settings = defaultSettings;
+    private settings: Settings = { ...defaultSettings };
 
     constructor() {
         this.store = SettingsStore.getInstance({ autoSave: true });
@@ -32,33 +32,30 @@ export class SettingsManager {
             this.initialized = true;
             logger.info('Settings manager initialized');
         } catch (error) {
+            // Log error but continue with default settings
             logger.error('Failed to initialize settings manager:', error);
-            throw error;
-        }
-    }
-
-    private checkInitialized(): void {
-        if (!this.initialized) {
-            logger.error('Settings manager not initialized');
-            throw new Error('Settings manager must be initialized before use');
+            logger.info('Continuing with default settings');
+            this.initialized = true;
         }
     }
 
     public getCurrentSettings(): Settings {
-        // Allow access to default settings even if not initialized
+        // Always return settings, which will be defaults if initialization failed
         return this.settings;
     }
 
     public async updateSetting(path: SettingsPath, value: SettingValue): Promise<void> {
-        this.checkInitialized();
-        
         if (!isValidSettingPath(path)) {
             throw new Error(`Invalid settings path: ${path}`);
         }
 
         try {
             setSettingValue(this.settings, path, value);
-            await this.store.set(path, value);
+            if (this.initialized) {
+                await this.store.set(path, value);
+            } else {
+                logger.warn(`Setting ${path} updated in memory only - store not initialized`);
+            }
             logger.debug(`Updated setting ${path} to ${value}`);
         } catch (error) {
             logger.error(`Failed to update setting ${path}:`, error);
@@ -67,7 +64,6 @@ export class SettingsManager {
     }
 
     public get(path: SettingsPath): SettingValue {
-        // Allow access to default settings even if not initialized
         if (!isValidSettingPath(path)) {
             throw new Error(`Invalid settings path: ${path}`);
         }
@@ -76,27 +72,26 @@ export class SettingsManager {
             return getSettingValue(this.settings, path);
         } catch (error) {
             logger.error(`Error getting setting at path ${path}:`, error);
-            throw error;
+            // Return default value for this path if available
+            return getSettingValue(defaultSettings, path);
         }
     }
 
     public getCategory(category: SettingsCategory): Settings[typeof category] {
-        // Allow access to default settings even if not initialized
         if (!(category in this.settings)) {
-            throw new Error(`Invalid settings category: ${category}`);
+            logger.warn(`Category ${category} not found, using defaults`);
+            return defaultSettings[category];
         }
         return this.settings[category];
     }
 
     public subscribe(path: SettingsPath, callback: (value: SettingValue) => void): () => void {
-        this.checkInitialized();
-
         if (!isValidSettingPath(path)) {
             throw new Error(`Invalid settings path: ${path}`);
         }
 
         try {
-            // Immediately notify with current value
+            // Get current value for immediate notification
             const currentValue = this.get(path);
             try {
                 callback(currentValue);
@@ -104,13 +99,19 @@ export class SettingsManager {
                 logger.error(`Error in initial settings callback for ${path}:`, error);
             }
 
-            return this.store.subscribe(path, (_, value) => {
-                try {
-                    callback(value as SettingValue);
-                } catch (error) {
-                    logger.error(`Error in settings subscriber for ${path}:`, error);
-                }
-            });
+            // Set up subscription if store is initialized
+            if (this.initialized) {
+                return this.store.subscribe(path, (_, value) => {
+                    try {
+                        callback(value as SettingValue);
+                    } catch (error) {
+                        logger.error(`Error in settings subscriber for ${path}:`, error);
+                    }
+                });
+            } else {
+                logger.warn(`Subscription for ${path} not set up - store not initialized`);
+                return () => {}; // Return no-op cleanup function
+            }
         } catch (error) {
             logger.error(`Error setting up subscription for ${path}:`, error);
             throw error;
@@ -122,8 +123,6 @@ export class SettingsManager {
     }
 
     public async batchUpdate(updates: Array<{ path: SettingsPath; value: SettingValue }>): Promise<void> {
-        this.checkInitialized();
-
         try {
             // Validate all paths first
             for (const { path } of updates) {
@@ -137,10 +136,14 @@ export class SettingsManager {
                 setSettingValue(this.settings, path, value);
             }
 
-            // Then sync with store
-            await Promise.all(
-                updates.map(({ path, value }) => this.store.set(path, value))
-            );
+            // Then sync with store if initialized
+            if (this.initialized) {
+                await Promise.all(
+                    updates.map(({ path, value }) => this.store.set(path, value))
+                );
+            } else {
+                logger.warn('Settings updated in memory only - store not initialized');
+            }
         } catch (error) {
             logger.error('Failed to apply batch updates:', error);
             throw error;
