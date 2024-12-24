@@ -35,6 +35,10 @@ pub struct VisualizationSettings {
     #[serde(default)]
     pub animations: AnimationSettings,
     #[serde(default)]
+    pub ar: ARSettings,
+    #[serde(default)]
+    pub audio: AudioSettings,
+    #[serde(default)]
     pub bloom: BloomSettings,
     #[serde(default)]
     pub edges: EdgeSettings,
@@ -974,6 +978,8 @@ impl Default for VisualizationSettings {
     fn default() -> Self {
         Self {
             animations: AnimationSettings::default(),
+            ar: ARSettings::default(),
+            audio: AudioSettings::default(),
             bloom: BloomSettings::default(),
             edges: EdgeSettings::default(),
             hologram: HologramSettings::default(),

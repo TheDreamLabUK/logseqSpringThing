@@ -9,14 +9,17 @@ use crate::config::Settings;
 use super::common::{SettingResponse, CategorySettingsResponse, CategorySettingsUpdate, get_setting_value, update_setting_value};
 
 // List of categories that make up visualization settings
-const VISUALIZATION_CATEGORIES: [&str; 7] = [
-    "nodes",
-    "edges",
+const VISUALIZATION_CATEGORIES: [&str; 10] = [
+    "animations",
+    "ar",
+    "audio",
     "bloom",
-    "physics",
-    "rendering",
+    "edges",
+    "hologram",
     "labels",
-    "animations"
+    "nodes",
+    "physics",
+    "rendering"
 ];
 
 #[get("")]
@@ -26,38 +29,38 @@ async fn get_visualization_settings(
     debug!("Getting all visualization settings");
     
     let settings_guard = settings.read().await;
-    
     let mut combined_settings = HashMap::new();
     
-    // Convert settings to Value for easier access
-    let settings_value = match serde_json::to_value(&*settings_guard) {
-        Ok(v) => v,
-        Err(e) => {
-            error!("Failed to serialize settings: {}", e);
-            return HttpResponse::InternalServerError().json(CategorySettingsResponse {
-                category: "visualization".to_string(),
-                settings: HashMap::new(),
-                success: false,
-                error: Some(format!("Failed to serialize settings: {}", e)),
-            });
-        }
-    };
-
-    // Combine all visualization-related categories
+    // Get visualization settings directly
+    let vis_settings = &settings_guard.visualization;
+    
+    // Process each category
     for category in VISUALIZATION_CATEGORIES.iter() {
         debug!("Processing category: {}", category);
-        if let Some(category_settings) = settings_value.get(category) {
-            if let Some(map) = category_settings.as_object() {
+        let category_value = match *category {
+            "animations" => serde_json::to_value(&vis_settings.animations),
+            "ar" => serde_json::to_value(&vis_settings.ar),
+            "audio" => serde_json::to_value(&vis_settings.audio),
+            "bloom" => serde_json::to_value(&vis_settings.bloom),
+            "edges" => serde_json::to_value(&vis_settings.edges),
+            "hologram" => serde_json::to_value(&vis_settings.hologram),
+            "labels" => serde_json::to_value(&vis_settings.labels),
+            "nodes" => serde_json::to_value(&vis_settings.nodes),
+            "physics" => serde_json::to_value(&vis_settings.physics),
+            "rendering" => serde_json::to_value(&vis_settings.rendering),
+            _ => continue,
+        };
+
+        if let Ok(value) = category_value {
+            if let Some(map) = value.as_object() {
                 for (key, value) in map {
                     let combined_key = format!("{}_{}", category, key);
                     debug!("Adding setting: {}", combined_key);
                     combined_settings.insert(combined_key, value.clone());
                 }
-            } else {
-                error!("Category {} settings is not an object", category);
             }
         } else {
-            error!("Category {} not found in settings", category);
+            error!("Failed to serialize {} settings", category);
         }
     }
 
