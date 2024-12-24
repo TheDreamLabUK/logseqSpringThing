@@ -128,7 +128,43 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
     
     // Update setting value
     if let Some(obj) = category_value.as_object_mut() {
-        obj.insert(setting_snake.to_string(), value.clone());
+        // Get the current value to determine its type
+        let current_value = obj.get(&setting_snake);
+        
+        // Convert value based on the current value's type
+        let converted_value = match current_value {
+            Some(current) if current.is_boolean() => {
+                // For boolean settings, handle various input formats
+                if value.is_boolean() {
+                    value.clone()
+                } else if value.is_string() {
+                    Value::Bool(value.as_str().unwrap_or("false").to_lowercase() == "true")
+                } else if value.is_number() {
+                    Value::Bool(value.as_i64().unwrap_or(0) != 0)
+                } else {
+                    value.clone()
+                }
+            },
+            Some(current) if current.is_number() => {
+                // For numeric settings, handle string inputs
+                if value.is_number() {
+                    value.clone()
+                } else if value.is_string() {
+                    if let Ok(num) = value.as_str().unwrap_or("0").trim().parse::<f64>() {
+                        Value::Number(serde_json::Number::from_f64(num).unwrap_or_else(|| serde_json::Number::from(0)))
+                    } else {
+                        value.clone()
+                    }
+                } else if value.is_boolean() {
+                    Value::Number(serde_json::Number::from(if value.as_bool().unwrap_or(false) { 1 } else { 0 }))
+                } else {
+                    value.clone()
+                }
+            },
+            _ => value.clone()
+        };
+
+        obj.insert(setting_snake.to_string(), converted_value);
         debug!("Updated setting value successfully");
         
         // Convert back to Settings
@@ -213,25 +249,11 @@ pub async fn get_setting(
     match get_setting_value(&*settings_guard, &category, &setting) {
         Ok(value) => {
             debug!("Successfully retrieved setting value: {:?}", value);
-            // Convert setting name to camelCase for response
-            let setting = to_camel_case(&setting);
-            HttpResponse::Ok().json(SettingResponse {
-                category,
-                setting,
-                value,
-                success: true,
-                error: None,
-            })
+            HttpResponse::Ok().json(value)
         },
         Err(e) => {
             error!("Failed to get setting value: {}", e);
-            HttpResponse::BadRequest().json(SettingResponse {
-                category,
-                setting,
-                value: Value::Null,
-                success: false,
-                error: Some(e),
-            })
+            HttpResponse::NotFound().json(Value::Null)
         }
     }
 }
@@ -243,6 +265,7 @@ pub async fn update_setting(
     value: web::Json<Value>,
 ) -> HttpResponse {
     let (category, setting) = path.into_inner();
+    debug!("Raw value from client: {:?}", value);
     info!("Updating setting for category: {}, setting: {}", category, setting);
     
     let mut settings_guard = match settings.write().await {
@@ -252,37 +275,38 @@ pub async fn update_setting(
         }
     };
 
-    match update_setting_value(&mut *settings_guard, &category, &setting, &value) {
+    // Extract the actual value from the client's JSON structure
+    let actual_value = if let Some(obj) = value.as_object() {
+        if let Some(val) = obj.get("value") {
+            val
+        } else {
+            &value
+        }
+    } else {
+        &value
+    };
+
+    match update_setting_value(&mut *settings_guard, &category, &setting, actual_value) {
         Ok(_) => {
-            if let Err(e) = save_settings_to_file(&*settings_guard) {
-                error!("Failed to save settings to file: {}", e);
-                return HttpResponse::InternalServerError().json(SettingResponse {
-                    category,
-                    setting,
-                    value: value.into_inner(),
-                    success: false,
-                    error: Some("Failed to persist settings".to_string()),
-                });
+            // Get the actual updated value for the response
+            match get_setting_value(&*settings_guard, &category, &setting) {
+                Ok(updated_value) => {
+                    if let Err(e) = save_settings_to_file(&*settings_guard) {
+                        error!("Failed to save settings to file: {}", e);
+                        return HttpResponse::InternalServerError().json(Value::Null);
+                    }
+                    // Return just the updated value as the client expects
+                    HttpResponse::Ok().json(updated_value)
+                },
+                Err(e) => {
+                    error!("Failed to get updated setting value: {}", e);
+                    HttpResponse::InternalServerError().json(Value::Null)
+                }
             }
-            // Convert setting name to camelCase for response
-            let setting = to_camel_case(&setting);
-            HttpResponse::Ok().json(SettingResponse {
-                category,
-                setting,
-                value: value.into_inner(),
-                success: true,
-                error: None,
-            })
         },
         Err(e) => {
             error!("Failed to update setting value: {}", e);
-            HttpResponse::BadRequest().json(SettingResponse {
-                category,
-                setting,
-                value: value.into_inner(),
-                success: false,
-                error: Some(e),
-            })
+            HttpResponse::NotFound().json(Value::Null)
         }
     }
 }
@@ -302,6 +326,7 @@ pub async fn get_category_settings(
             if log_json {
                 debug!("Category '{}' settings: {}", category, serde_json::to_string_pretty(&value).unwrap_or_default());
             }
+            // The client expects the settings directly, not wrapped in a response object
             let settings_map: HashMap<String, Value> = value.as_object()
                 .map(|m| m.iter().map(|(k, v)| {
                     // Convert snake_case keys to camelCase for client
@@ -309,21 +334,12 @@ pub async fn get_category_settings(
                 }).collect())
                 .unwrap_or_default();
             
-            HttpResponse::Ok().json(CategorySettingsResponse {
-                category: category.clone(),
-                settings: settings_map,
-                success: true,
-                error: None,
-            })
+            HttpResponse::Ok().json(settings_map)
         },
         Err(e) => {
             error!("Failed to get category settings for '{}': {}", category, e);
-            HttpResponse::NotFound().json(CategorySettingsResponse {
-                category: category.clone(),
-                settings: HashMap::new(),
-                success: false,
-                error: Some(e),
-            })
+            // Return empty object for 404s as client expects
+            HttpResponse::NotFound().json(HashMap::<String, Value>::new())
         }
     }
 }

@@ -150,4 +150,3 @@ pub enum Message {
 }
 
 // Forward declarations to avoid circular dependencies
-use crate::models::graph::GraphData;
