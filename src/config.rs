@@ -909,6 +909,8 @@ impl Default for Settings {
         Self {
             visualization: VisualizationSettings {
                 animations: AnimationSettings::default(),
+                ar: ARSettings::default(),
+                audio: AudioSettings::default(),
                 bloom: BloomSettings::default(),
                 edges: EdgeSettings::default(),
                 hologram: HologramSettings::default(),

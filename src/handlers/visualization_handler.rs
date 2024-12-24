@@ -1,5 +1,5 @@
 use crate::config::Settings;
-use actix_web::{get, put, web, HttpResponse};
+use actix_web::{get, web, HttpResponse};
 use log::{error, info, debug};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -37,250 +37,16 @@ pub struct CategorySettingsUpdate {
     pub settings: HashMap<String, Value>,
 }
 
-// Request/Response structures for individual settings
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SettingValue {
-    pub value: Value,
-}
-
 // Helper function to get setting value from settings object
 fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Result<Value, String> {
-    debug!("Attempting to get setting value for category: {}, setting: {}", category, setting);
+    debug!("Getting setting value for category: {}, setting: {}", category, setting);
     
     // Convert kebab-case URL parameters to snake_case
     let category_snake = to_snake_case(category);
     let setting_snake = to_snake_case(setting);
-    debug!("Converted category '{}' to snake_case: '{}'", category, category_snake);
-    debug!("Converted setting '{}' to snake_case: '{}'", setting, setting_snake);
     
-    // Convert settings to Value for easier access
-    let settings_value = serde_json::to_value(settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-
     // Get the category value directly from settings
-    let value = match category_snake.as_str() {
-        "animations" => serde_json::to_value(&settings.visualization.animations)?,
-        "ar" => serde_json::to_value(&settings.visualization.ar)?,
-        "audio" => serde_json::to_value(&settings.visualization.audio)?,
-        "bloom" => serde_json::to_value(&settings.visualization.bloom)?,
-        "edges" => serde_json::to_value(&settings.visualization.edges)?,
-        "hologram" => serde_json::to_value(&settings.visualization.hologram)?,
-        "labels" => serde_json::to_value(&settings.visualization.labels)?,
-        "nodes" => serde_json::to_value(&settings.visualization.nodes)?,
-        "physics" => serde_json::to_value(&settings.visualization.physics)?,
-        "rendering" => serde_json::to_value(&settings.visualization.rendering)?,
-        "network" => serde_json::to_value(&settings.system.network)?,
-        "websocket" => serde_json::to_value(&settings.system.websocket)?,
-        "security" => serde_json::to_value(&settings.system.security)?,
-        "client_debug" => serde_json::to_value(&settings.system.debug)?,
-        "server_debug" => serde_json::to_value(&settings.system.debug)?,
-        _ => return Err(format!("Invalid category: {}", category)),
-    };
-
-    // Get the setting value directly from the category value
-    match value.get(&setting_snake) {
-        Some(v) => {
-            debug!("Found setting '{}' in {}", setting_snake, category);
-            Ok(v.clone())
-        },
-        None => {
-            error!("Setting '{}' not found in {}", setting_snake, category);
-            Err(format!("Setting '{}' not found in {}", setting, category))
-        }
-    }
-}
-
-// Helper function to update setting value in settings object
-fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, value: &Value) -> Result<(), String> {
-    debug!("Attempting to update setting value for category: {}, setting: {}", category, setting);
-    
-    // Convert kebab-case URL parameters to snake_case
-    let category_snake = to_snake_case(category);
-    let setting_snake = to_snake_case(setting);
-    
-    // Convert settings to Value for modification
-    let mut settings_value = serde_json::to_value(settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-    
-    // Get the current value from the appropriate category
-    let current_value = match category_snake.as_str() {
-        "animations" => serde_json::to_value(&settings.visualization.animations)?,
-        "ar" => serde_json::to_value(&settings.visualization.ar)?,
-        "audio" => serde_json::to_value(&settings.visualization.audio)?,
-        "bloom" => serde_json::to_value(&settings.visualization.bloom)?,
-        "edges" => serde_json::to_value(&settings.visualization.edges)?,
-        "hologram" => serde_json::to_value(&settings.visualization.hologram)?,
-        "labels" => serde_json::to_value(&settings.visualization.labels)?,
-        "nodes" => serde_json::to_value(&settings.visualization.nodes)?,
-        "physics" => serde_json::to_value(&settings.visualization.physics)?,
-        "rendering" => serde_json::to_value(&settings.visualization.rendering)?,
-        "network" => serde_json::to_value(&settings.system.network)?,
-        "websocket" => serde_json::to_value(&settings.system.websocket)?,
-        "security" => serde_json::to_value(&settings.system.security)?,
-        "client_debug" => serde_json::to_value(&settings.system.debug)?,
-        "server_debug" => serde_json::to_value(&settings.system.debug)?,
-        _ => return Err(format!("Invalid category: {}", category)),
-    }.get(&setting_snake).ok_or_else(|| format!("Setting '{}' not found in {}", setting, category))?.clone();
-
-    // Convert value based on the current value's type
-    let converted_value = if current_value.is_boolean() {
-        // For boolean settings, handle various input formats
-        if value.is_boolean() {
-            value.clone()
-        } else if value.is_string() {
-            Value::Bool(value.as_str().unwrap_or("false").to_lowercase() == "true")
-        } else if value.is_number() {
-            Value::Bool(value.as_i64().unwrap_or(0) != 0)
-        } else {
-            value.clone()
-        }
-    } else if current_value.is_number() {
-        // For numeric settings, handle string inputs
-        if value.is_number() {
-            value.clone()
-        } else if value.is_string() {
-            if let Ok(num) = value.as_str().unwrap_or("0").trim().parse::<f64>() {
-                Value::Number(serde_json::Number::from_f64(num).unwrap_or_else(|| serde_json::Number::from(0)))
-            } else {
-                value.clone()
-            }
-        } else if value.is_boolean() {
-            Value::Number(serde_json::Number::from(if value.as_bool().unwrap_or(false) { 1 } else { 0 }))
-        } else {
-            value.clone()
-        }
-    } else {
-        value.clone()
-    };
-
-    // Update the setting in the appropriate category
-    match category_snake.as_str() {
-        "animations" => {
-            let mut animations = settings.visualization.animations.clone();
-            let mut value_map = serde_json::to_value(&animations)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.visualization.animations = serde_json::from_value(value_map)?;
-            }
-        },
-        "ar" => {
-            let mut ar = settings.visualization.ar.clone();
-            let mut value_map = serde_json::to_value(&ar)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.visualization.ar = serde_json::from_value(value_map)?;
-            }
-        },
-        "audio" => {
-            let mut audio = settings.visualization.audio.clone();
-            let mut value_map = serde_json::to_value(&audio)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.visualization.audio = serde_json::from_value(value_map)?;
-            }
-        },
-        "bloom" => {
-            let mut bloom = settings.visualization.bloom.clone();
-            let mut value_map = serde_json::to_value(&bloom)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.visualization.bloom = serde_json::from_value(value_map)?;
-            }
-        },
-        "edges" => {
-            let mut edges = settings.visualization.edges.clone();
-            let mut value_map = serde_json::to_value(&edges)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.visualization.edges = serde_json::from_value(value_map)?;
-            }
-        },
-        "hologram" => {
-            let mut hologram = settings.visualization.hologram.clone();
-            let mut value_map = serde_json::to_value(&hologram)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.visualization.hologram = serde_json::from_value(value_map)?;
-            }
-        },
-        "labels" => {
-            let mut labels = settings.visualization.labels.clone();
-            let mut value_map = serde_json::to_value(&labels)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.visualization.labels = serde_json::from_value(value_map)?;
-            }
-        },
-        "nodes" => {
-            let mut nodes = settings.visualization.nodes.clone();
-            let mut value_map = serde_json::to_value(&nodes)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.visualization.nodes = serde_json::from_value(value_map)?;
-            }
-        },
-        "physics" => {
-            let mut physics = settings.visualization.physics.clone();
-            let mut value_map = serde_json::to_value(&physics)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.visualization.physics = serde_json::from_value(value_map)?;
-            }
-        },
-        "rendering" => {
-            let mut rendering = settings.visualization.rendering.clone();
-            let mut value_map = serde_json::to_value(&rendering)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.visualization.rendering = serde_json::from_value(value_map)?;
-            }
-        },
-        "network" => {
-            let mut network = settings.system.network.clone();
-            let mut value_map = serde_json::to_value(&network)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.system.network = serde_json::from_value(value_map)?;
-            }
-        },
-        "websocket" => {
-            let mut websocket = settings.system.websocket.clone();
-            let mut value_map = serde_json::to_value(&websocket)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.system.websocket = serde_json::from_value(value_map)?;
-            }
-        },
-        "security" => {
-            let mut security = settings.system.security.clone();
-            let mut value_map = serde_json::to_value(&security)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.system.security = serde_json::from_value(value_map)?;
-            }
-        },
-        "client_debug" | "server_debug" => {
-            let mut debug = settings.system.debug.clone();
-            let mut value_map = serde_json::to_value(&debug)?;
-            if let Some(obj) = value_map.as_object_mut() {
-                obj.insert(setting_snake.clone(), converted_value);
-                settings.system.debug = serde_json::from_value(value_map)?;
-            }
-        },
-        _ => return Err(format!("Invalid category: {}", category)),
-    };
-    
-    debug!("Updated setting value successfully");
-    Ok(())
-}
-
-// Helper function to get category settings value 
-fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Value, String> {
-    let category_snake = to_snake_case(category);
-    debug!("Getting settings for category: {} (snake_case: {})", category, category_snake);
-
-    match category_snake.as_str() {
+    let category_value = match category_snake.as_str() {
         "animations" => serde_json::to_value(&settings.visualization.animations)
             .map_err(|e| format!("Failed to serialize animations settings: {}", e)),
         "ar" => serde_json::to_value(&settings.visualization.ar)
@@ -310,7 +76,213 @@ fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Va
         "client_debug" | "server_debug" => serde_json::to_value(&settings.system.debug)
             .map_err(|e| format!("Failed to serialize debug settings: {}", e)),
         _ => Err(format!("Invalid category: {}", category)),
+    }?;
+
+    // If no setting is specified, return the entire category
+    if setting.is_empty() {
+        return Ok(category_value);
     }
+
+    // Get the setting value
+    match category_value.get(&setting_snake) {
+        Some(v) => {
+            debug!("Found setting '{}' in {}", setting_snake, category);
+            Ok(v.clone())
+        },
+        None => {
+            error!("Setting '{}' not found in {}", setting_snake, category);
+            Err(format!("Setting '{}' not found in {}", setting, category))
+        }
+    }
+}
+
+// Helper function to update setting value in settings object
+fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, value: &Value) -> Result<(), String> {
+    debug!("Updating setting {}.{}", category, setting);
+    
+    // Convert kebab-case URL parameters to snake_case
+    let category_snake = to_snake_case(category);
+    let setting_snake = to_snake_case(setting);
+    
+    // Get current value to determine type
+    let current_value = get_setting_value(settings, &category_snake, &setting_snake)?;
+    
+    // Convert value based on the current value's type
+    let converted_value = if current_value.is_boolean() {
+        if value.is_boolean() {
+            value.clone()
+        } else if value.is_string() {
+            Value::Bool(value.as_str().unwrap_or("false").to_lowercase() == "true")
+        } else if value.is_number() {
+            Value::Bool(value.as_i64().unwrap_or(0) != 0)
+        } else {
+            value.clone()
+        }
+    } else if current_value.is_number() {
+        if value.is_number() {
+            value.clone()
+        } else if value.is_string() {
+            if let Ok(num) = value.as_str().unwrap_or("0").trim().parse::<f64>() {
+                Value::Number(serde_json::Number::from_f64(num).unwrap_or_else(|| serde_json::Number::from(0)))
+            } else {
+                value.clone()
+            }
+        } else if value.is_boolean() {
+            Value::Number(serde_json::Number::from(if value.as_bool().unwrap_or(false) { 1 } else { 0 }))
+        } else {
+            value.clone()
+        }
+    } else {
+        value.clone()
+    };
+
+    // Update the appropriate category
+    match category_snake.as_str() {
+        "animations" => {
+            let mut animations = settings.visualization.animations.clone();
+            let mut value_map = serde_json::to_value(&animations)
+                .map_err(|e| format!("Failed to serialize animations: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.visualization.animations = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update animations: {}", e))?;
+            }
+        },
+        "ar" => {
+            let mut ar = settings.visualization.ar.clone();
+            let mut value_map = serde_json::to_value(&ar)
+                .map_err(|e| format!("Failed to serialize ar settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.visualization.ar = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update ar settings: {}", e))?;
+            }
+        },
+        "audio" => {
+            let mut audio = settings.visualization.audio.clone();
+            let mut value_map = serde_json::to_value(&audio)
+                .map_err(|e| format!("Failed to serialize audio settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.visualization.audio = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update audio settings: {}", e))?;
+            }
+        },
+        "bloom" => {
+            let mut bloom = settings.visualization.bloom.clone();
+            let mut value_map = serde_json::to_value(&bloom)
+                .map_err(|e| format!("Failed to serialize bloom settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.visualization.bloom = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update bloom settings: {}", e))?;
+            }
+        },
+        "edges" => {
+            let mut edges = settings.visualization.edges.clone();
+            let mut value_map = serde_json::to_value(&edges)
+                .map_err(|e| format!("Failed to serialize edges settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.visualization.edges = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update edges settings: {}", e))?;
+            }
+        },
+        "hologram" => {
+            let mut hologram = settings.visualization.hologram.clone();
+            let mut value_map = serde_json::to_value(&hologram)
+                .map_err(|e| format!("Failed to serialize hologram settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.visualization.hologram = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update hologram settings: {}", e))?;
+            }
+        },
+        "labels" => {
+            let mut labels = settings.visualization.labels.clone();
+            let mut value_map = serde_json::to_value(&labels)
+                .map_err(|e| format!("Failed to serialize labels settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.visualization.labels = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update labels settings: {}", e))?;
+            }
+        },
+        "nodes" => {
+            let mut nodes = settings.visualization.nodes.clone();
+            let mut value_map = serde_json::to_value(&nodes)
+                .map_err(|e| format!("Failed to serialize nodes settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.visualization.nodes = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update nodes settings: {}", e))?;
+            }
+        },
+        "physics" => {
+            let mut physics = settings.visualization.physics.clone();
+            let mut value_map = serde_json::to_value(&physics)
+                .map_err(|e| format!("Failed to serialize physics settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.visualization.physics = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update physics settings: {}", e))?;
+            }
+        },
+        "rendering" => {
+            let mut rendering = settings.visualization.rendering.clone();
+            let mut value_map = serde_json::to_value(&rendering)
+                .map_err(|e| format!("Failed to serialize rendering settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.visualization.rendering = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update rendering settings: {}", e))?;
+            }
+        },
+        "network" => {
+            let mut network = settings.system.network.clone();
+            let mut value_map = serde_json::to_value(&network)
+                .map_err(|e| format!("Failed to serialize network settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.system.network = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update network settings: {}", e))?;
+            }
+        },
+        "websocket" => {
+            let mut websocket = settings.system.websocket.clone();
+            let mut value_map = serde_json::to_value(&websocket)
+                .map_err(|e| format!("Failed to serialize websocket settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.system.websocket = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update websocket settings: {}", e))?;
+            }
+        },
+        "security" => {
+            let mut security = settings.system.security.clone();
+            let mut value_map = serde_json::to_value(&security)
+                .map_err(|e| format!("Failed to serialize security settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.system.security = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update security settings: {}", e))?;
+            }
+        },
+        "client_debug" | "server_debug" => {
+            let mut debug = settings.system.debug.clone();
+            let mut value_map = serde_json::to_value(&debug)
+                .map_err(|e| format!("Failed to serialize debug settings: {}", e))?;
+            if let Some(obj) = value_map.as_object_mut() {
+                obj.insert(setting_snake.clone(), converted_value);
+                settings.system.debug = serde_json::from_value(value_map)
+                    .map_err(|e| format!("Failed to update debug settings: {}", e))?;
+            }
+        },
+        _ => return Err(format!("Invalid category: {}", category)),
+    };
+    
+    debug!("Successfully updated setting {}.{}", category_snake, setting_snake);
+    Ok(())
 }
 
 // GET /api/visualization/settings/{category}
@@ -320,11 +292,11 @@ pub async fn get_category_settings(
     path: web::Path<String>,
 ) -> HttpResponse {
     let settings_read = settings.read().await;
-    let debug_enabled = settings_read.server_debug.enabled;
-    let log_json = debug_enabled && settings_read.server_debug.log_full_json;
+    let debug_enabled = settings_read.system.debug.enabled;
+    let log_json = debug_enabled && settings_read.system.debug.log_full_json;
     
     let category = path.into_inner();
-    match get_category_settings_value(&settings_read, &category) {
+    match get_setting_value(&settings_read, &category, "") {
         Ok(value) => {
             if log_json {
                 debug!("Category '{}' settings: {}", category, serde_json::to_string_pretty(&value).unwrap_or_default());
