@@ -2,8 +2,7 @@
  * API configuration and utilities
  */
 
-// Use relative URLs in both development and production
-export const API_BASE = '';  // Empty string means use relative URLs
+import { API_BASE, API_PATHS } from './constants';
 
 // Helper function to build API URLs
 export function buildApiUrl(path: string): string {
@@ -16,7 +15,7 @@ export function buildApiUrl(path: string): string {
 
 // Helper function to build settings URL
 export function buildSettingsUrl(category: string, setting?: string): string {
-    const base = `settings/${category}`;
+    const base = `${API_PATHS.SETTINGS}/${category}`;
     return buildApiUrl(setting ? `${base}/${setting}` : base);
 }
 
@@ -24,5 +23,5 @@ export function buildSettingsUrl(category: string, setting?: string): string {
 export function buildWsUrl(): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    return `${protocol}//${host}/wss`;
+    return `${protocol}//${host}/${API_PATHS.WEBSOCKET}`;
 }

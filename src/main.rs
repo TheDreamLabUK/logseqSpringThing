@@ -5,7 +5,6 @@ use webxr::{
     handlers::{
         file_handler,
         graph_handler,
-        settings,
         socket_flow_handler::socket_flow_handler,
         visualization_handler,
     },

@@ -178,8 +178,6 @@ Step-by-step initialization process
 Explicit data flow patterns
 Error handling and performance considerations
 
-dense conceptual model in LLM notation:
-
 [ARCH_MODEL]
 {system: distributed_graph_vis}
 |> docker[nginx:4000 <-> rust:3001]  // Cloudflared tunnel routing
@@ -199,12 +197,11 @@ client::http -> /api/visualization/settings/*
 <- type_converted_responses
 
 [CORE_PATTERNS]
-
 Bidirectional case normalization:
 client{camelCase} <-> server{snake_case}
 
 Thread-safe state:
-Arc<RwLock> for {Settings, GraphData}
+Arc for {Settings, GraphData}
 
 Type coercion:
 value.is_{type} -> conversion_strategy
@@ -216,30 +213,70 @@ Binary optimization:
 websocket{binary_messages} for positions
 http{json} for settings
 
+[CLIENT_ARCHITECTURE]
+Settings:
+defaultSettings -> SettingsStore -> SettingsManager
+|> type_safety{SettingsPath, SettingValue}
+|> validation{isValidSettingPath}
+|> persistence{localStorage, API sync}
+
+API:
+constants{API_PATHS} -> buildApiUrl
+|> environment{IS_PRODUCTION}
+|> retry_logic{maxRetries, retryDelay}
+
+Logging:
+Logger -> settings.debug
+|> context{namespace}
+|> formatting{JSON, pretty-print}
+|> levels{debug, info, warn, error}
+
+[SERVER_ARCHITECTURE]
+Handlers:
+visualization_handler -> settings{RwLock}
+|> routes{GET, PUT}
+|> case_conversion
+|> validation
+|> persistence
+
+State:
+Settings -> RwLock
+|> thread_safety
+|> concurrent_access
+|> atomic_updates
+
+File System:
+settings.toml -> TOML serialization
+|> permissions
+|> validation
+|> error_handling
+
 [NETWORK_TOPOLOGY]
+client -> cloudflared[tunnel_id]
+-> nginx:4000{
+/api/* -> rust:3001
+/wss -> rust:3001{binary_protocol}
+/* -> static_files
+}
 
-client -> cloudflared[9a59e21c] 
-  -> nginx:4000{
-    /api/* -> rust:3001
-    /wss -> rust:3001{binary_protocol}
-    /* -> static_files
-  }
 [STATE_MANAGEMENT]
-
 Settings:
 toml -> struct -> RwLock -> handlers
-
-Graph:
-metadata -> nodes/edges -> gpu/cpu compute
+|> validation
+|> conversion
+|> persistence
 
 Websocket:
 connection -> binary protocol -> position updates
+|> compression
+|> chunking
+|> error_handling
 
 [OPTIMIZATION_STRATEGIES]
-
 GPU acceleration with fallback
 Binary websocket protocol
 Connection pooling
 Static file caching
 Type-specific serialization
-This architecture enables real-time 3D graph visualization with efficient state management and data flow optimization.
+
+This architecture enables real-time 3D graph visualization with efficient state management, data flow optimization, and robust error handling across all system components.

@@ -1,93 +1,98 @@
-import { Settings } from '../types/settings';
+import { Settings, VisualizationSettings } from '../types/settings';
+import { NODE_COLOR, NODE_SIZE, EDGE_RADIUS, LABEL_COLOR } from '../core/constants';
 
-export const defaultSettings: Settings = {
-    visualization: {
-        animations: {
-            enableMotionBlur: false,
-            enableNodeAnimations: true,
-            motionBlurStrength: 0.5,
-            selectionWaveEnabled: false,
-            pulseEnabled: false,
-            rippleEnabled: false,
-            edgeAnimationEnabled: false,
-            flowParticlesEnabled: false
-        },
-        bloom: {
-            enabled: true,
-            strength: 0.5,
-            radius: 1,
-            edgeBloomStrength: 0.5,
-            nodeBloomStrength: 0.5,
-            environmentBloomStrength: 0.5
-        },
-        edges: {
-            arrowSize: 3,
-            baseWidth: 2,
-            color: '#ffffff',
-            enableArrows: true,
-            opacity: 0.8,
-            widthRange: [1, 5]
-        },
-        hologram: {
-            ringCount: 3,
-            ringColor: '#00FFFF',
-            ringOpacity: 0.5,
-            ringSizes: [1.0, 1.5, 2.0],
-            ringRotationSpeed: 0.1,
-            enableBuckminster: true,
-            buckminsterScale: 1.0,
-            buckminsterOpacity: 0.3,
-            enableGeodesic: true,
-            geodesicScale: 1.2,
-            geodesicOpacity: 0.4,
-            enableTriangleSphere: true,
-            triangleSphereScale: 1.1,
-            triangleSphereOpacity: 0.35,
-            globalRotationSpeed: 0.05
-        },
-        labels: {
-            enableLabels: true,
-            textColor: '#FFFFFF',
-            textOutlineColor: '#000000',
-            textOutlineWidth: 0.1,
-            textResolution: 512,
-            textPadding: 16,
-            desktopFontSize: 48,
-            billboardMode: 'camera'
-        },
-        nodes: {
-            baseColor: '#00ff00',
-            baseSize: 1,
-            sizeRange: [0.5, 2.0],
-            enableMetadataShape: true,
-            colorRangeAge: ['#ff0000', '#00ff00'],
-            colorRangeLinks: ['#0000ff', '#ff00ff'],
-            metalness: 0.5,
-            roughness: 0.2,
-            opacity: 0.8
-        },
-        physics: {
-            enabled: true,
-            attractionStrength: 0.1,
-            repulsionStrength: 0.1,
-            springStrength: 0.1,
-            damping: 0.5,
-            iterations: 1,
-            maxVelocity: 10,
-            collisionRadius: 1,
-            enableBounds: true,
-            boundsSize: 100
-        },
-        rendering: {
-            ambientLightIntensity: 0.5,
-            directionalLightIntensity: 0.8,
-            environmentIntensity: 1,
-            backgroundColor: '#000000',
-            enableAmbientOcclusion: true,
-            enableAntialiasing: true,
-            enableShadows: true
-        }
+// Export visualization defaults separately for reuse
+export const defaultVisualizationSettings: VisualizationSettings = {
+    animations: {
+        enableMotionBlur: false,
+        enableNodeAnimations: true,
+        motionBlurStrength: 0.5,
+        selectionWaveEnabled: false,
+        pulseEnabled: false,
+        rippleEnabled: false,
+        edgeAnimationEnabled: false,
+        flowParticlesEnabled: false
     },
+    bloom: {
+        enabled: true,
+        strength: 0.5,
+        radius: 1,
+        edgeBloomStrength: 0.5,
+        nodeBloomStrength: 0.5,
+        environmentBloomStrength: 0.5
+    },
+    edges: {
+        arrowSize: 3,
+        baseWidth: EDGE_RADIUS * 2,
+        color: '#ffffff',
+        enableArrows: true,
+        opacity: 0.8,
+        widthRange: [1, 5]
+    },
+    hologram: {
+        ringCount: 3,
+        ringColor: '#00FFFF',
+        ringOpacity: 0.5,
+        ringSizes: [1.0, 1.5, 2.0],
+        ringRotationSpeed: 0.1,
+        enableBuckminster: true,
+        buckminsterScale: 1.0,
+        buckminsterOpacity: 0.3,
+        enableGeodesic: true,
+        geodesicScale: 1.2,
+        geodesicOpacity: 0.4,
+        enableTriangleSphere: true,
+        triangleSphereScale: 1.1,
+        triangleSphereOpacity: 0.35,
+        globalRotationSpeed: 0.05
+    },
+    labels: {
+        enableLabels: true,
+        textColor: LABEL_COLOR.toString(16),
+        textOutlineColor: '#000000',
+        textOutlineWidth: 0.1,
+        textResolution: 512,
+        textPadding: 16,
+        desktopFontSize: 48,
+        billboardMode: 'camera'
+    },
+    nodes: {
+        baseColor: NODE_COLOR.toString(16),
+        baseSize: NODE_SIZE,
+        sizeRange: [0.5, 2.0],
+        enableMetadataShape: true,
+        colorRangeAge: ['#ff0000', '#00ff00'],
+        colorRangeLinks: ['#0000ff', '#ff00ff'],
+        metalness: 0.5,
+        roughness: 0.2,
+        opacity: 0.8
+    },
+    physics: {
+        enabled: true,
+        attractionStrength: 0.1,
+        repulsionStrength: 0.1,
+        springStrength: 0.1,
+        damping: 0.5,
+        iterations: 1,
+        maxVelocity: 10,
+        collisionRadius: 1,
+        enableBounds: true,
+        boundsSize: 100
+    },
+    rendering: {
+        ambientLightIntensity: 0.5,
+        directionalLightIntensity: 0.8,
+        environmentIntensity: 1,
+        backgroundColor: '#000000',
+        enableAmbientOcclusion: true,
+        enableAntialiasing: true,
+        enableShadows: true
+    }
+};
+
+// Main settings object with all defaults
+export const defaultSettings: Settings = {
+    visualization: defaultVisualizationSettings,
     xr: {
         mode: 'immersive-ar',
         roomScale: true,

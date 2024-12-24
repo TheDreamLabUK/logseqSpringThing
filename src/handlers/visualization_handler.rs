@@ -1,5 +1,5 @@
 use crate::config::Settings;
-use actix_web::{get, web, HttpResponse};
+use actix_web::{get, put, web, HttpResponse};
 use log::{error, info, debug};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -139,7 +139,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
     // Update the appropriate category
     match category_snake.as_str() {
         "animations" => {
-            let mut animations = settings.visualization.animations.clone();
+            let animations = settings.visualization.animations.clone();
             let mut value_map = serde_json::to_value(&animations)
                 .map_err(|e| format!("Failed to serialize animations: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -149,7 +149,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "ar" => {
-            let mut ar = settings.visualization.ar.clone();
+            let ar = settings.visualization.ar.clone();
             let mut value_map = serde_json::to_value(&ar)
                 .map_err(|e| format!("Failed to serialize ar settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -159,7 +159,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "audio" => {
-            let mut audio = settings.visualization.audio.clone();
+            let audio = settings.visualization.audio.clone();
             let mut value_map = serde_json::to_value(&audio)
                 .map_err(|e| format!("Failed to serialize audio settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -169,7 +169,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "bloom" => {
-            let mut bloom = settings.visualization.bloom.clone();
+            let bloom = settings.visualization.bloom.clone();
             let mut value_map = serde_json::to_value(&bloom)
                 .map_err(|e| format!("Failed to serialize bloom settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -179,7 +179,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "edges" => {
-            let mut edges = settings.visualization.edges.clone();
+            let edges = settings.visualization.edges.clone();
             let mut value_map = serde_json::to_value(&edges)
                 .map_err(|e| format!("Failed to serialize edges settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -189,7 +189,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "hologram" => {
-            let mut hologram = settings.visualization.hologram.clone();
+            let hologram = settings.visualization.hologram.clone();
             let mut value_map = serde_json::to_value(&hologram)
                 .map_err(|e| format!("Failed to serialize hologram settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -199,7 +199,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "labels" => {
-            let mut labels = settings.visualization.labels.clone();
+            let labels = settings.visualization.labels.clone();
             let mut value_map = serde_json::to_value(&labels)
                 .map_err(|e| format!("Failed to serialize labels settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -209,7 +209,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "nodes" => {
-            let mut nodes = settings.visualization.nodes.clone();
+            let nodes = settings.visualization.nodes.clone();
             let mut value_map = serde_json::to_value(&nodes)
                 .map_err(|e| format!("Failed to serialize nodes settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -219,7 +219,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "physics" => {
-            let mut physics = settings.visualization.physics.clone();
+            let physics = settings.visualization.physics.clone();
             let mut value_map = serde_json::to_value(&physics)
                 .map_err(|e| format!("Failed to serialize physics settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -229,7 +229,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "rendering" => {
-            let mut rendering = settings.visualization.rendering.clone();
+            let rendering = settings.visualization.rendering.clone();
             let mut value_map = serde_json::to_value(&rendering)
                 .map_err(|e| format!("Failed to serialize rendering settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -239,7 +239,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "network" => {
-            let mut network = settings.system.network.clone();
+            let network = settings.system.network.clone();
             let mut value_map = serde_json::to_value(&network)
                 .map_err(|e| format!("Failed to serialize network settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -249,7 +249,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "websocket" => {
-            let mut websocket = settings.system.websocket.clone();
+            let websocket = settings.system.websocket.clone();
             let mut value_map = serde_json::to_value(&websocket)
                 .map_err(|e| format!("Failed to serialize websocket settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -259,7 +259,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "security" => {
-            let mut security = settings.system.security.clone();
+            let security = settings.system.security.clone();
             let mut value_map = serde_json::to_value(&security)
                 .map_err(|e| format!("Failed to serialize security settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -269,7 +269,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
             }
         },
         "client_debug" | "server_debug" => {
-            let mut debug = settings.system.debug.clone();
+            let debug = settings.system.debug.clone();
             let mut value_map = serde_json::to_value(&debug)
                 .map_err(|e| format!("Failed to serialize debug settings: {}", e))?;
             if let Some(obj) = value_map.as_object_mut() {
@@ -285,8 +285,8 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
     Ok(())
 }
 
-// GET /api/visualization/settings/{category}
-#[get("/api/visualization/settings/{category}")]
+// GET /settings/{category}
+#[get("/settings/{category}")]
 pub async fn get_category_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
     path: web::Path<String>,
@@ -319,7 +319,8 @@ pub async fn get_category_settings(
     }
 }
 
-// GET /api/visualization/settings/{category}/{setting}
+// GET /settings/{category}/{setting}
+#[get("/settings/{category}/{setting}")]
 pub async fn get_setting(
     settings: web::Data<Arc<RwLock<Settings>>>,
     path: web::Path<(String, String)>,
@@ -341,7 +342,8 @@ pub async fn get_setting(
     }
 }
 
-// PUT /api/visualization/settings/{category}/{setting}
+// PUT /settings/{category}/{setting}
+#[put("/settings/{category}/{setting}")]
 pub async fn update_setting(
     settings: web::Data<Arc<RwLock<Settings>>>,
     path: web::Path<(String, String)>,
@@ -392,11 +394,8 @@ pub async fn update_setting(
 // Register the handlers with the Actix web app
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(get_category_settings)
-       .service(
-           web::resource("/api/visualization/settings/{category}/{setting}")
-               .route(web::get().to(get_setting))
-               .route(web::put().to(update_setting))
-       );
+       .service(get_setting)
+       .service(update_setting);
 }
 
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {

@@ -74,10 +74,8 @@ export class SettingsStore {
                     }
                     
                     const data = await response.json();
-                    if (data.success && data.settings) {
-                        // Convert snake_case keys from API to camelCase for client
-                        this.settings[category] = convertObjectKeysToCamelCase(data.settings);
-                    }
+                    // Convert snake_case keys from API to camelCase for client
+                    this.settings[category] = convertObjectKeysToCamelCase(data);
                     break;
                 } catch (error) {
                     retries++;
