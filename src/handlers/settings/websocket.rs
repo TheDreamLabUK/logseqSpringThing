@@ -7,10 +7,11 @@ use tokio::sync::RwLock;
 use crate::config::Settings;
 use super::common::{SettingResponse, get_setting_value, update_setting_value};
 
+// Note: Connection keep-alive is handled by WebSocket protocol-level ping/pong frames
+// automatically by the actix-web-actors framework on the server and browser WebSocket API
+// on the client. No custom heartbeat implementation is needed.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebSocketSettings {
-    pub heartbeat_interval: u64,
-    pub heartbeat_timeout: u64,
     pub reconnect_attempts: u32,
     pub reconnect_delay: u64,
     pub update_rate: u32,

@@ -43,6 +43,7 @@ impl Actor for SocketFlowServer {
         // Calculate update interval based on rate
         let update_interval = std::time::Duration::from_millis((1000.0 / POSITION_UPDATE_RATE as f64) as u64);
         
+        // Set up interval to send position updates to client
         ctx.run_interval(update_interval, move |actor, ctx| {
             if !actor.connection_alive {
                 ctx.stop();
@@ -87,6 +88,10 @@ impl Actor for SocketFlowServer {
     }
 }
 
+// StreamHandler implementation using built-in WebSocket protocol features:
+// - Automatic ping/pong frame handling for connection keep-alive
+// - Binary message support for efficient data transfer
+// - Protocol-level close frame handling
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         if !self.connection_alive {
@@ -114,14 +119,18 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                     warn!("[WebSocket] Received malformed binary message");
                 }
             }
+            // Handle protocol-level close frames
             Ok(ws::Message::Close(reason)) => {
                 info!("[WebSocket] Client disconnected: {:?}", reason);
                 self.connection_alive = false;
                 ctx.close(reason);
                 ctx.stop();
             }
+            // Automatically respond to ping frames with pong frames
             Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
+            // Ignore pong frames as they're handled by the framework
             Ok(ws::Message::Pong(_)) => (),
+            // Handle protocol errors
             Err(e) => {
                 error!("[WebSocket] Protocol error: {}", e);
                 self.connection_alive = false;

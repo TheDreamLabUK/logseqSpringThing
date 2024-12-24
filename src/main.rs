@@ -1,19 +1,16 @@
 use log::{debug, info};
 use env_logger;
-use webxr::{
-    Settings,
-    handlers::{
-        file_handler,
-        graph_handler,
-        socket_flow_handler::socket_flow_handler,
-        visualization_handler,
-    },
-    AppState,
-    services::{
-        file_service::RealGitHubService,
-        github_service::RealGitHubPRService,
-    },
+
+use crate::config::Settings;
+use crate::handlers::{
+    file_handler,
+    graph_handler,
+    socket_flow_handler::socket_flow_handler,
+    visualization_handler,
 };
+use crate::app_state::AppState;
+use crate::services::file_service::RealGitHubService;
+use crate::services::github_service::RealGitHubPRService;
 
 use actix_web::{web, App, HttpServer, middleware};
 use actix_cors::Cors;
