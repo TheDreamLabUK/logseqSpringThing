@@ -37,11 +37,21 @@ export class SettingsManager {
         }
     }
 
+    private checkInitialized(): void {
+        if (!this.initialized) {
+            logger.error('Settings manager not initialized');
+            throw new Error('Settings manager must be initialized before use');
+        }
+    }
+
     public getCurrentSettings(): Settings {
+        // Allow access to default settings even if not initialized
         return this.settings;
     }
 
     public async updateSetting(path: SettingsPath, value: SettingValue): Promise<void> {
+        this.checkInitialized();
+        
         if (!isValidSettingPath(path)) {
             throw new Error(`Invalid settings path: ${path}`);
         }
@@ -57,28 +67,54 @@ export class SettingsManager {
     }
 
     public get(path: SettingsPath): SettingValue {
+        // Allow access to default settings even if not initialized
         if (!isValidSettingPath(path)) {
             throw new Error(`Invalid settings path: ${path}`);
         }
-        return getSettingValue(this.settings, path);
+        
+        try {
+            return getSettingValue(this.settings, path);
+        } catch (error) {
+            logger.error(`Error getting setting at path ${path}:`, error);
+            throw error;
+        }
     }
 
     public getCategory(category: SettingsCategory): Settings[typeof category] {
+        // Allow access to default settings even if not initialized
+        if (!(category in this.settings)) {
+            throw new Error(`Invalid settings category: ${category}`);
+        }
         return this.settings[category];
     }
 
     public subscribe(path: SettingsPath, callback: (value: SettingValue) => void): () => void {
+        this.checkInitialized();
+
         if (!isValidSettingPath(path)) {
             throw new Error(`Invalid settings path: ${path}`);
         }
 
-        return this.store.subscribe(path, (_, value) => {
+        try {
+            // Immediately notify with current value
+            const currentValue = this.get(path);
             try {
-                callback(value as SettingValue);
+                callback(currentValue);
             } catch (error) {
-                logger.error(`Error in settings subscriber for ${path}:`, error);
+                logger.error(`Error in initial settings callback for ${path}:`, error);
             }
-        });
+
+            return this.store.subscribe(path, (_, value) => {
+                try {
+                    callback(value as SettingValue);
+                } catch (error) {
+                    logger.error(`Error in settings subscriber for ${path}:`, error);
+                }
+            });
+        } catch (error) {
+            logger.error(`Error setting up subscription for ${path}:`, error);
+            throw error;
+        }
     }
 
     public onSettingChange(path: SettingsPath, callback: (value: SettingValue) => void): () => void {
@@ -86,14 +122,22 @@ export class SettingsManager {
     }
 
     public async batchUpdate(updates: Array<{ path: SettingsPath; value: SettingValue }>): Promise<void> {
-        for (const { path, value } of updates) {
-            if (!isValidSettingPath(path)) {
-                throw new Error(`Invalid settings path: ${path}`);
-            }
-            setSettingValue(this.settings, path, value);
-        }
+        this.checkInitialized();
 
         try {
+            // Validate all paths first
+            for (const { path } of updates) {
+                if (!isValidSettingPath(path)) {
+                    throw new Error(`Invalid settings path: ${path}`);
+                }
+            }
+
+            // Apply updates to local settings first
+            for (const { path, value } of updates) {
+                setSettingValue(this.settings, path, value);
+            }
+
+            // Then sync with store
             await Promise.all(
                 updates.map(({ path, value }) => this.store.set(path, value))
             );

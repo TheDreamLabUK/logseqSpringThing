@@ -102,26 +102,54 @@ export class SettingsStore {
     }
 
     public get(path: string): unknown {
+        if (!this.initialized) {
+            logger.warn('Attempting to access settings before initialization');
+            return undefined;
+        }
+        
         if (!path) {
             return this.settings;
         }
-        return path.split('.').reduce((obj: any, key) => obj && obj[key], this.settings);
+        
+        try {
+            return path.split('.').reduce((obj: any, key) => {
+                if (obj === null || obj === undefined) {
+                    throw new Error(`Invalid path: ${path}`);
+                }
+                return obj[key];
+            }, this.settings);
+        } catch (error) {
+            logger.error(`Error accessing setting at path ${path}:`, error);
+            return undefined;
+        }
     }
 
     public set(path: string, value: unknown): void {
-        const parts = path.split('.');
-        const lastKey = parts.pop()!;
-        const target = parts.reduce((obj: any, key) => {
-            if (!(key in obj)) {
-                obj[key] = {};
-            }
-            return obj[key];
-        }, this.settings);
+        if (!this.initialized) {
+            logger.error('Attempting to set settings before initialization');
+            throw new Error('SettingsStore not initialized');
+        }
 
-        if (target) {
+        try {
+            const parts = path.split('.');
+            const lastKey = parts.pop()!;
+            const target = parts.reduce((obj: any, key) => {
+                if (!(key in obj)) {
+                    obj[key] = {};
+                }
+                return obj[key];
+            }, this.settings);
+
+            if (!target || typeof target !== 'object') {
+                throw new Error(`Invalid settings path: ${path}`);
+            }
+
             target[lastKey] = value;
             this.pendingChanges.add(path);
             this.notifySubscribers(path, value);
+        } catch (error) {
+            logger.error(`Error setting value at path ${path}:`, error);
+            throw error;
         }
     }
 
@@ -147,21 +175,41 @@ export class SettingsStore {
     }
 
     public subscribe(path: string, callback: SettingsChangeCallback): () => void {
-        if (!this.subscribers.has(path)) {
-            this.subscribers.set(path, new Set());
+        if (!this.initialized) {
+            logger.warn('Attempting to subscribe before initialization');
+            throw new Error('SettingsStore not initialized');
         }
-        const pathSubscribers = this.subscribers.get(path)!;
-        pathSubscribers.add(callback);
 
-        return () => {
-            const pathSubscribers = this.subscribers.get(path);
-            if (pathSubscribers) {
-                pathSubscribers.delete(callback);
-                if (pathSubscribers.size === 0) {
-                    this.subscribers.delete(path);
+        try {
+            if (!this.subscribers.has(path)) {
+                this.subscribers.set(path, new Set());
+            }
+            const pathSubscribers = this.subscribers.get(path)!;
+            pathSubscribers.add(callback);
+
+            // Immediately notify subscriber with current value
+            const currentValue = this.get(path);
+            if (currentValue !== undefined) {
+                try {
+                    callback(path, currentValue);
+                } catch (error) {
+                    logger.error(`Error in initial callback for ${path}:`, error);
                 }
             }
-        };
+
+            return () => {
+                const pathSubscribers = this.subscribers.get(path);
+                if (pathSubscribers) {
+                    pathSubscribers.delete(callback);
+                    if (pathSubscribers.size === 0) {
+                        this.subscribers.delete(path);
+                    }
+                }
+            };
+        } catch (error) {
+            logger.error(`Error setting up subscription for ${path}:`, error);
+            throw error;
+        }
     }
 
     private notifySubscribers(path: string, value: unknown): void {

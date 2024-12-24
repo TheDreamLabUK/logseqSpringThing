@@ -34,10 +34,18 @@ class Application {
             // Initialize settings
             await settingsManager.initialize();
             
-            // Update logger debug state from settings
+            // Update logger debug state from settings and subscribe to changes
             const settings = settingsManager.getCurrentSettings();
-            setDebugEnabled(settings.system.debug.enabled);
+            setDebugEnabled(settings.system.debug.enabled, settings.system.debug.logFullJson);
             logger.info('Debug logging ' + (settings.system.debug.enabled ? 'enabled' : 'disabled'));
+
+            // Subscribe to debug settings changes
+            settingsManager.onSettingChange('system.debug.enabled', (value) => {
+                setDebugEnabled(value as boolean, settings.system.debug.logFullJson);
+            });
+            settingsManager.onSettingChange('system.debug.logFullJson', (value) => {
+                setDebugEnabled(settings.system.debug.enabled, value as boolean);
+            });
 
             // Initialize scene first so we can render nodes when data arrives
             this.initializeScene();

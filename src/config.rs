@@ -755,10 +755,18 @@ impl Settings {
         // Load .env file first
         dotenvy::dotenv().ok();
         
-        // Use environment variable or default to /app/settings.toml
+        // Use environment variable or try multiple paths
         let settings_path = std::env::var("SETTINGS_FILE_PATH")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/app/settings.toml"));
+            .unwrap_or_else(|_| {
+                // Try current directory first, then /app/settings.toml
+                let current_dir_path = PathBuf::from("settings.toml");
+                if current_dir_path.exists() {
+                    current_dir_path
+                } else {
+                    PathBuf::from("/app/settings.toml")
+                }
+            });
         
         debug!("Loading settings from: {:?}", settings_path);
         

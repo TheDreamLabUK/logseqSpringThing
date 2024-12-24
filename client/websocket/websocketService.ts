@@ -33,30 +33,40 @@ export class WebSocketService {
             this.isConnected = true;
         };
 
-        this.ws.onmessage = (event) => {
-            if (event.data instanceof ArrayBuffer && this.binaryMessageCallback) {
-                // Process binary position/velocity updates
-                const float32Array = new Float32Array(event.data);
-                const nodeCount = float32Array.length / 6; // 6 floats per node
-                const nodes: NodeData[] = [];
-
-                for (let i = 0; i < nodeCount; i++) {
-                    const baseIndex = i * 6;
-                    nodes.push({
-                        position: [
-                            float32Array[baseIndex],
-                            float32Array[baseIndex + 1],
-                            float32Array[baseIndex + 2]
-                        ],
-                        velocity: [
-                            float32Array[baseIndex + 3],
-                            float32Array[baseIndex + 4],
-                            float32Array[baseIndex + 5]
-                        ]
-                    });
+        this.ws.onmessage = async (event) => {
+            try {
+                if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                    logger.warn('WebSocket not connected, ignoring message');
+                    return;
                 }
 
-                this.binaryMessageCallback(nodes);
+                if (event.data instanceof ArrayBuffer && this.binaryMessageCallback) {
+                    // Process binary position/velocity updates
+                    const float32Array = new Float32Array(event.data);
+                    const nodeCount = float32Array.length / 6; // 6 floats per node
+                    const nodes: NodeData[] = [];
+
+                    for (let i = 0; i < nodeCount; i++) {
+                        const baseIndex = i * 6;
+                        nodes.push({
+                            position: [
+                                float32Array[baseIndex],
+                                float32Array[baseIndex + 1],
+                                float32Array[baseIndex + 2]
+                            ],
+                            velocity: [
+                                float32Array[baseIndex + 3],
+                                float32Array[baseIndex + 4],
+                                float32Array[baseIndex + 5]
+                            ]
+                        });
+                    }
+
+                    // Use Promise.resolve to handle async callback without blocking
+                    await Promise.resolve().then(() => this.binaryMessageCallback!(nodes));
+                }
+            } catch (error) {
+                logger.error('Error processing WebSocket message:', error);
             }
         };
 
@@ -65,20 +75,24 @@ export class WebSocketService {
             this.isConnected = false;
         };
 
-        this.ws.onclose = () => {
-            logger.info('WebSocket connection closed');
+        this.ws.onclose = (event) => {
+            logger.info(`WebSocket connection closed: ${event.code} ${event.reason}`);
             this.isConnected = false;
+            this.binaryMessageCallback = null;
             
             // Clear any existing reconnect timeout
             if (this.reconnectTimeout !== null) {
                 window.clearTimeout(this.reconnectTimeout);
             }
             
-            // Attempt to reconnect after a delay
-            this.reconnectTimeout = window.setTimeout(() => {
-                this.reconnectTimeout = null;
-                this.setupWebSocket();
-            }, 5000);
+            // Only attempt to reconnect if the close wasn't intentional
+            if (event.code !== 1000) {
+                // Attempt to reconnect after a delay
+                this.reconnectTimeout = window.setTimeout(() => {
+                    this.reconnectTimeout = null;
+                    this.setupWebSocket();
+                }, 5000);
+            }
         };
     }
 

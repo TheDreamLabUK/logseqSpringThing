@@ -1,7 +1,5 @@
-import { defaultSettings } from '../state/defaultSettings';
-
-let debugEnabled = defaultSettings.system.debug.enabled;
-let logFullJson = defaultSettings.system.debug.logFullJson;
+let debugEnabled = false;
+let logFullJson = false;
 
 export interface Logger {
     debug: (...args: any[]) => void;
@@ -51,12 +49,3 @@ export function createLogger(context: string): Logger {
 
 // Create core logger instance
 export const logger = createLogger('core');
-
-// Subscribe to settings changes
-import { settingsManager } from '../state/settings';
-settingsManager.onSettingChange('system.debug.enabled', (value) => {
-    setDebugEnabled(value as boolean, logFullJson);
-});
-settingsManager.onSettingChange('system.debug.logFullJson', (value) => {
-    setDebugEnabled(debugEnabled, value as boolean);
-});
