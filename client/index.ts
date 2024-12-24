@@ -197,7 +197,7 @@ class Application {
                 const currentValue = (event.target as HTMLInputElement).value;
 
                 try {
-                    const response = await fetch(`/api/visualization/settings/${String(category)}/${String(setting)}`, {
+                    const response = await fetch(`/api/settings/${String(category)}/${String(setting)}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
@@ -265,7 +265,7 @@ class Application {
                         typeof value !== 'boolean' && 
                         !Array.isArray(value)) continue;
                     try {
-                        const response = await fetch(`/api/visualization/settings/${String(category)}/${String(setting)}`, {
+                        const response = await fetch(`/api/settings/${String(category)}/${String(setting)}`, {
                             method: 'PUT',
                             headers: {
                                 'Content-Type': 'application/json'

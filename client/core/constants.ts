@@ -11,7 +11,7 @@ export const API_BASE = '';  // Empty string means use relative URLs
 
 // API paths
 export const API_PATHS = {
-    SETTINGS: 'visualization/settings',  // Matches server route structure
+    SETTINGS: 'settings',  // Base settings path
     WEBSOCKET: 'wss',
     GRAPH: 'graph'
 };

@@ -2,7 +2,7 @@
  * Three.js scene management with simplified setup
  */
 
-import * as THREE from 'three';
+import { Scene, PerspectiveCamera, WebGLRenderer, Color, AmbientLight, DirectionalLight, GridHelper, Vector2, Material, Mesh, Object3D } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
@@ -18,9 +18,9 @@ export class SceneManager {
   private static instance: SceneManager;
   
   // Three.js core components
-  private scene: THREE.Scene;
-  private camera: THREE.PerspectiveCamera;
-  private renderer: THREE.WebGLRenderer;
+  private scene: Scene;
+  private camera: PerspectiveCamera;
+  private renderer: WebGLRenderer;
   private controls: OrbitControls;
   
   // Post-processing
@@ -35,12 +35,12 @@ export class SceneManager {
     logger.log('Initializing SceneManager');
     
     // Create scene
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(BACKGROUND_COLOR);
+    this.scene = new Scene();
+    this.scene.background = new Color(BACKGROUND_COLOR);
     // Removed fog to ensure graph visibility
 
     // Create camera
-    this.camera = new THREE.PerspectiveCamera(
+    this.camera = new PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
       0.1,
@@ -50,7 +50,7 @@ export class SceneManager {
     this.camera.lookAt(0, 0, 0);
 
     // Create renderer
-    this.renderer = new THREE.WebGLRenderer({
+    this.renderer = new WebGLRenderer({
       canvas,
       antialias: true,
       alpha: true,
@@ -73,7 +73,7 @@ export class SceneManager {
     this.composer.addPass(renderPass);
 
     this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      new Vector2(window.innerWidth, window.innerHeight),
       1.5,  // Strength
       0.75, // Radius
       0.3   // Threshold
@@ -104,16 +104,16 @@ export class SceneManager {
   }
 
   private setupLighting(): void {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new AmbientLight(0xffffff, 0.6);
     this.scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(1, 1, 1).normalize();
     this.scene.add(directionalLight);
 
     // Add smaller grid helper
-    const gridHelper = new THREE.GridHelper(50, 50); // Reduced grid size
-    if (gridHelper.material instanceof THREE.Material) {
+    const gridHelper = new GridHelper(50, 50); // Reduced grid size
+    if (gridHelper.material instanceof Material) {
       gridHelper.material.transparent = true;
       gridHelper.material.opacity = 0.1;
     }
@@ -156,15 +156,15 @@ export class SceneManager {
   }
 
   // Public getters
-  getScene(): THREE.Scene {
+  getScene(): Scene {
     return this.scene;
   }
 
-  getCamera(): THREE.PerspectiveCamera {
+  getCamera(): PerspectiveCamera {
     return this.camera;
   }
 
-  getRenderer(): THREE.WebGLRenderer {
+  getRenderer(): WebGLRenderer {
     return this.renderer;
   }
 
@@ -173,11 +173,11 @@ export class SceneManager {
   }
 
   // Scene management methods
-  add(object: THREE.Object3D): void {
+  add(object: Object3D): void {
     this.scene.add(object);
   }
 
-  remove(object: THREE.Object3D): void {
+  remove(object: Object3D): void {
     this.scene.remove(object);
   }
 
@@ -235,7 +235,7 @@ export class SceneManager {
     // Dispose of scene objects
     if (this.scene) {
       this.scene.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
+        if (object instanceof Mesh) {
           if (object.geometry) object.geometry.dispose();
           if (object.material) {
             if (Array.isArray(object.material)) {

@@ -22,7 +22,7 @@ const VISUALIZATION_CATEGORIES: [&str; 10] = [
     "rendering"
 ];
 
-#[get("")]
+#[get("/visualization")]
 async fn get_visualization_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
 ) -> HttpResponse {
@@ -73,7 +73,7 @@ async fn get_visualization_settings(
     })
 }
 
-#[put("")]
+#[put("/visualization")]
 async fn update_visualization_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
     update: web::Json<CategorySettingsUpdate>,
@@ -120,34 +120,19 @@ async fn update_visualization_settings(
     })
 }
 
-#[get("/{setting}")]
+#[get("/visualization/{category}/{setting}")]
 async fn get_visualization_setting(
     settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
+    path: web::Path<(String, String)>,
 ) -> HttpResponse {
-    let setting_path = path.into_inner();
-    debug!("Getting visualization setting: {}", setting_path);
-    
-    let parts: Vec<&str> = setting_path.split('_').collect();
-    if parts.len() < 2 {
-        error!("Invalid setting path format: {}", setting_path);
-        return HttpResponse::BadRequest().json(SettingResponse {
-            category: "visualization".to_string(),
-            setting: setting_path.clone(),
-            value: Value::Null,
-            success: false,
-            error: Some("Invalid setting path format".to_string()),
-        });
-    }
+    let (category, setting) = path.into_inner();
+    debug!("Getting visualization setting: {}.{}", category, setting);
 
-    let category = parts[0];
-    let setting = parts[1..].join("_");
-
-    if !VISUALIZATION_CATEGORIES.contains(&category) {
+    if !VISUALIZATION_CATEGORIES.contains(&category.as_str()) {
         error!("Invalid category: {}", category);
         return HttpResponse::BadRequest().json(SettingResponse {
             category: "visualization".to_string(),
-            setting: setting_path.clone(),
+            setting: format!("{}.{}", category, setting),
             value: Value::Null,
             success: false,
             error: Some(format!("Invalid category: {}", category)),
@@ -156,12 +141,12 @@ async fn get_visualization_setting(
 
     let settings_guard = settings.read().await;
 
-    match get_setting_value(&settings_guard, category, &setting) {
+    match get_setting_value(&settings_guard, &category, &setting) {
         Ok(value) => {
             debug!("Successfully retrieved setting value");
             HttpResponse::Ok().json(SettingResponse {
                 category: "visualization".to_string(),
-                setting: setting_path,
+                setting: format!("{}.{}", category, setting),
                 value,
                 success: true,
                 error: None,
@@ -171,7 +156,7 @@ async fn get_visualization_setting(
             error!("Failed to get setting value: {}", e);
             HttpResponse::BadRequest().json(SettingResponse {
                 category: "visualization".to_string(),
-                setting: setting_path,
+                setting: format!("{}.{}", category, setting),
                 value: Value::Null,
                 success: false,
                 error: Some(e),
@@ -180,35 +165,20 @@ async fn get_visualization_setting(
     }
 }
 
-#[put("/{setting}")]
+#[put("/visualization/{category}/{setting}")]
 async fn update_visualization_setting(
     settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<String>,
+    path: web::Path<(String, String)>,
     value: web::Json<Value>,
 ) -> HttpResponse {
-    let setting_path = path.into_inner();
-    debug!("Updating visualization setting: {}", setting_path);
-    
-    let parts: Vec<&str> = setting_path.split('_').collect();
-    if parts.len() < 2 {
-        error!("Invalid setting path format: {}", setting_path);
-        return HttpResponse::BadRequest().json(SettingResponse {
-            category: "visualization".to_string(),
-            setting: setting_path.clone(),
-            value: value.into_inner(),
-            success: false,
-            error: Some("Invalid setting path format".to_string()),
-        });
-    }
+    let (category, setting) = path.into_inner();
+    debug!("Updating visualization setting: {}.{}", category, setting);
 
-    let category = parts[0];
-    let setting = parts[1..].join("_");
-
-    if !VISUALIZATION_CATEGORIES.contains(&category) {
+    if !VISUALIZATION_CATEGORIES.contains(&category.as_str()) {
         error!("Invalid category: {}", category);
         return HttpResponse::BadRequest().json(SettingResponse {
             category: "visualization".to_string(),
-            setting: setting_path.clone(),
+            setting: format!("{}.{}", category, setting),
             value: value.into_inner(),
             success: false,
             error: Some(format!("Invalid category: {}", category)),
@@ -217,12 +187,12 @@ async fn update_visualization_setting(
 
     let mut settings_guard = settings.write().await;
 
-    match update_setting_value(&mut settings_guard, category, &setting, &value) {
+    match update_setting_value(&mut settings_guard, &category, &setting, &value) {
         Ok(_) => {
             debug!("Successfully updated setting value");
             HttpResponse::Ok().json(SettingResponse {
                 category: "visualization".to_string(),
-                setting: setting_path,
+                setting: format!("{}.{}", category, setting),
                 value: value.into_inner(),
                 success: true,
                 error: None,
@@ -232,7 +202,7 @@ async fn update_visualization_setting(
             error!("Failed to update setting value: {}", e);
             HttpResponse::BadRequest().json(SettingResponse {
                 category: "visualization".to_string(),
-                setting: setting_path,
+                setting: format!("{}.{}", category, setting),
                 value: value.into_inner(),
                 success: false,
                 error: Some(e),
