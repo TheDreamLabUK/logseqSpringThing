@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::utils::case_conversion::to_snake_case;
-use crate::handlers::settings::common::{get_category_settings_value, set_field_value};
+use crate::handlers::settings::common::get_category_settings_value;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,59 +56,47 @@ fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Resu
     debug!("Converted setting '{}' to snake_case: '{}'", setting, setting_snake);
     
     // Convert settings to Value for easier access
-    let settings_value = match serde_json::to_value(&settings) {
-        Ok(v) => {
-            debug!("Successfully serialized settings to JSON");
-            v
-        },
-        Err(e) => {
-            error!("Failed to serialize settings to JSON: {}", e);
-            return Err(format!("Failed to serialize settings: {}", e));
-        }
+    let settings_value = serde_json::to_value(settings)
+        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+
+    // Determine the root category (visualization, xr, or system)
+    let (root_category, sub_category) = if category_snake.starts_with("visualization_") {
+        ("visualization", &category_snake[13..])
+    } else if category_snake.starts_with("xr_") {
+        ("xr", &category_snake[3..])
+    } else if category_snake.starts_with("system_") {
+        ("system", &category_snake[7..])
+    } else {
+        return Err(format!("Invalid category format: {}", category));
     };
-    
-    // Special handling for nested settings
-    match category_snake.as_str() {
-        "hologram" => {
-            if let Some(hologram) = settings_value.get("hologram") {
-                if let Some(setting_value) = hologram.get(&setting_snake) {
-                    debug!("Found hologram setting '{}': {:?}", setting_snake, setting_value);
-                    return Ok(setting_value.clone());
-                }
-            }
-        },
-        "websocket" => {
-            if let Some(websocket) = settings_value.get("websocket") {
-                if let Some(setting_value) = websocket.get(&setting_snake) {
-                    debug!("Found websocket setting '{}': {:?}", setting_snake, setting_value);
-                    return Ok(setting_value.clone());
-                }
-            }
-        },
-        _ => {}
-    }
-    
-    // Regular category lookup
-    let category_value = match settings_value.get(&category_snake) {
-        Some(v) => {
-            debug!("Found category '{}' in settings", category_snake);
-            v
-        },
+
+    // Get the root category object
+    let root_value = match settings_value.get(root_category) {
+        Some(v) => v,
         None => {
-            error!("Category '{}' not found in settings", category_snake);
-            return Err(format!("Category '{}' not found", category));
+            error!("Root category '{}' not found", root_category);
+            return Err(format!("Root category '{}' not found", root_category));
         }
     };
-    
-    // Get setting value using snake_case for internal lookup
-    match category_value.get(&setting_snake) {
+
+    // Get the sub-category object
+    let sub_value = match root_value.get(sub_category) {
+        Some(v) => v,
+        None => {
+            error!("Sub-category '{}' not found in {}", sub_category, root_category);
+            return Err(format!("Sub-category '{}' not found in {}", sub_category, root_category));
+        }
+    };
+
+    // Get the setting value
+    match sub_value.get(&setting_snake) {
         Some(v) => {
-            debug!("Found setting '{}' in category '{}'", setting_snake, category_snake);
+            debug!("Found setting '{}' in {}.{}", setting_snake, root_category, sub_category);
             Ok(v.clone())
         },
         None => {
-            error!("Setting '{}' not found in category '{}'", setting_snake, category_snake);
-            Err(format!("Setting '{}' not found in category '{}'", setting, category))
+            error!("Setting '{}' not found in {}.{}", setting_snake, root_category, sub_category);
+            Err(format!("Setting '{}' not found in {}.{}", setting, root_category, sub_category))
         }
     }
 }
@@ -121,69 +109,50 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
     let category_snake = to_snake_case(category);
     let setting_snake = to_snake_case(setting);
     
-    match category_snake.as_str() {
-        "websocket" => {
-            match setting_snake.as_str() {
-                "heartbeat_interval" => {
-                    if let Some(v) = value.as_u64() {
-                        settings.websocket.heartbeat_interval = v;
-                        return Ok(());
-                    }
-                },
-                "heartbeat_timeout" => {
-                    if let Some(v) = value.as_u64() {
-                        settings.websocket.heartbeat_timeout = v;
-                        return Ok(());
-                    }
-                },
-                "reconnect_attempts" => {
-                    if let Some(v) = value.as_u64() {
-                        settings.websocket.reconnect_attempts = v as u32;
-                        return Ok(());
-                    }
-                },
-                "reconnect_delay" => {
-                    if let Some(v) = value.as_u64() {
-                        settings.websocket.reconnect_delay = v;
-                        return Ok(());
-                    }
-                },
-                "update_rate" => {
-                    if let Some(v) = value.as_u64() {
-                        settings.websocket.update_rate = v as u32;
-                        return Ok(());
-                    }
-                },
-                _ => {}
-            }
-        },
-        _ => {}
-    }
-    
-    // For other settings, use the standard deserialization approach
+    // Determine the root category and sub-category
+    let (root_category, sub_category) = if category_snake.starts_with("visualization_") {
+        ("visualization", &category_snake[13..])
+    } else if category_snake.starts_with("xr_") {
+        ("xr", &category_snake[3..])
+    } else if category_snake.starts_with("system_") {
+        ("system", &category_snake[7..])
+    } else {
+        return Err(format!("Invalid category format: {}", category));
+    };
+
+    // Convert the value to the appropriate type and update the settings
     match serde_json::from_value(value.clone()) {
         Ok(v) => {
-            match category_snake.as_str() {
-                "hologram" => {
-                    let hologram = &mut settings.hologram;
-                    if let Err(e) = set_field_value(hologram, &setting_snake, v) {
-                        return Err(format!("Failed to set hologram setting: {}", e));
-                    }
-                },
-                _ => {
-                    if let Err(e) = set_field_value(settings, &category_snake, v) {
-                        return Err(format!("Failed to set setting: {}", e));
-                    }
-                }
+            let mut settings_value = serde_json::to_value(&*settings)
+                .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+            
+            // Get mutable access to the root category
+            let root_value = settings_value.get_mut(root_category)
+                .ok_or_else(|| format!("Root category '{}' not found", root_category))?;
+
+            // Get mutable access to the sub-category
+            let sub_value = root_value.get_mut(sub_category)
+                .ok_or_else(|| format!("Sub-category '{}' not found in {}", sub_category, root_category))?;
+
+            // Update the setting value
+            if let Some(obj) = sub_value.as_object_mut() {
+                obj.insert(setting_snake.clone(), v);
+                
+                // Convert back to Settings
+                *settings = serde_json::from_value(settings_value)
+                    .map_err(|e| format!("Failed to update settings: {}", e))?;
+                
+                Ok(())
+            } else {
+                Err(format!("Invalid settings structure for {}.{}", root_category, sub_category))
             }
-            Ok(())
         },
         Err(e) => Err(format!("Invalid value for setting: {}", e))
     }
 }
 
 // GET /api/visualization/settings/{category}
-#[get("/settings/{category}")]
+#[get("/api/visualization/settings/{category}")]
 pub async fn get_category_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
     path: web::Path<String>
@@ -218,7 +187,7 @@ pub async fn get_category_settings(
 }
 
 // PUT /api/visualization/settings/{category}
-#[put("/settings/{category}")]
+#[put("/api/visualization/settings/{category}")]
 pub async fn update_category_settings(
     settings: web::Data<Arc<RwLock<Settings>>>,
     path: web::Path<String>,
@@ -351,7 +320,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(get_category_settings)
        .service(update_category_settings)
        .service(
-           web::resource("/settings/{category}/{setting}")
+           web::resource("/api/visualization/settings/{category}/{setting}")
                .route(web::get().to(get_setting))
                .route(web::put().to(update_setting))
        );

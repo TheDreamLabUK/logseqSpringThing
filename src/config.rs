@@ -6,39 +6,17 @@ use std::path::PathBuf;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct Settings {
-    // UI/Rendering settings from settings.toml
+    // Core visualization settings
     #[serde(default)]
-    pub animations: AnimationSettings,
+    pub visualization: VisualizationSettings,
+    
+    // XR-specific settings
     #[serde(default)]
-    pub ar: ARSettings,
+    pub xr: XRSettings,
+    
+    // System settings
     #[serde(default)]
-    pub audio: AudioSettings,
-    #[serde(default)]
-    pub bloom: BloomSettings,
-    #[serde(default)]
-    pub client_debug: DebugSettings,
-    #[serde(default)]
-    pub default: DefaultSettings,
-    #[serde(default)]
-    pub edges: EdgeSettings,
-    #[serde(default)]
-    pub hologram: HologramSettings,
-    #[serde(default)]
-    pub labels: LabelSettings,
-    #[serde(default)]
-    pub network: NetworkSettings,
-    #[serde(default)]
-    pub nodes: NodeSettings,
-    #[serde(default)]
-    pub physics: PhysicsSettings,
-    #[serde(default)]
-    pub rendering: RenderingSettings,
-    #[serde(default)]
-    pub security: SecuritySettings,
-    #[serde(default)]
-    pub server_debug: DebugSettings,
-    #[serde(default)]
-    pub websocket: WebSocketSettings,
+    pub system: SystemSettings,
     
     // Service settings from .env (server-side only)
     #[serde(default)]
@@ -49,6 +27,110 @@ pub struct Settings {
     pub perplexity: PerplexitySettings,
     #[serde(default)]
     pub openai: OpenAISettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct VisualizationSettings {
+    #[serde(default)]
+    pub animations: AnimationSettings,
+    #[serde(default)]
+    pub bloom: BloomSettings,
+    #[serde(default)]
+    pub edges: EdgeSettings,
+    #[serde(default)]
+    pub hologram: HologramSettings,
+    #[serde(default)]
+    pub labels: LabelSettings,
+    #[serde(default)]
+    pub nodes: NodeSettings,
+    #[serde(default)]
+    pub physics: PhysicsSettings,
+    #[serde(default)]
+    pub rendering: RenderingSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct XRSettings {
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub room_scale: bool,
+    #[serde(default)]
+    pub space_type: String,
+    #[serde(default)]
+    pub quality: String,
+    #[serde(default)]
+    pub input: XRInputSettings,
+    #[serde(default)]
+    pub visuals: XRVisualSettings,
+    #[serde(default)]
+    pub environment: XREnvironmentSettings,
+    #[serde(default)]
+    pub passthrough: XRPassthroughSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct XRInputSettings {
+    pub enable_hand_tracking: bool,
+    pub enable_haptics: bool,
+    pub haptic_intensity: f32,
+    pub drag_threshold: f32,
+    pub pinch_threshold: f32,
+    pub rotation_threshold: f32,
+    pub interaction_radius: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct XRVisualSettings {
+    pub hand_mesh_enabled: bool,
+    pub hand_mesh_color: String,
+    pub hand_mesh_opacity: f32,
+    pub hand_point_size: f32,
+    pub hand_ray_enabled: bool,
+    pub hand_ray_color: String,
+    pub hand_ray_width: f32,
+    pub gesture_smoothing: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct XREnvironmentSettings {
+    pub enable_light_estimation: bool,
+    pub enable_plane_detection: bool,
+    pub enable_scene_understanding: bool,
+    pub plane_color: String,
+    pub plane_opacity: f32,
+    pub show_plane_overlay: bool,
+    pub snap_to_floor: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct XRPassthroughSettings {
+    pub enabled: bool,
+    pub opacity: f32,
+    pub brightness: f32,
+    pub contrast: f32,
+    pub portal_size: f32,
+    pub portal_edge_color: String,
+    pub portal_edge_width: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct SystemSettings {
+    #[serde(default)]
+    pub network: NetworkSettings,
+    #[serde(default)]
+    pub websocket: WebSocketSettings,
+    #[serde(default)]
+    pub security: SecuritySettings,
+    #[serde(default)]
+    pub debug: DebugSettings,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -697,21 +779,21 @@ impl Settings {
         debug!("Checking for environment variables");
         
         // Network settings from environment variables
-        if let Ok(domain) = std::env::var("DOMAIN") {
-            settings.network.domain = domain;
-        }
-        if let Ok(port) = std::env::var("PORT") {
-            settings.network.port = port.parse().unwrap_or(4000);
-        }
-        if let Ok(bind_address) = std::env::var("BIND_ADDRESS") {
-            settings.network.bind_address = bind_address;
-        }
-        if let Ok(tunnel_id) = std::env::var("TUNNEL_ID") {
-            settings.network.tunnel_id = tunnel_id;
-        }
-        if let Ok(enable_http2) = std::env::var("HTTP2_ENABLED") {
-            settings.network.enable_http2 = enable_http2.parse().unwrap_or(true);
-        }
+            if let Ok(domain) = std::env::var("DOMAIN") {
+                settings.system.network.domain = domain;
+            }
+            if let Ok(port) = std::env::var("PORT") {
+                settings.system.network.port = port.parse().unwrap_or(4000);
+            }
+            if let Ok(bind_address) = std::env::var("BIND_ADDRESS") {
+                settings.system.network.bind_address = bind_address;
+            }
+            if let Ok(tunnel_id) = std::env::var("TUNNEL_ID") {
+                settings.system.network.tunnel_id = tunnel_id;
+            }
+            if let Ok(enable_http2) = std::env::var("HTTP2_ENABLED") {
+                settings.system.network.enable_http2 = enable_http2.parse().unwrap_or(true);
+            }
 
         // GitHub settings from environment variables
         if let Ok(token) = std::env::var("GITHUB_TOKEN") {
@@ -817,26 +899,143 @@ impl Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            visualization: VisualizationSettings {
+                animations: AnimationSettings::default(),
+                bloom: BloomSettings::default(),
+                edges: EdgeSettings::default(),
+                hologram: HologramSettings::default(),
+                labels: LabelSettings::default(),
+                nodes: NodeSettings::default(),
+                physics: PhysicsSettings::default(),
+                rendering: RenderingSettings::default(),
+            },
+            xr: XRSettings {
+                mode: "immersive-ar".to_string(),
+                room_scale: true,
+                space_type: "local-floor".to_string(),
+                quality: "medium".to_string(),
+                input: XRInputSettings {
+                    enable_hand_tracking: true,
+                    enable_haptics: true,
+                    haptic_intensity: 0.7,
+                    drag_threshold: 0.04,
+                    pinch_threshold: 0.015,
+                    rotation_threshold: 0.08,
+                    interaction_radius: 0.5,
+                },
+                visuals: XRVisualSettings {
+                    hand_mesh_enabled: true,
+                    hand_mesh_color: "#FFD700".to_string(),
+                    hand_mesh_opacity: 0.3,
+                    hand_point_size: 0.01,
+                    hand_ray_enabled: true,
+                    hand_ray_color: "#FFD700".to_string(),
+                    hand_ray_width: 0.002,
+                    gesture_smoothing: 0.9,
+                },
+                environment: XREnvironmentSettings {
+                    enable_light_estimation: true,
+                    enable_plane_detection: true,
+                    enable_scene_understanding: true,
+                    plane_color: "#4A90E2".to_string(),
+                    plane_opacity: 0.3,
+                    show_plane_overlay: true,
+                    snap_to_floor: true,
+                },
+                passthrough: XRPassthroughSettings {
+                    enabled: false,
+                    opacity: 1.0,
+                    brightness: 1.0,
+                    contrast: 1.0,
+                    portal_size: 1.0,
+                    portal_edge_color: "#FFD700".to_string(),
+                    portal_edge_width: 0.02,
+                },
+            },
+            system: SystemSettings {
+                network: NetworkSettings::default(),
+                websocket: WebSocketSettings::default(),
+                security: SecuritySettings::default(),
+                debug: DebugSettings::default(),
+            },
+            github: GitHubSettings::default(),
+            ragflow: RagFlowSettings::default(),
+            perplexity: PerplexitySettings::default(),
+            openai: OpenAISettings::default(),
+        }
+    }
+}
+
+impl Default for VisualizationSettings {
+    fn default() -> Self {
+        Self {
             animations: AnimationSettings::default(),
-            ar: ARSettings::default(),
-            audio: AudioSettings::default(),
             bloom: BloomSettings::default(),
-            client_debug: DebugSettings::default(),
-            default: DefaultSettings::default(),
             edges: EdgeSettings::default(),
             hologram: HologramSettings::default(),
             labels: LabelSettings::default(),
             nodes: NodeSettings::default(),
             physics: PhysicsSettings::default(),
             rendering: RenderingSettings::default(),
-            security: SecuritySettings::default(),
-            server_debug: DebugSettings::default(),
-            websocket: WebSocketSettings::default(),
+        }
+    }
+}
+
+impl Default for XRSettings {
+    fn default() -> Self {
+        Self {
+            mode: "immersive-ar".to_string(),
+            room_scale: true,
+            space_type: "local-floor".to_string(),
+            quality: "medium".to_string(),
+            input: XRInputSettings {
+                enable_hand_tracking: true,
+                enable_haptics: true,
+                haptic_intensity: 0.7,
+                drag_threshold: 0.04,
+                pinch_threshold: 0.015,
+                rotation_threshold: 0.08,
+                interaction_radius: 0.5,
+            },
+            visuals: XRVisualSettings {
+                hand_mesh_enabled: true,
+                hand_mesh_color: "#FFD700".to_string(),
+                hand_mesh_opacity: 0.3,
+                hand_point_size: 0.01,
+                hand_ray_enabled: true,
+                hand_ray_color: "#FFD700".to_string(),
+                hand_ray_width: 0.002,
+                gesture_smoothing: 0.9,
+            },
+            environment: XREnvironmentSettings {
+                enable_light_estimation: true,
+                enable_plane_detection: true,
+                enable_scene_understanding: true,
+                plane_color: "#4A90E2".to_string(),
+                plane_opacity: 0.3,
+                show_plane_overlay: true,
+                snap_to_floor: true,
+            },
+            passthrough: XRPassthroughSettings {
+                enabled: false,
+                opacity: 1.0,
+                brightness: 1.0,
+                contrast: 1.0,
+                portal_size: 1.0,
+                portal_edge_color: "#FFD700".to_string(),
+                portal_edge_width: 0.02,
+            },
+        }
+    }
+}
+
+impl Default for SystemSettings {
+    fn default() -> Self {
+        Self {
             network: NetworkSettings::default(),
-            github: GitHubSettings::default(),
-            ragflow: RagFlowSettings::default(),
-            perplexity: PerplexitySettings::default(),
-            openai: OpenAISettings::default(),
+            websocket: WebSocketSettings::default(),
+            security: SecuritySettings::default(),
+            debug: DebugSettings::default(),
         }
     }
 }

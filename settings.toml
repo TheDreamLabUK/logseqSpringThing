@@ -1,4 +1,4 @@
-[animations]
+[visualization.animations]
 enable_motion_blur = false
 enable_node_animations = false
 motion_blur_strength = 0.4
@@ -8,44 +8,7 @@ ripple_enabled = false
 edge_animation_enabled = false
 flow_particles_enabled = false
 
-[ar]
-drag_threshold = 0.04
-enable_hand_tracking = true
-enable_haptics = true
-enable_light_estimation = true
-enable_passthrough_portal = false
-enable_plane_detection = true
-enable_scene_understanding = true
-gesture_smoothing = 0.9
-hand_mesh_color = "#FFD700"
-hand_mesh_enabled = true
-hand_mesh_opacity = 0.3
-hand_point_size = 0.01
-hand_ray_color = "#FFD700"
-hand_ray_enabled = true
-hand_ray_width = 0.002
-haptic_intensity = 0.7
-interaction_radius = 0.5
-passthrough_brightness = 1
-passthrough_contrast = 1
-passthrough_opacity = 1
-pinch_threshold = 0.015
-plane_color = "#4A90E2"
-plane_opacity = 0.3
-portal_edge_color = "#FFD700"
-portal_edge_width = 0.02
-portal_size = 1
-room_scale = true
-rotation_threshold = 0.08
-show_plane_overlay = true
-snap_to_floor = true
-
-[audio]
-enable_ambient_sounds = false
-enable_interaction_sounds = false
-enable_spatial_audio = false
-
-[bloom]
+[visualization.bloom]
 edge_bloom_strength = 0.3
 enabled = false
 environment_bloom_strength = 0.5
@@ -53,26 +16,7 @@ node_bloom_strength = 0.2
 radius = 0.5
 strength = 1.8
 
-[client_debug]
-enable_data_debug = false
-enable_websocket_debug = false
-enabled = false
-log_binary_headers = false
-log_full_json = false
-
-[default]
-api_client_timeout = 30
-enable_metrics = true
-enable_request_logging = true
-log_format = "json"
-log_level = "debug"
-max_concurrent_requests = 5
-max_payload_size = 5242880
-max_retries = 3
-metrics_port = 9090
-retry_delay = 5
-
-[edges]
+[visualization.edges]
 arrow_size = 0.15
 base_width = 2
 color = "#917f18"
@@ -80,7 +24,7 @@ enable_arrows = false
 opacity = 0.6
 width_range = [1, 3]
 
-[hologram]
+[visualization.hologram]
 xr_quality = "medium"
 desktop_quality = "high"
 ring_count = 3
@@ -99,7 +43,7 @@ triangle_sphere_scale = 1.1
 triangle_sphere_opacity = 0.35
 global_rotation_speed = 0.05
 
-[labels]
+[visualization.labels]
 desktop_font_size = 48
 enable_labels = true
 text_color = "#FFFFFF"
@@ -110,20 +54,7 @@ text_outline_width = 0.4
 text_outline_color = "#000000"
 billboard_mode = "camera"
 
-[network]
-bind_address = "0.0.0.0"
-domain = "localhost"
-enable_http2 = false
-enable_rate_limiting = true
-enable_tls = false
-max_request_size = 10485760
-min_tls_version = ""
-port = 3001
-rate_limit_requests = 100
-rate_limit_window = 60
-tunnel_id = "dummy"
-
-[nodes]
+[visualization.nodes]
 base_color = "#c3ab6f"
 base_size = 1
 clearcoat = 1
@@ -145,7 +76,7 @@ shape_age_ranges = [7, 30, 90, 365]
 hyperlink_color_min = "#c3ab6f"
 hyperlink_color_max = "#822626"
 
-[physics]
+[visualization.physics]
 attraction_strength = 0.015
 bounds_size = 12
 collision_radius = 0.25
@@ -157,7 +88,7 @@ max_velocity = 2.5
 repulsion_strength = 1500
 spring_strength = 0.018
 
-[rendering]
+[visualization.rendering]
 ambient_light_intensity = 0.7
 background_color = "#000000"
 directional_light_intensity = 1
@@ -166,25 +97,63 @@ enable_antialiasing = true
 enable_shadows = false
 environment_intensity = 1.2
 
-[security]
-allowed_origins = []
-audit_log_path = "/app/logs/audit.log"
-cookie_httponly = true
-cookie_samesite = "Strict"
-cookie_secure = true
-csrf_token_timeout = 3600
-enable_audit_logging = true
-enable_request_validation = true
-session_timeout = 3600
+[xr]
+mode = "immersive-ar"
+room_scale = true
+space_type = "local-floor"
+quality = "medium"
 
-[server_debug]
-enable_data_debug = false
-enable_websocket_debug = false
+[xr.input]
+enable_hand_tracking = true
+enable_haptics = true
+haptic_intensity = 0.7
+drag_threshold = 0.04
+pinch_threshold = 0.015
+rotation_threshold = 0.08
+interaction_radius = 0.5
+
+[xr.visuals]
+hand_mesh_enabled = true
+hand_mesh_color = "#FFD700"
+hand_mesh_opacity = 0.3
+hand_point_size = 0.01
+hand_ray_enabled = true
+hand_ray_color = "#FFD700"
+hand_ray_width = 0.002
+gesture_smoothing = 0.9
+
+[xr.environment]
+enable_light_estimation = true
+enable_plane_detection = true
+enable_scene_understanding = true
+plane_color = "#4A90E2"
+plane_opacity = 0.3
+show_plane_overlay = true
+snap_to_floor = true
+
+[xr.passthrough]
 enabled = false
-log_binary_headers = false
-log_full_json = false
+opacity = 1.0
+brightness = 1.0
+contrast = 1.0
+portal_size = 1.0
+portal_edge_color = "#FFD700"
+portal_edge_width = 0.02
 
-[websocket]
+[system.network]
+bind_address = "0.0.0.0"
+domain = "localhost"
+enable_http2 = false
+enable_rate_limiting = true
+enable_tls = false
+max_request_size = 10485760
+min_tls_version = ""
+port = 3001
+rate_limit_requests = 100
+rate_limit_window = 60
+tunnel_id = "dummy"
+
+[system.websocket]
 binary_chunk_size = 65536
 compression_enabled = false
 compression_threshold = 1024
@@ -195,3 +164,21 @@ max_message_size = 100485760
 reconnect_attempts = 3
 reconnect_delay = 5000
 update_rate = 1
+
+[system.security]
+allowed_origins = []
+audit_log_path = "/app/logs/audit.log"
+cookie_httponly = true
+cookie_samesite = "Strict"
+cookie_secure = true
+csrf_token_timeout = 3600
+enable_audit_logging = true
+enable_request_validation = true
+session_timeout = 3600
+
+[system.debug]
+enabled = false
+enable_data_debug = false
+enable_websocket_debug = false
+log_binary_headers = false
+log_full_json = false

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Instant;
 use actix::prelude::*;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
@@ -8,13 +7,7 @@ use log::{info, warn, debug, error};
 use serde::{Deserialize, Serialize};
 
 use crate::app_state::AppState;
-use crate::utils::socket_flow_messages::{Message, BinaryNodeData};
-use crate::utils::socket_flow_constants::{
-    HEARTBEAT_INTERVAL,
-    CLIENT_TIMEOUT,
-    MAX_CLIENT_TIMEOUT,
-    POSITION_UPDATE_RATE
-};
+use crate::utils::socket_flow_constants::POSITION_UPDATE_RATE;
 use crate::config::Settings;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -25,7 +18,6 @@ pub struct WebSocketSettings {
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     settings: Arc<RwLock<Settings>>,
-    last_heartbeat: Instant,
     connection_alive: bool,
 }
 
@@ -34,24 +26,8 @@ impl SocketFlowServer {
         Self {
             app_state,
             settings,
-            last_heartbeat: Instant::now(),
             connection_alive: true,
         }
-    }
-
-    fn heartbeat(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        ctx.run_interval(std::time::Duration::from_secs(HEARTBEAT_INTERVAL), |act, ctx| {
-            if Instant::now().duration_since(act.last_heartbeat) > std::time::Duration::from_secs(CLIENT_TIMEOUT) {
-                warn!("[WebSocket] Client heartbeat timeout");
-                if Instant::now().duration_since(act.last_heartbeat) > std::time::Duration::from_secs(MAX_CLIENT_TIMEOUT) {
-                    error!("[WebSocket] Client exceeded maximum timeout, closing connection");
-                    act.connection_alive = false;
-                    ctx.stop();
-                    return;
-                }
-            }
-            ctx.ping(b"");
-        });
     }
 }
 
@@ -60,9 +36,6 @@ impl Actor for SocketFlowServer {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("[WebSocket] Client connected");
-        
-        // Start heartbeat
-        self.heartbeat(ctx);
         
         // Clone Arc references for the interval closure
         let app_state = self.app_state.clone();
@@ -122,15 +95,24 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
         }
 
         match msg {
-            Ok(ws::Message::Ping(msg)) => {
-                self.last_heartbeat = Instant::now();
-                ctx.pong(&msg);
-            }
-            Ok(ws::Message::Pong(_)) => {
-                self.last_heartbeat = Instant::now();
-            }
-            Ok(ws::Message::Binary(_)) => {
-                warn!("[WebSocket] Unexpected binary message from client");
+            Ok(ws::Message::Binary(bin)) => {
+                // Handle binary node updates from client
+                if bin.len() % 12 == 0 {  // Each position is 3 f32s = 12 bytes
+                    let positions = bin.chunks_exact(12).map(|chunk| {
+                        let mut bytes = [0u8; 4];
+                        bytes.copy_from_slice(&chunk[0..4]);
+                        let x = f32::from_le_bytes(bytes);
+                        bytes.copy_from_slice(&chunk[4..8]);
+                        let y = f32::from_le_bytes(bytes);
+                        bytes.copy_from_slice(&chunk[8..12]);
+                        let z = f32::from_le_bytes(bytes);
+                        [x, y, z]
+                    }).collect::<Vec<_>>();
+                    
+                    debug!("Received {} node position updates", positions.len());
+                } else {
+                    warn!("[WebSocket] Received malformed binary message");
+                }
             }
             Ok(ws::Message::Close(reason)) => {
                 info!("[WebSocket] Client disconnected: {:?}", reason);
@@ -138,12 +120,14 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 ctx.close(reason);
                 ctx.stop();
             }
+            Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
+            Ok(ws::Message::Pong(_)) => (),
             Err(e) => {
                 error!("[WebSocket] Protocol error: {}", e);
                 self.connection_alive = false;
                 ctx.stop();
             }
-            _ => {}
+            _ => ()
         }
     }
 }
@@ -153,7 +137,7 @@ pub async fn get_websocket_settings(
 ) -> Result<HttpResponse, Error> {
     let settings = settings.read().await;
     let ws_settings = WebSocketSettings {
-        update_rate: settings.websocket.update_rate,
+        update_rate: settings.system.websocket.update_rate,
     };
     
     Ok(HttpResponse::Ok().json(ws_settings))
@@ -164,7 +148,7 @@ pub async fn update_websocket_settings(
     new_settings: web::Json<WebSocketSettings>
 ) -> Result<HttpResponse, Error> {
     let mut settings = settings.write().await;
-    settings.websocket.update_rate = new_settings.update_rate;
+    settings.system.websocket.update_rate = new_settings.update_rate;
     debug!("Updated WebSocket update rate to: {}", new_settings.update_rate);
     Ok(HttpResponse::Ok().json(new_settings.0))
 }
