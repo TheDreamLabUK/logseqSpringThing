@@ -25,7 +25,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(
+    pub async fn new(
         settings: Arc<RwLock<Settings>>,
         github_service: Arc<RealGitHubService>,
         perplexity_service: Option<Arc<PerplexityService>>,
@@ -34,11 +34,26 @@ impl AppState {
         ragflow_conversation_id: String,
         github_pr_service: Arc<RealGitHubPRService>,
     ) -> Self {
+        // Load metadata first
+        let metadata_store = match FileService::load_or_create_metadata() {
+            Ok(metadata) => {
+                info!("Loaded metadata with {} entries", metadata.len());
+                metadata
+            },
+            Err(e) => {
+                warn!("Failed to load metadata: {}, starting with empty store", e);
+                MetadataStore::new()
+            }
+        };
+
+        // Initialize graph service with metadata
+        let graph_service = GraphService::new_with_metadata(&metadata_store);
+
         Self {
-            graph_service: GraphService::new(),
+            graph_service,
             gpu_compute,
             settings,
-            metadata: Arc::new(RwLock::new(MetadataStore::new())),
+            metadata: Arc::new(RwLock::new(metadata_store)),
             github_service,
             perplexity_service,
             ragflow_service,

@@ -62,6 +62,59 @@ impl GraphService {
         graph_service
     }
 
+    pub fn new_with_metadata(metadata: &MetadataStore) -> Self {
+        // Create graph service with initial graph from metadata
+        let mut graph = match Self::build_graph_from_metadata(metadata) {
+            Ok(g) => g,
+            Err(e) => {
+                warn!("Failed to build graph from metadata: {}, starting with empty graph", e);
+                GraphData::default()
+            }
+        };
+
+        // Initialize positions
+        Self::initialize_random_positions(&mut graph);
+
+        let graph_service = Self {
+            graph_data: Arc::new(RwLock::new(graph)),
+        };
+
+        // Start simulation loop
+        let graph_data = graph_service.graph_data.clone();
+        tokio::spawn(async move {
+            let params = SimulationParams {
+                iterations: 1,  // One iteration per frame
+                spring_length: 100.0,  // Default spring length
+                spring_strength: 0.1,  // Gentler forces for continuous updates
+                repulsion: 50.0,  // Reduced repulsion
+                attraction: 0.5,  // Reduced attraction
+                damping: 0.8,  // More damping for stability
+                time_step: 0.016,  // 60fps
+                phase: SimulationPhase::Dynamic,
+                mode: SimulationMode::Local,  // Use CPU for continuous updates
+            };
+
+            loop {
+                // Update positions
+                let mut graph = graph_data.write().await;
+                if let Err(e) = Self::calculate_layout_cpu(
+                    &mut graph,
+                    params.iterations,
+                    params.spring_strength,
+                    params.damping
+                ) {
+                    warn!("[Graph] Error updating positions: {}", e);
+                }
+                drop(graph); // Release lock
+
+                // Sleep for ~16ms (60fps)
+                tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
+            }
+        });
+
+        graph_service
+    }
+
     pub async fn build_graph_from_metadata(metadata: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
         let mut graph = GraphData::new();
         let mut edge_map = HashMap::new();

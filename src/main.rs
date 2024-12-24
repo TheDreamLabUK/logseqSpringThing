@@ -80,7 +80,7 @@ async fn main() -> std::io::Result<()> {
         gpu_compute,
         String::from("default"), // ragflow_conversation_id
         github_pr_service,
-    ));
+    ).await);
 
     // Use PORT env var with fallback to 3001 as specified in docs
     let port = env::var("PORT").unwrap_or_else(|_| "3001".to_string());
