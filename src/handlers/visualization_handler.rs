@@ -8,7 +8,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::utils::case_conversion::to_snake_case;
+use crate::utils::case_conversion::{to_snake_case, to_camel_case};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -213,6 +213,8 @@ pub async fn get_setting(
     match get_setting_value(&*settings_guard, &category, &setting) {
         Ok(value) => {
             debug!("Successfully retrieved setting value: {:?}", value);
+            // Convert setting name to camelCase for response
+            let setting = to_camel_case(&setting);
             HttpResponse::Ok().json(SettingResponse {
                 category,
                 setting,
@@ -262,6 +264,8 @@ pub async fn update_setting(
                     error: Some("Failed to persist settings".to_string()),
                 });
             }
+            // Convert setting name to camelCase for response
+            let setting = to_camel_case(&setting);
             HttpResponse::Ok().json(SettingResponse {
                 category,
                 setting,
@@ -299,7 +303,10 @@ pub async fn get_category_settings(
                 debug!("Category '{}' settings: {}", category, serde_json::to_string_pretty(&value).unwrap_or_default());
             }
             let settings_map: HashMap<String, Value> = value.as_object()
-                .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                .map(|m| m.iter().map(|(k, v)| {
+                    // Convert snake_case keys to camelCase for client
+                    (to_camel_case(k), v.clone())
+                }).collect())
                 .unwrap_or_default();
             
             HttpResponse::Ok().json(CategorySettingsResponse {
@@ -323,12 +330,9 @@ pub async fn get_category_settings(
 
 // Register the handlers with the Actix web app
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/visualization")
-            .route("/settings/{category}/{setting}", web::get().to(get_setting))
-            .route("/settings/{category}/{setting}", web::put().to(update_setting))
-            .route("/settings/{category}", web::get().to(get_category_settings))
-    );
+    cfg.route("/settings/{category}/{setting}", web::get().to(get_setting))
+       .route("/settings/{category}/{setting}", web::put().to(update_setting))
+       .route("/settings/{category}", web::get().to(get_category_settings));
 }
 
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {

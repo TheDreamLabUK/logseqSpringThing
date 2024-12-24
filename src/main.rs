@@ -152,7 +152,10 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api")
                     .service(web::scope("/files").configure(configure_file_handler))
                     .service(web::scope("/graph").configure(configure_graph_handler))
-                    .service(web::scope("/visualization").configure(visualization_handler::config))
+                    .service(
+                        web::scope("/visualization")
+                            .configure(visualization_handler::config)
+                    )
             )
             .service(
                 web::resource("/wss")
