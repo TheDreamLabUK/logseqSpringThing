@@ -38,50 +38,15 @@ declare -A ENDPOINTS=(
 
 # REST endpoints to test
 declare -a REST_ENDPOINTS=(
+    # Settings API
+    "/api/settings"
+    "/api/settings/visualization.nodes.baseSize"
+    "/api/settings/visualization.edges.color"
+    "/api/settings/xr.mode"
+    
     # Graph endpoints
     "/api/graph/data"
     "/api/graph/data/paginated?page=0&page_size=10"
-    
-    # Visualization Settings Categories
-    "/api/visualization/settings/animations"
-    "/api/visualization/settings/ar"
-    "/api/visualization/settings/audio"
-    "/api/visualization/settings/bloom"
-    "/api/visualization/settings/edges"
-    "/api/visualization/settings/hologram"
-    "/api/visualization/settings/labels"
-    "/api/visualization/settings/nodes"
-    "/api/visualization/settings/physics"
-    "/api/visualization/settings/rendering"
-    
-    # System Settings
-    "/api/visualization/settings/network"
-    "/api/visualization/settings/websocket"
-    "/api/visualization/settings/security"
-    "/api/visualization/settings/client-debug"
-    "/api/visualization/settings/server-debug"
-    
-    # Individual Settings Tests (examples for each category)
-    "/api/visualization/settings/animations/enabled"
-    "/api/visualization/settings/ar/enabled"
-    "/api/visualization/settings/audio/enabled"
-    "/api/visualization/settings/bloom/enabled"
-    "/api/visualization/settings/edges/enabled"
-    "/api/visualization/settings/hologram/enabled"
-    "/api/visualization/settings/labels/enabled"
-    "/api/visualization/settings/nodes/enabled"
-    "/api/visualization/settings/physics/enabled"
-    "/api/visualization/settings/rendering/enabled"
-    "/api/visualization/settings/network/enabled"
-    "/api/visualization/settings/websocket/update-rate"
-    "/api/visualization/settings/security/enabled"
-    "/api/visualization/settings/client-debug/enabled"
-    "/api/visualization/settings/server-debug/enabled"
-    
-    # Other API endpoints
-    "/api/files/fetch"
-    "/api/chat/stream"
-    "/api/perplexity"
 )
 
 # Function to log messages with timestamp
@@ -192,7 +157,7 @@ test_environment() {
         test_rest_endpoint "$base_url$endpoint" "$env $endpoint" || ((failed++))
         
         # Test PUT for settings endpoints
-        if [[ "$endpoint" == "/api/visualization/settings/"* ]]; then
+        if [[ "$endpoint" == "/api/settings"* ]]; then
             test_rest_endpoint "$base_url$endpoint" "$env $endpoint (PUT)" "PUT" '{"value": 30}' || ((failed++))
         fi
     done

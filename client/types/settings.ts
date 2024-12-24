@@ -222,3 +222,6 @@ export interface Settings {
     xr: XRSettings;
     system: SystemSettings;
 }
+
+export * from './settings/base';
+export * from './settings/utils';

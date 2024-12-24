@@ -1,10 +1,11 @@
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use tokio::sync::RwLock;
+use log::{info, warn};
 
 use crate::config::Settings;
 use crate::models::metadata::MetadataStore;
 use crate::services::graph_service::GraphService;
-use crate::services::file_service::RealGitHubService;
+use crate::services::file_service::{FileService, RealGitHubService};
 use crate::services::github_service::RealGitHubPRService;
 use crate::services::perplexity_service::PerplexityService;
 use crate::services::ragflow_service::RAGFlowService;
@@ -12,7 +13,7 @@ use crate::utils::gpu_compute::GPUCompute;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub graph_service: GraphService,
+    pub graph_service: Arc<GraphService>,
     pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     pub settings: Arc<RwLock<Settings>>,
     pub metadata: Arc<RwLock<MetadataStore>>,
@@ -47,7 +48,7 @@ impl AppState {
         };
 
         // Initialize graph service with metadata
-        let graph_service = GraphService::new_with_metadata(&metadata_store);
+        let graph_service = Arc::new(GraphService::new_with_metadata(&metadata_store).await);
 
         Self {
             graph_service,

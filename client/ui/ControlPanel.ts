@@ -1,19 +1,7 @@
 import { Settings } from '../types/settings';
-import { settingsManager } from '../state/settings';
-import { platformManager } from '../platform/platformManager';
 import { createLogger } from '../core/logger';
-import {
-    SettingsCategory,
-    SettingsPath,
-    SettingValue,
-    formatSettingName,
-    getSettingInputType,
-    getStepValue,
-    isSettingsObject,
-    getAllSettingPaths
-} from '../types/settings/utils';
+import { SettingsStore } from '../state/SettingsStore';
 import './ControlPanel.css';
-import { NodeManager } from '../rendering/nodes';
 
 const logger = createLogger('ControlPanel');
 
@@ -21,230 +9,263 @@ export class ControlPanel {
     private container: HTMLElement;
     private settings: Settings;
     private unsubscribers: Array<() => void> = [];
+    private settingsStore: SettingsStore;
 
     constructor(container: HTMLElement) {
         this.container = container;
-        this.settings = settingsManager.getCurrentSettings();
-        this.addRandomizeButton();
+        this.settingsStore = SettingsStore.getInstance();
+        this.settings = {} as Settings;
         this.initializePanel();
-        this.setupSettingsSubscriptions();
     }
 
-    private addRandomizeButton(): void {
-        const buttonContainer = document.createElement('div');
-        buttonContainer.className = 'randomize-button-container';
+    private async initializePanel(): Promise<void> {
+        try {
+            await this.settingsStore.initialize();
+            this.settings = this.settingsStore.get('') as Settings;
+            this.createPanelElements();
+            this.setupSettingsSubscriptions();
+        } catch (error) {
+            logger.error('Failed to initialize control panel:', error);
+        }
+    }
 
-        const button = document.createElement('button');
-        button.textContent = 'Randomize Node Positions';
-        button.className = 'randomize-button';
-        button.onclick = () => {
-            const nodeManager = NodeManager.getInstance();
-            const nodes = nodeManager.getCurrentNodes();
+    private createPanelElements(): void {
+        // Clear existing content
+        this.container.innerHTML = '';
+
+        // Create settings sections
+        const flatSettings = this.flattenSettings(this.settings);
+        const groupedSettings = this.groupSettingsByCategory(flatSettings);
+
+        for (const [category, settings] of Object.entries(groupedSettings)) {
+            const section = this.createSection(category);
             
-            const radius = 50;
-            nodes.forEach(node => {
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(2 * Math.random() - 1);
-                const r = radius * Math.cbrt(Math.random());
-
-                node.data.position = {
-                    x: r * Math.sin(phi) * Math.cos(theta),
-                    y: r * Math.sin(phi) * Math.sin(theta),
-                    z: r * Math.cos(phi)
-                };
-            });
-
-            nodeManager.updateNodes(nodes);
-            logger.info('Node positions randomized');
-        };
-
-        buttonContainer.appendChild(button);
-        this.container.insertBefore(buttonContainer, this.container.firstChild);
+            for (const [path, value] of Object.entries(settings)) {
+                const control = this.createSettingControl(path, value);
+                if (control) {
+                    section.appendChild(control);
+                }
+            }
+            
+            this.container.appendChild(section);
+        }
     }
 
-    private initializePanel(): void {
-        // Create main sections
-        this.createSettingsGroup('visualization', 'Visualization');
+    private flattenSettings(obj: unknown, prefix: string = ''): Record<string, unknown> {
+        const result: Record<string, unknown> = {};
         
-        if (platformManager.getCapabilities().xrSupported) {
-            this.createXRSettingsSection();
+        if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+            for (const [key, value] of Object.entries(obj)) {
+                const newKey = prefix ? `${prefix}.${key}` : key;
+                
+                if (value && typeof value === 'object' && !Array.isArray(value)) {
+                    Object.assign(result, this.flattenSettings(value, newKey));
+                } else {
+                    result[newKey] = value;
+                }
+            }
         }
         
-        this.createSettingsGroup('system', 'System');
+        return result;
     }
 
-    private createXRSettingsSection(): void {
-        const xrSection = document.createElement('div');
-        xrSection.className = 'settings-group';
+    private groupSettingsByCategory(flatSettings: Record<string, unknown>): Record<string, Record<string, unknown>> {
+        const result: Record<string, Record<string, unknown>> = {};
         
-        const title = document.createElement('h3');
-        title.textContent = 'XR Settings';
-        xrSection.appendChild(title);
-
-        // Add XR mode toggle
-        const xrToggle = document.createElement('button');
-        xrToggle.id = 'xr-toggle';
-        xrToggle.textContent = 'Enter XR';
-        xrToggle.className = 'xr-toggle-button';
-        xrToggle.addEventListener('click', () => {
-            window.dispatchEvent(new CustomEvent('toggleXR'));
-        });
-        xrSection.appendChild(xrToggle);
-
-        // Create subsections for XR settings
-        const subsections = [
-            { key: 'input', title: 'Input & Interaction' },
-            { key: 'visuals', title: 'Visual Settings' },
-            { key: 'environment', title: 'Environment' },
-            { key: 'passthrough', title: 'Passthrough' }
-        ];
-
-        subsections.forEach(({ key, title }) => {
-            const subsection = document.createElement('div');
-            subsection.className = 'settings-subsection';
-            
-            const subtitle = document.createElement('h4');
-            subtitle.textContent = title;
-            subsection.appendChild(subtitle);
-
-            const settings = this.settings.xr[key as keyof typeof this.settings.xr];
-            if (settings && typeof settings === 'object') {
-                this.createSettingsElements(subsection, `xr.${key}`, settings);
+        for (const [path, value] of Object.entries(flatSettings)) {
+            const category = path.split('.')[0];
+            if (!result[category]) {
+                result[category] = {};
             }
-            
-            xrSection.appendChild(subsection);
-        });
-
-        this.container.appendChild(xrSection);
-    }
-
-    private createSettingsGroup(category: SettingsCategory, title: string): void {
-        const group = document.createElement('div');
-        group.className = 'settings-group';
+            result[category][path] = value;
+        }
         
-        const groupTitle = document.createElement('h3');
-        groupTitle.textContent = title;
-        group.appendChild(groupTitle);
-
-        const categorySettings = this.settings[category];
-        Object.entries(categorySettings).forEach(([key, value]) => {
-            if (isSettingsObject(value)) {
-                const subsection = document.createElement('div');
-                subsection.className = 'settings-subsection';
-                
-                const subtitle = document.createElement('h4');
-                subtitle.textContent = formatSettingName(key);
-                subsection.appendChild(subtitle);
-
-                this.createSettingsElements(subsection, `${category}.${key}`, value);
-                group.appendChild(subsection);
-            }
-        });
-
-        this.container.appendChild(group);
+        return result;
     }
 
-    private createSettingsElements(container: HTMLElement, path: SettingsPath, settings: Record<string, any>): void {
-        Object.entries(settings).forEach(([key, value]) => {
-            if (!isSettingsObject(value)) {
-                const settingElement = this.createSettingElement(`${path}.${key}` as SettingsPath, value);
-                container.appendChild(settingElement);
-            }
-        });
+    private createSection(category: string): HTMLElement {
+        const section = document.createElement('div');
+        section.className = 'settings-section';
+        
+        const header = document.createElement('h2');
+        header.textContent = this.formatCategoryName(category);
+        section.appendChild(header);
+        
+        return section;
     }
 
-    private createSettingElement(path: SettingsPath, value: SettingValue): HTMLElement {
+    private createSettingControl(path: string, value: unknown): HTMLElement | null {
         const container = document.createElement('div');
-        container.className = 'setting-item';
-
+        container.className = 'setting-control';
+        
         const label = document.createElement('label');
-        label.textContent = formatSettingName(path.split('.').pop()!);
+        label.textContent = this.formatSettingName(path.split('.').pop()!);
         container.appendChild(label);
-
-        const input = this.createInputElement(path, value);
-        container.appendChild(input);
-
+        
+        const control = this.createInputElement(path, value);
+        if (!control) {
+            return null;
+        }
+        
+        container.appendChild(control);
         return container;
     }
 
-    private createInputElement(path: SettingsPath, value: SettingValue): HTMLElement {
-        const input = document.createElement('input');
-        const inputType = getSettingInputType(value);
-        input.type = inputType;
-
-        switch (inputType) {
-            case 'checkbox':
-                input.checked = value as boolean;
-                break;
-            case 'number':
-                input.value = String(value);
-                input.step = getStepValue(path.split('.').pop()!);
-                break;
-            default:
-                input.value = String(value);
+    private createInputElement(path: string, value: unknown): HTMLElement | null {
+        const type = this.getInputType(value);
+        if (!type) {
+            return null;
         }
 
-        input.id = path;
-        input.addEventListener('change', (event) => this.handleSettingChange(path, event));
+        let input: HTMLElement;
+        
+        switch (type) {
+            case 'checkbox':
+                input = document.createElement('input');
+                (input as HTMLInputElement).type = 'checkbox';
+                (input as HTMLInputElement).checked = value as boolean;
+                input.onchange = (e: Event) => {
+                    const target = e.target as HTMLInputElement;
+                    this.settingsStore.set(path, target.checked);
+                };
+                break;
+
+            case 'number':
+                input = document.createElement('input');
+                (input as HTMLInputElement).type = 'number';
+                (input as HTMLInputElement).value = String(value);
+                (input as HTMLInputElement).step = this.getStepValue(path);
+                input.onchange = (e: Event) => {
+                    const target = e.target as HTMLInputElement;
+                    this.settingsStore.set(path, parseFloat(target.value));
+                };
+                break;
+
+            case 'color':
+                input = document.createElement('input');
+                (input as HTMLInputElement).type = 'color';
+                (input as HTMLInputElement).value = value as string;
+                input.onchange = (e: Event) => {
+                    const target = e.target as HTMLInputElement;
+                    this.settingsStore.set(path, target.value);
+                };
+                break;
+
+            case 'select':
+                input = document.createElement('select');
+                if (Array.isArray(value)) {
+                    value.forEach(option => {
+                        const opt = document.createElement('option');
+                        opt.value = String(option);
+                        opt.textContent = String(option);
+                        input.appendChild(opt);
+                    });
+                }
+                input.onchange = (e: Event) => {
+                    const target = e.target as HTMLSelectElement;
+                    this.settingsStore.set(path, target.value);
+                };
+                break;
+
+            default:
+                input = document.createElement('input');
+                (input as HTMLInputElement).type = 'text';
+                (input as HTMLInputElement).value = String(value);
+                input.onchange = (e: Event) => {
+                    const target = e.target as HTMLInputElement;
+                    this.settingsStore.set(path, target.value);
+                };
+        }
+
+        input.id = `setting-${path}`;
         return input;
     }
 
-    private async handleSettingChange(path: SettingsPath, event: Event): Promise<void> {
-        const target = event.target as HTMLInputElement;
-        let value: SettingValue;
-
-        switch (target.type) {
-            case 'checkbox':
-                value = target.checked;
-                break;
+    private getInputType(value: unknown): string | null {
+        switch (typeof value) {
+            case 'boolean':
+                return 'checkbox';
             case 'number':
-                value = parseFloat(target.value);
-                break;
+                return 'number';
+            case 'string':
+                if (value.match(/^#[0-9a-f]{6}$/i)) {
+                    return 'color';
+                }
+                return 'text';
+            case 'object':
+                if (Array.isArray(value)) {
+                    return 'select';
+                }
+                return null;
             default:
-                value = target.value;
-        }
-
-        try {
-            await settingsManager.updateSetting(path, value);
-            logger.info(`Updated setting ${path} to ${value}`);
-        } catch (error) {
-            logger.error(`Failed to update setting ${path}:`, error);
-            this.revertSettingValue(path, target);
+                return null;
         }
     }
 
-    private revertSettingValue(path: SettingsPath, input: HTMLInputElement): void {
-        const value = settingsManager.get(path);
-        if (input.type === 'checkbox') {
-            input.checked = value as boolean;
-        } else {
-            input.value = String(value);
+    private getStepValue(path: string): string {
+        if (path.includes('opacity') || path.includes('strength')) {
+            return '0.1';
         }
+        return '1';
+    }
+
+    private formatCategoryName(category: string): string {
+        return category
+            .split(/(?=[A-Z])/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    }
+
+    private formatSettingName(setting: string): string {
+        return setting
+            .split(/(?=[A-Z])/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
     }
 
     private setupSettingsSubscriptions(): void {
-        const paths = getAllSettingPaths(this.settings);
-        paths.forEach(path => {
-            const unsubscribe = settingsManager.subscribe(path, (value) => {
+        // Clear existing subscriptions
+        this.unsubscribers.forEach(unsub => unsub());
+        this.unsubscribers = [];
+
+        const flatSettings = this.flattenSettings(this.settings);
+        for (const path of Object.keys(flatSettings)) {
+            const unsubscribe = this.settingsStore.subscribe(path, (_: string, value: unknown) => {
                 this.updateSettingElement(path, value);
             });
             this.unsubscribers.push(unsubscribe);
-        });
+        }
     }
 
-    private updateSettingElement(path: SettingsPath, value: SettingValue): void {
-        const input = document.getElementById(path) as HTMLInputElement;
-        if (input) {
-            if (input.type === 'checkbox') {
-                input.checked = value as boolean;
-            } else {
-                input.value = String(value);
+    private updateSettingElement(path: string, value: unknown): void {
+        const element = document.getElementById(`setting-${path}`);
+        if (!element) {
+            logger.warn(`No element found for setting: ${path}`);
+            return;
+        }
+
+        if (element instanceof HTMLInputElement) {
+            switch (element.type) {
+                case 'checkbox':
+                    element.checked = value as boolean;
+                    break;
+                case 'number':
+                    element.value = String(value);
+                    break;
+                case 'color':
+                    element.value = value as string;
+                    break;
+                default:
+                    element.value = String(value);
             }
+        } else if (element instanceof HTMLSelectElement) {
+            element.value = String(value);
         }
     }
 
     public dispose(): void {
-        this.unsubscribers.forEach(unsubscribe => unsubscribe());
+        this.unsubscribers.forEach(unsub => unsub());
         this.unsubscribers = [];
+        this.container.innerHTML = '';
     }
 }

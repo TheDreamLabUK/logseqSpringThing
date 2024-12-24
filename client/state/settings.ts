@@ -74,7 +74,7 @@ export class SettingsManager {
 
         return this.store.subscribe(path, (_, value) => {
             try {
-                callback(value);
+                callback(value as SettingValue);
             } catch (error) {
                 logger.error(`Error in settings subscriber for ${path}:`, error);
             }

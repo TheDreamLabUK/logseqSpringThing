@@ -36,6 +36,7 @@ export class XRInteraction {
     private handGestureStates: Map<number, HandGestureType> = new Map();
     private updateBatch: Map<string, THREE.Vector3> = new Map();
     private batchUpdateTimeout: NodeJS.Timeout | null = null;
+    private settingsUnsubscribers: Array<() => void> = [];
 
     private constructor(xrManager: XRSessionManager, nodeManager: NodeManager) {
         this.xrManager = xrManager;
@@ -92,33 +93,23 @@ export class XRInteraction {
     }
 
     private setupSettingsSubscription(): void {
-        // Subscribe to all XR input settings changes
-        const inputSettings = [
-            'enableHandTracking',
-            'enableHaptics',
+        // Clear any existing subscriptions
+        this.settingsUnsubscribers.forEach(unsub => unsub());
+        this.settingsUnsubscribers = [];
+
+        // Subscribe to XR input settings
+        [
             'hapticIntensity',
             'dragThreshold',
             'pinchThreshold',
             'rotationThreshold',
             'interactionRadius'
-        ];
-
-        inputSettings.forEach(setting => {
-            this.settingsStore.subscribe(`xr.input.${setting}`, (value) => {
-                if (this.settings.xr) {
-                    this.settings = {
-                        ...this.settings,
-                        xr: {
-                            ...this.settings.xr,
-                            input: {
-                                ...this.settings.xr.input,
-                                [setting]: value
-                            }
-                        }
-                    };
-                }
+        ].forEach(setting => {
+            const unsubscribe = this.settingsStore.subscribe(`xr.input.${setting}`, () => {
+                // Handle setting change
                 this.updateXRFeatures();
             });
+            this.settingsUnsubscribers.push(unsubscribe);
         });
     }
 
@@ -295,6 +286,10 @@ export class XRInteraction {
     }
 
     public dispose(): void {
+        // Clean up subscriptions
+        this.settingsUnsubscribers.forEach(unsub => unsub());
+        this.settingsUnsubscribers = [];
+
         if (this.batchUpdateTimeout) {
             clearTimeout(this.batchUpdateTimeout);
             this.batchUpdateTimeout = null;
@@ -302,20 +297,6 @@ export class XRInteraction {
 
         // Flush any remaining updates
         this.flushPositionUpdates();
-
-        // Clear subscriptions
-        // Unsubscribe from all XR input settings
-        [
-            'enableHandTracking',
-            'enableHaptics',
-            'hapticIntensity',
-            'dragThreshold',
-            'pinchThreshold',
-            'rotationThreshold',
-            'interactionRadius'
-        ].forEach(setting => {
-            this.settingsStore.unsubscribe(`xr.input.${setting}`, () => {});
-        });
 
         // Clear data structures
         this.controllers = [];

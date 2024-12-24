@@ -166,6 +166,17 @@ test_environment() {
     # Test other endpoints
     test_endpoint "$base_url/api/graph/data" "$env graph data" || ((failed++))
     
+    # Test settings endpoints
+    test_endpoint "$base_url/api/settings/visualization" "$env visualization settings" || ((failed++))
+    test_endpoint "$base_url/api/settings/visualization/animations/enable_motion_blur" "$env enable motion blur setting" || ((failed++))
+    test_endpoint "$base_url/api/settings/visualization/bloom/enabled" "$env bloom enabled setting" || ((failed++))
+    
+    # Test updating a setting
+    test_endpoint "$base_url/api/settings/visualization/animations/enable_motion_blur" "$env update enable motion blur setting" "PUT" '{"value": true}' || ((failed++))
+    
+    # Test saving settings
+    test_endpoint "$base_url/api/settings/save" "$env save settings" "PUT" || ((failed++))
+    
     # Test WebSocket endpoints
     local ws_protocol="ws"
     [[ "$base_url" == https://* ]] && ws_protocol="wss"

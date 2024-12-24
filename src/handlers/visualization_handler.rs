@@ -1,8 +1,8 @@
 use crate::config::Settings;
-use actix_web::{get, put, web, HttpResponse};
+use actix_web::{get, put, web, HttpResponse, Responder};
 use log::{error, info, debug};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -285,117 +285,178 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
     Ok(())
 }
 
-// GET /settings/{category}
-#[get("/settings/{category}")]
-pub async fn get_category_settings(
+// Flattened API endpoints for settings
+#[get("/settings")]
+pub async fn get_all_settings(
+    settings: web::Data<Arc<RwLock<Settings>>>,
+) -> HttpResponse {
+    let settings_read = settings.read().await;
+    let all_settings = serde_json::to_value(&*settings_read).unwrap_or_default();
+    
+    // Convert all keys to camelCase for client
+    let flattened = flatten_and_convert_case(&all_settings);
+    HttpResponse::Ok().json(flattened)
+}
+
+#[get("/settings/{path:.*}")]
+pub async fn get_setting(
     settings: web::Data<Arc<RwLock<Settings>>>,
     path: web::Path<String>,
 ) -> HttpResponse {
     let settings_read = settings.read().await;
-    let debug_enabled = settings_read.system.debug.enabled;
-    let log_json = debug_enabled && settings_read.system.debug.log_full_json;
+    let path_str = path.into_inner();
     
-    let category = path.into_inner();
-    match get_setting_value(&settings_read, &category, "") {
+    // Convert camelCase path to snake_case for internal lookup
+    let internal_path = to_snake_case(&path_str);
+    match get_setting_by_path(&settings_read, &internal_path) {
         Ok(value) => {
-            if log_json {
-                debug!("Category '{}' settings: {}", category, serde_json::to_string_pretty(&value).unwrap_or_default());
-            }
-            // The client expects the settings directly, not wrapped in a response object
-            let settings_map: HashMap<String, Value> = value.as_object()
-                .map(|m| m.iter().map(|(k, v)| {
-                    // Convert snake_case keys to camelCase for client
-                    (to_camel_case(k), v.clone())
-                }).collect())
-                .unwrap_or_default();
-            
-            HttpResponse::Ok().json(settings_map)
+            let converted = convert_value_case_to_camel(&value);
+            HttpResponse::Ok().json(converted)
         },
-        Err(e) => {
-            error!("Failed to get category settings for '{}': {}", category, e);
-            // Return empty object for 404s as client expects
-            HttpResponse::NotFound().json(HashMap::<String, Value>::new())
-        }
+        Err(e) => HttpResponse::NotFound().json(json!({
+            "error": format!("Setting not found: {}", e)
+        }))
     }
 }
 
-// GET /settings/{category}/{setting}
-#[get("/settings/{category}/{setting}")]
-pub async fn get_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
-    path: web::Path<(String, String)>,
-) -> HttpResponse {
-    let (category, setting) = path.into_inner();
-    info!("Getting setting for category: {}, setting: {}", category, setting);
-    
-    let settings_guard = settings.read().await;
-
-    match get_setting_value(&*settings_guard, &category, &setting) {
-        Ok(value) => {
-            debug!("Successfully retrieved setting value: {:?}", value);
-            HttpResponse::Ok().json(value)
-        },
-        Err(e) => {
-            error!("Failed to get setting value: {}", e);
-            HttpResponse::NotFound().json(Value::Null)
-        }
-    }
-}
-
-// PUT /settings/{category}/{setting}
-#[put("/settings/{category}/{setting}")]
-pub async fn update_setting(
-    settings: web::Data<Arc<RwLock<Settings>>>,
+#[put("/api/settings/{category}/{setting}")]
+async fn update_visualization_setting(
     path: web::Path<(String, String)>,
     value: web::Json<Value>,
-) -> HttpResponse {
+    settings: web::Data<Arc<RwLock<Settings>>>,
+) -> impl Responder {
     let (category, setting) = path.into_inner();
-    debug!("Raw value from client: {:?}", value);
-    info!("Updating setting for category: {}, setting: {}", category, setting);
+    let path_str = format!("{}.{}", category, setting);
     
+    // Get write lock for settings update
     let mut settings_guard = settings.write().await;
-
-    // Extract the actual value from the client's JSON structure
-    let actual_value = if let Some(obj) = value.as_object() {
-        if let Some(val) = obj.get("value") {
-            val
-        } else {
-            &value
-        }
-    } else {
-        &value
-    };
-
-    match update_setting_value(&mut *settings_guard, &category, &setting, actual_value) {
+    match update_setting_by_path(&mut *settings_guard, &path_str, &value) {
         Ok(_) => {
-            // Get the actual updated value for the response
-            match get_setting_value(&*settings_guard, &category, &setting) {
-                Ok(updated_value) => {
-                    if let Err(e) = save_settings_to_file(&*settings_guard) {
-                        error!("Failed to save settings to file: {}", e);
-                        return HttpResponse::InternalServerError().json(Value::Null);
-                    }
-                    // Return just the updated value as the client expects
-                    HttpResponse::Ok().json(updated_value)
-                },
+            // Convert settings to Value without moving it
+            match serde_json::to_value(&*settings_guard) {
+                Ok(settings_value) => HttpResponse::Ok().json(settings_value),
                 Err(e) => {
-                    error!("Failed to get updated setting value: {}", e);
-                    HttpResponse::InternalServerError().json(Value::Null)
+                    error!("Failed to serialize settings: {}", e);
+                    HttpResponse::InternalServerError().json(json!({
+                        "error": format!("Failed to serialize settings: {}", e)
+                    }))
                 }
             }
         },
         Err(e) => {
-            error!("Failed to update setting value: {}", e);
-            HttpResponse::NotFound().json(Value::Null)
+            error!("Failed to update setting: {}", e);
+            HttpResponse::BadRequest().json(json!({
+                "error": format!("Failed to update setting: {}", e)
+            }))
         }
+    }
+}
+
+// Helper function to flatten settings and convert to camelCase
+fn flatten_and_convert_case(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut flattened = serde_json::Map::new();
+            flatten_object_recursive(map, "", &mut flattened);
+            Value::Object(flattened)
+        },
+        _ => value.clone(),
+    }
+}
+
+// Recursively flatten nested objects with dot notation
+fn flatten_object_recursive(
+    obj: &serde_json::Map<String, Value>,
+    prefix: &str,
+    output: &mut serde_json::Map<String, Value>
+) {
+    for (key, value) in obj {
+        let new_key = if prefix.is_empty() {
+            to_camel_case(key)
+        } else {
+            format!("{}.{}", prefix, to_camel_case(key))
+        };
+
+        match value {
+            Value::Object(nested) => {
+                flatten_object_recursive(nested, &new_key, output);
+            },
+            _ => {
+                output.insert(new_key, value.clone());
+            }
+        }
+    }
+}
+
+// Helper function to get a setting by its dot-notation path
+fn get_setting_by_path(settings: &Settings, path: &str) -> Result<Value, String> {
+    let parts: Vec<&str> = path.split('.').collect();
+    let mut current = serde_json::to_value(settings).unwrap();
+    
+    for part in parts {
+        match current {
+            Value::Object(map) => {
+                current = map.get(part)
+                    .ok_or_else(|| format!("Setting not found: {}", part))?
+                    .clone();
+            },
+            _ => return Err(format!("Invalid path: {}", path)),
+        }
+    }
+    
+    Ok(current)
+}
+
+// Helper function to update a setting by its dot-notation path
+fn update_setting_by_path(settings: &mut Settings, path: &str, value: &Value) -> Result<(), String> {
+    let parts: Vec<&str> = path.split('.').collect();
+    let mut current = serde_json::to_value(&*settings).unwrap();
+    
+    // Navigate to the parent object
+    let parent_path = &parts[..parts.len()-1];
+    let mut parent = &mut current;
+    for part in parent_path {
+        parent = parent.get_mut(part)
+            .ok_or_else(|| format!("Invalid path: {}", path))?;
+    }
+    
+    // Update the value
+    if let Value::Object(map) = parent {
+        let last_key = parts.last().unwrap();
+        map.insert(last_key.to_string(), value.clone());
+        
+        // Deserialize back into Settings
+        *settings = serde_json::from_value(current)
+            .map_err(|e| format!("Failed to deserialize settings: {}", e))?;
+        Ok(())
+    } else {
+        Err(format!("Invalid path: {}", path))
+    }
+}
+
+// Helper function to convert all object keys in a Value to camelCase
+fn convert_value_case_to_camel(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut new_map = serde_json::Map::new();
+            for (key, val) in map {
+                let camel_key = to_camel_case(key);
+                new_map.insert(camel_key, convert_value_case_to_camel(val));
+            }
+            Value::Object(new_map)
+        },
+        Value::Array(arr) => {
+            Value::Array(arr.iter().map(convert_value_case_to_camel).collect())
+        },
+        _ => value.clone(),
     }
 }
 
 // Register the handlers with the Actix web app
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(get_category_settings)
+    cfg.service(get_all_settings)
        .service(get_setting)
-       .service(update_setting);
+       .service(update_visualization_setting);
 }
 
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
