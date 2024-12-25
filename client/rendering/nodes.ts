@@ -129,12 +129,20 @@ export class NodeManager {
         for (let i = 0; i < count; i++) {
             const baseIndex = i * FLOATS_PER_NODE;
             
+            // Get position values
+            const x = positions[baseIndex];
+            const y = positions[baseIndex + 1];
+            const z = positions[baseIndex + 2];
+            
+            // Skip invalid positions
+            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) ||
+                Math.abs(x) > 1000 || Math.abs(y) > 1000 || Math.abs(z) > 1000) {
+                logger.warn(`Skipping invalid position for node ${i}: (${x}, ${y}, ${z})`);
+                continue;
+            }
+            
             // Update position
-            position.set(
-                positions[baseIndex],
-                positions[baseIndex + 1],
-                positions[baseIndex + 2]
-            );
+            position.set(x, y, z);
             
             // Set initial scale based on settings
             const baseSize = this.currentSettings.nodes.baseSize || 1;

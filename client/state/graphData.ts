@@ -331,6 +331,40 @@ export class GraphDataManager {
         return;
       }
 
+      // Check for invalid values
+      let hasInvalidValues = false;
+      for (let i = BINARY_HEADER_SIZE; i < floatArray.length; i++) {
+        const val = floatArray[i];
+        if (!Number.isFinite(val) || Math.abs(val) > 1000) {
+          logger.warn(`Invalid position value at index ${i}: ${val}`);
+          hasInvalidValues = true;
+          // Replace invalid value with 0
+          floatArray[i] = 0;
+        }
+      }
+
+      if (hasInvalidValues) {
+        logger.error('Received invalid position values from GPU, using fallback positions');
+        // Re-initialize positions
+        this.initializeNodePositions();
+        return;
+      }
+
+      // Log a sample of positions for debugging
+      const nodeCount = Math.floor((floatArray.length - BINARY_HEADER_SIZE) / 6);
+      logger.debug(`Received positions for ${nodeCount} nodes`);
+      if (nodeCount > 0) {
+        const firstNode = {
+          x: floatArray[BINARY_HEADER_SIZE],
+          y: floatArray[BINARY_HEADER_SIZE + 1],
+          z: floatArray[BINARY_HEADER_SIZE + 2],
+          vx: floatArray[BINARY_HEADER_SIZE + 3],
+          vy: floatArray[BINARY_HEADER_SIZE + 4],
+          vz: floatArray[BINARY_HEADER_SIZE + 5]
+        };
+        logger.debug('First node position:', firstNode);
+      }
+
       this.notifyPositionUpdateListeners(floatArray);
       this.lastUpdateTime = now;
     } catch (error) {
