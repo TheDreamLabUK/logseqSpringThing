@@ -137,41 +137,55 @@ export class GraphDataManager {
     }
   }
 
+  private initializeNodePositions(): void {
+    // Initialize node positions if they don't have positions yet
+    this.nodes.forEach(node => {
+      if (!node.data.position || (Array.isArray(node.data.position) && node.data.position.every(p => p === null))) {
+        node.data.position = {
+          x: (Math.random() - 0.5) * 20,
+          y: (Math.random() - 0.5) * 20,
+          z: (Math.random() - 0.5) * 20
+        };
+      }
+      if (!node.data.velocity) {
+        node.data.velocity = { x: 0, y: 0, z: 0 };
+      }
+    });
+
+    // Create initial position buffer
+    const buffer = new ArrayBuffer(this.nodes.size * NODE_POSITION_SIZE);
+    const positions = new Float32Array(buffer);
+    
+    let index = 0;
+    this.nodes.forEach(node => {
+      const pos = node.data.position;
+      positions[index * 6] = typeof pos.x === 'number' ? pos.x : 0;
+      positions[index * 6 + 1] = typeof pos.y === 'number' ? pos.y : 0;
+      positions[index * 6 + 2] = typeof pos.z === 'number' ? pos.z : 0;
+      positions[index * 6 + 3] = node.data.velocity.x;
+      positions[index * 6 + 4] = node.data.velocity.y;
+      positions[index * 6 + 5] = node.data.velocity.z;
+      index++;
+    });
+
+    // Notify listeners of initial positions
+    this.positionUpdateListeners.forEach(listener => {
+      listener(positions);
+    });
+  }
+
   private setupBinaryUpdates(): void {
+    // Always initialize positions
+    this.initializeNodePositions();
+    
     if (this.binaryUpdatesEnabled) {
-      // Initialize node positions if they don't have positions yet
-      this.nodes.forEach(node => {
-        if (!node.data.position) {
-          node.data.position = {
-            x: (Math.random() - 0.5) * 20,
-            y: (Math.random() - 0.5) * 20,
-            z: (Math.random() - 0.5) * 20
-          };
-        }
-        if (!node.data.velocity) {
-          node.data.velocity = { x: 0, y: 0, z: 0 };
-        }
-      });
-
-      // Create initial position buffer
-      const buffer = new ArrayBuffer(this.nodes.size * NODE_POSITION_SIZE);
-      const positions = new Float32Array(buffer);
-      
-      let index = 0;
-      this.nodes.forEach(node => {
-        positions[index * 6] = node.data.position.x;
-        positions[index * 6 + 1] = node.data.position.y;
-        positions[index * 6 + 2] = node.data.position.z;
-        positions[index * 6 + 3] = node.data.velocity.x;
-        positions[index * 6 + 4] = node.data.velocity.y;
-        positions[index * 6 + 5] = node.data.velocity.z;
-        index++;
-      });
-
-      // Notify listeners of initial positions
-      this.positionUpdateListeners.forEach(listener => {
-        listener(positions);
-      });
+      // Send message to server to start receiving binary updates
+      if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+        window.ws.send(JSON.stringify({ type: 'enableBinaryUpdates' }));
+        logger.log('Requested binary updates from server');
+      } else {
+        logger.warn('WebSocket not ready, cannot enable binary updates');
+      }
     }
   }
 
@@ -196,22 +210,22 @@ export class GraphDataManager {
       data.nodes.forEach((node: any) => {
         // Convert position array to object if needed
         let position;
-        if (Array.isArray(node.position)) {
+        if (Array.isArray(node.data.position)) {
           position = {
-            x: node.position[0] || 0,
-            y: node.position[1] || 0,
-            z: node.position[2] || 0
+            x: node.data.position[0],
+            y: node.data.position[1], 
+            z: node.data.position[2]
           };
         } else {
-          position = node.position || { x: 0, y: 0, z: 0 };
+          position = node.data.position || null;
         }
-
-        logger.log(`Processing node ${node.id} with position:`, position);
 
         this.nodes.set(node.id, {
           ...node,
-          position,
-          label: node.label || node.id
+          data: {
+            ...node.data,
+            position
+          }
         });
       });
 
@@ -225,6 +239,9 @@ export class GraphDataManager {
 
       // Update metadata
       this.metadata = data.metadata || {};
+
+      // Initialize positions for new nodes
+      this.initializeNodePositions();
 
       // Notify listeners
       this.notifyUpdateListeners();
@@ -247,10 +264,44 @@ export class GraphDataManager {
     if (window.ws && window.ws.readyState === WebSocket.OPEN) {
       window.ws.send(JSON.stringify({ type: 'enableBinaryUpdates' }));
       this.binaryUpdatesEnabled = true;
-      logger.log('Enabled binary updates');
+      
+      // Send current positions to server to initialize GPU layout
+      this.sendPositionsToServer();
+      
+      logger.log('Enabled binary updates and sent initial positions');
     } else {
       logger.warn('WebSocket not ready, cannot enable binary updates');
     }
+  }
+
+  private sendPositionsToServer(): void {
+    if (!window.ws || window.ws.readyState !== WebSocket.OPEN) {
+      logger.warn('WebSocket not ready, cannot send positions to server');
+      return;
+    }
+
+    // Create binary buffer with current positions
+    const buffer = new ArrayBuffer(BINARY_HEADER_SIZE + this.nodes.size * NODE_POSITION_SIZE);
+    const positions = new Float32Array(buffer);
+    
+    // Set binary version in header
+    positions[0] = BINARY_VERSION;
+    
+    let index = 1; // Start after header
+    this.nodes.forEach(node => {
+      const pos = node.data.position;
+      positions[index * 6] = typeof pos.x === 'number' ? pos.x : 0;
+      positions[index * 6 + 1] = typeof pos.y === 'number' ? pos.y : 0;
+      positions[index * 6 + 2] = typeof pos.z === 'number' ? pos.z : 0;
+      positions[index * 6 + 3] = node.data.velocity.x;
+      positions[index * 6 + 4] = node.data.velocity.y;
+      positions[index * 6 + 5] = node.data.velocity.z;
+      index++;
+    });
+
+    // Send binary positions to server
+    window.ws.send(buffer);
+    logger.log('Sent initial positions to server for GPU layout');
   }
 
   /**
