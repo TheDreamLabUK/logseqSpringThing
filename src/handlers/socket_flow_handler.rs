@@ -3,21 +3,28 @@ use actix::prelude::*;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use tokio::sync::RwLock;
-use log::{info, debug, error};
+use log::{info, debug, error, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::{Duration, Instant};
 
 use crate::app_state::AppState;
 use crate::config::Settings;
+use crate::utils::socket_flow_constants::{
+    BINARY_PROTOCOL_VERSION,
+    HEARTBEAT_INTERVAL,
+    MAX_CLIENT_TIMEOUT,
+    FLOATS_PER_NODE,
+    VERSION_HEADER_SIZE,
+    NODE_DATA_SIZE,
+    MAX_CONNECTIONS,
+    MAX_MESSAGE_SIZE,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebSocketSettings {
     pub update_rate: u32,
 }
-
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
-const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
@@ -33,8 +40,15 @@ impl Actor for SocketFlowServer {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("[WebSocket] Client connected");
-        self.start_position_updates(ctx);
+        
+        // Initialize connection
+        self.app_state.increment_connections();
+        let current = self.app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
+        info!("[WebSocket] Active connections: {}", current);
+        
+        // Start heartbeat and position updates
         self.start_heartbeat(ctx);
+        self.start_position_updates(ctx);
     }
 
     fn stopped(&mut self, ctx: &mut Self::Context) {
@@ -44,6 +58,16 @@ impl Actor for SocketFlowServer {
         if let Some(handle) = self.heartbeat_handle.take() {
             ctx.cancel_future(handle);
         }
+        
+        // Cancel position updates
+        if let Some(handle) = self.update_handle.take() {
+            ctx.cancel_future(handle);
+        }
+        
+        // Decrement connection count
+        self.app_state.decrement_connections();
+        let current = self.app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
+        info!("[WebSocket] Remaining active connections: {}", current);
     }
 }
 
@@ -66,15 +90,19 @@ impl SocketFlowServer {
         }
 
         // Start heartbeat interval
-        let handle = ctx.run_interval(HEARTBEAT_INTERVAL, |actor, ctx| {
-            if Instant::now().duration_since(actor.last_heartbeat) > HEARTBEAT_TIMEOUT {
-                error!("[WebSocket] Client heartbeat timeout");
+        let handle = ctx.run_interval(Duration::from_secs(HEARTBEAT_INTERVAL), |actor, ctx| {
+            if Instant::now().duration_since(actor.last_heartbeat) > Duration::from_secs(MAX_CLIENT_TIMEOUT) {
+                warn!("[WebSocket] Client heartbeat timeout - last heartbeat: {:?} ago", 
+                    Instant::now().duration_since(actor.last_heartbeat));
                 actor.connection_alive = false;
                 ctx.stop();
                 return;
             }
 
-            ctx.ping(b"");
+            // Send ping with timestamp for latency tracking
+            let timestamp = Instant::now().elapsed().as_millis().to_string();
+            debug!("[WebSocket] Sending ping with timestamp: {}", timestamp);
+            ctx.ping(timestamp.as_bytes());
         });
 
         self.heartbeat_handle = Some(handle);
@@ -116,28 +144,32 @@ impl SocketFlowServer {
                 let fut = async move {
                     let nodes = app_state_clone.graph_service.get_node_positions().await;
                     
-                    // Create binary data: 24 bytes per node (6 f32s)
-                    let mut binary_data = Vec::with_capacity(nodes.len() * 24);
+                    // Create binary message
+                    let mut buffer = Vec::with_capacity(VERSION_HEADER_SIZE + nodes.len() * NODE_DATA_SIZE);
                     
+                    // Write version header
+                    buffer.extend_from_slice(&BINARY_PROTOCOL_VERSION.to_le_bytes());
+                    
+                    // Write node data
                     for node in nodes {
                         // Position (x, y, z)
-                        binary_data.extend_from_slice(&node.data.position[0].to_le_bytes());
-                        binary_data.extend_from_slice(&node.data.position[1].to_le_bytes());
-                        binary_data.extend_from_slice(&node.data.position[2].to_le_bytes());
+                        buffer.extend_from_slice(&node.data.position[0].to_le_bytes());
+                        buffer.extend_from_slice(&node.data.position[1].to_le_bytes());
+                        buffer.extend_from_slice(&node.data.position[2].to_le_bytes());
                         
                         // Velocity (x, y, z)
-                        binary_data.extend_from_slice(&node.data.velocity[0].to_le_bytes());
-                        binary_data.extend_from_slice(&node.data.velocity[1].to_le_bytes());
-                        binary_data.extend_from_slice(&node.data.velocity[2].to_le_bytes());
+                        buffer.extend_from_slice(&node.data.velocity[0].to_le_bytes());
+                        buffer.extend_from_slice(&node.data.velocity[1].to_le_bytes());
+                        buffer.extend_from_slice(&node.data.velocity[2].to_le_bytes());
                     }
                     
-                    binary_data
+                    buffer
                 };
                 
                 // Convert the future to an actix future and handle it
                 let fut = fut.into_actor(actor);
-                ctx.spawn(fut.map(|binary_data, _actor, ctx| {
-                    ctx.binary(binary_data);
+                ctx.spawn(fut.map(|buffer, _actor, ctx| {
+                    ctx.binary(buffer);
                 }));
             });
 
@@ -146,28 +178,6 @@ impl SocketFlowServer {
     }
 }
 
-// Message for updating WebSocket settings
-#[derive(Message, Debug)]
-#[rtype(result = "()")]
-pub struct WebSocketSettingsChanged;
-
-// Implement marker traits for SocketFlowServer
-impl Unpin for SocketFlowServer {}
-
-// Make SocketFlowServer properly sized
-impl actix::Supervised for SocketFlowServer {}
-
-// Implement proper handler for WebSocket settings changes
-impl Handler<WebSocketSettingsChanged> for SocketFlowServer {
-    type Result = ();
-
-    fn handle(&mut self, _: WebSocketSettingsChanged, ctx: &mut <Self as Actor>::Context) {
-        debug!("Restarting position updates with new settings");
-        self.start_position_updates(ctx);
-    }
-}
-
-// Implement proper handler for WebSocket messages
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut <Self as Actor>::Context) {
         if !self.connection_alive {
@@ -177,74 +187,134 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
 
         match msg {
             Ok(ws::Message::Binary(bin)) => {
-                // Handle binary node updates from client
-                if bin.len() % 12 != 0 {
-                    error!("[WebSocket] Malformed binary message: length {} is not a multiple of 12 bytes", bin.len());
+                // Validate message size
+                if bin.len() > MAX_MESSAGE_SIZE {
+                    error!("[WebSocket] Message too large: {} bytes", bin.len());
                     ctx.text(json!({
-                        "error": "Malformed binary message: incorrect length"
+                        "error": format!("Message exceeds maximum size of {} bytes", MAX_MESSAGE_SIZE)
                     }).to_string());
                     return;
                 }
 
-                let mut positions = Vec::with_capacity(bin.len() / 12);
-                    for (i, chunk) in bin.chunks_exact(12).enumerate() {
-                        let mut position = [0.0f32; 3];
-                        for j in 0..3 {
-                            let start = j * 4;
-                            let end = start + 4;
-                            
-                            match chunk[start..end].try_into() {
-                                Ok(bytes) => {
-                                    position[j] = f32::from_le_bytes(bytes);
-                                    
-                                    // Validate the float value
-                                    if !position[j].is_finite() {
-                                        error!("[WebSocket] Invalid float value at position {}, component {}: {}", i, j, position[j]);
-                                        ctx.text(json!({
-                                            "error": format!("Invalid float value at position {}, component {}", i, j)
-                                        }).to_string());
-                                        return;
-                                    }
-                                },
-                                Err(e) => {
-                                    error!("[WebSocket] Failed to convert bytes to float at position {}, component {}: {}", i, j, e);
+                // Validate binary message structure
+                if bin.len() < VERSION_HEADER_SIZE || 
+                   (bin.len() - VERSION_HEADER_SIZE) % NODE_DATA_SIZE != 0 {
+                    error!("[WebSocket] Malformed binary message: length {} is invalid", bin.len());
+                    ctx.text(json!({
+                        "error": "Malformed binary message: invalid length"
+                    }).to_string());
+                    return;
+                }
+
+                // Read version header
+                let version = i32::from_le_bytes(bin[..VERSION_HEADER_SIZE].try_into().unwrap());
+                if version != BINARY_PROTOCOL_VERSION {
+                    error!("[WebSocket] Invalid protocol version: {}", version);
+                    ctx.text(json!({
+                        "error": format!("Invalid protocol version: {}", version)
+                    }).to_string());
+                    return;
+                }
+
+                // Process node data
+                let node_count = (bin.len() - VERSION_HEADER_SIZE) / NODE_DATA_SIZE;
+                let mut positions = Vec::with_capacity(node_count);
+                
+                for i in 0..node_count {
+                    let offset = VERSION_HEADER_SIZE + i * NODE_DATA_SIZE;
+                    let mut position = [0.0f32; 3];
+                    
+                    for j in 0..3 {
+                        let start = offset + j * std::mem::size_of::<f32>();
+                        let end = start + std::mem::size_of::<f32>();
+                        
+                        match bin[start..end].try_into() {
+                            Ok(bytes) => {
+                                position[j] = f32::from_le_bytes(bytes);
+                                if !position[j].is_finite() {
+                                    error!("[WebSocket] Invalid float value at position {}, component {}: {}", 
+                                        i, j, position[j]);
                                     ctx.text(json!({
-                                        "error": format!("Failed to convert bytes to float at position {}, component {}", i, j)
+                                        "error": format!("Invalid float value at position {}, component {}", i, j)
                                     }).to_string());
                                     return;
                                 }
+                            },
+                            Err(e) => {
+                                error!("[WebSocket] Failed to convert bytes to float at position {}, component {}: {}", 
+                                    i, j, e);
+                                ctx.text(json!({
+                                    "error": format!("Failed to convert bytes to float at position {}, component {}", i, j)
+                                }).to_string());
+                                return;
                             }
                         }
-
-                        positions.push(position);
                     }
 
-                    debug!("Successfully processed {} node position updates", positions.len());
+                    positions.push(position);
+                }
+
+                debug!("[WebSocket] Successfully processed {} node position updates", positions.len());
             }
-            // Handle protocol-level close frames
             Ok(ws::Message::Close(reason)) => {
                 info!("[WebSocket] Client disconnected: {:?}", reason);
                 self.connection_alive = false;
                 ctx.close(reason);
                 ctx.stop();
             }
-            // Handle ping frames
             Ok(ws::Message::Ping(msg)) => {
                 debug!("[WebSocket] Received ping");
+                self.last_heartbeat = Instant::now();
                 ctx.pong(&msg);
             },
-            // Handle pong frames (heartbeat response)
             Ok(ws::Message::Pong(_)) => {
                 debug!("[WebSocket] Received pong");
                 self.last_heartbeat = Instant::now();
             },
-            // Handle protocol errors
             Err(e) => {
                 error!("[WebSocket] Protocol error: {}", e);
                 self.connection_alive = false;
                 ctx.stop();
             }
             _ => ()
+        }
+    }
+}
+
+pub async fn socket_flow_handler(
+    req: HttpRequest,
+    stream: web::Payload,
+    app_state: web::Data<AppState>,
+    settings: web::Data<Arc<RwLock<Settings>>>,
+) -> Result<HttpResponse, Error> {
+    // Enhanced connection debugging
+    info!("[WebSocket] New connection request from {:?}", req.peer_addr());
+    debug!("[WebSocket] Headers: {:?}", req.headers());
+    debug!("[WebSocket] URI: {:?}", req.uri());
+    
+    // Check connection limits
+    let current_connections = app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
+    if current_connections >= MAX_CONNECTIONS {
+        error!("[WebSocket] Connection limit reached: {}/{}", current_connections, MAX_CONNECTIONS);
+        return Ok(HttpResponse::ServiceUnavailable().json(json!({
+            "error": "Connection limit reached"
+        })));
+    }
+
+    let server = SocketFlowServer::new(
+        app_state.into_inner(),
+        settings.get_ref().clone()
+    );
+    
+    info!("[WebSocket] Starting connection");
+    match ws::start(server, &req, stream) {
+        Ok(response) => {
+            info!("[WebSocket] Connection established successfully");
+            Ok(response)
+        }
+        Err(e) => {
+            error!("[WebSocket] Failed to establish connection: {}", e);
+            Err(e)
         }
     }
 }
@@ -281,21 +351,7 @@ pub async fn update_websocket_settings(
 
     let mut settings = settings.write().await;
     settings.system.websocket.update_rate = new_settings.update_rate;
-    debug!("Updated WebSocket update rate to: {}", new_settings.update_rate);
-
-    // Notify all active WebSocket connections to update their intervals
-    // This would be handled by your WebSocket connection manager if you have one
-    // For now, we just return success
+    debug!("[WebSocket] Updated update rate to: {}", new_settings.update_rate);
     
     Ok(HttpResponse::Ok().json(new_settings.0))
-}
-
-pub async fn socket_flow_handler(
-    req: HttpRequest,
-    stream: web::Payload,
-    app_state: web::Data<AppState>,
-    settings: web::Data<Arc<RwLock<Settings>>>,
-) -> Result<HttpResponse, Error> {
-    let server = SocketFlowServer::new(app_state.into_inner(), settings.get_ref().clone());
-    ws::start(server, &req, stream)
 }
