@@ -10,6 +10,7 @@ use crate::utils::socket_flow_messages::{PingMessage, PongMessage};
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
+    #[allow(dead_code)]
     settings: Arc<RwLock<crate::config::Settings>>,
     last_ping: Option<u64>,
 }
