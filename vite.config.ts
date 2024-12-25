@@ -14,13 +14,7 @@ export default defineConfig(({ mode, command }) => {
       outDir: resolve(__dirname, 'data/public/dist'),
       emptyOutDir: true,
       sourcemap: !isProd,
-      minify: isProd ? 'terser' : false,
-      terserOptions: {
-        compress: {
-          drop_console: isProd,
-          drop_debugger: isProd
-        }
-      },
+      minify: false,
       rollupOptions: {
         input: {
           main: resolve(__dirname, 'client/index.html')
