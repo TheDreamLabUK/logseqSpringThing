@@ -31,7 +31,8 @@ fn configure_file_handler(cfg: &mut web::ServiceConfig) {
 fn configure_graph_handler(cfg: &mut web::ServiceConfig) {
     cfg.service(web::resource("/data").to(graph_handler::get_graph_data))
        .service(web::resource("/data/paginated").to(graph_handler::get_paginated_graph_data))
-       .service(web::resource("/update").to(graph_handler::update_graph));
+       .service(web::resource("/update").to(graph_handler::update_graph))
+       .service(web::resource("/refresh").to(graph_handler::refresh_graph));
 }
 
 #[actix_web::main]
@@ -122,6 +123,35 @@ async fn main() -> std::io::Result<()> {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize local storage: {}", e)));
     }
     info!("Local storage initialization complete");
+
+    // Load metadata into app state and initialize graph
+    match FileService::load_or_create_metadata() {
+        Ok(metadata_store) => {
+            // Update metadata in app state
+            {
+                let mut app_metadata = app_state.metadata.write().await;
+                *app_metadata = metadata_store.clone();
+                info!("Loaded metadata into app state");
+            }
+
+            // Build initial graph from metadata
+            match GraphService::build_graph_from_metadata(&metadata_store).await {
+                Ok(graph_data) => {
+                    let mut graph = app_state.graph_service.graph_data.write().await;
+                    *graph = graph_data;
+                    info!("Built initial graph from metadata");
+                },
+                Err(e) => {
+                    error!("Failed to build initial graph: {}", e);
+                    return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to build initial graph: {}", e)));
+                }
+            }
+        },
+        Err(e) => {
+            error!("Failed to load metadata into app state: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to load metadata: {}", e)));
+        }
+    }
 
     // Start the server
     let bind_address = {
