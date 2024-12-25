@@ -62,7 +62,7 @@ struct ReferenceInfo {
 
 #[async_trait]
 pub trait GitHubService: Send + Sync {
-    async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>>;
+    async fn fetch_file_metadata(&self, skip_debug_filter: bool) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>>;
     async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>>;
     async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>>;
     async fn get_file_last_modified(&self, file_path: &str) -> Result<DateTime<Utc>, Box<dyn StdError + Send + Sync>>;
@@ -108,7 +108,7 @@ impl RealGitHubService {
 
 #[async_trait]
 impl GitHubService for RealGitHubService {
-    async fn fetch_file_metadata(&self) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
+    async fn fetch_file_metadata(&self, skip_debug_filter: bool) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
         let url = if self.base_path.is_empty() {
             format!(
                 "https://api.github.com/repos/{}/{}/contents",
@@ -176,11 +176,11 @@ impl GitHubService for RealGitHubService {
                item["name"].as_str().unwrap_or("").ends_with(".md") {
                 let name = item["name"].as_str().unwrap_or("").to_string();
                 
-                // In debug mode, only process Debug Test Page.md and debug linked node.md
-                if debug_enabled && !name.contains("Debug Test Page") && !name.contains("debug linked node") {
+                // In debug mode and not skipping filter, only process Debug Test Page.md and debug linked node.md
+                if !skip_debug_filter && debug_enabled && !name.contains("Debug Test Page") && !name.contains("debug linked node") {
                     continue;
                 }
-                
+
                 debug!("Processing markdown file: {}", name);
                 
                 let last_modified = match self.get_file_last_modified(&format!("{}/{}", self.base_path, name)).await {
@@ -469,7 +469,7 @@ impl FileService {
         info!("Initializing local storage with files from GitHub");
 
         // Step 1: Get all markdown files from GitHub
-        let github_files = github_service.fetch_file_metadata().await?;
+        let github_files = github_service.fetch_file_metadata(false).await?;
         info!("Found {} markdown files in GitHub", github_files.len());
 
         let mut file_sizes = HashMap::new();
@@ -635,7 +635,7 @@ impl FileService {
         Self::ensure_directories()?;
 
         // Get metadata for markdown files in target directory
-        let github_files_metadata = github_service.fetch_file_metadata().await?;
+        let github_files_metadata = github_service.fetch_file_metadata(true).await?;
         debug!("Fetched metadata for {} markdown files", github_files_metadata.len());
 
         let mut processed_files = Vec::new();

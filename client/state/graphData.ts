@@ -52,20 +52,20 @@ export class GraphDataManager {
       this.hasMorePages = true;
       this.loadingNodes = false;
 
-      // First, update the graph data from the backend
+      // Refresh the graph from existing metadata
       try {
-        const updateResponse = await fetch('/api/graph/update', {
+        const refreshResponse = await fetch('/api/graph/refresh', {
           method: 'POST',
         });
 
-        if (!updateResponse.ok) {
-          logger.warn(`Graph update returned ${updateResponse.status}, continuing with initial load`);
+        if (!refreshResponse.ok) {
+          logger.warn(`Graph refresh returned ${refreshResponse.status}, continuing with initial load`);
         } else {
-          const updateResult = await updateResponse.json();
-          logger.log('Graph update result:', updateResult);
+          const refreshResult = await refreshResponse.json();
+          logger.log('Graph refresh result:', refreshResult);
         }
-      } catch (updateError) {
-        logger.warn('Graph update failed, continuing with initial load:', updateError);
+      } catch (refreshError) {
+        logger.warn('Graph refresh failed, continuing with initial load:', refreshError);
       }
 
       // Then load the first page
