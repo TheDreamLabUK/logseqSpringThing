@@ -10,6 +10,11 @@ ingress:
       keepAliveTimeout: 2m
       keepAliveConnections: 100
       httpHostHeader: www.visionflow.info
+      # WebSocket settings
+      enableWebsocket: true
+      websocketCompression: true
+      websocketKeepAliveTimeout: 60s
+      websocketKeepAliveInterval: 30s
   - service: http_status:404
 
 # Connection settings

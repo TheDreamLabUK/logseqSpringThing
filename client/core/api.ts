@@ -1,4 +1,4 @@
-import { API_BASE, API_PATHS, API_ENDPOINTS, SETTINGS_CATEGORIES } from './constants';
+import { API_BASE, API_ENDPOINTS, SETTINGS_CATEGORIES } from './constants';
 
 // Helper function to build API URLs
 export function buildApiUrl(path: string): string {
@@ -58,7 +58,15 @@ export function buildFilesUrl(path: string): string {
 
 // Helper function to build WebSocket URL
 export function buildWsUrl(): string {
+    const isProduction = ['www.visionflow.info', 'visionflow.info'].includes(window.location.hostname);
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    return `${protocol}//${host}/${API_PATHS.WEBSOCKET}`;
+    
+    if (isProduction) {
+        // In production, always use wss:// with the domain
+        return `wss://www.visionflow.info/wss`;
+    } else {
+        // In development, use the current host with ws:// or wss://
+        return `${protocol}//${host}/wss`;
+    }
 }

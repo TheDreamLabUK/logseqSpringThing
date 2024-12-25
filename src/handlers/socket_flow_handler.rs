@@ -14,7 +14,6 @@ use crate::utils::socket_flow_constants::{
     BINARY_PROTOCOL_VERSION,
     HEARTBEAT_INTERVAL,
     MAX_CLIENT_TIMEOUT,
-    FLOATS_PER_NODE,
     VERSION_HEADER_SIZE,
     NODE_DATA_SIZE,
     MAX_CONNECTIONS,
@@ -301,20 +300,24 @@ pub async fn socket_flow_handler(
         })));
     }
 
+    // Create server instance
     let server = SocketFlowServer::new(
         app_state.into_inner(),
         settings.get_ref().clone()
     );
-    
-    info!("[WebSocket] Starting connection");
+
+    // Start WebSocket connection
+    info!("[WebSocket] Starting WebSocket connection");
     match ws::start(server, &req, stream) {
         Ok(response) => {
-            info!("[WebSocket] Connection established successfully");
+            info!("[WebSocket] WebSocket connection established successfully");
             Ok(response)
         }
         Err(e) => {
-            error!("[WebSocket] Failed to establish connection: {}", e);
-            Err(e)
+            error!("[WebSocket] Failed to start WebSocket connection: {:?}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "error": format!("Failed to start WebSocket connection: {}", e)
+            })))
         }
     }
 }

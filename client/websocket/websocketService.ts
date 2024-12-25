@@ -6,6 +6,7 @@ import {
     BINARY_VERSION,
     FLOATS_PER_NODE 
 } from '../core/constants';
+import { convertObjectKeysToCamelCase } from '../core/utils';
 
 const logger = createLogger('WebSocketService');
 
@@ -36,6 +37,12 @@ interface NodeUpdate {
     };
 }
 
+interface SettingsUpdateMessage {
+    category: string;
+    setting: string;
+    value: any;
+}
+
 type BinaryMessageCallback = (nodes: NodeData[]) => void;
 
 export class WebSocketService {
@@ -51,6 +58,7 @@ export class WebSocketService {
     private readonly initialReconnectDelay: number = 5000; // 5 seconds
     private readonly maxReconnectDelay: number = 60000; // 60 seconds
     private readonly heartbeatTimeout: number = WS_HEARTBEAT_TIMEOUT;
+    private settingsStore: Map<string, any> = new Map();
 
     private constructor() {
         this.setupWebSocket();
@@ -104,15 +112,17 @@ export class WebSocketService {
 
         try {
             const wsUrl = buildWsUrl();
+            const isProduction = ['www.visionflow.info', 'visionflow.info'].includes(window.location.hostname);
+            
+            logger.info(`[${isProduction ? 'PROD' : 'DEV'}] Attempting WebSocket connection to ${wsUrl}`);
 
             this.connectionState = ConnectionState.CONNECTING;
-            logger.info('WebSocket connecting...');
-
+            
             this.ws = new WebSocket(wsUrl);
             this.ws.binaryType = 'arraybuffer';
 
             this.ws.onopen = (): void => {
-                logger.info('WebSocket connected');
+                logger.info(`[${isProduction ? 'PROD' : 'DEV'}] WebSocket connected successfully`);
                 this.connectionState = ConnectionState.CONNECTED;
                 this.reconnectAttempts = 0;
                 this.lastPongTime = Date.now();
@@ -121,6 +131,40 @@ export class WebSocketService {
                 // Send initial protocol messages
                 this.sendMessage({ type: 'requestInitialData' });
                 this.sendMessage({ type: 'enableBinaryUpdates' });
+            };
+
+            this.ws.onerror = (event: Event): void => {
+                const errorMsg = isProduction ? 
+                    'WebSocket error in production (possible Cloudflare issue)' : 
+                    'WebSocket error in development';
+                logger.error(errorMsg, event);
+                
+                if (this.ws) {
+                    logger.error('WebSocket readyState:', this.ws.readyState);
+                    
+                    // Additional production debugging
+                    if (isProduction) {
+                        logger.error('Production debug info:', {
+                            url: wsUrl,
+                            protocol: window.location.protocol,
+                            host: window.location.host,
+                            hostname: window.location.hostname,
+                            cloudflareRay: document.querySelector('meta[name="cf-ray"]')?.getAttribute('content')
+                        });
+                    }
+                }
+            };
+
+            this.ws.onclose = (event: CloseEvent): void => {
+                const envPrefix = isProduction ? '[PROD]' : '[DEV]';
+                logger.warn(`${envPrefix} WebSocket closed with code ${event.code}: ${event.reason}`);
+                
+                // Special handling for Cloudflare-specific close codes
+                if (isProduction && event.code === 1006) {
+                    logger.error('Cloudflare connection dropped (code 1006). This might indicate a tunnel issue.');
+                }
+                
+                this.handleReconnect();
             };
 
             this.ws.onmessage = async (event: MessageEvent): Promise<void> => {
@@ -200,6 +244,17 @@ export class WebSocketService {
                             logger.warn('No valid nodes in binary message');
                         }
                     }
+
+                    // Handle settings update messages
+                    if (typeof event.data === 'string') {
+                        try {
+                            const message = JSON.parse(event.data) as SettingsUpdateMessage;
+                            this.handleSettingsUpdate(message);
+                        } catch (e) {
+                            logger.warn('Received non-JSON text message:', event.data);
+                            return;
+                        }
+                    }
                 } catch (error) {
                     logger.error('Error processing WebSocket message:', error);
                     if (error instanceof Error) {
@@ -209,51 +264,6 @@ export class WebSocketService {
                             stack: error.stack
                         });
                     }
-                }
-            };
-
-            this.ws.onerror = (event: Event): void => {
-                logger.error('WebSocket error:', event);
-                this.connectionState = ConnectionState.FAILED;
-            };
-
-            this.ws.onclose = (event: CloseEvent): void => {
-                const wasConnected = this.connectionState === ConnectionState.CONNECTED;
-                this.connectionState = ConnectionState.DISCONNECTED;
-                this.binaryMessageCallback = null;
-                this.stopConnectionMonitor();
-                
-                // Clear any existing reconnect timeout
-                if (this.reconnectTimeout !== null) {
-                    window.clearTimeout(this.reconnectTimeout);
-                }
-                
-                // Only attempt to reconnect if:
-                // 1. The close wasn't intentional (code !== 1000)
-                // 2. We haven't exceeded max attempts
-                // 3. We were previously connected (to avoid retry spam on initial failure)
-                if (event.code !== 1000 && 
-                    this.reconnectAttempts < this.maxReconnectAttempts &&
-                    (wasConnected || this.reconnectAttempts === 0)) {
-                    
-                    this.reconnectAttempts++;
-                    const delay = this.getReconnectDelay();
-                    
-                    logger.info(
-                        `WebSocket connection closed (${event.code}), attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
-                    );
-                    
-                    this.connectionState = ConnectionState.RECONNECTING;
-                    
-                    this.reconnectTimeout = window.setTimeout(() => {
-                        this.reconnectTimeout = null;
-                        this.setupWebSocket();
-                    }, delay);
-                } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-                    logger.warn('Maximum reconnection attempts reached, WebSocket disabled');
-                    this.connectionState = ConnectionState.FAILED;
-                } else {
-                    logger.info(`WebSocket connection closed: ${event.code} ${event.reason}`);
                 }
             };
         } catch (error) {
@@ -275,6 +285,68 @@ export class WebSocketService {
                     this.reconnectTimeout = null;
                     this.setupWebSocket();
                 }, delay);
+            }
+        }
+    }
+
+    private handleReconnect(): void {
+        const wasConnected = this.connectionState === ConnectionState.CONNECTED;
+        this.connectionState = ConnectionState.DISCONNECTED;
+        this.binaryMessageCallback = null;
+        this.stopConnectionMonitor();
+        
+        // Clear any existing reconnect timeout
+        if (this.reconnectTimeout !== null) {
+            window.clearTimeout(this.reconnectTimeout);
+        }
+        
+        // Only attempt to reconnect if:
+        // 1. The close wasn't intentional (code !== 1000)
+        // 2. We haven't exceeded max attempts
+        // 3. We were previously connected (to avoid retry spam on initial failure)
+        if (this.reconnectAttempts < this.maxReconnectAttempts &&
+            (wasConnected || this.reconnectAttempts === 0)) {
+            
+            this.reconnectAttempts++;
+            const delay = this.getReconnectDelay();
+            
+            logger.info(
+                `WebSocket connection closed, attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
+            );
+            
+            this.connectionState = ConnectionState.RECONNECTING;
+            
+            this.reconnectTimeout = window.setTimeout(() => {
+                this.reconnectTimeout = null;
+                this.setupWebSocket();
+            }, delay);
+        } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            logger.warn('Maximum reconnection attempts reached, WebSocket disabled');
+            this.connectionState = ConnectionState.FAILED;
+        } else {
+            logger.info('WebSocket connection closed');
+        }
+    }
+
+    private handleSettingsUpdate(message: SettingsUpdateMessage): void {
+        const { category, setting, value } = message;
+        
+        // Use existing utilities for case conversion
+        const convertedValue = convertObjectKeysToCamelCase({
+            [category]: {
+                [setting]: value
+            }
+        }) as Record<string, Record<string, unknown>>;
+        
+        // Extract the converted category, setting and value
+        const entries = Object.entries(convertedValue);
+        if (entries.length > 0) {
+            const [camelCategory, settingsObj] = entries[0];
+            const settingEntries = Object.entries(settingsObj);
+            if (settingEntries.length > 0) {
+                const [camelSetting, camelValue] = settingEntries[0];
+                // Update settings store
+                this.settingsStore.set(`${camelCategory}.${camelSetting}`, camelValue);
             }
         }
     }

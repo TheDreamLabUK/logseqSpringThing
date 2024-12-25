@@ -151,17 +151,17 @@ export const defaultSettings: Settings = {
             tunnelId: ''
         },
         websocket: {
-            url: 'ws://localhost:3000/ws',
-            heartbeatInterval: 15000,
+            url: 'wss://www.visionflow.info/wss',
+            heartbeatInterval: 30000,
             heartbeatTimeout: 60000,
-            reconnectAttempts: 3,
+            reconnectAttempts: 5,
             reconnectDelay: 5000,
             binaryChunkSize: 65536,
             compressionEnabled: true,
             compressionThreshold: 1024,
-            maxConnections: 1000,
-            maxMessageSize: 100485760,
-            updateRate: 30
+            maxConnections: 100,
+            maxMessageSize: 32 * 1024 * 1024,
+            updateRate: 60
         },
         security: {
             allowedOrigins: ['http://localhost:3000'],

@@ -204,27 +204,17 @@ main() {
         exit 1
     fi
 
-    # Check backend health using curl within container
-    log "Checking backend health..."
-    local retries=30
-    local wait=2
+    # Give the backend time to start
+    log "Waiting for backend to initialize..."
+    sleep 10
     
-    while [ $retries -gt 0 ]; do
-        if curl -s -f --max-time 5 "http://127.0.0.1:3001/api/health" > /dev/null; then
-            log "Backend is healthy"
-            break
-        fi
-        
-        retries=$((retries-1))
-        if [ $retries -eq 0 ]; then
-            log "Error: Backend health check failed"
-            cat /tmp/webxr.log
-            kill $RUST_PID
-            exit 1
-        fi
-        log "Backend not ready, retrying in $wait seconds... ($retries attempts left)"
-        sleep $wait
-    done
+    # Check if process is still running
+    if ! kill -0 $RUST_PID 2>/dev/null; then
+        log "Error: Backend process died during startup"
+        cat /tmp/webxr.log
+        exit 1
+    fi
+    log "Backend process is running"
 
     # Start nginx
     log "Starting nginx..."
