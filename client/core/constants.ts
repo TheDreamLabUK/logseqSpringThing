@@ -13,7 +13,19 @@ export const API_BASE = '';  // Empty string means use relative URLs
 export const API_PATHS = {
     SETTINGS: 'settings',  // Base settings path
     WEBSOCKET: 'wss',
-    GRAPH: 'graph'
+    GRAPH: 'graph',
+    FILES: 'files',
+    VISUALIZATION: 'visualization'
+};
+
+// API endpoints
+export const API_ENDPOINTS = {
+    GRAPH_DATA: '/api/graph/data',
+    GRAPH_UPDATE: '/api/graph/update',
+    GRAPH_PAGINATED: '/api/graph/data/paginated',
+    SETTINGS_BASE: '/api/settings',
+    VISUALIZATION: '/api/visualization',
+    FILES: '/api/files'
 };
 
 // WebSocket URLs
@@ -22,6 +34,8 @@ export const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}
 // WebSocket configuration
 export const WS_RECONNECT_INTERVAL = 30000; // Match server's HEARTBEAT_INTERVAL
 export const WS_MESSAGE_QUEUE_SIZE = 1000;
+export const WS_HEARTBEAT_INTERVAL = 30000;  // 30 seconds - match server
+export const WS_HEARTBEAT_TIMEOUT = 60000;   // 60 seconds - match server
 
 // Binary protocol configuration
 export const BINARY_VERSION = 1;

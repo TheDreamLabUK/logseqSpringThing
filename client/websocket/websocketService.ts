@@ -1,4 +1,11 @@
 import { createLogger } from '../core/logger';
+import { buildWsUrl } from '../core/api';
+import { 
+    WS_HEARTBEAT_INTERVAL,
+    WS_HEARTBEAT_TIMEOUT,
+    BINARY_VERSION,
+    FLOATS_PER_NODE 
+} from '../core/constants';
 
 const logger = createLogger('WebSocketService');
 
@@ -43,7 +50,7 @@ export class WebSocketService {
     private readonly maxReconnectAttempts: number = 5;
     private readonly initialReconnectDelay: number = 5000; // 5 seconds
     private readonly maxReconnectDelay: number = 60000; // 60 seconds
-    private readonly heartbeatTimeout: number = 40000; // 40 seconds (server timeout + buffer)
+    private readonly heartbeatTimeout: number = WS_HEARTBEAT_TIMEOUT;
 
     private constructor() {
         this.setupWebSocket();
@@ -65,7 +72,7 @@ export class WebSocketService {
             window.clearInterval(this.connectionMonitorHandle);
         }
 
-        // Monitor connection health every 5 seconds
+        // Monitor connection health every heartbeat interval
         this.connectionMonitorHandle = window.setInterval(() => {
             if (this.connectionState !== ConnectionState.CONNECTED || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
                 this.stopConnectionMonitor();
@@ -78,7 +85,7 @@ export class WebSocketService {
                 this.ws.close();
                 this.stopConnectionMonitor();
             }
-        }, 5000);
+        }, WS_HEARTBEAT_INTERVAL);
     }
 
     private stopConnectionMonitor(): void {
@@ -96,8 +103,7 @@ export class WebSocketService {
         }
 
         try {
-            // Use relative path to avoid hardcoded domains
-            const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/wss`;
+            const wsUrl = buildWsUrl();
 
             this.connectionState = ConnectionState.CONNECTING;
             logger.info('WebSocket connecting...');
@@ -108,9 +114,13 @@ export class WebSocketService {
             this.ws.onopen = (): void => {
                 logger.info('WebSocket connected');
                 this.connectionState = ConnectionState.CONNECTED;
-                this.reconnectAttempts = 0; // Reset counter on successful connection
-                this.lastPongTime = Date.now(); // Initialize last pong time
+                this.reconnectAttempts = 0;
+                this.lastPongTime = Date.now();
                 this.startConnectionMonitor();
+
+                // Send initial protocol messages
+                this.sendMessage({ type: 'requestInitialData' });
+                this.sendMessage({ type: 'enableBinaryUpdates' });
             };
 
             this.ws.onmessage = async (event: MessageEvent): Promise<void> => {
@@ -139,21 +149,28 @@ export class WebSocketService {
 
                     // Handle binary position/velocity updates
                     if (event.data instanceof ArrayBuffer && this.binaryMessageCallback) {
-                        // Validate data length
-                        if (event.data.byteLength % 24 !== 0) { // 6 floats * 4 bytes each
+                        // Validate data length (4 bytes version + 24 bytes per node)
+                        if ((event.data.byteLength - 4) % 24 !== 0) {
                             logger.error('Invalid binary message length:', event.data.byteLength);
                             return;
                         }
 
-                        const float32Array = new Float32Array(event.data);
-                        const nodeCount = float32Array.length / 6;
+                        const dataView = new DataView(event.data);
+                        const version = dataView.getInt32(0, true); // true for little-endian
+                        if (version !== BINARY_VERSION) {
+                            logger.error('Invalid binary version:', version);
+                            return;
+                        }
+
+                        const float32Array = new Float32Array(event.data, 4); // Skip version header
+                        const nodeCount = float32Array.length / FLOATS_PER_NODE;
                         const nodes: NodeData[] = [];
 
                         for (let i = 0; i < nodeCount; i++) {
-                            const baseIndex = i * 6;
+                            const baseIndex = i * FLOATS_PER_NODE;
                             
                             // Validate float values
-                            const values = float32Array.slice(baseIndex, baseIndex + 6);
+                            const values = float32Array.slice(baseIndex, baseIndex + FLOATS_PER_NODE);
                             if (!values.every(v => Number.isFinite(v))) {
                                 logger.error('Invalid float values in node data at index:', i);
                                 continue;
@@ -277,6 +294,16 @@ export class WebSocketService {
         return this.connectionState;
     }
 
+    private sendMessage(message: any): void {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            try {
+                this.ws.send(JSON.stringify(message));
+            } catch (error) {
+                logger.error('Error sending message:', error);
+            }
+        }
+    }
+
     public sendNodeUpdates(updates: NodeUpdate[]): void {
         if (this.connectionState !== ConnectionState.CONNECTED || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
             logger.warn('WebSocket not connected, cannot send node updates');
@@ -311,10 +338,12 @@ export class WebSocketService {
                 return;
             }
 
-            // Convert updates to Float32Array for efficient binary transmission
-            const float32Array = new Float32Array(validUpdates.length * 3);
+            // Create binary message with version header
+            const float32Array = new Float32Array(1 + validUpdates.length * 3); // Version + positions
+            float32Array[0] = BINARY_VERSION;
+            
             validUpdates.forEach((update, index) => {
-                const baseIndex = index * 3;
+                const baseIndex = 1 + index * 3; // Skip version header
                 float32Array[baseIndex] = update.position.x;
                 float32Array[baseIndex + 1] = update.position.y;
                 float32Array[baseIndex + 2] = update.position.z;
