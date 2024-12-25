@@ -48,7 +48,7 @@ check_service_health() {
         if [ $retries -eq 0 ]; then
             log "Error: Service health check failed on port $port"
             return 1
-        }
+        fi
         log "Service not ready, retrying in $wait seconds... ($retries attempts left)"
         sleep $wait
     done
@@ -189,11 +189,6 @@ main() {
     fi
 
     # Check if backend port is available
-    if ! check_port_available 3001; then
-        log "Failed to verify backend port 3001 is available"
-        exit 1
-    fi
-
     # Start webxr binary with output logging
     log "Starting webxr..."
     /app/webxr > /tmp/webxr.log 2>&1 &
@@ -209,14 +204,27 @@ main() {
         exit 1
     fi
 
-    # Check backend health
-    if ! check_service_health 3001 "/api/health"; then
-        log "Error: Backend health check failed"
-        cat /tmp/webxr.log
-        kill $RUST_PID
-        exit 1
-    fi
-    log "Backend is healthy"
+    # Check backend health using curl within container
+    log "Checking backend health..."
+    local retries=30
+    local wait=2
+    
+    while [ $retries -gt 0 ]; do
+        if curl -s -f --max-time 5 "http://127.0.0.1:3001/api/health" > /dev/null; then
+            log "Backend is healthy"
+            break
+        fi
+        
+        retries=$((retries-1))
+        if [ $retries -eq 0 ]; then
+            log "Error: Backend health check failed"
+            cat /tmp/webxr.log
+            kill $RUST_PID
+            exit 1
+        fi
+        log "Backend not ready, retrying in $wait seconds... ($retries attempts left)"
+        sleep $wait
+    done
 
     # Start nginx
     log "Starting nginx..."
