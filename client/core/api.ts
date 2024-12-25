@@ -1,8 +1,4 @@
-/**
- * API configuration and utilities
- */
-
-import { API_BASE, API_PATHS, API_ENDPOINTS } from './constants';
+import { API_BASE, API_PATHS, API_ENDPOINTS, SETTINGS_CATEGORIES } from './constants';
 
 // Helper function to build API URLs
 export function buildApiUrl(path: string): string {
@@ -14,16 +10,20 @@ export function buildApiUrl(path: string): string {
 }
 
 // Helper function to build settings URL
-export function buildSettingsUrl(category: string, setting?: string): string {
-    const base = setting 
-        ? `${API_ENDPOINTS.SETTINGS_BASE}/${category}/${setting}`
-        : `${API_ENDPOINTS.SETTINGS_BASE}/${category}`;
+export function buildSettingsUrl(category: keyof typeof SETTINGS_CATEGORIES, setting?: string): string {
+    // Get snake_case category from enum
+    const categorySnake = SETTINGS_CATEGORIES[category];
+    if (!categorySnake) {
+        throw new Error(`Invalid settings category: ${category}`);
+    }
+    
+    // Convert setting to snake_case if provided
+    const settingSnake = setting?.replace(/-/g, '_');
+    
+    const base = settingSnake 
+        ? `${API_ENDPOINTS.SETTINGS}/${categorySnake}/${settingSnake}`
+        : `${API_ENDPOINTS.SETTINGS}/${categorySnake}`;
     return base;
-}
-
-// Helper function to build visualization URL
-export function buildVisualizationUrl(path: string): string {
-    return `${API_ENDPOINTS.VISUALIZATION}/${path}`;
 }
 
 // Helper function to build graph URL

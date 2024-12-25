@@ -11,11 +11,10 @@ export const API_BASE = '';  // Empty string means use relative URLs
 
 // API paths
 export const API_PATHS = {
-    SETTINGS: 'settings',  // Base settings path
+    SETTINGS: 'settings',
     WEBSOCKET: 'wss',
     GRAPH: 'graph',
-    FILES: 'files',
-    VISUALIZATION: 'visualization'
+    FILES: 'files'
 };
 
 // API endpoints
@@ -23,9 +22,32 @@ export const API_ENDPOINTS = {
     GRAPH_DATA: '/api/graph/data',
     GRAPH_UPDATE: '/api/graph/update',
     GRAPH_PAGINATED: '/api/graph/data/paginated',
-    SETTINGS_BASE: '/api/settings',
-    VISUALIZATION: '/api/visualization',
+    SETTINGS: '/api/settings',
     FILES: '/api/files'
+};
+
+// Settings categories matching server's snake_case
+export const SETTINGS_CATEGORIES = {
+    // System settings
+    NETWORK: 'system.network',
+    WEBSOCKET: 'system.websocket',
+    SECURITY: 'system.security',
+    DEBUG: 'system.debug',
+    
+    // Visualization settings
+    ANIMATIONS: 'visualization.animations',
+    AR: 'visualization.ar',
+    AUDIO: 'visualization.audio',
+    BLOOM: 'visualization.bloom',
+    EDGES: 'visualization.edges',
+    HOLOGRAM: 'visualization.hologram',
+    LABELS: 'visualization.labels',
+    NODES: 'visualization.nodes',
+    PHYSICS: 'visualization.physics',
+    RENDERING: 'visualization.rendering',
+    
+    // Default settings
+    DEFAULT: 'default'
 };
 
 // WebSocket URLs
@@ -65,8 +87,8 @@ export const LABEL_COLOR = 0xFFFFFF;  // White
 
 // Debug configuration
 export const DEBUG = {
-  NETWORK_PANEL: {
-    MAX_MESSAGES: 50,
-    ENABLED: IS_DEVELOPMENT
-  }
+    NETWORK_PANEL: {
+        MAX_MESSAGES: 50,
+        ENABLED: IS_DEVELOPMENT
+    }
 };

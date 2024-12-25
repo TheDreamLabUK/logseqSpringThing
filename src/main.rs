@@ -2,19 +2,11 @@ use log::{debug, info};
 use env_logger;
 
 use webxr::{
-    config::Settings,
-    handlers::{
-        self,
-        file_handler,
-        graph_handler,
-        socket_flow_handler::socket_flow_handler,
-        visualization_handler,
-    },
-    app_state::AppState,
-    services::{
-        file_service::RealGitHubService,
-        github_service::RealGitHubPRService,
-    },
+    AppState, Settings,
+    file_handler, graph_handler,
+    handlers::{socket_flow_handler, settings},
+    RealGitHubService,
+    RealGitHubPRService,
 };
 
 use actix_web::{web, App, HttpServer, middleware};
@@ -103,16 +95,12 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api")
                     .service(web::scope("/files").configure(file_handler::config))
                     .service(web::scope("/graph").configure(graph_handler::config))
-                    .service(web::scope("/settings").configure(handlers::settings::config))
-                    .service(
-                        web::scope("/visualization")
-                            .configure(visualization_handler::config)
-                    )
+                    .configure(settings::config)
             )
             .service(
                 web::resource("/wss")
                     .app_data(web::PayloadConfig::new(1 << 25))  // 32MB max payload
-                    .route(web::get().to(socket_flow_handler))
+                    .route(web::get().to(socket_flow_handler::socket_flow_handler))
             )
             .service(Files::new("/", "data/public/dist").index_file("index.html"))
     })
