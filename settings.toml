@@ -166,7 +166,7 @@ reconnect_delay = 5000
 update_rate = 1
 
 [system.security]
-allowed_origins = []
+allowed_origins = ["*"]
 audit_log_path = "/app/logs/audit.log"
 cookie_httponly = true
 cookie_samesite = "Strict"

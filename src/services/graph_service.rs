@@ -43,17 +43,23 @@ impl GraphService {
             };
 
             loop {
-                // Update positions
-                let mut graph = graph_data.write().await;
-                if let Err(e) = Self::calculate_layout_cpu(
-                    &mut graph,
-                    params.iterations,
-                    params.spring_strength,
-                    params.damping
-                ) {
-                    warn!("[Graph] Error updating positions: {}", e);
+                // Calculate forces with minimal lock time
+                let forces = {
+                    let graph = graph_data.read().await;
+                    Self::calculate_forces(&graph, params.spring_strength)
+                };
+
+                if let Some(forces) = forces {
+                    // Apply forces with minimal lock time
+                    let mut graph = graph_data.write().await;
+                    if let Err(e) = Self::apply_forces(
+                        &mut graph,
+                        &forces,
+                        params.damping
+                    ) {
+                        warn!("[Graph] Error applying forces: {}", e);
+                    }
                 }
-                drop(graph); // Release lock
 
                 // Sleep for ~16ms (60fps)
                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
@@ -96,17 +102,23 @@ impl GraphService {
             };
 
             loop {
-                // Update positions
-                let mut graph = graph_data.write().await;
-                if let Err(e) = Self::calculate_layout_cpu(
-                    &mut graph,
-                    params.iterations,
-                    params.spring_strength,
-                    params.damping
-                ) {
-                    warn!("[Graph] Error updating positions: {}", e);
+                // Calculate forces with minimal lock time
+                let forces = {
+                    let graph = graph_data.read().await;
+                    Self::calculate_forces(&graph, params.spring_strength)
+                };
+
+                if let Some(forces) = forces {
+                    // Apply forces with minimal lock time
+                    let mut graph = graph_data.write().await;
+                    if let Err(e) = Self::apply_forces(
+                        &mut graph,
+                        &forces,
+                        params.damping
+                    ) {
+                        warn!("[Graph] Error applying forces: {}", e);
+                    }
                 }
-                drop(graph); // Release lock
 
                 // Sleep for ~16ms (60fps)
                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
@@ -298,97 +310,100 @@ impl GraphService {
             },
             None => {
                 warn!("GPU not available. Falling back to CPU-based layout calculation.");
-                Self::calculate_layout_cpu(graph, params.iterations, params.spring_strength, params.damping)?;
+                // Calculate forces first
+                if let Some(forces) = Self::calculate_forces(graph, params.spring_strength) {
+                    // Then apply them
+                    Self::apply_forces(graph, &forces, params.damping)?;
+                }
                 Ok(())
             }
         }
     }
 
-    fn calculate_layout_cpu(graph: &mut GraphData, iterations: u32, spring_strength: f32, damping: f32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    fn calculate_forces(graph: &GraphData, spring_strength: f32) -> Option<Vec<(f32, f32, f32)>> {
         let repulsion_strength = spring_strength * 10000.0;
+        let mut forces = vec![(0.0, 0.0, 0.0); graph.nodes.len()];
         
-        for _ in 0..iterations {
-            // Calculate forces between nodes
-            let mut forces = vec![(0.0, 0.0, 0.0); graph.nodes.len()];
-            
-            // Calculate repulsion forces
-            for i in 0..graph.nodes.len() {
-                for j in i+1..graph.nodes.len() {
-                    let dx = graph.nodes[j].x() - graph.nodes[i].x();
-                    let dy = graph.nodes[j].y() - graph.nodes[i].y();
-                    let dz = graph.nodes[j].z() - graph.nodes[i].z();
+        // Calculate repulsion forces
+        for i in 0..graph.nodes.len() {
+            for j in i+1..graph.nodes.len() {
+                let dx = graph.nodes[j].x() - graph.nodes[i].x();
+                let dy = graph.nodes[j].y() - graph.nodes[i].y();
+                let dz = graph.nodes[j].z() - graph.nodes[i].z();
+                
+                let distance = (dx * dx + dy * dy + dz * dz).sqrt();
+                if distance > 0.0 {
+                    let force = repulsion_strength / (distance * distance);
                     
-                    let distance = (dx * dx + dy * dy + dz * dz).sqrt();
-                    if distance > 0.0 {
-                        let force = repulsion_strength / (distance * distance);
-                        
-                        let fx = dx * force / distance;
-                        let fy = dy * force / distance;
-                        let fz = dz * force / distance;
-                        
-                        forces[i].0 -= fx;
-                        forces[i].1 -= fy;
-                        forces[i].2 -= fz;
-                        
-                        forces[j].0 += fx;
-                        forces[j].1 += fy;
-                        forces[j].2 += fz;
-                    }
+                    let fx = dx * force / distance;
+                    let fy = dy * force / distance;
+                    let fz = dz * force / distance;
+                    
+                    forces[i].0 -= fx;
+                    forces[i].1 -= fy;
+                    forces[i].2 -= fz;
+                    
+                    forces[j].0 += fx;
+                    forces[j].1 += fy;
+                    forces[j].2 += fz;
                 }
             }
+        }
 
-            // Calculate spring forces along edges
-            for edge in &graph.edges {
-                // Find indices of source and target nodes
-                let source_idx = graph.nodes.iter().position(|n| n.id == edge.source);
-                let target_idx = graph.nodes.iter().position(|n| n.id == edge.target);
+        // Calculate spring forces along edges
+        for edge in &graph.edges {
+            // Find indices of source and target nodes
+            let source_idx = graph.nodes.iter().position(|n| n.id == edge.source);
+            let target_idx = graph.nodes.iter().position(|n| n.id == edge.target);
+            
+            if let (Some(si), Some(ti)) = (source_idx, target_idx) {
+                let source = &graph.nodes[si];
+                let target = &graph.nodes[ti];
                 
-                if let (Some(si), Some(ti)) = (source_idx, target_idx) {
-                    let source = &graph.nodes[si];
-                    let target = &graph.nodes[ti];
+                let dx = target.x() - source.x();
+                let dy = target.y() - source.y();
+                let dz = target.z() - source.z();
+                
+                let distance = (dx * dx + dy * dy + dz * dz).sqrt();
+                if distance > 0.0 {
+                    // Scale force by edge weight
+                    let force = spring_strength * (distance - 30.0) * edge.weight;
                     
-                    let dx = target.x() - source.x();
-                    let dy = target.y() - source.y();
-                    let dz = target.z() - source.z();
+                    let fx = dx * force / distance;
+                    let fy = dy * force / distance;
+                    let fz = dz * force / distance;
                     
-                    let distance = (dx * dx + dy * dy + dz * dz).sqrt();
-                    if distance > 0.0 {
-                        // Scale force by edge weight
-                        let force = spring_strength * (distance - 30.0) * edge.weight;
-                        
-                        let fx = dx * force / distance;
-                        let fy = dy * force / distance;
-                        let fz = dz * force / distance;
-                        
-                        forces[si].0 += fx;
-                        forces[si].1 += fy;
-                        forces[si].2 += fz;
-                        
-                        forces[ti].0 -= fx;
-                        forces[ti].1 -= fy;
-                        forces[ti].2 -= fz;
-                    }
+                    forces[si].0 += fx;
+                    forces[si].1 += fy;
+                    forces[si].2 += fz;
+                    
+                    forces[ti].0 -= fx;
+                    forces[ti].1 -= fy;
+                    forces[ti].2 -= fz;
                 }
             }
+        }
+        
+        Some(forces)
+    }
+
+    fn apply_forces(graph: &mut GraphData, forces: &[(f32, f32, f32)], damping: f32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        for (i, node) in graph.nodes.iter_mut().enumerate() {
+            let vx = node.vx() + forces[i].0;
+            let vy = node.vy() + forces[i].1;
+            let vz = node.vz() + forces[i].2;
             
-            // Apply forces and update positions
-            for (i, node) in graph.nodes.iter_mut().enumerate() {
-                let vx = node.vx() + forces[i].0;
-                let vy = node.vy() + forces[i].1;
-                let vz = node.vz() + forces[i].2;
-                
-                let x = node.x() + vx;
-                let y = node.y() + vy;
-                let z = node.z() + vz;
-                
-                node.set_vx(vx * damping);
-                node.set_vy(vy * damping);
-                node.set_vz(vz * damping);
-                
-                node.set_x(x);
-                node.set_y(y);
-                node.set_z(z);
-            }
+            let x = node.x() + vx;
+            let y = node.y() + vy;
+            let z = node.z() + vz;
+            
+            node.set_vx(vx * damping);
+            node.set_vy(vy * damping);
+            node.set_vz(vz * damping);
+            
+            node.set_x(x);
+            node.set_y(y);
+            node.set_z(z);
         }
         Ok(())
     }

@@ -1,0 +1,1105 @@
+diff --git a/client/websocket/websocketService.ts b/client/websocket/websocketService.ts
+index 57eff851..277c2531 100644
+--- a/client/websocket/websocketService.ts
++++ b/client/websocket/websocketService.ts
+@@ -2,6 +2,18 @@ import { createLogger } from '../core/logger';
+ 
+ const logger = createLogger('WebSocketService');
+ 
++interface WebSocketError {
++    error: string;
++}
++
++enum ConnectionState {
++    DISCONNECTED = 'disconnected',
++    CONNECTING = 'connecting',
++    CONNECTED = 'connected',
++    RECONNECTING = 'reconnecting',
++    FAILED = 'failed'
++}
++
+ // Simple interface matching server's binary format
+ interface NodeData {
+     position: [number, number, number];
+@@ -24,11 +36,14 @@ export class WebSocketService {
+     private ws: WebSocket | null = null;
+     private binaryMessageCallback: BinaryMessageCallback | null = null;
+     private reconnectTimeout: number | null = null;
+-    private isConnected: boolean = false;
++    private connectionMonitorHandle: number | null = null;
++    private connectionState: ConnectionState = ConnectionState.DISCONNECTED;
+     private reconnectAttempts: number = 0;
++    private lastPongTime: number = 0;
+     private readonly maxReconnectAttempts: number = 5;
+     private readonly initialReconnectDelay: number = 5000; // 5 seconds
+     private readonly maxReconnectDelay: number = 60000; // 60 seconds
++    private readonly heartbeatTimeout: number = 40000; // 40 seconds (server timeout + buffer)
+ 
+     private constructor() {
+         this.setupWebSocket();
+@@ -44,9 +59,39 @@ export class WebSocketService {
+         return delay + (Math.random() * 1000);
+     }
+ 
++    private startConnectionMonitor(): void {
++        // Clear any existing monitor
++        if (this.connectionMonitorHandle !== null) {
++            window.clearInterval(this.connectionMonitorHandle);
++        }
++
++        // Monitor connection health every 5 seconds
++        this.connectionMonitorHandle = window.setInterval(() => {
++            if (this.connectionState !== ConnectionState.CONNECTED || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
++                this.stopConnectionMonitor();
++                return;
++            }
++
++            const timeSinceLastPong = Date.now() - this.lastPongTime;
++            if (timeSinceLastPong > this.heartbeatTimeout) {
++                logger.warn('WebSocket heartbeat timeout, closing connection');
++                this.ws.close();
++                this.stopConnectionMonitor();
++            }
++        }, 5000);
++    }
++
++    private stopConnectionMonitor(): void {
++        if (this.connectionMonitorHandle !== null) {
++            window.clearInterval(this.connectionMonitorHandle);
++            this.connectionMonitorHandle = null;
++        }
++    }
++
+     private setupWebSocket(): void {
+         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+             logger.warn('Maximum reconnection attempts reached, WebSocket disabled');
++            this.connectionState = ConnectionState.FAILED;
+             return;
+         }
+ 
+@@ -54,64 +99,112 @@ export class WebSocketService {
+             // Use relative path to avoid hardcoded domains
+             const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/wss`;
+ 
++            this.connectionState = ConnectionState.CONNECTING;
++            logger.info('WebSocket connecting...');
++
+             this.ws = new WebSocket(wsUrl);
+             this.ws.binaryType = 'arraybuffer';
+ 
+             this.ws.onopen = (): void => {
+                 logger.info('WebSocket connected');
+-                this.isConnected = true;
++                this.connectionState = ConnectionState.CONNECTED;
+                 this.reconnectAttempts = 0; // Reset counter on successful connection
++                this.lastPongTime = Date.now(); // Initialize last pong time
++                this.startConnectionMonitor();
+             };
+ 
+             this.ws.onmessage = async (event: MessageEvent): Promise<void> => {
+                 try {
+-                    if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
++                    // Update last pong time for any successful message
++                    this.lastPongTime = Date.now();
++
++                    if (this.connectionState !== ConnectionState.CONNECTED || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                         logger.warn('WebSocket not connected, ignoring message');
+                         return;
+                     }
+ 
++                    // Handle text messages (errors from server)
++                    if (typeof event.data === 'string') {
++                        try {
++                            const message = JSON.parse(event.data) as WebSocketError;
++                            if (message.error) {
++                                logger.error('[Server Error]', message.error);
++                                return;
++                            }
++                        } catch (e) {
++                            logger.warn('Received non-JSON text message:', event.data);
++                            return;
++                        }
++                    }
++
+                     // Handle binary position/velocity updates
+                     if (event.data instanceof ArrayBuffer && this.binaryMessageCallback) {
++                        // Validate data length
++                        if (event.data.byteLength % 24 !== 0) { // 6 floats * 4 bytes each
++                            logger.error('Invalid binary message length:', event.data.byteLength);
++                            return;
++                        }
++
+                         const float32Array = new Float32Array(event.data);
+-                        const nodeCount = float32Array.length / 6; // 6 floats per node
++                        const nodeCount = float32Array.length / 6;
+                         const nodes: NodeData[] = [];
+ 
+                         for (let i = 0; i < nodeCount; i++) {
+                             const baseIndex = i * 6;
++                            
++                            // Validate float values
++                            const values = float32Array.slice(baseIndex, baseIndex + 6);
++                            if (!values.every(v => Number.isFinite(v))) {
++                                logger.error('Invalid float values in node data at index:', i);
++                                continue;
++                            }
++
+                             nodes.push({
+                                 position: [
+-                                    float32Array[baseIndex],
+-                                    float32Array[baseIndex + 1],
+-                                    float32Array[baseIndex + 2]
++                                    values[0],
++                                    values[1],
++                                    values[2]
+                                 ],
+                                 velocity: [
+-                                    float32Array[baseIndex + 3],
+-                                    float32Array[baseIndex + 4],
+-                                    float32Array[baseIndex + 5]
++                                    values[3],
++                                    values[4],
++                                    values[5]
+                                 ]
+                             });
+                         }
+ 
+-                        await Promise.resolve().then(() => {
+-                            if (this.binaryMessageCallback) {
+-                                this.binaryMessageCallback(nodes);
+-                            }
+-                        });
++                        if (nodes.length > 0) {
++                            await Promise.resolve().then(() => {
++                                if (this.binaryMessageCallback) {
++                                    this.binaryMessageCallback(nodes);
++                                }
++                            });
++                        } else {
++                            logger.warn('No valid nodes in binary message');
++                        }
+                     }
+                 } catch (error) {
+                     logger.error('Error processing WebSocket message:', error);
++                    if (error instanceof Error) {
++                        logger.error('Error details:', {
++                            name: error.name,
++                            message: error.message,
++                            stack: error.stack
++                        });
++                    }
+                 }
+             };
+ 
+             this.ws.onerror = (event: Event): void => {
+                 logger.error('WebSocket error:', event);
+-                this.isConnected = false;
++                this.connectionState = ConnectionState.FAILED;
+             };
+ 
+             this.ws.onclose = (event: CloseEvent): void => {
+-                const wasConnected = this.isConnected;
+-                this.isConnected = false;
++                const wasConnected = this.connectionState === ConnectionState.CONNECTED;
++                this.connectionState = ConnectionState.DISCONNECTED;
+                 this.binaryMessageCallback = null;
++                this.stopConnectionMonitor();
+                 
+                 // Clear any existing reconnect timeout
+                 if (this.reconnectTimeout !== null) {
+@@ -133,19 +226,22 @@ export class WebSocketService {
+                         `WebSocket connection closed (${event.code}), attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
+                     );
+                     
++                    this.connectionState = ConnectionState.RECONNECTING;
++                    
+                     this.reconnectTimeout = window.setTimeout(() => {
+                         this.reconnectTimeout = null;
+                         this.setupWebSocket();
+                     }, delay);
+                 } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                     logger.warn('Maximum reconnection attempts reached, WebSocket disabled');
++                    this.connectionState = ConnectionState.FAILED;
+                 } else {
+                     logger.info(`WebSocket connection closed: ${event.code} ${event.reason}`);
+                 }
+             };
+         } catch (error) {
+             logger.error('Failed to setup WebSocket:', error);
+-            this.isConnected = false;
++            this.connectionState = ConnectionState.FAILED;
+             
+             // Attempt to reconnect if we haven't exceeded max attempts
+             if (this.reconnectAttempts < this.maxReconnectAttempts) {
+@@ -156,6 +252,8 @@ export class WebSocketService {
+                     `WebSocket setup failed, attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
+                 );
+                 
++                this.connectionState = ConnectionState.RECONNECTING;
++                
+                 this.reconnectTimeout = window.setTimeout(() => {
+                     this.reconnectTimeout = null;
+                     this.setupWebSocket();
+@@ -175,26 +273,65 @@ export class WebSocketService {
+         this.binaryMessageCallback = callback;
+     }
+ 
+-    public getConnectionStatus(): boolean {
+-        return this.isConnected && this.ws?.readyState === WebSocket.OPEN;
++    public getConnectionStatus(): ConnectionState {
++        return this.connectionState;
+     }
+ 
+     public sendNodeUpdates(updates: NodeUpdate[]): void {
+-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
++        if (this.connectionState !== ConnectionState.CONNECTED || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+             logger.warn('WebSocket not connected, cannot send node updates');
+             return;
+         }
+ 
+-        // Convert updates to Float32Array for efficient binary transmission
+-        const float32Array = new Float32Array(updates.length * 3); // 3 floats per position
+-        updates.forEach((update, index) => {
+-            const baseIndex = index * 3;
+-            float32Array[baseIndex] = update.position.x;
+-            float32Array[baseIndex + 1] = update.position.y;
+-            float32Array[baseIndex + 2] = update.position.z;
+-        });
++        try {
++            // Validate updates
++            if (!Array.isArray(updates) || updates.length === 0) {
++                logger.warn('Invalid node updates: empty or not an array');
++                return;
++            }
+ 
+-        this.ws.send(float32Array.buffer);
++            // Validate each update
++            const validUpdates = updates.filter(update => {
++                if (!update.position || typeof update.position !== 'object') {
++                    logger.warn('Invalid node update: missing or invalid position', update);
++                    return false;
++                }
++
++                const { x, y, z } = update.position;
++                if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
++                    logger.warn('Invalid node update: non-finite position values', update);
++                    return false;
++                }
++
++                return true;
++            });
++
++            if (validUpdates.length === 0) {
++                logger.warn('No valid updates to send');
++                return;
++            }
++
++            // Convert updates to Float32Array for efficient binary transmission
++            const float32Array = new Float32Array(validUpdates.length * 3);
++            validUpdates.forEach((update, index) => {
++                const baseIndex = index * 3;
++                float32Array[baseIndex] = update.position.x;
++                float32Array[baseIndex + 1] = update.position.y;
++                float32Array[baseIndex + 2] = update.position.z;
++            });
++
++            this.ws.send(float32Array.buffer);
++            logger.debug(`Sent ${validUpdates.length} node updates`);
++        } catch (error) {
++            logger.error('Error sending node updates:', error);
++            if (error instanceof Error) {
++                logger.error('Error details:', {
++                    name: error.name,
++                    message: error.message,
++                    stack: error.stack
++                });
++            }
++        }
+     }
+ 
+     public dispose(): void {
+@@ -203,13 +340,15 @@ export class WebSocketService {
+             this.reconnectTimeout = null;
+         }
+         
++        this.stopConnectionMonitor();
++        
+         if (this.ws) {
+             this.ws.close();
+             this.ws = null;
+         }
+         
+         this.binaryMessageCallback = null;
+-        this.isConnected = false;
++        this.connectionState = ConnectionState.DISCONNECTED;
+         WebSocketService.instance = null;
+     }
+ }
+diff --git a/scripts/start.sh b/scripts/start.sh
+index 7b16871c..59e8781a 100755
+--- a/scripts/start.sh
++++ b/scripts/start.sh
+@@ -6,57 +6,49 @@ log() {
+     echo "[$(date "+%Y-%m-%d %H:%M:%S")] $1"
+ }
+ 
+-# Function to check if a service is healthy
+-check_service_health() {
++# Function to check if a port is available
++check_port_available() {
+     local port=$1
+-    local endpoint=${2:-"/"}
+-    local websocket=${3:-false}
+-    local retries=30
+-    local wait=2
++    local max_retries=10
++    local wait=1
+ 
+-    log "Checking health for service on port $port..."
++    log "Checking if port $port is available..."
+     
+-    while [ $retries -gt 0 ]; do
+-        # Check if port is open
+-        if ! timeout 1 bash -c "cat < /dev/null > /dev/tcp/0.0.0.0/$port" 2>/dev/null; then
+-            retries=$((retries-1))
+-            if [ $retries -eq 0 ]; then
+-                log "Error: Port $port is not available"
+-                return 1
+-            fi
+-            log "Port $port not ready, retrying in $wait seconds... ($retries attempts left)"
+-            sleep $wait
+-            continue
++    for ((i=1; i<=max_retries; i++)); do
++        if timeout 1 bash -c "cat < /dev/null > /dev/tcp/0.0.0.0/$port" 2>/dev/null; then
++            log "Port $port is available"
++            return 0
+         fi
+-
+-        # Check HTTP endpoint
+-        if ! curl -s -f --max-time 5 "http://localhost:$port$endpoint" > /dev/null; then
+-            retries=$((retries-1))
+-            if [ $retries -eq 0 ]; then
+-                log "Error: Service health check failed on port $port"
+-                return 1
+-            fi
+-            log "Service not ready, retrying in $wait seconds... ($retries attempts left)"
++        if [ $i -lt $max_retries ]; then
++            log "Port $port not ready, attempt $i of $max_retries..."
+             sleep $wait
+-            continue
+         fi
++    done
+ 
+-        # Check WebSocket endpoint if required
+-        if [ "$websocket" = true ] && ! curl -s -f --max-time 5 -N -H "Connection: Upgrade" -H "Upgrade: websocket" "http://localhost:$port/wss" > /dev/null; then
+-            retries=$((retries-1))
+-            if [ $retries -eq 0 ]; then
+-                log "Error: WebSocket health check failed on port $port"
+-                return 1
+-            fi
+-            log "WebSocket not ready, retrying in $wait seconds... ($retries attempts left)"
++    log "Error: Port $port is not available after $max_retries attempts"
++    return 1
++}
++
++# Function to check WebSocket health
++check_websocket_health() {
++    local port=$1
++    local max_retries=5
++    local wait=1
++
++    log "Checking WebSocket health on port $port..."
++    
++    for ((i=1; i<=max_retries; i++)); do
++        if curl -s -f --max-time 2 -N -H "Connection: Upgrade" -H "Upgrade: websocket" "http://localhost:$port/wss" > /dev/null; then
++            log "WebSocket on port $port is healthy"
++            return 0
++        fi
++        if [ $i -lt $max_retries ]; then
++            log "WebSocket not ready, attempt $i of $max_retries..."
+             sleep $wait
+-            continue
+         fi
+-
+-        log "Service on port $port is healthy"
+-        return 0
+     done
+ 
++    log "Error: WebSocket health check failed on port $port"
+     return 1
+ }
+ 
+@@ -229,24 +221,68 @@ main() {
+         exit 1
+     fi
+ 
+-    # Start nginx (it needs to bind to port 4000)
++    # Check if port 4000 is available
++    if ! check_port_available 4000; then
++        log "Failed to verify port 4000 is available"
++        exit 1
++    fi
++
++    # Start nginx
+     log "Starting nginx..."
+-    nginx -t && nginx
+-    if [ $? -ne 0 ]; then
+-        log "Failed to start nginx"
++    nginx -t || { log "nginx config test failed"; exit 1; }
++    nginx || { log "Failed to start nginx"; exit 1; }
++    log "nginx started successfully"
++
++    # Start webxr binary with output logging
++    log "Starting webxr..."
++    /app/webxr > /tmp/webxr.log 2>&1 &
++    RUST_PID=$!
++
++    # Give webxr time to initialize
++    sleep 5
++
++    # Check if process is still running
++    if ! kill -0 $RUST_PID 2>/dev/null; then
++        log "Error: webxr process failed to start"
++        cat /tmp/webxr.log
+         exit 1
+     fi
+ 
+-    # Basic nginx HTTP check (not WebSocket since that requires webxr to be running)
+-    if ! curl -s -f --max-time 5 "http://localhost:4000/" > /dev/null; then
+-        log "Failed to verify nginx is running"
++    # Wait for HTTP endpoint to be ready
++    log "Waiting for HTTP endpoint..."
++    for i in {1..60}; do
++        if ! kill -0 $RUST_PID 2>/dev/null; then
++            log "Error: webxr process died unexpectedly"
++            cat /tmp/webxr.log
++            exit 1
++        fi
++
++        if curl -s -f "http://localhost:4000/api/health" > /dev/null; then
++            log "HTTP endpoint is ready"
++            break
++        fi
++
++        if [ $i -eq 60 ]; then
++            log "Error: HTTP endpoint failed to start"
++            cat /tmp/webxr.log
++            kill $RUST_PID
++            exit 1
++        fi
++
++        log "HTTP endpoint not ready, attempt $i of 60..."
++        sleep 2
++    done
++
++    # Check WebSocket health
++    if ! check_websocket_health 4000; then
++        log "Failed to verify WebSocket health"
++        kill $RUST_PID
+         exit 1
+     fi
+-    log "nginx started successfully"
++    log "WebSocket is healthy"
+ 
+-    # Execute the webxr binary as the main process (which will enable WebSocket endpoints)
+-    log "Executing webxr..."
+-    exec /app/webxr
++    # Wait for webxr process
++    wait $RUST_PID
+ }
+ 
+ # Execute main function
+diff --git a/src/handlers/socket_flow_handler.rs b/src/handlers/socket_flow_handler.rs
+index 17129815..a06510a4 100644
+--- a/src/handlers/socket_flow_handler.rs
++++ b/src/handlers/socket_flow_handler.rs
+@@ -3,11 +3,12 @@ use actix::prelude::*;
+ use actix_web::{web, Error, HttpRequest, HttpResponse};
+ use actix_web_actors::ws;
+ use tokio::sync::RwLock;
+-use log::{info, warn, debug, error};
++use log::{info, debug, error};
+ use serde::{Deserialize, Serialize};
++use serde_json::json;
++use std::time::{Duration, Instant};
+ 
+ use crate::app_state::AppState;
+-use crate::utils::socket_flow_constants::POSITION_UPDATE_RATE;
+ use crate::config::Settings;
+ 
+ #[derive(Debug, Serialize, Deserialize)]
+@@ -15,10 +16,35 @@ pub struct WebSocketSettings {
+     pub update_rate: u32,
+ }
+ 
++const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
++const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(10);
++
+ pub struct SocketFlowServer {
+     app_state: Arc<AppState>,
+     settings: Arc<RwLock<Settings>>,
+     connection_alive: bool,
++    update_handle: Option<SpawnHandle>,
++    heartbeat_handle: Option<SpawnHandle>,
++    last_heartbeat: Instant,
++}
++
++impl Actor for SocketFlowServer {
++    type Context = ws::WebsocketContext<Self>;
++
++    fn started(&mut self, ctx: &mut Self::Context) {
++        info!("[WebSocket] Client connected");
++        self.start_position_updates(ctx);
++        self.start_heartbeat(ctx);
++    }
++
++    fn stopped(&mut self, ctx: &mut Self::Context) {
++        info!("[WebSocket] Client disconnected");
++        
++        // Cancel heartbeat
++        if let Some(handle) = self.heartbeat_handle.take() {
++            ctx.cancel_future(handle);
++        }
++    }
+ }
+ 
+ impl SocketFlowServer {
+@@ -27,73 +53,123 @@ impl SocketFlowServer {
+             app_state,
+             settings,
+             connection_alive: true,
++            update_handle: None,
++            heartbeat_handle: None,
++            last_heartbeat: Instant::now(),
+         }
+     }
+-}
+ 
+-impl Actor for SocketFlowServer {
+-    type Context = ws::WebsocketContext<Self>;
++    fn start_heartbeat(&mut self, ctx: &mut <Self as Actor>::Context) {
++        // Cancel existing heartbeat if any
++        if let Some(handle) = self.heartbeat_handle.take() {
++            ctx.cancel_future(handle);
++        }
+ 
+-    fn started(&mut self, ctx: &mut Self::Context) {
+-        info!("[WebSocket] Client connected");
+-        
+-        // Clone Arc references for the interval closure
+-        let app_state = self.app_state.clone();
+-        
+-        // Calculate update interval based on rate
+-        let update_interval = std::time::Duration::from_millis((1000.0 / POSITION_UPDATE_RATE as f64) as u64);
+-        
+-        // Set up interval to send position updates to client
+-        ctx.run_interval(update_interval, move |actor, ctx| {
+-            if !actor.connection_alive {
++        // Start heartbeat interval
++        let handle = ctx.run_interval(HEARTBEAT_INTERVAL, |actor, ctx| {
++            if Instant::now().duration_since(actor.last_heartbeat) > HEARTBEAT_TIMEOUT {
++                error!("[WebSocket] Client heartbeat timeout");
++                actor.connection_alive = false;
+                 ctx.stop();
+                 return;
+             }
+ 
+-            // Get current node positions and velocities
+-            let app_state_clone = app_state.clone();
++            ctx.ping(b"");
++        });
++
++        self.heartbeat_handle = Some(handle);
++    }
++
++    fn start_position_updates(&mut self, ctx: &mut <Self as Actor>::Context) {
++        // Cancel existing interval if any
++        if let Some(handle) = self.update_handle.take() {
++            ctx.cancel_future(handle);
++        }
++
++        // Clone Arc references for the interval closure
++        let app_state = self.app_state.clone();
++        let settings = self.settings.clone();
++
++        // Spawn a future to get the current update rate
++        let fut = async move {
++            let settings = settings.read().await;
++            settings.system.websocket.update_rate
++        };
++
++        // Convert to actix future and handle it
++        let fut = fut.into_actor(self);
++        ctx.spawn(fut.map(|update_rate, actor, ctx| {
++            // Calculate update interval based on rate
++            let update_interval = Duration::from_millis((1000.0 / update_rate as f64) as u64);
+             
+-            // Spawn a future to get positions
+-            let fut = async move {
+-                let nodes = app_state_clone.graph_service.get_node_positions().await;
+-                
+-                // Create binary data: 24 bytes per node (6 f32s)
+-                let mut binary_data = Vec::with_capacity(nodes.len() * 24);
++            // Set up new interval
++            let handle = ctx.run_interval(update_interval, move |actor, ctx| {
++                if !actor.connection_alive {
++                    ctx.stop();
++                    return;
++                }
++
++                // Get current node positions and velocities
++                let app_state_clone = app_state.clone();
+                 
+-                for node in nodes {
+-                    // Position (x, y, z)
+-                    binary_data.extend_from_slice(&node.data.position[0].to_le_bytes());
+-                    binary_data.extend_from_slice(&node.data.position[1].to_le_bytes());
+-                    binary_data.extend_from_slice(&node.data.position[2].to_le_bytes());
++                // Spawn a future to get positions
++                let fut = async move {
++                    let nodes = app_state_clone.graph_service.get_node_positions().await;
+                     
+-                    // Velocity (x, y, z)
+-                    binary_data.extend_from_slice(&node.data.velocity[0].to_le_bytes());
+-                    binary_data.extend_from_slice(&node.data.velocity[1].to_le_bytes());
+-                    binary_data.extend_from_slice(&node.data.velocity[2].to_le_bytes());
+-                }
++                    // Create binary data: 24 bytes per node (6 f32s)
++                    let mut binary_data = Vec::with_capacity(nodes.len() * 24);
++                    
++                    for node in nodes {
++                        // Position (x, y, z)
++                        binary_data.extend_from_slice(&node.data.position[0].to_le_bytes());
++                        binary_data.extend_from_slice(&node.data.position[1].to_le_bytes());
++                        binary_data.extend_from_slice(&node.data.position[2].to_le_bytes());
++                        
++                        // Velocity (x, y, z)
++                        binary_data.extend_from_slice(&node.data.velocity[0].to_le_bytes());
++                        binary_data.extend_from_slice(&node.data.velocity[1].to_le_bytes());
++                        binary_data.extend_from_slice(&node.data.velocity[2].to_le_bytes());
++                    }
++                    
++                    binary_data
++                };
+                 
+-                binary_data
+-            };
+-            
+-            // Convert the future to an actix future and handle it
+-            let fut = fut.into_actor(actor);
+-            ctx.spawn(fut.map(|binary_data, _actor, ctx| {
+-                ctx.binary(binary_data);
+-            }));
+-        });
++                // Convert the future to an actix future and handle it
++                let fut = fut.into_actor(actor);
++                ctx.spawn(fut.map(|binary_data, _actor, ctx| {
++                    ctx.binary(binary_data);
++                }));
++            });
++
++            actor.update_handle = Some(handle);
++        }));
+     }
++}
+ 
+-    fn stopped(&mut self, _: &mut Self::Context) {
+-        info!("[WebSocket] Client disconnected");
++// Message for updating WebSocket settings
++#[derive(Message, Debug)]
++#[rtype(result = "()")]
++pub struct WebSocketSettingsChanged;
++
++// Implement marker traits for SocketFlowServer
++impl Unpin for SocketFlowServer {}
++
++// Make SocketFlowServer properly sized
++impl actix::Supervised for SocketFlowServer {}
++
++// Implement proper handler for WebSocket settings changes
++impl Handler<WebSocketSettingsChanged> for SocketFlowServer {
++    type Result = ();
++
++    fn handle(&mut self, _: WebSocketSettingsChanged, ctx: &mut <Self as Actor>::Context) {
++        debug!("Restarting position updates with new settings");
++        self.start_position_updates(ctx);
+     }
+ }
+ 
+-// StreamHandler implementation using built-in WebSocket protocol features:
+-// - Automatic ping/pong frame handling for connection keep-alive
+-// - Binary message support for efficient data transfer
+-// - Protocol-level close frame handling
++// Implement proper handler for WebSocket messages
+ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer {
+-    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
++    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut <Self as Actor>::Context) {
+         if !self.connection_alive {
+             ctx.stop();
+             return;
+@@ -102,22 +178,48 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer
+         match msg {
+             Ok(ws::Message::Binary(bin)) => {
+                 // Handle binary node updates from client
+-                if bin.len() % 12 == 0 {  // Each position is 3 f32s = 12 bytes
+-                    let positions = bin.chunks_exact(12).map(|chunk| {
+-                        let mut bytes = [0u8; 4];
+-                        bytes.copy_from_slice(&chunk[0..4]);
+-                        let x = f32::from_le_bytes(bytes);
+-                        bytes.copy_from_slice(&chunk[4..8]);
+-                        let y = f32::from_le_bytes(bytes);
+-                        bytes.copy_from_slice(&chunk[8..12]);
+-                        let z = f32::from_le_bytes(bytes);
+-                        [x, y, z]
+-                    }).collect::<Vec<_>>();
+-                    
+-                    debug!("Received {} node position updates", positions.len());
+-                } else {
+-                    warn!("[WebSocket] Received malformed binary message");
++                if bin.len() % 12 != 0 {
++                    error!("[WebSocket] Malformed binary message: length {} is not a multiple of 12 bytes", bin.len());
++                    ctx.text(json!({
++                        "error": "Malformed binary message: incorrect length"
++                    }).to_string());
++                    return;
+                 }
++
++                let mut positions = Vec::with_capacity(bin.len() / 12);
++                    for (i, chunk) in bin.chunks_exact(12).enumerate() {
++                        let mut position = [0.0f32; 3];
++                        for j in 0..3 {
++                            let start = j * 4;
++                            let end = start + 4;
++                            
++                            match chunk[start..end].try_into() {
++                                Ok(bytes) => {
++                                    position[j] = f32::from_le_bytes(bytes);
++                                    
++                                    // Validate the float value
++                                    if !position[j].is_finite() {
++                                        error!("[WebSocket] Invalid float value at position {}, component {}: {}", i, j, position[j]);
++                                        ctx.text(json!({
++                                            "error": format!("Invalid float value at position {}, component {}", i, j)
++                                        }).to_string());
++                                        return;
++                                    }
++                                },
++                                Err(e) => {
++                                    error!("[WebSocket] Failed to convert bytes to float at position {}, component {}: {}", i, j, e);
++                                    ctx.text(json!({
++                                        "error": format!("Failed to convert bytes to float at position {}, component {}", i, j)
++                                    }).to_string());
++                                    return;
++                                }
++                            }
++                        }
++
++                        positions.push(position);
++                    }
++
++                    debug!("Successfully processed {} node position updates", positions.len());
+             }
+             // Handle protocol-level close frames
+             Ok(ws::Message::Close(reason)) => {
+@@ -126,10 +228,16 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer
+                 ctx.close(reason);
+                 ctx.stop();
+             }
+-            // Automatically respond to ping frames with pong frames
+-            Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
+-            // Ignore pong frames as they're handled by the framework
+-            Ok(ws::Message::Pong(_)) => (),
++            // Handle ping frames
++            Ok(ws::Message::Ping(msg)) => {
++                debug!("[WebSocket] Received ping");
++                ctx.pong(&msg);
++            },
++            // Handle pong frames (heartbeat response)
++            Ok(ws::Message::Pong(_)) => {
++                debug!("[WebSocket] Received pong");
++                self.last_heartbeat = Instant::now();
++            },
+             // Handle protocol errors
+             Err(e) => {
+                 error!("[WebSocket] Protocol error: {}", e);
+@@ -152,13 +260,33 @@ pub async fn get_websocket_settings(
+     Ok(HttpResponse::Ok().json(ws_settings))
+ }
+ 
++const MAX_UPDATE_RATE: u32 = 120; // Maximum updates per second
++
+ pub async fn update_websocket_settings(
+     settings: web::Data<Arc<RwLock<Settings>>>,
+     new_settings: web::Json<WebSocketSettings>
+ ) -> Result<HttpResponse, Error> {
++    // Validate update rate
++    if new_settings.update_rate == 0 {
++        return Ok(HttpResponse::BadRequest().json(json!({
++            "error": "Update rate must be greater than 0"
++        })));
++    }
++
++    if new_settings.update_rate > MAX_UPDATE_RATE {
++        return Ok(HttpResponse::BadRequest().json(json!({
++            "error": format!("Update rate cannot exceed {} updates per second", MAX_UPDATE_RATE)
++        })));
++    }
++
+     let mut settings = settings.write().await;
+     settings.system.websocket.update_rate = new_settings.update_rate;
+     debug!("Updated WebSocket update rate to: {}", new_settings.update_rate);
++
++    // Notify all active WebSocket connections to update their intervals
++    // This would be handled by your WebSocket connection manager if you have one
++    // For now, we just return success
++    
+     Ok(HttpResponse::Ok().json(new_settings.0))
+ }
+ 
+diff --git a/src/services/graph_service.rs b/src/services/graph_service.rs
+index 7496c382..d26dbfd2 100755
+--- a/src/services/graph_service.rs
++++ b/src/services/graph_service.rs
+@@ -43,17 +43,23 @@ impl GraphService {
+             };
+ 
+             loop {
+-                // Update positions
+-                let mut graph = graph_data.write().await;
+-                if let Err(e) = Self::calculate_layout_cpu(
+-                    &mut graph,
+-                    params.iterations,
+-                    params.spring_strength,
+-                    params.damping
+-                ) {
+-                    warn!("[Graph] Error updating positions: {}", e);
++                // Calculate forces with minimal lock time
++                let forces = {
++                    let graph = graph_data.read().await;
++                    Self::calculate_forces(&graph, params.spring_strength)
++                };
++
++                if let Some(forces) = forces {
++                    // Apply forces with minimal lock time
++                    let mut graph = graph_data.write().await;
++                    if let Err(e) = Self::apply_forces(
++                        &mut graph,
++                        &forces,
++                        params.damping
++                    ) {
++                        warn!("[Graph] Error applying forces: {}", e);
++                    }
+                 }
+-                drop(graph); // Release lock
+ 
+                 // Sleep for ~16ms (60fps)
+                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
+@@ -96,17 +102,23 @@ impl GraphService {
+             };
+ 
+             loop {
+-                // Update positions
+-                let mut graph = graph_data.write().await;
+-                if let Err(e) = Self::calculate_layout_cpu(
+-                    &mut graph,
+-                    params.iterations,
+-                    params.spring_strength,
+-                    params.damping
+-                ) {
+-                    warn!("[Graph] Error updating positions: {}", e);
++                // Calculate forces with minimal lock time
++                let forces = {
++                    let graph = graph_data.read().await;
++                    Self::calculate_forces(&graph, params.spring_strength)
++                };
++
++                if let Some(forces) = forces {
++                    // Apply forces with minimal lock time
++                    let mut graph = graph_data.write().await;
++                    if let Err(e) = Self::apply_forces(
++                        &mut graph,
++                        &forces,
++                        params.damping
++                    ) {
++                        warn!("[Graph] Error applying forces: {}", e);
++                    }
+                 }
+-                drop(graph); // Release lock
+ 
+                 // Sleep for ~16ms (60fps)
+                 tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
+@@ -298,97 +310,100 @@ impl GraphService {
+             },
+             None => {
+                 warn!("GPU not available. Falling back to CPU-based layout calculation.");
+-                Self::calculate_layout_cpu(graph, params.iterations, params.spring_strength, params.damping)?;
++                // Calculate forces first
++                if let Some(forces) = Self::calculate_forces(graph, params.spring_strength) {
++                    // Then apply them
++                    Self::apply_forces(graph, &forces, params.damping)?;
++                }
+                 Ok(())
+             }
+         }
+     }
+ 
+-    fn calculate_layout_cpu(graph: &mut GraphData, iterations: u32, spring_strength: f32, damping: f32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
++    fn calculate_forces(graph: &GraphData, spring_strength: f32) -> Option<Vec<(f32, f32, f32)>> {
+         let repulsion_strength = spring_strength * 10000.0;
++        let mut forces = vec![(0.0, 0.0, 0.0); graph.nodes.len()];
+         
+-        for _ in 0..iterations {
+-            // Calculate forces between nodes
+-            let mut forces = vec![(0.0, 0.0, 0.0); graph.nodes.len()];
+-            
+-            // Calculate repulsion forces
+-            for i in 0..graph.nodes.len() {
+-                for j in i+1..graph.nodes.len() {
+-                    let dx = graph.nodes[j].x() - graph.nodes[i].x();
+-                    let dy = graph.nodes[j].y() - graph.nodes[i].y();
+-                    let dz = graph.nodes[j].z() - graph.nodes[i].z();
++        // Calculate repulsion forces
++        for i in 0..graph.nodes.len() {
++            for j in i+1..graph.nodes.len() {
++                let dx = graph.nodes[j].x() - graph.nodes[i].x();
++                let dy = graph.nodes[j].y() - graph.nodes[i].y();
++                let dz = graph.nodes[j].z() - graph.nodes[i].z();
++                
++                let distance = (dx * dx + dy * dy + dz * dz).sqrt();
++                if distance > 0.0 {
++                    let force = repulsion_strength / (distance * distance);
+                     
+-                    let distance = (dx * dx + dy * dy + dz * dz).sqrt();
+-                    if distance > 0.0 {
+-                        let force = repulsion_strength / (distance * distance);
+-                        
+-                        let fx = dx * force / distance;
+-                        let fy = dy * force / distance;
+-                        let fz = dz * force / distance;
+-                        
+-                        forces[i].0 -= fx;
+-                        forces[i].1 -= fy;
+-                        forces[i].2 -= fz;
+-                        
+-                        forces[j].0 += fx;
+-                        forces[j].1 += fy;
+-                        forces[j].2 += fz;
+-                    }
++                    let fx = dx * force / distance;
++                    let fy = dy * force / distance;
++                    let fz = dz * force / distance;
++                    
++                    forces[i].0 -= fx;
++                    forces[i].1 -= fy;
++                    forces[i].2 -= fz;
++                    
++                    forces[j].0 += fx;
++                    forces[j].1 += fy;
++                    forces[j].2 += fz;
+                 }
+             }
++        }
+ 
+-            // Calculate spring forces along edges
+-            for edge in &graph.edges {
+-                // Find indices of source and target nodes
+-                let source_idx = graph.nodes.iter().position(|n| n.id == edge.source);
+-                let target_idx = graph.nodes.iter().position(|n| n.id == edge.target);
++        // Calculate spring forces along edges
++        for edge in &graph.edges {
++            // Find indices of source and target nodes
++            let source_idx = graph.nodes.iter().position(|n| n.id == edge.source);
++            let target_idx = graph.nodes.iter().position(|n| n.id == edge.target);
++            
++            if let (Some(si), Some(ti)) = (source_idx, target_idx) {
++                let source = &graph.nodes[si];
++                let target = &graph.nodes[ti];
++                
++                let dx = target.x() - source.x();
++                let dy = target.y() - source.y();
++                let dz = target.z() - source.z();
+                 
+-                if let (Some(si), Some(ti)) = (source_idx, target_idx) {
+-                    let source = &graph.nodes[si];
+-                    let target = &graph.nodes[ti];
++                let distance = (dx * dx + dy * dy + dz * dz).sqrt();
++                if distance > 0.0 {
++                    // Scale force by edge weight
++                    let force = spring_strength * (distance - 30.0) * edge.weight;
+                     
+-                    let dx = target.x() - source.x();
+-                    let dy = target.y() - source.y();
+-                    let dz = target.z() - source.z();
++                    let fx = dx * force / distance;
++                    let fy = dy * force / distance;
++                    let fz = dz * force / distance;
+                     
+-                    let distance = (dx * dx + dy * dy + dz * dz).sqrt();
+-                    if distance > 0.0 {
+-                        // Scale force by edge weight
+-                        let force = spring_strength * (distance - 30.0) * edge.weight;
+-                        
+-                        let fx = dx * force / distance;
+-                        let fy = dy * force / distance;
+-                        let fz = dz * force / distance;
+-                        
+-                        forces[si].0 += fx;
+-                        forces[si].1 += fy;
+-                        forces[si].2 += fz;
+-                        
+-                        forces[ti].0 -= fx;
+-                        forces[ti].1 -= fy;
+-                        forces[ti].2 -= fz;
+-                    }
++                    forces[si].0 += fx;
++                    forces[si].1 += fy;
++                    forces[si].2 += fz;
++                    
++                    forces[ti].0 -= fx;
++                    forces[ti].1 -= fy;
++                    forces[ti].2 -= fz;
+                 }
+             }
++        }
++        
++        Some(forces)
++    }
++
++    fn apply_forces(graph: &mut GraphData, forces: &[(f32, f32, f32)], damping: f32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
++        for (i, node) in graph.nodes.iter_mut().enumerate() {
++            let vx = node.vx() + forces[i].0;
++            let vy = node.vy() + forces[i].1;
++            let vz = node.vz() + forces[i].2;
+             
+-            // Apply forces and update positions
+-            for (i, node) in graph.nodes.iter_mut().enumerate() {
+-                let vx = node.vx() + forces[i].0;
+-                let vy = node.vy() + forces[i].1;
+-                let vz = node.vz() + forces[i].2;
+-                
+-                let x = node.x() + vx;
+-                let y = node.y() + vy;
+-                let z = node.z() + vz;
+-                
+-                node.set_vx(vx * damping);
+-                node.set_vy(vy * damping);
+-                node.set_vz(vz * damping);
+-                
+-                node.set_x(x);
+-                node.set_y(y);
+-                node.set_z(z);
+-            }
++            let x = node.x() + vx;
++            let y = node.y() + vy;
++            let z = node.z() + vz;
++            
++            node.set_vx(vx * damping);
++            node.set_vy(vy * damping);
++            node.set_vz(vz * damping);
++            
++            node.set_x(x);
++            node.set_y(y);
++            node.set_z(z);
+         }
+         Ok(())
+     }

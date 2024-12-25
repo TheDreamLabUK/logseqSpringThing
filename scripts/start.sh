@@ -6,60 +6,6 @@ log() {
     echo "[$(date "+%Y-%m-%d %H:%M:%S")] $1"
 }
 
-# Function to check if a service is healthy
-check_service_health() {
-    local port=$1
-    local endpoint=${2:-"/"}
-    local websocket=${3:-false}
-    local retries=30
-    local wait=2
-
-    log "Checking health for service on port $port..."
-    
-    while [ $retries -gt 0 ]; do
-        # Check if port is open
-        if ! timeout 1 bash -c "cat < /dev/null > /dev/tcp/0.0.0.0/$port" 2>/dev/null; then
-            retries=$((retries-1))
-            if [ $retries -eq 0 ]; then
-                log "Error: Port $port is not available"
-                return 1
-            fi
-            log "Port $port not ready, retrying in $wait seconds... ($retries attempts left)"
-            sleep $wait
-            continue
-        fi
-
-        # Check HTTP endpoint
-        if ! curl -s -f --max-time 5 "http://localhost:$port$endpoint" > /dev/null; then
-            retries=$((retries-1))
-            if [ $retries -eq 0 ]; then
-                log "Error: Service health check failed on port $port"
-                return 1
-            fi
-            log "Service not ready, retrying in $wait seconds... ($retries attempts left)"
-            sleep $wait
-            continue
-        fi
-
-        # Check WebSocket endpoint if required
-        if [ "$websocket" = true ] && ! curl -s -f --max-time 5 -N -H "Connection: Upgrade" -H "Upgrade: websocket" "http://localhost:$port/wss" > /dev/null; then
-            retries=$((retries-1))
-            if [ $retries -eq 0 ]; then
-                log "Error: WebSocket health check failed on port $port"
-                return 1
-            fi
-            log "WebSocket not ready, retrying in $wait seconds... ($retries attempts left)"
-            sleep $wait
-            continue
-        fi
-
-        log "Service on port $port is healthy"
-        return 0
-    done
-
-    return 1
-}
-
 # Function to check RAGFlow connectivity with retries
 check_ragflow() {
     log "Checking RAGFlow connectivity..."
@@ -229,24 +175,57 @@ main() {
         exit 1
     fi
 
-    # Start nginx (it needs to bind to port 4000)
-    log "Starting nginx..."
-    nginx -t && nginx
-    if [ $? -ne 0 ]; then
-        log "Failed to start nginx"
+    # Start webxr binary first (it will bind to a different port)
+    log "Starting webxr..."
+    /app/webxr > /tmp/webxr.log 2>&1 &
+    RUST_PID=$!
+
+    # Give webxr time to initialize
+    sleep 2
+
+    # Check if process is still running
+    if ! kill -0 $RUST_PID 2>/dev/null; then
+        log "Error: webxr process failed to start"
+        cat /tmp/webxr.log
         exit 1
     fi
 
-    # Basic nginx HTTP check (not WebSocket since that requires webxr to be running)
-    if ! curl -s -f --max-time 5 "http://localhost:4000/" > /dev/null; then
-        log "Failed to verify nginx is running"
-        exit 1
-    fi
+    # Start nginx after webxr (nginx will handle port 4000)
+    log "Starting nginx..."
+    nginx -t || { log "nginx config test failed"; kill $RUST_PID; exit 1; }
+    nginx || { log "Failed to start nginx"; kill $RUST_PID; exit 1; }
     log "nginx started successfully"
 
-    # Execute the webxr binary as the main process (which will enable WebSocket endpoints)
-    log "Executing webxr..."
-    exec /app/webxr
+    # Wait for services to be ready
+    log "Waiting for services to be ready..."
+    for i in {1..30}; do
+        # Check if webxr is still running
+        if ! kill -0 $RUST_PID 2>/dev/null; then
+            log "Error: webxr process died unexpectedly"
+            cat /tmp/webxr.log
+            nginx -s quit
+            exit 1
+        fi
+
+        # Check if nginx is responding
+        if curl -s -f "http://localhost:4000/" > /dev/null; then
+            log "Services are ready"
+            # Wait for webxr process
+            wait $RUST_PID
+            exit $?
+        fi
+
+        if [ $i -eq 30 ]; then
+            log "Error: Services failed to start"
+            cat /tmp/webxr.log
+            kill $RUST_PID
+            nginx -s quit
+            exit 1
+        fi
+
+        log "Services not ready, attempt $i of 30..."
+        sleep 2
+    done
 }
 
 # Execute main function

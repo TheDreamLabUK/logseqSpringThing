@@ -31,23 +31,20 @@ async fn get_visualization_settings(
     let settings_guard = settings.read().await;
     let mut combined_settings = HashMap::new();
     
-    // Get visualization settings directly
-    let vis_settings = &settings_guard.visualization;
-    
-    // Process each category
+    // Process each category from root level settings
     for category in VISUALIZATION_CATEGORIES.iter() {
         debug!("Processing category: {}", category);
         let category_value = match *category {
-            "animations" => serde_json::to_value(&vis_settings.animations),
-            "ar" => serde_json::to_value(&vis_settings.ar),
-            "audio" => serde_json::to_value(&vis_settings.audio),
-            "bloom" => serde_json::to_value(&vis_settings.bloom),
-            "edges" => serde_json::to_value(&vis_settings.edges),
-            "hologram" => serde_json::to_value(&vis_settings.hologram),
-            "labels" => serde_json::to_value(&vis_settings.labels),
-            "nodes" => serde_json::to_value(&vis_settings.nodes),
-            "physics" => serde_json::to_value(&vis_settings.physics),
-            "rendering" => serde_json::to_value(&vis_settings.rendering),
+            "animations" => serde_json::to_value(&settings_guard.visualization.animations),
+            "ar" => serde_json::to_value(&settings_guard.visualization.ar),
+            "audio" => serde_json::to_value(&settings_guard.visualization.audio),
+            "bloom" => serde_json::to_value(&settings_guard.visualization.bloom),
+            "edges" => serde_json::to_value(&settings_guard.visualization.edges),
+            "hologram" => serde_json::to_value(&settings_guard.visualization.hologram),
+            "labels" => serde_json::to_value(&settings_guard.visualization.labels),
+            "nodes" => serde_json::to_value(&settings_guard.visualization.nodes),
+            "physics" => serde_json::to_value(&settings_guard.visualization.physics),
+            "rendering" => serde_json::to_value(&settings_guard.visualization.rendering),
             _ => continue,
         };
 

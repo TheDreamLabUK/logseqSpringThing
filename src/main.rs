@@ -4,6 +4,7 @@ use env_logger;
 use webxr::{
     config::Settings,
     handlers::{
+        self,
         file_handler,
         graph_handler,
         socket_flow_handler::socket_flow_handler,
@@ -102,6 +103,7 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api")
                     .service(web::scope("/files").configure(file_handler::config))
                     .service(web::scope("/graph").configure(graph_handler::config))
+                    .service(web::scope("/settings").configure(handlers::settings::config))
                     .service(
                         web::scope("/visualization")
                             .configure(visualization_handler::config)
