@@ -5,11 +5,13 @@ use webxr::{
     AppState, Settings,
     init_debug_settings,
     file_handler, graph_handler, visualization_handler,
-    handlers::socket_flow_handler,
     RealGitHubService,
     RealGitHubPRService, GPUCompute, GraphData,
     log_data, log_warn,
-    services::file_service::FileService,
+    services::{
+        file_service::FileService,
+        graph_service::GraphService,
+    },
     socket_flow_handler,
 };
 
