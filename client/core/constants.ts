@@ -14,10 +14,10 @@ export const WS_RECONNECT_INTERVAL = 30000; // Match server's HEARTBEAT_INTERVAL
 export const WS_MESSAGE_QUEUE_SIZE = 1000;
 
 // Binary protocol configuration
-export const BINARY_VERSION = 1;
 export const FLOATS_PER_NODE = 6;  // x, y, z, vx, vy, vz
-export const VERSION_OFFSET = 1;    // Skip version float
+export const VERSION_OFFSET = 0;    // No version header
 export const BINARY_CHUNK_SIZE = 1000; // Number of nodes to process in one chunk
+export const NODE_POSITION_SIZE = 24;  // 6 floats * 4 bytes (position + velocity)
 
 // Performance configuration
 export const THROTTLE_INTERVAL = 16; // ~60fps

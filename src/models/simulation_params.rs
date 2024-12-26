@@ -110,6 +110,44 @@ impl SimulationParams {
         }
     }
 
+    pub fn default_for_phase(phase: SimulationPhase) -> Self {
+        match phase {
+            SimulationPhase::Initial => Self {
+                iterations: 500,
+                spring_length: 150.0,
+                spring_strength: 0.05,
+                repulsion: 2500.0,
+                attraction: 0.5,
+                damping: 0.85,
+                time_step: 0.1,
+                phase,
+                mode: SimulationMode::Remote,
+            },
+            SimulationPhase::Dynamic => Self {
+                iterations: 50,
+                spring_length: 100.0,
+                spring_strength: 0.5,
+                repulsion: 100.0,
+                attraction: 1.0,
+                damping: 0.5,
+                time_step: 0.2,
+                phase,
+                mode: SimulationMode::Remote,
+            },
+            SimulationPhase::Finalize => Self {
+                iterations: 200,
+                spring_length: 100.0,
+                spring_strength: 0.1,
+                repulsion: 50.0,
+                attraction: 0.5,
+                damping: 0.95,
+                time_step: 0.2,
+                phase,
+                mode: SimulationMode::Remote,
+            },
+        }
+    }
+
     // Convert to GPU-compatible parameters
     pub fn to_gpu_params(&self) -> GPUSimulationParams {
         GPUSimulationParams {

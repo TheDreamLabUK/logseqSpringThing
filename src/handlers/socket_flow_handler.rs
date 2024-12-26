@@ -8,6 +8,10 @@ use log::{info, warn};
 use crate::app_state::AppState;
 use crate::utils::socket_flow_messages::{PingMessage, PongMessage};
 
+// Constants matching client/state/graphData.ts
+const NODE_POSITION_SIZE: usize = 24;  // 6 floats * 4 bytes
+const FLOATS_PER_NODE: usize = 6;      // x, y, z, vx, vy, vz
+
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
     #[allow(dead_code)]
@@ -52,8 +56,8 @@ impl Actor for SocketFlowServer {
             let fut = async move {
                 let nodes = app_state_clone.graph_service.get_node_positions().await;
                 
-                // Create binary data: 24 bytes per node (6 f32s)
-                let mut binary_data = Vec::with_capacity(nodes.len() * 24);
+                // Create binary data: 24 bytes per node (no header)
+                let mut binary_data = Vec::with_capacity(nodes.len() * NODE_POSITION_SIZE);
                 
                 for node in nodes {
                     // Position (x, y, z)

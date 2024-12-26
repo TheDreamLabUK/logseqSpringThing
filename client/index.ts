@@ -118,7 +118,7 @@ class Application {
                         });
 
                         // Update graph data and visual representation
-                        graphDataManager.updatePositions(buffer);
+                        graphDataManager.updatePositions(floatArray);
                         this.nodeManager.updatePositions(floatArray);
                     }
                 });

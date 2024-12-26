@@ -9,14 +9,18 @@ const logger = createLogger('GraphDataManager');
 
 // Constants
 const THROTTLE_INTERVAL = 16;  // ~60fps max
-const BINARY_VERSION = 1.0;
 const NODE_POSITION_SIZE = 24;  // 6 floats * 4 bytes
-const BINARY_HEADER_SIZE = 4;   // 1 float * 4 bytes
+const FLOATS_PER_NODE = 6;     // x, y, z, vx, vy, vz
+
+interface WebSocketService {
+  send(data: ArrayBuffer): void;
+}
 
 export class GraphDataManager {
   private static instance: GraphDataManager;
   private nodes: Map<string, Node>;
   private edges: Map<string, Edge>;
+  private wsService: WebSocketService;
   private metadata: Record<string, any>;
   private updateListeners: Set<(data: GraphData) => void>;
   private positionUpdateListeners: Set<(positions: Float32Array) => void>;
@@ -34,6 +38,18 @@ export class GraphDataManager {
     this.updateListeners = new Set();
     this.positionUpdateListeners = new Set();
     this.lastUpdateTime = performance.now();
+    // Initialize with a no-op websocket service
+    this.wsService = {
+      send: () => logger.warn('WebSocket service not configured')
+    };
+  }
+
+  /**
+   * Configure the WebSocket service for binary updates
+   */
+  public setWebSocketService(service: WebSocketService): void {
+    this.wsService = service;
+    logger.info('WebSocket service configured');
   }
 
   static getInstance(): GraphDataManager {
@@ -141,10 +157,16 @@ export class GraphDataManager {
     // Initialize node positions if they don't have positions yet
     this.nodes.forEach(node => {
       if (!node.data.position || (Array.isArray(node.data.position) && node.data.position.every(p => p === null))) {
+        // Initialize positions in a larger sphere to match spring_length scale
+        const radius = 100; // Match default spring_length
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const r = radius * Math.cbrt(Math.random()); // Cube root for uniform distribution
+        
         node.data.position = {
-          x: (Math.random() - 0.5) * 20,
-          y: (Math.random() - 0.5) * 20,
-          z: (Math.random() - 0.5) * 20
+          x: r * Math.sin(phi) * Math.cos(theta),
+          y: r * Math.sin(phi) * Math.sin(theta),
+          z: r * Math.cos(phi)
         };
       }
       if (!node.data.velocity) {
@@ -275,39 +297,33 @@ export class GraphDataManager {
   }
 
   private sendPositionsToServer(): void {
-    if (!window.ws || window.ws.readyState !== WebSocket.OPEN) {
-      logger.warn('WebSocket not ready, cannot send positions to server');
-      return;
+    if (!this.nodes || this.nodes.size === 0) return;
+
+    // Allocate buffer for node positions (no header)
+    const buffer = new ArrayBuffer(this.nodes.size * NODE_POSITION_SIZE);
+    const positions = new Float32Array(buffer);
+
+    // Pack positions into binary format
+    let i = 0;
+    for (const node of this.nodes.values()) {
+      const pos = node.data.position;
+      positions[i * 6] = typeof pos.x === 'number' ? pos.x : 0;
+      positions[i * 6 + 1] = typeof pos.y === 'number' ? pos.y : 0;
+      positions[i * 6 + 2] = typeof pos.z === 'number' ? pos.z : 0;
+      positions[i * 6 + 3] = node.data.velocity.x;
+      positions[i * 6 + 4] = node.data.velocity.y;
+      positions[i * 6 + 5] = node.data.velocity.z;
+      i++;
     }
 
-    // Create binary buffer with current positions
-    const buffer = new ArrayBuffer(BINARY_HEADER_SIZE + this.nodes.size * NODE_POSITION_SIZE);
-    const positions = new Float32Array(buffer);
-    
-    // Set binary version in header
-    positions[0] = BINARY_VERSION;
-    
-    let index = 1; // Start after header
-    this.nodes.forEach(node => {
-      const pos = node.data.position;
-      positions[index * 6] = typeof pos.x === 'number' ? pos.x : 0;
-      positions[index * 6 + 1] = typeof pos.y === 'number' ? pos.y : 0;
-      positions[index * 6 + 2] = typeof pos.z === 'number' ? pos.z : 0;
-      positions[index * 6 + 3] = node.data.velocity.x;
-      positions[index * 6 + 4] = node.data.velocity.y;
-      positions[index * 6 + 5] = node.data.velocity.z;
-      index++;
-    });
-
-    // Send binary positions to server
-    window.ws.send(buffer);
-    logger.log('Sent initial positions to server for GPU layout');
+    // Send binary data (no header)
+    this.wsService.send(positions.buffer);
   }
 
   /**
    * Handle binary position updates with throttling
    */
-  updatePositions(buffer: ArrayBuffer): void {
+  updatePositions(positions: Float32Array): void {
     const now = performance.now();
     const timeSinceLastUpdate = now - this.lastUpdateTime;
 
@@ -316,30 +332,23 @@ export class GraphDataManager {
     }
 
     try {
-      const floatArray = new Float32Array(buffer);
-      
-      // Check binary version
-      const version = floatArray[0];
-      if (version !== BINARY_VERSION) {
-        logger.warn(`Received binary data version ${version}, expected ${BINARY_VERSION}`);
-      }
-
-      // Verify data size
-      const expectedSize = BINARY_HEADER_SIZE + Math.floor((buffer.byteLength - BINARY_HEADER_SIZE) / NODE_POSITION_SIZE) * NODE_POSITION_SIZE;
-      if (buffer.byteLength !== expectedSize) {
-        logger.error(`Invalid binary data length: ${buffer.byteLength} bytes (expected ${expectedSize})`);
+      // No version check needed
+      // Verify data size (no header)
+      const expectedSize = Math.floor(positions.length / FLOATS_PER_NODE) * NODE_POSITION_SIZE;
+      if (positions.length * 4 !== expectedSize) {
+        logger.error(`Invalid binary data length: ${positions.length * 4} bytes (expected ${expectedSize})`);
         return;
       }
 
       // Check for invalid values
       let hasInvalidValues = false;
-      for (let i = BINARY_HEADER_SIZE; i < floatArray.length; i++) {
-        const val = floatArray[i];
+      for (let i = 0; i < positions.length; i++) {
+        const val = positions[i];
         if (!Number.isFinite(val) || Math.abs(val) > 1000) {
           logger.warn(`Invalid position value at index ${i}: ${val}`);
           hasInvalidValues = true;
           // Replace invalid value with 0
-          floatArray[i] = 0;
+          positions[i] = 0;
         }
       }
 
@@ -351,21 +360,21 @@ export class GraphDataManager {
       }
 
       // Log a sample of positions for debugging
-      const nodeCount = Math.floor((floatArray.length - BINARY_HEADER_SIZE) / 6);
+      const nodeCount = Math.floor(positions.length / 6);
       logger.debug(`Received positions for ${nodeCount} nodes`);
       if (nodeCount > 0) {
         const firstNode = {
-          x: floatArray[BINARY_HEADER_SIZE],
-          y: floatArray[BINARY_HEADER_SIZE + 1],
-          z: floatArray[BINARY_HEADER_SIZE + 2],
-          vx: floatArray[BINARY_HEADER_SIZE + 3],
-          vy: floatArray[BINARY_HEADER_SIZE + 4],
-          vz: floatArray[BINARY_HEADER_SIZE + 5]
+          x: positions[0],
+          y: positions[1],
+          z: positions[2],
+          vx: positions[3],
+          vy: positions[4],
+          vz: positions[5]
         };
         logger.debug('First node position:', firstNode);
       }
 
-      this.notifyPositionUpdateListeners(floatArray);
+      this.notifyPositionUpdateListeners(positions);
       this.lastUpdateTime = now;
     } catch (error) {
       logger.error('Error processing binary position update:', error);
@@ -458,6 +467,28 @@ export class GraphDataManager {
         edges: Array.from(this.edges.values()),
         metadata: { ...this.metadata, binaryUpdatesEnabled: enabled }
       });
+    });
+  }
+
+  public updateNodePositions(positions: Float32Array): void {
+    if (!this.binaryUpdatesEnabled || this.loadingNodes) {
+      return;
+    }
+  
+    // Log for debugging
+    logger.debug('Received binary position update:', positions);
+  
+    if (positions.length % FLOATS_PER_NODE !== 0) {
+      logger.error('Invalid position array length:', positions.length);
+      return;
+    }
+  
+    this.positionUpdateListeners.forEach(listener => {
+      try {
+        listener(positions);
+      } catch (error) {
+        logger.error('Error in position update listener:', error);
+      }
     });
   }
 }

@@ -1,17 +1,27 @@
 // Node data structure matching Rust's NodeData
 struct NodeData {
     float position[3];    // 12 bytes
-    float velocity[3];    // 12 bytes
     unsigned char mass;   // 1 byte
     unsigned char flags;  // 1 byte
     unsigned char padding[2]; // 2 bytes padding
 };
 
+// Velocity data structure matching Rust's VelocityData
+struct VelocityData {
+    float x;
+    float y;
+    float z;
+};
+
 extern "C" __global__ void compute_forces(
     NodeData* nodes,
-    int num_nodes,
+    VelocityData* velocities,
+    unsigned long long unused,
+    unsigned int num_nodes,
     float spring_strength,
+    float spring_length,
     float repulsion,
+    float attraction,
     float damping
 ) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -64,15 +74,23 @@ extern "C" __global__ void compute_forces(
                 pos_i.z - pos_j.z
             );
 
-            // Calculate force magnitude with minimum distance clamp
-            float dist = fmaxf(sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z), 0.0001f);
-            float force_mag = repulsion * mass_i * mass_j / (dist * dist);
+    // Calculate distance with larger minimum clamp to prevent instability
+    float dist = fmaxf(sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z), 1.0f);
+    
+    // Scale repulsion force by sqrt of masses to reduce excessive force
+    float mass_factor = sqrtf(mass_i * mass_j);
+    float force_mag = repulsion * mass_factor / (dist * dist);
 
-            // Add spring force if nodes are connected (check flags)
-            if ((node_i.flags & 0x2) && (nodes[tile * blockDim.x + j].flags & 0x2)) {
-                float spring_force = spring_strength * (dist - 1.0f); // Natural length = 1.0
-                force_mag += spring_force;
-            }
+    // Add spring force if nodes are connected (check flags)
+    if ((node_i.flags & 0x2) && (nodes[tile * blockDim.x + j].flags & 0x2)) {
+        // Use spring_length parameter for natural length
+        float spring_force = spring_strength * (dist - spring_length);
+        // Add attraction component
+        force_mag += spring_force * attraction;
+    }
+
+    // Clamp maximum force to prevent instability
+    force_mag = fminf(force_mag, 1000.0f);
 
             // Accumulate force
             force.x += force_mag * diff.x / dist;
@@ -84,9 +102,9 @@ extern "C" __global__ void compute_forces(
 
     // Load current velocity
     float3 vel = make_float3(
-        node_i.velocity[0],
-        node_i.velocity[1],
-        node_i.velocity[2]
+        velocities[idx].x,
+        velocities[idx].y,
+        velocities[idx].z
     );
 
     // Update velocity with damping
@@ -103,9 +121,9 @@ extern "C" __global__ void compute_forces(
     nodes[idx].position[0] = pos_i.x;
     nodes[idx].position[1] = pos_i.y;
     nodes[idx].position[2] = pos_i.z;
-    nodes[idx].velocity[0] = vel.x;
-    nodes[idx].velocity[1] = vel.y;
-    nodes[idx].velocity[2] = vel.z;
+    velocities[idx].x = vel.x;
+    velocities[idx].y = vel.y;
+    velocities[idx].z = vel.z;
 
     // Flags and mass remain unchanged
 }

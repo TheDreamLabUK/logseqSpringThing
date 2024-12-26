@@ -249,7 +249,14 @@ export interface BaseWebSocketMessage {
 // Binary position update message (server -> client)
 export interface BinaryPositionUpdateMessage extends BaseWebSocketMessage {
   type: 'binaryPositionUpdate';
-  data: ArrayBuffer;  // Raw binary data (24 bytes per node: 6 floats x 4 bytes)
+  data: {
+    nodes: Array<{
+      data: {
+        position: Vector3;
+        velocity: Vector3;
+      }
+    }>
+  };
 }
 
 // Connection health messages

@@ -55,6 +55,12 @@ RUN mkdir src && \
 
 # Now copy the real source code and build
 COPY src ./src
+
+# Compile CUDA kernel to PTX
+RUN nvcc -ptx src/utils/compute_forces.cu -o compute_forces.ptx && \
+    mv compute_forces.ptx src/utils/compute_forces.ptx
+
+# Build Rust application
 RUN cargo build --release --jobs $(nproc) || \
     (sleep 2 && cargo build --release --jobs $(nproc)) || \
     (sleep 5 && cargo build --release --jobs 1)
@@ -174,7 +180,7 @@ RUN chown -R webxr:webxr /app/venv
 # Copy built artifacts
 COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/
 COPY settings.toml /app/
-COPY src/utils/compute_forces.ptx /app/compute_forces.ptx
+COPY --from=rust-deps-builder /usr/src/app/src/utils/compute_forces.ptx /app/compute_forces.ptx
 COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
 
 # Copy configuration and scripts
