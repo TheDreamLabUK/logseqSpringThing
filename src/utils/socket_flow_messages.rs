@@ -19,18 +19,6 @@ unsafe impl DeviceRepr for NodeData {}
 // Implement ValidAsZeroBits for NodeData
 unsafe impl ValidAsZeroBits for NodeData {}
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PingMessage {
-    pub type_: String,
-    pub timestamp: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PongMessage {
-    pub type_: String,
-    pub timestamp: u64,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
@@ -117,11 +105,12 @@ impl Node {
     pub fn set_vz(&mut self, val: f32) { self.data.velocity[2] = val; }
 }
 
+// Simple binary format for position/velocity updates
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct BinaryNodeData {
-    pub position: [f32; 3],  // x, y, z
-    pub velocity: [f32; 3],  // vx, vy, vz
+    pub position: [f32; 3],  // x, y, z as f32
+    pub velocity: [f32; 3],  // vx, vy, vz as f32
 }
 
 // Implement DeviceRepr for BinaryNodeData
@@ -139,6 +128,7 @@ impl BinaryNodeData {
     }
 }
 
+// Simple message types for control messages
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Message {

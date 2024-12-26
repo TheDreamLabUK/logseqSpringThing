@@ -1,6 +1,6 @@
-import type { LabelSettings } from '../core/types';
+import type { Settings, LabelSettings } from '../types/settings';
 import { settingsManager } from '../state/settings';
-import { createLogger } from '../utils/logger';
+import { createLogger } from '../core/logger';
 import * as THREE from 'three';
 
 const logger = createLogger('TextRenderer');
@@ -19,7 +19,7 @@ export class TextRenderer {
     private unsubscribers: Array<() => void> = [];
     private projMatrix: THREE.Matrix4;
     private viewMatrix: THREE.Matrix4;
-    private currentSettings: LabelSettings;
+    private currentSettings: Settings;
 
     constructor(camera: THREE.Camera) {
         this.camera = camera;
@@ -27,13 +27,14 @@ export class TextRenderer {
         this.labelStates = new Map();
         this.projMatrix = new THREE.Matrix4();
         this.viewMatrix = new THREE.Matrix4();
-        this.currentSettings = settingsManager.getCurrentSettings().labels;
+        this.currentSettings = settingsManager.getCurrentSettings();
         this.setupSettingsSubscriptions();
     }
 
     private setupSettingsSubscriptions(): void {
-        Object.keys(this.currentSettings).forEach(setting => {
-            const unsubscribe = settingsManager.subscribe('labels', setting as keyof LabelSettings, (value) => {
+        Object.keys(this.currentSettings.visualization.labels).forEach(setting => {
+            const path = `visualization.labels.${setting}`;
+            const unsubscribe = settingsManager.subscribe(path, (value) => {
                 this.handleSettingChange(setting as keyof LabelSettings, value);
             });
             this.unsubscribers.push(unsubscribe);
@@ -183,7 +184,7 @@ export class TextRenderer {
             // (e.g., using HTML elements, sprites, or geometry)
 
             // Update visibility
-            labelGroup.visible = this.currentSettings.enableLabels && state.visible;
+            labelGroup.visible = this.currentSettings.visualization.labels.enableLabels && state.visible;
 
             // Update bounding box for culling
             state.boundingBox = labelGroup;

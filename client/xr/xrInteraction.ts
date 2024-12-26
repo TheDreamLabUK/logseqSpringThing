@@ -1,8 +1,25 @@
 import * as THREE from 'three';
-import { XRHandWithHaptics } from './xrTypes';
 import { NodeManager } from '../rendering/nodes';
 import { XRSessionManager } from './xrSessionManager';
-import { Settings } from '../core/types';
+import { Platform, Node } from '../core/types';
+import { Settings } from '../types/settings';
+import { XRHandWithHaptics } from '../types/xr';
+import { platformManager } from '../platform/platformManager';
+import { createLogger } from '../core/logger';
+import { SettingsStore } from '../state/SettingsStore';
+import { defaultSettings } from '../state/defaultSettings';
+import { HandGestureType } from '../types/gestures';
+import { WebSocketService } from '../websocket/websocketService';
+
+const logger = createLogger('XRInteraction');
+
+interface HapticActuator {
+    pulse: (intensity: number, duration: number) => Promise<boolean>;
+}
+
+interface WorldObject3D extends THREE.Object3D {
+    getWorldPosition(target: THREE.Vector3): THREE.Vector3;
+}
 
 export class XRInteraction {
     private static instance: XRInteraction | null = null;
@@ -12,196 +29,95 @@ export class XRInteraction {
     private lastInteractorPosition = new THREE.Vector3();
     private hands: XRHandWithHaptics[] = [];
     private settings: Settings;
+    private settingsStore: SettingsStore;
+    private selectedNodeId: string | null = null;
+    private worldPosition = new THREE.Vector3();
+    private websocketService: WebSocketService;
+    private handGestureStates: Map<number, HandGestureType> = new Map();
+    private updateBatch: Map<string, THREE.Vector3> = new Map();
+    private batchUpdateTimeout: NodeJS.Timeout | null = null;
+    private settingsUnsubscribers: Array<() => void> = [];
 
     private constructor(xrManager: XRSessionManager, nodeManager: NodeManager) {
         this.xrManager = xrManager;
         this.nodeManager = nodeManager;
-        
-        this.settings = {
-            animations: { 
-                enableMotionBlur: false, 
-                enableNodeAnimations: false, 
-                motionBlurStrength: 0.4, 
-                selectionWaveEnabled: false, 
-                pulseEnabled: false, 
-                rippleEnabled: false, 
-                edgeAnimationEnabled: false, 
-                flowParticlesEnabled: false 
-            },
-            ar: {
-                dragThreshold: 0.04,
-                enableHandTracking: true,
-                enableHaptics: true,
-                enableLightEstimation: true,
-                enablePassthroughPortal: false,
-                enablePlaneDetection: true,
-                enableSceneUnderstanding: true,
-                gestureSsmoothing: 0.9,
-                handMeshColor: '#FFD700',
-                handMeshEnabled: true,
-                handMeshOpacity: 0.3,
-                handPointSize: 0.01,
-                handRayColor: '#FFD700',
-                handRayEnabled: true,
-                handRayWidth: 0.002,
-                hapticIntensity: 0.7,
-                passthroughBrightness: 1,
-                passthroughContrast: 1,
-                passthroughOpacity: 1,
-                pinchThreshold: 0.015,
-                planeColor: '#4A90E2',
-                planeOpacity: 0.3,
-                portalEdgeColor: '#FFD700',
-                portalEdgeWidth: 0.02,
-                portalSize: 1,
-                roomScale: true,
-                rotationThreshold: 0.08,
-                showPlaneOverlay: true,
-                snapToFloor: true
-            },
-            audio: { 
-                enableAmbientSounds: false, 
-                enableInteractionSounds: false, 
-                enableSpatialAudio: false 
-            },
-            bloom: { 
-                edgeBloomStrength: 0.3, 
-                enabled: false, 
-                environmentBloomStrength: 0.5, 
-                nodeBloomStrength: 0.2, 
-                radius: 0.5, 
-                strength: 1.8 
-            },
-            clientDebug: { 
-                enableDataDebug: false, 
-                enableWebsocketDebug: false, 
-                enabled: false, 
-                logBinaryHeaders: false, 
-                logFullJson: false 
-            },
-            edges: {
-                arrowSize: 0.15, 
-                baseWidth: 2, 
-                color: '#917f18', 
-                enableArrows: false, 
-                opacity: 1, 
-                widthRange: [1, 4] 
-            },
-            labels: {
-                desktopFontSize: 12, 
-                enableLabels: true, 
-                textColor: '#FFFFFF' 
-            },
-            network: {
-                bindAddress: '0.0.0.0',
-                domain: 'localhost',
-                enableHttp2: false,
-                enableRateLimiting: true,
-                enableTls: false,
-                maxRequestSize: 10485760,
-                minTlsVersion: '',
-                port: 3001,
-                rateLimitRequests: 100,
-                rateLimitWindow: 60,
-                tunnelId: 'dummy'
-            },
-            nodes: { 
-                baseColor: '#4A90E2', 
-                baseSize: 1, 
-                clearcoat: 0.5, 
-                enableHoverEffect: true, 
-                enableInstancing: true, 
-                highlightColor: '#FFD700', 
-                highlightDuration: 500, 
-                hoverScale: 1.2, 
-                materialType: 'standard', 
-                metalness: 0.5, 
-                opacity: 1, 
-                roughness: 0.5, 
-                sizeByConnections: false, 
-                sizeRange: [0.5, 2] 
-            },
-            physics: { 
-                attractionStrength: 0.1, 
-                boundsSize: 100, 
-                collisionRadius: 1, 
-                damping: 0.5, 
-                enableBounds: true, 
-                enabled: true, 
-                iterations: 1, 
-                maxVelocity: 10, 
-                repulsionStrength: 0.2, 
-                springStrength: 0.1 
-            },
-            rendering: { 
-                ambientLightIntensity: 0.5, 
-                backgroundColor: '#000000', 
-                directionalLightIntensity: 1, 
-                enableAmbientOcclusion: true, 
-                enableAntialiasing: true, 
-                enableShadows: true, 
-                environmentIntensity: 1 
-            },
-            websocket: {
-                binaryChunkSize: 65536,
-                compressionEnabled: true,
-                compressionThreshold: 1024,
-                heartbeatInterval: 15000,
-                heartbeatTimeout: 60000,
-                maxConnections: 1000,
-                maxMessageSize: 100485760,
-                reconnectAttempts: 3,
-                reconnectDelay: 5000,
-                updateRate: 90,
-                url: '/wss'  // Default WebSocket endpoint
-            },
-            default: {
-                apiClientTimeout: 30,
-                enableMetrics: true,
-                enableRequestLogging: true,
-                logFormat: "json",
-                logLevel: "debug",
-                maxConcurrentRequests: 5,
-                maxPayloadSize: 5242880,
-                maxRetries: 3,
-                metricsPort: 9090,
-                retryDelay: 5
-            },
-            security: {
-                allowedOrigins: [],
-                auditLogPath: "/app/logs/audit.log",
-                cookieHttponly: true,
-                cookieSamesite: "Strict",
-                cookieSecure: true,
-                csrfTokenTimeout: 3600,
-                enableAuditLogging: true,
-                enableRequestValidation: true,
-                sessionTimeout: 3600
-            },
-            serverDebug: {
-                enableDataDebug: false,
-                enableWebsocketDebug: false,
-                enabled: true,
-                logBinaryHeaders: false,
-                logFullJson: false
-            }
-        };
+        this.settingsStore = SettingsStore.getInstance();
+        this.settings = defaultSettings;
+        this.websocketService = WebSocketService.getInstance();
         
         this.setupXRControllers();
         this.setupHandTracking();
+        this.setupPlatformListeners();
+        this.setupSettingsSubscription();
     }
 
-    public static getInstance(xrManager: XRSessionManager, nodeManager: NodeManager): XRInteraction {
-        if (!XRInteraction.instance) {
-            XRInteraction.instance = new XRInteraction(xrManager, nodeManager);
+    private setupPlatformListeners(): void {
+        platformManager.on('platformChange', (platform: Platform) => {
+            logger.info(`Platform changed to ${platform}`);
+            this.updateXRFeatures();
+        });
+    }
+
+    private updateXRFeatures(): void {
+        const platform = platformManager.getPlatform();
+        const capabilities = platformManager.getCapabilities();
+
+        // Update hand tracking based on platform capabilities
+        if (capabilities.handTracking) {
+            this.setupHandTracking();
+        } else {
+            this.disableHandTracking();
         }
-        return XRInteraction.instance;
+
+        // Update haptics based on platform capabilities
+        this.controllers.forEach(controller => {
+            if (controller.userData) {
+                controller.userData.platform = platform;
+            }
+        });
+
+        this.hands.forEach(hand => {
+            if (hand.userData) {
+                hand.userData.platform = platform;
+            }
+        });
+    }
+
+    private disableHandTracking(): void {
+        this.hands.forEach(hand => {
+            if (hand.parent) {
+                hand.parent.remove(hand);
+            }
+        });
+        this.hands = [];
+    }
+
+    private setupSettingsSubscription(): void {
+        // Clear any existing subscriptions
+        this.settingsUnsubscribers.forEach(unsub => unsub());
+        this.settingsUnsubscribers = [];
+
+        // Subscribe to XR input settings
+        [
+            'hapticIntensity',
+            'dragThreshold',
+            'pinchThreshold',
+            'rotationThreshold',
+            'interactionRadius'
+        ].forEach(setting => {
+            const unsubscribe = this.settingsStore.subscribe(`xr.input.${setting}`, () => {
+                // Handle setting change
+                this.updateXRFeatures();
+            });
+            this.settingsUnsubscribers.push(unsubscribe);
+        });
     }
 
     private setupXRControllers(): void {
         this.xrManager.onControllerAdded((controller: THREE.Group) => {
+            controller.userData.platform = platformManager.getPlatform();
             this.controllers.push(controller);
-            if (controller.userData.hapticActuator) {
+            if (controller.userData.hapticActuator && this.settings.xr.input.enableHaptics) {
                 this.triggerHapticFeedback(controller, 0.5, 50);
             }
         });
@@ -215,25 +131,85 @@ export class XRInteraction {
     }
 
     private setupHandTracking(): void {
-        if (!this.settings.ar.enableHandTracking) return;
+        if (!platformManager.getCapabilities().handTracking) {
+            logger.info('Hand tracking not supported on this platform');
+            return;
+        }
+        // Hand tracking is now handled internally
+        // No need to register with XRSessionManager
+    }
 
-        // Hand tracking is handled by the XRSessionManager directly
-        this.hands = [];
+    private flushPositionUpdates(): void {
+        if (this.updateBatch.size === 0) return;
+
+        const updates = Array.from(this.updateBatch.entries()).map(([id, position]) => ({
+            id,
+            position: { x: position.x, y: position.y, z: position.z }
+        }));
+
+        // Update each node position individually
+        updates.forEach(update => {
+            const newPosition = new THREE.Vector3(update.position.x, update.position.y, update.position.z);
+            this.nodeManager.updateNodePosition(update.id, newPosition);
+        });
+
+        this.websocketService.sendNodeUpdates(updates);
+        this.updateBatch.clear();
+    }
+
+    private queuePositionUpdate(nodeId: string, position: THREE.Vector3): void {
+        this.updateBatch.set(nodeId, position.clone());
+        
+        if (this.batchUpdateTimeout) {
+            clearTimeout(this.batchUpdateTimeout);
+        }
+
+        this.batchUpdateTimeout = setTimeout(() => {
+            this.flushPositionUpdates();
+            this.batchUpdateTimeout = null;
+        }, 16); // ~60fps
+    }
+
+    private async triggerHapticFeedback(controller: THREE.Group, intensity: number, duration: number): Promise<void> {
+        if (!this.settings.xr.input.enableHaptics) return;
+
+        const hapticActuator = controller.userData.hapticActuator as HapticActuator;
+        if (hapticActuator) {
+            try {
+                await hapticActuator.pulse(
+                    intensity * this.settings.xr.input.hapticIntensity,
+                    duration
+                );
+            } catch (error) {
+                logger.warn('Failed to trigger haptic feedback:', error);
+            }
+        }
+    }
+
+    public static getInstance(xrManager: XRSessionManager, nodeManager: NodeManager): XRInteraction {
+        if (!XRInteraction.instance) {
+            XRInteraction.instance = new XRInteraction(xrManager, nodeManager);
+        }
+        return XRInteraction.instance;
     }
 
     public update(): void {
-        if (!this.settings.ar.enableHandTracking) return;
+        if (!this.settings.xr.input.enableHandTracking && !this.controllers.length) {
+            return;
+        }
 
         // Update hand interactions
         this.hands.forEach(hand => {
-            if (hand.pinchStrength > this.settings.ar.pinchThreshold) {
+            if (hand.pinchStrength > this.settings.xr.input.pinchThreshold) {
                 this.handlePinchGesture(hand);
             }
         });
 
         // Update controller interactions
         this.controllers.forEach(controller => {
-            this.handleControllerInteraction(controller);
+            if (controller.userData.isSelecting) {
+                this.handleControllerInteraction(controller);
+            }
         });
     }
 
@@ -241,70 +217,94 @@ export class XRInteraction {
         const indexTip = hand.hand.joints['index-finger-tip'];
         if (!indexTip) return;
 
-        const position = new THREE.Vector3();
-        position.setFromMatrixPosition(indexTip.matrixWorld);
+        try {
+            (indexTip as WorldObject3D).getWorldPosition(this.worldPosition);
 
-        // Calculate movement delta
-        const delta = position.clone().sub(this.lastInteractorPosition);
-        
-        // Update node position based on hand movement
-        if (delta.length() > this.settings.ar.dragThreshold) {
-            // Get all nodes and update their positions
-            const nodes = this.nodeManager.getAllNodeMeshes();
-            nodes.forEach(nodeMesh => {
-                const currentPos = this.nodeManager.getNodePosition(nodeMesh.userData.nodeId);
-                const newPos = currentPos.add(delta);
-                this.nodeManager.updateNodePosition(nodeMesh.userData.nodeId, newPos);
-            });
+            if (this.lastInteractorPosition.distanceTo(this.worldPosition) > this.settings.xr.input.dragThreshold) {
+                if (!this.selectedNodeId) {
+                    this.selectedNodeId = this.findClosestNode(this.worldPosition);
+                }
 
-            if (this.settings.ar.enableHaptics) {
-                this.triggerHapticFeedback(hand, this.settings.ar.hapticIntensity, 50);
+                if (this.selectedNodeId) {
+                    this.queuePositionUpdate(this.selectedNodeId, this.worldPosition);
+                    this.lastInteractorPosition.copy(this.worldPosition);
+
+                    if (hand.userData.hapticActuator && this.settings.xr.input.enableHaptics) {
+                        this.triggerHapticFeedback(hand, 0.3, 30);
+                    }
+                }
             }
+        } catch (error) {
+            logger.error('Error handling pinch gesture:', error);
         }
-
-        this.lastInteractorPosition.copy(position);
     }
 
     private handleControllerInteraction(controller: THREE.Group): void {
-        const position = new THREE.Vector3();
-        position.setFromMatrixPosition(controller.matrixWorld);
+        try {
+            (controller as WorldObject3D).getWorldPosition(this.worldPosition);
 
-        // Calculate movement delta
-        const delta = position.clone().sub(this.lastInteractorPosition);
-        
-        // Update node position based on controller movement
-        if (delta.length() > this.settings.ar.dragThreshold) {
-            // Get all nodes and update their positions
-            const nodes = this.nodeManager.getAllNodeMeshes();
-            nodes.forEach(nodeMesh => {
-                const currentPos = this.nodeManager.getNodePosition(nodeMesh.userData.nodeId);
-                const newPos = currentPos.add(delta);
-                this.nodeManager.updateNodePosition(nodeMesh.userData.nodeId, newPos);
-            });
+            if (this.lastInteractorPosition.distanceTo(this.worldPosition) > this.settings.xr.input.dragThreshold) {
+                if (!this.selectedNodeId) {
+                    this.selectedNodeId = this.findClosestNode(this.worldPosition);
+                }
 
-            if (this.settings.ar.enableHaptics && controller.userData.hapticActuator) {
-                this.triggerHapticFeedback(controller, this.settings.ar.hapticIntensity, 50);
+                if (this.selectedNodeId) {
+                    this.queuePositionUpdate(this.selectedNodeId, this.worldPosition);
+                    this.lastInteractorPosition.copy(this.worldPosition);
+
+                    if (controller.userData.hapticActuator && this.settings.xr.input.enableHaptics) {
+                        this.triggerHapticFeedback(controller, 0.3, 30);
+                    }
+                }
+            }
+        } catch (error) {
+            logger.error('Error handling controller interaction:', error);
+        }
+    }
+
+    private findClosestNode(position: THREE.Vector3): string | null {
+        const nodes = this.nodeManager.getCurrentNodes() as Array<Node>;
+        let closestNode: Node | null = null;
+        let closestDistance = Infinity;
+
+        for (const node of nodes as Array<Node>) {
+            if (!node || !node.data || !node.data.position) continue;
+            
+            const nodePos = new THREE.Vector3(
+                node.data.position.x,
+                node.data.position.y,
+                node.data.position.z
+            );
+            const distance = position.distanceTo(nodePos);
+            if (distance < closestDistance && distance < (this.settings.xr.input.interactionRadius || 0.5)) {
+                closestDistance = distance;
+                closestNode = node;
             }
         }
 
-        this.lastInteractorPosition.copy(position);
-    }
-
-    private triggerHapticFeedback(device: THREE.Group | XRHandWithHaptics, intensity: number, duration: number): void {
-        if (!this.settings.ar.enableHaptics) return;
-
-        if ('hapticActuators' in device) {
-            device.hapticActuators.forEach(actuator => {
-                actuator.pulse(intensity, duration);
-            });
-        } else if (device.userData.hapticActuator) {
-            device.userData.hapticActuator.pulse(intensity, duration);
-        }
+        return closestNode?.id || null;
     }
 
     public dispose(): void {
+        // Clean up subscriptions
+        this.settingsUnsubscribers.forEach(unsub => unsub());
+        this.settingsUnsubscribers = [];
+
+        if (this.batchUpdateTimeout) {
+            clearTimeout(this.batchUpdateTimeout);
+            this.batchUpdateTimeout = null;
+        }
+
+        // Flush any remaining updates
+        this.flushPositionUpdates();
+
+        // Clear data structures
         this.controllers = [];
         this.hands = [];
+        this.handGestureStates.clear();
+        this.updateBatch.clear();
+        this.lastInteractorPosition.set(0, 0, 0);
+        this.selectedNodeId = null;
         XRInteraction.instance = null;
     }
 }

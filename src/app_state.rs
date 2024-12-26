@@ -1,10 +1,11 @@
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use tokio::sync::RwLock;
+use log::{info, warn};
 
 use crate::config::Settings;
 use crate::models::metadata::MetadataStore;
 use crate::services::graph_service::GraphService;
-use crate::services::file_service::RealGitHubService;
+use crate::services::file_service::{FileService, RealGitHubService};
 use crate::services::github_service::RealGitHubPRService;
 use crate::services::perplexity_service::PerplexityService;
 use crate::services::ragflow_service::RAGFlowService;
@@ -12,7 +13,7 @@ use crate::utils::gpu_compute::GPUCompute;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub graph_service: GraphService,
+    pub graph_service: Arc<GraphService>,
     pub gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
     pub settings: Arc<RwLock<Settings>>,
     pub metadata: Arc<RwLock<MetadataStore>>,
@@ -25,7 +26,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(
+    pub async fn new(
         settings: Arc<RwLock<Settings>>,
         github_service: Arc<RealGitHubService>,
         perplexity_service: Option<Arc<PerplexityService>>,
@@ -34,11 +35,26 @@ impl AppState {
         ragflow_conversation_id: String,
         github_pr_service: Arc<RealGitHubPRService>,
     ) -> Self {
+        // Load metadata first
+        let metadata_store = match FileService::load_or_create_metadata() {
+            Ok(metadata) => {
+                info!("Loaded metadata with {} entries", metadata.len());
+                metadata
+            },
+            Err(e) => {
+                warn!("Failed to load metadata: {}, starting with empty store", e);
+                MetadataStore::new()
+            }
+        };
+
+        // Initialize graph service with metadata
+        let graph_service = Arc::new(GraphService::new_with_metadata(&metadata_store).await);
+
         Self {
-            graph_service: GraphService::new(),
+            graph_service,
             gpu_compute,
             settings,
-            metadata: Arc::new(RwLock::new(MetadataStore::new())),
+            metadata: Arc::new(RwLock::new(metadata_store)),
             github_service,
             perplexity_service,
             ragflow_service,

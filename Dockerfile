@@ -90,7 +90,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NVIDIA_DRIVER_CAPABILITIES=all \
     RUST_LOG=info \
     RUST_BACKTRACE=0 \
-    PORT=4000 \
+    PORT=3001 \
+    NGINX_PORT=4000 \
     BIND_ADDRESS=0.0.0.0 \
     NODE_ENV=production \
     DOMAIN=localhost
@@ -179,6 +180,7 @@ RUN chown -R webxr:webxr /app/venv
 
 # Copy built artifacts
 COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/
+RUN chmod +x /app/webxr
 COPY settings.toml /app/
 COPY --from=rust-deps-builder /usr/src/app/src/utils/compute_forces.ptx /app/compute_forces.ptx
 COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist

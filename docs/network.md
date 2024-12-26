@@ -15,39 +15,42 @@ Graph Data: /api/graph/data (full graph) and /api/graph/data/paginated (paginate
 
 Settings: 
 - GET /api/visualization/settings/{category} (get all settings for a category)
+- PUT /api/visualization/settings/{category} (update all settings for a category)
 - GET /api/visualization/settings/{category}/{setting} (get individual setting)
 - PUT /api/visualization/settings/{category}/{setting} (update individual setting)
+- PUT /api/visualization/settings/websocket/update-rate (update WebSocket frame rate)
+
+Settings Management:
+- Centralized settings management through SettingsManager
+- Real-time updates with async RwLock for thread safety
+- Automatic persistence to settings.toml
+- Category-based organization (animations, ar, audio, etc.)
+- WebSocket settings controlled via dedicated endpoints
+- Settings changes trigger immediate effect across all components
 
 Other API endpoints: /api/files/fetch, /api/chat/*, /api/perplexity.
 
 WebSocket Handling (actix-web-actors): 
 - Binary Protocol (/wss endpoint): 
   - Uses a binary protocol for efficient real-time position and velocity updates
+  - Bi directional during node interaction events at the client
   - Optimized format with 6 floats per node (position + velocity)
 - WebSocket Control API (/api/visualization/settings/):
   - REST-based control plane for WebSocket configuration
-  - Manages settings, heartbeat intervals
+  - Manages settings, ping pong
   - Allows runtime updates to WebSocket behavior without connection disruption
   - Separates control logic from high-frequency data updates
 - Connection Management:
-  - Message queuing with configurable queue size
   - Configurable update rate (framerate)
   - Robust reconnection logic with configurable attempts and delays
   - Connection status tracking and notifications
 - Heartbeat:
   - Configurable ping/pong intervals
-  - Timestamp-based health monitoring
   - Automatic reconnection on timeout
 - Error Handling:
   - Comprehensive error types and status codes
   - Detailed error reporting and logging
   - Graceful failure recovery
-
-RAGFlow Integration:
-- Network Integration: Joins the RAGFlow Docker network (docker_ragflow)
-- Service Discovery: Uses Docker network aliases for service communication
-- Optional Connectivity: Gracefully handles RAGFlow availability
-- Health Checks: Monitors RAGFlow service health without direct dependencies
 
 Security:
 - Handled by cloudflared tunnel and docker
@@ -79,32 +82,34 @@ Port Configuration:
 
 3. Client-Side (TypeScript)
 
+API Configuration:
+- Centralized API URL management through buildApiUrl helper
+- Environment-aware URL handling for development and production
+- Consistent path resolution across all components
+- WebSocket URL management through buildWsUrl helper
+
 Initialization:
 - The client loads initial graph data from /api/graph/data/paginated using pagination
 - The client loads all visualization settings from /api/visualization/settings/{category}
+- All API paths are built using buildApiUrl helper for consistency
 - WebSocket initialization follows a two-step process:
   1. Control Setup (/api/visualization/settings/websocket):
      - Load WebSocket configuration settings
      - Set up error handling and reconnection policies
   2. Binary Connection (/wss):
-     - Establish WebSocket connection for real-time updates
+     - Establish WebSocket connection using buildWsUrl helper
      - Use binary protocol for position/velocity data
      - Handle heartbeat and connection lifecycle
 
 REST API Interaction:
 - Initial Graph Data: Retrieving the initial graph data using pagination
 - Settings: Loading category settings, getting/updating individual settings
+- All API requests use relative paths through buildApiUrl helper
+- Environment-aware URL handling for development and production
 
 WebSocket Connection and it's REST management system: 
-- Establishes compressed WebSocket connection for real-time updates
+- Establishes WebSocket connection for real-time updates
 - Implements reconnection logic with configurable attempts (default: 3)
-- Configurable settings for:
-  - Heartbeat interval (default: 15s)
-  - Heartbeat timeout (default: 60s)
-  - Reconnect delay (default: 5s)
-- Message queuing with size limits
-- Binary message handling with version verification
-- Comprehensive error handling and status notifications
 
 4. Docker Networking
 
@@ -158,11 +163,9 @@ Health Check System:
 - Container Health: Docker healthcheck monitors service availability
 - Backend Health: Rust service monitors internal state and dependencies
 - Frontend Health: Nginx monitors backend connectivity
-- RAGFlow Health: Periodic checks for RAGFlow service availability
 - Metrics: Health status exposed through container metrics
 
 Clear Protocol Definition:
-Binary format details (24 bytes per node)
 Exact message types (binary updates, ping/pong)
 Simplified Configuration:
 Clear separation between REST and WebSocket responsibilities
@@ -174,3 +177,106 @@ Clear Client Flow:
 Step-by-step initialization process
 Explicit data flow patterns
 Error handling and performance considerations
+
+[ARCH_MODEL]
+{system: distributed_graph_vis}
+|> docker[nginx:4000 <-> rust:3001]  // Cloudflared tunnel routing
+|> persistence[settings.toml <-> RwLock]  // Thread-safe config
+
+[DATA_FLOW]
+client::websocket -> /wss
+|> socket_flow_handler
+-> socket_flow_messages{BinaryNodeData}
+-> gpu_compute{CUDA/WGSL} || cpu_fallback
+<- binary_position_updates
+
+client::http -> /api/visualization/settings/*
+|> visualization_handler
+-> case_conversion{snake <-> camel}
+-> settings_manager{RwLock}
+<- type_converted_responses
+
+[CORE_PATTERNS]
+Bidirectional case normalization:
+client{camelCase} <-> server{snake_case}
+
+Thread-safe state:
+Arc for {Settings, GraphData}
+
+Type coercion:
+value.is_{type} -> conversion_strategy
+
+Error propagation:
+Result<T, Box> with context
+
+Binary optimization:
+websocket{binary_messages} for positions
+http{json} for settings
+
+[CLIENT_ARCHITECTURE]
+Settings:
+defaultSettings -> SettingsStore -> SettingsManager
+|> type_safety{SettingsPath, SettingValue}
+|> validation{isValidSettingPath}
+|> persistence{localStorage, API sync}
+
+API:
+constants{API_PATHS} -> buildApiUrl
+|> environment{IS_PRODUCTION}
+|> retry_logic{maxRetries, retryDelay}
+
+Logging:
+Logger -> settings.debug
+|> context{namespace}
+|> formatting{JSON, pretty-print}
+|> levels{debug, info, warn, error}
+
+[SERVER_ARCHITECTURE]
+Handlers:
+visualization_handler -> settings{RwLock}
+|> routes{GET, PUT}
+|> case_conversion
+|> validation
+|> persistence
+
+State:
+Settings -> RwLock
+|> thread_safety
+|> concurrent_access
+|> atomic_updates
+
+File System:
+settings.toml -> TOML serialization
+|> permissions
+|> validation
+|> error_handling
+
+[NETWORK_TOPOLOGY]
+client -> cloudflared[tunnel_id]
+-> nginx:4000{
+/api/* -> rust:3001
+/wss -> rust:3001{binary_protocol}
+/* -> static_files
+}
+
+[STATE_MANAGEMENT]
+Settings:
+toml -> struct -> RwLock -> handlers
+|> validation
+|> conversion
+|> persistence
+
+Websocket:
+connection -> binary protocol -> position updates
+|> compression
+|> chunking
+|> error_handling
+
+[OPTIMIZATION_STRATEGIES]
+GPU acceleration with fallback
+Binary websocket protocol
+Connection pooling
+Static file caching
+Type-specific serialization
+
+This architecture enables real-time 3D graph visualization with efficient state management, data flow optimization, and robust error handling across all system components.

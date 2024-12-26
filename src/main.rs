@@ -1,18 +1,12 @@
-#[macro_use]
-extern crate log;
+use log::{debug, info};
+use env_logger;
 
 use webxr::{
     AppState, Settings,
-    init_debug_settings,
-    file_handler, graph_handler, visualization_handler,
+    file_handler, graph_handler,
+    handlers::{socket_flow_handler, settings},
     RealGitHubService,
-    RealGitHubPRService, GPUCompute, GraphData,
-    log_data, log_warn,
-    services::{
-        file_service::FileService,
-        graph_service::GraphService,
-    },
-    socket_flow_handler,
+    RealGitHubPRService,
 };
 
 use actix_web::{web, App, HttpServer, middleware};
@@ -21,25 +15,13 @@ use actix_files::Files;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use dotenvy::dotenv;
-
-// Handler configuration functions
-fn configure_file_handler(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::resource("/fetch").to(file_handler::fetch_and_process_files))
-       .service(web::resource("/content/{file_name}").to(file_handler::get_file_content))
-       .service(web::resource("/refresh").to(file_handler::refresh_graph))
-       .service(web::resource("/update").to(file_handler::update_graph));
-}
-
-fn configure_graph_handler(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::resource("/data").to(graph_handler::get_graph_data))
-       .service(web::resource("/data/paginated").to(graph_handler::get_paginated_graph_data))
-       .service(web::resource("/update").to(graph_handler::update_graph))
-       .service(web::resource("/refresh").to(graph_handler::refresh_graph));
-}
+use std::env;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
+    env_logger::init();
+    info!("Starting LogseqXR server");
 
     // Load settings first to get the log level
     let settings = match Settings::new() {
@@ -53,150 +35,76 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // Create web::Data instances first
-    let settings_data = web::Data::new(settings.clone());
+    // Load environment variables
+    let github_token = env::var("GITHUB_TOKEN")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("GITHUB_TOKEN not set: {}", e)))?;
+    let github_owner = env::var("GITHUB_OWNER")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("GITHUB_OWNER not set: {}", e)))?;
+    let github_repo = env::var("GITHUB_REPO")
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("GITHUB_REPO not set: {}", e)))?;
+    let github_base_path = env::var("GITHUB_BASE_PATH").unwrap_or_else(|_| String::from(""));
 
-    // Initialize services
-    let settings_read = settings.read().await;
-    let github_service: Arc<RealGitHubService> = match RealGitHubService::new(
-        (*settings_read).github.token.clone(),
-        (*settings_read).github.owner.clone(),
-        (*settings_read).github.repo.clone(),
-        (*settings_read).github.base_path.clone(),
+    // Initialize GitHub services
+    let github_service = Arc::new(RealGitHubService::new(
+        github_token.clone(),
+        github_owner.clone(),
+        github_repo.clone(),
+        github_base_path.clone(),
         settings.clone(),
-    ) {
-        Ok(service) => Arc::new(service),
-        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-    };
+    ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHub service: {}", e)))?);
 
-    let github_pr_service: Arc<RealGitHubPRService> = match RealGitHubPRService::new(
-        (*settings_read).github.token.clone(),
-        (*settings_read).github.owner.clone(),
-        (*settings_read).github.repo.clone(),
-        (*settings_read).github.base_path.clone()
-    ) {
-        Ok(service) => Arc::new(service),
-        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-    };
-    drop(settings_read);
-
-    // Initialize GPU compute
-    log_data!("Initializing GPU compute...");
-    let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
-        Ok(gpu) => {
-            log_data!("GPU initialization successful");
-            Some(gpu)
-        }
-        Err(e) => {
-            log_warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
-            None
-        }
-    };
-
-    // Initialize app state
-    let app_state = web::Data::new(AppState::new(
+    let github_pr_service = Arc::new(RealGitHubPRService::new(
+        github_token,
+        github_owner,
+        github_repo,
+        github_base_path,
+    ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHub PR service: {}", e)))?);
+    
+    // Optional services
+    let perplexity_service = None; // Initialize if needed
+    let ragflow_service = None; // Initialize if needed
+    let gpu_compute = None; // Initialize if needed
+    
+    // Create AppState with initialized services
+    let app_state: web::Data<AppState> = web::Data::new(AppState::new(
         settings.clone(),
-        github_service.clone(),
-        None,
-        None,
+        github_service,
+        perplexity_service,
+        ragflow_service,
         gpu_compute,
-        "default_conversation".to_string(),
-        github_pr_service.clone(),
-    ));
+        String::from("default"), // ragflow_conversation_id
+        github_pr_service,
+    ).await);
 
-    // Initialize debug settings
-    let (debug_enabled, websocket_debug, data_debug) = {
-        let settings_read = settings.read().await;
-        let debug_settings = (
-            (*settings_read).server_debug.enabled,
-            (*settings_read).server_debug.enable_websocket_debug,
-            (*settings_read).server_debug.enable_data_debug,
-        );
-        debug_settings
-    };
+    // Use PORT env var with fallback to 3001 as specified in docs
+    let port = env::var("PORT").unwrap_or_else(|_| "3001".to_string());
+    let bind_addr = format!("0.0.0.0:{}", port);
+    info!("Binding to {}", bind_addr);
 
-    // Initialize our debug logging system
-    init_debug_settings(debug_enabled, websocket_debug, data_debug);
-
-    // Initialize local storage and fetch files from GitHub
-    info!("Initializing local storage and fetching files from GitHub...");
-    if let Err(e) = FileService::initialize_local_storage(&*github_service, settings.clone()).await {
-        error!("Failed to initialize local storage: {}", e);
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize local storage: {}", e)));
-    }
-    info!("Local storage initialization complete");
-
-    // Load metadata into app state and initialize graph
-    match FileService::load_or_create_metadata() {
-        Ok(metadata_store) => {
-            // Update metadata in app state
-            {
-                let mut app_metadata = app_state.metadata.write().await;
-                *app_metadata = metadata_store.clone();
-                info!("Loaded metadata into app state");
-            }
-
-            // Build initial graph from metadata
-            match GraphService::build_graph_from_metadata(&metadata_store).await {
-                Ok(graph_data) => {
-                    let mut graph = app_state.graph_service.graph_data.write().await;
-                    *graph = graph_data;
-                    info!("Built initial graph from metadata");
-                },
-                Err(e) => {
-                    error!("Failed to build initial graph: {}", e);
-                    return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to build initial graph: {}", e)));
-                }
-            }
-        },
-        Err(e) => {
-            error!("Failed to load metadata into app state: {}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to load metadata: {}", e)));
-        }
-    }
-
-    // Start the server
-    let bind_address = {
-        let settings_read = settings.read().await;
-        format!("{}:{}", (*settings_read).network.bind_address, (*settings_read).network.port)
-    };
-
-    log_data!("Starting HTTP server on {}", bind_address);
-
+    // Configure app with services
     HttpServer::new(move || {
-        // Configure CORS
-        let cors = Cors::default()
-            .allow_any_origin()
-            .allow_any_method()
-            .allow_any_header()
-            .max_age(3600)
-            .supports_credentials();
-
         App::new()
+            .wrap(Cors::default()
+                .allow_any_origin()
+                .allow_any_method()
+                .allow_any_header()
+                .max_age(3600))
             .wrap(middleware::Logger::default())
-            .wrap(cors)
-            .wrap(middleware::Compress::default())
-            .app_data(settings_data.clone())
             .app_data(app_state.clone())
-            .app_data(web::Data::new(github_service.clone()))
-            .app_data(web::Data::new(github_pr_service.clone()))
             .service(
                 web::scope("/api")
-                    .service(web::scope("/files").configure(configure_file_handler))
-                    .service(web::scope("/graph").configure(configure_graph_handler))
-                    .service(web::scope("/visualization").configure(visualization_handler::config))
+                    .service(web::scope("/files").configure(file_handler::config))
+                    .service(web::scope("/graph").configure(graph_handler::config))
+                    .configure(settings::config)
             )
             .service(
                 web::resource("/wss")
                     .app_data(web::PayloadConfig::new(1 << 25))  // 32MB max payload
-                    .route(web::get().to(socket_flow_handler))
+                    .route(web::get().to(socket_flow_handler::socket_flow_handler))
             )
-            .service(Files::new("/", "/app/client").index_file("index.html"))
+            .service(Files::new("/", "data/public/dist").index_file("index.html"))
     })
-    .bind(&bind_address)?
+    .bind(bind_addr)?
     .run()
-    .await?;
-
-    log_data!("HTTP server stopped");
-    Ok(())
+    .await
 }

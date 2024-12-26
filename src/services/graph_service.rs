@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::{HashMap, HashSet};
 use actix_web::web;
-use log::{info, warn};
+use log::{info, warn, error};
 use rand::Rng;
 use serde_json;
 
@@ -14,6 +14,7 @@ use crate::app_state::AppState;
 use crate::utils::gpu_compute::GPUCompute;
 use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
 use crate::models::pagination::PaginatedGraphData;
+use crate::services::file_service::FileService;
 
 #[derive(Clone)]
 pub struct GraphService {
@@ -30,6 +31,8 @@ impl GraphService {
     pub async fn build_graph_from_metadata(metadata_store: &MetadataStore) -> Result<GraphData, Box<dyn std::error::Error>> {
         let mut graph = GraphData::new();
         let mut edge_map = HashMap::new();
+
+        info!("Building graph from {} metadata entries", metadata_store.len());
 
         // First pass: Create nodes from files in metadata
         let mut valid_nodes = HashSet::new();
@@ -54,6 +57,7 @@ impl GraphService {
                 node.metadata.insert("lastModified".to_string(), metadata.last_modified.to_string());
             }
             
+            // Add node to graph
             graph.nodes.push(node);
         }
 
@@ -270,5 +274,31 @@ impl GraphService {
     pub async fn get_node_positions(&self) -> Vec<Node> {
         let graph = self.graph_data.read().await;
         graph.nodes.clone()
+    }
+
+    pub async fn update_graph(&self) -> Result<GraphData, String> {
+        info!("Updating graph data");
+
+        // Load or create metadata
+        let metadata_store = match FileService::load_or_create_metadata() {
+            Ok(store) => store,
+            Err(e) => {
+                error!("Failed to load metadata: {}", e);
+                return Err(format!("Failed to load metadata: {}", e));
+            }
+        };
+
+        info!("Loaded metadata with {} entries", metadata_store.len());
+
+        // Build graph from metadata
+        let graph = match Self::build_graph_from_metadata(&metadata_store).await {
+            Ok(g) => g,
+            Err(e) => {
+                error!("Failed to build graph: {}", e);
+                return Err(format!("Failed to build graph: {}", e));
+            }
+        };
+
+        Ok(graph)
     }
 }

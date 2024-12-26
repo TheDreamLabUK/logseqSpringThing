@@ -1,4 +1,4 @@
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{web::{self, ServiceConfig}, HttpResponse, Responder};
 use crate::AppState;
 use serde::{Serialize, Deserialize};
 use log::{info, debug, error, warn};
@@ -177,6 +177,15 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
 }
 
 // Fetch new metadata and rebuild graph
+pub fn config(cfg: &mut ServiceConfig) {
+    cfg.service(web::resource("/data").to(get_graph_data))
+       .service(web::resource("/data/paginated").to(get_paginated_graph_data))
+       .service(
+           web::resource("/update")
+               .route(web::post().to(update_graph))
+       );
+}
+
 pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
     info!("Received request to update graph");
     

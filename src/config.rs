@@ -6,38 +6,18 @@ use std::path::PathBuf;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct Settings {
-    // UI/Rendering settings from settings.toml
+    // Core visualization settings
     #[serde(default)]
-    pub animations: AnimationSettings,
+    pub visualization: VisualizationSettings,
+
+    // XR-specific settings
     #[serde(default)]
-    pub ar: ARSettings,
+    pub xr: XRSettings,
+
+    // System settings
     #[serde(default)]
-    pub audio: AudioSettings,
-    #[serde(default)]
-    pub bloom: BloomSettings,
-    #[serde(default)]
-    pub client_debug: DebugSettings,
-    #[serde(default)]
-    pub default: DefaultSettings,
-    #[serde(default)]
-    pub edges: EdgeSettings,
-    #[serde(default)]
-    pub labels: LabelSettings,
-    #[serde(default)]
-    pub network: NetworkSettings,
-    #[serde(default)]
-    pub nodes: NodeSettings,
-    #[serde(default)]
-    pub physics: PhysicsSettings,
-    #[serde(default)]
-    pub rendering: RenderingSettings,
-    #[serde(default)]
-    pub security: SecuritySettings,
-    #[serde(default)]
-    pub server_debug: DebugSettings,
-    #[serde(default)]
-    pub websocket: WebSocketSettings,
-    
+    pub system: SystemSettings,
+
     // Service settings from .env (server-side only)
     #[serde(default)]
     pub github: GitHubSettings,
@@ -47,6 +27,114 @@ pub struct Settings {
     pub perplexity: PerplexitySettings,
     #[serde(default)]
     pub openai: OpenAISettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct VisualizationSettings {
+    #[serde(default)]
+    pub animations: AnimationSettings,
+    #[serde(default)]
+    pub ar: ARSettings,
+    #[serde(default)]
+    pub audio: AudioSettings,
+    #[serde(default)]
+    pub bloom: BloomSettings,
+    #[serde(default)]
+    pub edges: EdgeSettings,
+    #[serde(default)]
+    pub hologram: HologramSettings,
+    #[serde(default)]
+    pub labels: LabelSettings,
+    #[serde(default)]
+    pub nodes: NodeSettings,
+    #[serde(default)]
+    pub physics: PhysicsSettings,
+    #[serde(default)]
+    pub rendering: RenderingSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct XRSettings {
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub room_scale: bool,
+    #[serde(default)]
+    pub space_type: String,
+    #[serde(default)]
+    pub quality: String,
+    #[serde(default)]
+    pub input: XRInputSettings,
+    #[serde(default)]
+    pub visuals: XRVisualSettings,
+    #[serde(default)]
+    pub environment: XREnvironmentSettings,
+    #[serde(default)]
+    pub passthrough: XRPassthroughSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct XRInputSettings {
+    pub enable_hand_tracking: bool,
+    pub enable_haptics: bool,
+    pub haptic_intensity: f32,
+    pub drag_threshold: f32,
+    pub pinch_threshold: f32,
+    pub rotation_threshold: f32,
+    pub interaction_radius: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct XRVisualSettings {
+    pub hand_mesh_enabled: bool,
+    pub hand_mesh_color: String,
+    pub hand_mesh_opacity: f32,
+    pub hand_point_size: f32,
+    pub hand_ray_enabled: bool,
+    pub hand_ray_color: String,
+    pub hand_ray_width: f32,
+    pub gesture_smoothing: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct XREnvironmentSettings {
+    pub enable_light_estimation: bool,
+    pub enable_plane_detection: bool,
+    pub enable_scene_understanding: bool,
+    pub plane_color: String,
+    pub plane_opacity: f32,
+    pub show_plane_overlay: bool,
+    pub snap_to_floor: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct XRPassthroughSettings {
+    pub enabled: bool,
+    pub opacity: f32,
+    pub brightness: f32,
+    pub contrast: f32,
+    pub portal_size: f32,
+    pub portal_edge_color: String,
+    pub portal_edge_width: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct SystemSettings {
+    #[serde(default)]
+    pub network: NetworkSettings,
+    #[serde(default)]
+    pub websocket: WebSocketSettings,
+    #[serde(default)]
+    pub security: SecuritySettings,
+    #[serde(default)]
+    pub debug: DebugSettings,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -283,6 +371,7 @@ pub struct ARSettings {
     pub hand_ray_enabled: bool,
     pub hand_ray_width: f32,
     pub haptic_intensity: f32,
+    pub interaction_radius: f32,
     pub passthrough_brightness: f32,
     pub passthrough_contrast: f32,
     pub passthrough_opacity: f32,
@@ -308,7 +397,7 @@ impl Default for ARSettings {
             enable_passthrough_portal: false,
             enable_plane_detection: true,
             enable_scene_understanding: true,
-            gesture_smoothing: 0.5,
+            gesture_smoothing: 0.9,
             hand_mesh_color: "#FFD700".to_string(),
             hand_mesh_enabled: true,
             hand_mesh_opacity: 0.3,
@@ -317,15 +406,16 @@ impl Default for ARSettings {
             hand_ray_enabled: true,
             hand_ray_width: 0.002,
             haptic_intensity: 0.7,
+            interaction_radius: 0.5,
             passthrough_brightness: 1.0,
             passthrough_contrast: 1.0,
-            passthrough_opacity: 0.8,
+            passthrough_opacity: 1.0,
             pinch_threshold: 0.015,
-            plane_color: "#808080".to_string(),
-            plane_opacity: 0.5,
-            portal_edge_color: "#00FF00".to_string(),
+            plane_color: "#4A90E2".to_string(),
+            plane_opacity: 0.3,
+            portal_edge_color: "#FFD700".to_string(),
             portal_edge_width: 0.02,
-            portal_size: 2.0,
+            portal_size: 1.0,
             room_scale: true,
             rotation_threshold: 0.08,
             show_plane_overlay: true,
@@ -382,6 +472,8 @@ impl Default for BloomSettings {
 #[serde(rename_all = "snake_case")]
 #[serde(default)]
 pub struct EdgeSettings {
+    pub arrow_size: f32,
+    pub base_width: f32,
     pub color: String,
     pub enable_arrows: bool,
     pub opacity: f32,
@@ -391,6 +483,8 @@ pub struct EdgeSettings {
 impl Default for EdgeSettings {
     fn default() -> Self {
         Self {
+            arrow_size: 0.2,
+            base_width: 2.0,
             color: "#917f18".to_string(),
             enable_arrows: false,
             opacity: 0.6,
@@ -406,6 +500,12 @@ pub struct LabelSettings {
     pub desktop_font_size: u32,
     pub enable_labels: bool,
     pub text_color: String,
+    pub text_rendering_mode: String,
+    pub text_resolution: u32,
+    pub text_padding: u32,
+    pub text_outline_width: f32,
+    pub text_outline_color: String,
+    pub billboard_mode: String,
 }
 
 impl Default for LabelSettings {
@@ -414,6 +514,12 @@ impl Default for LabelSettings {
             desktop_font_size: 48,
             enable_labels: true,
             text_color: "#FFFFFF".to_string(),
+            text_rendering_mode: "sdf".to_string(),
+            text_resolution: 64,
+            text_padding: 4,
+            text_outline_width: 0.4,
+            text_outline_color: "#000000".to_string(),
+            billboard_mode: "camera".to_string(),
         }
     }
 }
@@ -424,6 +530,7 @@ impl Default for LabelSettings {
 pub struct NodeSettings {
     pub base_color: String,
     pub base_size: f32,
+    pub clearcoat: f32,
     pub enable_hover_effect: bool,
     pub enable_instancing: bool,
     pub highlight_color: String,
@@ -435,6 +542,12 @@ pub struct NodeSettings {
     pub roughness: f32,
     pub size_by_connections: bool,
     pub size_range: Vec<f32>,
+    pub use_metadata_size: bool,
+    pub use_metadata_shape: bool,
+    pub use_metadata_color: bool,
+    pub shape_age_ranges: Vec<u32>,
+    pub hyperlink_color_min: String,
+    pub hyperlink_color_max: String,
 }
 
 impl Default for NodeSettings {
@@ -442,6 +555,7 @@ impl Default for NodeSettings {
         Self {
             base_color: "#c3ab6f".to_string(),
             base_size: 1.0,
+            clearcoat: 0.5,
             enable_hover_effect: false,
             enable_instancing: false,
             highlight_color: "#822626".to_string(),
@@ -452,7 +566,13 @@ impl Default for NodeSettings {
             opacity: 0.4,
             roughness: 0.35,
             size_by_connections: true,
-            size_range: vec![1.0, 10.0],
+            size_range: vec![1.0, 5.0],
+            use_metadata_size: true,
+            use_metadata_shape: true,
+            use_metadata_color: true,
+            shape_age_ranges: vec![7, 30, 90, 365],
+            hyperlink_color_min: "#c3ab6f".to_string(),
+            hyperlink_color_max: "#822626".to_string(),
         }
     }
 }
@@ -551,12 +671,60 @@ impl Default for SecuritySettings {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 #[serde(default)]
+pub struct HologramSettings {
+    pub xr_quality: String,
+    pub desktop_quality: String,
+    pub ring_count: u32,
+    pub ring_color: String,
+    pub ring_opacity: f32,
+    pub ring_sizes: Vec<f32>,
+    pub ring_rotation_speed: f32,
+    pub enable_buckminster: bool,
+    pub buckminster_scale: f32,
+    pub buckminster_opacity: f32,
+    pub enable_geodesic: bool,
+    pub geodesic_scale: f32,
+    pub geodesic_opacity: f32,
+    pub enable_triangle_sphere: bool,
+    pub triangle_sphere_scale: f32,
+    pub triangle_sphere_opacity: f32,
+    pub global_rotation_speed: f32,
+}
+
+impl Default for HologramSettings {
+    fn default() -> Self {
+        Self {
+            xr_quality: "medium".to_string(),
+            desktop_quality: "high".to_string(),
+            ring_count: 3,
+            ring_color: "#00FFFF".to_string(),
+            ring_opacity: 0.5,
+            ring_sizes: vec![1.0, 1.5, 2.0],
+            ring_rotation_speed: 0.1,
+            enable_buckminster: true,
+            buckminster_scale: 1.0,
+            buckminster_opacity: 0.3,
+            enable_geodesic: true,
+            geodesic_scale: 1.2,
+            geodesic_opacity: 0.4,
+            enable_triangle_sphere: true,
+            triangle_sphere_scale: 1.1,
+            triangle_sphere_opacity: 0.35,
+            global_rotation_speed: 0.05,
+        }
+    }
+}
+
+// Note: Connection keep-alive is handled by WebSocket protocol-level ping/pong frames
+// automatically by the actix-web-actors framework on the server and browser WebSocket API
+// on the client. No custom heartbeat implementation is needed.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+#[serde(default)]
 pub struct WebSocketSettings {
     pub binary_chunk_size: usize,
     pub compression_enabled: bool,
     pub compression_threshold: usize,
-    pub heartbeat_interval: u64,
-    pub heartbeat_timeout: u64,
     pub max_connections: usize,
     pub max_message_size: usize,
     pub reconnect_attempts: u32,
@@ -570,8 +738,6 @@ impl Default for WebSocketSettings {
             binary_chunk_size: 65536,
             compression_enabled: true,
             compression_threshold: 1024,
-            heartbeat_interval: 15000,
-            heartbeat_timeout: 60000,
             max_connections: 1000,
             max_message_size: 100485760,
             reconnect_attempts: 3,
@@ -584,17 +750,25 @@ impl Default for WebSocketSettings {
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
         debug!("Initializing settings");
-        
+
         // Load .env file first
         dotenvy::dotenv().ok();
-        
-        // Use environment variable or default to /app/settings.toml
+
+        // Use environment variable or try multiple paths
         let settings_path = std::env::var("SETTINGS_FILE_PATH")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/app/settings.toml"));
-        
+            .unwrap_or_else(|_| {
+                // Try current directory first, then /app/settings.toml
+                let current_dir_path = PathBuf::from("settings.toml");
+                if current_dir_path.exists() {
+                    current_dir_path
+                } else {
+                    PathBuf::from("/app/settings.toml")
+                }
+            });
+
         debug!("Loading settings from: {:?}", settings_path);
-        
+
         let builder = ConfigBuilder::<config::builder::DefaultState>::default();
         let config = builder
             .add_source(File::from(settings_path))
@@ -616,25 +790,25 @@ impl Settings {
                 return Err(e);
             }
         };
-        
+
         debug!("Checking for environment variables");
-        
+
         // Network settings from environment variables
-        if let Ok(domain) = std::env::var("DOMAIN") {
-            settings.network.domain = domain;
-        }
-        if let Ok(port) = std::env::var("PORT") {
-            settings.network.port = port.parse().unwrap_or(4000);
-        }
-        if let Ok(bind_address) = std::env::var("BIND_ADDRESS") {
-            settings.network.bind_address = bind_address;
-        }
-        if let Ok(tunnel_id) = std::env::var("TUNNEL_ID") {
-            settings.network.tunnel_id = tunnel_id;
-        }
-        if let Ok(enable_http2) = std::env::var("HTTP2_ENABLED") {
-            settings.network.enable_http2 = enable_http2.parse().unwrap_or(true);
-        }
+            if let Ok(domain) = std::env::var("DOMAIN") {
+                settings.system.network.domain = domain;
+            }
+            if let Ok(port) = std::env::var("PORT") {
+                settings.system.network.port = port.parse().unwrap_or(4000);
+            }
+            if let Ok(bind_address) = std::env::var("BIND_ADDRESS") {
+                settings.system.network.bind_address = bind_address;
+            }
+            if let Ok(tunnel_id) = std::env::var("TUNNEL_ID") {
+                settings.system.network.tunnel_id = tunnel_id;
+            }
+            if let Ok(enable_http2) = std::env::var("HTTP2_ENABLED") {
+                settings.system.network.enable_http2 = enable_http2.parse().unwrap_or(true);
+            }
 
         // GitHub settings from environment variables
         if let Ok(token) = std::env::var("GITHUB_TOKEN") {
@@ -740,25 +914,147 @@ impl Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            animations: AnimationSettings::default(),
-            ar: ARSettings::default(),
-            audio: AudioSettings::default(),
-            bloom: BloomSettings::default(),
-            client_debug: DebugSettings::default(),
-            default: DefaultSettings::default(),
-            edges: EdgeSettings::default(),
-            labels: LabelSettings::default(),
-            nodes: NodeSettings::default(),
-            physics: PhysicsSettings::default(),
-            rendering: RenderingSettings::default(),
-            security: SecuritySettings::default(),
-            server_debug: DebugSettings::default(),
-            websocket: WebSocketSettings::default(),
-            network: NetworkSettings::default(),
+            visualization: VisualizationSettings {
+                animations: AnimationSettings::default(),
+                ar: ARSettings::default(),
+                audio: AudioSettings::default(),
+                bloom: BloomSettings::default(),
+                edges: EdgeSettings::default(),
+                hologram: HologramSettings::default(),
+                labels: LabelSettings::default(),
+                nodes: NodeSettings::default(),
+                physics: PhysicsSettings::default(),
+                rendering: RenderingSettings::default(),
+            },
+            xr: XRSettings {
+                mode: "immersive-ar".to_string(),
+                room_scale: true,
+                space_type: "local-floor".to_string(),
+                quality: "medium".to_string(),
+                input: XRInputSettings {
+                    enable_hand_tracking: true,
+                    enable_haptics: true,
+                    haptic_intensity: 0.7,
+                    drag_threshold: 0.04,
+                    pinch_threshold: 0.015,
+                    rotation_threshold: 0.08,
+                    interaction_radius: 0.5,
+                },
+                visuals: XRVisualSettings {
+                    hand_mesh_enabled: true,
+                    hand_mesh_color: "#FFD700".to_string(),
+                    hand_mesh_opacity: 0.3,
+                    hand_point_size: 0.01,
+                    hand_ray_enabled: true,
+                    hand_ray_color: "#FFD700".to_string(),
+                    hand_ray_width: 0.002,
+                    gesture_smoothing: 0.9,
+                },
+                environment: XREnvironmentSettings {
+                    enable_light_estimation: true,
+                    enable_plane_detection: true,
+                    enable_scene_understanding: true,
+                    plane_color: "#4A90E2".to_string(),
+                    plane_opacity: 0.3,
+                    show_plane_overlay: true,
+                    snap_to_floor: true,
+                },
+                passthrough: XRPassthroughSettings {
+                    enabled: false,
+                    opacity: 1.0,
+                    brightness: 1.0,
+                    contrast: 1.0,
+                    portal_size: 1.0,
+                    portal_edge_color: "#FFD700".to_string(),
+                    portal_edge_width: 0.02,
+                },
+            },
+            system: SystemSettings {
+                network: NetworkSettings::default(),
+                websocket: WebSocketSettings::default(),
+                security: SecuritySettings::default(),
+                debug: DebugSettings::default(),
+            },
             github: GitHubSettings::default(),
             ragflow: RagFlowSettings::default(),
             perplexity: PerplexitySettings::default(),
             openai: OpenAISettings::default(),
+        }
+    }
+}
+
+impl Default for VisualizationSettings {
+    fn default() -> Self {
+        Self {
+            animations: AnimationSettings::default(),
+            ar: ARSettings::default(),
+            audio: AudioSettings::default(),
+            bloom: BloomSettings::default(),
+            edges: EdgeSettings::default(),
+            hologram: HologramSettings::default(),
+            labels: LabelSettings::default(),
+            nodes: NodeSettings::default(),
+            physics: PhysicsSettings::default(),
+            rendering: RenderingSettings::default(),
+        }
+    }
+}
+
+impl Default for XRSettings {
+    fn default() -> Self {
+        Self {
+            mode: "immersive-ar".to_string(),
+            room_scale: true,
+            space_type: "local-floor".to_string(),
+            quality: "medium".to_string(),
+            input: XRInputSettings {
+                enable_hand_tracking: true,
+                enable_haptics: true,
+                haptic_intensity: 0.7,
+                drag_threshold: 0.04,
+                pinch_threshold: 0.015,
+                rotation_threshold: 0.08,
+                interaction_radius: 0.5,
+            },
+            visuals: XRVisualSettings {
+                hand_mesh_enabled: true,
+                hand_mesh_color: "#FFD700".to_string(),
+                hand_mesh_opacity: 0.3,
+                hand_point_size: 0.01,
+                hand_ray_enabled: true,
+                hand_ray_color: "#FFD700".to_string(),
+                hand_ray_width: 0.002,
+                gesture_smoothing: 0.9,
+            },
+            environment: XREnvironmentSettings {
+                enable_light_estimation: true,
+                enable_plane_detection: true,
+                enable_scene_understanding: true,
+                plane_color: "#4A90E2".to_string(),
+                plane_opacity: 0.3,
+                show_plane_overlay: true,
+                snap_to_floor: true,
+            },
+            passthrough: XRPassthroughSettings {
+                enabled: false,
+                opacity: 1.0,
+                brightness: 1.0,
+                contrast: 1.0,
+                portal_size: 1.0,
+                portal_edge_color: "#FFD700".to_string(),
+                portal_edge_width: 0.02,
+            },
+        }
+    }
+}
+
+impl Default for SystemSettings {
+    fn default() -> Self {
+        Self {
+            network: NetworkSettings::default(),
+            websocket: WebSocketSettings::default(),
+            security: SecuritySettings::default(),
+            debug: DebugSettings::default(),
         }
     }
 }

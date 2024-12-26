@@ -4,6 +4,7 @@
 
 import { GraphData, Node, Edge } from '../core/types';
 import { createLogger } from '../core/utils';
+import { buildApiUrl } from '../core/api';
 
 const logger = createLogger('GraphDataManager');
 
@@ -87,9 +88,6 @@ export class GraphDataManager {
       // Then load the first page
       await this.loadNextPage();
       
-      // Start binary updates only after initial data is loaded
-      this.setupBinaryUpdates();
-
       // Notify listeners of initial data
       this.notifyUpdateListeners();
 
@@ -109,7 +107,7 @@ export class GraphDataManager {
 
     try {
       this.loadingNodes = true;
-      const response = await fetch(`/api/graph/data/paginated?page=${this.currentPage}&pageSize=${this.pageSize}`);
+      const response = await fetch(buildApiUrl(`graph/data/paginated?page=${this.currentPage}&pageSize=${this.pageSize}`));
       
       if (!response.ok) {
         throw new Error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);
@@ -119,8 +117,8 @@ export class GraphDataManager {
       logger.debug('Received graph data:', {
         nodesCount: data.nodes?.length || 0,
         edgesCount: data.edges?.length || 0,
-        totalPages: data.total_pages,
-        currentPage: this.currentPage,
+        totalPages: data.totalPages,
+        currentPage: data.currentPage,
         metadata: data.metadata
       });
       
@@ -138,8 +136,8 @@ export class GraphDataManager {
       }
 
       // Update pagination state
-      this.currentPage++;
-      this.hasMorePages = this.currentPage < data.totalPages;
+      this.currentPage = data.currentPage;
+      this.hasMorePages = data.currentPage < data.totalPages;
 
       // Notify listeners of updated data
       this.notifyUpdateListeners();
@@ -221,13 +219,7 @@ export class GraphDataManager {
    * Initialize or update the graph data
    */
   updateGraphData(data: any): void {
-    logger.log('Received graph data update');
-
-    // Clear existing data
-    this.nodes.clear();
-    this.edges.clear();
-
-    // Store nodes in Map for O(1) access
+    // Update nodes
     if (data.nodes && Array.isArray(data.nodes)) {
       data.nodes.forEach((node: any) => {
         // Convert position array to object if needed
@@ -279,7 +271,7 @@ export class GraphDataManager {
   }
 
   /**
-   * Enable binary position updates
+   * Setup binary position updates
    */
   private enableBinaryUpdates(): void {
     // Send message to server to enable binary updates

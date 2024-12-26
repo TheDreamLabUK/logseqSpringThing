@@ -1,252 +1,208 @@
 #!/bin/bash
 
-# Enable error reporting
-set -e
+# Enable error reporting and strict mode
+set -euo pipefail
+IFS=$'\n\t'
 
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# Color setup using tput
+if [ -t 1 ]; then
+    RED=$(tput setaf 1)
+    GREEN=$(tput setaf 2)
+    YELLOW=$(tput setaf 3)
+    BLUE=$(tput setaf 4)
+    BOLD=$(tput bold)
+    NC=$(tput sgr0)
+else
+    RED=""
+    GREEN=""
+    YELLOW=""
+    BLUE=""
+    BOLD=""
+    NC=""
+fi
 
 # Configuration
 CONTAINER_NAME="logseq-xr-webxr"
 BACKEND_PORT=3001
 NGINX_PORT=4000
 PUBLIC_DOMAIN="www.visionflow.info"
-RAGFLOW_NETWORK="docker_ragflow"
 TIMEOUT=5
+WEBSOCKET_TIMEOUT=10
 
-# Function to log messages
+# Test environments
+declare -A ENDPOINTS=(
+    ["internal"]="http://localhost:$BACKEND_PORT"
+    ["docker"]="http://localhost:$NGINX_PORT"
+    ["production"]="https://$PUBLIC_DOMAIN"
+)
+
+# REST endpoints to test
+declare -a REST_ENDPOINTS=(
+    # Settings API
+    "/api/settings"
+    "/api/settings/visualization.nodes.baseSize"
+    "/api/settings/visualization.edges.color"
+    "/api/settings/xr.mode"
+    
+    # Graph endpoints
+    "/api/graph/data"
+    "/api/graph/data/paginated?page=0&page_size=10"
+)
+
+# Function to log messages with timestamp
 log() {
-    printf "[%s] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$1"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    printf "%s[%s]%s %s\n" "${BOLD}" "${timestamp}" "${NC}" "$1"
 }
 
-# Function to safely execute docker commands with timeout
-docker_exec() {
-    timeout $TIMEOUT docker exec "$CONTAINER_NAME" $@ 2>&1 || echo "Command timed out after ${TIMEOUT}s"
+# Function to log success
+log_success() {
+    log "${GREEN}✓ $1${NC}"
 }
 
-# Function to check if port is open
-check_port() {
-    local host="$1"
-    local port="$2"
-    timeout $TIMEOUT bash -c "echo > /dev/tcp/$host/$port" 2>/dev/null
-    return $?
+# Function to log error
+log_error() {
+    log "${RED}✗ $1${NC}"
 }
 
-# Function to test endpoint and show response
-test_endpoint() {
+# Function to log info
+log_info() {
+    log "${BLUE}$1${NC}"
+}
+
+# Function to log header
+log_header() {
+    printf "\n%s%s===%s %s %s===%s\n" "${BOLD}" "${YELLOW}" "${NC}" "$1" "${YELLOW}" "${NC}"
+}
+
+# Function to test WebSocket connection
+test_websocket() {
     local url="$1"
     local description="$2"
-    local extra_opts="${3:-}"
-    local expected_content="${4:-}"
     
-    log "${BLUE}Testing $description...${NC}"
-    log "URL: $url"
+    log_info "Testing WebSocket: $description"
+    log_info "URL: $url"
     
-    # First check if port is open
-    local port=$(echo "$url" | sed -n 's/.*:\([0-9]\+\).*/\1/p')
-    local host=$(echo "$url" | sed -n 's/.*\/\/\([^:\/]*\).*/\1/p')
-    
-    if [ -n "$port" ] && ! check_port "$host" "$port"; then
-        log "${RED}✗ Port $port is not open on $host${NC}"
-        return 1
-    fi
-    
-    # Then try the request
-    local response
-    if [[ -n "$extra_opts" ]]; then
-        response=$(curl -v -m $TIMEOUT -s $extra_opts "$url" 2>&1)
-    else
-        response=$(curl -v -m $TIMEOUT -s "$url" 2>&1)
-    fi
-    local status=$?
-    
-    if [ $status -eq 0 ]; then
-        log "${GREEN}✓ $description successful${NC}"
-        log "Response: $response"
-        
-        # Check for expected content if provided
-        if [ -n "$expected_content" ] && ! echo "$response" | grep -q "$expected_content"; then
-            log "${RED}✗ Expected content not found: $expected_content${NC}"
+    # Use websocat to test WebSocket connection if available
+    if command -v websocat >/dev/null 2>&1; then
+        timeout $WEBSOCKET_TIMEOUT websocat --no-close "$url" 2>&1 || {
+            log_error "WebSocket connection failed"
             return 1
-        fi
-        
+        }
+        log_success "WebSocket connection successful"
         return 0
     else
-        log "${RED}✗ $description failed (status: $status)${NC}"
-        log "Response: $response"
-        return 1
+        # Fallback to curl for basic connection test
+        if curl --include \
+            --no-buffer \
+            --header "Connection: Upgrade" \
+            --header "Upgrade: websocket" \
+            --header "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+            --header "Sec-WebSocket-Version: 13" \
+            -s "$url" 2>&1 | grep -q "101 Switching Protocols"; then
+            log_success "WebSocket handshake successful"
+            return 0
+        else
+            log_error "WebSocket handshake failed"
+            return 1
+        fi
     fi
 }
 
-# Function to check Nginx logs
-check_nginx_logs() {
-    log "${BLUE}Checking Nginx logs...${NC}"
-    docker_exec tail -n 50 /var/log/nginx/error.log || true
-    docker_exec tail -n 50 /var/log/nginx/access.log || true
-}
-
-# Function to check static files
-check_static_files() {
-    log "${BLUE}Checking static files in container...${NC}"
-    docker_exec ls -la /app/client || true
-    docker_exec cat /app/client/index.html || true
-}
-
-# Function to test backend health
-test_backend() {
-    log "\n${BLUE}=== Testing Internal Backend (Port $BACKEND_PORT) ===${NC}"
-    local failed=0
+# Function to test REST endpoint
+test_rest_endpoint() {
+    local url="$1"
+    local description="$2"
+    local method="${3:-GET}"
+    local data="${4:-}"
+    local extra_opts="${5:-}"
     
-    # Check if container is running
-    if ! docker ps | grep -q "$CONTAINER_NAME"; then
-        log "${RED}Container $CONTAINER_NAME is not running${NC}"
-        docker ps
-        return 1
-    fi
+    log_info "Testing $method $description..."
+    log_info "URL: $url"
     
-    # Test internal endpoints
-    local response=$(docker_exec curl -s "http://localhost:$BACKEND_PORT/api/graph/data")
-    if [ $? -eq 0 ] && [ -n "$response" ]; then
-        log "${GREEN}✓ Backend /api/graph/data accessible${NC}"
-        log "Response: $response"
+    local curl_opts="-X $method -m $TIMEOUT -s -w '%{http_code}'"
+    [[ "$url" == https://* ]] && curl_opts="$curl_opts -k"
+    [[ -n "$data" ]] && curl_opts="$curl_opts -H 'Content-Type: application/json' -d '$data'"
+    [[ -n "$extra_opts" ]] && curl_opts="$curl_opts $extra_opts"
+    
+    local response
+    local http_code
+    
+    # Execute curl command
+    eval "response=\$(curl $curl_opts '$url' 2>&1)"
+    http_code=${response: -3}
+    response=${response:0:${#response}-3}
+    
+    if [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
+        log_success "$description successful (HTTP $http_code)"
+        log_info "Response: $response"
+        return 0
     else
-        log "${RED}✗ Backend /api/graph/data failed${NC}"
-        ((failed++))
-    fi
-    
-    response=$(docker_exec curl -s "http://localhost:$BACKEND_PORT/api/graph/data/paginated?page=0&page_size=10")
-    if [ $? -eq 0 ] && [ -n "$response" ]; then
-        log "${GREEN}✓ Backend /api/graph/data/paginated accessible${NC}"
-        log "Response: $response"
-    else
-        log "${RED}✗ Backend /api/graph/data/paginated failed${NC}"
-        ((failed++))
-    fi
-    
-    return $failed
-}
-
-# Function to test nginx
-test_nginx() {
-    log "\n${BLUE}=== Testing Nginx Proxy (Port $NGINX_PORT) ===${NC}"
-    local failed=0
-    
-    # Check if nginx is running
-    if ! docker_exec pgrep nginx > /dev/null; then
-        log "${RED}Nginx is not running in container${NC}"
+        log_error "$description failed (HTTP $http_code)"
+        log_info "Response: $response"
         return 1
     fi
-    
-    # Check nginx config
-    log "Checking Nginx configuration..."
-    docker_exec nginx -t || true
-    
-    # Check static files
-    check_static_files
-    
-    # Test static file serving
-    test_endpoint "http://localhost:$NGINX_PORT/" "Nginx static files" "" "<!DOCTYPE html>" || ((failed++))
-    test_endpoint "http://localhost:$NGINX_PORT/index.html" "Nginx index.html" "" "<!DOCTYPE html>" || ((failed++))
-    
-    # Test API endpoint
-    test_endpoint "http://localhost:$NGINX_PORT/api/graph/data" "Nginx API proxy" || ((failed++))
-    
-    # Check logs if there were failures
-    if [ $failed -gt 0 ]; then
-        check_nginx_logs
-    fi
-    
-    return $failed
 }
 
-# Function to test network
-test_network() {
-    log "\n${BLUE}=== Testing RAGFlow Network ===${NC}"
+# Function to test all endpoints for a given environment
+test_environment() {
+    local env="$1"
+    local base_url="${ENDPOINTS[$env]}"
     local failed=0
     
-    # Get container IP
-    local ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER_NAME")
-    if [ -z "$ip" ]; then
-        log "${RED}Failed to get container IP${NC}"
-        return 1
-    fi
-    log "Container IP: $ip"
+    log_header "Testing $env environment ($base_url)"
     
-    # Test network connectivity
-    test_endpoint "http://$ip:$NGINX_PORT/api/graph/data" "Network API connectivity" || ((failed++))
-    test_endpoint "http://$ip:$NGINX_PORT/" "Network static files" "" "<!DOCTYPE html>" || ((failed++))
+    # Test REST endpoints
+    for endpoint in "${REST_ENDPOINTS[@]}"; do
+        test_rest_endpoint "$base_url$endpoint" "$env $endpoint" || ((failed++))
+        
+        # Test PUT for settings endpoints
+        if [[ "$endpoint" == "/api/settings"* ]]; then
+            test_rest_endpoint "$base_url$endpoint" "$env $endpoint (PUT)" "PUT" '{"value": 30}' || ((failed++))
+        fi
+    done
     
-    # Test DNS resolution
-    local dns_response=$(docker run --rm --network "$RAGFLOW_NETWORK" alpine nslookup webxr-client)
-    if [ $? -eq 0 ]; then
-        log "${GREEN}✓ DNS resolution working${NC}"
-        log "DNS Response: $dns_response"
-    else
-        log "${RED}✗ DNS resolution failed${NC}"
-        log "DNS Response: $dns_response"
-        ((failed++))
-    fi
+    # Test WebSocket endpoints
+    local ws_protocol="ws"
+    [[ "$base_url" == https://* ]] && ws_protocol="wss"
+    local ws_base_url="${base_url/http:/$ws_protocol:}"
+    local ws_base_url="${ws_base_url/https:/$ws_protocol:}"
     
-    return $failed
-}
-
-# Function to test public URL
-test_public() {
-    log "\n${BLUE}=== Testing Public URL ===${NC}"
-    local failed=0
-    
-    # Test HTTPS endpoint
-    test_endpoint "https://$PUBLIC_DOMAIN/api/graph/data" "Public API" "-k" || ((failed++))
-    
-    # Test static files
-    test_endpoint "https://$PUBLIC_DOMAIN/" "Public static files" "-k" "<!DOCTYPE html>" || ((failed++))
-    test_endpoint "https://$PUBLIC_DOMAIN/index.html" "Public index.html" "-k" "<!DOCTYPE html>" || ((failed++))
+    test_websocket "$ws_base_url/wss" "$env WebSocket Binary Protocol" || ((failed++))
     
     return $failed
 }
 
 # Main execution
 main() {
-    log "${YELLOW}Starting comprehensive endpoint tests...${NC}"
+    log_header "Starting comprehensive endpoint tests across all environments..."
     local total_failed=0
     
-    # Run tests in order
-    test_backend
-    local backend_failed=$?
-    ((total_failed += backend_failed))
+    # Test each environment
+    for env in "${!ENDPOINTS[@]}"; do
+        test_environment "$env"
+        local env_failed=$?
+        ((total_failed += env_failed))
+        
+        # Print environment summary
+        echo
+        log_info "Environment $env: $([ $env_failed -eq 0 ] && echo "PASS" || echo "FAIL ($env_failed failed)")"
+    done
     
-    test_nginx
-    local nginx_failed=$?
-    ((total_failed += nginx_failed))
-    
-    test_network
-    local network_failed=$?
-    ((total_failed += network_failed))
-    
-    test_public
-    local public_failed=$?
-    ((total_failed += public_failed))
-    
-    # Print summary
+    # Print final summary
     echo
-    log "${YELLOW}Test Summary:${NC}"
-    echo "Backend Tests: $([ $backend_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($backend_failed failed)${NC}")"
-    echo "Nginx Tests: $([ $nginx_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($nginx_failed failed)${NC}")"
-    echo "Network Tests: $([ $network_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($network_failed failed)${NC}")"
-    echo "Public URL Tests: $([ $public_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($public_failed failed)${NC}")"
-    
+    log_header "Test Summary:"
     if [ $total_failed -eq 0 ]; then
-        log "${GREEN}All tests passed successfully!${NC}"
+        log_success "All tests passed successfully!"
         exit 0
     else
-        log "${RED}${total_failed} tests failed${NC}"
+        log_error "${total_failed} tests failed"
         exit 1
     fi
 }
+
+# Make script executable
+chmod +x "$0"
 
 # Run main function
 main

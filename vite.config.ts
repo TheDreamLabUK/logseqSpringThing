@@ -35,14 +35,21 @@ export default defineConfig(({ mode, command }) => {
             return `assets/[name][extname]`;
           },
           chunkFileNames: 'assets/js/[name]-[hash].js',
-          entryFileNames: 'assets/js/[name]-[hash].js'
+          entryFileNames: 'assets/js/[name]-[hash].js',
+          manualChunks: {
+            'three': ['three'],
+            'lodash': ['lodash'],
+            'react-three': ['@react-three/drei', '@react-three/fiber']
+          }
         }
       }
     },
 
     resolve: {
       alias: {
-        '@': resolve(__dirname, './client')
+        '@': resolve(__dirname, './client'),
+        'three': resolve(__dirname, 'node_modules/three'),
+        'lodash': resolve(__dirname, 'node_modules/lodash')
       }
     },
 
@@ -62,7 +69,7 @@ export default defineConfig(({ mode, command }) => {
     },
 
     optimizeDeps: {
-      include: ['three']
+      include: ['three', '@react-three/drei', '@react-three/fiber', 'lodash']
     },
 
     define: {
