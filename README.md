@@ -83,8 +83,6 @@ This format provides:
 - Efficient parsing on both client and server
 - Clear distinction between initial and update messages
 
-[Previous architecture diagrams and sections remain unchanged...]
-
 ### Performance Optimizations
 
 - **Network Efficiency:**
@@ -135,8 +133,6 @@ graph TB
         SpeechS[Speech Service]
         WSManager[WebSocket Manager]
         GPUCompute[GPU Compute]
-        Compression[Compression Utils]
-        AudioProc[Audio Processor]
         Node[Node Model]
         Edge[Edge Model]
         Graph[Graph Model]
@@ -160,6 +156,7 @@ graph TB
     VR --> ThreeJS
     WS --> WSService
     WSService --> Server
+    SpaceMouse --> SceneManager
 
     Server --> FileH
     Server --> GraphH
@@ -173,11 +170,13 @@ graph TB
     WSH --> WSManager
     PerplexityH --> PerplexityS
     RagFlowH --> RagFlowS
+    WSH --> Compression[Compression Utils]
 
     FileS --> GitHub
     PerplexityS --> Perplexity
     RagFlowS --> RagFlow
     SpeechS --> OpenAI
+    SpeechS --> AudioProc[Audio Processor]
 
     style Frontend fill:#f9f,stroke:#333,stroke-width:2px
     style Backend fill:#bbf,stroke:#333,stroke-width:2px
@@ -240,25 +239,28 @@ classDiagram
     }
 
     class WebSocketService {
-        -socket: WebSocket
-        -url: string
-        -messageQueue: ArrayBuffer[] | string[]
-        -isConnected: boolean
-        -isReconnecting: boolean
+        -ws: WebSocket
+        -settings: WebSocketSettings
+        -reconnectTimeout: NodeJS.Timeout
+        -heartbeatTimer: NodeJS.Timeout
+        -lastPongTime: number
         -reconnectAttempts: number
-        -maxReconnectAttempts: number
-        -reconnectInterval: number
-        -heartbeatIntervalId: number
+        -binaryUpdateHandler: BinaryUpdateHandler
+        -isReconnecting: boolean
+        -messageHandlers: Map<MessageType, MessageHandler[]>
         +connect()
-        +send(data: ArrayBuffer | string)
+        +disconnect()
         -handleOpen()
+        -handleClose()
+        -handleError()
         -handleMessage(event: MessageEvent)
-        -handleClose(event: CloseEvent)
-        -handleError(event: Event)
         -sendHeartbeat()
-        -enqueueMessage(message: ArrayBuffer | string)
-        -flushQueue()
-        -reconnect()
+        -stopHeartbeat()
+        -cleanup()
+        -attemptReconnect()
+        +onMessage(type: MessageType, handler: MessageHandler)
+        +send(data: string)
+        +onBinaryUpdate(handler: BinaryUpdateHandler)
         +dispose()
     }
 
@@ -584,9 +586,9 @@ sequenceDiagram
     activate SceneManager
     SceneManager->>SceneManager: render()
     deactivate SceneManager
-    App->>WebSocketService: send(initial graph request)
+    App->>WebSocketService: send(MessageType::InitialGraphRequest)
     activate WebSocketService
-    WebSocketService->>Server: initial graph request
+    WebSocketService->>Server: MessageType::InitialGraphRequest
     deactivate WebSocketService
     activate Server
     Server->>GraphService: get_graph_data()
@@ -613,7 +615,7 @@ sequenceDiagram
     end
     GraphService-->>Server: GraphData
     deactivate GraphService
-    Server->>WebSocketService: send(GraphData)
+    Server->>WebSocketService: send(MessageType::GraphData, GraphData)
     activate WebSocketService
     WebSocketService->>GraphDataManager: updateGraphData(GraphData)
     deactivate WebSocketService
@@ -628,6 +630,11 @@ sequenceDiagram
     deactivate NodeManager
     GraphDataManager-->>App: Result
     deactivate GraphDataManager
+
+    loop Heartbeat
+        WebSocketService->>Server: MessageType::Ping
+        Server->>WebSocketService: MessageType::Pong
+    end
     
     loop User Interaction
         Client->>ControlPanel: updateSetting(category, setting, value)
@@ -690,7 +697,7 @@ sequenceDiagram
         end
         GraphService-->>Server: GraphData
         deactivate GraphService
-        Server->>WebSocketService: send(GraphData)
+        Server->>WebSocketService: send(MessageType::GraphData, GraphData)
         activate WebSocketService
         WebSocketService->>GraphDataManager: updateGraphData(GraphData)
         deactivate WebSocketService
@@ -727,6 +734,11 @@ sequenceDiagram
         deactivate RAGFlowService
         Server-->>Client: response
         deactivate Server
+    end
+
+    loop Position Updates
+        Server->>WebSocketService: send(MessageType::PositionUpdate, positions)
+        WebSocketService->>GraphDataManager: updateNodePositions(positions)
     end
 ```
 
