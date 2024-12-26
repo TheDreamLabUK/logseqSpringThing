@@ -8,6 +8,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
 import { createLogger } from '../core/utils';
+import { Settings } from '../types/settings';
 
 const logger = createLogger('SceneManager');
 
@@ -138,6 +139,11 @@ export class SceneManager {
     logger.log('Scene rendering started');
   }
 
+  // Alias for start() to maintain compatibility with new client code
+  startRendering(): void {
+    this.start();
+  }
+
   stop(): void {
     this.isRunning = false;
     if (this.animationFrameId !== null) {
@@ -252,11 +258,42 @@ export class SceneManager {
   }
 
   public handleSettingsUpdate(settings: Settings): void {
-    // Placeholder: This method is added for compatibility with the new client code.
-    // The actual settings update mechanism for the scene might need to be adjusted based on the server's implementation.
-    logger.warn('handleSettingsUpdate called but not fully implemented');
+    if (!settings.visualization?.rendering) {
+      logger.warn('Received settings update without visualization.rendering section');
+      return;
+    }
 
-    // Example: Update background color
-    this.scene.background = new Color(settings.rendering.backgroundColor);
+    const { rendering } = settings.visualization;
+
+    // Update background color
+    if (rendering.backgroundColor) {
+      this.scene.background = new Color(rendering.backgroundColor);
+    }
+
+    // Update lighting
+    const lights = this.scene.children.filter(child => 
+      child instanceof AmbientLight || child instanceof DirectionalLight
+    );
+    
+    lights.forEach(light => {
+      if (light instanceof AmbientLight) {
+        light.intensity = rendering.ambientLightIntensity;
+      } else if (light instanceof DirectionalLight) {
+        light.intensity = rendering.directionalLightIntensity;
+      }
+    });
+
+    // Update renderer settings
+    if (this.renderer) {
+      // Note: Some settings can only be changed at renderer creation
+      if (rendering.enableAntialiasing) {
+        logger.warn('Antialiasing setting change requires renderer recreation');
+      }
+      if (rendering.enableShadows) {
+        logger.warn('Shadow settings change requires renderer recreation');
+      }
+    }
+
+    logger.debug('Scene settings updated:', rendering);
   }
 }

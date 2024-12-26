@@ -9,17 +9,16 @@ import {
     Quaternion,
     WebGLRenderer,
     BufferGeometry,
-    Material,
-    LineSegments
+    Material
 } from 'three';
-import { Node } from '../core/types';
+import { Node, NodeData } from '../core/types';
 import { Settings } from '../types/settings';
 import { MetadataVisualizer } from './MetadataVisualizer';
 import { HologramManager } from './HologramManager';
 import { XRHandWithHaptics } from '../types/xr';
 import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
-import { HologramShaderMaterial } from './HologramShaderMaterial';
+import { HologramShaderMaterial } from './materials/HologramShaderMaterial';
 
 export class EnhancedNodeManager {
     private scene: Scene;
@@ -31,10 +30,12 @@ export class EnhancedNodeManager {
     private dummy = new Object3D();
     private geometryFactory: GeometryFactory;
     private materialFactory: MaterialFactory;
-    private isInstanced: boolean;
-    private isHologram: boolean;
+    private isInstanced: boolean = false;
+    private isHologram: boolean = false;
     private hologramMaterial: HologramShaderMaterial | null = null;
     private metadataMaterial: Material | null = null;
+    private metadataVisualizer: MetadataVisualizer;
+    private quaternion = new Quaternion();
 
     constructor(scene: Scene, settings: Settings) {
         this.scene = scene;
@@ -42,6 +43,7 @@ export class EnhancedNodeManager {
         this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
         this.nodeGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
+        this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
 
         if (this.settings.visualization.nodes.enableHologram) {
             this.hologramMaterial = this.materialFactory.getHologramMaterial(settings);
@@ -49,6 +51,7 @@ export class EnhancedNodeManager {
 
         this.metadataMaterial = this.materialFactory.getMetadataMaterial();
 
+        this.metadataVisualizer = new MetadataVisualizer(scene, settings.visualization);
         this.setupInstancedMesh();
     }
 
@@ -218,9 +221,29 @@ export class EnhancedNodeManager {
     }
 
     public createNode(id: string, data: NodeData, metadata: any): void {
-        // ... existing code ...
-
-        // Remove this line:
-        // const nodeMesh = this.metadataVisualizer.createNodeMesh(metadata);
+        const position = new Vector3(data.position.x, data.position.y, data.position.z);
+        const scale = this.calculateNodeScale(this.calculateImportance({ id, data, metadata }));
+        
+        if (this.settings.visualization.nodes.enableMetadataShape) {
+            const nodeMesh = this.metadataVisualizer.createNodeMesh({
+                id,
+                name: metadata?.name || '',
+                commitAge: this.calculateCommitAge(metadata?.lastModified || Date.now()),
+                hyperlinkCount: metadata?.links?.length || 0,
+                importance: this.calculateImportance({ id, data, metadata }),
+                position: data.position
+            });
+            this.nodes.set(id, nodeMesh);
+            this.scene.add(nodeMesh);
+        } else if (this.instancedMesh) {
+            const matrix = new Matrix4();
+            matrix.compose(position, this.quaternion, new Vector3(scale, scale, scale));
+            const index = this.nodes.size;
+            this.instancedMesh.setMatrixAt(index, matrix);
+            this.instancedMesh.count = index + 1;
+            this.instancedMesh.instanceMatrix.needsUpdate = true;
+            // Store a reference to the instanced mesh for this node
+            this.nodes.set(id, this.instancedMesh);
+        }
     }
 }

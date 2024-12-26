@@ -1,11 +1,12 @@
-import { Color, DoubleSide, Material, MeshBasicMaterial, MeshPhongMaterial, MeshStandardMaterial, LineBasicMaterial, ShaderMaterial, Vector2, Texture, TextureLoader } from 'three';
+import { Color, DoubleSide, Material, MeshBasicMaterial, MeshPhongMaterial } from 'three';
 import { Settings } from '../../types/settings';
 import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
 
+type CachedMaterial = Material | HologramShaderMaterial;
+
 export class MaterialFactory {
     private static instance: MaterialFactory;
-    private materialCache = new Map<string, Material>();
-    private textureLoader = new TextureLoader();
+    private materialCache = new Map<string, CachedMaterial>();
 
     private constructor() {}
 
@@ -67,39 +68,14 @@ export class MaterialFactory {
         return material;
     }
 
-    getHologramMaterial(type: 'standard' | 'shader', color: string, textureUrl?: string): Material {
-        const cacheKey = `hologram-${type}-${color}-${textureUrl}`;
-        if (this.materialCache.has(cacheKey)) {
-            return this.materialCache.get(cacheKey)!;
+    getHologramMaterial(settings: Settings): HologramShaderMaterial {
+        const cacheKey = 'hologram';
+        const cached = this.materialCache.get(cacheKey);
+        if (cached && cached instanceof HologramShaderMaterial) {
+            return cached;
         }
 
-        let material: Material;
-        switch (type) {
-            case 'standard':
-                material = new MeshStandardMaterial({
-                    color: new Color(color),
-                    transparent: true,
-                    opacity: 0.7,
-                    side: DoubleSide,
-                });
-                break;
-            case 'shader':
-                const texture = textureUrl ? this.textureLoader.load(textureUrl) : null;
-                material = new HologramShaderMaterial({
-                    uniforms: {
-                        time: { value: 0 },
-                        color: { value: new Color(color) },
-                        texture: { value: texture },
-                        resolution: { value: new Vector2(window.innerWidth, window.innerHeight) }
-                    },
-                    side: DoubleSide,
-                    transparent: true,
-                });
-                break;
-            default:
-                throw new Error(`Unsupported hologram material type: ${type}`);
-        }
-
+        const material = new HologramShaderMaterial(settings);
         this.materialCache.set(cacheKey, material);
         return material;
     }
@@ -111,13 +87,21 @@ export class MaterialFactory {
         switch (type) {
             case 'node-basic':
             case 'node-phong':
-                (material as MeshBasicMaterial | MeshPhongMaterial).color.set(settings.visualization.nodes.baseColor);
-                material.opacity = settings.visualization.nodes.opacity;
+                if (material instanceof MeshBasicMaterial || material instanceof MeshPhongMaterial) {
+                    material.color.set(settings.visualization.nodes.baseColor);
+                    material.opacity = settings.visualization.nodes.opacity;
+                }
                 break;
             case 'hologram':
-                const hologramMaterial = material as HologramShaderMaterial;
-                hologramMaterial.uniforms.color.value = new Color(settings.visualization.hologram.ringColor);
-                hologramMaterial.uniforms.opacity.value = settings.visualization.hologram.ringOpacity;
+                if (material instanceof HologramShaderMaterial) {
+                    const hexColor = settings.visualization.hologram.ringColor;
+                    const hex = hexColor.replace('#', '');
+                    const r = parseInt(hex.substring(0, 2), 16) / 255;
+                    const g = parseInt(hex.substring(2, 4), 16) / 255;
+                    const b = parseInt(hex.substring(4, 6), 16) / 255;
+                    material.uniforms.color.value.set(r, g, b);
+                    material.uniforms.opacity.value = settings.visualization.hologram.ringOpacity;
+                }
                 break;
         }
     }
@@ -134,7 +118,7 @@ export class MaterialFactory {
         }
 
         const material = new MeshBasicMaterial({
-            color: new Color(settings.visualization.edges.baseColor),
+            color: new Color(settings.visualization.edges.color),
             opacity: settings.visualization.edges.opacity,
             transparent: true
         });

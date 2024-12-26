@@ -4,7 +4,9 @@ import {
     WS_HEARTBEAT_INTERVAL,
     WS_HEARTBEAT_TIMEOUT,
     WS_RECONNECT_INTERVAL,
-    WS_MESSAGE_QUEUE_SIZE
+    WS_MESSAGE_QUEUE_SIZE,
+    FLOATS_PER_NODE,
+    NODE_POSITION_SIZE
 } from '../core/constants';
 import { convertObjectKeysToCamelCase } from '../core/utils';
 
@@ -59,8 +61,18 @@ export class WebSocketService {
     private readonly maxReconnectDelay: number = 60000; // 60 seconds
     private readonly heartbeatTimeout: number = WS_HEARTBEAT_TIMEOUT;
     private settingsStore: Map<string, any> = new Map();
+    private connectionStatusHandler: ((status: boolean) => void) | null = null;
+    private settingsUpdateHandler: ((settings: any) => void) | null = null;
 
     private constructor() {
+        // Don't automatically connect - wait for explicit connect() call
+    }
+
+    public connect(): void {
+        if (this.connectionState !== ConnectionState.DISCONNECTED) {
+            logger.warn('WebSocket already connected or connecting');
+            return;
+        }
         this.setupWebSocket();
     }
 
@@ -107,6 +119,9 @@ export class WebSocketService {
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             logger.warn('Maximum reconnection attempts reached, WebSocket disabled');
             this.connectionState = ConnectionState.FAILED;
+            if (this.connectionStatusHandler) {
+                this.connectionStatusHandler(false);
+            }
             return;
         }
 
@@ -128,6 +143,11 @@ export class WebSocketService {
                 this.lastPongTime = Date.now();
                 this.startConnectionMonitor();
 
+                // Notify connection status change
+                if (this.connectionStatusHandler) {
+                    this.connectionStatusHandler(true);
+                }
+
                 // Send initial protocol messages
                 this.sendMessage({ type: 'requestInitialData' });
                 this.sendMessage({ type: 'enableBinaryUpdates' });
@@ -142,7 +162,6 @@ export class WebSocketService {
                 if (this.ws) {
                     logger.error('WebSocket readyState:', this.ws.readyState);
                     
-                    // Additional production debugging
                     if (isProduction) {
                         logger.error('Production debug info:', {
                             url: wsUrl,
@@ -159,9 +178,13 @@ export class WebSocketService {
                 const envPrefix = isProduction ? '[PROD]' : '[DEV]';
                 logger.warn(`${envPrefix} WebSocket closed with code ${event.code}: ${event.reason}`);
                 
-                // Special handling for Cloudflare-specific close codes
                 if (isProduction && event.code === 1006) {
                     logger.error('Cloudflare connection dropped (code 1006). This might indicate a tunnel issue.');
+                }
+                
+                // Notify connection status change
+                if (this.connectionStatusHandler) {
+                    this.connectionStatusHandler(false);
                 }
                 
                 this.handleReconnect();
@@ -180,9 +203,14 @@ export class WebSocketService {
                     // Handle text messages (errors from server)
                     if (typeof event.data === 'string') {
                         try {
-                            const message = JSON.parse(event.data) as WebSocketError;
+                            const message = JSON.parse(event.data);
                             if (message.error) {
                                 logger.error('[Server Error]', message.error);
+                                return;
+                            }
+                            // Handle settings update
+                            if (message.type === 'settings_update') {
+                                this.handleSettingsUpdate(message);
                                 return;
                             }
                         } catch (e) {
@@ -193,20 +221,13 @@ export class WebSocketService {
 
                     // Handle binary position/velocity updates
                     if (event.data instanceof ArrayBuffer && this.binaryMessageCallback) {
-                        // Validate data length (4 bytes version + 24 bytes per node)
-                        if ((event.data.byteLength - 4) % 24 !== 0) {
+                        // Validate data length (24 bytes per node - 6 floats * 4 bytes)
+                        if (event.data.byteLength % NODE_POSITION_SIZE !== 0) {
                             logger.error('Invalid binary message length:', event.data.byteLength);
                             return;
                         }
 
-                        const dataView = new DataView(event.data);
-                        const version = dataView.getInt32(0, true); // true for little-endian
-                        if (version !== BINARY_VERSION) {
-                            logger.error('Invalid binary version:', version);
-                            return;
-                        }
-
-                        const float32Array = new Float32Array(event.data, 4); // Skip version header
+                        const float32Array = new Float32Array(event.data);
                         const nodeCount = float32Array.length / FLOATS_PER_NODE;
                         const nodes: NodeData[] = [];
 
@@ -244,17 +265,6 @@ export class WebSocketService {
                             logger.warn('No valid nodes in binary message');
                         }
                     }
-
-                    // Handle settings update messages
-                    if (typeof event.data === 'string') {
-                        try {
-                            const message = JSON.parse(event.data) as SettingsUpdateMessage;
-                            this.handleSettingsUpdate(message);
-                        } catch (e) {
-                            logger.warn('Received non-JSON text message:', event.data);
-                            return;
-                        }
-                    }
                 } catch (error) {
                     logger.error('Error processing WebSocket message:', error);
                     if (error instanceof Error) {
@@ -270,7 +280,10 @@ export class WebSocketService {
             logger.error('Failed to setup WebSocket:', error);
             this.connectionState = ConnectionState.FAILED;
             
-            // Attempt to reconnect if we haven't exceeded max attempts
+            if (this.connectionStatusHandler) {
+                this.connectionStatusHandler(false);
+            }
+            
             if (this.reconnectAttempts < this.maxReconnectAttempts) {
                 this.reconnectAttempts++;
                 const delay = this.getReconnectDelay();
@@ -295,15 +308,10 @@ export class WebSocketService {
         this.binaryMessageCallback = null;
         this.stopConnectionMonitor();
         
-        // Clear any existing reconnect timeout
         if (this.reconnectTimeout !== null) {
             window.clearTimeout(this.reconnectTimeout);
         }
         
-        // Only attempt to reconnect if:
-        // 1. The close wasn't intentional (code !== 1000)
-        // 2. We haven't exceeded max attempts
-        // 3. We were previously connected (to avoid retry spam on initial failure)
         if (this.reconnectAttempts < this.maxReconnectAttempts &&
             (wasConnected || this.reconnectAttempts === 0)) {
             
@@ -323,6 +331,9 @@ export class WebSocketService {
         } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             logger.warn('Maximum reconnection attempts reached, WebSocket disabled');
             this.connectionState = ConnectionState.FAILED;
+            if (this.connectionStatusHandler) {
+                this.connectionStatusHandler(false);
+            }
         } else {
             logger.info('WebSocket connection closed');
         }
@@ -347,6 +358,15 @@ export class WebSocketService {
                 const [camelSetting, camelValue] = settingEntries[0];
                 // Update settings store
                 this.settingsStore.set(`${camelCategory}.${camelSetting}`, camelValue);
+                
+                // Notify settings update handler
+                if (this.settingsUpdateHandler) {
+                    this.settingsUpdateHandler({
+                        [camelCategory]: {
+                            [camelSetting]: camelValue
+                        }
+                    });
+                }
             }
         }
     }
@@ -410,15 +430,18 @@ export class WebSocketService {
                 return;
             }
 
-            // Create binary message with version header
-            const float32Array = new Float32Array(1 + validUpdates.length * 3); // Version + positions
-            float32Array[0] = BINARY_VERSION;
+            // Create binary message (24 bytes per node - 6 floats * 4 bytes)
+            const float32Array = new Float32Array(validUpdates.length * FLOATS_PER_NODE);
             
             validUpdates.forEach((update, index) => {
-                const baseIndex = 1 + index * 3; // Skip version header
+                const baseIndex = index * FLOATS_PER_NODE;
                 float32Array[baseIndex] = update.position.x;
                 float32Array[baseIndex + 1] = update.position.y;
                 float32Array[baseIndex + 2] = update.position.z;
+                // Set velocity components to 0 as they're not provided in updates
+                float32Array[baseIndex + 3] = 0;
+                float32Array[baseIndex + 4] = 0;
+                float32Array[baseIndex + 5] = 0;
             });
 
             this.ws.send(float32Array.buffer);
@@ -435,6 +458,18 @@ export class WebSocketService {
         }
     }
 
+    public onConnectionStatusChange(handler: (status: boolean) => void): void {
+        this.connectionStatusHandler = handler;
+        // Immediately call handler with current status if connected
+        if (this.connectionState === ConnectionState.CONNECTED && handler) {
+            handler(true);
+        }
+    }
+
+    public onSettingsUpdate(handler: (settings: any) => void): void {
+        this.settingsUpdateHandler = handler;
+    }
+
     public dispose(): void {
         if (this.reconnectTimeout !== null) {
             window.clearTimeout(this.reconnectTimeout);
@@ -449,21 +484,9 @@ export class WebSocketService {
         }
         
         this.binaryMessageCallback = null;
+        this.connectionStatusHandler = null;
+        this.settingsUpdateHandler = null;
         this.connectionState = ConnectionState.DISCONNECTED;
         WebSocketService.instance = null;
-    }
-
-    public onConnectionStatusChange(handler: (status: boolean) => void) {
-        // Placeholder: This method is added for compatibility with the new client code.
-        // The actual connection status change mechanism might need to be adjusted based on the server's implementation.
-        logger.warn('onConnectionStatusChange called but not fully implemented');
-        this.connectionStatusHandler = handler; // Store the handler for later use
-    }
-
-    public onSettingsUpdate(handler: (settings: any) => void) {
-        // Placeholder: This method is added for compatibility with the new client code.
-        // The actual settings update mechanism might need to be adjusted based on the server's implementation.
-        logger.warn('onSettingsUpdate called but not fully implemented');
-        this.onMessage('settings_update', handler); // Assuming 'settings_update' is the message type for settings updates
     }
 }

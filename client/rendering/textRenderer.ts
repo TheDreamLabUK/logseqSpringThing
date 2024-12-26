@@ -20,6 +20,8 @@ export class TextRenderer {
     private projMatrix: THREE.Matrix4;
     private viewMatrix: THREE.Matrix4;
     private currentSettings: Settings;
+    private settings: LabelSettings;
+    private group: THREE.Group;
 
     constructor(camera: THREE.Camera) {
         this.camera = camera;
@@ -28,6 +30,8 @@ export class TextRenderer {
         this.projMatrix = new THREE.Matrix4();
         this.viewMatrix = new THREE.Matrix4();
         this.currentSettings = settingsManager.getCurrentSettings();
+        this.settings = this.currentSettings.visualization.labels;
+        this.group = new THREE.Group();
         this.setupSettingsSubscriptions();
     }
 
@@ -158,6 +162,7 @@ export class TextRenderer {
             if (!labelGroup) {
                 labelGroup = new THREE.Group();
                 this.labels.set(id, labelGroup);
+                this.group.add(labelGroup);
             }
 
             const state: LabelState = {
@@ -184,7 +189,7 @@ export class TextRenderer {
             // (e.g., using HTML elements, sprites, or geometry)
 
             // Update visibility
-            labelGroup.visible = this.currentSettings.visualization.labels.enableLabels && state.visible;
+            labelGroup.visible = this.settings.enableLabels && state.visible;
 
             // Update bounding box for culling
             state.boundingBox = labelGroup;
@@ -197,6 +202,7 @@ export class TextRenderer {
         try {
             const labelGroup = this.labels.get(id);
             if (labelGroup) {
+                this.group.remove(labelGroup);
                 // Clean up THREE.js objects
                 this.clearLabels();
                 this.labels.delete(id);
@@ -254,6 +260,11 @@ export class TextRenderer {
             // Clean up subscribers
             this.unsubscribers.forEach(unsubscribe => unsubscribe());
             this.unsubscribers = [];
+
+            // Clean up group
+            if (this.group.parent) {
+                this.group.parent.remove(this.group);
+            }
         } catch (error) {
             logger.error('Error disposing TextRenderer:', error);
         }

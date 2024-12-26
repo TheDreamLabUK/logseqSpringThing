@@ -17,27 +17,21 @@ interface WebSocketService {
   send(data: ArrayBuffer): void;
 }
 
+// Extend Edge interface to include id
+interface EdgeWithId extends Edge {
+  id: string;
+}
+
 export class GraphDataManager {
   private static instance: GraphDataManager;
   private nodes: Map<string, Node>;
-  private edges: Map<string, Edge>;
+  private edges: Map<string, EdgeWithId>;
   private wsService: WebSocketService;
   private metadata: Record<string, any>;
   private updateListeners: Set<(data: GraphData) => void>;
   private positionUpdateListeners: Set<(positions: Float32Array) => void>;
   private lastUpdateTime: number;
   private binaryUpdatesEnabled: boolean = false;
-  private loadingNodes: boolean = false;
-  private currentPage: number = 0;
-  private hasMorePages: boolean = true;
-  private pageSize: number = 100;
-  private serverCapabilities: {
-    supportsPagination: boolean;
-    supportsMetadata: boolean;
-  } = {
-    supportsPagination: false,
-    supportsMetadata: false,
-  };
 
   private constructor() {
     this.nodes = new Map();
@@ -69,75 +63,101 @@ export class GraphDataManager {
 
   async loadInitialGraphData(): Promise<void> {
     try {
-      const response = await fetch('/api/graph/data');
+      // Start with first page of paginated data
+      const pageSize = 100; // Match server default
+      const response = await fetch(`/api/graph/data/paginated?page=1&pageSize=${pageSize}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch graph data: ${response.statusText}`);
       }
 
       const data = await response.json();
-      if (data.serverCapabilities) {
-        this.serverCapabilities = data.serverCapabilities;
-      }
-
       const transformedData = transformGraphData(data);
+      
+      // Update nodes with positions
       this.nodes = new Map(transformedData.nodes.map((node: Node) => [node.id, node]));
-      this.edges = new Map(transformedData.edges.map((edge: Edge) => [edge.id, edge]));
-      this.metadata = transformedData.metadata;
+      
+      // Update edges with IDs
+      const edgesWithIds = transformedData.edges.map((edge: Edge) => ({
+        ...edge,
+        id: this.createEdgeId(edge.source, edge.target)
+      }));
+      this.edges = new Map(edgesWithIds.map(edge => [edge.id, edge]));
+      
+      // Update metadata
+      this.metadata = {
+        ...transformedData.metadata || {},
+        pagination: {
+          totalPages: data.totalPages,
+          currentPage: data.currentPage,
+          totalItems: data.totalItems,
+          pageSize: data.pageSize
+        }
+      };
 
+      // Initialize positions and notify listeners
+      this.initializeNodePositions();
       this.notifyUpdateListeners();
-      this.enableBinaryUpdates();
-      logger.log('Initial graph data loaded and transformed');
+      
+      // Load remaining pages if any
+      if (data.totalPages > 1) {
+        await this.loadRemainingPages(data.totalPages, pageSize);
+      }
+      
+      logger.log('Initial graph data loaded successfully');
     } catch (error) {
       logger.error('Error loading initial graph data:', error);
+      throw error;
     }
   }
 
-  private async loadNextPage(): Promise<void> {
-    if (this.loadingNodes || !this.hasMorePages) return;
-
+  private async loadRemainingPages(totalPages: number, pageSize: number): Promise<void> {
     try {
-      this.loadingNodes = true;
-      const response = await fetch(buildApiUrl(`graph/data/paginated?page=${this.currentPage}&pageSize=${this.pageSize}`));
-      
+      // Load remaining pages in parallel with a reasonable chunk size
+      const chunkSize = 5;
+      for (let i = 2; i <= totalPages; i += chunkSize) {
+        const pagePromises = [];
+        for (let j = i; j < Math.min(i + chunkSize, totalPages + 1); j++) {
+          pagePromises.push(this.loadPage(j, pageSize));
+        }
+        await Promise.all(pagePromises);
+        // Update listeners after each chunk
+        this.notifyUpdateListeners();
+      }
+    } catch (error) {
+      logger.error('Error loading remaining pages:', error);
+      throw error;
+    }
+  }
+
+  private async loadPage(page: number, pageSize: number): Promise<void> {
+    try {
+      const response = await fetch(`/api/graph/data/paginated?page=${page}&pageSize=${pageSize}`);
       if (!response.ok) {
-        throw new Error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to fetch page ${page}: ${response.statusText}`);
       }
 
       const data = await response.json();
-      logger.debug('Received graph data:', {
-        nodesCount: data.nodes?.length || 0,
-        edgesCount: data.edges?.length || 0,
-        totalPages: data.totalPages,
-        currentPage: data.currentPage,
-        metadata: data.metadata
+      const transformedData = transformGraphData(data);
+      
+      // Add new nodes
+      transformedData.nodes.forEach((node: Node) => {
+        if (!this.nodes.has(node.id)) {
+          this.nodes.set(node.id, node);
+        }
       });
       
-      if (!data.nodes || !Array.isArray(data.nodes)) {
-        throw new Error('Invalid graph data: nodes array is missing or invalid');
-      }
-      
-      // Update graph with new nodes and edges
-      data.nodes.forEach((node: Node) => this.nodes.set(node.id, node));
-      if (data.edges && Array.isArray(data.edges)) {
-        data.edges.forEach((edge: Edge) => {
-          const edgeId = this.createEdgeId(edge.source, edge.target);
-          this.edges.set(edgeId, edge);
-        });
-      }
+      // Add new edges
+      transformedData.edges.forEach((edge: Edge) => {
+        const edgeId = this.createEdgeId(edge.source, edge.target);
+        if (!this.edges.has(edgeId)) {
+          this.edges.set(edgeId, { ...edge, id: edgeId });
+        }
+      });
 
-      // Update pagination state
-      this.currentPage = data.currentPage;
-      this.hasMorePages = data.currentPage < data.totalPages;
-
-      // Notify listeners of updated data
-      this.notifyUpdateListeners();
-
-      logger.log(`Loaded page ${this.currentPage} of graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
+      logger.debug(`Loaded page ${page} with ${transformedData.nodes.length} nodes`);
     } catch (error) {
-      logger.error('Failed to load graph data:', error);
-      this.hasMorePages = false;  // Stop trying to load more pages on error
-    } finally {
-      this.loadingNodes = false;
+      logger.error(`Error loading page ${page}:`, error);
+      throw error;
     }
   }
 
@@ -184,27 +204,6 @@ export class GraphDataManager {
     });
   }
 
-  private setupBinaryUpdates(): void {
-    // Always initialize positions
-    this.initializeNodePositions();
-    
-    if (this.binaryUpdatesEnabled) {
-      // Send message to server to start receiving binary updates
-      if (window.ws && window.ws.readyState === WebSocket.OPEN) {
-        window.ws.send(JSON.stringify({ type: 'enableBinaryUpdates' }));
-        logger.log('Requested binary updates from server');
-      } else {
-        logger.warn('WebSocket not ready, cannot enable binary updates');
-      }
-    }
-  }
-
-  public async loadMoreIfNeeded(): Promise<void> {
-    if (this.hasMorePages && !this.loadingNodes) {
-      await this.loadNextPage();
-    }
-  }
-
   /**
    * Initialize or update the graph data
    */
@@ -233,11 +232,15 @@ export class GraphDataManager {
         });
       });
 
-      // Store edges in Map
+      // Store edges in Map with generated IDs
       if (Array.isArray(data.edges)) {
         data.edges.forEach((edge: Edge) => {
           const edgeId = this.createEdgeId(edge.source, edge.target);
-          this.edges.set(edgeId, edge);
+          const edgeWithId: EdgeWithId = {
+            ...edge,
+            id: edgeId
+          };
+          this.edges.set(edgeId, edgeWithId);
         });
       }
 
@@ -314,7 +317,6 @@ export class GraphDataManager {
     }
 
     try {
-      // No version check needed
       // Verify data size (no header)
       const expectedSize = Math.floor(positions.length / FLOATS_PER_NODE) * NODE_POSITION_SIZE;
       if (positions.length * 4 !== expectedSize) {
@@ -369,7 +371,7 @@ export class GraphDataManager {
   getGraphData(): GraphData {
     return {
       nodes: Array.from(this.nodes.values()),
-      edges: Array.from(this.edges.values()),
+      edges: Array.from(this.edges.values()) as Edge[],
       metadata: this.metadata
     };
   }
@@ -446,14 +448,14 @@ export class GraphDataManager {
     this.updateListeners.forEach(listener => {
       listener({
         nodes: Array.from(this.nodes.values()),
-        edges: Array.from(this.edges.values()),
+        edges: Array.from(this.edges.values()) as Edge[],
         metadata: { ...this.metadata, binaryUpdatesEnabled: enabled }
       });
     });
   }
 
   public updateNodePositions(positions: Float32Array): void {
-    if (!this.binaryUpdatesEnabled || this.loadingNodes) {
+    if (!this.binaryUpdatesEnabled) {
       return;
     }
   
@@ -472,22 +474,6 @@ export class GraphDataManager {
         logger.error('Error in position update listener:', error);
       }
     });
-  }
-
-  private loadMoreNodes(): void {
-    if (!this.serverCapabilities.supportsPagination) {
-      logger.warn('Pagination is not supported by the server');
-      return;
-    }
-    // ... (Pagination logic) ...
-  }
-
-  public loadPaginatedGraphData(pageSize: number = 100): void {
-    if (!this.serverCapabilities.supportsPagination) {
-      logger.warn('Pagination is not supported by the server');
-      return;
-    }
-    // ... (Pagination logic) ...
   }
 }
 

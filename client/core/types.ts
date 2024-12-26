@@ -32,6 +32,13 @@ export interface Edge {
   weight?: number;
 }
 
+export interface PaginatedGraphData extends GraphData {
+  totalPages: number;
+  currentPage: number;
+  totalItems: number;
+  pageSize: number;
+}
+
 export interface GraphData {
   nodes: Node[];
   edges: Edge[];

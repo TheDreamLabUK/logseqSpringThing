@@ -3,13 +3,12 @@ import { settingsManager } from './state/settings';
 import { setDebugEnabled } from './core/logger';
 import { createLogger } from './core/logger';
 import { SceneManager } from './rendering/scene';
-import { NodeManager } from './rendering/nodes';
 import { WebSocketService } from './websocket/websocketService';
 import { graphDataManager } from './state/graphData';
 import { XRSessionManager } from './xr/xrSessionManager';
 import { ControlPanel } from './ui/ControlPanel';
 import { TextRenderer } from './rendering/textRenderer';
-import { EnhancedNodeManager } from './rendering/enhancedNodeManager';
+import { EnhancedNodeManager } from './rendering/EnhancedNodeManager';
 
 const logger = createLogger('Application');
 
