@@ -7,7 +7,10 @@ import {
     Mesh,
     Object3D,
     Quaternion,
-    WebGLRenderer
+    WebGLRenderer,
+    BufferGeometry,
+    Material,
+    LineSegments
 } from 'three';
 import { Node } from '../core/types';
 import { Settings } from '../types/settings';
@@ -16,50 +19,116 @@ import { HologramManager } from './HologramManager';
 import { XRHandWithHaptics } from '../types/xr';
 import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
+import { HologramShaderMaterial } from './HologramShaderMaterial';
 
 export class EnhancedNodeManager {
-    private readonly nodeInstances: InstancedMesh;
-    private readonly metadataVisualizer: MetadataVisualizer;
-    private readonly hologramManager: HologramManager;
-    private readonly nodeDataMap = new Map<string, Matrix4>();
-    private readonly quaternion = new Quaternion();
-    private readonly camera: PerspectiveCamera;
-    private readonly geometryFactory: GeometryFactory;
-    private readonly materialFactory: MaterialFactory;
+    private scene: Scene;
+    private settings: Settings;
+    private nodes: Map<string, Mesh> = new Map();
+    private nodeGeometry: BufferGeometry;
+    private nodeMaterial: Material;
+    private instancedMesh: InstancedMesh | null = null;
+    private dummy = new Object3D();
+    private geometryFactory: GeometryFactory;
+    private materialFactory: MaterialFactory;
+    private isInstanced: boolean;
+    private isHologram: boolean;
+    private hologramMaterial: HologramShaderMaterial | null = null;
+    private metadataMaterial: Material | null = null;
 
-    constructor(
-        private readonly scene: Scene,
-        renderer: WebGLRenderer,
-        private readonly settings: Settings
-    ) {
-        // Get the camera from the scene
-        const camera = scene.children.find(child => child instanceof PerspectiveCamera) as PerspectiveCamera;
-        if (!camera) {
-            throw new Error('No PerspectiveCamera found in scene');
-        }
-        this.camera = camera;
-
+    constructor(scene: Scene, settings: Settings) {
+        this.scene = scene;
+        this.settings = settings;
         this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
+        this.nodeGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
 
-        this.metadataVisualizer = new MetadataVisualizer(this.camera, this.scene, this.settings);
-        this.hologramManager = new HologramManager(scene, renderer, settings);
-        scene.add(this.hologramManager.getGroup());
+        if (this.settings.visualization.nodes.enableHologram) {
+            this.hologramMaterial = this.materialFactory.getHologramMaterial(settings);
+        }
 
-        const geometry = this.geometryFactory.getNodeGeometry(this.settings.xr.quality);
-        const material = this.materialFactory.getNodeMaterial(settings);
+        this.metadataMaterial = this.materialFactory.getMetadataMaterial();
 
-        this.nodeInstances = new InstancedMesh(geometry, material, 1000);
-        this.nodeInstances.count = 0;
-        scene.add(this.nodeInstances);
+        this.setupInstancedMesh();
     }
 
-    handleSettingsUpdate(settings: Settings) {
+    private setupInstancedMesh() {
+        if (this.isInstanced) {
+            this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 1000);
+            this.instancedMesh.count = 0;
+            this.scene.add(this.instancedMesh);
+        }
+    }
+
+    public updateNodePositionsAndVelocities(nodes: { position: [number, number, number]; velocity: [number, number, number] }[]): void {
+        if (!this.instancedMesh) return;
+    
+        nodes.forEach((node, i) => {
+            this.dummy.position.set(node.position[0], node.position[1], node.position[2]);
+    
+            const velocityMagnitude = Math.sqrt(
+                node.velocity[0] * node.velocity[0] +
+                node.velocity[1] * node.velocity[1] +
+                node.velocity[2] * node.velocity[2]
+            );
+            const scaleFactor = 1 + velocityMagnitude * 0.5;
+            this.dummy.scale.set(scaleFactor, scaleFactor, scaleFactor);
+    
+            this.dummy.updateMatrix();
+            if (this.instancedMesh) {
+                this.instancedMesh.setMatrixAt(i, this.dummy.matrix);
+            }
+        });
+    
+        this.instancedMesh!.instanceMatrix.needsUpdate = true;
+    }
+
+    public handleSettingsUpdate(settings: Settings): void {
+        this.settings = settings;
+        const newGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
+        if (this.nodeGeometry !== newGeometry) {
+            this.nodeGeometry = newGeometry;
+            if (this.instancedMesh) {
+                this.instancedMesh.geometry = this.nodeGeometry;
+            }
+        }
+
         this.materialFactory.updateMaterial('node-basic', settings);
+        this.materialFactory.updateMaterial('node-phong', settings);
+        this.materialFactory.updateMaterial('edge', settings);
+        if (this.isHologram) {
+            this.materialFactory.updateMaterial('hologram', settings);
+        }
+
+        const newIsInstanced = settings.visualization.nodes.enableInstancing;
+        const newIsHologram = settings.visualization.nodes.enableHologram;
+
+        if (newIsInstanced !== this.isInstanced || newIsHologram !== this.isHologram) {
+            this.isInstanced = newIsInstanced;
+            this.isHologram = newIsHologram;
+            this.rebuildInstancedMesh();
+        }
+
+        if (settings.visualization.nodes.enableMetadataVisualization && this.metadataMaterial) {
+            const serverSupportsMetadata = true;
+            if (serverSupportsMetadata) {
+                // Apply metadata material and update visualization
+            } else {
+                // Disable metadata visualization
+            }
+        }
+    }
+
+    private rebuildInstancedMesh() {
+        if (this.isInstanced) {
+            this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 1000);
+            this.instancedMesh.count = 0;
+            this.scene.add(this.instancedMesh);
+        }
     }
 
     updateNodes(nodes: Node[]) {
-        this.nodeInstances.count = nodes.length;
+        this.instancedMesh!.count = nodes.length;
 
         nodes.forEach((node, index) => {
             const metadata = {
@@ -85,13 +154,13 @@ export class EnhancedNodeManager {
                 const scale = this.calculateNodeScale(metadata.importance);
                 const position = new Vector3(metadata.position.x, metadata.position.y, metadata.position.z);
                 matrix.compose(position, this.quaternion, new Vector3(scale, scale, scale));
-                this.nodeInstances.setMatrixAt(index, matrix);
+                this.instancedMesh!.setMatrixAt(index, matrix);
             }
 
-            this.nodeDataMap.set(node.id, matrix);
+            this.nodes.set(node.id, this.instancedMesh!.children[index] as Mesh);
         });
 
-        this.nodeInstances.instanceMatrix.needsUpdate = true;
+        this.instancedMesh!.instanceMatrix.needsUpdate = true;
     }
 
     private calculateCommitAge(timestamp: number): number {
@@ -111,10 +180,12 @@ export class EnhancedNodeManager {
     }
 
     update(deltaTime: number) {
-        this.hologramManager.update(deltaTime);
+        if (this.isHologram && this.hologramMaterial) {
+            this.hologramMaterial.update(deltaTime);
+        }
 
         if (this.settings.visualization.animations.enableNodeAnimations) {
-            this.nodeInstances.instanceMatrix.needsUpdate = true;
+            this.instancedMesh!.instanceMatrix.needsUpdate = true;
             this.scene.traverse(child => {
                 if (child instanceof Mesh) {
                     child.rotateY(0.001 * deltaTime);
@@ -128,15 +199,28 @@ export class EnhancedNodeManager {
         const indexTip = hand.hand.joints['index-finger-tip'] as Object3D | undefined;
         if (indexTip) {
             position.setFromMatrixPosition(indexTip.matrixWorld);
-            this.hologramManager.handleInteraction(position);
+            if (this.isHologram && this.hologramMaterial) {
+                this.hologramMaterial.handleInteraction(position);
+            }
         }
     }
 
     dispose() {
-        this.nodeInstances.geometry.dispose();
-        this.nodeInstances.material.dispose();
-        this.metadataVisualizer.dispose();
-        this.scene.remove(this.nodeInstances);
-        this.scene.remove(this.hologramManager.getGroup());
+        this.instancedMesh!.geometry.dispose();
+        this.instancedMesh!.material.dispose();
+        if (this.isHologram && this.hologramMaterial) {
+            this.hologramMaterial.dispose();
+        }
+        if (this.metadataMaterial) {
+            this.metadataMaterial.dispose();
+        }
+        this.scene.remove(this.instancedMesh!);
+    }
+
+    public createNode(id: string, data: NodeData, metadata: any): void {
+        // ... existing code ...
+
+        // Remove this line:
+        // const nodeMesh = this.metadataVisualizer.createNodeMesh(metadata);
     }
 }

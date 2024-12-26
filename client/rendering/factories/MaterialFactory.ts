@@ -1,10 +1,11 @@
-import { Color, DoubleSide, Material, MeshBasicMaterial, MeshPhongMaterial } from 'three';
+import { Color, DoubleSide, Material, MeshBasicMaterial, MeshPhongMaterial, MeshStandardMaterial, LineBasicMaterial, ShaderMaterial, Vector2, Texture, TextureLoader } from 'three';
 import { Settings } from '../../types/settings';
 import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
 
 export class MaterialFactory {
     private static instance: MaterialFactory;
     private materialCache = new Map<string, Material>();
+    private textureLoader = new TextureLoader();
 
     private constructor() {}
 
@@ -66,21 +67,38 @@ export class MaterialFactory {
         return material;
     }
 
-    getHologramMaterial(settings: Settings): HologramShaderMaterial {
-        const cacheKey = 'hologram';
+    getHologramMaterial(type: 'standard' | 'shader', color: string, textureUrl?: string): Material {
+        const cacheKey = `hologram-${type}-${color}-${textureUrl}`;
         if (this.materialCache.has(cacheKey)) {
-            return this.materialCache.get(cacheKey) as HologramShaderMaterial;
+            return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new HologramShaderMaterial({
-            uniforms: {
-                color: { value: new Color(settings.visualization.hologram.ringColor) },
-                opacity: { value: settings.visualization.hologram.ringOpacity },
-                time: { value: 0 },
-                pulseSpeed: { value: 1.0 },
-                pulseIntensity: { value: 0.2 }
-            }
-        });
+        let material: Material;
+        switch (type) {
+            case 'standard':
+                material = new MeshStandardMaterial({
+                    color: new Color(color),
+                    transparent: true,
+                    opacity: 0.7,
+                    side: DoubleSide,
+                });
+                break;
+            case 'shader':
+                const texture = textureUrl ? this.textureLoader.load(textureUrl) : null;
+                material = new HologramShaderMaterial({
+                    uniforms: {
+                        time: { value: 0 },
+                        color: { value: new Color(color) },
+                        texture: { value: texture },
+                        resolution: { value: new Vector2(window.innerWidth, window.innerHeight) }
+                    },
+                    side: DoubleSide,
+                    transparent: true,
+                });
+                break;
+            default:
+                throw new Error(`Unsupported hologram material type: ${type}`);
+        }
 
         this.materialCache.set(cacheKey, material);
         return material;
@@ -107,5 +125,21 @@ export class MaterialFactory {
     dispose(): void {
         this.materialCache.forEach(material => material.dispose());
         this.materialCache.clear();
+    }
+
+    getEdgeMaterial(settings: Settings): Material {
+        const cacheKey = 'edge';
+        if (this.materialCache.has(cacheKey)) {
+            return this.materialCache.get(cacheKey)!;
+        }
+
+        const material = new MeshBasicMaterial({
+            color: new Color(settings.visualization.edges.baseColor),
+            opacity: settings.visualization.edges.opacity,
+            transparent: true
+        });
+
+        this.materialCache.set(cacheKey, material);
+        return material;
     }
 }

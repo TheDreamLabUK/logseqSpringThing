@@ -143,6 +143,10 @@ export interface NodeSettings {
     metalness: number;
     roughness: number;
     opacity: number;
+    enableMetadataVisualization: boolean;
+    enableHologram: boolean;
+    enableInstancing: boolean;
+    quality: 'low' | 'medium' | 'high';
 }
 
 export interface PhysicsSettings {
@@ -221,6 +225,7 @@ export interface Settings {
     visualization: VisualizationSettings;
     xr: XRSettings;
     system: SystemSettings;
+    labels: LabelSettings;
 }
 
 export * from './settings/base';

@@ -250,4 +250,13 @@ export class SceneManager {
 
     logger.log('Scene manager disposed');
   }
+
+  public handleSettingsUpdate(settings: Settings): void {
+    // Placeholder: This method is added for compatibility with the new client code.
+    // The actual settings update mechanism for the scene might need to be adjusted based on the server's implementation.
+    logger.warn('handleSettingsUpdate called but not fully implemented');
+
+    // Example: Update background color
+    this.scene.background = new Color(settings.rendering.backgroundColor);
+  }
 }

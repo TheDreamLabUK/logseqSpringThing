@@ -258,4 +258,15 @@ export class TextRenderer {
             logger.error('Error disposing TextRenderer:', error);
         }
     }
+
+    public handleSettingsUpdate(settings: LabelSettings): void {
+        this.settings = settings;
+        this.updateLabelVisibility(settings.enableLabels);
+        this.updateFontSize(settings.desktopFontSize);
+        this.updateTextColor(settings.textColor);
+    }
+
+    public getGroup(): THREE.Group {
+        return this.group;
+    }
 }

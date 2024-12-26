@@ -3,8 +3,8 @@ import { buildWsUrl } from '../core/api';
 import { 
     WS_HEARTBEAT_INTERVAL,
     WS_HEARTBEAT_TIMEOUT,
-    BINARY_VERSION,
-    FLOATS_PER_NODE 
+    WS_RECONNECT_INTERVAL,
+    WS_MESSAGE_QUEUE_SIZE
 } from '../core/constants';
 import { convertObjectKeysToCamelCase } from '../core/utils';
 
@@ -451,5 +451,19 @@ export class WebSocketService {
         this.binaryMessageCallback = null;
         this.connectionState = ConnectionState.DISCONNECTED;
         WebSocketService.instance = null;
+    }
+
+    public onConnectionStatusChange(handler: (status: boolean) => void) {
+        // Placeholder: This method is added for compatibility with the new client code.
+        // The actual connection status change mechanism might need to be adjusted based on the server's implementation.
+        logger.warn('onConnectionStatusChange called but not fully implemented');
+        this.connectionStatusHandler = handler; // Store the handler for later use
+    }
+
+    public onSettingsUpdate(handler: (settings: any) => void) {
+        // Placeholder: This method is added for compatibility with the new client code.
+        // The actual settings update mechanism might need to be adjusted based on the server's implementation.
+        logger.warn('onSettingsUpdate called but not fully implemented');
+        this.onMessage('settings_update', handler); // Assuming 'settings_update' is the message type for settings updates
     }
 }

@@ -8,13 +8,17 @@ import { WebSocketService } from './websocket/websocketService';
 import { graphDataManager } from './state/graphData';
 import { XRSessionManager } from './xr/xrSessionManager';
 import { ControlPanel } from './ui/ControlPanel';
+import { TextRenderer } from './rendering/textRenderer';
+import { EnhancedNodeManager } from './rendering/enhancedNodeManager';
 
 const logger = createLogger('Application');
 
 class Application {
     private sceneManager: SceneManager | null = null;
-    private nodeManager: NodeManager | null = null;
+    private nodeManager: EnhancedNodeManager | null = null;
     private xrManager: XRSessionManager | null = null;
+    private textRenderer: TextRenderer | null = null;
+    private controlPanel: ControlPanel | null = null;
 
     constructor() {
         this.initializeApplication();
@@ -29,160 +33,70 @@ class Application {
             setDebugEnabled(settings.system.debug.enabled);
             logger.info(`Debug logging ${settings.system.debug.enabled ? 'enabled' : 'disabled'}`);
 
-            this.initializeScene();
-
-            try {
-                await graphDataManager.loadInitialGraphData();
-                const webSocket = WebSocketService.getInstance();
-                webSocket.onBinaryMessage((nodes: { position: [number, number, number]; velocity: [number, number, number] }[]) => {
-                    const float32Array = new Float32Array(nodes.length * 6);
-                    nodes.forEach((node, i) => {
-                        const baseIndex = i * 6;
-                        float32Array[baseIndex] = node.position[0];
-                        float32Array[baseIndex + 1] = node.position[1];
-                        float32Array[baseIndex + 2] = node.position[2];
-                        float32Array[baseIndex + 3] = node.velocity[0];
-                        float32Array[baseIndex + 4] = node.velocity[1];
-                        float32Array[baseIndex + 5] = node.velocity[2];
-                    });
-                    graphDataManager.updatePositions(float32Array.buffer);
-
-                    if (this.nodeManager) {
-                        const positionsArray = new Float32Array(nodes.length * 3);
-                        nodes.forEach((node, i) => {
-                            const baseIndex = i * 3;
-                            positionsArray[baseIndex] = node.position[0];
-                            positionsArray[baseIndex + 1] = node.position[1];
-                            positionsArray[baseIndex + 2] = node.position[2];
-                        });
-                        this.nodeManager.updatePositions(positionsArray);
-                    }
-                });
-            } catch (error) {
-                logger.error('Failed to initialize data services:', error);
-                this.showError('Failed to initialize data services');
+            const canvas = document.getElementById('main-canvas') as HTMLCanvasElement;
+            if (!canvas) {
+                throw new Error('Canvas element not found');
             }
+            this.sceneManager = SceneManager.getInstance(canvas);
 
-            try {
-                await this.initializeXR();
-            } catch (xrError) {
-                logger.error('Failed to initialize XR:', xrError);
+            if (!this.sceneManager) {
+                throw new Error('SceneManager not initialized');
             }
+            this.textRenderer = new TextRenderer(this.sceneManager.getCamera());
+            this.sceneManager.add(this.textRenderer.getGroup());
 
-            const controlPanelContainer = document.getElementById('control-panel');
+            this.nodeManager = new EnhancedNodeManager(this.sceneManager.getScene(), settings);
+
+            const controlPanelContainer = document.getElementById('control-panel-container');
             if (!controlPanelContainer) {
-                logger.warn('Control panel container not found, skipping UI initialization');
-            } else {
-                new ControlPanel(controlPanelContainer);
-                this.setupUIEventListeners();
+                throw new Error('Control panel container not found');
             }
+            this.controlPanel = new ControlPanel(controlPanelContainer);
 
-            graphDataManager.subscribe(() => {
-                this.hideLoadingOverlay();
+            this.xrManager = new XRSessionManager(
+                this.sceneManager.getScene(),
+                this.sceneManager.getCamera(),
+                this.sceneManager.getRenderer(),
+                this.nodeManager,
+                this.textRenderer
+            );
+
+            await graphDataManager.loadInitialGraphData();
+
+            const webSocket = WebSocketService.getInstance();
+            webSocket.onBinaryMessage((nodes: { position: [number, number, number]; velocity: [number, number, number] }[]) => {
+                if (this.nodeManager) {
+                    this.nodeManager.updateNodePositionsAndVelocities(nodes);
+                }
+            });
+            webSocket.onSettingsUpdate((settings: any) => {
+                settingsManager.batchUpdate(settings);
+            });
+            webSocket.onConnectionStatusChange((status: boolean) => {
+                this.updateConnectionStatus(status);
+            });
+            webSocket.connect();
+
+            settingsManager.onSettingChange('visualization', () => {
+                if (this.nodeManager) {
+                    this.nodeManager.handleSettingsUpdate(settingsManager.getCurrentSettings());
+                }
+                if (this.sceneManager) {
+                    this.sceneManager.handleSettingsUpdate(settingsManager.getCurrentSettings());
+                }
+            });
+            settingsManager.onSettingChange('labels', () => {
+                if (this.textRenderer) {
+                    this.textRenderer.handleSettingsUpdate(settingsManager.getCurrentSettings().labels);
+                }
             });
 
-            logger.log('Application initialized successfully');
-            this.hideLoadingOverlay();
+            this.sceneManager.startRendering();
 
+            this.hideLoadingOverlay();
         } catch (error) {
             logger.error('Failed to initialize application:', error);
-            this.showError('Failed to initialize application');
-            this.hideLoadingOverlay();
-        }
-    }
-
-    private initializeScene(): void {
-        const container = document.getElementById('scene-container');
-        if (!container) {
-            throw new Error('Scene container not found');
-        }
-
-        const canvas = document.createElement('canvas');
-        container.appendChild(canvas);
-
-        this.sceneManager = SceneManager.getInstance(canvas);
-        this.nodeManager = NodeManager.getInstance();
-
-        const nodeMeshes = this.nodeManager.getAllNodeMeshes();
-        nodeMeshes.forEach(mesh => this.sceneManager?.add(mesh));
-
-        this.sceneManager.start();
-        logger.log('Scene initialized with node meshes');
-    }
-
-    private async initializeXR(): Promise<void> {
-        if (platformManager.getCapabilities().xrSupported) {
-            this.xrManager = XRSessionManager.getInstance(this.sceneManager!);
-            const xrButton = document.getElementById('xr-button');
-            if (xrButton) {
-                xrButton.style.display = 'block';
-                xrButton.addEventListener('click', () => this.toggleXRSession());
-            }
-        }
-    }
-
-    private setupUIEventListeners(): void {
-        const saveButton = document.getElementById('save-settings');
-        if (saveButton) {
-            saveButton.addEventListener('click', () => this.saveSettings());
-        }
-        this.setupSettingsInputListeners();
-    }
-
-    private setupSettingsInputListeners(): void {
-        // Add any settings input listeners here
-    }
-
-    private async saveSettings(): Promise<void> {
-        try {
-            const currentSettings = settingsManager.getCurrentSettings();
-            const visualizationSettings = currentSettings.visualization;
-
-            for (const [category, settings] of Object.entries(visualizationSettings)) {
-                if (typeof settings !== 'object' || !settings) continue;
-
-                for (const [setting, value] of Object.entries(settings)) {
-                    if (typeof value === 'object' && value !== null) continue;
-                    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean' && !Array.isArray(value)) continue;
-
-                    try {
-                        const response = await fetch(`/api/settings/${String(category)}/${String(setting)}`, {
-                            method: 'PUT',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ value })
-                        });
-
-                        if (!response.ok) {
-                            throw new Error(`Failed to update setting: ${response.statusText}`);
-                        }
-
-                        const path = `visualization.${category}.${setting}`;
-                        await settingsManager.updateSetting(path, value);
-                    } catch (error) {
-                        logger.error(`Failed to update setting ${String(category)}.${String(setting)}:`, error);
-                    }
-                }
-            }
-        } catch (error) {
-            logger.error('Failed to save settings:', error);
-            throw error;
-        }
-    }
-
-    private async toggleXRSession(): Promise<void> {
-        if (!this.xrManager) return;
-
-        try {
-            if (this.xrManager.isXRPresenting()) {
-                await this.xrManager.endXRSession();
-            } else {
-                await this.xrManager.initXRSession();
-            }
-        } catch (error) {
-            logger.error('Failed to toggle XR session:', error);
-            this.showError('Failed to start XR session');
+            this.showError('Failed to initialize application. Check console for details.');
         }
     }
 
@@ -215,8 +129,11 @@ class Application {
     }
 
     public dispose(): void {
+        if (this.controlPanel) {
+            this.controlPanel.dispose();
+        }
         if (this.sceneManager) {
-            SceneManager.cleanup();
+            this.sceneManager.dispose();
         }
         
         const webSocket = WebSocketService.getInstance();
@@ -236,6 +153,13 @@ class Application {
         }
         
         logger.log('Application disposed');
+    }
+
+    private updateConnectionStatus(status: boolean): void {
+        const statusElement = document.getElementById('connection-status');
+        if (statusElement) {
+            statusElement.textContent = status ? 'Connected' : 'Disconnected';
+        }
     }
 }
 

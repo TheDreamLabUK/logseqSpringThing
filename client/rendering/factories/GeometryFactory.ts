@@ -64,6 +64,17 @@ export class GeometryFactory {
         return geometry;
     }
 
+    getEdgeGeometry(): BufferGeometry {
+        const cacheKey = 'edge';
+        if (this.geometryCache.has(cacheKey)) {
+            return this.geometryCache.get(cacheKey)!;
+        }
+
+        const geometry = new CylinderGeometry(0.05, 0.05, 1, 8, 1, false);
+        this.geometryCache.set(cacheKey, geometry);
+        return geometry;
+    }
+
     dispose(): void {
         this.geometryCache.forEach(geometry => geometry.dispose());
         this.geometryCache.clear();

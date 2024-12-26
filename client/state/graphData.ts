@@ -2,7 +2,7 @@
  * Graph data management with simplified binary updates
  */
 
-import { GraphData, Node, Edge } from '../core/types';
+import { transformGraphData, Node, Edge, GraphData } from '../core/types';
 import { createLogger } from '../core/utils';
 import { buildApiUrl } from '../core/api';
 
@@ -31,6 +31,13 @@ export class GraphDataManager {
   private currentPage: number = 0;
   private hasMorePages: boolean = true;
   private pageSize: number = 100;
+  private serverCapabilities: {
+    supportsPagination: boolean;
+    supportsMetadata: boolean;
+  } = {
+    supportsPagination: false,
+    supportsMetadata: false,
+  };
 
   private constructor() {
     this.nodes = new Map();
@@ -62,43 +69,26 @@ export class GraphDataManager {
 
   async loadInitialGraphData(): Promise<void> {
     try {
-      // Reset state
-      this.nodes.clear();
-      this.edges.clear();
-      this.currentPage = 0;
-      this.hasMorePages = true;
-      this.loadingNodes = false;
-
-      // Refresh the graph from existing metadata
-      try {
-        const refreshResponse = await fetch('/api/graph/refresh', {
-          method: 'POST',
-        });
-
-        if (!refreshResponse.ok) {
-          logger.warn(`Graph refresh returned ${refreshResponse.status}, continuing with initial load`);
-        } else {
-          const refreshResult = await refreshResponse.json();
-          logger.log('Graph refresh result:', refreshResult);
-        }
-      } catch (refreshError) {
-        logger.warn('Graph refresh failed, continuing with initial load:', refreshError);
+      const response = await fetch('/api/graph/data');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch graph data: ${response.statusText}`);
       }
 
-      // Then load the first page
-      await this.loadNextPage();
-      
-      // Notify listeners of initial data
-      this.notifyUpdateListeners();
+      const data = await response.json();
+      if (data.serverCapabilities) {
+        this.serverCapabilities = data.serverCapabilities;
+      }
 
-      logger.log('Initial graph data loaded:', {
-        nodes: this.nodes.size,
-        edges: this.edges.size
-      });
-    } catch (error) {
-      logger.error('Failed to load initial graph data:', error);
-      // Don't throw here, allow app to continue with empty graph
+      const transformedData = transformGraphData(data);
+      this.nodes = new Map(transformedData.nodes.map((node: Node) => [node.id, node]));
+      this.edges = new Map(transformedData.edges.map((edge: Edge) => [edge.id, edge]));
+      this.metadata = transformedData.metadata;
+
       this.notifyUpdateListeners();
+      this.enableBinaryUpdates();
+      logger.log('Initial graph data loaded and transformed');
+    } catch (error) {
+      logger.error('Error loading initial graph data:', error);
     }
   }
 
@@ -482,6 +472,22 @@ export class GraphDataManager {
         logger.error('Error in position update listener:', error);
       }
     });
+  }
+
+  private loadMoreNodes(): void {
+    if (!this.serverCapabilities.supportsPagination) {
+      logger.warn('Pagination is not supported by the server');
+      return;
+    }
+    // ... (Pagination logic) ...
+  }
+
+  public loadPaginatedGraphData(pageSize: number = 100): void {
+    if (!this.serverCapabilities.supportsPagination) {
+      logger.warn('Pagination is not supported by the server');
+      return;
+    }
+    // ... (Pagination logic) ...
   }
 }
 

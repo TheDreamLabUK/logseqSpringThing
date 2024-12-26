@@ -49,7 +49,13 @@ export class XRSessionManager {
   private controllerAddedCallback: ((controller: THREE.Group) => void) | null = null;
   private controllerRemovedCallback: ((controller: THREE.Group) => void) | null = null;
 
-  private constructor(sceneManager: SceneManager) {
+  public constructor(
+    scene: Scene,
+    camera: PerspectiveCamera,
+    renderer: WebGLRenderer,
+    nodeManager: EnhancedNodeManager,
+    textRenderer: TextRenderer
+  ) {
     this.sceneManager = sceneManager;
     
     // Initialize XR objects
