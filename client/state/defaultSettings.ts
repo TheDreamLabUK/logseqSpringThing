@@ -65,7 +65,11 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         colorRangeLinks: ['#0000ff', '#ff00ff'],
         metalness: 0.5,
         roughness: 0.2,
-        opacity: 0.8
+        opacity: 0.8,
+        enableMetadataVisualization: true,
+        enableHologram: true,
+        enableInstancing: true,
+        quality: 'medium'
     },
     physics: {
         enabled: true,
@@ -93,6 +97,7 @@ export const defaultVisualizationSettings: VisualizationSettings = {
 // Main settings object with all defaults
 export const defaultSettings: Settings = {
     visualization: defaultVisualizationSettings,
+    labels: defaultVisualizationSettings.labels, // Add top-level labels property
     xr: {
         mode: 'immersive-ar',
         roomScale: true,

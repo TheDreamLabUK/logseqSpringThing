@@ -128,7 +128,7 @@ impl BinaryNodeData {
     }
 }
 
-// Simple message types for control messages
+// WebSocket message types
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Message {
@@ -139,4 +139,35 @@ pub enum Message {
     Pong { timestamp: u64 },
 }
 
-// Forward declarations to avoid circular dependencies
+// Separate message types for ping/pong
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PingMessage {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PongMessage {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub timestamp: u64,
+}
+
+impl PingMessage {
+    pub fn new(timestamp: u64) -> Self {
+        Self {
+            type_: "ping".to_string(),
+            timestamp,
+        }
+    }
+}
+
+impl PongMessage {
+    pub fn new(timestamp: u64) -> Self {
+        Self {
+            type_: "pong".to_string(),
+            timestamp,
+        }
+    }
+}

@@ -1,10 +1,5 @@
-/**
- * Graph data management with simplified binary updates
- */
-
 import { transformGraphData, Node, Edge, GraphData } from '../core/types';
 import { createLogger } from '../core/utils';
-import { buildApiUrl } from '../core/api';
 
 const logger = createLogger('GraphDataManager');
 

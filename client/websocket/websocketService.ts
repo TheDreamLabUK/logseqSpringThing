@@ -2,19 +2,11 @@ import { createLogger } from '../core/logger';
 import { buildWsUrl } from '../core/api';
 import { 
     WS_HEARTBEAT_INTERVAL,
-    WS_HEARTBEAT_TIMEOUT,
-    WS_RECONNECT_INTERVAL,
-    WS_MESSAGE_QUEUE_SIZE,
-    FLOATS_PER_NODE,
-    NODE_POSITION_SIZE
+    WS_HEARTBEAT_TIMEOUT
 } from '../core/constants';
 import { convertObjectKeysToCamelCase } from '../core/utils';
 
 const logger = createLogger('WebSocketService');
-
-interface WebSocketError {
-    error: string;
-}
 
 enum ConnectionState {
     DISCONNECTED = 'disconnected',
@@ -222,20 +214,20 @@ export class WebSocketService {
                     // Handle binary position/velocity updates
                     if (event.data instanceof ArrayBuffer && this.binaryMessageCallback) {
                         // Validate data length (24 bytes per node - 6 floats * 4 bytes)
-                        if (event.data.byteLength % NODE_POSITION_SIZE !== 0) {
+                        if (event.data.byteLength % 24 !== 0) {
                             logger.error('Invalid binary message length:', event.data.byteLength);
                             return;
                         }
 
                         const float32Array = new Float32Array(event.data);
-                        const nodeCount = float32Array.length / FLOATS_PER_NODE;
+                        const nodeCount = float32Array.length / 6;
                         const nodes: NodeData[] = [];
 
                         for (let i = 0; i < nodeCount; i++) {
-                            const baseIndex = i * FLOATS_PER_NODE;
+                            const baseIndex = i * 6;
                             
                             // Validate float values
-                            const values = float32Array.slice(baseIndex, baseIndex + FLOATS_PER_NODE);
+                            const values = float32Array.slice(baseIndex, baseIndex + 6);
                             if (!values.every(v => Number.isFinite(v))) {
                                 logger.error('Invalid float values in node data at index:', i);
                                 continue;
@@ -431,10 +423,10 @@ export class WebSocketService {
             }
 
             // Create binary message (24 bytes per node - 6 floats * 4 bytes)
-            const float32Array = new Float32Array(validUpdates.length * FLOATS_PER_NODE);
+            const float32Array = new Float32Array(validUpdates.length * 6);
             
             validUpdates.forEach((update, index) => {
-                const baseIndex = index * FLOATS_PER_NODE;
+                const baseIndex = index * 6;
                 float32Array[baseIndex] = update.position.x;
                 float32Array[baseIndex + 1] = update.position.y;
                 float32Array[baseIndex + 2] = update.position.z;

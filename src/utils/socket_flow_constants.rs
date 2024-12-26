@@ -5,7 +5,6 @@ pub const BINARY_PROTOCOL_VERSION: i32 = 1;
 pub const HEARTBEAT_INTERVAL: u64 = 30; // seconds - matches nginx proxy_connect_timeout
 pub const CLIENT_TIMEOUT: u64 = 60; // seconds - double heartbeat interval for safety
 pub const MAX_CLIENT_TIMEOUT: u64 = 3600; // seconds - matches nginx proxy_read_timeout
-pub const MAX_MESSAGE_SIZE: usize = 100 * 1024 * 1024; // 100MB
 pub const BINARY_CHUNK_SIZE: usize = 64 * 1024; // 64KB
 
 // Update rate constants
@@ -17,4 +16,4 @@ pub const NODE_POSITION_SIZE: usize = 24; // 6 f32s per node (position + velocit
 
 // Connection limits
 pub const MAX_CONNECTIONS: usize = 100;
-pub const MAX_MESSAGE_SIZE: usize = 32 * 1024 * 1024;  // 32MB
+pub const MAX_MESSAGE_SIZE: usize = 32 * 1024 * 1024;  // 32MB - matches nginx client_max_body_size

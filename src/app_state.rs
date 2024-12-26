@@ -48,7 +48,7 @@ impl AppState {
         };
 
         // Initialize graph service with metadata
-        let graph_service = Arc::new(GraphService::new_with_metadata(&metadata_store).await);
+        let graph_service = Arc::new(GraphService::new_with_metadata(&metadata_store));
 
         Self {
             graph_service,

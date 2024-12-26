@@ -52,13 +52,8 @@ class Application {
             }
             this.controlPanel = new ControlPanel(controlPanelContainer);
 
-            this.xrManager = new XRSessionManager(
-                this.sceneManager.getScene(),
-                this.sceneManager.getCamera(),
-                this.sceneManager.getRenderer(),
-                this.nodeManager,
-                this.textRenderer
-            );
+            // Initialize XR manager with scene manager
+            this.xrManager = XRSessionManager.getInstance(this.sceneManager);
 
             await graphDataManager.loadInitialGraphData();
 

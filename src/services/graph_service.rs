@@ -12,7 +12,7 @@ use crate::models::edge::Edge;
 use crate::models::metadata::MetadataStore;
 use crate::app_state::AppState;
 use crate::utils::gpu_compute::GPUCompute;
-use crate::models::simulation_params::{SimulationParams, SimulationPhase, SimulationMode};
+use crate::models::simulation_params::SimulationParams;
 use crate::models::pagination::PaginatedGraphData;
 use crate::services::file_service::FileService;
 
@@ -25,6 +25,20 @@ impl GraphService {
     pub fn new() -> Self {
         Self {
             graph_data: Arc::new(RwLock::new(GraphData::default())),
+        }
+    }
+
+    pub fn new_with_metadata(metadata_store: &MetadataStore) -> Self {
+        let graph_data = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(Self::build_graph_from_metadata(metadata_store))
+            .unwrap_or_else(|e| {
+                error!("Failed to build graph from metadata: {}", e);
+                GraphData::default()
+            });
+        
+        Self {
+            graph_data: Arc::new(RwLock::new(graph_data)),
         }
     }
 

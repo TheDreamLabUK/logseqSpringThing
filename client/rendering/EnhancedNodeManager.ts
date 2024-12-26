@@ -1,20 +1,18 @@
 import {
     Scene,
-    PerspectiveCamera,
     InstancedMesh,
     Matrix4,
     Vector3,
     Mesh,
     Object3D,
     Quaternion,
-    WebGLRenderer,
     BufferGeometry,
-    Material
+    Material,
+    PerspectiveCamera
 } from 'three';
 import { Node, NodeData } from '../core/types';
 import { Settings } from '../types/settings';
 import { MetadataVisualizer } from './MetadataVisualizer';
-import { HologramManager } from './HologramManager';
 import { XRHandWithHaptics } from '../types/xr';
 import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
@@ -36,10 +34,27 @@ export class EnhancedNodeManager {
     private metadataMaterial: Material | null = null;
     private metadataVisualizer: MetadataVisualizer;
     private quaternion = new Quaternion();
+    private camera: PerspectiveCamera;
 
     constructor(scene: Scene, settings: Settings) {
         this.scene = scene;
         this.settings = settings;
+
+        // Find the camera in the scene
+        let camera: PerspectiveCamera | null = null;
+        scene.traverse((object) => {
+            if (object instanceof PerspectiveCamera) {
+                camera = object;
+            }
+        });
+        if (!camera) {
+            camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 20);
+            camera.lookAt(0, 0, 0);
+            scene.add(camera);
+        }
+        this.camera = camera;
+
         this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
         this.nodeGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
@@ -51,7 +66,8 @@ export class EnhancedNodeManager {
 
         this.metadataMaterial = this.materialFactory.getMetadataMaterial();
 
-        this.metadataVisualizer = new MetadataVisualizer(scene, settings.visualization);
+        // Initialize MetadataVisualizer with both camera and scene
+        this.metadataVisualizer = new MetadataVisualizer(this.camera, this.scene, settings);
         this.setupInstancedMesh();
     }
 
@@ -78,12 +94,12 @@ export class EnhancedNodeManager {
             this.dummy.scale.set(scaleFactor, scaleFactor, scaleFactor);
     
             this.dummy.updateMatrix();
-            if (this.instancedMesh) {
-                this.instancedMesh.setMatrixAt(i, this.dummy.matrix);
-            }
+            this.instancedMesh?.setMatrixAt(i, this.dummy.matrix);
         });
     
-        this.instancedMesh!.instanceMatrix.needsUpdate = true;
+        if (this.instancedMesh) {
+            this.instancedMesh.instanceMatrix.needsUpdate = true;
+        }
     }
 
     public handleSettingsUpdate(settings: Settings): void {
@@ -131,7 +147,10 @@ export class EnhancedNodeManager {
     }
 
     updateNodes(nodes: Node[]) {
-        this.instancedMesh!.count = nodes.length;
+        const mesh = this.instancedMesh;
+        if (!mesh) return;
+        
+        mesh.count = nodes.length;
 
         nodes.forEach((node, index) => {
             const metadata = {
@@ -157,13 +176,16 @@ export class EnhancedNodeManager {
                 const scale = this.calculateNodeScale(metadata.importance);
                 const position = new Vector3(metadata.position.x, metadata.position.y, metadata.position.z);
                 matrix.compose(position, this.quaternion, new Vector3(scale, scale, scale));
-                this.instancedMesh!.setMatrixAt(index, matrix);
+                mesh.setMatrixAt(index, matrix);
             }
 
-            this.nodes.set(node.id, this.instancedMesh!.children[index] as Mesh);
+            const child = mesh.children[index];
+            if (child instanceof Mesh) {
+                this.nodes.set(node.id, child);
+            }
         });
 
-        this.instancedMesh!.instanceMatrix.needsUpdate = true;
+        mesh.instanceMatrix.needsUpdate = true;
     }
 
     private calculateCommitAge(timestamp: number): number {
@@ -188,7 +210,9 @@ export class EnhancedNodeManager {
         }
 
         if (this.settings.visualization.animations.enableNodeAnimations) {
-            this.instancedMesh!.instanceMatrix.needsUpdate = true;
+            if (this.instancedMesh) {
+                this.instancedMesh.instanceMatrix.needsUpdate = true;
+            }
             this.scene.traverse(child => {
                 if (child instanceof Mesh) {
                     child.rotateY(0.001 * deltaTime);
@@ -209,15 +233,17 @@ export class EnhancedNodeManager {
     }
 
     dispose() {
-        this.instancedMesh!.geometry.dispose();
-        this.instancedMesh!.material.dispose();
+        if (this.instancedMesh) {
+            this.instancedMesh.geometry.dispose();
+            this.instancedMesh.material.dispose();
+            this.scene.remove(this.instancedMesh);
+        }
         if (this.isHologram && this.hologramMaterial) {
             this.hologramMaterial.dispose();
         }
         if (this.metadataMaterial) {
             this.metadataMaterial.dispose();
         }
-        this.scene.remove(this.instancedMesh!);
     }
 
     public createNode(id: string, data: NodeData, metadata: any): void {

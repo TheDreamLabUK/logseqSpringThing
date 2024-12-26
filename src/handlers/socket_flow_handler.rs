@@ -9,76 +9,36 @@ use serde_json::json;
 use std::time::{Duration, Instant};
 
 use crate::app_state::AppState;
-use crate::utils::socket_flow_messages::{PingMessage, PongMessage};
+use crate::config::Settings;
 
 // Constants matching client/state/graphData.ts
 const NODE_POSITION_SIZE: usize = 24;  // 6 floats * 4 bytes
 const FLOATS_PER_NODE: usize = 6;      // x, y, z, vx, vy, vz
+const VERSION_HEADER_SIZE: usize = 4;
+const NODE_DATA_SIZE: usize = 24;
+const BINARY_PROTOCOL_VERSION: i32 = 1;
+const MAX_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB
+const MAX_CONNECTIONS: usize = 100;
+const HEARTBEAT_INTERVAL: u64 = 30;
+const MAX_CLIENT_TIMEOUT: u64 = 60;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WebSocketSettings {
+    update_rate: u32,
+}
 
 pub struct SocketFlowServer {
     app_state: Arc<AppState>,
-    #[allow(dead_code)]
-    settings: Arc<RwLock<crate::config::Settings>>,
-    last_ping: Option<u64>,
+    settings: Arc<RwLock<Settings>>,
+    connection_alive: bool,
+    update_handle: Option<SpawnHandle>,
+    heartbeat_handle: Option<SpawnHandle>,
+    last_heartbeat: Instant,
 }
 
 impl SocketFlowServer {
-    const POSITION_UPDATE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(16);
+    const POSITION_UPDATE_INTERVAL: Duration = Duration::from_millis(16);
 
-    pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<crate::config::Settings>>) -> Self {
-        Self {
-            app_state,
-            settings,
-            last_ping: None,
-        }
-    }
-
-    fn handle_ping(&mut self, msg: PingMessage) -> PongMessage {
-        self.last_ping = Some(msg.timestamp);
-        PongMessage {
-            type_: "pong".to_string(),
-            timestamp: msg.timestamp,
-        }
-    }
-}
-
-impl Actor for SocketFlowServer {
-    type Context = ws::WebsocketContext<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        info!("[WebSocket] Client connected");
-        
-        // Initialize connection
-        self.app_state.increment_connections();
-        let current = self.app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
-        info!("[WebSocket] Active connections: {}", current);
-        
-        // Start heartbeat and position updates
-        self.start_heartbeat(ctx);
-        self.start_position_updates(ctx);
-    }
-
-    fn stopped(&mut self, ctx: &mut Self::Context) {
-        info!("[WebSocket] Client disconnected");
-        
-        // Cancel heartbeat
-        if let Some(handle) = self.heartbeat_handle.take() {
-            ctx.cancel_future(handle);
-        }
-        
-        // Cancel position updates
-        if let Some(handle) = self.update_handle.take() {
-            ctx.cancel_future(handle);
-        }
-        
-        // Decrement connection count
-        self.app_state.decrement_connections();
-        let current = self.app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
-        info!("[WebSocket] Remaining active connections: {}", current);
-    }
-}
-
-impl SocketFlowServer {
     pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<Settings>>) -> Self {
         Self {
             app_state,
@@ -124,7 +84,7 @@ impl SocketFlowServer {
         // Clone Arc references for the interval closure
         let app_state = self.app_state.clone();
         
-        ctx.run_interval(Self::POSITION_UPDATE_INTERVAL, move |_actor, ctx| {
+        let handle = ctx.run_interval(Self::POSITION_UPDATE_INTERVAL, move |_actor, ctx| {
             // Get current node positions and velocities
             let app_state_clone = app_state.clone();
             
@@ -156,10 +116,44 @@ impl SocketFlowServer {
                 ctx.binary(binary_data);
             }));
         });
+
+        self.update_handle = Some(handle);
+    }
+}
+
+impl Actor for SocketFlowServer {
+    type Context = ws::WebsocketContext<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        info!("[WebSocket] Client connected");
+        
+        // Initialize connection
+        self.app_state.increment_connections();
+        let current = self.app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
+        info!("[WebSocket] Active connections: {}", current);
+        
+        // Start heartbeat and position updates
+        self.start_heartbeat(ctx);
+        self.start_position_updates(ctx);
     }
 
-            actor.update_handle = Some(handle);
-        }));
+    fn stopped(&mut self, ctx: &mut Self::Context) {
+        info!("[WebSocket] Client disconnected");
+        
+        // Cancel heartbeat
+        if let Some(handle) = self.heartbeat_handle.take() {
+            ctx.cancel_future(handle);
+        }
+        
+        // Cancel position updates
+        if let Some(handle) = self.update_handle.take() {
+            ctx.cancel_future(handle);
+        }
+        
+        // Decrement connection count
+        self.app_state.decrement_connections();
+        let current = self.app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
+        info!("[WebSocket] Remaining active connections: {}", current);
     }
 }
 

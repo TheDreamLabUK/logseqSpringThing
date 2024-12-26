@@ -9,6 +9,7 @@ interface HologramUniforms {
     interactionPoint: { value: Vector3 };
     interactionStrength: { value: number };
     opacity: { value: number };
+    pulseIntensity: { value: number };
 }
 
 export class HologramShaderMaterial extends Material {
@@ -17,6 +18,7 @@ export class HologramShaderMaterial extends Material {
     fragmentShader: string;
     color: Color = new Color();
     type = 'HologramShaderMaterial';
+    defines: { [key: string]: string | number | boolean } = {};
 
     // Declare required Material properties
     declare transparent: boolean;
@@ -42,7 +44,8 @@ export class HologramShaderMaterial extends Material {
             resolution: { value: new Vector2(window.innerWidth, window.innerHeight) },
             interactionPoint: { value: new Vector3() },
             interactionStrength: { value: 0.0 },
-            opacity: { value: settings.visualization.hologram.ringOpacity }
+            opacity: { value: settings.visualization.hologram.ringOpacity },
+            pulseIntensity: { value: 0.2 }
         };
 
         this.vertexShader = `
@@ -63,6 +66,7 @@ export class HologramShaderMaterial extends Material {
             uniform vec3 interactionPoint;
             uniform float interactionStrength;
             uniform float opacity;
+            uniform float pulseIntensity;
             varying vec2 vUv;
             varying vec3 vPosition;
 
@@ -84,8 +88,11 @@ export class HologramShaderMaterial extends Material {
                 float scanline = sin(uv.y * 100.0 + time * 5.0) * 0.1 + 0.9;
                 float flicker = sin(time * 20.0) * 0.05 + 0.95;
                 
+                // Pulse effect
+                float pulse = sin(time * 3.0) * pulseIntensity;
+                
                 // Alpha calculation
-                float alpha = opacity * scanline * flicker;
+                float alpha = opacity * scanline * flicker * (1.0 + pulse);
                 if (interactionStrength > 0.0) {
                     alpha *= (1.0 + interactionDistortion);
                 }

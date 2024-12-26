@@ -1,4 +1,4 @@
-import { BufferGeometry, SphereGeometry } from 'three';
+import { BufferGeometry, SphereGeometry, CylinderGeometry } from 'three';
 
 export class GeometryFactory {
     private static instance: GeometryFactory;
@@ -70,7 +70,9 @@ export class GeometryFactory {
             return this.geometryCache.get(cacheKey)!;
         }
 
-        const geometry = new CylinderGeometry(0.05, 0.05, 1, 8, 1, false);
+        // CylinderGeometry parameters:
+        // radiusTop, radiusBottom, height, radialSegments
+        const geometry = new CylinderGeometry(0.05, 0.05, 1, 8);
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }
