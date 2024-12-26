@@ -188,358 +188,546 @@ graph TB
 
 ```mermaid
 classDiagram
-class App {
-    +websocketService: WebsocketService
-    +graphDataManager: GraphDataManager
-    +visualization: WebXRVisualization
-    +chatManager: ChatManager
-    +interface: Interface
-    +ragflowService: RAGFlowService
-    +start()
-    +initializeEventListeners()
-    +toggleFullscreen()
-}
-class WebsocketService {
-    +socket: WebSocket
-    +listeners: Object
-    +reconnectAttempts: number
-    +maxReconnectAttempts: number
-    +reconnectInterval: number
-    +connect()
-    +on(event: string, callback: function)
-    +emit(event: string, data: any)
-    +send(data: object)
-    +reconnect()
-}
-class GraphDataManager {
-    +websocketService: WebsocketService
-    +graphData: GraphData
-    +requestInitialData()
-    +updateGraphData(newData: GraphData)
-    +getGraphData(): GraphData
-    +recalculateLayout()
-    +updateForceDirectedParams(name: string, value: any)
-}
-class WebXRVisualization {
-    +graphDataManager: GraphDataManager
-    +scene: Scene
-    +camera: Camera
-    +renderer: Renderer
-    +controls: Controls
-    +composer: Composer
-    +gpu: GPUUtilities
-    +nodeMeshes: Map<string, Mesh>
-    +edgeMeshes: Map<string, Line>
-    +hologramGroup: Group
-    +initialize()
-    +updateVisualization()
-    +initThreeJS()
-    +setupGPU()
-    +initPostProcessing()
-    +addLights()
-    +createHologramStructure()
-    +handleSpacemouseInput(x: number, y: number, z: number)
-    +handleBinaryPositionUpdate(buffer: ArrayBuffer)
-    +animate()
-    +updateVisualFeatures(control: string, value: any)
-    +onWindowResize()
-    +handleNodeDrag(nodeId: string, position: Vector3)
-    +getNodePositions(): PositionUpdate[]
-    +showError(message: string)
-}
-class ChatManager {
-    +websocketService: WebsocketService
-    +ragflowService: RAGFlowService
-    +sendMessage(message: string)
-    +receiveMessage()
-    +handleIncomingMessage(message: string)
-}
-class Interface {
-    +chatManager: ChatManager
-    +visualization: WebXRVisualization
-    +handleUserInput(input: string)
-    +displayChatMessage(message: string)
-    +setupEventListeners()
-    +renderUI()
-    +updateNodeInfoPanel(node: object)
-    +displayErrorMessage(message: string)
-}
-class RAGFlowService {
-    +settings: Settings
-    +apiClient: ApiClient
-    +createConversation(userId: string): Promise<string>
-    +sendMessage(conversationId: string, message: string): Promise<string>
-    +getConversationHistory(conversationId: string): Promise<object>
-}
-class GraphService {
-    +build_graph(app_state: AppState): Result<GraphData, Error>
-    +calculate_layout(gpu_compute: GPUCompute, graph: GraphData, params: SimulationParams): Result<void, Error>
-    +initialize_random_positions(graph: GraphData)
-}
-class PerplexityService {
-    +process_file(file: ProcessedFile, settings: Settings, api_client: ApiClient): Result<ProcessedFile, Error>
-}
-class FileService {
-    +fetch_and_process_files(github_service: GitHubService, settings: Settings, metadata_map: Map<String, Metadata>): Result<Vec<ProcessedFile>, Error>
-    +load_or_create_metadata(): Result<Map<String, Metadata>, Error>
-    +save_metadata(metadata: Map<String, Metadata>): Result<void, Error>
-    +calculate_node_size(file_size: number): number
-    +extract_references(content: string, valid_nodes: String[]): Map<String, ReferenceInfo>
-    +convert_references_to_topic_counts(references: Map<String, ReferenceInfo>): Map<String, number>
-    +initialize_local_storage(github_service: GitHubService, settings: Settings): Result<void, Error>
-    +count_hyperlinks(content: string): number
-}
-class GitHubService {
-    +fetch_file_metadata(): Result<Vec<GithubFileMetadata>, Error>
-    +get_download_url(file_name: string): Result<string, Error>
-    +fetch_file_content(download_url: string): Result<string, Error>
-    +get_file_last_modified(file_path: string): Result<Date, Error>
-}
-class GitHubPRService {
-    +create_pull_request(file_name: string, content: string, original_sha: string): Result<string, Error>
-}
-class ApiClient {
-    +post_json(url: string, body: PerplexityRequest, perplexity_api_key: string): Result<string, Error>
-}
-class SpeechService {
-    +websocketManager: WebSocketManager
-    +settings: Settings
-    +start(receiver: Receiver<SpeechCommand>)
-    +initialize(): Result<void, Error>
-    +send_message(message: string): Result<void, Error>
-    +close(): Result<void, Error>
-    +set_tts_provider(use_openai: boolean): Result<void, Error>
-}
-class SpeechWs {
-    +websocketManager: WebSocketManager
-    +settings: Settings
-    +hb(ctx: Context)
-    +check_heartbeat(ctx: Context)
-    +started(ctx: Context)
-    +handle(msg: Message, ctx: Context)
-}
+    class App {
+        -platformManager: PlatformManager
+        -settingsManager: SettingsManager
+        -graphDataManager: GraphDataManager
+        -webSocketService: WebSocketService
+        -sceneManager: SceneManager
+        -nodeManager: NodeManager
+        -textRenderer: TextRenderer
+        -xrSessionManager: XRSessionManager
+        -xrInteraction: XRInteraction
+        -controlPanel: ControlPanel
+        +start()
+        +initializeEventListeners()
+        +toggleFullscreen()
+    }
 
-App --> WebsocketService
-App --> GraphDataManager
-App --> WebXRVisualization
-App --> ChatManager
-App --> Interface
-App --> RAGFlowService
-App --> GraphService
-App --> PerplexityService
-App --> FileService
-App --> GitHubService
-App --> GitHubPRService
-App --> SpeechService
-WebsocketService --> GraphDataManager
-GraphDataManager --> WebXRVisualization
-ChatManager --> RAGFlowService
-Interface --> ChatManager
-Interface --> WebXRVisualization
-GraphService --> GPUCompute
-PerplexityService --> ApiClient
-FileService --> GitHubService
-GitHubPRService --> GitHubService
-SpeechService --> WebSocketManager
+    class PlatformManager {
+        +getPlatform(): Platform
+        +isMobile(): boolean
+        +isDesktop(): boolean
+        +isQuest(): boolean
+        +supportsXR(): boolean
+        +supportsWebXR(): boolean
+        +supportsWebGPU(): boolean
+        +getWebXRFeatures(): string[]
+    }
+
+    class SettingsManager {
+        -settings: Settings
+        -defaultSettings: Settings
+        -subscribers: Map<string, Function[]>
+        +getCurrentSettings(): Settings
+        +getDefaultSettings(): Settings
+        +updateSetting(category: string, setting: string, value: any)
+        +subscribe(category: string, setting: string, callback: Function)
+        +dispose()
+    }
+
+    class GraphDataManager {
+        -nodes: Map<string, Node>
+        -edges: Map<string, Edge>
+        -listeners: Function[]
+        +updateGraphData(data: GraphData)
+        +updateNodePositions(positions: Float32Array)
+        +fetchGraphData(page: number, pageSize: number)
+        +fetchMoreNodes()
+        +enableBinaryUpdates()
+        +disableBinaryUpdates()
+        +dispose()
+    }
+
+    class WebSocketService {
+        -socket: WebSocket
+        -url: string
+        -messageQueue: ArrayBuffer[] | string[]
+        -isConnected: boolean
+        -isReconnecting: boolean
+        -reconnectAttempts: number
+        -maxReconnectAttempts: number
+        -reconnectInterval: number
+        -heartbeatIntervalId: number
+        +connect()
+        +send(data: ArrayBuffer | string)
+        -handleOpen()
+        -handleMessage(event: MessageEvent)
+        -handleClose(event: CloseEvent)
+        -handleError(event: Event)
+        -sendHeartbeat()
+        -enqueueMessage(message: ArrayBuffer | string)
+        -flushQueue()
+        -reconnect()
+        +dispose()
+    }
+
+    class SceneManager {
+        -scene: THREE.Scene
+        -camera: THREE.PerspectiveCamera
+        -renderer: THREE.WebGLRenderer
+        -controls: OrbitControls
+        -composer: EffectComposer
+        -bloomPass: UnrealBloomPass
+        -animationId: number
+        +start()
+        +stop()
+        +render()
+        +add(object: THREE.Object3D)
+        +remove(object: THREE.Object3D)
+        +dispose()
+    }
+
+    class NodeManager {
+        -nodeGeometry: THREE.SphereGeometry
+        -nodeMaterial: THREE.MeshBasicMaterial
+        -edgeGeometry: THREE.CylinderGeometry
+        -edgeMaterial: THREE.MeshBasicMaterial
+        -nodes: Map<string, NodeInstance>
+        -edges: Map<string, EdgeInstance>
+        +updateNodes(nodes: Node[])
+        +updateEdges(edges: Edge[])
+        +updateNodePositions(positions: Float32Array)
+        +dispose()
+    }
+
+    class NodeInstance {
+        -id: string
+        -mesh: THREE.Mesh
+        -color: THREE.Color
+        -position: THREE.Vector3
+        +setColor(color: THREE.Color)
+        +setPosition(position: THREE.Vector3)
+    }
+
+    class EdgeInstance {
+        -id: string
+        -line: THREE.Line
+        -startNode: NodeInstance
+        -endNode: NodeInstance
+        +updatePosition()
+    }
+
+    class TextRenderer {
+        -labels: Map<string, HTMLDivElement>
+        +addLabel(id: string, text: string, position: THREE.Vector3)
+        +removeLabel(id: string)
+        +update()
+        +dispose()
+    }
+
+    class XRSessionManager {
+        -renderer: THREE.WebGLRenderer
+        -session: XRSession
+        -referenceSpace: XRReferenceSpace
+        -inputSources: XRInputSource[]
+        +initialize(renderer: THREE.WebGLRenderer)
+        +startSession(sessionType: XRSessionType)
+        +endSession()
+        +requestReferenceSpace(referenceSpaceType: XRReferenceSpaceType)
+        +onSessionStarted(session: XRSession)
+        +onSessionEnded()
+        +onInputsChanged(event: XRInputSourceChangeEvent)
+        +onSelectStart(event: XRInputSourceEvent)
+        +onSelectEnd(event: XRInputSourceEvent)
+        +onSqueezeStart(event: XRInputSourceEvent)
+        +onSqueezeEnd(event: XRInputSourceEvent)
+        +update()
+    }
+
+    class XRInteraction {
+        -raycaster: THREE.Raycaster
+        -tempMatrix: THREE.Matrix4
+        -controller1: THREE.Group
+        -controller2: THREE.Group
+        -controllerGrip1: THREE.Group
+        -controllerGrip2: THREE.Group
+        -intersected: THREE.Object3D[]
+        +initialize(renderer: THREE.WebGLRenderer, scene: THREE.Scene, xrSessionManager: XRSessionManager)
+        +createController(controllerIndex: number)
+        +handleController(controller: THREE.Group)
+        +intersectObjects(controller: THREE.Group)
+        +cleanIntersected()
+        +dispose()
+    }
+
+    class ControlPanel {
+        -settingsManager: SettingsManager
+        +initialize()
+        +createControls()
+        +addSettingControl(category: string, setting: string, value: any)
+        +updateSetting(category: string, setting: string, value: any)
+        +saveSettings()
+        +resetSettings()
+    }
+
+    class AppState {
+        +graph_service: GraphService
+        +gpu_compute: Option<GPUCompute>
+        +settings: Arc<RwLock<Settings>>
+        +metadata_store: Arc<RwLock<MetadataStore>>
+        +github_service: RealGitHubService
+        +perplexity_service: Option<PerplexityService>
+        +rag_flow_service: Option<RAGFlowService>
+        +github_pr_service: RealGitHubPRService
+        +active_connections: AtomicUsize
+        +increment_connection_count()
+        +decrement_connection_count()
+    }
+
+    class GraphService {
+        +build_graph_from_metadata(metadata_store: &MetadataStore): Result<GraphData, Error>
+        +get_graph_data(): Result<GraphData, Error>
+        +get_paginated_graph_data(pagination: PaginationParams): Result<PaginatedGraphData, Error>
+        +get_node_positions(): Result<Vec<PositionUpdate>, Error>
+    }
+
+    class GPUCompute {
+        +device: wgpu::Device
+        +queue: wgpu::Queue
+        +compute_pipeline: wgpu::ComputePipeline
+        +position_buffer: wgpu::Buffer
+        +velocity_buffer: wgpu::Buffer
+        +force_buffer: wgpu::Buffer
+        +node_buffer: wgpu::Buffer
+        +edge_buffer: wgpu::Buffer
+        +params_buffer: wgpu::Buffer
+        +bind_group: wgpu::BindGroup
+        +set_graph_data(graph_data: &GraphData, simulation_params: &GPUSimulationParams): Result<(), Error>
+        +compute_forces(): Result<(), Error>
+        +get_updated_positions(): Result<Vec<PositionUpdate>, Error>
+    }
+
+    class Settings {
+        +github: GitHubSettings
+        +graph: GraphSettings
+        +visualization: VisualizationSettings
+        +perplexity: PerplexitySettings
+        +rag_flow: RAGFlowSettings
+        +audio: AudioSettings
+    }
+
+    class MetadataStore {
+        +metadata: HashMap<String, Metadata>
+        +add_metadata(metadata: Metadata)
+        +get_metadata(file_name: &str): Option<&Metadata>
+        +update_metadata(file_name: &str, metadata: Metadata)
+        +remove_metadata(file_name: &str)
+    }
+
+    class RealGitHubService {
+        +client: reqwest::Client
+        +headers: HeaderMap
+        +fetch_files(settings: &GitHubSettings): Result<Vec<GitHubFile>, Error>
+        +fetch_file_content(settings: &GitHubSettings, file: &GitHubFile): Result<String, Error>
+    }
+
+    class PerplexityService {
+        +client: reqwest::Client
+        +send_request(settings: &PerplexitySettings, request: &PerplexityRequest): Result<PerplexityResponse, Error>
+    }
+
+    class RAGFlowService {
+        +client: reqwest::Client
+        +init_chat(settings: &RAGFlowSettings): Result<String, Error>
+        +send_message(settings: &RAGFlowSettings, chat_id: &str, message: &str): Result<String, Error>
+        +get_chat_history(settings: &RAGFlowSettings, chat_id: &str): Result<Vec<RAGFlowMessage>, Error>
+    }
+
+    class RealGitHubPRService {
+        +client: reqwest::Client
+        +headers: HeaderMap
+        +create_or_update_file(settings: &GitHubSettings, file_name: &str, content: &str, sha: Option<&str>): Result<String, Error>
+        +create_pull_request(settings: &GitHubSettings, title: &str, body: &str, head_branch: &str, base_branch: &str): Result<String, Error>
+    }
+
+    class FileService {
+        +fetch_and_process_files(github_service: &RealGitHubService, settings: Arc<RwLock<Settings>>, metadata_store: &mut MetadataStore): Result<(), Error>
+        +load_or_create_metadata(settings: &Settings): Result<MetadataStore, Error>
+        +get_file_content(file_name: &str): Result<String, Error>
+        +refresh_graph(github_service: &RealGitHubService, settings: Arc<RwLock<Settings>>, metadata_store: &mut MetadataStore, graph_service: &GraphService): Result<(), Error>
+        +update_graph(github_service: &RealGitHubService, settings: Arc<RwLock<Settings>>, metadata_store: &mut MetadataStore, graph_service: &GraphService): Result<(), Error>
+        +save_metadata(metadata: &MetadataStore, settings: &Settings): Result<(), Error>
+    }
+
+    class SocketFlowServer {
+        -app_state: AppState
+        +new(app_state: AppState)
+        +handle_ping(ctx: &mut ws::WebsocketContext<Self>, message: &str)
+        +send_position_updates(ctx: &mut ws::WebsocketContext<Self>)
+        +actor_started(ctx: &mut ws::WebsocketContext<Self>)
+        +actor_stopped(ctx: &mut ws::WebsocketContext<Self>)
+        +handle_message(ctx: &mut ws::WebsocketContext<Self>, msg: Result<ws::Message, ws::ProtocolError>)
+    }
+
+    App --> PlatformManager
+    App --> SettingsManager
+    App --> GraphDataManager
+    App --> WebSocketService
+    App --> SceneManager
+    App --> NodeManager
+    App --> TextRenderer
+    App --> "0..1" XRSessionManager
+    App --> "0..1" XRInteraction
+    App --> ControlPanel
+    SettingsManager --> Settings
+    GraphDataManager --> Node
+    GraphDataManager --> Edge
+    WebSocketService --> GraphDataManager
+    SceneManager --> NodeManager
+    SceneManager --> TextRenderer
+    NodeManager --> NodeInstance
+    NodeManager --> EdgeInstance
+    EdgeInstance --> NodeInstance
+    XRSessionManager --> XRInteraction
+    ControlPanel --> SettingsManager
+    AppState --> GraphService
+    AppState --> "0..1" GPUCompute
+    AppState --> Settings
+    AppState --> MetadataStore
+    AppState --> RealGitHubService
+    AppState --> "0..1" PerplexityService
+    AppState --> "0..1" RAGFlowService
+    AppState --> RealGitHubPRService
+    GraphService --> GraphData
+    GraphService --> Node
+    GraphService --> Edge
+    GPUCompute --> GraphData
+    GPUCompute --> GPUSimulationParams
+    MetadataStore --> Metadata
+    RealGitHubService --> GitHubFile
+    PerplexityService --> PerplexityRequest
+    PerplexityService --> PerplexityResponse
+    RAGFlowService --> RAGFlowMessage
+    FileService --> MetadataStore
+    FileService --> GraphService
+    SocketFlowServer --> AppState
 ```
 
 ### Sequence Diagram
 
 ```mermaid
 sequenceDiagram
+    participant Client
+    participant App
+    participant PlatformManager
+    participant SettingsManager
+    participant GraphDataManager
+    participant WebSocketService
+    participant SceneManager
+    participant NodeManager
+    participant TextRenderer
+    participant ControlPanel
     participant Server
     participant FileService
-    participant GitHub
     participant GraphService
     participant GPUCompute
-    participant WebSocketManager
-    participant Client
-    participant WebXRVisualization
-    participant GraphDataManager
-    participant Interface
-    participant ChatManager
+    participant MetadataStore
+    participant GitHubService
+    participant PerplexityService
     participant RAGFlowService
-    participant PerplexityAPI
-    participant WebsocketService
-    participant SpeechService
-    participant SpeechWs
+    participant GitHubPRService
+    participant SocketFlowServer
 
+    Client->>App: start()
+    activate App
+    App->>PlatformManager: getPlatform()
+    activate PlatformManager
+    PlatformManager-->>App: Platform
+    deactivate PlatformManager
+    App->>SettingsManager: new()
+    activate SettingsManager
+    SettingsManager->>Server: GET /api/visualization/settings
     activate Server
-    Server->>Server: Load env vars & settings (config.rs)
-    alt Settings Load Error
-        note right of Server: Error handling in main.rs
-        Server-->>Client: Error Response (500)
+    Server->>SettingsManager: load_all_settings()
+    activate SettingsManager
+    SettingsManager-->>Server: Settings
+    deactivate SettingsManager
+    Server-->>SettingsManager: Settings
+    deactivate Server
+    SettingsManager-->>App: SettingsManager
+    deactivate SettingsManager
+    App->>GraphDataManager: new()
+    activate GraphDataManager
+    GraphDataManager-->>App: GraphDataManager
+    deactivate GraphDataManager
+    App->>WebSocketService: new(url)
+    activate WebSocketService
+    WebSocketService->>WebSocketService: connect()
+    WebSocketService->>Server: Establish WebSocket Connection
+    activate Server
+    Server->>SocketFlowServer: new(AppState)
+    activate SocketFlowServer
+    SocketFlowServer-->>Server: SocketFlowServer
+    deactivate SocketFlowServer
+    Server-->>WebSocketService: WebSocket Connection Established
+    deactivate Server
+    WebSocketService-->>App: WebSocketService
+    deactivate WebSocketService
+    App->>SceneManager: new(canvas)
+    activate SceneManager
+    SceneManager-->>App: SceneManager
+    deactivate SceneManager
+    App->>NodeManager: new()
+    activate NodeManager
+    NodeManager-->>App: NodeManager
+    deactivate NodeManager
+    App->>TextRenderer: new()
+    activate TextRenderer
+    TextRenderer-->>App: TextRenderer
+    deactivate TextRenderer
+    App->>ControlPanel: new(SettingsManager)
+    activate ControlPanel
+    ControlPanel-->>App: ControlPanel
+    deactivate ControlPanel
+    App->>SceneManager: start()
+    activate SceneManager
+    SceneManager->>SceneManager: render()
+    deactivate SceneManager
+    App->>WebSocketService: send(initial graph request)
+    activate WebSocketService
+    WebSocketService->>Server: initial graph request
+    deactivate WebSocketService
+    activate Server
+    Server->>GraphService: get_graph_data()
+    activate GraphService
+    GraphService->>MetadataStore: get_metadata()
+    activate MetadataStore
+    MetadataStore-->>GraphService: Metadata
+    deactivate MetadataStore
+    alt GPUCompute available
+        GraphService->>GPUCompute: set_graph_data()
+        activate GPUCompute
+        GPUCompute-->>GraphService: Result
+        deactivate GPUCompute
+        GraphService->>GPUCompute: compute_forces()
+        activate GPUCompute
+        GPUCompute-->>GraphService: Result
+        deactivate GPUCompute
+        GraphService->>GPUCompute: get_updated_positions()
+        activate GPUCompute
+        GPUCompute-->>GraphService: Vec<PositionUpdate>
+        deactivate GPUCompute
+    else CPU computation
+        GraphService->>GraphService: compute_forces_cpu()
+    end
+    GraphService-->>Server: GraphData
+    deactivate GraphService
+    Server->>WebSocketService: send(GraphData)
+    activate WebSocketService
+    WebSocketService->>GraphDataManager: updateGraphData(GraphData)
+    deactivate WebSocketService
+    activate GraphDataManager
+    GraphDataManager->>NodeManager: updateNodes(nodes)
+    activate NodeManager
+    NodeManager-->>GraphDataManager: Result
+    deactivate NodeManager
+    GraphDataManager->>NodeManager: updateEdges(edges)
+    activate NodeManager
+    NodeManager-->>GraphDataManager: Result
+    deactivate NodeManager
+    GraphDataManager-->>App: Result
+    deactivate GraphDataManager
+    
+    loop User Interaction
+        Client->>ControlPanel: updateSetting(category, setting, value)
+        activate ControlPanel
+        ControlPanel->>SettingsManager: updateSetting(category, setting, value)
+        activate SettingsManager
+        SettingsManager->>Server: POST /api/visualization/settings/{category}/{setting}
+        activate Server
+        Server->>SettingsManager: update_setting(category, setting, value)
+        activate SettingsManager
+        SettingsManager-->>Server: Result
+        deactivate SettingsManager
+        Server-->>SettingsManager: Result
         deactivate Server
-    else Settings Loaded
-        Server->>Server: Initialize AppState (app_state.rs)
-        Server->>Server: Initialize GPUCompute (utils/gpu_compute.rs)
-        alt GPU Initialization Error
-            note right of Server: Fallback to CPU calculation
-        end
-        Server->>Server: initialize_graph_data (main.rs)
-        Server->>FileService: fetch_and_process_files (services/file_service.rs)
-        activate FileService
-            FileService->>GitHub: fetch_files("RealGitHubService::fetch_files")
-            activate GitHub
-                GitHub-->>FileService: Files or Error
-            deactivate GitHub
-            alt GitHub Error
-                FileService-->>Server: Error
-            else Files Fetched
-                loop For each file
-                    FileService->>FileService: should_process_file
-                    alt File needs processing
-                        FileService->>PerplexityAPI: process_file (services/perplexity_service.rs)
-                        activate PerplexityAPI
-                            PerplexityAPI->>PerplexityAPI: process_markdown
-                            PerplexityAPI->>PerplexityAPI: call_perplexity_api
-                            PerplexityAPI-->>FileService: Processed content or Error
-                        deactivate PerplexityAPI
-                        alt Perplexity Error
-                            FileService-->>Server: Error
-                        else Content Processed
-                            FileService->>FileService: save_file_metadata
-                        end
-                    end
-                end
-                FileService-->>Server: Processed files or Error
-            end
-        deactivate FileService
-        alt File Processing Error
-            Server-->>Server: Error
-        else Files Processed Successfully
-            Server->>GraphService: build_graph
-            activate GraphService
-                GraphService->>GraphService: Create nodes and edges
-                GraphService->>GPUCompute: calculate_layout
-                activate GPUCompute
-                    GPUCompute->>GPUCompute: set_graph_data
-                    GPUCompute->>GPUCompute: compute_forces
-                    GPUCompute->>GPUCompute: get_updated_positions
-                    GPUCompute-->>GraphService: Updated node positions
-                deactivate GPUCompute
-                GraphService-->>Server: GraphData
-            deactivate GraphService
-            Server->>WebSocketManager: broadcast_graph_update
-            activate WebSocketManager
-                WebSocketManager-->>Client: graph_update_message
-            deactivate WebSocketManager
-            Server-->>Client: Success Response
-        end
+        SettingsManager-->>ControlPanel: Result
+        deactivate SettingsManager
+        ControlPanel-->>Client: Setting Updated
+        deactivate ControlPanel
     end
 
-    note right of Client: Initial load
-
-    Client->>WebXRVisualization: initialize()
-    activate WebXRVisualization
-        WebXRVisualization->>GraphDataManager: requestInitialData()
-        activate GraphDataManager
-            GraphDataManager->>WebsocketService: subscribe()
-            WebsocketService-->>GraphDataManager: Initial GraphData
-            GraphDataManager-->>WebXRVisualization: Provide GraphData
-        deactivate GraphDataManager
-        WebXRVisualization->>WebXRVisualization: setupThreeJS()
-        WebXRVisualization->>WebXRVisualization: renderScene()
-    deactivate WebXRVisualization
-    WebXRVisualization-->>Client: Render 3D Graph
-
-    note right of Client: User interactions
-
-    Client->>Interface: handleUserInput(input)
-    Interface->>ChatManager: sendMessage(input)
-    ChatManager->>RAGFlowService: sendQuery(input)
-    RAGFlowService-->>ChatManager: AI Response
-    ChatManager-->>Interface: Display AI Response
-    Interface->>WebXRVisualization: updateGraphData(newData)
-    WebXRVisualization-->>Client: Update Visualization
-
-    note right of Client: User requests layout recalculation
-
-    Client->>GraphDataManager: requestRecalculateLayout()
-    activate GraphDataManager
-        GraphDataManager->>WebsocketService: send("recalculateLayout", params)
-    deactivate GraphDataManager
-    WebsocketService->>Server: emit("recalculateLayout", params)
-    activate Server
-        Server->>GraphService: calculate_layout
-        activate GraphService
-            GraphService->>GPUCompute: calculate_layout
-            activate GPUCompute
-                GPUCompute->>GPUCompute: set_graph_data
-                GPUCompute->>GPUCompute: compute_forces
-                GPUCompute->>GPUCompute: get_updated_positions
-                GPUCompute-->>GraphService: Updated node positions
-            deactivate GPUCompute
-            GraphService-->>Server: GraphData
-        deactivate GraphService
-        Server->>WebSocketManager: broadcast_graph_update
-        activate WebSocketManager
-            WebSocketManager-->>Client: graph_update_message
-        deactivate WebSocketManager
-    deactivate Server
-    Client->>WebXRVisualization: updateVisualization()
-    WebXRVisualization-->>Client: Render Updated 3D Graph
-
-    note right of Client: User clicks "Refresh Graph"
-
-    Client->>Server: POST /api/files/fetch
-    activate Server
-        Server->>FileService: fetch_and_process_files
+    loop User Interaction
+        Client->>Server: POST /api/files/fetch
+        activate Server
+        Server->>FileService: fetch_and_process_files()
         activate FileService
-            FileService->>GitHub: fetch_files
-            activate GitHub
-                GitHub-->>FileService: Files or Error
-            deactivate GitHub
-            alt GitHub Error
-                FileService-->>Server: Error
-            else Files Fetched
-                loop For each file
-                    FileService->>FileService: should_process_file
-                    alt File needs processing
-                        FileService->>PerplexityAPI: process_file
-                        activate PerplexityAPI
-                            PerplexityAPI->>PerplexityAPI: process_markdown
-                            PerplexityAPI->>PerplexityAPI: call_perplexity_api
-                            PerplexityAPI-->>FileService: Processed content or Error
-                        deactivate PerplexityAPI
-                        alt Perplexity Error
-                            FileService-->>Server: Error
-                        else Content Processed
-                            FileService->>FileService: save_file_metadata
-                        end
-                    end
-                end
-                FileService-->>Server: Processed files or Error
-            end
-        deactivate FileService
-        alt File Processing Error
-            Server->>WebSocketManager: broadcast_error_message
-            activate WebSocketManager
-                WebSocketManager-->>Client: error_message
-            deactivate WebSocketManager
-            Server-->>Client: Error Response
-        else Files Processed Successfully
-            Server->>GraphService: build_graph
-            activate GraphService
-                GraphService->>GraphService: Create nodes and edges
-                GraphService->>GPUCompute: calculate_layout
-                activate GPUCompute
-                    GPUCompute->>GPUCompute: set_graph_data
-                    GPUCompute->>GPUCompute: compute_forces
-                    GPUCompute->>GPUCompute: get_updated_positions
-                    GPUCompute-->>GraphService: Updated node positions
-                deactivate GPUCompute
-                GraphService-->>Server: GraphData
-            deactivate GraphService
-            Server->>WebSocketManager: broadcast_graph_update
-            activate WebSocketManager
-                WebSocketManager-->>Client: graph_update_message
-            deactivate WebSocketManager
-            Server-->>Client: Success Response
+        FileService->>GitHubService: fetch_files()
+        activate GitHubService
+        GitHubService-->>FileService: Vec<GitHubFile>
+        deactivate GitHubService
+        FileService->>FileService: process_files()
+        loop for each file
+            FileService->>PerplexityService: send_request()
+            activate PerplexityService
+            PerplexityService-->>FileService: PerplexityResponse
+            deactivate PerplexityService
         end
-    deactivate Server
+        FileService->>MetadataStore: add_metadata()
+        activate MetadataStore
+        MetadataStore-->>FileService: Result
+        deactivate MetadataStore
+        FileService-->>Server: Result
+        deactivate FileService
+        Server->>GraphService: build_graph_from_metadata()
+        activate GraphService
+        alt GPUCompute available
+            GraphService->>GPUCompute: set_graph_data()
+            activate GPUCompute
+            GPUCompute-->>GraphService: Result
+            deactivate GPUCompute
+            GraphService->>GPUCompute: compute_forces()
+            activate GPUCompute
+            GPUCompute-->>GraphService: Result
+            deactivate GPUCompute
+            GraphService->>GPUCompute: get_updated_positions()
+            activate GPUCompute
+            GPUCompute-->>GraphService: Vec<PositionUpdate>
+            deactivate GPUCompute
+        else CPU computation
+            GraphService->>GraphService: compute_forces_cpu()
+        end
+        GraphService-->>Server: GraphData
+        deactivate GraphService
+        Server->>WebSocketService: send(GraphData)
+        activate WebSocketService
+        WebSocketService->>GraphDataManager: updateGraphData(GraphData)
+        deactivate WebSocketService
+        activate GraphDataManager
+        GraphDataManager->>NodeManager: updateNodes(nodes)
+        activate NodeManager
+        NodeManager-->>GraphDataManager: Result
+        deactivate NodeManager
+        GraphDataManager->>NodeManager: updateEdges(edges)
+        activate NodeManager
+        NodeManager-->>GraphDataManager: Result
+        deactivate NodeManager
+        GraphDataManager-->>App: Result
+        deactivate GraphDataManager
+        Server-->>Client: Files Fetched and Processed
+        deactivate Server
+    end
 
+    loop User Interaction
+        Client->>Server: POST /api/ragflow/init
+        activate Server
+        Server->>RAGFlowService: init_chat()
+        activate RAGFlowService
+        RAGFlowService-->>Server: chat_id
+        deactivate RAGFlowService
+        Server-->>Client: chat_id
+        deactivate Server
 
+        Client->>Server: POST /api/ragflow/message
+        activate Server
+        Server->>RAGFlowService: send_message()
+        activate RAGFlowService
+        RAGFlowService-->>Server: response
+        deactivate RAGFlowService
+        Server-->>Client: response
+        deactivate Server
+    end
 ```
 
 ### WebGPU Compute Pipeline
