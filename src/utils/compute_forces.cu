@@ -67,37 +67,56 @@ extern "C" __global__ void compute_forces(
             float3 pos_j = shared_positions[j];
             float mass_j = shared_masses[j];
             
-            // Calculate displacement vector
+            // Calculate displacement vector from j to i for repulsion
             float3 diff = make_float3(
                 pos_i.x - pos_j.x,
                 pos_i.y - pos_j.y,
                 pos_i.z - pos_j.z
             );
 
-    // Calculate distance with larger minimum clamp to prevent instability
-    float dist = fmaxf(sqrtf(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z), 1.0f);
-    
-    // Scale repulsion force by sqrt of masses to reduce excessive force
-    float mass_factor = sqrtf(mass_i * mass_j);
-    float force_mag = repulsion * mass_factor / (dist * dist);
+            // Calculate distance with minimum clamp
+            float dist2 = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z;
+            float dist = fmaxf(sqrtf(dist2), 0.1f); // Smaller min distance for more dynamic movement
+            
+            // Normalize direction vector
+            float inv_dist = 1.0f / dist;
+            float3 dir = make_float3(
+                diff.x * inv_dist,
+                diff.y * inv_dist,
+                diff.z * inv_dist
+            );
 
-    // Add spring force if nodes are connected (check flags)
-    if ((node_i.flags & 0x2) && (nodes[tile * blockDim.x + j].flags & 0x2)) {
-        // Use spring_length parameter for natural length
-        float spring_force = spring_strength * (dist - spring_length);
-        // Add attraction component
-        force_mag += spring_force * attraction;
-    }
+            // Calculate repulsion force (inverse square law)
+            float mass_factor = sqrtf(mass_i * mass_j);
+            float repulsion_mag = repulsion * mass_factor / dist2;
+            
+            // Add repulsion force
+            force.x += dir.x * repulsion_mag;
+            force.y += dir.y * repulsion_mag;
+            force.z += dir.z * repulsion_mag;
 
-    // Clamp maximum force to prevent instability
-    force_mag = fminf(force_mag, 1000.0f);
-
-            // Accumulate force
-            force.x += force_mag * diff.x / dist;
-            force.y += force_mag * diff.y / dist;
-            force.z += force_mag * diff.z / dist;
+            // Add spring force if nodes are connected
+            if ((node_i.flags & 0x2) && (nodes[tile * blockDim.x + j].flags & 0x2)) {
+                // Spring force points opposite to displacement if too far, along it if too close
+                float spring_displacement = dist - spring_length;
+                float spring_mag = spring_strength * spring_displacement * attraction;
+                
+                // Spring force opposes displacement
+                force.x -= dir.x * spring_mag;
+                force.y -= dir.y * spring_mag;
+                force.z -= dir.z * spring_mag;
+            }
         }
         __syncthreads();
+    }
+
+    // Clamp maximum force magnitude
+    float force_mag = sqrtf(force.x * force.x + force.y * force.y + force.z * force.z);
+    if (force_mag > 1000.0f) {
+        float scale = 1000.0f / force_mag;
+        force.x *= scale;
+        force.y *= scale;
+        force.z *= scale;
     }
 
     // Load current velocity
@@ -107,15 +126,19 @@ extern "C" __global__ void compute_forces(
         velocities[idx].z
     );
 
-    // Update velocity with damping
-    vel.x = (vel.x + force.x) * damping;
-    vel.y = (vel.y + force.y) * damping;
-    vel.z = (vel.z + force.z) * damping;
+    // Time step for integration (adjust this to control simulation speed)
+    const float dt = 0.016f; // 60 fps
 
-    // Update position
-    pos_i.x += vel.x;
-    pos_i.y += vel.y;
-    pos_i.z += vel.z;
+    // Semi-implicit Euler integration
+    // First update velocity (v = v + a*dt)
+    vel.x = (vel.x + force.x * dt) * damping;
+    vel.y = (vel.y + force.y * dt) * damping;
+    vel.z = (vel.z + force.z * dt) * damping;
+
+    // Then update position (p = p + v*dt)
+    pos_i.x += vel.x * dt;
+    pos_i.y += vel.y * dt;
+    pos_i.z += vel.z * dt;
 
     // Store updated position and velocity
     nodes[idx].position[0] = pos_i.x;
@@ -124,6 +147,4 @@ extern "C" __global__ void compute_forces(
     velocities[idx].x = vel.x;
     velocities[idx].y = vel.y;
     velocities[idx].z = vel.z;
-
-    // Flags and mass remain unchanged
 }
