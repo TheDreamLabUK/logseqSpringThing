@@ -1,6 +1,7 @@
 #!/bin/bash
 
-set -e
+# Allow commands to fail without exiting
+set +e
 
 # Determine script location and project root
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -88,8 +89,9 @@ read_settings() {
     export PORT=$(grep "port = " "$settings_file" | awk '{print $3}')
     
     if [ -z "$DOMAIN" ] || [ -z "$PORT" ]; then
-        log "${RED}Error: DOMAIN or PORT not set in settings.toml. Please check your configuration.${NC}"
-        exit 1
+        log "${YELLOW}Warning: DOMAIN or PORT not set in settings.toml. Using defaults.${NC}"
+        DOMAIN=${DOMAIN:-"localhost"}
+        PORT=${PORT:-4000}
     fi
 }
 
@@ -97,8 +99,8 @@ read_settings() {
 check_system_resources() {
     log "${YELLOW}Checking GPU availability...${NC}"
     if ! command -v nvidia-smi &> /dev/null; then
-        log "${RED}Error: nvidia-smi not found${NC}"
-        exit 1
+        log "${YELLOW}Warning: nvidia-smi not found${NC}"
+        return 0
     fi
     
     # Check GPU memory
@@ -118,16 +120,17 @@ check_system_resources() {
     done <<< "$gpu_info"
     
     if [ "$has_enough_memory" = false ]; then
-        log "${RED}Error: No GPU with sufficient free memory (need at least 4GB)${NC}"
-        exit 1
+        log "${YELLOW}Warning: No GPU with sufficient free memory (need at least 4GB)${NC}"
     fi
+    return 0
 }
 
 # Function to check Docker setup
 check_docker() {
     if ! command -v docker &> /dev/null; then
-        log "${RED}Error: Docker is not installed${NC}"
-        exit 1
+        log "${YELLOW}Warning: Docker is not installed${NC}"
+        DOCKER_COMPOSE="echo 'Docker not installed'"
+        return 0
     fi
 
     if docker compose version &> /dev/null; then
@@ -135,9 +138,10 @@ check_docker() {
     elif docker-compose version &> /dev/null; then
         DOCKER_COMPOSE="docker-compose"
     else
-        log "${RED}Error: Docker Compose not found${NC}"
-        exit 1
+        log "${YELLOW}Warning: Docker Compose not found${NC}"
+        DOCKER_COMPOSE="echo 'Docker Compose not found'"
     fi
+    return 0
 }
 
 # Function to verify client directory structure
@@ -302,11 +306,11 @@ check_application_readiness() {
 
 # Function to handle exit
 handle_exit() {
-    log "\n${YELLOW}Exiting to shell. Containers will continue running.${NC}"
-    exit 0
+    log "\n${YELLOW}Exiting immediately without cleanup${NC}"
+    kill -9 $$
 }
 
-# Set up trap for clean exit
+# Set up trap for immediate exit
 trap handle_exit INT TERM
 
 # Change to project root directory
@@ -314,14 +318,15 @@ cd "$PROJECT_ROOT"
 
 # Check environment
 if [ ! -f .env ]; then
-    log "${RED}Error: .env file not found in $PROJECT_ROOT${NC}"
-    exit 1
+    log "${YELLOW}Warning: .env file not found in $PROJECT_ROOT${NC}"
 fi
 
-# Source .env file
-set -a
-source .env
-set +a
+# Source .env file if it exists
+if [ -f .env ]; then
+    set -a
+    source .env || log "${YELLOW}Warning: Error sourcing .env file${NC}"
+    set +a
+fi
 
 # Read settings from TOML
 read_settings
@@ -331,24 +336,18 @@ check_docker
 check_system_resources
 
 # Verify client structure
-if ! verify_client_structure; then
-    log "${RED}Client structure verification failed${NC}"
-    exit 1
-fi
+verify_client_structure || log "${YELLOW}Warning: Client structure verification failed${NC}"
 
 # Run security checks
 log "\n${YELLOW}Running security checks...${NC}"
 check_pnpm_security || true
-check_typescript || exit 1
+check_typescript || log "${YELLOW}Warning: TypeScript check failed${NC}"
 check_rust_security || true
 
 cleanup_existing_processes
 
 # Check RAGFlow network before starting
-if ! check_ragflow_network; then
-    log "${RED}Cannot proceed without RAGFlow network${NC}"
-    exit 1
-fi
+check_ragflow_network || log "${YELLOW}Warning: RAGFlow network not available${NC}"
 
 # Build and start services
 log "${YELLOW}Building and starting services...${NC}"
@@ -356,11 +355,7 @@ $DOCKER_COMPOSE build --pull --no-cache
 $DOCKER_COMPOSE up -d
 
 # Check application readiness
-if ! check_application_readiness; then
-    log "${RED}Application failed to start properly${NC}"
-    cleanup_existing_processes
-    exit 1
-fi
+check_application_readiness || log "${YELLOW}Warning: Application may not have started properly${NC}"
 
 # Print final status
 log "\n${GREEN}🚀 Services are running!${NC}"

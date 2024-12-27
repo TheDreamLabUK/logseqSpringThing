@@ -1,12 +1,12 @@
-use log::{debug, info};
+use log::{error, info};
 use env_logger;
 
 use webxr::{
-    AppState, Settings,
-    file_handler, graph_handler,
-    handlers::{socket_flow_handler, settings},
+    AppState,
+    Settings,
     RealGitHubService,
     RealGitHubPRService,
+    socket_flow_handler,
 };
 
 use actix_web::{web, App, HttpServer, middleware};
@@ -15,94 +15,90 @@ use actix_files::Files;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use dotenvy::dotenv;
-use std::env;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
     env_logger::init();
-    info!("Starting LogseqXR server");
+    info!("Starting WebXR server");
 
     // Load settings first to get the log level
     let settings = match Settings::new() {
-        Ok(s) => {
-            debug!("Successfully loaded settings: {:?}", s);
-            Arc::new(RwLock::new(s))
-        },
+        Ok(s) => s,
         Err(e) => {
-            eprintln!("Failed to load settings: {:?}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize settings: {:?}", e)));
+            error!("Failed to load settings: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
         }
     };
 
-    // Load environment variables
-    let github_token = env::var("GITHUB_TOKEN")
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("GITHUB_TOKEN not set: {}", e)))?;
-    let github_owner = env::var("GITHUB_OWNER")
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("GITHUB_OWNER not set: {}", e)))?;
-    let github_repo = env::var("GITHUB_REPO")
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("GITHUB_REPO not set: {}", e)))?;
-    let github_base_path = env::var("GITHUB_BASE_PATH").unwrap_or_else(|_| String::from(""));
+    // Create settings Arc
+    let settings = Arc::new(RwLock::new(settings));
 
-    // Initialize GitHub services
+    // Initialize services
     let github_service = Arc::new(RealGitHubService::new(
-        github_token.clone(),
-        github_owner.clone(),
-        github_repo.clone(),
-        github_base_path.clone(),
-        settings.clone(),
-    ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHub service: {}", e)))?);
+        settings.read().await.github.token.clone(),
+        settings.read().await.github.owner.clone(),
+        settings.read().await.github.repo.clone(),
+        settings.read().await.github.base_path.clone(),
+        Arc::clone(&settings),
+    ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?);
 
     let github_pr_service = Arc::new(RealGitHubPRService::new(
-        github_token,
-        github_owner,
-        github_repo,
-        github_base_path,
-    ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHub PR service: {}", e)))?);
-    
-    // Optional services
-    let perplexity_service = None; // Initialize if needed
-    let ragflow_service = None; // Initialize if needed
-    let gpu_compute = None; // Initialize if needed
-    
-    // Create AppState with initialized services
-    let app_state: web::Data<AppState> = web::Data::new(AppState::new(
-        settings.clone(),
-        github_service,
-        perplexity_service,
-        ragflow_service,
-        gpu_compute,
-        String::from("default"), // ragflow_conversation_id
-        github_pr_service,
-    ).await);
+        settings.read().await.github.token.clone(),
+        settings.read().await.github.owner.clone(),
+        settings.read().await.github.repo.clone(),
+        settings.read().await.github.base_path.clone(),
+    ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?);
 
-    // Use PORT env var with fallback to 3001 as specified in docs
-    let port = env::var("PORT").unwrap_or_else(|_| "3001".to_string());
+    // Initialize app state
+    let app_state = {
+        let state = AppState::new(
+            Arc::clone(&settings),
+            Arc::clone(&github_service),
+            None, // perplexity_service
+            None, // ragflow_service
+            None, // gpu_compute
+            String::new(), // ragflow_conversation_id
+            Arc::clone(&github_pr_service),
+        ).await;
+        info!("Successfully initialized app state");
+        web::Data::new(state)
+    };
+
+    // Get port from environment variable or use default
+    let port = std::env::var("PORT")
+        .unwrap_or_else(|_| "3000".to_string())
+        .parse::<u16>()
+        .unwrap_or(3000);
+
     let bind_addr = format!("0.0.0.0:{}", port);
     info!("Binding to {}", bind_addr);
+
+    // Serve static files from the correct directory
+    let static_files_path = if cfg!(debug_assertions) {
+        "../data/public/dist"
+    } else {
+        "data/public/dist"
+    };
 
     // Configure app with services
     HttpServer::new(move || {
         App::new()
-            .wrap(Cors::default()
-                .allow_any_origin()
-                .allow_any_method()
-                .allow_any_header()
-                .max_age(3600))
+            .wrap(
+                Cors::default()
+                    .allow_any_origin()
+                    .allow_any_method()
+                    .allow_any_header()
+                    .max_age(3600)
+            )
             .wrap(middleware::Logger::default())
             .app_data(app_state.clone())
             .service(
-                web::scope("/api")
-                    .service(web::scope("/files").configure(file_handler::config))
-                    .service(web::scope("/graph").configure(graph_handler::config))
-                    .configure(settings::config)
-            )
-            .service(
-                web::resource("/wss")
+                web::scope("/ws")
                     .app_data(web::PayloadConfig::new(1 << 25))  // 32MB max payload
-                    .route(web::get().to(socket_flow_handler::socket_flow_handler))
+                    .route("/socket", web::get().to(socket_flow_handler))
             )
-            .service(Files::new("/", "data/public/dist").index_file("index.html"))
+            .service(Files::new("/", static_files_path).index_file("index.html"))
     })
     .bind(bind_addr)?
     .run()

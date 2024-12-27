@@ -93,7 +93,7 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
 pub async fn get_file_content(_state: web::Data<AppState>, file_name: web::Path<String>) -> HttpResponse {
     // Read file directly from disk
     let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
-    match std::fs::read_to_string(&file_path) {
+    match tokio::fs::read_to_string(&file_path).await {
         Ok(content) => HttpResponse::Ok().body(content),
         Err(e) => {
             error!("Failed to read file {}: {}", file_name, e);

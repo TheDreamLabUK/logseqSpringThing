@@ -28,10 +28,9 @@ impl GraphService {
         }
     }
 
-    pub fn new_with_metadata(metadata_store: &MetadataStore) -> Self {
-        let graph_data = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(Self::build_graph_from_metadata(metadata_store))
+    pub async fn new_with_metadata(metadata_store: &MetadataStore) -> Self {
+        let graph_data = Self::build_graph_from_metadata(metadata_store)
+            .await
             .unwrap_or_else(|e| {
                 error!("Failed to build graph from metadata: {}", e);
                 GraphData::default()
