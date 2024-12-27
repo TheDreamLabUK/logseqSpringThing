@@ -11,12 +11,28 @@ Data Storage: Graph data (nodes, edges, metadata) is stored on the server, in a 
 
 REST API (actix-web): The server exposes a REST API for:
 
-Graph Data: /api/graph/data (full graph) and /api/graph/data/paginated (paginated graph).
+Graph Data: 
+- GET /api/graph (full graph)
+- GET /api/graph/paginated?page={page}&pageSize={pageSize} (paginated graph)
+- POST /api/graph/update (update graph data)
 
 Settings: 
+- GET /api/visualization/settings (get all visualization settings)
 - GET /api/visualization/settings/{category} (get all settings for a category)
 - GET /api/visualization/settings/{category}/{setting} (get individual setting)
 - PUT /api/visualization/settings/{category}/{setting} (update individual setting)
+
+Categories include:
+- animations
+- ar
+- audio
+- bloom
+- edges
+- hologram
+- labels
+- nodes
+- physics
+- rendering
 
 Other API endpoints: /api/files/fetch, /api/chat/*, /api/perplexity.
 
@@ -24,7 +40,7 @@ WebSocket Handling (actix-web-actors):
 - Binary Protocol (/wss endpoint): 
   - Uses a binary protocol for efficient real-time position and velocity updates
   - Optimized format with 6 floats per node (position + velocity)
-- WebSocket Control API (/api/visualization/settings/):
+- WebSocket Control API (/api/visualization/settings/websocket):
   - REST-based control plane for WebSocket configuration
   - Manages settings, heartbeat intervals
   - Allows runtime updates to WebSocket behavior without connection disruption
@@ -79,7 +95,7 @@ Port Configuration:
 3. Client-Side (TypeScript)
 
 Initialization:
-- The client loads initial graph data from /api/graph/data/paginated using pagination
+- The client loads initial graph data from /api/graph/paginated using pagination
 - The client loads all visualization settings from /api/visualization/settings/{category}
 - WebSocket initialization follows a two-step process:
   1. Control Setup (/api/visualization/settings/websocket):

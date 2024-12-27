@@ -46,7 +46,7 @@ class Application {
 
             this.nodeManager = new EnhancedNodeManager(this.sceneManager.getScene(), settings);
 
-            const controlPanelContainer = document.getElementById('control-panel-container');
+            const controlPanelContainer = document.getElementById('control-panel');
             if (!controlPanelContainer) {
                 throw new Error('Control panel container not found');
             }

@@ -1,6 +1,7 @@
 import { Settings } from '../types/settings';
 import { createLogger } from '../core/logger';
 import { defaultSettings } from './defaultSettings';
+import { API_ENDPOINTS } from '../core/constants';
 
 const logger = createLogger('SettingsStore');
 
@@ -46,74 +47,65 @@ export class SettingsStore {
         try {
             // Try to fetch settings from API
             try {
-                const response = await fetch('/api/settings');
+                const response = await fetch(API_ENDPOINTS.SETTINGS);
                 if (response.ok) {
                     const flatSettings = await response.json();
                     this.settings = this.unflattenSettings(flatSettings);
                     logger.info('Settings loaded from API');
                 } else {
-                    // If API fails, use default settings
-                    logger.warn('Failed to fetch settings from API, using defaults');
-                    this.settings = defaultSettings;
+                    throw new Error(`Failed to fetch settings: ${response.statusText}`);
                 }
             } catch (error) {
-                // If fetch fails completely, use default settings
-                logger.warn('API not available, using default settings:', error);
-                this.settings = defaultSettings;
+                logger.warn('Failed to fetch settings from API, using defaults');
+                this.settings = { ...defaultSettings };
+            }
+
+            // Start sync timer if auto-save is enabled
+            if (this.options.autoSave) {
+                this.startSyncTimer();
             }
 
             this.initialized = true;
             logger.info('SettingsStore initialized');
-
-            if (this.options.autoSave) {
-                this.syncTimer = window.setInterval(
-                    () => this.syncPendingChanges(),
-                    this.options.syncInterval
-                ) as unknown as number;
-            }
         } catch (error) {
-            logger.error('Failed to initialize SettingsStore:', error);
-            // Even if something goes wrong, initialize with defaults
-            this.settings = defaultSettings;
-            this.initialized = true;
+            logger.error('Failed to initialize settings:', error);
+            throw error;
         }
     }
 
-    private async syncPendingChanges(): Promise<void> {
-        if (!this.initialized || this.pendingChanges.size === 0) {
+    private startSyncTimer(): void {
+        this.syncTimer = window.setInterval(
+            () => this.saveChanges(),
+            this.options.syncInterval
+        ) as unknown as number;
+    }
+
+    private async saveChanges(): Promise<void> {
+        if (this.pendingChanges.size === 0) {
             return;
         }
 
-        const updates = Array.from(this.pendingChanges).map(async (path) => {
-            const value = this.get(path);
-            const url = `/api/settings/${path}`;
+        for (const path of this.pendingChanges) {
+            const [category, setting] = path.split('.');
+            if (!category || !setting) continue;
 
             try {
-                const response = await fetch(url, {
+                const value = this.get(path);
+                const response = await fetch(API_ENDPOINTS.SETTINGS_ITEM(category, setting), {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(value)
+                    body: JSON.stringify({ value })
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Failed to update setting ${path}: ${response.statusText}`);
+                    throw new Error(`Failed to save setting ${path}: ${response.statusText}`);
                 }
-
-                return path;
             } catch (error) {
-                logger.error(`Failed to sync setting ${path}:`, error);
-                throw error;
+                logger.error(`Failed to save setting ${path}:`, error);
             }
-        });
-
-        try {
-            await Promise.all(updates);
-            this.pendingChanges.clear();
-            logger.info('Settings synced successfully');
-        } catch (error) {
-            logger.error('Failed to sync some settings:', error);
-            throw error;
         }
+
+        this.pendingChanges.clear();
     }
 
     public get(path: string): unknown {

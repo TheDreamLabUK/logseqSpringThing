@@ -11,7 +11,7 @@ export const API_BASE = '';  // Empty string means use relative URLs
 
 // API paths
 export const API_PATHS = {
-    SETTINGS: 'settings',
+    SETTINGS: 'visualization/settings',
     WEBSOCKET: 'wss',
     GRAPH: 'graph',
     FILES: 'files'
@@ -19,12 +19,17 @@ export const API_PATHS = {
 
 // API endpoints
 export const API_ENDPOINTS = {
-    GRAPH_DATA: '/api/graph/data',
+    GRAPH_DATA: '/api/graph',
     GRAPH_UPDATE: '/api/graph/update',
-    GRAPH_PAGINATED: '/api/graph/data/paginated',
-    SETTINGS: '/api/settings',
+    GRAPH_PAGINATED: '/api/graph/paginated',
+    SETTINGS: '/api/visualization/settings',
+    SETTINGS_CATEGORY: (category: string) => `/api/visualization/settings/${category}`,
+    SETTINGS_ITEM: (category: string, setting: string) => `/api/visualization/settings/${category}/${setting}`,
+    WEBSOCKET_CONTROL: '/api/visualization/settings/websocket',
     FILES: '/api/files'
-};
+} as const;
+
+export type ApiEndpoints = typeof API_ENDPOINTS[keyof typeof API_ENDPOINTS];
 
 // Settings categories matching server's snake_case
 export const SETTINGS_CATEGORIES = {

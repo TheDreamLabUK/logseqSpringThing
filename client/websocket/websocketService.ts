@@ -2,7 +2,8 @@ import { createLogger } from '../core/logger';
 import { buildWsUrl } from '../core/api';
 import { 
     WS_HEARTBEAT_INTERVAL,
-    WS_HEARTBEAT_TIMEOUT
+    WS_HEARTBEAT_TIMEOUT,
+    API_ENDPOINTS
 } from '../core/constants';
 import { convertObjectKeysToCamelCase } from '../core/utils';
 
@@ -48,13 +49,22 @@ export class WebSocketService {
     private connectionState: ConnectionState = ConnectionState.DISCONNECTED;
     private reconnectAttempts: number = 0;
     private lastPongTime: number = 0;
-    private readonly maxReconnectAttempts: number = 5;
+    private _maxReconnectAttempts: number = 5;
     private readonly initialReconnectDelay: number = 5000; // 5 seconds
     private readonly maxReconnectDelay: number = 60000; // 60 seconds
     private readonly heartbeatTimeout: number = WS_HEARTBEAT_TIMEOUT;
+    private heartbeatInterval: number = WS_HEARTBEAT_INTERVAL;
     private settingsStore: Map<string, any> = new Map();
     private connectionStatusHandler: ((status: boolean) => void) | null = null;
     private settingsUpdateHandler: ((settings: any) => void) | null = null;
+
+    get maxReconnectAttempts(): number {
+        return this._maxReconnectAttempts;
+    }
+
+    set maxReconnectAttempts(value: number) {
+        this._maxReconnectAttempts = value;
+    }
 
     private constructor() {
         // Don't automatically connect - wait for explicit connect() call
@@ -65,7 +75,43 @@ export class WebSocketService {
             logger.warn('WebSocket already connected or connecting');
             return;
         }
-        this.setupWebSocket();
+        this.initializeWebSocket();
+    }
+
+    private async initializeWebSocket(): Promise<void> {
+        if (this.connectionState !== ConnectionState.DISCONNECTED) {
+            return;
+        }
+
+        try {
+            // First initialize through the control API
+            const response = await fetch(API_ENDPOINTS.WEBSOCKET_CONTROL);
+            if (!response.ok) {
+                throw new Error(`Failed to initialize WebSocket control: ${response.statusText}`);
+            }
+            const config = await response.json();
+            
+            // Apply configuration
+            const wsConfig = convertObjectKeysToCamelCase(config);
+            if (wsConfig.heartbeatInterval) {
+                this.heartbeatInterval = wsConfig.heartbeatInterval;
+            }
+            if (wsConfig.reconnectAttempts) {
+                this.maxReconnectAttempts = wsConfig.reconnectAttempts;
+            }
+
+            // Now connect to the binary WebSocket endpoint
+            this.connectionState = ConnectionState.CONNECTING;
+            const wsUrl = buildWsUrl();
+            this.ws = new WebSocket(wsUrl);
+            this.setupWebSocketHandlers();
+            
+            logger.info('WebSocket initialization started');
+        } catch (error) {
+            logger.error('Failed to initialize WebSocket:', error);
+            this.connectionState = ConnectionState.FAILED;
+            this.handleReconnect();
+        }
     }
 
     private getReconnectDelay(): number {
@@ -97,7 +143,7 @@ export class WebSocketService {
                 this.ws.close();
                 this.stopConnectionMonitor();
             }
-        }, WS_HEARTBEAT_INTERVAL);
+        }, this.heartbeatInterval);
     }
 
     private stopConnectionMonitor(): void {
@@ -107,191 +153,151 @@ export class WebSocketService {
         }
     }
 
-    private setupWebSocket(): void {
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            logger.warn('Maximum reconnection attempts reached, WebSocket disabled');
-            this.connectionState = ConnectionState.FAILED;
+    private setupWebSocketHandlers(): void {
+        if (!this.ws) return;
+        
+        this.ws.binaryType = 'arraybuffer';
+
+        this.ws.onopen = (): void => {
+            logger.info(`WebSocket connected successfully`);
+            this.connectionState = ConnectionState.CONNECTED;
+            this.reconnectAttempts = 0;
+            this.lastPongTime = Date.now();
+            this.startConnectionMonitor();
+
+            // Notify connection status change
+            if (this.connectionStatusHandler) {
+                this.connectionStatusHandler(true);
+            }
+
+            // Send initial protocol messages
+            this.sendMessage({ type: 'requestInitialData' });
+            this.sendMessage({ type: 'enableBinaryUpdates' });
+        };
+
+        this.ws.onerror = (event: Event): void => {
+            const errorMsg = ['www.visionflow.info', 'visionflow.info'].includes(window.location.hostname) ? 
+                'WebSocket error in production (possible Cloudflare issue)' : 
+                'WebSocket error in development';
+            logger.error(errorMsg, event);
+            
+            if (this.ws) {
+                logger.error('WebSocket readyState:', this.ws.readyState);
+                
+                if (['www.visionflow.info', 'visionflow.info'].includes(window.location.hostname)) {
+                    logger.error('Production debug info:', {
+                        url: buildWsUrl(),
+                        protocol: window.location.protocol,
+                        host: window.location.host,
+                        hostname: window.location.hostname,
+                        cloudflareRay: document.querySelector('meta[name="cf-ray"]')?.getAttribute('content')
+                    });
+                }
+            }
+        };
+
+        this.ws.onclose = (event: CloseEvent): void => {
+            const envPrefix = ['www.visionflow.info', 'visionflow.info'].includes(window.location.hostname) ? '[PROD]' : '[DEV]';
+            logger.warn(`${envPrefix} WebSocket closed with code ${event.code}: ${event.reason}`);
+            
+            if (['www.visionflow.info', 'visionflow.info'].includes(window.location.hostname) && event.code === 1006) {
+                logger.error('Cloudflare connection dropped (code 1006). This might indicate a tunnel issue.');
+            }
+            
+            // Notify connection status change
             if (this.connectionStatusHandler) {
                 this.connectionStatusHandler(false);
             }
-            return;
-        }
-
-        try {
-            const wsUrl = buildWsUrl();
-            const isProduction = ['www.visionflow.info', 'visionflow.info'].includes(window.location.hostname);
             
-            logger.info(`[${isProduction ? 'PROD' : 'DEV'}] Attempting WebSocket connection to ${wsUrl}`);
+            this.handleReconnect();
+        };
 
-            this.connectionState = ConnectionState.CONNECTING;
-            
-            this.ws = new WebSocket(wsUrl);
-            this.ws.binaryType = 'arraybuffer';
-
-            this.ws.onopen = (): void => {
-                logger.info(`[${isProduction ? 'PROD' : 'DEV'}] WebSocket connected successfully`);
-                this.connectionState = ConnectionState.CONNECTED;
-                this.reconnectAttempts = 0;
+        this.ws.onmessage = async (event: MessageEvent): Promise<void> => {
+            try {
+                // Update last pong time for any successful message
                 this.lastPongTime = Date.now();
-                this.startConnectionMonitor();
 
-                // Notify connection status change
-                if (this.connectionStatusHandler) {
-                    this.connectionStatusHandler(true);
+                if (this.connectionState !== ConnectionState.CONNECTED || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                    logger.warn('WebSocket not connected, ignoring message');
+                    return;
                 }
 
-                // Send initial protocol messages
-                this.sendMessage({ type: 'requestInitialData' });
-                this.sendMessage({ type: 'enableBinaryUpdates' });
-            };
-
-            this.ws.onerror = (event: Event): void => {
-                const errorMsg = isProduction ? 
-                    'WebSocket error in production (possible Cloudflare issue)' : 
-                    'WebSocket error in development';
-                logger.error(errorMsg, event);
-                
-                if (this.ws) {
-                    logger.error('WebSocket readyState:', this.ws.readyState);
-                    
-                    if (isProduction) {
-                        logger.error('Production debug info:', {
-                            url: wsUrl,
-                            protocol: window.location.protocol,
-                            host: window.location.host,
-                            hostname: window.location.hostname,
-                            cloudflareRay: document.querySelector('meta[name="cf-ray"]')?.getAttribute('content')
-                        });
+                // Handle text messages (errors from server)
+                if (typeof event.data === 'string') {
+                    try {
+                        const message = JSON.parse(event.data);
+                        if (message.error) {
+                            logger.error('[Server Error]', message.error);
+                            return;
+                        }
+                        // Handle settings update
+                        if (message.type === 'settings_update') {
+                            this.handleSettingsUpdate(message);
+                            return;
+                        }
+                    } catch (e) {
+                        logger.warn('Received non-JSON text message:', event.data);
+                        return;
                     }
                 }
-            };
 
-            this.ws.onclose = (event: CloseEvent): void => {
-                const envPrefix = isProduction ? '[PROD]' : '[DEV]';
-                logger.warn(`${envPrefix} WebSocket closed with code ${event.code}: ${event.reason}`);
-                
-                if (isProduction && event.code === 1006) {
-                    logger.error('Cloudflare connection dropped (code 1006). This might indicate a tunnel issue.');
-                }
-                
-                // Notify connection status change
-                if (this.connectionStatusHandler) {
-                    this.connectionStatusHandler(false);
-                }
-                
-                this.handleReconnect();
-            };
-
-            this.ws.onmessage = async (event: MessageEvent): Promise<void> => {
-                try {
-                    // Update last pong time for any successful message
-                    this.lastPongTime = Date.now();
-
-                    if (this.connectionState !== ConnectionState.CONNECTED || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-                        logger.warn('WebSocket not connected, ignoring message');
+                // Handle binary position/velocity updates
+                if (event.data instanceof ArrayBuffer && this.binaryMessageCallback) {
+                    // Validate data length (24 bytes per node - 6 floats * 4 bytes)
+                    if (event.data.byteLength % 24 !== 0) {
+                        logger.error('Invalid binary message length:', event.data.byteLength);
                         return;
                     }
 
-                    // Handle text messages (errors from server)
-                    if (typeof event.data === 'string') {
-                        try {
-                            const message = JSON.parse(event.data);
-                            if (message.error) {
-                                logger.error('[Server Error]', message.error);
-                                return;
-                            }
-                            // Handle settings update
-                            if (message.type === 'settings_update') {
-                                this.handleSettingsUpdate(message);
-                                return;
-                            }
-                        } catch (e) {
-                            logger.warn('Received non-JSON text message:', event.data);
-                            return;
-                        }
-                    }
+                    const float32Array = new Float32Array(event.data);
+                    const nodeCount = float32Array.length / 6;
+                    const nodes: NodeData[] = [];
 
-                    // Handle binary position/velocity updates
-                    if (event.data instanceof ArrayBuffer && this.binaryMessageCallback) {
-                        // Validate data length (24 bytes per node - 6 floats * 4 bytes)
-                        if (event.data.byteLength % 24 !== 0) {
-                            logger.error('Invalid binary message length:', event.data.byteLength);
-                            return;
+                    for (let i = 0; i < nodeCount; i++) {
+                        const baseIndex = i * 6;
+                        
+                        // Validate float values
+                        const values = float32Array.slice(baseIndex, baseIndex + 6);
+                        if (!values.every(v => Number.isFinite(v))) {
+                            logger.error('Invalid float values in node data at index:', i);
+                            continue;
                         }
 
-                        const float32Array = new Float32Array(event.data);
-                        const nodeCount = float32Array.length / 6;
-                        const nodes: NodeData[] = [];
-
-                        for (let i = 0; i < nodeCount; i++) {
-                            const baseIndex = i * 6;
-                            
-                            // Validate float values
-                            const values = float32Array.slice(baseIndex, baseIndex + 6);
-                            if (!values.every(v => Number.isFinite(v))) {
-                                logger.error('Invalid float values in node data at index:', i);
-                                continue;
-                            }
-
-                            nodes.push({
-                                position: [
-                                    values[0],
-                                    values[1],
-                                    values[2]
-                                ],
-                                velocity: [
-                                    values[3],
-                                    values[4],
-                                    values[5]
-                                ]
-                            });
-                        }
-
-                        if (nodes.length > 0) {
-                            await Promise.resolve().then(() => {
-                                if (this.binaryMessageCallback) {
-                                    this.binaryMessageCallback(nodes);
-                                }
-                            });
-                        } else {
-                            logger.warn('No valid nodes in binary message');
-                        }
-                    }
-                } catch (error) {
-                    logger.error('Error processing WebSocket message:', error);
-                    if (error instanceof Error) {
-                        logger.error('Error details:', {
-                            name: error.name,
-                            message: error.message,
-                            stack: error.stack
+                        nodes.push({
+                            position: [
+                                values[0],
+                                values[1],
+                                values[2]
+                            ],
+                            velocity: [
+                                values[3],
+                                values[4],
+                                values[5]
+                            ]
                         });
                     }
+
+                    if (nodes.length > 0) {
+                        await Promise.resolve().then(() => {
+                            if (this.binaryMessageCallback) {
+                                this.binaryMessageCallback(nodes);
+                            }
+                        });
+                    } else {
+                        logger.warn('No valid nodes in binary message');
+                    }
                 }
-            };
-        } catch (error) {
-            logger.error('Failed to setup WebSocket:', error);
-            this.connectionState = ConnectionState.FAILED;
-            
-            if (this.connectionStatusHandler) {
-                this.connectionStatusHandler(false);
+            } catch (error) {
+                logger.error('Error processing WebSocket message:', error);
+                if (error instanceof Error) {
+                    logger.error('Error details:', {
+                        name: error.name,
+                        message: error.message,
+                        stack: error.stack
+                    });
+                }
             }
-            
-            if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                this.reconnectAttempts++;
-                const delay = this.getReconnectDelay();
-                
-                logger.info(
-                    `WebSocket setup failed, attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
-                );
-                
-                this.connectionState = ConnectionState.RECONNECTING;
-                
-                this.reconnectTimeout = window.setTimeout(() => {
-                    this.reconnectTimeout = null;
-                    this.setupWebSocket();
-                }, delay);
-            }
-        }
+        };
     }
 
     private handleReconnect(): void {
@@ -318,7 +324,7 @@ export class WebSocketService {
             
             this.reconnectTimeout = window.setTimeout(() => {
                 this.reconnectTimeout = null;
-                this.setupWebSocket();
+                this.connect();
             }, delay);
         } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             logger.warn('Maximum reconnection attempts reached, WebSocket disabled');

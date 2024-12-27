@@ -1,5 +1,6 @@
 import { transformGraphData, Node, Edge, GraphData } from '../core/types';
 import { createLogger } from '../core/utils';
+import { API_ENDPOINTS } from '../core/constants';
 
 const logger = createLogger('GraphDataManager');
 
@@ -56,11 +57,43 @@ export class GraphDataManager {
     return GraphDataManager.instance;
   }
 
+  public async fetchInitialData(): Promise<void> {
+    try {
+      const response = await fetch(API_ENDPOINTS.GRAPH_DATA);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch graph data: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      this.updateGraphData(data);
+      logger.info('Initial graph data loaded');
+    } catch (error) {
+      logger.error('Failed to fetch initial graph data:', error);
+      throw error;
+    }
+  }
+
+  public async fetchPaginatedData(page: number = 1, pageSize: number = 100): Promise<void> {
+    try {
+      const response = await fetch(`${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch paginated data: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      this.updateGraphData(data);
+      logger.info(`Paginated data loaded for page ${page}`);
+    } catch (error) {
+      logger.error('Failed to fetch paginated data:', error);
+      throw error;
+    }
+  }
+
   async loadInitialGraphData(): Promise<void> {
     try {
       // Start with first page of paginated data
       const pageSize = 100; // Match server default
-      const response = await fetch(`/api/graph/data/paginated?page=1&pageSize=${pageSize}`);
+      const response = await fetch(`${API_ENDPOINTS.GRAPH_PAGINATED}?page=1&pageSize=${pageSize}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch graph data: ${response.statusText}`);
       }
@@ -126,7 +159,7 @@ export class GraphDataManager {
 
   private async loadPage(page: number, pageSize: number): Promise<void> {
     try {
-      const response = await fetch(`/api/graph/data/paginated?page=${page}&pageSize=${pageSize}`);
+      const response = await fetch(`${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch page ${page}: ${response.statusText}`);
       }
