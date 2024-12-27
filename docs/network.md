@@ -12,27 +12,33 @@ Data Storage: Graph data (nodes, edges, metadata) is stored on the server, in a 
 REST API (actix-web): The server exposes a REST API for:
 
 Graph Data: 
-- GET /api/graph (full graph)
+- GET /api/graph/data (full graph)
 - GET /api/graph/paginated?page={page}&pageSize={pageSize} (paginated graph)
 - POST /api/graph/update (update graph data)
 
 Settings: 
-- GET /api/visualization/settings (get all visualization settings)
-- GET /api/visualization/settings/{category} (get all settings for a category)
-- GET /api/visualization/settings/{category}/{setting} (get individual setting)
-- PUT /api/visualization/settings/{category}/{setting} (update individual setting)
+- GET /api/settings (get all settings)
+- GET /api/settings/visualization (get all visualization settings)
+- GET /api/settings/{category} (get all settings for a category)
+- GET /api/settings/{category}/{setting} (get individual setting)
+- PUT /api/settings/{category}/{setting} (update individual setting)
+- GET /api/settings/websocket (WebSocket control API)
 
 Categories include:
-- animations
-- ar
-- audio
-- bloom
-- edges
-- hologram
-- labels
-- nodes
-- physics
-- rendering
+- system.network
+- system.websocket
+- system.security
+- system.debug
+- visualization.animations
+- visualization.ar
+- visualization.audio
+- visualization.bloom
+- visualization.edges
+- visualization.hologram
+- visualization.labels
+- visualization.nodes
+- visualization.physics
+- visualization.rendering
 
 Other API endpoints: /api/files/fetch, /api/chat/*, /api/perplexity.
 

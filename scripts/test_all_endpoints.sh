@@ -31,9 +31,10 @@ WEBSOCKET_TIMEOUT=10
 
 # Test environments
 declare -A ENDPOINTS=(
-    ["internal"]="http://localhost:$BACKEND_PORT"
-    ["docker"]="http://localhost:$NGINX_PORT"
-    ["production"]="https://$PUBLIC_DOMAIN"
+    ["internal"]="http://localhost:$NGINX_PORT"
+    ["container"]="http://127.0.0.1:$BACKEND_PORT"
+    ["ragflow"]="http://logseq-xr-webxr:$BACKEND_PORT"
+    ["external"]="https://$PUBLIC_DOMAIN"
 )
 
 # Function to log messages with timestamp
@@ -78,42 +79,26 @@ test_endpoint() {
     local method="${3:-GET}"
     local data="${4:-}"
     local extra_opts="${5:-}"
-    local show_raw="${6:-false}"
     
     log_info "Testing $method $description..."
     log_info "URL: $url"
     
-    local curl_opts="-X $method -m $TIMEOUT -s -w '\n%{http_code}'"
-    [[ "$url" == https://* ]] && curl_opts="$curl_opts -k"
-    [[ -n "$data" ]] && curl_opts="$curl_opts -H 'Content-Type: application/json' -d '$data'"
-    [[ -n "$extra_opts" ]] && curl_opts="$curl_opts $extra_opts"
-    
-    # Execute curl command
-    local response
+    # Only capture status code, discard response body
     local http_code
-    eval "response=\$(curl $curl_opts '$url' 2>&1)"
-    http_code=$(echo "$response" | tail -n1)
-    response=$(echo "$response" | sed \$d)  # Remove the last line (status code)
+    if [[ -n "$data" ]]; then
+        http_code=$(curl -X $method -m $TIMEOUT -s -o /dev/null -w "%{http_code}" \
+            -H "Accept: application/json" -H "Content-Type: application/json" \
+            -d "$data" $extra_opts "$url")
+    else
+        http_code=$(curl -X $method -m $TIMEOUT -s -o /dev/null -w "%{http_code}" \
+            -H "Accept: application/json" $extra_opts "$url")
+    fi
     
     if [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
         log_success "$description successful (HTTP $http_code)"
-        if [ "$show_raw" = true ]; then
-            log_info "Raw Response:"
-            printf "%s\n" "$response"
-            log_info "Pretty Response:"
-            pretty_json "$response"
-        else
-            log_info "Response Summary:"
-            pretty_json "$response" | head -n 20
-            local lines=$(echo "$response" | wc -l)
-            if [ "$lines" -gt 20 ]; then
-                log_info "... (${lines} lines total, showing first 20)"
-            fi
-        fi
         return 0
     else
         log_error "$description failed (HTTP $http_code)"
-        log_info "Response: $response"
         return 1
     fi
 }
@@ -160,22 +145,43 @@ test_environment() {
     
     log_header "Testing $env environment ($base_url)"
     
-    # Test paginated endpoint with raw output
-    test_endpoint "$base_url/api/graph/data/paginated?page=0&page_size=10" "$env paginated graph data" "GET" "" "" true || ((failed++))
-    
-    # Test other endpoints
-    test_endpoint "$base_url/api/graph/data" "$env graph data" || ((failed++))
+    # Test graph endpoints
+    test_endpoint "$base_url/api/graph/data" "$env full graph data" || ((failed++))
+    test_endpoint "$base_url/api/graph/paginated?page=0&pageSize=10" "$env paginated graph data" || ((failed++))
+    test_endpoint "$base_url/api/graph/update" "$env graph update" "POST" '{"nodes": [], "edges": []}' || ((failed++))
     
     # Test settings endpoints
+    test_endpoint "$base_url/api/settings" "$env all settings" || ((failed++))
     test_endpoint "$base_url/api/settings/visualization" "$env visualization settings" || ((failed++))
-    test_endpoint "$base_url/api/settings/visualization/animations/enable_motion_blur" "$env enable motion blur setting" || ((failed++))
-    test_endpoint "$base_url/api/settings/visualization/bloom/enabled" "$env bloom enabled setting" || ((failed++))
+    test_endpoint "$base_url/api/settings/websocket" "$env WebSocket control API" || ((failed++))
     
-    # Test updating a setting
-    test_endpoint "$base_url/api/settings/visualization/animations/enable_motion_blur" "$env update enable motion blur setting" "PUT" '{"value": true}' || ((failed++))
+    # Test settings endpoints for each category
+    local categories=(
+        "system.network"
+        "system.websocket"
+        "system.security"
+        "system.debug"
+        "visualization.animations"
+        "visualization.ar"
+        "visualization.audio"
+        "visualization.bloom"
+        "visualization.edges"
+        "visualization.hologram"
+        "visualization.labels"
+        "visualization.nodes"
+        "visualization.physics"
+        "visualization.rendering"
+    )
     
-    # Test saving settings
-    test_endpoint "$base_url/api/settings/save" "$env save settings" "PUT" || ((failed++))
+    for category in "${categories[@]}"; do
+        # Test category endpoint
+        test_endpoint "$base_url/api/settings/$category" "$env $category settings" || ((failed++))
+        
+        # Test individual setting update
+        local setting="enabled"
+        test_endpoint "$base_url/api/settings/$category/$setting" "$env get $category.$setting" || ((failed++))
+        test_endpoint "$base_url/api/settings/$category/$setting" "$env update $category.$setting" "PUT" '{"value": true}' || ((failed++))
+    done
     
     # Test WebSocket endpoints
     local ws_protocol="ws"
@@ -183,35 +189,239 @@ test_environment() {
     local ws_base_url="${base_url/http:/$ws_protocol:}"
     local ws_base_url="${ws_base_url/https:/$ws_protocol:}"
     
-    test_websocket "$ws_base_url/wss" "$env WebSocket Binary Protocol" || ((failed++))
+    test_websocket "$ws_base_url/wss" "$env Binary Protocol" || ((failed++))
+    test_endpoint "$base_url/api/visualization/settings/websocket" "$env WebSocket Settings" || ((failed++))
     
     return $failed
 }
 
-# Main execution
-main() {
-    log_header "Starting endpoint tests..."
-    local total_failed=0
+# Function to test container internal endpoints
+test_container_endpoints() {
+    local failed=0
+    log_header "Testing container internal endpoints"
     
-    # Test each environment
-    for env in "${!ENDPOINTS[@]}"; do
-        test_environment "$env"
-        local env_failed=$?
-        ((total_failed += env_failed))
-        
-        # Print environment summary
-        echo
-        log_info "Environment $env: $([ $env_failed -eq 0 ] && echo "PASS" || echo "FAIL ($env_failed failed)")"
+    # Test graph data endpoint
+    log_info "Testing graph data endpoint..."
+    local status=$(docker exec $CONTAINER_NAME curl -s -o /dev/null -w "%{http_code}" \
+        -H "Accept: application/json" "http://localhost:4000/api/graph/data")
+    if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+        log_success "Container internal graph data endpoint successful (HTTP $status)"
+    else
+        log_error "Container internal graph data endpoint failed (HTTP $status)"
+        ((failed++))
+    fi
+    
+    # Test settings endpoint
+    log_info "Testing settings endpoint..."
+    status=$(docker exec $CONTAINER_NAME curl -s -o /dev/null -w "%{http_code}" \
+        -H "Accept: application/json" "http://localhost:4000/api/settings")
+    if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+        log_success "Container internal settings endpoint successful (HTTP $status)"
+    else
+        log_error "Container internal settings endpoint failed (HTTP $status)"
+        ((failed++))
+    fi
+    
+    # Test WebSocket inside container
+    log_info "Testing WebSocket endpoint..."
+    status=$(docker exec $CONTAINER_NAME curl -v -i \
+        --no-buffer \
+        -H "Accept: application/json" \
+        -H "Connection: Upgrade" \
+        -H "Upgrade: websocket" \
+        -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+        -H "Sec-WebSocket-Version: 13" \
+        "http://localhost:4000/wss" 2>&1 | grep -oP '(?<=HTTP/1.1 )\d{3}')
+    if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+        log_success "Container internal WebSocket endpoint successful (HTTP $status)"
+    else
+        log_error "Container internal WebSocket endpoint failed (HTTP $status)"
+        ((failed++))
+    fi
+    
+    if [ $failed -eq 0 ]; then
+        log_success "All container internal endpoints passed"
+    else
+        log_error "$failed container internal endpoint tests failed"
+    fi
+    
+    return $failed
+}
+
+# Function to test backend directly
+test_backend_directly() {
+    local failed=0
+    log_header "Testing backend directly"
+    
+    # Test backend on port 3001
+    log_info "Testing backend endpoints on port 3001..."
+    
+    # Test graph data endpoint
+    local status=$(docker exec $CONTAINER_NAME curl -s -o /dev/null -w "%{http_code}" \
+        -H "Accept: application/json" "http://localhost:3001/api/graph/data")
+    if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+        log_success "Backend graph data endpoint successful (HTTP $status)"
+    else
+        log_error "Backend graph data endpoint failed (HTTP $status)"
+        ((failed++))
+    fi
+    
+    # Test various settings endpoints
+    local settings_endpoints=(
+        "/api/settings"
+        "/api/settings/visualization"
+        "/api/settings/websocket"
+        "/api/settings/system"
+        "/api/settings/all"
+    )
+    
+    for endpoint in "${settings_endpoints[@]}"; do
+        log_info "Testing $endpoint..."
+        status=$(docker exec $CONTAINER_NAME curl -s -o /dev/null -w "%{http_code}" \
+            -H "Accept: application/json" "http://localhost:3001$endpoint")
+        if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+            log_success "Backend $endpoint successful (HTTP $status)"
+        else
+            log_error "Backend $endpoint failed (HTTP $status)"
+            ((failed++))
+        fi
     done
     
-    # Print final summary
-    echo
-    log_header "Test Summary:"
+    if [ $failed -eq 0 ]; then
+        log_success "All backend tests passed"
+    else
+        log_error "$failed backend tests failed"
+    fi
+    
+    return $failed
+}
+
+# Function to test RAGFlow network connectivity
+test_ragflow_connectivity() {
+    local failed=0
+    log_header "Testing RAGFlow network connectivity"
+    
+    # Test RAGFlow server connectivity
+    docker exec $CONTAINER_NAME curl -s -f -H "Accept: application/json" "http://ragflow-server/v1/" > /dev/null || {
+        log_error "RAGFlow server connectivity failed"
+        ((failed++))
+    }
+    
+    # Test Redis connectivity
+    docker exec $CONTAINER_NAME curl -s -H "Accept: application/json" "http://ragflow-redis:6379/ping" > /dev/null || {
+        log_error "RAGFlow Redis connectivity failed"
+        ((failed++))
+    }
+    
+    # Test MySQL connectivity (just check if port is open)
+    docker exec $CONTAINER_NAME timeout 1 bash -c "cat < /dev/null > /dev/tcp/ragflow-mysql/3306" 2>/dev/null || {
+        log_error "RAGFlow MySQL connectivity failed"
+        ((failed++))
+    }
+    
+    # Test Elasticsearch connectivity
+    docker exec $CONTAINER_NAME curl -s -f -H "Accept: application/json" "http://ragflow-es-01:9200/_cluster/health" > /dev/null || {
+        log_error "RAGFlow Elasticsearch connectivity failed"
+        ((failed++))
+    }
+    
+    if [ $failed -eq 0 ]; then
+        log_success "All RAGFlow network connectivity tests passed"
+    else
+        log_error "$failed RAGFlow network connectivity tests failed"
+    fi
+    
+    return $failed
+}
+
+# Function to check container logs
+check_container_logs() {
+    local container_name="$1"
+    local lines="${2:-50}"
+    
+    log_header "Container Logs ($container_name)"
+    
+    # Show container status
+    local status=$(docker inspect -f '{{.State.Status}}' "$container_name" 2>/dev/null)
+    local health=$(docker inspect -f '{{.State.Health.Status}}' "$container_name" 2>/dev/null)
+    local started=$(docker inspect -f '{{.State.StartedAt}}' "$container_name" 2>/dev/null)
+    local networks=$(docker inspect -f '{{range $net, $conf := .NetworkSettings.Networks}}{{$net}} {{end}}' "$container_name" 2>/dev/null)
+    
+    log_info "Status: $status"
+    log_info "Health: $health"
+    log_info "Started At: $started"
+    log_info "Networks: $networks"
+    
+    # Show recent health check logs, filtering out large JSON responses
+    log_info "Recent health check logs:"
+    docker logs "$container_name" 2>&1 | grep -v '{"nodes":\[{' | grep -v '"edges":\[{' | tail -n "$lines"
+    
+    # Show recent container logs
+    log_info "Last $lines lines of container logs:"
+    docker logs "$container_name" 2>&1 | grep -v '{"nodes":\[{' | grep -v '"edges":\[{' | grep "\[" | tail -n "$lines"
+}
+
+# Function to check nginx config
+check_nginx_config() {
+    log_header "Nginx Configuration"
+    
+    # Check nginx config inside container
+    docker exec $CONTAINER_NAME nginx -T 2>/dev/null | grep -A 10 "location /api" || {
+        log_error "Failed to get nginx configuration"
+        return 1
+    }
+    
+    # Check nginx process
+    docker exec $CONTAINER_NAME ps aux | grep "[n]ginx" || {
+        log_error "Nginx process not running"
+        return 1
+    }
+    
+    return 0
+}
+
+# Main execution
+main() {
+    local total_failed=0
+    
+    # Check container logs first
+    check_container_logs "$CONTAINER_NAME"
+    
+    # Check nginx configuration
+    check_nginx_config
+    total_failed=$((total_failed + $?))
+    
+    # Test backend directly first
+    test_backend_directly
+    total_failed=$((total_failed + $?))
+    
+    # Test container internal endpoints
+    test_container_endpoints
+    total_failed=$((total_failed + $?))
+    
+    # Test RAGFlow network connectivity
+    test_ragflow_connectivity
+    total_failed=$((total_failed + $?))
+    
+    # Test each environment's endpoints
+    for env in "${!ENDPOINTS[@]}"; do
+        test_environment "$env"
+        total_failed=$((total_failed + $?))
+    done
+    
+    # If any tests failed, show logs again
+    if [ $total_failed -gt 0 ]; then
+        log_header "Test Failed - Showing Recent Logs"
+        check_container_logs "$CONTAINER_NAME" 100
+    fi
+    
+    # Final summary
+    log_header "Test Summary"
     if [ $total_failed -eq 0 ]; then
-        log_success "All tests passed successfully!"
+        log_success "All tests passed!"
         exit 0
     else
-        log_error "${total_failed} tests failed"
+        log_error "$total_failed total test(s) failed"
         exit 1
     fi
 }
