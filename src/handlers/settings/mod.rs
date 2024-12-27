@@ -105,7 +105,7 @@ fn get_category_settings(settings: &Settings, category: &str) -> Result<Value, S
 }
 
 // GET /api/settings
-#[get("")]
+#[get("/")]
 async fn get_all_settings_handler(
     settings: web::Data<Arc<RwLock<Settings>>>,
 ) -> HttpResponse {
@@ -162,7 +162,7 @@ async fn update_setting_handler(
         Err(e) => HttpResponse::BadRequest().json(SettingResponse {
             category,
             setting,
-            value: value.into_inner(),
+            value: Value::Null,
             success: false,
             error: Some(e),
         }),
@@ -179,20 +179,18 @@ async fn get_category_settings_handler(
     let settings_guard = settings.read().await;
     
     match get_category_settings(&settings_guard, &category) {
-        Ok(value) => {
-            let settings_map = value.as_object()
-                .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-                .unwrap_or_default();
-            
-            HttpResponse::Ok().json(CategorySettingsResponse {
-                category: category.clone(),
-                settings: settings_map,
-                success: true,
-                error: None,
-            })
-        },
+        Ok(settings) => HttpResponse::Ok().json(CategorySettingsResponse {
+            category,
+            settings: settings.as_object()
+                .map(|obj| obj.iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect::<HashMap<String, Value>>())
+                .unwrap_or_default(),
+            success: true,
+            error: None,
+        }),
         Err(e) => HttpResponse::BadRequest().json(CategorySettingsResponse {
-            category: category.clone(),
+            category,
             settings: HashMap::new(),
             success: false,
             error: Some(e),
@@ -202,11 +200,8 @@ async fn get_category_settings_handler(
 
 // Register all settings handlers
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/settings")
-            .service(get_all_settings_handler)
-            .service(get_setting_handler)
-            .service(update_setting_handler)
-            .service(get_category_settings_handler)
-    );
+    cfg.service(get_all_settings_handler)
+       .service(get_setting_handler)
+       .service(update_setting_handler)
+       .service(get_category_settings_handler);
 }

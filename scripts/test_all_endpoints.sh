@@ -266,9 +266,10 @@ test_backend_directly() {
         ((failed++))
     fi
     
-    # Test various settings endpoints
+    # Test settings endpoints with and without trailing slash
     local settings_endpoints=(
         "/api/settings"
+        "/api/settings/"
         "/api/settings/visualization"
         "/api/settings/websocket"
         "/api/settings/system"
@@ -380,6 +381,29 @@ check_nginx_config() {
     return 0
 }
 
+# Function to wait for webxr to be ready
+wait_for_webxr() {
+    local max_attempts=30
+    local attempt=1
+    local delay=2
+    
+    log_info "Waiting for webxr container to be ready..."
+    
+    while [ $attempt -le $max_attempts ]; do
+        if docker logs $CONTAINER_NAME 2>&1 | grep -q "Frontend is healthy"; then
+            log_success "webxr container is ready"
+            return 0
+        fi
+        log_info "Attempt $attempt/$max_attempts: webxr not ready yet, waiting ${delay}s..."
+        sleep $delay
+        ((attempt++))
+    done
+    
+    log_error "Timed out waiting for webxr container to be ready"
+    docker logs $CONTAINER_NAME
+    return 1
+}
+
 # Main execution
 main() {
     local total_failed=0
@@ -390,6 +414,11 @@ main() {
     # Check nginx configuration
     check_nginx_config
     total_failed=$((total_failed + $?))
+    
+    # Wait for webxr to be ready before testing endpoints
+    if ! wait_for_webxr; then
+        exit 1
+    fi
     
     # Test backend directly first
     test_backend_directly
