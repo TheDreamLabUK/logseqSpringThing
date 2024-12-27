@@ -22,11 +22,9 @@ This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it
 - **Real-time Updates:**
   - **WebSocket-Based Communication:** Ensures instant synchronization between the server and client.
   - **Optimized Binary Protocol:** 
-    - Efficient quantized position updates (millimeter precision)
-    - Quantized velocity updates (0.0001 unit precision)
-    - Compact 28-byte format per node (4-byte header + 24 bytes position/velocity)
-  - **Automatic Graph Layout Recalculation:** Maintains an optimal layout as the graph evolves.
-  - **Live Preview of Changes:** Immediate reflection of updates from the knowledge base.
+    - Efficient position updates 
+    - velocity updates
+    - The binary protocol sends 6 floats per node (position + velocity).
 
 - **GPU Acceleration:**
   - **WebGPU Compute Shaders for Layout Calculation:** Utilizes GPU for high-performance graph computations.
@@ -71,22 +69,19 @@ This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it
 The WebSocket binary protocol has been optimized for efficient position updates:
 
 ```
-[4 bytes] is_initial_layout flag (float32)
-For each node:
-  [12 bytes] Position (3 × int32, quantized to millimeter precision)
-  [12 bytes] Velocity (3 × int32, quantized to 0.0001 units)
+
 ```
 
 This format provides:
-- Minimal bandwidth usage through quantization
-- High precision where needed (millimeter-level positioning)
+- Minimal bandwidth usage 
+- High precision where needed 
 - Efficient parsing on both client and server
 - Clear distinction between initial and update messages
 
 ### Performance Optimizations
 
 - **Network Efficiency:**
-  - Quantized position and velocity values
+  - position and velocity values
   - Compact binary message format
   - Minimal protocol overhead
   - Efficient WebSocket streaming
