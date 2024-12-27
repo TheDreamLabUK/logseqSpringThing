@@ -72,6 +72,25 @@ container_is_running() {
     docker ps -q -f name="^/${container_name}$" > /dev/null 2>&1
 }
 
+# Function to setup environment
+setup_env() {
+    # Change to project root
+    cd "$PROJECT_ROOT" || {
+        error "Failed to change to project root directory"
+        exit 1
+    }
+
+    # Check environment
+    if [ ! -f .env ]; then
+        warn ".env file not found in $PROJECT_ROOT"
+    else
+        debug "Loading .env file..."
+        set -a
+        source .env || warn "Error sourcing .env file"
+        set +a
+    fi
+}
+
 # Function to wait for container to be ready
 wait_for_container() {
     local container_name="$1"
@@ -131,14 +150,22 @@ rebuild_container() {
     local service_name="$2"
     info "Rebuilding $container_name..."
     
+    # Stop and remove all containers and volumes
+    info "Stopping and removing containers..."
+    $DOCKER_COMPOSE down -v
+    docker rm -f "$container_name" 2>/dev/null || true
+    docker volume prune -f
+    
+    # Build the image
     if ! $DOCKER_COMPOSE build "$service_name"; then
         error "Failed to build $container_name"
         return 1
     fi
     
-    info "Restarting $container_name..."
+    # Start the container
+    info "Starting $container_name..."
     if ! $DOCKER_COMPOSE up -d "$service_name"; then
-        error "Failed to restart $container_name"
+        error "Failed to start $container_name"
         return 1
     fi
     
@@ -200,6 +227,20 @@ test_backend() {
     fi
 }
 
+# Function to show endpoints
+show_endpoints() {
+    echo
+    info "Services are running!"
+    echo "HTTP:      http://localhost:4000"
+    echo "WebSocket: ws://localhost:4000/wss"
+    echo
+    info "Available commands:"
+    echo "logs:    $DOCKER_COMPOSE logs -f"
+    echo "stop:    $DOCKER_COMPOSE down"
+    echo "restart: $DOCKER_COMPOSE restart"
+    echo
+}
+
 # Function to handle cleanup on exit
 cleanup() {
     info "Cleaning up..."
@@ -215,11 +256,18 @@ trap cleanup EXIT
 main() {
     local command="${1:-start}"
     
+    # Setup environment first
+    setup_env
+    
     case "$command" in
         "start")
             info "Starting containers..."
             $DOCKER_COMPOSE up -d
-            wait_for_container "$WEBXR_CONTAINER"
+            if wait_for_container "$WEBXR_CONTAINER"; then
+                show_endpoints
+                info "Showing logs (Ctrl+C to exit)..."
+                $DOCKER_COMPOSE logs -f
+            fi
             ;;
         "stop")
             info "Stopping containers..."
@@ -228,10 +276,14 @@ main() {
         "restart")
             info "Restarting containers..."
             $DOCKER_COMPOSE up -d
-            wait_for_container "$WEBXR_CONTAINER"
+            if wait_for_container "$WEBXR_CONTAINER"; then
+                show_endpoints
+            fi
             ;;
         "rebuild")
-            rebuild_container "$WEBXR_CONTAINER" "$WEBXR_SERVICE"
+            if rebuild_container "$WEBXR_CONTAINER" "$WEBXR_SERVICE"; then
+                show_endpoints
+            fi
             ;;
         "test")
             if ! wait_for_container "$WEBXR_CONTAINER"; then
@@ -245,9 +297,13 @@ main() {
             fi
             test_backend
             ;;
+        "logs")
+            info "Showing logs (Ctrl+C to exit)..."
+            $DOCKER_COMPOSE logs -f
+            ;;
         *)
             error "Unknown command: $command"
-            echo "Usage: $0 [start|stop|restart|rebuild|test|rebuild-test]"
+            echo "Usage: $0 [start|stop|restart|rebuild|test|rebuild-test|logs]"
             exit 1
             ;;
     esac

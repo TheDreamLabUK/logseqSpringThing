@@ -793,7 +793,50 @@ graph TB
     class NewPositions,VisualizationData outputBufferStyle
 ```
 
+## Development
 
+### Development Scripts
+
+The project includes a comprehensive development script (`scripts/dev.sh`) that provides various commands for managing the Docker containers and testing the application:
+
+```bash
+# Start the application
+./scripts/dev.sh start
+
+# Stop all containers
+./scripts/dev.sh stop
+
+# Rebuild and restart containers
+./scripts/dev.sh rebuild
+
+# Run tests
+./scripts/dev.sh test
+
+# View container logs
+./scripts/dev.sh logs
+
+# Show available endpoints
+./scripts/dev.sh endpoints
+
+# Rebuild and test in one command
+./scripts/dev.sh rebuild-test
+```
+
+The script provides the following features:
+- **Environment Setup**: Automatically loads environment variables from `.env`
+- **Container Management**: Start, stop, rebuild, and monitor Docker containers
+- **Health Checks**: Verifies container health and endpoint availability
+- **Error Handling**: Robust error handling and cleanup procedures
+- **Logging**: Detailed logging with timestamps and color-coding
+- **Endpoint Testing**: Automated testing of backend endpoints
+
+### Environment Variables
+
+The following environment variables can be set in `.env`:
+- `PORT`: The port to run the server on (default: 3000)
+- `DEBUG`: Enable debug logging (1 for enabled, 0 for disabled)
+- `RAGFLOW_URL`: URL for the RAGFlow service
+- Other service-specific variables (see `.env.example`)
 
 ## Contributing
 
@@ -899,4 +942,3 @@ If you encounter any bugs or have feature requests, please open an issue in the 
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-

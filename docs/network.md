@@ -18,11 +18,9 @@ Graph Data:
 
 Settings: 
 - GET /api/settings (get all settings)
-- GET /api/settings/visualization (get all visualization settings)
 - GET /api/settings/{category} (get all settings for a category)
 - GET /api/settings/{category}/{setting} (get individual setting)
 - PUT /api/settings/{category}/{setting} (update individual setting)
-- GET /api/settings/websocket (WebSocket control API)
 
 Categories include:
 - system.network
@@ -40,156 +38,68 @@ Categories include:
 - visualization.physics
 - visualization.rendering
 
-Other API endpoints: /api/files/fetch, /api/chat/*, /api/perplexity.
+Other API endpoints: 
+- /api/files/fetch: Fetch file contents from the repository
+- /api/chat/*: AI chat endpoints for RAGFlow integration
+- /api/perplexity: Perplexity AI integration endpoints
 
 WebSocket Handling (actix-web-actors): 
 - Binary Protocol (/wss endpoint): 
   - Uses a binary protocol for efficient real-time position and velocity updates
   - Optimized format with 6 floats per node (position + velocity)
-- WebSocket Control API (/api/visualization/settings/websocket):
-  - REST-based control plane for WebSocket configuration
-  - Manages settings, heartbeat intervals
-  - Allows runtime updates to WebSocket behavior without connection disruption
-  - Separates control logic from high-frequency data updates
-- Connection Management:
-  - Configurable update rate (framerate)
-  - Robust reconnection logic with configurable attempts and delays
-  - Connection status tracking and notifications
-- Heartbeat:
-  - Configurable ping/pong intervals
-  - Timestamp-based health monitoring
-  - Automatic reconnection on timeout
-- Error Handling:
-  - Comprehensive error types and status codes
-  - Detailed error reporting and logging
-  - Graceful failure recovery
+  - Supports compression for large graph updates
+  - Includes heartbeat mechanism for connection health monitoring
 
-RAGFlow Integration:
-- Network Integration: Joins the RAGFlow Docker network (docker_ragflow)
-- Service Discovery: Uses Docker network aliases for service communication
-- Optional Connectivity: Gracefully handles RAGFlow availability
-- Health Checks: Monitors RAGFlow service health without direct dependencies
+3. Client-Side (TypeScript/Three.js)
 
-Security:
-- Handled by cloudflared tunnel and docker
+The client maintains several key connections:
 
-Port Configuration:
-- Nginx Frontend: Listens on port 4000 for external connections
-- Rust Backend: Runs on port 3001 internally (configurable via PORT env var)
-- Nginx Proxy Configuration:
-  - WebSocket Binary Protocol (/wss):
-    - Disabled buffering and caching for real-time communication
-    - Extended timeouts: 3600s read/send, 75s connect
-    - Proper connection upgrade handling
-    - Optimized for binary data streaming
-  - WebSocket Control API (/api/visualization/settings):
-    - Standard API timeouts: 60s read/send/connect
-    - Enabled buffering for REST responses
-    - Handles WebSocket configuration updates
-  - API Endpoints (/api):
-    - Enabled buffering with 128k buffer size
-    - 60s timeouts for read/send/connect
-    - Enhanced proxy buffers (4 x 256k)
-  - Graph Endpoints (/graph):
-    - 30s connect timeout matching heartbeat interval
-    - No-store cache control
-- Health Checks: 
-  - Regular HTTP and WebSocket endpoint monitoring
-  - 10-second interval checks with 5-second timeout
-  - 5 retries with 10-second start period
-
-3. Client-Side (TypeScript)
-
-Initialization:
-- The client loads initial graph data from /api/graph/paginated using pagination
-- The client loads all visualization settings from /api/visualization/settings/{category}
-- WebSocket initialization follows a two-step process:
-  1. Control Setup (/api/visualization/settings/websocket):
-     - Load WebSocket configuration settings
-     - Set up error handling and reconnection policies
-  2. Binary Connection (/wss):
-     - Establish WebSocket connection for real-time updates
-     - Use binary protocol for position/velocity data
-     - Handle heartbeat and connection lifecycle
-
-REST API Interaction:
+REST API Communication:
 - Initial Graph Data: Retrieving the initial graph data using pagination
 - Settings: Loading category settings, getting/updating individual settings
+- File Content: Fetching markdown and other file contents as needed
+- AI Integration: Communicating with RAGFlow and Perplexity services
 
-WebSocket Connection and it's REST management system: 
+WebSocket Connection:
 - Establishes WebSocket connection for real-time updates
-- Implements reconnection logic with configurable attempts (default: 3)
-- Configurable settings for:
-  - Heartbeat interval (default: 15s)
-  - Heartbeat timeout (default: 60s)
-  - Reconnect delay (default: 5s)
-- Comprehensive error handling and status notifications
+- Handles binary protocol for position/velocity updates
+- Implements reconnection logic with exponential backoff
+- Processes compressed data for large graph updates
 
-4. Docker Networking
+4. Development and Testing
 
-The application uses Docker networking for service communication:
+The application includes several scripts for testing network functionality:
+- `scripts/dev.sh`: Main development script with commands for:
+  - Starting/stopping containers
+  - Testing endpoints
+  - Viewing logs
+  - Rebuilding services
+- `scripts/test-api.sh`: Tests individual API endpoints
+- `scripts/test_all_endpoints.sh`: Comprehensive API endpoint testing
 
-RAGFlow Integration:
-```yaml
-networks:
-  ragflow:
-    external: true
-    name: docker_ragflow  # RAGFlow's network from docker network ls
-```
+5. Security Considerations
 
-Service Configuration:
-```yaml
-services:
-  webxr:
-    networks:
-      ragflow:
-        aliases:
-          - logseq-xr-webxr
-          - webxr-client
-    deploy:
-      resources:
-        limits:
-          cpus: '16.0'
-          memory: 64G
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ['0']
-              capabilities: [gpu]
-```
+- All WebSocket connections use WSS (WebSocket Secure)
+- API endpoints require proper authentication headers
+- Rate limiting is implemented on sensitive endpoints
+- Environment variables are used for sensitive configuration
+- CORS is properly configured for development and production
 
-Cloudflare Tunnel:
-The application uses Cloudflare's tunnel service for secure external access:
-- Runs as a separate container (cloudflared-tunnel)
-- Environment Configuration:
-  - TUNNEL_METRICS: Exposed on 0.0.0.0:2000
-  - TUNNEL_DNS_UPSTREAM: Uses 1.1.1.1 and 1.0.0.1
-  - TUNNEL_TRANSPORT_PROTOCOL: Uses HTTP/2
-  - TUNNEL_WEBSOCKET_ENABLE: Enabled for WebSocket support
-  - TUNNEL_WEBSOCKET_HEARTBEAT_INTERVAL: 30s
-  - TUNNEL_WEBSOCKET_TIMEOUT: 3600s
-  - TUNNEL_RETRIES: 5 attempts
-  - TUNNEL_GRACE_PERIOD: 30s
-- Provides secure tunneling without exposing ports directly
-- Configuration managed through config.yml with ingress rules
+6. Performance Optimizations
 
-Health Check System:
-- Container Health: Docker healthcheck monitors service availability
-- Backend Health: Rust service monitors internal state and dependencies
-- Frontend Health: Nginx monitors backend connectivity
-- RAGFlow Health: Periodic checks for RAGFlow service availability
-- Metrics: Health status exposed through container metrics
+Network optimizations include:
+- Binary protocol for WebSocket updates
+- Compression for large data transfers
+- Pagination for initial graph loading
+- Efficient settings updates (only changed values)
+- Connection pooling for database operations
+- Caching of frequently accessed data
 
-Clear Protocol Definition:
-Binary format details (24 bytes per node)
-Exact message types (binary updates, ping/pong)
-Simplified Configuration:
-Clear separation between REST and WebSocket responsibilities
-Performance Focus:
-Direct binary transmission
-No JSON overhead
-Efficient TypedArray usage
-Clear Client Flow:
-Step-by-step initialization process
-Explicit data flow patterns
-Error handling and performance considerations
+7. Error Handling
+
+The system implements robust error handling:
+- Automatic WebSocket reconnection
+- Graceful degradation on connection loss
+- Clear error messages for API failures
+- Logging of network-related issues
+- Recovery mechanisms for interrupted operations

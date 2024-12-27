@@ -105,7 +105,7 @@ fn get_category_settings(settings: &Settings, category: &str) -> Result<Value, S
 }
 
 // GET /api/settings
-#[get("/")]
+#[get("")]
 async fn get_all_settings_handler(
     settings: web::Data<Arc<RwLock<Settings>>>,
 ) -> HttpResponse {
