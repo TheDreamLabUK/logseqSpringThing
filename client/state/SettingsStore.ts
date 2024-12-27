@@ -21,6 +21,7 @@ export class SettingsStore {
     private static instance: SettingsStore | null = null;
     private settings: Settings;
     private initialized: boolean = false;
+    private initializationPromise: Promise<void> | null = null;
     private pendingChanges: Set<string> = new Set();
     private subscribers: Map<string, Set<SettingsChangeCallback>> = new Map();
     private syncTimer: number | null = null;
@@ -40,40 +41,86 @@ export class SettingsStore {
     }
 
     public async initialize(): Promise<void> {
+        // If already initialized or initializing, return existing promise
         if (this.initialized) {
-            return;
+            return Promise.resolve();
+        }
+        if (this.initializationPromise) {
+            return this.initializationPromise;
         }
 
-        try {
-            // Try to fetch settings from API
+        this.initializationPromise = (async () => {
             try {
-                const response = await fetch(API_ENDPOINTS.SETTINGS);
-                if (response.ok) {
-                    const flatSettings = await response.json();
-                    this.settings = this.unflattenSettings(flatSettings);
-                    logger.info('Settings loaded from API');
-                } else {
-                    throw new Error(`Failed to fetch settings: ${response.statusText}`);
+                // Try to fetch settings from API
+                try {
+                    const response = await fetch(API_ENDPOINTS.SETTINGS);
+                    if (response.ok) {
+                        const settings = await response.json();
+                        this.settings = { ...defaultSettings, ...settings };
+                        logger.info('Settings loaded from API');
+                    } else {
+                        throw new Error(`Failed to fetch settings: ${response.statusText}`);
+                    }
+                } catch (error) {
+                    logger.warn('Failed to fetch settings from API, using defaults');
+                    this.settings = { ...defaultSettings };
                 }
+
+                // Start sync timer if auto-save is enabled
+                if (this.options.autoSave) {
+                    this.startSyncTimer();
+                }
+
+                this.initialized = true;
+                logger.info('SettingsStore initialized');
             } catch (error) {
-                logger.warn('Failed to fetch settings from API, using defaults');
+                logger.error('Failed to initialize settings:', error);
+                // Use defaults on error
                 this.settings = { ...defaultSettings };
+                this.initialized = true;
             }
+        })();
 
-            // Start sync timer if auto-save is enabled
-            if (this.options.autoSave) {
-                this.startSyncTimer();
-            }
+        return this.initializationPromise;
+    }
 
-            this.initialized = true;
-            logger.info('SettingsStore initialized');
-        } catch (error) {
-            logger.error('Failed to initialize settings:', error);
-            throw error;
+    public isInitialized(): boolean {
+        return this.initialized;
+    }
+
+    public async subscribe(path: string, callback: SettingsChangeCallback): Promise<() => void> {
+        // Wait for initialization if not already initialized
+        if (!this.initialized) {
+            await this.initialize();
         }
+
+        if (!this.subscribers.has(path)) {
+            this.subscribers.set(path, new Set());
+        }
+        this.subscribers.get(path)?.add(callback);
+
+        // Immediately call callback with current value
+        const value = this.get(path);
+        if (value !== undefined) {
+            callback(path, value);
+        }
+
+        // Return unsubscribe function
+        return () => {
+            const pathSubscribers = this.subscribers.get(path);
+            if (pathSubscribers) {
+                pathSubscribers.delete(callback);
+                if (pathSubscribers.size === 0) {
+                    this.subscribers.delete(path);
+                }
+            }
+        };
     }
 
     private startSyncTimer(): void {
+        if (this.syncTimer !== null) {
+            window.clearInterval(this.syncTimer);
+        }
         this.syncTimer = window.setInterval(
             () => this.saveChanges(),
             this.options.syncInterval
@@ -85,27 +132,31 @@ export class SettingsStore {
             return;
         }
 
-        for (const path of this.pendingChanges) {
-            const [category, setting] = path.split('.');
-            if (!category || !setting) continue;
+        const changes = Array.from(this.pendingChanges);
+        this.pendingChanges.clear();
 
+        for (const path of changes) {
             try {
                 const value = this.get(path);
-                const response = await fetch(API_ENDPOINTS.SETTINGS_ITEM(category, setting), {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ value })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Failed to save setting ${path}: ${response.statusText}`);
-                }
+                await this.saveSetting(path, value);
             } catch (error) {
                 logger.error(`Failed to save setting ${path}:`, error);
+                // Re-add to pending changes for retry
+                this.pendingChanges.add(path);
             }
         }
+    }
 
-        this.pendingChanges.clear();
+    private async saveSetting(path: string, value: unknown): Promise<void> {
+        const response = await fetch(API_ENDPOINTS.SETTINGS_UPDATE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path, value })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to save setting ${path}: ${response.statusText}`);
+        }
     }
 
     public get(path: string): unknown {
@@ -156,65 +207,6 @@ export class SettingsStore {
             this.notifySubscribers(path, value);
         } catch (error) {
             logger.error(`Error setting value at path ${path}:`, error);
-            throw error;
-        }
-    }
-
-    private unflattenSettings(flatSettings: Record<string, unknown>): Settings {
-        const result: any = {};
-        
-        for (const [path, value] of Object.entries(flatSettings)) {
-            const parts = path.split('.');
-            let current = result;
-            
-            for (let i = 0; i < parts.length - 1; i++) {
-                const part = parts[i];
-                if (!(part in current)) {
-                    current[part] = {};
-                }
-                current = current[part];
-            }
-            
-            current[parts[parts.length - 1]] = value;
-        }
-        
-        return result as Settings;
-    }
-
-    public subscribe(path: string, callback: SettingsChangeCallback): () => void {
-        if (!this.initialized) {
-            logger.warn('Attempting to subscribe before initialization');
-            throw new Error('SettingsStore not initialized');
-        }
-
-        try {
-            if (!this.subscribers.has(path)) {
-                this.subscribers.set(path, new Set());
-            }
-            const pathSubscribers = this.subscribers.get(path)!;
-            pathSubscribers.add(callback);
-
-            // Immediately notify subscriber with current value
-            const currentValue = this.get(path);
-            if (currentValue !== undefined) {
-                try {
-                    callback(path, currentValue);
-                } catch (error) {
-                    logger.error(`Error in initial callback for ${path}:`, error);
-                }
-            }
-
-            return () => {
-                const pathSubscribers = this.subscribers.get(path);
-                if (pathSubscribers) {
-                    pathSubscribers.delete(callback);
-                    if (pathSubscribers.size === 0) {
-                        this.subscribers.delete(path);
-                    }
-                }
-            };
-        } catch (error) {
-            logger.error(`Error setting up subscription for ${path}:`, error);
             throw error;
         }
     }

@@ -108,41 +108,38 @@ export class SettingsManager {
         return this.settings[category];
     }
 
-    public subscribe(path: SettingsPath, callback: (value: SettingValue) => void): () => void {
-        if (!isValidSettingPath(path)) {
-            throw new Error(`Invalid settings path: ${path}`);
-        }
+    public subscribe(path: string, callback: (value: unknown) => void): () => void {
+        const store = SettingsStore.getInstance();
+        let unsubscriber: (() => void) | undefined;
+        
+        store.subscribe(path, (_, value) => {
+            callback(value);
+        }).then(unsub => {
+            unsubscriber = unsub;
+        });
 
-        try {
-            // Get current value for immediate notification
-            const currentValue = this.get(path);
-            try {
-                callback(currentValue);
-            } catch (error) {
-                logger.error(`Error in initial settings callback for ${path}:`, error);
+        return () => {
+            if (unsubscriber) {
+                unsubscriber();
             }
-
-            // Set up subscription if store is initialized
-            if (this.initialized) {
-                return this.store.subscribe(path, (_, value) => {
-                    try {
-                        callback(value as SettingValue);
-                    } catch (error) {
-                        logger.error(`Error in settings subscriber for ${path}:`, error);
-                    }
-                });
-            } else {
-                logger.warn(`Subscription for ${path} not set up - store not initialized`);
-                return () => {}; // Return no-op cleanup function
-            }
-        } catch (error) {
-            logger.error(`Error setting up subscription for ${path}:`, error);
-            throw error;
-        }
+        };
     }
 
     public onSettingChange(path: SettingsPath, callback: (value: SettingValue) => void): () => void {
-        return this.subscribe(path, callback);
+        const store = SettingsStore.getInstance();
+        let unsubscriber: (() => void) | undefined;
+        
+        store.subscribe(path, (_, value) => {
+            callback(value as SettingValue);
+        }).then(unsub => {
+            unsubscriber = unsub;
+        });
+
+        return () => {
+            if (unsubscriber) {
+                unsubscriber();
+            }
+        };
     }
 
     public async batchUpdate(updates: Array<{ path: SettingsPath; value: SettingValue }>): Promise<void> {

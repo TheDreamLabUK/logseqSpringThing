@@ -23,7 +23,7 @@ export class ControlPanel {
             await this.settingsStore.initialize();
             this.settings = this.settingsStore.get('') as Settings;
             this.createPanelElements();
-            this.setupSettingsSubscriptions();
+            await this.setupSettingsSubscriptions();
         } catch (error) {
             logger.error('Failed to initialize control panel:', error);
         }
@@ -228,16 +228,40 @@ export class ControlPanel {
         this.unsubscribers.forEach(unsub => unsub());
         this.unsubscribers = [];
 
+        const settings = this.settingsStore;
+        let unsubscriber: (() => void) | undefined;
+
+        // Subscribe to settings changes
+        settings.subscribe('visualization.labels.enableLabels', (value) => {
+            this.updateLabelVisibility(typeof value === 'boolean' ? value : value === 'true');
+        }).then(unsub => {
+            unsubscriber = unsub;
+            if (unsubscriber) {
+                this.unsubscribers.push(unsubscriber);
+            }
+        });
+
         const flatSettings = this.flattenSettings(this.settings);
         for (const path of Object.keys(flatSettings)) {
-            const unsubscribe = this.settingsStore.subscribe(path, (_: string, value: unknown) => {
-                this.updateSettingElement(path, value);
+            settings.subscribe(path, (value) => {
+                this.updateSettingValue(path, value);
+            }).then(unsub => {
+                if (unsub) {
+                    this.unsubscribers.push(unsub);
+                }
             });
-            this.unsubscribers.push(unsubscribe);
         }
     }
 
-    private updateSettingElement(path: string, value: unknown): void {
+    private updateLabelVisibility(value: boolean): void {
+        // Update label visibility in the UI
+        const labelElements = document.querySelectorAll('.node-label');
+        labelElements.forEach(el => {
+            (el as HTMLElement).style.display = value ? 'block' : 'none';
+        });
+    }
+
+    private updateSettingValue(path: string, value: unknown): void {
         const element = document.getElementById(`setting-${path}`);
         if (!element) {
             logger.warn(`No element found for setting: ${path}`);

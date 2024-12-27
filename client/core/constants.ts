@@ -23,6 +23,7 @@ export const API_ENDPOINTS = {
     GRAPH_UPDATE: '/api/graph/update',
     GRAPH_PAGINATED: '/api/graph/paginated',
     SETTINGS: '/api/settings',
+    SETTINGS_UPDATE: '/api/settings/update',
     SETTINGS_CATEGORY: (category: string) => `/api/settings/${category}`,
     SETTINGS_ITEM: (category: string, setting: string) => `/api/settings/${category}/${setting}`,
     VISUALIZATION_SETTINGS: '/api/settings/visualization',
