@@ -1,54 +1,32 @@
-import { API_BASE, API_ENDPOINTS, SETTINGS_CATEGORIES } from './constants';
+import { API_BASE, API_ENDPOINTS, API_PATHS } from './constants';
 
 // Helper function to build API URLs
 export function buildApiUrl(path: string): string {
-    // Handle both endpoint constants and dynamic paths
-    if (path.startsWith('/api/')) {
-        return `${API_BASE}${path}`;
+    // Handle API paths
+    const apiPaths = ['/api', '/api/settings'];
+    for (const apiPath of apiPaths) {
+        if (path.startsWith(apiPath)) {
+            return `${API_BASE}${path}`;
+        }
     }
     return `${API_BASE}/api/${path}`;
 }
 
 // Helper function to build settings URL
-export function buildSettingsUrl(category: keyof typeof SETTINGS_CATEGORIES, setting?: string): string {
-    // Get snake_case category from enum
-    const categorySnake = SETTINGS_CATEGORIES[category];
-    if (!categorySnake) {
-        throw new Error(`Invalid settings category: ${category}`);
-    }
-    
-    // Convert setting to snake_case if provided
-    const settingSnake = setting?.replace(/-/g, '_');
-    
-    const base = settingSnake 
-        ? `${API_ENDPOINTS.SETTINGS}/${categorySnake}/${settingSnake}`
-        : `${API_ENDPOINTS.SETTINGS}/${categorySnake}`;
-    return base;
+export function buildSettingsUrl(category: string): string {
+    return `${API_ENDPOINTS.SETTINGS}/${category}`;
 }
 
 // Helper function to build graph URL
-export function buildGraphUrl(type: 'data' | 'update' | 'paginated', params?: Record<string, string>): string {
-    let endpoint: string;
+export function buildGraphUrl(type: 'data' | 'update' | 'paginated'): string {
     switch (type) {
-        case 'data':
-            endpoint = API_ENDPOINTS.GRAPH_DATA;
-            break;
-        case 'update':
-            endpoint = API_ENDPOINTS.GRAPH_UPDATE;
-            break;
         case 'paginated':
-            endpoint = API_ENDPOINTS.GRAPH_PAGINATED;
-            break;
+            return API_ENDPOINTS.GRAPH_PAGINATED;
+        case 'update':
+            return API_ENDPOINTS.GRAPH_UPDATE;
         default:
-            throw new Error(`Invalid graph endpoint type: ${type}`);
+            return API_ENDPOINTS.GRAPH_DATA;
     }
-    
-    if (!params) return endpoint;
-    
-    const queryString = Object.entries(params)
-        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-        .join('&');
-    return `${endpoint}?${queryString}`;
 }
 
 // Helper function to build files URL
@@ -64,9 +42,24 @@ export function buildWsUrl(): string {
     
     if (isProduction) {
         // In production, always use wss:// with the domain
-        return `wss://www.visionflow.info/wss`;
+        return `wss://www.visionflow.info/${API_PATHS.WEBSOCKET}`;
     } else {
         // In development, use the current host with ws:// or wss://
-        return `${protocol}//${host}/wss`;
+        return `${protocol}//${host}/${API_PATHS.WEBSOCKET}`;
     }
+}
+
+// Helper function to build settings item URL
+export function buildSettingsItemUrl(category: string, setting: string): string {
+    return API_ENDPOINTS.SETTINGS_ITEM(category, setting);
+}
+
+// Helper function to build visualization settings URL
+export function buildVisualizationSettingsUrl(): string {
+    return API_ENDPOINTS.VISUALIZATION_SETTINGS;
+}
+
+// Helper function to build WebSocket control URL
+export function buildWebSocketControlUrl(): string {
+    return API_ENDPOINTS.WEBSOCKET_CONTROL;
 }

@@ -11,7 +11,7 @@ export const API_BASE = '';  // Empty string means use relative URLs
 
 // API paths
 export const API_PATHS = {
-    SETTINGS: 'visualization/settings',
+    SETTINGS: 'settings',
     WEBSOCKET: 'wss',
     GRAPH: 'graph',
     FILES: 'files'
@@ -19,13 +19,14 @@ export const API_PATHS = {
 
 // API endpoints
 export const API_ENDPOINTS = {
-    GRAPH_DATA: '/api/graph',
+    GRAPH_DATA: '/api/graph/data',
     GRAPH_UPDATE: '/api/graph/update',
     GRAPH_PAGINATED: '/api/graph/paginated',
-    SETTINGS: '/api/visualization/settings',
-    SETTINGS_CATEGORY: (category: string) => `/api/visualization/settings/${category}`,
-    SETTINGS_ITEM: (category: string, setting: string) => `/api/visualization/settings/${category}/${setting}`,
-    WEBSOCKET_CONTROL: '/api/visualization/settings/websocket',
+    SETTINGS: '/api/settings',
+    SETTINGS_CATEGORY: (category: string) => `/api/settings/${category}`,
+    SETTINGS_ITEM: (category: string, setting: string) => `/api/settings/${category}/${setting}`,
+    VISUALIZATION_SETTINGS: '/api/settings/visualization',
+    WEBSOCKET_CONTROL: '/api/settings/websocket',
     FILES: '/api/files'
 } as const;
 
@@ -55,14 +56,8 @@ export const SETTINGS_CATEGORIES = {
     DEFAULT: 'default'
 };
 
-// WebSocket URLs
-export const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/${API_PATHS.WEBSOCKET}`;
-
 // WebSocket configuration
-export const WS_RECONNECT_INTERVAL = 30000; // Match server's HEARTBEAT_INTERVAL
 export const WS_MESSAGE_QUEUE_SIZE = 1000;
-export const WS_HEARTBEAT_INTERVAL = 30000;  // 30 seconds - match server
-export const WS_HEARTBEAT_TIMEOUT = 60000;   // 60 seconds - match server
 
 // Binary protocol configuration
 export const FLOATS_PER_NODE = 6;  // x, y, z, vx, vy, vz

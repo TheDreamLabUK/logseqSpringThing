@@ -94,9 +94,14 @@ async fn main() -> std::io::Result<()> {
             .wrap(middleware::Logger::default())
             .app_data(app_state.clone())
             .service(
-                web::scope("/ws")
+                web::scope("/api")
+                    .service(web::scope("/settings").configure(webxr::settings::config))
+                    .service(web::scope("/graph").configure(webxr::graph_handler::config))
+            )
+            .service(
+                web::resource("/wss")
                     .app_data(web::PayloadConfig::new(1 << 25))  // 32MB max payload
-                    .route("/socket", web::get().to(socket_flow_handler))
+                    .route(web::get().to(socket_flow_handler))
             )
             .service(Files::new("/", static_files_path).index_file("index.html"))
     })

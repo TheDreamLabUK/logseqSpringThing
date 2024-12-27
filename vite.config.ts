@@ -50,13 +50,26 @@ export default defineConfig(({ mode, command }) => {
       port: 3001,
       host: true,
       proxy: {
-        '/wss': {  // Updated from /ws to /wss to match nginx
+        '/wss': {
           target: 'ws://localhost:4000',
-          ws: true
+          ws: true,
+          changeOrigin: true,
+          secure: false
+        },
+        '/api/settings': {
+          target: 'http://localhost:4000',
+          changeOrigin: true,
+          secure: false
+        },
+        '/api/graph': {
+          target: 'http://localhost:4000',
+          changeOrigin: true,
+          secure: false
         },
         '/api': {
           target: 'http://localhost:4000',
-          changeOrigin: true
+          changeOrigin: true,
+          secure: false
         }
       }
     },

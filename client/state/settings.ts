@@ -10,6 +10,7 @@ import {
     setSettingValue,
     isValidSettingPath
 } from '../types/settings/utils';
+import { API_ENDPOINTS } from '../core/constants';
 
 const logger = createLogger('SettingsManager');
 
@@ -22,20 +23,42 @@ export class SettingsManager {
         this.store = SettingsStore.getInstance({ autoSave: true });
     }
 
+    private updateSettings(settings: any): void {
+        // Update settings with received data
+        Object.assign(this.settings, settings);
+        this.initialized = true;
+    }
+
+    private useDefaultSettings(): void {
+        // Reset to default settings
+        this.settings = { ...defaultSettings };
+        this.initialized = true;
+    }
+
     public async initialize(): Promise<void> {
-        if (this.initialized) {
-            return;
-        }
+        if (this.initialized) return;
 
         try {
-            await this.store.initialize();
-            this.initialized = true;
-            logger.info('Settings manager initialized');
+            // Try visualization settings first
+            const visResponse = await fetch(API_ENDPOINTS.VISUALIZATION_SETTINGS);
+            if (visResponse.ok) {
+                const settings = await visResponse.json();
+                this.updateSettings(settings);
+                return;
+            }
+
+            // Fall back to base settings endpoint
+            const baseResponse = await fetch(API_ENDPOINTS.SETTINGS);
+            if (baseResponse.ok) {
+                const settings = await baseResponse.json();
+                this.updateSettings(settings);
+                return;
+            }
+
+            throw new Error('Both settings endpoints failed');
         } catch (error) {
-            // Log error but continue with default settings
-            logger.error('Failed to initialize settings manager:', error);
-            logger.info('Continuing with default settings');
-            this.initialized = true;
+            logger.warn('Failed to fetch settings from API, using defaults');
+            this.useDefaultSettings();
         }
     }
 

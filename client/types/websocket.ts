@@ -27,9 +27,7 @@ export type WebSocketMessage = PingMessage | PongMessage;
 
 // WebSocket settings loaded via REST API
 export interface WebSocketSettings {
-    url: string;                   // WebSocket server URL
-    heartbeatInterval: number;     // Ping interval in seconds (default: 30)
-    heartbeatTimeout: number;      // Connection timeout in seconds (default: 3600)
+    url: string;                  // WebSocket URL
     reconnectAttempts: number;     // Max reconnection attempts (default: 3)
     reconnectDelay: number;        // Delay between reconnects in ms (default: 5000)
     updateRate: number;            // Update rate in Hz

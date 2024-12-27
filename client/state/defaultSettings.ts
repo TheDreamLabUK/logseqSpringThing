@@ -156,9 +156,7 @@ export const defaultSettings: Settings = {
             tunnelId: ''
         },
         websocket: {
-            url: 'wss://www.visionflow.info/wss',
-            heartbeatInterval: 30000,
-            heartbeatTimeout: 60000,
+            url: '',
             reconnectAttempts: 5,
             reconnectDelay: 5000,
             binaryChunkSize: 65536,

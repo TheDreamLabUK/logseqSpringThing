@@ -188,8 +188,6 @@ export interface NetworkSettings {
 
 export interface WebSocketSettings {
     url: string;
-    heartbeatInterval: number;
-    heartbeatTimeout: number;
     reconnectAttempts: number;
     reconnectDelay: number;
     binaryChunkSize: number;

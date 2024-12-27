@@ -1,10 +1,6 @@
 import { createLogger } from '../core/logger';
-import { buildWsUrl } from '../core/api';
-import { 
-    WS_HEARTBEAT_INTERVAL,
-    WS_HEARTBEAT_TIMEOUT,
-    API_ENDPOINTS
-} from '../core/constants';
+import { buildWsUrl, buildApiUrl } from '../core/api';
+import { API_ENDPOINTS } from '../core/constants';
 import { convertObjectKeysToCamelCase } from '../core/utils';
 
 const logger = createLogger('WebSocketService');
@@ -45,15 +41,12 @@ export class WebSocketService {
     private ws: WebSocket | null = null;
     private binaryMessageCallback: BinaryMessageCallback | null = null;
     private reconnectTimeout: number | null = null;
-    private connectionMonitorHandle: number | null = null;
     private connectionState: ConnectionState = ConnectionState.DISCONNECTED;
     private reconnectAttempts: number = 0;
-    private lastPongTime: number = 0;
     private _maxReconnectAttempts: number = 5;
     private readonly initialReconnectDelay: number = 5000; // 5 seconds
     private readonly maxReconnectDelay: number = 60000; // 60 seconds
-    private readonly heartbeatTimeout: number = WS_HEARTBEAT_TIMEOUT;
-    private heartbeatInterval: number = WS_HEARTBEAT_INTERVAL;
+    private url: string = '';
     private settingsStore: Map<string, any> = new Map();
     private connectionStatusHandler: ((status: boolean) => void) | null = null;
     private settingsUpdateHandler: ((settings: any) => void) | null = null;
@@ -84,32 +77,13 @@ export class WebSocketService {
         }
 
         try {
-            // First initialize through the control API
-            const response = await fetch(API_ENDPOINTS.WEBSOCKET_CONTROL);
-            if (!response.ok) {
-                throw new Error(`Failed to initialize WebSocket control: ${response.statusText}`);
-            }
-            const config = await response.json();
+            const settings = await this.loadWebSocketSettings();
+            this.url = settings.url;
             
-            // Apply configuration
-            const wsConfig = convertObjectKeysToCamelCase(config);
-            if (wsConfig.heartbeatInterval) {
-                this.heartbeatInterval = wsConfig.heartbeatInterval;
-            }
-            if (wsConfig.reconnectAttempts) {
-                this.maxReconnectAttempts = wsConfig.reconnectAttempts;
-            }
-
-            // Now connect to the binary WebSocket endpoint
-            this.connectionState = ConnectionState.CONNECTING;
-            const wsUrl = buildWsUrl();
-            this.ws = new WebSocket(wsUrl);
+            this.ws = new WebSocket(this.url);
             this.setupWebSocketHandlers();
-            
-            logger.info('WebSocket initialization started');
         } catch (error) {
             logger.error('Failed to initialize WebSocket:', error);
-            this.connectionState = ConnectionState.FAILED;
             this.handleReconnect();
         }
     }
@@ -124,35 +98,6 @@ export class WebSocketService {
         return delay + (Math.random() * 1000);
     }
 
-    private startConnectionMonitor(): void {
-        // Clear any existing monitor
-        if (this.connectionMonitorHandle !== null) {
-            window.clearInterval(this.connectionMonitorHandle);
-        }
-
-        // Monitor connection health every heartbeat interval
-        this.connectionMonitorHandle = window.setInterval(() => {
-            if (this.connectionState !== ConnectionState.CONNECTED || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-                this.stopConnectionMonitor();
-                return;
-            }
-
-            const timeSinceLastPong = Date.now() - this.lastPongTime;
-            if (timeSinceLastPong > this.heartbeatTimeout) {
-                logger.warn('WebSocket heartbeat timeout, closing connection');
-                this.ws.close();
-                this.stopConnectionMonitor();
-            }
-        }, this.heartbeatInterval);
-    }
-
-    private stopConnectionMonitor(): void {
-        if (this.connectionMonitorHandle !== null) {
-            window.clearInterval(this.connectionMonitorHandle);
-            this.connectionMonitorHandle = null;
-        }
-    }
-
     private setupWebSocketHandlers(): void {
         if (!this.ws) return;
         
@@ -162,8 +107,6 @@ export class WebSocketService {
             logger.info(`WebSocket connected successfully`);
             this.connectionState = ConnectionState.CONNECTED;
             this.reconnectAttempts = 0;
-            this.lastPongTime = Date.now();
-            this.startConnectionMonitor();
 
             // Notify connection status change
             if (this.connectionStatusHandler) {
@@ -214,9 +157,6 @@ export class WebSocketService {
 
         this.ws.onmessage = async (event: MessageEvent): Promise<void> => {
             try {
-                // Update last pong time for any successful message
-                this.lastPongTime = Date.now();
-
                 if (this.connectionState !== ConnectionState.CONNECTED || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
                     logger.warn('WebSocket not connected, ignoring message');
                     return;
@@ -304,7 +244,6 @@ export class WebSocketService {
         const wasConnected = this.connectionState === ConnectionState.CONNECTED;
         this.connectionState = ConnectionState.DISCONNECTED;
         this.binaryMessageCallback = null;
-        this.stopConnectionMonitor();
         
         if (this.reconnectTimeout !== null) {
             window.clearTimeout(this.reconnectTimeout);
@@ -474,8 +413,6 @@ export class WebSocketService {
             this.reconnectTimeout = null;
         }
         
-        this.stopConnectionMonitor();
-        
         if (this.ws) {
             this.ws.close();
             this.ws = null;
@@ -486,5 +423,37 @@ export class WebSocketService {
         this.settingsUpdateHandler = null;
         this.connectionState = ConnectionState.DISCONNECTED;
         WebSocketService.instance = null;
+    }
+
+    private async loadWebSocketSettings(): Promise<any> {
+        try {
+            // Try both endpoints
+            const endpoints = [
+                API_ENDPOINTS.WEBSOCKET_CONTROL,
+                buildApiUrl('settings/websocket')
+            ];
+
+            let response = null;
+            for (const endpoint of endpoints) {
+                try {
+                    response = await fetch(endpoint);
+                    if (response.ok) break;
+                } catch (e) {
+                    continue;
+                }
+            }
+
+            if (!response || !response.ok) {
+                throw new Error('Failed to load WebSocket settings');
+            }
+
+            return await response.json();
+        } catch (error) {
+            logger.error('Failed to load WebSocket settings:', error);
+            // Return defaults
+            return {
+                url: buildWsUrl()
+            };
+        }
     }
 }

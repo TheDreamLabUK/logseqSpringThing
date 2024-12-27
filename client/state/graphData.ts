@@ -91,11 +91,24 @@ export class GraphDataManager {
 
   async loadInitialGraphData(): Promise<void> {
     try {
-      // Start with first page of paginated data
-      const pageSize = 100; // Match server default
-      const response = await fetch(`${API_ENDPOINTS.GRAPH_PAGINATED}?page=1&pageSize=${pageSize}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch graph data: ${response.statusText}`);
+      // Try both endpoints
+      const endpoints = [
+        '/api/graph/paginated',
+        '/api/graph/data/paginated'
+      ];
+
+      let response = null;
+      for (const endpoint of endpoints) {
+        try {
+          response = await fetch(`${endpoint}?page=1&pageSize=100`);
+          if (response.ok) break;
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!response || !response.ok) {
+        throw new Error('Failed to fetch graph data from any endpoint');
       }
 
       const data = await response.json();
@@ -128,13 +141,13 @@ export class GraphDataManager {
       
       // Load remaining pages if any
       if (data.totalPages > 1) {
-        await this.loadRemainingPages(data.totalPages, pageSize);
+        await this.loadRemainingPages(data.totalPages, data.pageSize);
       }
       
       logger.log('Initial graph data loaded successfully');
     } catch (error) {
-      logger.error('Error loading initial graph data:', error);
-      throw error;
+      logger.error('Failed to fetch graph data:', error);
+      throw new Error('Failed to fetch graph data: ' + error);
     }
   }
 
