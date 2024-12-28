@@ -51,7 +51,7 @@ export default defineConfig(({ mode, command }) => {
       host: true,
       proxy: {
         '/wss': {
-          target: 'ws://localhost:4000',
+          target: 'wss://localhost:4000',
           ws: true,
           changeOrigin: true,
           secure: false

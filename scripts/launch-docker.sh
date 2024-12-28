@@ -270,7 +270,7 @@ show_endpoints() {
     echo
     info "Services are running!"
     echo "HTTP:      http://localhost:4000"
-    echo "WebSocket: ws://localhost:4000/wss"
+    echo "WebSocket: wss://localhost:4000/wss"
     echo
     info "Available commands:"
     echo "logs:    $DOCKER_COMPOSE logs -f"

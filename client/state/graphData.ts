@@ -224,7 +224,7 @@ export class GraphDataManager {
    */
   public enableBinaryUpdates(): void {
     try {
-      const ws = new WebSocket(`ws://${window.location.host}/wss`);
+      const ws = new WebSocket(`wss://${window.location.host}/wss`);
       ws.binaryType = 'arraybuffer';
       
       ws.onopen = () => {

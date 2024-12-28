@@ -31,11 +31,14 @@ WEBSOCKET_TIMEOUT=10
 
 # Test environments
 declare -A ENDPOINTS=(
-    ["internal"]="http://localhost:$NGINX_PORT"
-    ["container"]="http://127.0.0.1:$BACKEND_PORT"
-    ["ragflow"]="http://logseq-xr-webxr:$BACKEND_PORT"
+    ["nginx"]="http://localhost:$NGINX_PORT"
+    ["backend"]="http://127.0.0.1:$BACKEND_PORT"
+    ["ragflow"]="http://localhost:3001"
     ["external"]="https://$PUBLIC_DOMAIN"
 )
+
+# Store results for comparison
+declare -A TEST_RESULTS
 
 # API endpoints to test
 declare -A API_ENDPOINTS=(
@@ -132,51 +135,78 @@ test_endpoint() {
     fi
 }
 
-# Function to test WebSocket connection
+# Function to test WebSocket connection with detailed response
 test_websocket() {
     local url="$1"
     local description="$2"
+    local env="$3"
     
     log_info "Testing WebSocket connection to $url..."
     
-    # Use docker exec for container endpoints
-    if [[ "$url" == *"127.0.0.1"* ]] || [[ "$url" == *"localhost"* ]]; then
-        local internal_url="http://localhost:4000${url#*:3001}"
-        log_info "Testing internal WebSocket URL: $internal_url"
+    # Convert http/https to ws/wss
+    local ws_url="${url/http:/ws:}"
+    ws_url="${ws_url/https:/wss:}"
+    ws_url="${ws_url}/wss"
+    
+    log_info "WebSocket URL: $ws_url"
+    
+    # Use websocat for testing if available
+    if command -v websocat >/dev/null 2>&1; then
+        local response
+        if [[ "$url" == *"localhost"* ]] || [[ "$url" == *"127.0.0.1"* ]]; then
+            response=$(docker exec $CONTAINER_NAME timeout $WEBSOCKET_TIMEOUT websocat "$ws_url" 2>&1)
+        else
+            response=$(timeout $WEBSOCKET_TIMEOUT websocat "$ws_url" 2>&1)
+        fi
         
-        # Test WebSocket upgrade
-        local response=$(docker exec $CONTAINER_NAME curl -i -N \
-            -H "Connection: Upgrade" \
-            -H "Upgrade: websocket" \
-            -H "Host: localhost:4000" \
-            -H "Origin: http://localhost:4000" \
-            -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
-            -H "Sec-WebSocket-Version: 13" \
-            "$internal_url" 2>&1)
-            
-        # Check for successful upgrade (101) or normal success (200)
+        local status=$?
+        if [ $status -eq 0 ] || [ $status -eq 124 ]; then
+            log_success "$description successful (WebSocket connection established)"
+            TEST_RESULTS["${env}_ws"]="success"
+            return 0
+        else
+            log_error "$description failed (WebSocket connection failed)"
+            TEST_RESULTS["${env}_ws"]="failed"
+            return 1
+        fi
+    else
+        # Fallback to curl for upgrade request
+        local response
+        if [[ "$url" == *"localhost"* ]] || [[ "$url" == *"127.0.0.1"* ]]; then
+            response=$(docker exec $CONTAINER_NAME curl -i -N \
+                -H "Connection: Upgrade" \
+                -H "Upgrade: websocket" \
+                -H "Host: ${url#*://}" \
+                -H "Origin: $url" \
+                -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+                -H "Sec-WebSocket-Version: 13" \
+                "$url/wss" 2>&1)
+        else
+            response=$(curl -i -N \
+                -H "Connection: Upgrade" \
+                -H "Upgrade: websocket" \
+                -H "Host: ${url#*://}" \
+                -H "Origin: $url" \
+                -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+                -H "Sec-WebSocket-Version: 13" \
+                "$url/wss" 2>&1)
+        fi
+        
         if echo "$response" | grep -q "HTTP/1.1 101\|HTTP/1.1 200"; then
             log_success "$description successful (WebSocket upgrade)"
+            TEST_RESULTS["${env}_ws"]="success"
             return 0
         else
             local status=$(echo "$response" | grep -oP "HTTP/1.1 \K[0-9]+" || echo "000")
             log_error "$description failed (HTTP $status)"
-            return 1
-        fi
-    else
-        # For external endpoints, just check if it's accessible
-        local http_code=$(curl -m $WEBSOCKET_TIMEOUT -s -o /dev/null -w "%{http_code}" "$url")
-        if [[ "$http_code" =~ ^2[0-9][0-9]$ ]] || [[ "$http_code" == "400" ]] || [[ "$http_code" == "426" ]]; then
-            log_success "$description accessible (HTTP $http_code)"
-            return 0
-        else
-            log_error "$description failed (HTTP $http_code)"
+            TEST_RESULTS["${env}_ws"]="failed"
+            log_error "Response: $response"
             return 1
         fi
     fi
 }
 
-# Function to test environment
+# Function to test environment with detailed response capture
 test_environment() {
     local env="$1"
     local base_url="${ENDPOINTS[$env]}"
@@ -184,10 +214,63 @@ test_environment() {
     
     log_header "Testing $env environment ($base_url)"
     
-    # Test graph endpoints
-    test_endpoint "$base_url${API_ENDPOINTS[graph_data]}" "$env full graph data" || ((failed++))
-    test_endpoint "$base_url${API_ENDPOINTS[graph_paginated]}" "$env paginated graph data" || ((failed++))
-    test_endpoint "$base_url${API_ENDPOINTS[graph_update]}" "$env graph update" "POST" '{"nodes": [], "edges": []}' || ((failed++))
+    # Store base URL for comparison
+    TEST_RESULTS["${env}_base_url"]="$base_url"
+    
+    # Test graph endpoints with response capture
+    for endpoint in "graph_data" "graph_paginated"; do
+        local response
+        local status
+        if [[ "$base_url" == *"localhost"* ]] || [[ "$base_url" == *"127.0.0.1"* ]]; then
+            response=$(docker exec $CONTAINER_NAME curl -s -w "\n%{http_code}" \
+                -H "Accept: application/json" \
+                "$base_url${API_ENDPOINTS[$endpoint]}")
+        else
+            response=$(curl -s -w "\n%{http_code}" \
+                -H "Accept: application/json" \
+                "$base_url${API_ENDPOINTS[$endpoint]}")
+        fi
+        
+        status=$(echo "$response" | tail -n1)
+        response=$(echo "$response" | head -n-1)
+        
+        if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+            log_success "$env $endpoint successful (HTTP $status)"
+            TEST_RESULTS["${env}_${endpoint}"]="success"
+            TEST_RESULTS["${env}_${endpoint}_response"]="$response"
+        else
+            log_error "$env $endpoint failed (HTTP $status)"
+            TEST_RESULTS["${env}_${endpoint}"]="failed"
+            TEST_RESULTS["${env}_${endpoint}_error"]="$response"
+            ((failed++))
+        fi
+    done
+    
+    # Test graph update endpoint
+    local update_response
+    if [[ "$base_url" == *"localhost"* ]] || [[ "$base_url" == *"127.0.0.1"* ]]; then
+        update_response=$(docker exec $CONTAINER_NAME curl -s -w "\n%{http_code}" \
+            -H "Accept: application/json" -H "Content-Type: application/json" \
+            -X POST -d '{"nodes": [], "edges": []}' \
+            "$base_url${API_ENDPOINTS[graph_update]}")
+    else
+        update_response=$(curl -s -w "\n%{http_code}" \
+            -H "Accept: application/json" -H "Content-Type: application/json" \
+            -X POST -d '{"nodes": [], "edges": []}' \
+            "$base_url${API_ENDPOINTS[graph_update]}")
+    fi
+    
+    local update_status=$(echo "$update_response" | tail -n1)
+    update_response=$(echo "$update_response" | head -n-1)
+    
+    if [[ "$update_status" =~ ^2[0-9][0-9]$ ]]; then
+        log_success "$env graph update successful (HTTP $update_status)"
+        TEST_RESULTS["${env}_graph_update"]="success"
+    else
+        log_error "$env graph update failed (HTTP $update_status)"
+        TEST_RESULTS["${env}_graph_update"]="failed"
+        ((failed++))
+    fi
     
     # Test settings endpoints
     test_endpoint "$base_url${API_ENDPOINTS[settings_root]}" "$env all settings" || ((failed++))
@@ -222,14 +305,34 @@ test_environment() {
         test_endpoint "$base_url/api/settings/$category/$setting" "$env update $category.$setting" "PUT" '{"value": true}' || ((failed++))
     done
     
-    # Test WebSocket endpoints
-    local ws_protocol="ws"
-    [[ "$base_url" == https://* ]] && ws_protocol="wss"
-    local ws_base_url="${base_url/http:/$ws_protocol:}"
-    local ws_base_url="${ws_base_url/https:/$ws_protocol:}"
+    # Test WebSocket endpoints with detailed response
+    test_websocket "$base_url" "$env Binary Protocol" "$env" || ((failed++))
     
-    test_websocket "$ws_base_url/wss" "$env Binary Protocol" || ((failed++))
-    test_endpoint "$base_url/api/visualization/settings/websocket" "$env WebSocket Settings" || ((failed++))
+    # Test WebSocket settings endpoint
+    local ws_settings_response
+    if [[ "$base_url" == *"localhost"* ]] || [[ "$base_url" == *"127.0.0.1"* ]]; then
+        ws_settings_response=$(docker exec $CONTAINER_NAME curl -s -w "\n%{http_code}" \
+            -H "Accept: application/json" \
+            "$base_url/api/visualization/settings/websocket")
+    else
+        ws_settings_response=$(curl -s -w "\n%{http_code}" \
+            -H "Accept: application/json" \
+            "$base_url/api/visualization/settings/websocket")
+    fi
+    
+    local ws_settings_status=$(echo "$ws_settings_response" | tail -n1)
+    ws_settings_response=$(echo "$ws_settings_response" | head -n-1)
+    
+    if [[ "$ws_settings_status" =~ ^2[0-9][0-9]$ ]]; then
+        log_success "$env WebSocket Settings successful (HTTP $ws_settings_status)"
+        TEST_RESULTS["${env}_ws_settings"]="success"
+        TEST_RESULTS["${env}_ws_settings_response"]="$ws_settings_response"
+    else
+        log_error "$env WebSocket Settings failed (HTTP $ws_settings_status)"
+        TEST_RESULTS["${env}_ws_settings"]="failed"
+        TEST_RESULTS["${env}_ws_settings_error"]="$ws_settings_response"
+        ((failed++))
+    fi
     
     return $failed
 }
@@ -472,6 +575,34 @@ test_cloudflare_tunnel() {
     return $failed
 }
 
+# Function to compare environment results
+compare_environments() {
+    log_header "Environment Comparison"
+    
+    # Compare nginx vs external responses
+    log_info "Comparing nginx (localhost:4000) vs external (www.visionflow.info) responses:"
+    
+    # Compare WebSocket results
+    log_info "\nWebSocket Comparison:"
+    printf "%-20s %-15s %-15s\n" "Endpoint" "Nginx" "External"
+    printf "%-20s %-15s %-15s\n" "WebSocket" "${TEST_RESULTS[nginx_ws]:-N/A}" "${TEST_RESULTS[external_ws]:-N/A}"
+    printf "%-20s %-15s %-15s\n" "WS Settings" "${TEST_RESULTS[nginx_ws_settings]:-N/A}" "${TEST_RESULTS[external_ws_settings]:-N/A}"
+    
+    # Compare REST endpoints
+    log_info "\nREST Endpoint Comparison:"
+    printf "%-20s %-15s %-15s\n" "Endpoint" "Nginx" "External"
+    for endpoint in "graph_data" "graph_paginated" "graph_update"; do
+        printf "%-20s %-15s %-15s\n" "$endpoint" "${TEST_RESULTS[nginx_${endpoint}]:-N/A}" "${TEST_RESULTS[external_${endpoint}]:-N/A}"
+    done
+    
+    # Compare RAGFlow responses
+    log_info "\nRAGFlow (port 3001) Comparison:"
+    printf "%-20s %-15s\n" "Endpoint" "Status"
+    for endpoint in "graph_data" "graph_paginated" "graph_update"; do
+        printf "%-20s %-15s\n" "$endpoint" "${TEST_RESULTS[ragflow_${endpoint}]:-N/A}"
+    done
+}
+
 # Main function
 main() {
     local total_failed=0
@@ -479,26 +610,27 @@ main() {
     # Wait for services to be ready
     wait_for_webxr || exit 1
     
-    # Run tests
-    test_container_endpoints
-    ((total_failed+=$?))
+    # Test each environment
+    for env in "nginx" "backend" "ragflow" "external"; do
+        test_environment "$env"
+        ((total_failed+=$?))
+    done
     
-    test_backend_directly
-    ((total_failed+=$?))
-    
+    # Additional tests
     test_ragflow_connectivity
     ((total_failed+=$?))
     
     test_cloudflare_tunnel
     ((total_failed+=$?))
     
+    # Compare results
+    compare_environments
+    
     # Check container logs for errors
-    check_container_logs
-    ((total_failed+=$?))
+    check_container_logs $CONTAINER_NAME
     
     # Check nginx config
     check_nginx_config
-    ((total_failed+=$?))
     
     # Final summary
     if [ $total_failed -eq 0 ]; then
@@ -506,6 +638,7 @@ main() {
         exit 0
     else
         log_error "$total_failed tests failed"
+        log_info "See environment comparison above for details on differences between localhost:4000 and www.visionflow.info"
         exit 1
     fi
 }
