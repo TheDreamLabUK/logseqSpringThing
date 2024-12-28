@@ -5,8 +5,6 @@ import { API_ENDPOINTS } from '../core/constants';
 const logger = createLogger('GraphDataManager');
 
 // Constants
-const THROTTLE_INTERVAL = 16;  // ~60fps max
-const NODE_POSITION_SIZE = 24;  // 6 floats * 4 bytes
 const FLOATS_PER_NODE = 6;     // x, y, z, vx, vy, vz
 
 interface WebSocketService {
@@ -22,11 +20,10 @@ export class GraphDataManager {
   private static instance: GraphDataManager;
   private nodes: Map<string, Node>;
   private edges: Map<string, EdgeWithId>;
-  private wsService: WebSocketService;
+  private wsService!: WebSocketService;  // Use definite assignment assertion
   private metadata: Record<string, any>;
   private updateListeners: Set<(data: GraphData) => void>;
   private positionUpdateListeners: Set<(positions: Float32Array) => void>;
-  private lastUpdateTime: number;
   private binaryUpdatesEnabled: boolean = false;
 
   private constructor() {
@@ -35,11 +32,11 @@ export class GraphDataManager {
     this.metadata = {};
     this.updateListeners = new Set();
     this.positionUpdateListeners = new Set();
-    this.lastUpdateTime = performance.now();
     // Initialize with a no-op websocket service
     this.wsService = {
       send: () => logger.warn('WebSocket service not configured')
     };
+    this.enableBinaryUpdates();  // Start binary updates by default
   }
 
   /**
@@ -48,6 +45,9 @@ export class GraphDataManager {
   public setWebSocketService(service: WebSocketService): void {
     this.wsService = service;
     logger.info('WebSocket service configured');
+    if (this.binaryUpdatesEnabled) {
+      this.updatePositions(new Float32Array());  // Send initial empty update
+    }
   }
 
   static getInstance(): GraphDataManager {
@@ -122,10 +122,8 @@ export class GraphDataManager {
       const data = await response.json();
       const transformedData = transformGraphData(data);
       
-      // Update nodes with positions
+      // Update nodes and edges
       this.nodes = new Map(transformedData.nodes.map((node: Node) => [node.id, node]));
-      
-      // Update edges with IDs
       const edgesWithIds = transformedData.edges.map((edge: Edge) => ({
         ...edge,
         id: this.createEdgeId(edge.source, edge.target)
@@ -143,8 +141,11 @@ export class GraphDataManager {
         }
       };
 
-      // Initialize positions and notify listeners
-      this.initializeNodePositions();
+      // Enable WebSocket updates immediately
+      this.enableBinaryUpdates();
+      this.setBinaryUpdatesEnabled(true);
+      
+      // Notify listeners of initial data
       this.notifyUpdateListeners();
       
       // Load remaining pages if any
@@ -152,7 +153,7 @@ export class GraphDataManager {
         await this.loadRemainingPages(data.totalPages, data.pageSize);
       }
       
-      logger.log('Initial graph data loaded successfully');
+      logger.info('Initial graph data loaded successfully');
     } catch (error) {
       logger.error('Failed to fetch graph data:', error);
       throw new Error('Failed to fetch graph data: ' + error);
@@ -218,47 +219,58 @@ export class GraphDataManager {
     }
   }
 
-  private initializeNodePositions(): void {
-    // Initialize node positions if they don't have positions yet
-    this.nodes.forEach(node => {
-      if (!node.data.position || (Array.isArray(node.data.position) && node.data.position.every(p => p === null))) {
-        // Initialize positions in a larger sphere to match spring_length scale
-        const radius = 100; // Match default spring_length
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        const r = radius * Math.cbrt(Math.random()); // Cube root for uniform distribution
-        
-        node.data.position = {
-          x: r * Math.sin(phi) * Math.cos(theta),
-          y: r * Math.sin(phi) * Math.sin(theta),
-          z: r * Math.cos(phi)
-        };
-      }
-      if (!node.data.velocity) {
-        node.data.velocity = { x: 0, y: 0, z: 0 };
-      }
-    });
+  /**
+   * Enable binary position updates via WebSocket
+   */
+  public enableBinaryUpdates(): void {
+    try {
+      const ws = new WebSocket(`ws://${window.location.host}/wss`);
+      ws.binaryType = 'arraybuffer';
+      
+      ws.onopen = () => {
+        logger.info('WebSocket connection established');
+        this.setWebSocketService({
+          send: (data: ArrayBuffer) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(data);
+            }
+          }
+        });
+        this.setBinaryUpdatesEnabled(true);
+      };
+      
+      ws.onmessage = (event: MessageEvent) => {
+        if (event.data instanceof ArrayBuffer) {
+          const positions = new Float32Array(event.data);
+          this.updateNodePositions(positions);
+          this.notifyPositionUpdateListeners(positions);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        logger.error('WebSocket error:', error);
+        this.setBinaryUpdatesEnabled(false);
+      };
+      
+      ws.onclose = () => {
+        logger.warn('WebSocket connection closed');
+        this.setBinaryUpdatesEnabled(false);
+        // Attempt to reconnect after a delay
+        setTimeout(() => this.enableBinaryUpdates(), 5000);
+      };
+      
+    } catch (error) {
+      logger.error('Failed to initialize WebSocket:', error);
+      this.setBinaryUpdatesEnabled(false);
+    }
+  }
 
-    // Create initial position buffer
-    const buffer = new ArrayBuffer(this.nodes.size * NODE_POSITION_SIZE);
-    const positions = new Float32Array(buffer);
-    
-    let index = 0;
-    this.nodes.forEach(node => {
-      const pos = node.data.position;
-      positions[index * 6] = typeof pos.x === 'number' ? pos.x : 0;
-      positions[index * 6 + 1] = typeof pos.y === 'number' ? pos.y : 0;
-      positions[index * 6 + 2] = typeof pos.z === 'number' ? pos.z : 0;
-      positions[index * 6 + 3] = node.data.velocity.x;
-      positions[index * 6 + 4] = node.data.velocity.y;
-      positions[index * 6 + 5] = node.data.velocity.z;
-      index++;
-    });
-
-    // Notify listeners of initial positions
-    this.positionUpdateListeners.forEach(listener => {
-      listener(positions);
-    });
+  /**
+   * Update node positions from binary data
+   */
+  private updatePositions(positions: Float32Array): void {
+    if (!this.binaryUpdatesEnabled) return;
+    this.wsService.send(positions.buffer);
   }
 
   /**
@@ -304,9 +316,6 @@ export class GraphDataManager {
       // Update metadata
       this.metadata = data.metadata || {};
 
-      // Initialize positions for new nodes
-      this.initializeNodePositions();
-
       // Notify listeners
       this.notifyUpdateListeners();
       logger.log(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
@@ -317,107 +326,6 @@ export class GraphDataManager {
       }
     } else {
       logger.warn('Invalid graph data format received');
-    }
-  }
-
-  /**
-   * Setup binary position updates
-   */
-  private enableBinaryUpdates(): void {
-    // Send message to server to enable binary updates
-    if (window.ws && window.ws.readyState === WebSocket.OPEN) {
-      window.ws.send(JSON.stringify({ type: 'enableBinaryUpdates' }));
-      this.binaryUpdatesEnabled = true;
-      
-      // Send current positions to server to initialize GPU layout
-      this.sendPositionsToServer();
-      
-      logger.log('Enabled binary updates and sent initial positions');
-    } else {
-      logger.warn('WebSocket not ready, cannot enable binary updates');
-    }
-  }
-
-  private sendPositionsToServer(): void {
-    if (!this.nodes || this.nodes.size === 0) return;
-
-    // Allocate buffer for node positions (no header)
-    const buffer = new ArrayBuffer(this.nodes.size * NODE_POSITION_SIZE);
-    const positions = new Float32Array(buffer);
-    
-    let i = 0;
-    for (const node of this.nodes.values()) {
-      const pos = node.data.position;
-      positions[i * 6] = typeof pos.x === 'number' ? pos.x : 0;
-      positions[i * 6 + 1] = typeof pos.y === 'number' ? pos.y : 0;
-      positions[i * 6 + 2] = typeof pos.z === 'number' ? pos.z : 0;
-      positions[i * 6 + 3] = node.data.velocity.x;
-      positions[i * 6 + 4] = node.data.velocity.y;
-      positions[i * 6 + 5] = node.data.velocity.z;
-      i++;
-    }
-
-    // Send binary data (no header)
-    this.wsService.send(positions.buffer);
-  }
-
-  /**
-   * Handle binary position updates with throttling
-   */
-  updatePositions(positions: Float32Array): void {
-    const now = performance.now();
-    const timeSinceLastUpdate = now - this.lastUpdateTime;
-
-    if (timeSinceLastUpdate < THROTTLE_INTERVAL) {
-      return;  // Skip update if too soon
-    }
-
-    try {
-      // Verify data size (no header)
-      const expectedSize = Math.floor(positions.length / FLOATS_PER_NODE) * NODE_POSITION_SIZE;
-      if (positions.length * 4 !== expectedSize) {
-        logger.error(`Invalid binary data length: ${positions.length * 4} bytes (expected ${expectedSize})`);
-        return;
-      }
-
-      // Check for invalid values
-      let hasInvalidValues = false;
-      for (let i = 0; i < positions.length; i++) {
-        const val = positions[i];
-        if (!Number.isFinite(val) || Math.abs(val) > 1000) {
-          logger.warn(`Invalid position value at index ${i}: ${val}`);
-          hasInvalidValues = true;
-          // Replace invalid value with 0
-          positions[i] = 0;
-        }
-      }
-
-      if (hasInvalidValues) {
-        logger.error('Received invalid position values from GPU, using fallback positions');
-        // Re-initialize positions
-        this.initializeNodePositions();
-        return;
-      }
-
-      // Log a sample of positions for debugging
-      const nodeCount = Math.floor(positions.length / 6);
-      logger.debug(`Received positions for ${nodeCount} nodes`);
-      if (nodeCount > 0) {
-        const firstNode = {
-          x: positions[0],
-          y: positions[1],
-          z: positions[2],
-          vx: positions[3],
-          vy: positions[4],
-          vz: positions[5]
-        };
-        logger.debug('First node position:', firstNode);
-      }
-
-      this.notifyPositionUpdateListeners(positions);
-      this.lastUpdateTime = now;
-    } catch (error) {
-      logger.error('Error processing binary position update:', error);
     }
   }
 
@@ -498,6 +406,9 @@ export class GraphDataManager {
 
   public setBinaryUpdatesEnabled(enabled: boolean): void {
     this.binaryUpdatesEnabled = enabled;
+    if (enabled) {
+      this.updatePositions(new Float32Array());  // Send initial empty update
+    }
     logger.info(`Binary updates ${enabled ? 'enabled' : 'disabled'}`);
     
     // Notify listeners of state change
