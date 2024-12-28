@@ -99,12 +99,12 @@ fn get_category_settings(settings: &Settings, category: &str) -> Result<Value, S
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
     
     // Get category object
-    settings_value.get(&category_snake)
-        .ok_or_else(|| format!("Category '{}' not found", category))
-        .map(|v| v.clone())
+    let category_value = settings_value.get(&category_snake)
+        .ok_or_else(|| format!("Category '{}' not found", category))?;
+    
+    Ok(category_value.clone())
 }
 
-// GET /api/settings
 #[get("")]
 async fn get_all_settings_handler(
     settings: web::Data<Arc<RwLock<Settings>>>,
@@ -114,7 +114,6 @@ async fn get_all_settings_handler(
     HttpResponse::Ok().json(settings_value)
 }
 
-// GET /api/settings/{category}/{setting}
 #[get("/{category}/{setting}")]
 async fn get_setting_handler(
     settings: web::Data<Arc<RwLock<Settings>>>,
@@ -131,7 +130,7 @@ async fn get_setting_handler(
             success: true,
             error: None,
         }),
-        Err(e) => HttpResponse::BadRequest().json(SettingResponse {
+        Err(e) => HttpResponse::NotFound().json(SettingResponse {
             category,
             setting,
             value: Value::Null,
@@ -141,7 +140,6 @@ async fn get_setting_handler(
     }
 }
 
-// PUT /api/settings/{category}/{setting}
 #[put("/{category}/{setting}")]
 async fn update_setting_handler(
     settings: web::Data<Arc<RwLock<Settings>>>,
@@ -162,14 +160,13 @@ async fn update_setting_handler(
         Err(e) => HttpResponse::BadRequest().json(SettingResponse {
             category,
             setting,
-            value: Value::Null,
+            value: value.into_inner(),
             success: false,
             error: Some(e),
         }),
     }
 }
 
-// GET /api/settings/{category}
 #[get("/{category}")]
 async fn get_category_settings_handler(
     settings: web::Data<Arc<RwLock<Settings>>>,
@@ -189,7 +186,7 @@ async fn get_category_settings_handler(
             success: true,
             error: None,
         }),
-        Err(e) => HttpResponse::BadRequest().json(CategorySettingsResponse {
+        Err(e) => HttpResponse::NotFound().json(CategorySettingsResponse {
             category,
             settings: HashMap::new(),
             success: false,
@@ -198,10 +195,18 @@ async fn get_category_settings_handler(
     }
 }
 
+pub mod common;
+pub mod websocket;
+
 // Register all settings handlers
 pub fn config(cfg: &mut web::ServiceConfig) {
-    cfg.service(get_all_settings_handler)
-       .service(get_setting_handler)
-       .service(update_setting_handler)
-       .service(get_category_settings_handler);
+    cfg
+        .service(get_all_settings_handler)
+        .service(get_category_settings_handler)
+        .service(get_setting_handler)
+        .service(update_setting_handler)
+        .service(
+            web::scope("/websocket")
+                .configure(websocket::config)
+        );
 }

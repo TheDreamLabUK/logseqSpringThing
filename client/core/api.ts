@@ -1,4 +1,4 @@
-import { API_BASE, API_ENDPOINTS, API_PATHS } from './constants';
+import { API_BASE, API_ENDPOINTS } from './constants';
 
 // Helper function to build API URLs
 export function buildApiUrl(path: string): string {
@@ -14,7 +14,7 @@ export function buildApiUrl(path: string): string {
 
 // Helper function to build settings URL
 export function buildSettingsUrl(category: string): string {
-    return `${API_ENDPOINTS.SETTINGS}/${category}`;
+    return `${API_ENDPOINTS.SETTINGS_ROOT}/${category}`;
 }
 
 // Helper function to build graph URL
@@ -37,16 +37,15 @@ export function buildFilesUrl(path: string): string {
 // Helper function to build WebSocket URL
 export function buildWsUrl(): string {
     const isProduction = ['www.visionflow.info', 'visionflow.info'].includes(window.location.hostname);
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     
+    // Always use secure WebSocket in production
     if (isProduction) {
-        // In production, always use wss:// with the domain
-        return `wss://www.visionflow.info/${API_PATHS.WEBSOCKET}`;
-    } else {
-        // In development, use the current host with ws:// or wss://
-        return `${protocol}//${host}/${API_PATHS.WEBSOCKET}`;
+        return `wss://www.visionflow.info/wss`;
     }
+    
+    return `${protocol}//${host}/wss`;
 }
 
 // Helper function to build settings item URL
@@ -62,4 +61,9 @@ export function buildVisualizationSettingsUrl(): string {
 // Helper function to build WebSocket control URL
 export function buildWebSocketControlUrl(): string {
     return API_ENDPOINTS.WEBSOCKET_CONTROL;
+}
+
+// Helper function to build WebSocket settings URL
+export function buildWebSocketSettingsUrl(): string {
+    return API_ENDPOINTS.WEBSOCKET_SETTINGS;
 }

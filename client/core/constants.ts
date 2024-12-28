@@ -12,7 +12,7 @@ export const API_BASE = '';  // Empty string means use relative URLs
 // API paths
 export const API_PATHS = {
     SETTINGS: 'settings',
-    WEBSOCKET: 'wss',
+    WEBSOCKET: 'websocket',
     GRAPH: 'graph',
     FILES: 'files'
 };
@@ -22,12 +22,13 @@ export const API_ENDPOINTS = {
     GRAPH_DATA: '/api/graph/data',
     GRAPH_UPDATE: '/api/graph/update',
     GRAPH_PAGINATED: '/api/graph/data/paginated',
-    SETTINGS: '/api/settings',
+    SETTINGS_ROOT: '/api/settings',
     SETTINGS_UPDATE: '/api/settings/update',
     SETTINGS_CATEGORY: (category: string) => `/api/settings/${category}`,
     SETTINGS_ITEM: (category: string, setting: string) => `/api/settings/${category}/${setting}`,
     VISUALIZATION_SETTINGS: '/api/settings/visualization',
-    WEBSOCKET_CONTROL: '/api/settings/websocket',
+    WEBSOCKET_SETTINGS: '/api/settings/websocket',
+    WEBSOCKET_CONTROL: '/api/websocket/control',
     FILES: '/api/files'
 } as const;
 

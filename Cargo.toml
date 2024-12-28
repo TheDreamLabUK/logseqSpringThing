@@ -59,6 +59,9 @@ lazy_static = "1.4"
 sha1 = "0.10"
 url = "2.5"
 
+# String case conversion
+convert_case = "0.6"
+
 # Math/Linear Algebra (needed for GPU compute)
 nalgebra = "0.32"
 

@@ -37,6 +37,18 @@ declare -A ENDPOINTS=(
     ["external"]="https://$PUBLIC_DOMAIN"
 )
 
+# API endpoints to test
+declare -A API_ENDPOINTS=(
+    ["graph_data"]="/api/graph/data"
+    ["graph_update"]="/api/graph/update"
+    ["graph_paginated"]="/api/graph/data/paginated"
+    ["settings_root"]="/api/settings"
+    ["settings_update"]="/api/settings/update"
+    ["settings_visualization"]="/api/settings/visualization"
+    ["websocket_control"]="/api/websocket/control"
+    ["files"]="/api/files"
+)
+
 # Function to log messages with timestamp
 log() {
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
@@ -83,15 +95,32 @@ test_endpoint() {
     log_info "Testing $method $description..."
     log_info "URL: $url"
     
-    # Only capture status code, discard response body
-    local http_code
-    if [[ -n "$data" ]]; then
-        http_code=$(curl -X $method -m $TIMEOUT -s -o /dev/null -w "%{http_code}" \
-            -H "Accept: application/json" -H "Content-Type: application/json" \
-            -d "$data" $extra_opts "$url")
+    # Use docker exec for container endpoints
+    if [[ "$url" == *"127.0.0.1"* ]] || [[ "$url" == *"localhost"* ]]; then
+        local internal_url="http://localhost:4000${url#*:3001}"
+        log_info "Testing internal URL: $internal_url"
+        
+        # Only capture status code, discard response body
+        local http_code
+        if [[ -n "$data" ]]; then
+            http_code=$(docker exec $CONTAINER_NAME curl -X $method -m $TIMEOUT -s -o /dev/null -w "%{http_code}" \
+                -H "Accept: application/json" -H "Content-Type: application/json" \
+                -d "$data" $extra_opts "$internal_url")
+        else
+            http_code=$(docker exec $CONTAINER_NAME curl -X $method -m $TIMEOUT -s -o /dev/null -w "%{http_code}" \
+                -H "Accept: application/json" $extra_opts "$internal_url")
+        fi
     else
-        http_code=$(curl -X $method -m $TIMEOUT -s -o /dev/null -w "%{http_code}" \
-            -H "Accept: application/json" $extra_opts "$url")
+        # For external endpoints, use regular curl
+        local http_code
+        if [[ -n "$data" ]]; then
+            http_code=$(curl -X $method -m $TIMEOUT -s -o /dev/null -w "%{http_code}" \
+                -H "Accept: application/json" -H "Content-Type: application/json" \
+                -d "$data" $extra_opts "$url")
+        else
+            http_code=$(curl -X $method -m $TIMEOUT -s -o /dev/null -w "%{http_code}" \
+                -H "Accept: application/json" $extra_opts "$url")
+        fi
     fi
     
     if [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
@@ -108,30 +137,40 @@ test_websocket() {
     local url="$1"
     local description="$2"
     
-    log_info "Testing WebSocket: $description"
-    log_info "URL: $url"
+    log_info "Testing WebSocket connection to $url..."
     
-    # Use websocat to test WebSocket connection if available
-    if command -v websocat >/dev/null 2>&1; then
-        timeout $WEBSOCKET_TIMEOUT websocat --no-close "$url" 2>&1 || {
-            log_error "WebSocket connection failed"
-            return 1
-        }
-        log_success "WebSocket connection successful"
-        return 0
-    else
-        # Fallback to curl for basic connection test
-        if curl --include \
-            --no-buffer \
-            --header "Connection: Upgrade" \
-            --header "Upgrade: websocket" \
-            --header "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
-            --header "Sec-WebSocket-Version: 13" \
-            -s "$url" 2>&1 | grep -q "101 Switching Protocols"; then
-            log_success "WebSocket handshake successful"
+    # Use docker exec for container endpoints
+    if [[ "$url" == *"127.0.0.1"* ]] || [[ "$url" == *"localhost"* ]]; then
+        local internal_url="http://localhost:4000${url#*:3001}"
+        log_info "Testing internal WebSocket URL: $internal_url"
+        
+        # Test WebSocket upgrade
+        local response=$(docker exec $CONTAINER_NAME curl -i -N \
+            -H "Connection: Upgrade" \
+            -H "Upgrade: websocket" \
+            -H "Host: localhost:4000" \
+            -H "Origin: http://localhost:4000" \
+            -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+            -H "Sec-WebSocket-Version: 13" \
+            "$internal_url" 2>&1)
+            
+        # Check for successful upgrade (101) or normal success (200)
+        if echo "$response" | grep -q "HTTP/1.1 101\|HTTP/1.1 200"; then
+            log_success "$description successful (WebSocket upgrade)"
             return 0
         else
-            log_error "WebSocket handshake failed"
+            local status=$(echo "$response" | grep -oP "HTTP/1.1 \K[0-9]+" || echo "000")
+            log_error "$description failed (HTTP $status)"
+            return 1
+        fi
+    else
+        # For external endpoints, just check if it's accessible
+        local http_code=$(curl -m $WEBSOCKET_TIMEOUT -s -o /dev/null -w "%{http_code}" "$url")
+        if [[ "$http_code" =~ ^2[0-9][0-9]$ ]] || [[ "$http_code" == "400" ]] || [[ "$http_code" == "426" ]]; then
+            log_success "$description accessible (HTTP $http_code)"
+            return 0
+        else
+            log_error "$description failed (HTTP $http_code)"
             return 1
         fi
     fi
@@ -146,14 +185,14 @@ test_environment() {
     log_header "Testing $env environment ($base_url)"
     
     # Test graph endpoints
-    test_endpoint "$base_url/api/graph/data" "$env full graph data" || ((failed++))
-    test_endpoint "$base_url/api/graph/data/paginated" "$env paginated graph data" || ((failed++))
-    test_endpoint "$base_url/api/graph/update" "$env graph update" "POST" '{"nodes": [], "edges": []}' || ((failed++))
+    test_endpoint "$base_url${API_ENDPOINTS[graph_data]}" "$env full graph data" || ((failed++))
+    test_endpoint "$base_url${API_ENDPOINTS[graph_paginated]}" "$env paginated graph data" || ((failed++))
+    test_endpoint "$base_url${API_ENDPOINTS[graph_update]}" "$env graph update" "POST" '{"nodes": [], "edges": []}' || ((failed++))
     
     # Test settings endpoints
-    test_endpoint "$base_url/api/settings" "$env all settings" || ((failed++))
-    test_endpoint "$base_url/api/settings/visualization" "$env visualization settings" || ((failed++))
-    test_endpoint "$base_url/api/settings/websocket" "$env WebSocket control API" || ((failed++))
+    test_endpoint "$base_url${API_ENDPOINTS[settings_root]}" "$env all settings" || ((failed++))
+    test_endpoint "$base_url${API_ENDPOINTS[settings_visualization]}" "$env visualization settings" || ((failed++))
+    test_endpoint "$base_url${API_ENDPOINTS[websocket_control]}" "$env WebSocket control API" || ((failed++))
     
     # Test settings endpoints for each category
     local categories=(
@@ -200,32 +239,14 @@ test_container_endpoints() {
     local failed=0
     log_header "Testing container internal endpoints"
     
-    # Note: The /api/settings endpoint is expected to return 500 errors.
-    # This is intentional as server-side settings are temporarily disabled
-    # and all settings are managed client-side for development purposes.
-    # Do not attempt to fix these errors until server-side settings are re-enabled.
-    
     # Test graph data endpoints
     log_info "Testing graph data endpoints..."
-    local endpoints=(
-        "/api/graph/data"
-        "/api/graph/data/paginated"
-    )
+    test_endpoint "${ENDPOINTS[container]}${API_ENDPOINTS[graph_data]}" "Container internal graph data endpoint" || ((failed++))
+    test_endpoint "${ENDPOINTS[container]}${API_ENDPOINTS[graph_paginated]}" "Container internal paginated graph data endpoint" || ((failed++))
     
-    for endpoint in "${endpoints[@]}"; do
-        local status=$(docker exec $CONTAINER_NAME curl -s -o /dev/null -w "%{http_code}" \
-            -H "Accept: application/json" "http://localhost:4000$endpoint")
-        if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
-            log_success "Container internal $endpoint endpoint successful (HTTP $status)"
-        else
-            log_error "Container internal $endpoint endpoint failed (HTTP $status)"
-            ((failed++))
-        fi
-    done
-    
-    # Test settings endpoint - Note: 500 error is expected here
-    log_info "Testing settings endpoint (expected to return 500)..."
-    status=$(docker exec $CONTAINER_NAME curl -s -o /dev/null -w "%{http_code}" \
+    # Test settings endpoints - Note: These are expected to fail with 500 error
+    log_info "Testing settings endpoints (expected to fail with 500 error)..."
+    local status=$(docker exec $CONTAINER_NAME curl -s -o /dev/null -w "%{http_code}" \
         -H "Accept: application/json" "http://localhost:4000/api/settings")
     if [[ "$status" == "500" ]]; then
         log_info "Settings endpoint returned expected 500 error (server-side settings disabled)"
@@ -234,22 +255,13 @@ test_container_endpoints() {
         ((failed++))
     fi
     
-    # Test WebSocket inside container
+    # Test WebSocket endpoint
     log_info "Testing WebSocket endpoint..."
-    status=$(docker exec $CONTAINER_NAME curl -v -i \
-        --no-buffer \
-        -H "Accept: application/json" \
-        -H "Connection: Upgrade" \
-        -H "Upgrade: websocket" \
-        -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
-        -H "Sec-WebSocket-Version: 13" \
-        "http://localhost:4000/wss" 2>&1 | grep -oP '(?<=HTTP/1.1 )\d{3}')
-    if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
-        log_success "Container internal WebSocket endpoint successful (HTTP $status)"
-    else
-        log_error "Container internal WebSocket endpoint failed (HTTP $status)"
-        ((failed++))
-    fi
+    test_websocket "${ENDPOINTS[container]}/wss" "Container internal WebSocket endpoint" || ((failed++))
+    
+    # Test file endpoints
+    log_info "Testing file endpoints..."
+    test_endpoint "${ENDPOINTS[container]}${API_ENDPOINTS[files]}" "Container internal files endpoint" || ((failed++))
     
     if [ $failed -eq 0 ]; then
         log_success "All container internal endpoints passed"

@@ -80,7 +80,7 @@ impl SocketFlowServer {
                 binary_data
             };
             
-            ctx.spawn(fut.into_actor(actor).map(|binary_data, actor, ctx| {
+            ctx.spawn(fut.into_actor(actor).map(|binary_data, _actor, ctx| {
                 ctx.binary(binary_data);
             }));
         });
