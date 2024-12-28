@@ -16,11 +16,14 @@ Graph Data:
 - GET /api/graph/paginated?page={page}&pageSize={pageSize} (paginated graph)
 - POST /api/graph/update (update graph data)
 
-Settings: 
+Settings: (Temporarily Disabled)
+The following settings endpoints are currently disabled as settings are managed locally on the client:
 - GET /api/settings (get all settings)
 - GET /api/settings/{category} (get all settings for a category)
 - GET /api/settings/{category}/{setting} (get individual setting)
 - PUT /api/settings/{category}/{setting} (update individual setting)
+
+Note: Settings are currently managed locally in the client's SettingsStore using default values. Server synchronization will be re-enabled in a future update.
 
 Categories include:
 - system.network

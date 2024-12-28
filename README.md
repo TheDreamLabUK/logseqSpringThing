@@ -11,6 +11,8 @@ https://github.com/trebornipsa
 
 This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it with Perplexity AI and RAGFlow for AI-powered question answering. Changes are automatically submitted back to the source GitHub repository as pull requests. This allows for a dynamic and interactive exploration of your Logseq knowledge base in an immersive environment, leveraging the power of AI to provide context and insights.
 
+> **Note**: Settings are currently managed locally in the client for improved development and testing. Server-side settings synchronization is temporarily disabled and will be re-enabled in a future update.
+
 ## Key Features
 
 - **WebXR 3D Visualization:** Immersive exploration of the knowledge graph in AR/VR environments with support for:

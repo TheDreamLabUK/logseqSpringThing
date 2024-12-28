@@ -1,19 +1,8 @@
 import { Settings } from '../types/settings';
 import { createLogger } from '../core/logger';
 import { defaultSettings } from './defaultSettings';
-import { API_ENDPOINTS } from '../core/constants';
 
 const logger = createLogger('SettingsStore');
-
-export interface SettingsStoreOptions {
-    autoSave?: boolean;
-    syncInterval?: number;
-}
-
-const defaultSettingsStoreOptions: Required<SettingsStoreOptions> = {
-    autoSave: true,
-    syncInterval: 5000
-};
 
 export type SettingsChangeCallback = (path: string, value: unknown) => void;
 
@@ -26,16 +15,14 @@ export class SettingsStore {
     private subscribers: Map<string, Set<SettingsChangeCallback>> = new Map();
     private syncTimer: number | null = null;
 
-    private constructor(
-        private readonly options: SettingsStoreOptions = defaultSettingsStoreOptions
-    ) {
+    private constructor() {
         // Initialize with default settings
         this.settings = { ...defaultSettings };
     }
 
-    public static getInstance(options?: SettingsStoreOptions): SettingsStore {
+    public static getInstance(): SettingsStore {
         if (!SettingsStore.instance) {
-            SettingsStore.instance = new SettingsStore(options);
+            SettingsStore.instance = new SettingsStore();
         }
         return SettingsStore.instance;
     }
@@ -51,25 +38,9 @@ export class SettingsStore {
 
         this.initializationPromise = (async () => {
             try {
-                // Try to fetch settings from API
-                try {
-                    const response = await fetch(API_ENDPOINTS.SETTINGS);
-                    if (response.ok) {
-                        const settings = await response.json();
-                        this.settings = { ...defaultSettings, ...settings };
-                        logger.info('Settings loaded from API');
-                    } else {
-                        throw new Error(`Failed to fetch settings: ${response.statusText}`);
-                    }
-                } catch (error) {
-                    logger.warn('Failed to fetch settings from API, using defaults');
-                    this.settings = { ...defaultSettings };
-                }
-
-                // Start sync timer if auto-save is enabled
-                if (this.options.autoSave) {
-                    this.startSyncTimer();
-                }
+                // Using default settings while server sync is disabled
+                this.settings = { ...defaultSettings };
+                logger.info('Using default settings (server sync disabled)');
 
                 this.initialized = true;
                 logger.info('SettingsStore initialized');
@@ -115,48 +86,6 @@ export class SettingsStore {
                 }
             }
         };
-    }
-
-    private startSyncTimer(): void {
-        if (this.syncTimer !== null) {
-            window.clearInterval(this.syncTimer);
-        }
-        this.syncTimer = window.setInterval(
-            () => this.saveChanges(),
-            this.options.syncInterval
-        ) as unknown as number;
-    }
-
-    private async saveChanges(): Promise<void> {
-        if (this.pendingChanges.size === 0) {
-            return;
-        }
-
-        const changes = Array.from(this.pendingChanges);
-        this.pendingChanges.clear();
-
-        for (const path of changes) {
-            try {
-                const value = this.get(path);
-                await this.saveSetting(path, value);
-            } catch (error) {
-                logger.error(`Failed to save setting ${path}:`, error);
-                // Re-add to pending changes for retry
-                this.pendingChanges.add(path);
-            }
-        }
-    }
-
-    private async saveSetting(path: string, value: unknown): Promise<void> {
-        const response = await fetch(API_ENDPOINTS.SETTINGS_UPDATE, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path, value })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to save setting ${path}: ${response.statusText}`);
-        }
     }
 
     public get(path: string): unknown {

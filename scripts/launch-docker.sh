@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Allow commands to fail without exiting
-set +e
+# Exit on error, but allow specific commands to fail
+set -e
 
 # Determine script location and project root
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -22,6 +22,12 @@ if command -v docker-compose &> /dev/null; then
 else
     DOCKER_COMPOSE="docker compose"
 fi
+
+# Container names
+WEBXR_CONTAINER="logseq-xr-webxr"
+CLOUDFLARED_CONTAINER="cloudflared-tunnel"
+WEBXR_SERVICE="webxr"
+CLOUDFLARED_SERVICE="cloudflared"
 
 # Function to log messages with timestamps and optional color
 log() {
@@ -56,157 +62,20 @@ info() {
     log "INFO: $1" "$BLUE"
 }
 
-# Function to check Docker container status
-check_container_status() {
+# Function to check if container exists
+container_exists() {
     local container_name="$1"
-    local status
-    local health
-    
-    # Get container status
-    status=$(docker inspect -f '{{.State.Status}}' "$container_name" 2>/dev/null)
-    if [ -z "$status" ]; then
-        error "Container $container_name not found"
-        return 2
-    fi
-    
-    # Check if container is running
-    if [ "$status" != "running" ]; then
-        error "Container $container_name is in state: $status"
-        return 1
-    fi
-    
-    # Get healthcheck status if available
-    health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null)
-    
-    case "$health" in
-        "healthy")
-            success "Container $container_name is running and healthy"
-            return 0
-            ;;
-        "none")
-            success "Container $container_name is running"
-            return 0
-            ;;
-        *)
-            if [ "$health" != "starting" ]; then
-                error "Container $container_name health check failed: $health"
-                return 1
-            fi
-            info "Container $container_name is starting up..."
-            return 0
-            ;;
-    esac
+    docker ps -a -q -f name="^/${container_name}$" > /dev/null 2>&1
 }
 
-# Function to check container logs for specific patterns
-check_container_logs() {
+# Function to check if container is running
+container_is_running() {
     local container_name="$1"
-    local success_pattern="$2"
-    local error_pattern="$3"
-    local timeout="$4"
-    local start_time
-    start_time=$(date +%s)
-
-    while true; do
-        # Check if container is still running
-        if ! docker ps -q -f name="$container_name" > /dev/null; then
-            error "Container $container_name is not running"
-            return 1
-        fi
-
-        # Get recent logs
-        local logs
-        logs=$(docker logs "$container_name" --since=30s 2>&1)
-
-        # Check for success pattern
-        if echo "$logs" | grep -q "$success_pattern"; then
-            success "Container $container_name is ready"
-            return 0
-        fi
-
-        # Check for error pattern
-        if [ -n "$error_pattern" ] && echo "$logs" | grep -q "$error_pattern"; then
-            error "Container $container_name encountered an error"
-            echo "$logs" | grep -C 5 "$error_pattern"
-            return 1
-        fi
-
-        # Check timeout
-        if [ $(($(date +%s) - start_time)) -gt "$timeout" ]; then
-            error "Container $container_name failed to become ready within ${timeout}s"
-            echo "Last logs:"
-            echo "$logs"
-            return 1
-        fi
-
-        sleep 1
-    done
+    docker ps -q -f name="^/${container_name}$" > /dev/null 2>&1
 }
 
-# Function to handle exit
-handle_exit() {
-    echo # New line for clean exit
-    info "Received exit signal"
-    info "You can manually stop the containers with: $DOCKER_COMPOSE down"
-    info "Exiting without cleanup..."
-    exit 0
-}
-
-# Set up trap for clean exit
-trap handle_exit INT TERM
-
-# Function to start and monitor containers
-start_containers() {
-    info "Building and starting containers..."
-    
-    # Build containers
-    debug "Running docker compose build..."
-    if ! $DOCKER_COMPOSE build --pull; then
-        error "Failed to build containers"
-        return 1
-    fi
-    success "Container build completed"
-
-    # Start containers
-    debug "Running docker compose up..."
-    if ! $DOCKER_COMPOSE up -d; then
-        error "Failed to start containers"
-        return 1
-    fi
-    success "Containers started"
-
-    # Give containers time to initialize
-    info "Waiting for containers to initialize..."
-    sleep 10
-
-    # Wait for containers to be ready
-    local containers=($($DOCKER_COMPOSE ps --services))
-    for container in "${containers[@]}"; do
-        local container_name
-        case "$container" in
-            "webxr")
-                container_name="logseq-xr-webxr"
-                ;;
-            *)
-                container_name="$container"
-                ;;
-        esac
-        
-        info "Checking status of $container_name..."
-        if ! check_container_status "$container_name"; then
-            error "Container $container_name failed to start properly"
-            $DOCKER_COMPOSE logs "$container"
-            return 1
-        fi
-    done
-
-    return 0
-}
-
-# Main execution
-main() {
-    info "Starting LogseqXR services..."
-    
+# Function to setup environment
+setup_env() {
     # Change to project root
     cd "$PROJECT_ROOT" || {
         error "Failed to change to project root directory"
@@ -222,15 +91,182 @@ main() {
         source .env || warn "Error sourcing .env file"
         set +a
     fi
+}
 
-    # Start containers
-    if ! start_containers; then
-        error "Failed to start services"
-        info "Check the logs above for details"
-        exit 1
+# Function to wait for container to be ready
+wait_for_container() {
+    local container_name="$1"
+    local max_attempts=30
+    local attempt=1
+    local delay=2
+    
+    info "Waiting for $container_name to be ready..."
+    
+    while [ $attempt -le $max_attempts ]; do
+        # Check if container exists
+        if ! container_exists "$container_name"; then
+            error "Container $container_name does not exist"
+            return 1
+        fi
+        
+        # Check if container is running
+        if ! container_is_running "$container_name"; then
+            warn "Container $container_name is not running (attempt $attempt/$max_attempts)"
+            sleep $delay
+            ((attempt++))
+            continue
+        fi
+        
+        # Check health status
+        local health
+        health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_name" 2>/dev/null)
+        
+        case "$health" in
+            "healthy")
+                if docker logs "$container_name" 2>&1 | grep -q "Frontend is healthy"; then
+                    success "Container $container_name is ready"
+                    return 0
+                fi
+                ;;
+            "none")
+                if docker logs "$container_name" 2>&1 | grep -q "Frontend is healthy"; then
+                    success "Container $container_name is ready"
+                    return 0
+                fi
+                ;;
+        esac
+        
+        info "Attempt $attempt/$max_attempts: Waiting for container to be healthy..."
+        sleep $delay
+        ((attempt++))
+    done
+    
+    error "Timed out waiting for $container_name to be ready"
+    docker logs "$container_name" 2>&1 | tail -n 50
+    return 1
+}
+
+# Function to start containers
+start_containers() {
+    info "Starting containers..."
+    $DOCKER_COMPOSE up -d || {
+        error "Failed to start containers"
+        return 1
+    }
+    success "Containers started successfully"
+}
+
+# Function to stop containers
+stop_containers() {
+    info "Stopping and removing containers..."
+    $DOCKER_COMPOSE down || true
+}
+
+# Function to rebuild containers
+rebuild_container() {
+    info "Rebuilding $WEBXR_CONTAINER..."
+    
+    # Stop and remove containers
+    stop_containers
+
+    # Build and start containers
+    info "Starting $WEBXR_CONTAINER..."
+    if ! $DOCKER_COMPOSE up -d --build; then
+        error "Failed to start containers"
+        return 1
     fi
 
-    # Show endpoints
+    # Wait for container to be ready
+    if ! wait_for_container "$WEBXR_CONTAINER"; then
+        error "Container failed to become ready"
+        return 1
+    fi
+
+    success "Successfully rebuilt and restarted $WEBXR_CONTAINER"
+}
+
+# Function to test backend endpoints
+test_backend() {
+    info "Testing backend endpoints..."
+
+    # Test graph data endpoint
+    local response=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:4000/api/graph/data")
+    if [ "$response" = "200" ]; then
+        success "Backend graph data endpoint successful (HTTP 200)"
+    else
+        error "Backend graph data endpoint failed (HTTP $response)"
+        return 1
+    fi
+
+    # Test settings endpoint
+    info "Testing /api/settings..."
+    response=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:4000/api/settings")
+    if [ "$response" = "200" ]; then
+        success "Backend /api/settings successful (HTTP 200)"
+    else
+        error "Backend /api/settings failed (HTTP $response)"
+    fi
+
+    # Test Cloudflare tunnel
+    test_cloudflare_tunnel
+}
+
+# Function to test Cloudflare tunnel
+test_cloudflare_tunnel() {
+    info "Testing Cloudflare tunnel..."
+    
+    # Wait for cloudflared container to start
+    local max_attempts=30
+    local attempt=1
+    local delay=2
+    
+    info "Waiting for Cloudflare tunnel to be ready..."
+    while [ $attempt -le $max_attempts ]; do
+        info "Attempt $attempt/$max_attempts: Checking tunnel status..."
+        
+        # Check if container is running
+        if ! docker ps -q -f name="^/$CLOUDFLARED_CONTAINER$" > /dev/null 2>&1; then
+            warn "Cloudflared tunnel container is not running"
+            sleep $delay
+            ((attempt++))
+            continue
+        fi
+
+        # Check if tunnel is registered
+        if docker logs $CLOUDFLARED_CONTAINER 2>&1 | grep -q "Registered tunnel connection"; then
+            success "Cloudflare tunnel is registered and ready"
+            
+            # Get tunnel hostname from config
+            local tunnel_hostname=$(grep -o 'hostname: .*' config.yml | cut -d' ' -f2)
+            if [ -n "$tunnel_hostname" ]; then
+                success "Using tunnel hostname: $tunnel_hostname"
+                
+                # Test tunnel endpoint
+                local response=$(curl -s -o /dev/null -w "%{http_code}" "https://$tunnel_hostname" || echo "000")
+                if [ "$response" = "200" ]; then
+                    success "Tunnel endpoint is accessible"
+                    return 0
+                else
+                    error "Tunnel endpoint returned HTTP $response"
+                    return 1
+                fi
+            else
+                error "Could not find tunnel hostname in config.yml"
+                return 1
+            fi
+        fi
+
+        sleep $delay
+        ((attempt++))
+    done
+
+    error "Could not establish Cloudflare tunnel after $max_attempts attempts"
+    docker logs $CLOUDFLARED_CONTAINER | tail -n 50
+    return 1
+}
+
+# Function to show endpoints
+show_endpoints() {
     echo
     info "Services are running!"
     echo "HTTP:      http://localhost:4000"
@@ -241,12 +277,75 @@ main() {
     echo "stop:    $DOCKER_COMPOSE down"
     echo "restart: $DOCKER_COMPOSE restart"
     echo
-
-    # Show logs
-    info "Showing logs (Ctrl+C to exit)..."
-    $DOCKER_COMPOSE logs -f &
-    wait
 }
 
-# Run main function
-main
+# Function to handle cleanup on exit
+cleanup() {
+    info "Cleaning up..."
+    if [ "${DEBUG:-0}" = "1" ]; then
+        $DOCKER_COMPOSE logs
+    fi
+}
+
+# Set up trap for cleanup
+trap cleanup EXIT
+
+# Main function
+main() {
+    local command="${1:-start}"
+    
+    # Setup environment first
+    setup_env
+    
+    case "$command" in
+        "start")
+            info "Starting containers..."
+            start_containers
+            if wait_for_container "$WEBXR_CONTAINER"; then
+                show_endpoints
+                info "Showing logs (Ctrl+C to exit)..."
+                $DOCKER_COMPOSE logs -f
+            fi
+            ;;
+        "stop")
+            info "Stopping containers..."
+            stop_containers
+            ;;
+        "restart")
+            info "Restarting containers..."
+            start_containers
+            if wait_for_container "$WEBXR_CONTAINER"; then
+                show_endpoints
+            fi
+            ;;
+        "rebuild")
+            if rebuild_container "$WEBXR_CONTAINER"; then
+                show_endpoints
+            fi
+            ;;
+        "test")
+            if ! wait_for_container "$WEBXR_CONTAINER"; then
+                exit 1
+            fi
+            test_backend
+            ;;
+        "rebuild-test")
+            if ! rebuild_container "$WEBXR_CONTAINER"; then
+                exit 1
+            fi
+            test_backend
+            ;;
+        "logs")
+            info "Showing logs (Ctrl+C to exit)..."
+            $DOCKER_COMPOSE logs -f
+            ;;
+        *)
+            error "Unknown command: $command"
+            echo "Usage: $0 [start|stop|restart|rebuild|test|rebuild-test|logs]"
+            exit 1
+            ;;
+    esac
+}
+
+# Run main function with all arguments
+main "$@"

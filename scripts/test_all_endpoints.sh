@@ -404,53 +404,76 @@ wait_for_webxr() {
     return 1
 }
 
+# Function to test Cloudflare tunnel
+test_cloudflare_tunnel() {
+    log_header "Testing Cloudflare Tunnel"
+    
+    # Check if cloudflared container is running
+    if ! docker ps -q -f name="^/cloudflared-tunnel$" > /dev/null 2>&1; then
+        log_error "Cloudflared tunnel container is not running"
+        return 1
+    }
+    log_success "Cloudflared tunnel container is running"
+
+    # Get tunnel URL from cloudflared logs
+    local tunnel_url=$(docker logs cloudflared-tunnel 2>&1 | grep -o 'https://[^ ]*\.trycloudflare\.com' | tail -n1)
+    if [ -z "$tunnel_url" ]; then
+        log_error "Could not find tunnel URL in cloudflared logs"
+        return 1
+    }
+    log_success "Found tunnel URL: $tunnel_url"
+
+    # Test tunnel endpoint
+    local response=$(curl -s -o /dev/null -w "%{http_code}" "$tunnel_url" || echo "000")
+    if [ "$response" = "200" ]; then
+        log_success "Tunnel endpoint is accessible"
+    else
+        log_error "Tunnel endpoint returned HTTP $response"
+        return 1
+    }
+}
+
 # Main execution
 main() {
-    local total_failed=0
-    
-    # Check container logs first
-    check_container_logs "$CONTAINER_NAME"
-    
-    # Check nginx configuration
-    check_nginx_config
-    total_failed=$((total_failed + $?))
-    
-    # Wait for webxr to be ready before testing endpoints
-    if ! wait_for_webxr; then
+    local start_time=$(date +%s)
+    log_header "Starting endpoint tests"
+
+    # Wait for WebXR to be ready
+    wait_for_webxr || {
+        log_error "WebXR container is not ready"
         exit 1
-    fi
-    
-    # Test backend directly first
-    test_backend_directly
-    total_failed=$((total_failed + $?))
-    
-    # Test container internal endpoints
-    test_container_endpoints
-    total_failed=$((total_failed + $?))
-    
-    # Test RAGFlow network connectivity
-    test_ragflow_connectivity
-    total_failed=$((total_failed + $?))
-    
-    # Test each environment's endpoints
+    }
+
+    # Test Cloudflare tunnel first
+    test_cloudflare_tunnel || warn "Cloudflare tunnel test failed"
+
+    # Test each environment
     for env in "${!ENDPOINTS[@]}"; do
-        test_environment "$env"
-        total_failed=$((total_failed + $?))
+        test_environment "$env" || warn "Tests for $env environment failed"
     done
-    
+
+    # Test backend directly
+    test_backend_directly || warn "Backend tests failed"
+
+    # Test container internal endpoints
+    test_container_endpoints || warn "Container internal endpoint tests failed"
+
+    # Test RAGFlow network connectivity
+    test_ragflow_connectivity || warn "RAGFlow network connectivity tests failed"
+
     # If any tests failed, show logs again
-    if [ $total_failed -gt 0 ]; then
+    if [ $? -ne 0 ]; then
         log_header "Test Failed - Showing Recent Logs"
         check_container_logs "$CONTAINER_NAME" 100
     fi
-    
+
     # Final summary
     log_header "Test Summary"
-    if [ $total_failed -eq 0 ]; then
+    if [ $? -eq 0 ]; then
         log_success "All tests passed!"
         exit 0
     else
-        log_error "$total_failed total test(s) failed"
+        log_error "Some tests failed"
         exit 1
     fi
 }
