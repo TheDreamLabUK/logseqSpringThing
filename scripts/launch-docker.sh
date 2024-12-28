@@ -290,7 +290,36 @@ cleanup() {
 # Set up trap for cleanup
 trap cleanup EXIT
 
-# Main function
+# Function to check if the container is healthy
+check_container_health() {
+    local container_name="$1"
+    local max_attempts="$2"
+    local attempt=1
+
+    info "Waiting for $container_name to be ready..."
+    info "Attempt $attempt/$max_attempts: Waiting for container to be healthy..."
+
+    while [ $attempt -le $max_attempts ]; do
+        if [ "$(docker inspect -f '{{.State.Health.Status}}' "$container_name" 2>/dev/null)" = "healthy" ]; then
+            success "Container $container_name is ready"
+            return 0
+        fi
+        
+        ((attempt++))
+        info "Attempt $attempt/$max_attempts: Waiting for container to be healthy..."
+        sleep 2
+    done
+
+    error "Container $container_name failed to become healthy after $max_attempts attempts"
+    return 1
+}
+
+# Note: The /api/settings endpoint is expected to return 500 errors
+# This is intentional as server-side settings are temporarily disabled
+# and all settings are managed client-side for development purposes.
+# Do not attempt to fix these errors until server-side settings are re-enabled.
+
+# Main function to handle script execution
 main() {
     local command="${1:-start}"
     

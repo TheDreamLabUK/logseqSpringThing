@@ -75,7 +75,15 @@ export class GraphDataManager {
 
   public async fetchPaginatedData(page: number = 1, pageSize: number = 100): Promise<void> {
     try {
-      const response = await fetch(`${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`);
+      const response = await fetch(
+        `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
       if (!response.ok) {
         throw new Error(`Failed to fetch paginated data: ${response.statusText}`);
       }
@@ -172,7 +180,15 @@ export class GraphDataManager {
 
   private async loadPage(page: number, pageSize: number): Promise<void> {
     try {
-      const response = await fetch(`${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`);
+      const response = await fetch(
+        `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
       if (!response.ok) {
         throw new Error(`Failed to fetch page ${page}: ${response.statusText}`);
       }
@@ -328,8 +344,7 @@ export class GraphDataManager {
     // Allocate buffer for node positions (no header)
     const buffer = new ArrayBuffer(this.nodes.size * NODE_POSITION_SIZE);
     const positions = new Float32Array(buffer);
-
-    // Pack positions into binary format
+    
     let i = 0;
     for (const node of this.nodes.values()) {
       const pos = node.data.position;

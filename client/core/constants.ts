@@ -21,7 +21,7 @@ export const API_PATHS = {
 export const API_ENDPOINTS = {
     GRAPH_DATA: '/api/graph/data',
     GRAPH_UPDATE: '/api/graph/update',
-    GRAPH_PAGINATED: '/api/graph/paginated',
+    GRAPH_PAGINATED: '/api/graph/data/paginated',
     SETTINGS: '/api/settings',
     SETTINGS_UPDATE: '/api/settings/update',
     SETTINGS_CATEGORY: (category: string) => `/api/settings/${category}`,
