@@ -14,39 +14,39 @@ Use log::warn! for warnings.
 
 Use log::info! for informational messages.
 
-Use Result for error handling, propagating errors up the call stack.
+✓ Use Result for error handling, propagating errors up the call stack.
 
-Use unwrap_or_else or unwrap_or for handling Option and Result where a default value is appropriate.
+✓ Use unwrap_or_else or unwrap_or for handling Option and Result where a default value is appropriate.
 
-Use if let and match for pattern matching.
+✓ Use if let and match for pattern matching.
 
-Use async/await for asynchronous operations.
+✓ Use async/await for asynchronous operations.
 
-Use serde for serialization/deserialization.
+✓ Use serde for serialization/deserialization.
 
-Use config crate for loading settings.
+✓ Use config crate for loading settings.
 
-Use tokio::sync::RwLock for shared state.
+✓ Use tokio::sync::RwLock for shared state.
 
-Use actix_web for REST API and actix-web-actors for WebSocket.
+✓ Use actix_web for REST API and actix-web-actors for WebSocket.
 
-Use three.js for 3D rendering.
+✓ Use three.js for 3D rendering.
 
-Use TypeScript for client-side code.
+✓ Use TypeScript for client-side code.
 
-Use kebab-case for API endpoints and snake_case for Rust code.
+✓ Use kebab-case for API endpoints and snake_case for Rust code.
 
-Use camelCase for JavaScript/TypeScript code.
+✓ Use camelCase for JavaScript/TypeScript code.
 
-Use NODE_POSITION_SIZE constant for binary position updates.
+✓ Use NODE_POSITION_SIZE constant for binary position updates.
 
-Use BINARY_PROTOCOL_VERSION constant for WebSocket protocol version.
+✓ Use BINARY_PROTOCOL_VERSION constant for WebSocket protocol version.
 
-Use MAX_MESSAGE_SIZE and MAX_CONNECTIONS constants for WebSocket limits.
+✓ Use MAX_MESSAGE_SIZE and MAX_CONNECTIONS constants for WebSocket limits.
 
-Use HEARTBEAT_INTERVAL and MAX_CLIENT_TIMEOUT constants for WebSocket heartbeats.
+✓ Use HEARTBEAT_INTERVAL and MAX_CLIENT_TIMEOUT constants for WebSocket heartbeats.
 
-Use POSITION_UPDATE_INTERVAL constant for position updates.
+✓ Use POSITION_UPDATE_INTERVAL constant for position updates.
 
 Specific Changes
 
