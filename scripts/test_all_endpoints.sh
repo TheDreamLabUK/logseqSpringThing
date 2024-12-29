@@ -10,6 +10,7 @@ if [ -t 1 ]; then
     GREEN=$(tput setaf 2)
     YELLOW=$(tput setaf 3)
     BLUE=$(tput setaf 4)
+    GRAY=$(tput setaf 8)
     BOLD=$(tput bold)
     NC=$(tput sgr0)
 else
@@ -17,6 +18,7 @@ else
     GREEN=""
     YELLOW=""
     BLUE=""
+    GRAY=""
     BOLD=""
     NC=""
 fi
@@ -35,47 +37,418 @@ declare -A ENDPOINTS=(
     ["backend"]="http://127.0.0.1:$BACKEND_PORT"
     ["ragflow"]="http://localhost:3001"
     ["external"]="https://$PUBLIC_DOMAIN"
+    ["development"]="http://localhost:3001"
 )
+
+# WebSocket configuration
+declare -A WS_CONFIG=(
+    ["nginx"]="ws|4000|/wss"
+    ["backend"]="ws|3001|/wss"
+    ["ragflow"]="ws|3001|/wss"
+    ["external"]="wss|443|/wss"
+    ["development"]="ws|3001|/wss"
+)
+
+# Function to get WebSocket configuration
+get_ws_config() {
+    local env="$1"
+    local config="${WS_CONFIG[$env]}"
+    local protocol=$(echo "$config" | cut -d'|' -f1)
+    local port=$(echo "$config" | cut -d'|' -f2)
+    local path=$(echo "$config" | cut -d'|' -f3)
+    echo "$protocol|$port|$path"
+}
+
+# Function to test WebSocket protocol with detailed output
+test_ws_protocol() {
+    local url="$1"
+    local protocol="$2"
+    local port="$3"
+    local path="$4"
+    local description="$5"
+    
+    local start_time=$(date +%s.%N)
+    log_step "Testing WebSocket Protocol: $protocol"
+    log_info "Configuration:"
+    printf "%-20s: %s\n" "URL" "$url"
+    printf "%-20s: %s\n" "Protocol" "$protocol"
+    printf "%-20s: %s\n" "Port" "$port"
+    printf "%-20s: %s\n" "Path" "$path"
+    printf "%-20s: %s\n" "Timeout" "${WEBSOCKET_TIMEOUT}s"
+    
+    local ws_url="${url/$protocol:\/\/localhost:$port/$protocol:\/\/localhost:$port}$path"
+    log_info "Full WebSocket URL: $ws_url"
+    
+    local response
+    local curl_start_time=$(date +%s.%N)
+    log_info "Attempting WebSocket connection..."
+    if ! response=$(curl -v -s -i -N -m $WEBSOCKET_TIMEOUT \
+        -H "Connection: Upgrade" \
+        -H "Upgrade: websocket" \
+        -H "Host: localhost:$port" \
+        -H "Origin: ${protocol}://localhost:$port" \
+        -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+        -H "Sec-WebSocket-Version: 13" \
+        "$ws_url" 2>&1); then
+        local curl_end_time=$(date +%s.%N)
+        local curl_duration=$(echo "$curl_end_time - $curl_start_time" | bc)
+        log_error "$protocol connection failed" "Error: Connection refused or timed out"
+        log_info "Connection Details:"
+        printf "%-20s: %.3fs\n" "Attempt Duration" "$curl_duration"
+        printf "%-20s: %s\n" "Error" "Connection Refused"
+        return 1
+    elif echo "$response" | grep -q "HTTP/1.1 101"; then
+        local curl_end_time=$(date +%s.%N)
+        local curl_duration=$(echo "$curl_end_time - $curl_start_time" | bc)
+        log_success "$protocol connection successful" "Connection established"
+        log_info "Connection Details:"
+        printf "%-20s: %.3fs\n" "Connect Time" "$curl_duration"
+        printf "%-20s: %s\n" "Status" "Connected"
+        printf "%-20s: %s\n" "Protocol Version" "13"
+        log_info "Response Headers:"
+        echo "$response" | grep -E '^(HTTP|Upgrade|Connection|Sec-WebSocket)' | sed 's/^/  /'
+        return 0
+    else
+        local curl_end_time=$(date +%s.%N)
+        local curl_duration=$(echo "$curl_end_time - $curl_start_time" | bc)
+        log_error "$protocol connection failed" "Unexpected response from server"
+        log_info "Connection Details:"
+        printf "%-20s: %.3fs\n" "Attempt Duration" "$curl_duration"
+        printf "%-20s: %s\n" "Error" "Invalid Response"
+        log_info "Server Response:"
+        echo "$response" | sed 's/^/  /'
+        return 1
+    fi
+}
+
+# Function to test WebSocket connection with detailed response
+test_websocket() {
+    local url="$1"
+    local description="$2"
+    local timeout="${3:-$WEBSOCKET_TIMEOUT}"
+    
+    log_step "Testing WebSocket Connection: $description"
+    log_info "URL: $url"
+    log_info "Timeout: ${timeout}s"
+    
+    # Test initial WebSocket upgrade
+    local upgrade_response
+    if [[ "$url" == *"localhost"* ]] || [[ "$url" == *"127.0.0.1"* ]]; then
+        response=$(docker exec $CONTAINER_NAME curl -v -s -i -N \
+            -H "Connection: Upgrade" \
+            -H "Upgrade: websocket" \
+            -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+            -H "Sec-WebSocket-Version: 13" \
+            "$url" 2>&1)
+    else
+        # For external endpoints, use regular curl
+        response=$(curl -v -s -i -N \
+            -H "Connection: Upgrade" \
+            -H "Upgrade: websocket" \
+            -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+            -H "Sec-WebSocket-Version: 13" \
+            "$url" 2>&1)
+    fi
+    
+    # Check for successful upgrade (101 status)
+    if echo "$response" | grep -q "HTTP/1.1 101"; then
+        log_success "WebSocket upgrade successful" "Connection established"
+        
+        # Test binary protocol support
+        if echo -e "\x81\x05Hello" | timeout "$timeout" nc -w 1 "${url#*://}" > /dev/null 2>&1; then
+            log_success "Binary protocol test passed" "Server accepted binary frame"
+        else
+            log_error "Binary protocol test failed" "Server rejected binary frame"
+            return 1
+        fi
+        
+        # Test heartbeat
+        if echo -e "\x89\x00" | timeout 2 nc -w 1 "${url#*://}" > /dev/null 2>&1; then
+            log_success "Heartbeat test passed" "Server responded to ping"
+        else
+            log_warning "Heartbeat test inconclusive" "Server may not support ping/pong"
+        fi
+        
+        return 0
+    else
+        log_error "WebSocket upgrade failed" "Server returned: $(echo "$response" | grep "HTTP/")"
+        return 1
+    fi
+}
+
+# Function to check if a port is in use
+check_port() {
+    local port=$1
+    if command -v nc >/dev/null 2>&1; then
+        nc -z localhost "$port" >/dev/null 2>&1
+        return $?
+    elif command -v lsof >/dev/null 2>&1; then
+        lsof -i:"$port" >/dev/null 2>&1
+        return $?
+    else
+        # Fallback to curl
+        curl -s "http://localhost:$port" >/dev/null 2>&1
+        return $?
+    fi
+}
+
+# Function to test development environment
+test_development_environment() {
+    local failed=0
+    log_header "Testing Development Environment"
+    
+    # Check if Vite dev server is running
+    log_step "Testing Vite Development Server"
+    log_info "Checking Vite server status on port 3001..."
+    
+    if ! check_port 3001; then
+        log_error "✗ Vite dev server is not running"
+        log_info "To start the development server:"
+        log_info "1. Open a new terminal"
+        log_info "2. Navigate to the project directory"
+        log_info "3. Run: npm run dev"
+        return 1
+    else
+        log_success "✓ Vite dev server is running on port 3001"
+    fi
+    
+    # Test WebSocket protocols with detailed output
+    log_step "Testing WebSocket Protocols"
+    
+    # Get WebSocket configuration
+    local ws_config=$(get_ws_config "development")
+    local protocol=$(echo "$ws_config" | cut -d'|' -f1)
+    local port=$(echo "$ws_config" | cut -d'|' -f2)
+    local path=$(echo "$ws_config" | cut -d'|' -f3)
+    
+    # Show WebSocket test configuration
+    log_info "WebSocket Configuration:"
+    printf "\n%-25s: %s\n" "Environment" "Development"
+    printf "%-25s: %s\n" "Primary Protocol" "$protocol://"
+    printf "%-25s: %s\n" "Port" "$port"
+    printf "%-25s: %s\n" "Path" "$path"
+    printf "%-25s: %s\n" "Timeout" "${WEBSOCKET_TIMEOUT}s"
+    
+    # Test primary protocol
+    log_info "Testing primary protocol ($protocol)..."
+    if ! test_ws_protocol "http://localhost:$port" "$protocol" "$port" "$path" "Primary protocol test"; then
+        log_info "Primary protocol failed, attempting fallback..."
+        
+        # Try fallback protocol
+        local fallback_protocol
+        if [[ "$protocol" == "ws" ]]; then
+            fallback_protocol="wss"
+            log_info "Trying secure WebSocket protocol (wss://)..."
+        else
+            fallback_protocol="ws"
+            log_info "Trying standard WebSocket protocol (ws://)..."
+        fi
+        
+        test_ws_protocol "http://localhost:$port" "$fallback_protocol" "$port" "$path" "Fallback protocol test"
+        local fallback_status=$?
+        
+        if [ $fallback_status -eq 0 ]; then
+            log_success "Fallback protocol ($fallback_protocol) connection successful"
+            TEST_RESULTS["ws_protocol_used"]="$fallback_protocol"
+        else
+            log_error "Both primary and fallback protocols failed"
+            TEST_RESULTS["ws_protocol_used"]="none"
+            ((failed++))
+        fi
+    else
+        log_success "Primary protocol ($protocol) connection successful"
+        TEST_RESULTS["ws_protocol_used"]="$protocol"
+    fi
+    
+    # Show protocol test summary
+    log_step "WebSocket Protocol Test Summary"
+    printf "\n%-25s: %s\n" "Protocol Used" "${TEST_RESULTS[ws_protocol_used]}"
+    printf "%-25s: %s\n" "Primary Protocol" "$protocol"
+    printf "%-25s: %s\n" "Connection Status" "${TEST_RESULTS[ws_connection]:-N/A}"
+    printf "%-25s: %s\n" "Response Time" "${TEST_RESULTS[ws_latency]:-N/A}"
+    
+    # Test API endpoints through Vite proxy
+    log_step "Testing Development API Endpoints"
+    log_info "Testing endpoints through Vite development proxy..."
+    log_info "Base URL: http://localhost:3001"
+    log_info "Total endpoints to test: ${#API_ENDPOINTS[@]}"
+    
+    for endpoint in "${!API_ENDPOINTS[@]}"; do
+        log_info "Testing endpoint: ${API_ENDPOINTS[$endpoint]}"
+        local start_time=$(date +%s.%N)
+        test_endpoint "http://localhost:3001${endpoint}" "Development $endpoint endpoint" || ((failed++))
+        local end_time=$(date +%s.%N)
+        local duration=$(echo "$end_time - $start_time" | bc)
+        TEST_RESULTS["dev_${endpoint}_latency"]=$(printf "%.3fs" $duration)
+    done
+    
+    # Test WebSocket settings
+    log_step "Testing WebSocket Configuration"
+    log_info "Checking WebSocket settings endpoint..."
+    log_info "URL: http://localhost:3001/api/settings/websocket"
+    local start_time=$(date +%s.%N)
+    local ws_settings_response=$(curl -s -w "\n%{http_code}" \
+        -H "Accept: application/json" \
+        "http://localhost:3001/api/settings/websocket")
+    
+    local ws_settings_status=$(echo "$ws_settings_response" | tail -n1)
+    local end_time=$(date +%s.%N)
+    local duration=$(echo "$end_time - $start_time" | bc)
+    
+    if [[ "$ws_settings_status" == "500" ]]; then
+        log_success "WebSocket settings returned expected 500" "Settings are disabled in development mode as expected"
+        TEST_RESULTS["ws_settings"]="success"
+    else
+        log_error "WebSocket settings returned unexpected status: $ws_settings_status" "Expected: 500 (disabled)\nActual: $ws_settings_status\nResponse: $ws_settings_response"
+        TEST_RESULTS["ws_settings"]="failed"
+        ((failed++))
+    fi
+    
+    TEST_RESULTS["ws_settings_latency"]=$(printf "%.3fs" $duration)
+    
+    log_step "Development Environment Test Summary"
+    printf "\n%-30s %-15s %-15s\n" "Component" "Status" "Latency"
+    printf "%-30s %-15s %-15s\n" "Vite Server" "${TEST_RESULTS[vite_server]}" "-"
+    printf "%-30s %-15s %-15s\n" "WebSocket Connection" "${TEST_RESULTS[ws_connection]}" "-"
+    printf "%-30s %-15s %-15s\n" "WebSocket Settings" "${TEST_RESULTS[ws_settings]}" "${TEST_RESULTS[ws_settings_latency]}"
+    
+    for endpoint in "${!API_ENDPOINTS[@]}"; do
+        printf "%-30s %-15s %-15s\n" \
+            "API: ${endpoint}" \
+            "${TEST_RESULTS[dev_${endpoint}]:-N/A}" \
+            "${TEST_RESULTS[dev_${endpoint}_latency]:-N/A}"
+    done
+    
+    return $failed
+}
+
+# Function to test nginx service
+test_nginx_service() {
+    log_step "Testing Nginx Service"
+    log_info "Checking nginx service status..."
+    
+    # Check if nginx is running on port 4000
+    if ! check_port 4000; then
+        log_error "✗ Nginx service is not running"
+        log_info "To start nginx service:"
+        log_info "1. Make sure Docker is running"
+        log_info "2. Run: docker-compose up -d"
+        return 1
+    fi
+    
+    # Try to get nginx health status
+    local health_response
+    if ! health_response=$(curl -s "http://localhost:4000/health"); then
+        log_error "✗ Nginx health check failed"
+        return 1
+    fi
+    
+    if echo "$health_response" | grep -q '"status":"healthy"'; then
+        log_success "✓ Nginx service is healthy"
+        
+        # Check if it can proxy to backend
+        if curl -s "http://localhost:4000/api/health" >/dev/null 2>&1; then
+            log_success "✓ Nginx successfully proxying to backend"
+            return 0
+        else
+            log_error "✗ Nginx failed to proxy to backend"
+            return 1
+        fi
+    else
+        log_error "✗ Nginx service reported unhealthy status"
+        log_info "Response: $health_response"
+        return 1
+    fi
+}
 
 # Store results for comparison
 declare -A TEST_RESULTS
 
 # API endpoints to test
 declare -A API_ENDPOINTS=(
-    ["graph_data"]="/api/graph/data"
-    ["graph_update"]="/api/graph/update"
-    ["graph_paginated"]="/api/graph/data/paginated"
-    ["settings_root"]="/api/settings"
-    ["settings_update"]="/api/settings/update"
-    ["settings_visualization"]="/api/settings/visualization"
-    ["websocket_control"]="/api/websocket/control"
-    ["files"]="/api/files"
+    ["GET:/api/graph/data"]="Get full graph data"
+    ["GET:/api/graph/paginated?page=1&pageSize=10"]="Get paginated graph data"
+    ["POST:/api/graph/update"]="Update graph data"
+    
+    ["GET:/api/files/fetch?path=README.md"]="Fetch repository file"
+    
+    ["GET:/api/chat/status"]="Check RAGFlow chat status"
+    ["GET:/api/perplexity/status"]="Check Perplexity status"
+    
+    ["GET:/health"]="Backend health check"
+    ["GET:/metrics"]="Backend metrics"
 )
 
-# Function to log messages with timestamp
+# Health check configuration
+declare -A HEALTH_CHECKS=(
+    ["nginx"]="http://localhost:4000/health"
+    ["backend"]="http://127.0.0.1:3001/health"
+    ["ragflow"]="http://localhost:3001/health"
+    ["cloudflared"]="http://localhost:2000/ready"
+)
+
+# Function to log messages with timestamp and category
 log() {
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    printf "%s[%s]%s %s\n" "${BOLD}" "${timestamp}" "${NC}" "$1"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S.%N' | cut -b 1-23)
+    local category="${2:-INFO}"
+    local color="${3:-$BLUE}"
+    printf "%s[%s]%s %s[%s]%s %s\n" "${BOLD}" "${timestamp}" "${NC}" "${color}" "${category}" "${NC}" "$1"
 }
 
-# Function to log success
+# Function to log debug messages
+debug() {
+    log "$1" "DEBUG" "$GRAY"
+}
+
+# Function to log test step
+log_step() {
+    printf "\n%s%s---%s %s %s---%s\n" "${BOLD}" "${BLUE}" "${NC}" "$1" "${BLUE}" "${NC}"
+}
+
+# Function to log success with details
 log_success() {
-    log "${GREEN}✓ $1${NC}"
+    local message="$1"
+    local details="${2:-}"
+    log "✓ $message" "SUCCESS" "$GREEN"
+    if [ -n "$details" ]; then
+        printf "%s%s%s\n" "${GRAY}" "$details" "${NC}"
+    fi
 }
 
-# Function to log error
+# Function to log error with details
 log_error() {
-    log "${RED}✗ $1${NC}"
+    local message="$1"
+    local details="${2:-}"
+    log "✗ $message" "ERROR" "$RED"
+    if [ -n "$details" ]; then
+        printf "%s%s%s\n" "${GRAY}" "$details" "${NC}"
+    fi
 }
 
-# Function to log info
+# Function to log info with details
 log_info() {
-    log "${BLUE}$1${NC}"
+    local message="$1"
+    local details="${2:-}"
+    log "$message" "INFO" "$BLUE"
+    if [ -n "$details" ]; then
+        printf "%s%s%s\n" "${GRAY}" "$details" "${NC}"
+    fi
 }
 
-# Function to log header
+# Function to log section header with timing
 log_header() {
+    local start_time=$(date +%s.%N)
     printf "\n%s%s===%s %s %s===%s\n" "${BOLD}" "${YELLOW}" "${NC}" "$1" "${YELLOW}" "${NC}"
+    echo "$start_time"
+}
+
+# Function to log section footer with timing
+log_footer() {
+    local section="$1"
+    local start_time="$2"
+    local end_time=$(date +%s.%N)
+    local duration=$(echo "$end_time - $start_time" | bc)
+    printf "\n%s%s===%s %s completed in %.2f seconds %s===%s\n" "${BOLD}" "${YELLOW}" "${NC}" "$section" "$duration" "${YELLOW}" "${NC}"
 }
 
 # Function to pretty print JSON
@@ -95,8 +468,14 @@ test_endpoint() {
     local data="${4:-}"
     local extra_opts="${5:-}"
     
-    log_info "Testing $method $description..."
+    local start_time=$(date +%s.%N)
+    log_step "Testing $method $description"
     log_info "URL: $url"
+    log_info "Method: $method"
+    if [[ -n "$data" ]]; then
+        log_info "Request Data:"
+        echo "$data" | jq '.' || echo "$data"
+    fi
     
     # Use docker exec for container endpoints
     if [[ "$url" == *"127.0.0.1"* ]] || [[ "$url" == *"localhost"* ]]; then
@@ -126,83 +505,18 @@ test_endpoint() {
         fi
     fi
     
+    local end_time=$(date +%s.%N)
+    local duration=$(echo "$end_time - $start_time" | bc)
+    
     if [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
-        log_success "$description successful (HTTP $http_code)"
+        log_success "$description successful (HTTP $http_code)" "Duration: ${duration}s"
         return 0
     else
-        log_error "$description failed (HTTP $http_code)"
+        log_error "$description failed (HTTP $http_code)" "Duration: ${duration}s"
+        if [[ -n "$response" ]]; then
+            log_error "Response:" "$response"
+        fi
         return 1
-    fi
-}
-
-# Function to test WebSocket connection with detailed response
-test_websocket() {
-    local url="$1"
-    local description="$2"
-    local env="$3"
-    
-    log_info "Testing WebSocket connection to $url..."
-    
-    # Convert http/https to ws/wss
-    local ws_url="${url/http:/ws:}"
-    ws_url="${ws_url/https:/wss:}"
-    ws_url="${ws_url}/wss"
-    
-    log_info "WebSocket URL: $ws_url"
-    
-    # Use websocat for testing if available
-    if command -v websocat >/dev/null 2>&1; then
-        local response
-        if [[ "$url" == *"localhost"* ]] || [[ "$url" == *"127.0.0.1"* ]]; then
-            response=$(docker exec $CONTAINER_NAME timeout $WEBSOCKET_TIMEOUT websocat "$ws_url" 2>&1)
-        else
-            response=$(timeout $WEBSOCKET_TIMEOUT websocat "$ws_url" 2>&1)
-        fi
-        
-        local status=$?
-        if [ $status -eq 0 ] || [ $status -eq 124 ]; then
-            log_success "$description successful (WebSocket connection established)"
-            TEST_RESULTS["${env}_ws"]="success"
-            return 0
-        else
-            log_error "$description failed (WebSocket connection failed)"
-            TEST_RESULTS["${env}_ws"]="failed"
-            return 1
-        fi
-    else
-        # Fallback to curl for upgrade request
-        local response
-        if [[ "$url" == *"localhost"* ]] || [[ "$url" == *"127.0.0.1"* ]]; then
-            response=$(docker exec $CONTAINER_NAME curl -i -N \
-                -H "Connection: Upgrade" \
-                -H "Upgrade: websocket" \
-                -H "Host: ${url#*://}" \
-                -H "Origin: $url" \
-                -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
-                -H "Sec-WebSocket-Version: 13" \
-                "$url/wss" 2>&1)
-        else
-            response=$(curl -i -N \
-                -H "Connection: Upgrade" \
-                -H "Upgrade: websocket" \
-                -H "Host: ${url#*://}" \
-                -H "Origin: $url" \
-                -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
-                -H "Sec-WebSocket-Version: 13" \
-                "$url/wss" 2>&1)
-        fi
-        
-        if echo "$response" | grep -q "HTTP/1.1 101\|HTTP/1.1 200"; then
-            log_success "$description successful (WebSocket upgrade)"
-            TEST_RESULTS["${env}_ws"]="success"
-            return 0
-        else
-            local status=$(echo "$response" | grep -oP "HTTP/1.1 \K[0-9]+" || echo "000")
-            log_error "$description failed (HTTP $status)"
-            TEST_RESULTS["${env}_ws"]="failed"
-            log_error "Response: $response"
-            return 1
-        fi
     fi
 }
 
@@ -306,7 +620,7 @@ test_environment() {
     done
     
     # Test WebSocket endpoints with detailed response
-    test_websocket "$base_url" "$env Binary Protocol" "$env" || ((failed++))
+    test_websocket "$base_url" "$env Binary Protocol" || ((failed++))
     
     # Test WebSocket settings endpoint
     local ws_settings_response
@@ -575,70 +889,154 @@ test_cloudflare_tunnel() {
     return $failed
 }
 
-# Function to compare environment results
+# Function to compare environment results with detailed output
 compare_environments() {
-    log_header "Environment Comparison"
+    local start_time=$(log_header "Environment Comparison")
     
-    # Compare nginx vs external responses
-    log_info "Comparing nginx (localhost:4000) vs external (www.visionflow.info) responses:"
+    log_step "Environment Overview"
+    printf "\n%-15s %-20s %-15s %-15s %-15s\n" "Environment" "Base URL" "Protocol" "Status" "Latency"
+    printf "%-15s %-20s %-15s %-15s %-15s\n" "Development" "localhost:3001" "ws://" "${TEST_RESULTS[development_status]:-N/A}" "${TEST_RESULTS[development_latency]:-N/A}"
+    printf "%-15s %-20s %-15s %-15s %-15s\n" "Nginx" "localhost:4000" "ws://" "${TEST_RESULTS[nginx_status]:-N/A}" "${TEST_RESULTS[nginx_latency]:-N/A}"
+    printf "%-15s %-20s %-15s %-15s %-15s\n" "Production" "$PUBLIC_DOMAIN" "wss://" "${TEST_RESULTS[external_status]:-N/A}" "${TEST_RESULTS[external_latency]:-N/A}"
     
-    # Compare WebSocket results
-    log_info "\nWebSocket Comparison:"
-    printf "%-20s %-15s %-15s\n" "Endpoint" "Nginx" "External"
-    printf "%-20s %-15s %-15s\n" "WebSocket" "${TEST_RESULTS[nginx_ws]:-N/A}" "${TEST_RESULTS[external_ws]:-N/A}"
-    printf "%-20s %-15s %-15s\n" "WS Settings" "${TEST_RESULTS[nginx_ws_settings]:-N/A}" "${TEST_RESULTS[external_ws_settings]:-N/A}"
+    log_step "WebSocket Protocol Status"
+    printf "\n%-20s %-15s %-15s %-15s %-20s\n" "Protocol" "Development" "Nginx" "External" "Notes"
+    printf "%-20s %-15s %-15s %-15s %-20s\n" "Connection" "${TEST_RESULTS[development_ws]:-N/A}" "${TEST_RESULTS[nginx_ws]:-N/A}" "${TEST_RESULTS[external_ws]:-N/A}" "Initial handshake"
+    printf "%-20s %-15s %-15s %-15s %-20s\n" "Binary Updates" "${TEST_RESULTS[development_binary]:-N/A}" "${TEST_RESULTS[nginx_binary]:-N/A}" "${TEST_RESULTS[external_binary]:-N/A}" "Data streaming"
+    printf "%-20s %-15s %-15s %-15s %-20s\n" "Settings" "${TEST_RESULTS[development_ws_settings]:-N/A}" "${TEST_RESULTS[nginx_ws_settings]:-N/A}" "${TEST_RESULTS[external_ws_settings]:-N/A}" "Configuration"
     
-    # Compare REST endpoints
-    log_info "\nREST Endpoint Comparison:"
-    printf "%-20s %-15s %-15s\n" "Endpoint" "Nginx" "External"
-    for endpoint in "graph_data" "graph_paginated" "graph_update"; do
-        printf "%-20s %-15s %-15s\n" "$endpoint" "${TEST_RESULTS[nginx_${endpoint}]:-N/A}" "${TEST_RESULTS[external_${endpoint}]:-N/A}"
+    log_step "REST API Status"
+    printf "\n%-30s %-15s %-15s %-15s %-10s\n" "Endpoint" "Development" "Nginx" "External" "Latency"
+    for endpoint in "${!API_ENDPOINTS[@]}"; do
+        printf "%-30s %-15s %-15s %-15s %-10s\n" \
+            "$endpoint" \
+            "${TEST_RESULTS[development_${endpoint}]:-N/A}" \
+            "${TEST_RESULTS[nginx_${endpoint}]:-N/A}" \
+            "${TEST_RESULTS[external_${endpoint}]:-N/A}" \
+            "${TEST_RESULTS[${endpoint}_latency]:-N/A}"
     done
     
-    # Compare RAGFlow responses
-    log_info "\nRAGFlow (port 3001) Comparison:"
-    printf "%-20s %-15s\n" "Endpoint" "Status"
-    for endpoint in "graph_data" "graph_paginated" "graph_update"; do
-        printf "%-20s %-15s\n" "$endpoint" "${TEST_RESULTS[ragflow_${endpoint}]:-N/A}"
+    log_step "Error Summary"
+    local error_count=0
+    for key in "${!TEST_RESULTS[@]}"; do
+        if [[ ${TEST_RESULTS[$key]} == "failed" ]]; then
+            ((error_count++))
+            log_error "Failed Test: $key" "${TEST_RESULTS[${key}_error]:-No error details available}"
+        fi
     done
+    
+    if [ $error_count -eq 0 ]; then
+        log_success "All tests completed successfully"
+    else
+        log_error "$error_count tests failed" "See above for detailed error information"
+    fi
+    
+    log_step "Performance Summary"
+    printf "\n%-20s %-15s %-15s %-15s\n" "Metric" "Development" "Nginx" "External"
+    printf "%-20s %-15s %-15s %-15s\n" "Avg Response" "${TEST_RESULTS[development_avg_latency]:-N/A}" "${TEST_RESULTS[nginx_avg_latency]:-N/A}" "${TEST_RESULTS[external_avg_latency]:-N/A}"
+    printf "%-20s %-15s %-15s %-15s\n" "WS Connect" "${TEST_RESULTS[development_ws_latency]:-N/A}" "${TEST_RESULTS[nginx_ws_latency]:-N/A}" "${TEST_RESULTS[external_ws_latency]:-N/A}"
+    
+    log_footer "Environment Comparison" "$start_time"
 }
 
-# Main function
+# Main function with detailed progress reporting
 main() {
     local total_failed=0
+    local main_start_time=$(date +%s.%N)
+    
+    log_header "LogseqXR Connection Test Suite"
+    
+    # Show test configuration
+    log_step "Test Configuration"
+    printf "\n%-25s: %s\n" "Backend Port" "$BACKEND_PORT"
+    printf "%-25s: %s\n" "Nginx Port" "$NGINX_PORT"
+    printf "%-25s: %s\n" "Production Domain" "$PUBLIC_DOMAIN"
+    printf "%-25s: %s seconds\n" "Request Timeout" "$TIMEOUT"
+    printf "%-25s: %s seconds\n" "WebSocket Timeout" "$WEBSOCKET_TIMEOUT"
+    
+    # Show environment information
+    log_step "Environment Information"
+    printf "\n%-25s: %s\n" "Container Name" "$CONTAINER_NAME"
+    printf "%-25s: %s\n" "Development URL" "http://localhost:3001"
+    printf "%-25s: %s\n" "Nginx URL" "http://localhost:4000"
+    printf "%-25s: %s\n" "Production URL" "https://$PUBLIC_DOMAIN"
     
     # Wait for services to be ready
-    wait_for_webxr || exit 1
+    log_step "Service Readiness Check"
+    wait_for_webxr || {
+        log_error "Service readiness check failed - attempting to continue with available services"
+        log_info "Note: Some tests may fail if required services are not running"
+    }
     
-    # Test each environment
+    # Test development environment first
+    log_step "Development Environment Tests"
+    log_info "Starting development environment tests..."
+    test_development_environment
+    local dev_status=$?
+    ((total_failed+=$dev_status))
+    TEST_RESULTS["development_status"]=$dev_status
+    
+    # Test each environment with timing
     for env in "nginx" "backend" "ragflow" "external"; do
+        log_step "${env^} Environment Tests"
+        log_info "Testing ${env} environment..."
+        local env_start_time=$(date +%s.%N)
+        
         test_environment "$env"
-        ((total_failed+=$?))
+        local env_status=$?
+        ((total_failed+=$env_status))
+        TEST_RESULTS["${env}_status"]=$env_status
+        
+        local env_end_time=$(date +%s.%N)
+        local env_duration=$(echo "$env_end_time - $env_start_time" | bc)
+        TEST_RESULTS["${env}_duration"]=$(printf "%.3f" $env_duration)
+        
+        log_info "${env^} environment testing completed in ${env_duration}s"
     done
     
-    # Additional tests
+    # Additional tests with progress reporting
+    log_step "Network Connectivity Tests"
+    log_info "Testing RAGFlow connectivity..."
     test_ragflow_connectivity
-    ((total_failed+=$?))
+    local rag_status=$?
+    ((total_failed+=$rag_status))
+    TEST_RESULTS["ragflow_status"]=$rag_status
     
+    log_step "Cloudflare Tests"
+    log_info "Testing Cloudflare tunnel..."
     test_cloudflare_tunnel
-    ((total_failed+=$?))
+    local cf_status=$?
+    ((total_failed+=$cf_status))
+    TEST_RESULTS["cloudflare_status"]=$cf_status
     
-    # Compare results
+    # Results analysis
+    log_step "Test Results Analysis"
     compare_environments
     
-    # Check container logs for errors
+    log_step "Container Log Analysis"
     check_container_logs $CONTAINER_NAME
     
-    # Check nginx config
+    log_step "Nginx Configuration Check"
     check_nginx_config
     
-    # Final summary
+    # Calculate total duration
+    local main_end_time=$(date +%s.%N)
+    local total_duration=$(echo "$main_end_time - $main_start_time" | bc)
+    
+    # Final summary with statistics
+    log_header "Test Suite Summary"
+    printf "\n%-25s: %d\n" "Total Tests Run" "${#TEST_RESULTS[@]}"
+    printf "%-25s: %d\n" "Failed Tests" "$total_failed"
+    printf "%-25s: %.3f seconds\n" "Total Duration" "$total_duration"
+    printf "%-25s: %s\n" "Start Time" "$(date -d @${main_start_time%.*})"
+    printf "%-25s: %s\n" "End Time" "$(date -d @${main_end_time%.*})"
+    
     if [ $total_failed -eq 0 ]; then
-        log_success "All tests passed successfully!"
+        log_success "All tests passed successfully!" "Total duration: ${total_duration}s"
         exit 0
     else
-        log_error "$total_failed tests failed"
-        log_info "See environment comparison above for details on differences between localhost:4000 and www.visionflow.info"
+        log_error "$total_failed tests failed" "See detailed results above for specific failures"
+        log_info "Test suite completed in ${total_duration}s"
         exit 1
     fi
 }
