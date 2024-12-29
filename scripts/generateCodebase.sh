@@ -40,6 +40,9 @@ export_docker_config() {
     echo -e "\n--- scripts/launch-docker.sh ---\n" >> codebase.txt
     cat ../scripts/launch-docker.sh >> codebase.txt
     
+    echo -e "\n--- config.yml ---\n" >> codebase.txt
+    cat ../config.yml >> codebase.txt
+    
     echo -e "\n--- scripts/start.sh ---\n" >> codebase.txt
     cat ../scripts/start.sh >> codebase.txt
 }
