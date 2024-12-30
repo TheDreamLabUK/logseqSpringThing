@@ -21,15 +21,28 @@ export interface NodeData {
 
 export interface Node {
   id: string;
-  data: NodeData;
+  data: {
+    position: Vector3;
+    metadata?: {
+      name?: string;
+      lastModified?: number;
+      links?: string[];
+      references?: string[];
+    };
+  };
   color?: string;
-  metadata?: any;
+}
+
+export interface Position {
+  x: number;
+  y: number;
+  z: number;
 }
 
 export interface Edge {
-  source: string;
-  target: string;
-  weight?: number;
+  source: Position;
+  target: Position;
+  id: string;
 }
 
 export interface PaginatedGraphData extends GraphData {
@@ -364,9 +377,8 @@ export function transformNodeData(node: any): Node {
     id: node.id,
     data: {
       position: node.data.position,
-      velocity: node.data.velocity || { x: 0, y: 0, z: 0 }
+      metadata: node.data.metadata
     },
-    color: node.color,
-    metadata: node.metadata
+    color: node.color
   };
 }

@@ -15,21 +15,13 @@ export interface VisualizationSettings {
 // XR-specific settings
 export interface XRSettings {
     // Session settings
-    mode: XRSessionMode;
+    mode: 'ar' | 'vr';
     roomScale: boolean;
-    spaceType: XRReferenceSpaceType;
+    spaceType: 'local' | 'bounded' | 'unbounded';
     quality: 'low' | 'medium' | 'high';
 
     // Input and interaction
-    input: {
-        enableHandTracking: boolean;
-        enableHaptics: boolean;
-        hapticIntensity: number;
-        dragThreshold: number;
-        pinchThreshold: number;
-        rotationThreshold: number;
-        interactionRadius: number;
-    };
+    input: 'none' | 'controllers' | 'hands';
 
     // Visual settings
     visuals: {
@@ -55,15 +47,10 @@ export interface XRSettings {
     };
 
     // Passthrough settings
-    passthrough: {
-        enabled: boolean;
-        opacity: number;
-        brightness: number;
-        contrast: number;
-        portalSize: number;
-        portalEdgeColor: string;
-        portalEdgeWidth: number;
-    };
+    passthrough: boolean;
+
+    // Haptics settings
+    haptics: boolean;
 }
 
 // System settings
@@ -76,14 +63,14 @@ export interface SystemSettings {
 
 // Component settings interfaces
 export interface AnimationSettings {
-    enableMotionBlur: boolean;
     enableNodeAnimations: boolean;
+    enableMotionBlur: boolean;
     motionBlurStrength: number;
     selectionWaveEnabled: boolean;
     pulseEnabled: boolean;
-    rippleEnabled: boolean;
-    edgeAnimationEnabled: boolean;
-    flowParticlesEnabled: boolean;
+    pulseSpeed: number;
+    pulseStrength: number;
+    waveSpeed: number;
 }
 
 export interface BloomSettings {
@@ -96,20 +83,21 @@ export interface BloomSettings {
 }
 
 export interface EdgeSettings {
+    color: string;
+    opacity: number;
     arrowSize: number;
     baseWidth: number;
-    color: string;
     enableArrows: boolean;
-    opacity: number;
     widthRange: [number, number];
 }
 
 export interface HologramSettings {
     ringCount: number;
-    ringColor: string;
-    ringOpacity: number;
     ringSizes: number[];
     ringRotationSpeed: number;
+    globalRotationSpeed: number;
+    ringColor: string;
+    ringOpacity: number;
     enableBuckminster: boolean;
     buckminsterScale: number;
     buckminsterOpacity: number;
@@ -119,34 +107,33 @@ export interface HologramSettings {
     enableTriangleSphere: boolean;
     triangleSphereScale: number;
     triangleSphereOpacity: number;
-    globalRotationSpeed: number;
 }
 
 export interface LabelSettings {
     enableLabels: boolean;
+    desktopFontSize: number;
     textColor: string;
     textOutlineColor: string;
     textOutlineWidth: number;
     textResolution: number;
     textPadding: number;
-    desktopFontSize: number;
-    billboardMode: 'camera' | 'up';
+    billboardMode: boolean;
 }
 
 export interface NodeSettings {
-    baseColor: string;
+    quality: 'low' | 'medium' | 'high';
+    enableInstancing: boolean;
+    enableHologram: boolean;
+    enableMetadataShape: boolean;
+    enableMetadataVisualization: boolean;
     baseSize: number;
     sizeRange: [number, number];
-    enableMetadataShape: boolean;
+    baseColor: string;
+    opacity: number;
     colorRangeAge: [string, string];
     colorRangeLinks: [string, string];
     metalness: number;
     roughness: number;
-    opacity: number;
-    enableMetadataVisualization: boolean;
-    enableHologram: boolean;
-    enableInstancing: boolean;
-    quality: 'low' | 'medium' | 'high';
 }
 
 export interface PhysicsSettings {
@@ -220,10 +207,14 @@ export interface DebugSettings {
 
 // Main settings interface
 export interface Settings {
-    visualization: VisualizationSettings;
+    visualization: {
+        nodes: NodeSettings;
+        edges: EdgeSettings;
+        labels: LabelSettings;
+        hologram: HologramSettings;
+        animations: AnimationSettings;
+    };
     xr: XRSettings;
-    system: SystemSettings;
-    labels: LabelSettings;
 }
 
 export * from './settings/base';

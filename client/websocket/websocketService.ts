@@ -425,4 +425,11 @@ export class WebSocketService {
             };
         }
     }
+
+    public close(): void {
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+    }
 }
