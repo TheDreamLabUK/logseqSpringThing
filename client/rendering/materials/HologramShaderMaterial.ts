@@ -4,7 +4,7 @@ import { Settings } from '../../types/settings';
 interface HologramUniforms {
     time: { value: number };
     color: { value: Vector3 };
-    texture: { value: Texture | null };
+    diffuseTexture: { value: Texture | null };
     resolution: { value: Vector2 };
     interactionPoint: { value: Vector3 };
     interactionStrength: { value: number };
@@ -40,7 +40,7 @@ export class HologramShaderMaterial extends Material {
         this.uniforms = {
             time: { value: 0 },
             color: { value: new Vector3() },
-            texture: { value: null },
+            diffuseTexture: { value: null },
             resolution: { value: new Vector2(window.innerWidth, window.innerHeight) },
             interactionPoint: { value: new Vector3() },
             interactionStrength: { value: 0.0 },
@@ -59,9 +59,13 @@ export class HologramShaderMaterial extends Material {
         `;
 
         this.fragmentShader = `
+            #ifdef GL_ES
+            precision highp float;
+            #endif
+
             uniform float time;
             uniform vec3 color;
-            uniform sampler2D texture;
+            uniform sampler2D diffuseTexture;
             uniform vec2 resolution;
             uniform vec3 interactionPoint;
             uniform float interactionStrength;
@@ -82,7 +86,10 @@ export class HologramShaderMaterial extends Material {
                 distortion += interactionDistortion;
                 
                 uv.y += distortion;
-                vec4 texColor = texture2D(texture, uv);
+                vec4 texColor = vec4(1.0); // Default white if no texture
+                if (vUv.x >= 0.0) {
+                    texColor = texture2D(diffuseTexture, uv);
+                }
                 
                 // Hologram effect
                 float scanline = sin(uv.y * 100.0 + time * 5.0) * 0.1 + 0.9;
@@ -141,12 +148,34 @@ export class HologramShaderMaterial extends Material {
         super.dispose();
         
         // Dispose of any textures
-        if (this.uniforms.texture.value) {
-            this.uniforms.texture.value.dispose();
+        if (this.uniforms.diffuseTexture.value) {
+            this.uniforms.diffuseTexture.value.dispose();
         }
     }
 
     clone(): this {
-        return new HologramShaderMaterial(this.uniforms as any) as this;
+        const material = new HologramShaderMaterial({
+            visualization: {
+                hologram: {
+                    ringColor: '#00FFFF', // Default hologram color
+                    ringOpacity: this.opacity,
+                    ringCount: 3,
+                    ringSizes: [1.0, 1.5, 2.0],
+                    ringRotationSpeed: 0.1,
+                    globalRotationSpeed: 0.05,
+                    enableBuckminster: true,
+                    buckminsterScale: 1.0,
+                    buckminsterOpacity: 0.3,
+                    enableGeodesic: true,
+                    geodesicScale: 1.2,
+                    geodesicOpacity: 0.4,
+                    enableTriangleSphere: true,
+                    triangleSphereScale: 1.1,
+                    triangleSphereOpacity: 0.35
+                }
+            }
+        } as Settings);
+        material.uniforms = { ...this.uniforms };
+        return material as this;
     }
 }
