@@ -40,7 +40,7 @@ impl SpeechService {
 
     fn start(&self, mut receiver: mpsc::Receiver<SpeechCommand>) {
         let settings = Arc::clone(&self.settings);
-        let tts_provider = Arc::clone(&self.tts_provider);
+        let tts_provider: Arc<RwLock<TTSProvider>> = Arc::clone(&self.tts_provider);
 
         task::spawn(async move {
             let mut ws_stream: Option<WebSocketStream<MaybeTlsStream<TcpStream>>> = None;

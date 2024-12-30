@@ -39,3 +39,6 @@ pub use handlers::graph_handler;
 pub use handlers::perplexity_handler;
 pub use handlers::ragflow_handler;
 pub use handlers::settings;
+
+// Re-export types
+pub use crate::types::speech::{SpeechError, SpeechCommand, TTSProvider};

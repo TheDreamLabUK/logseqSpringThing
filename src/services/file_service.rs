@@ -83,7 +83,7 @@ impl RealGitHubService {
         owner: String,
         repo: String,
         base_path: String,
-        _settings: Arc<RwLock<Settings>>,
+        settings: Arc<RwLock<Settings>>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let client = Client::builder()
             .user_agent("rust-github-api")
@@ -101,7 +101,7 @@ impl RealGitHubService {
             owner,
             repo,
             base_path,
-            settings: Arc::clone(&_settings),
+            settings,
         })
     }
 }
@@ -628,14 +628,17 @@ impl FileService {
     /// Handles incremental updates after initial setup
     pub async fn fetch_and_process_files(
         github_service: &dyn GitHubService,
-        _settings: Arc<RwLock<Settings>>,
+        settings: Arc<RwLock<Settings>>,
         metadata_store: &mut MetadataStore,
     ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
         // Ensure directories exist before any operations
         Self::ensure_directories()?;
 
         // Get metadata for markdown files in target directory
-        let github_files_metadata = github_service.fetch_file_metadata(true).await?;
+        let settings = settings.read().await;
+        let skip_debug_filter = !settings.system.debug.enabled;
+        drop(settings);
+        let github_files_metadata = github_service.fetch_file_metadata(skip_debug_filter).await?;
         debug!("Fetched metadata for {} markdown files", github_files_metadata.len());
 
         let mut processed_files = Vec::new();
