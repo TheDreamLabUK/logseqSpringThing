@@ -197,6 +197,7 @@ async fn get_category_settings_handler(
 
 pub mod common;
 pub mod websocket;
+pub mod visualization;
 
 // Register all settings handlers
 pub fn config(cfg: &mut web::ServiceConfig) {

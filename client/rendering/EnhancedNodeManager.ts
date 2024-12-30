@@ -10,7 +10,7 @@ import {
     Material,
     PerspectiveCamera
 } from 'three';
-import { Node, NodeData } from '../core/types';
+import { NodeData } from '../core/types';
 import { Settings } from '../types/settings';
 import { MetadataVisualizer } from './MetadataVisualizer';
 import { XRHandWithHaptics } from '../types/xr';
@@ -146,7 +146,7 @@ export class EnhancedNodeManager {
         }
     }
 
-    updateNodes(nodes: Node[]) {
+    updateNodes(nodes: { id: string, data: NodeData }[]) {
         const mesh = this.instancedMesh;
         if (!mesh) return;
         
@@ -158,7 +158,7 @@ export class EnhancedNodeManager {
                 name: node.data.metadata?.name || '',
                 commitAge: this.calculateCommitAge(node.data.metadata?.lastModified || Date.now()),
                 hyperlinkCount: node.data.metadata?.links?.length || 0,
-                importance: this.calculateImportance(node),
+                importance: this.calculateImportance({ id: node.id, data: node.data }),
                 position: {
                     x: node.data.position.x,
                     y: node.data.position.y,
@@ -193,7 +193,7 @@ export class EnhancedNodeManager {
         return (now - timestamp) / (1000 * 60 * 60 * 24); // Convert to days
     }
 
-    private calculateImportance(node: Node): number {
+    private calculateImportance(node: { id: string, data: NodeData }): number {
         const linkFactor = node.data.metadata?.links ? node.data.metadata.links.length / 20 : 0;
         const referenceFactor = node.data.metadata?.references ? node.data.metadata.references.length / 10 : 0;
         return Math.min(linkFactor + referenceFactor, 1);
@@ -246,17 +246,17 @@ export class EnhancedNodeManager {
         }
     }
 
-    public createNode(id: string, data: NodeData, metadata: any): void {
+    public createNode(id: string, data: NodeData): void {
         const position = new Vector3(data.position.x, data.position.y, data.position.z);
-        const scale = this.calculateNodeScale(this.calculateImportance({ id, data, metadata }));
+        const scale = this.calculateNodeScale(this.calculateImportance({ id, data }));
         
         if (this.settings.visualization.nodes.enableMetadataShape) {
             const nodeMesh = this.metadataVisualizer.createNodeMesh({
                 id,
-                name: metadata?.name || '',
-                commitAge: this.calculateCommitAge(metadata?.lastModified || Date.now()),
-                hyperlinkCount: metadata?.links?.length || 0,
-                importance: this.calculateImportance({ id, data, metadata }),
+                name: data.metadata?.name || '',
+                commitAge: this.calculateCommitAge(data.metadata?.lastModified || Date.now()),
+                hyperlinkCount: data.metadata?.links?.length || 0,
+                importance: this.calculateImportance({ id, data }),
                 position: data.position
             });
             this.nodes.set(id, nodeMesh);

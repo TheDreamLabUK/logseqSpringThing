@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use config::{ConfigBuilder, ConfigError, Environment, File};
-use log::{debug, error};
-use std::path::PathBuf;
+use config::{ConfigBuilder, ConfigError, Environment};
+use log::debug;
+use crate::models::simulation_params::SimulationParams;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
@@ -18,6 +18,10 @@ pub struct Settings {
     #[serde(default)]
     pub system: SystemSettings,
 
+    // Graph settings
+    #[serde(default)]
+    pub graph: GraphSettings,
+
     // Service settings from .env (server-side only)
     #[serde(default)]
     pub github: GitHubSettings,
@@ -31,654 +35,94 @@ pub struct Settings {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
+pub struct GraphSettings {
+    pub simulation_params: SimulationParams,
+    pub layout_params: LayoutParams,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct LayoutParams {
+    pub use_force_layout: bool,
+    pub force_iterations: u32,
+    pub link_distance: f32,
+    pub link_strength: f32,
+    pub charge_strength: f32,
+    pub center_strength: f32,
+    pub collision_radius: f32,
+}
+
+impl Default for GraphSettings {
+    fn default() -> Self {
+        Self {
+            simulation_params: SimulationParams::new(),
+            layout_params: LayoutParams {
+                use_force_layout: true,
+                force_iterations: 300,
+                link_distance: 30.0,
+                link_strength: 1.0,
+                charge_strength: -30.0,
+                center_strength: 0.1,
+                collision_radius: 5.0,
+            },
+        }
+    }
+}
+
+// Placeholder structs for other settings
+// These should be moved to their own modules
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VisualizationSettings {
-    #[serde(default)]
     pub animations: AnimationSettings,
-    #[serde(default)]
-    pub ar: ARSettings,
-    #[serde(default)]
-    pub audio: AudioSettings,
-    #[serde(default)]
     pub bloom: BloomSettings,
-    #[serde(default)]
     pub edges: EdgeSettings,
-    #[serde(default)]
     pub hologram: HologramSettings,
-    #[serde(default)]
     pub labels: LabelSettings,
-    #[serde(default)]
     pub nodes: NodeSettings,
-    #[serde(default)]
     pub physics: PhysicsSettings,
-    #[serde(default)]
     pub rendering: RenderingSettings,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-pub struct XRSettings {
-    #[serde(default)]
-    pub mode: String,
-    #[serde(default)]
-    pub room_scale: bool,
-    #[serde(default)]
-    pub space_type: String,
-    #[serde(default)]
-    pub quality: String,
-    #[serde(default)]
-    pub input: XRInputSettings,
-    #[serde(default)]
-    pub visuals: XRVisualSettings,
-    #[serde(default)]
-    pub environment: XREnvironmentSettings,
-    #[serde(default)]
-    pub passthrough: XRPassthroughSettings,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "snake_case")]
-pub struct XRInputSettings {
-    pub enable_hand_tracking: bool,
-    pub enable_haptics: bool,
-    pub haptic_intensity: f32,
-    pub drag_threshold: f32,
-    pub pinch_threshold: f32,
-    pub rotation_threshold: f32,
-    pub interaction_radius: f32,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "snake_case")]
-pub struct XRVisualSettings {
-    pub hand_mesh_enabled: bool,
-    pub hand_mesh_color: String,
-    pub hand_mesh_opacity: f32,
-    pub hand_point_size: f32,
-    pub hand_ray_enabled: bool,
-    pub hand_ray_color: String,
-    pub hand_ray_width: f32,
-    pub gesture_smoothing: f32,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "snake_case")]
-pub struct XREnvironmentSettings {
-    pub enable_light_estimation: bool,
-    pub enable_plane_detection: bool,
-    pub enable_scene_understanding: bool,
-    pub plane_color: String,
-    pub plane_opacity: f32,
-    pub show_plane_overlay: bool,
-    pub snap_to_floor: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "snake_case")]
-pub struct XRPassthroughSettings {
-    pub enabled: bool,
-    pub opacity: f32,
-    pub brightness: f32,
-    pub contrast: f32,
-    pub portal_size: f32,
-    pub portal_edge_color: String,
-    pub portal_edge_width: f32,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-pub struct SystemSettings {
-    #[serde(default)]
-    pub network: NetworkSettings,
-    #[serde(default)]
-    pub websocket: WebSocketSettings,
-    #[serde(default)]
-    pub security: SecuritySettings,
-    #[serde(default)]
-    pub debug: DebugSettings,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-pub struct DebugSettings {
-    pub enable_data_debug: bool,
-    pub enable_websocket_debug: bool,
-    pub enabled: bool,
-    pub log_binary_headers: bool,
-    pub log_full_json: bool,
-}
-
-impl Default for DebugSettings {
-    fn default() -> Self {
-        Self {
-            enable_data_debug: false,
-            enable_websocket_debug: false,
-            enabled: false,
-            log_binary_headers: false,
-            log_full_json: false,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
-pub struct DefaultSettings {
-    pub api_client_timeout: u32,
-    pub enable_metrics: bool,
-    pub enable_request_logging: bool,
-    pub log_format: String,
-    pub log_level: String,
-    pub max_concurrent_requests: u32,
-    pub max_payload_size: usize,
-    pub max_retries: u32,
-    pub metrics_port: u16,
-    pub retry_delay: u32,
-}
-
-impl Default for DefaultSettings {
-    fn default() -> Self {
-        Self {
-            api_client_timeout: 30,
-            enable_metrics: true,
-            enable_request_logging: true,
-            log_format: "json".to_string(),
-            log_level: "debug".to_string(),
-            max_concurrent_requests: 5,
-            max_payload_size: 5242880,
-            max_retries: 3,
-            metrics_port: 9090,
-            retry_delay: 5,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
-pub struct NetworkSettings {
-    pub bind_address: String,
-    pub domain: String,
-    pub enable_http2: bool,
-    pub enable_rate_limiting: bool,
-    pub enable_tls: bool,
-    pub max_request_size: usize,
-    pub min_tls_version: String,
-    pub port: u16,
-    pub rate_limit_requests: u32,
-    pub rate_limit_window: u32,
-    pub tunnel_id: String,
-}
-
-impl Default for NetworkSettings {
-    fn default() -> Self {
-        Self {
-            bind_address: "0.0.0.0".to_string(),
-            domain: "localhost".to_string(),
-            enable_http2: false,
-            enable_rate_limiting: true,
-            enable_tls: false,
-            max_request_size: 10485760,
-            min_tls_version: String::new(),
-            port: 3001,
-            rate_limit_requests: 100,
-            rate_limit_window: 60,
-            tunnel_id: "dummy".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct GitHubSettings {
-    #[serde(default)]
-    pub token: String,
-    #[serde(default)]
-    pub owner: String,
-    #[serde(default)]
-    pub repo: String,
-    #[serde(default)]
-    pub base_path: String,
-    #[serde(default)]
-    pub version: String,
-    #[serde(default = "default_true")]
-    pub rate_limit: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct RagFlowSettings {
-    #[serde(default)]
-    pub api_key: String,
-    #[serde(default)]
-    pub api_base_url: String,
-    #[serde(default = "default_timeout")]
-    pub timeout: u64,
-    #[serde(default = "default_max_retries")]
-    pub max_retries: u32,
-    #[serde(default)]
-    pub chat_id: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct PerplexitySettings {
-    #[serde(default)]
-    pub api_key: String,
-    #[serde(default)]
-    pub model: String,
-    #[serde(default)]
-    pub api_url: String,
-    #[serde(default = "default_max_tokens")]
-    pub max_tokens: u32,
-    #[serde(default = "default_temperature")]
-    pub temperature: f32,
-    #[serde(default = "default_top_p")]
-    pub top_p: f32,
-    #[serde(default)]
-    pub presence_penalty: f32,
-    #[serde(default)]
-    pub frequency_penalty: f32,
-    #[serde(default = "default_timeout")]
-    pub timeout: u64,
-    #[serde(default = "default_rate_limit")]
-    pub rate_limit: u32,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct OpenAISettings {
-    #[serde(default)]
-    pub api_key: String,
-    #[serde(default)]
-    pub base_url: String,
-    #[serde(default = "default_timeout")]
-    pub timeout: u64,
-    #[serde(default = "default_rate_limit")]
-    pub rate_limit: u32,
-}
-
-// Default value functions
-fn default_true() -> bool {
-    true
-}
-
-fn default_timeout() -> u64 {
-    30
-}
-
-fn default_max_retries() -> u32 {
-    3
-}
-
-fn default_max_tokens() -> u32 {
-    4096
-}
-
-fn default_temperature() -> f32 {
-    0.5
-}
-
-fn default_top_p() -> f32 {
-    0.9
-}
-
-fn default_rate_limit() -> u32 {
-    100
-}
-
-// UI/Rendering settings from settings.toml (using snake_case as they're shared with client)
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
 pub struct AnimationSettings {
-    pub enable_motion_blur: bool,
     pub enable_node_animations: bool,
+    pub enable_motion_blur: bool,
     pub motion_blur_strength: f32,
+    pub selection_wave_enabled: bool,
     pub pulse_enabled: bool,
-    pub ripple_enabled: bool,
-    pub edge_animation_enabled: bool,
-    pub flow_particles_enabled: bool,
-}
-
-impl Default for AnimationSettings {
-    fn default() -> Self {
-        Self {
-            enable_motion_blur: false,
-            enable_node_animations: false,
-            motion_blur_strength: 0.4,
-            pulse_enabled: false,
-            ripple_enabled: false,
-            edge_animation_enabled: false,
-            flow_particles_enabled: false,
-        }
-    }
+    pub pulse_speed: f32,
+    pub pulse_strength: f32,
+    pub wave_speed: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
-pub struct ARSettings {
-    pub drag_threshold: f32,
-    pub enable_hand_tracking: bool,
-    pub enable_haptics: bool,
-    pub enable_light_estimation: bool,
-    pub enable_passthrough_portal: bool,
-    pub enable_plane_detection: bool,
-    pub enable_scene_understanding: bool,
-    pub gesture_smoothing: f32,
-    pub hand_mesh_color: String,
-    pub hand_mesh_enabled: bool,
-    pub hand_mesh_opacity: f32,
-    pub hand_point_size: f32,
-    pub hand_ray_color: String,
-    pub hand_ray_enabled: bool,
-    pub hand_ray_width: f32,
-    pub haptic_intensity: f32,
-    pub interaction_radius: f32,
-    pub passthrough_brightness: f32,
-    pub passthrough_contrast: f32,
-    pub passthrough_opacity: f32,
-    pub pinch_threshold: f32,
-    pub plane_color: String,
-    pub plane_opacity: f32,
-    pub portal_edge_color: String,
-    pub portal_edge_width: f32,
-    pub portal_size: f32,
-    pub room_scale: bool,
-    pub rotation_threshold: f32,
-    pub show_plane_overlay: bool,
-    pub snap_to_floor: bool,
-}
-
-impl Default for ARSettings {
-    fn default() -> Self {
-        Self {
-            drag_threshold: 0.04,
-            enable_hand_tracking: true,
-            enable_haptics: true,
-            enable_light_estimation: true,
-            enable_passthrough_portal: false,
-            enable_plane_detection: true,
-            enable_scene_understanding: true,
-            gesture_smoothing: 0.9,
-            hand_mesh_color: "#FFD700".to_string(),
-            hand_mesh_enabled: true,
-            hand_mesh_opacity: 0.3,
-            hand_point_size: 0.01,
-            hand_ray_color: "#FFD700".to_string(),
-            hand_ray_enabled: true,
-            hand_ray_width: 0.002,
-            haptic_intensity: 0.7,
-            interaction_radius: 0.5,
-            passthrough_brightness: 1.0,
-            passthrough_contrast: 1.0,
-            passthrough_opacity: 1.0,
-            pinch_threshold: 0.015,
-            plane_color: "#4A90E2".to_string(),
-            plane_opacity: 0.3,
-            portal_edge_color: "#FFD700".to_string(),
-            portal_edge_width: 0.02,
-            portal_size: 1.0,
-            room_scale: true,
-            rotation_threshold: 0.08,
-            show_plane_overlay: true,
-            snap_to_floor: true,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
-pub struct AudioSettings {
-    pub enable_spatial_audio: bool,
-    pub enable_interaction_sounds: bool,
-    pub enable_ambient_sounds: bool,
-}
-
-impl Default for AudioSettings {
-    fn default() -> Self {
-        Self {
-            enable_spatial_audio: false,
-            enable_interaction_sounds: false,
-            enable_ambient_sounds: false,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
 pub struct BloomSettings {
-    pub edge_bloom_strength: f32,
     pub enabled: bool,
-    pub environment_bloom_strength: f32,
-    pub node_bloom_strength: f32,
-    pub radius: f32,
     pub strength: f32,
-}
-
-impl Default for BloomSettings {
-    fn default() -> Self {
-        Self {
-            edge_bloom_strength: 0.3,
-            enabled: false,
-            environment_bloom_strength: 0.5,
-            node_bloom_strength: 0.2,
-            radius: 0.5,
-            strength: 1.8,
-        }
-    }
+    pub radius: f32,
+    pub edge_bloom_strength: f32,
+    pub node_bloom_strength: f32,
+    pub environment_bloom_strength: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
 pub struct EdgeSettings {
+    pub color: String,
+    pub opacity: f32,
     pub arrow_size: f32,
     pub base_width: f32,
-    pub color: String,
     pub enable_arrows: bool,
-    pub opacity: f32,
-    pub width_range: Vec<f32>,
-}
-
-impl Default for EdgeSettings {
-    fn default() -> Self {
-        Self {
-            arrow_size: 0.2,
-            base_width: 2.0,
-            color: "#917f18".to_string(),
-            enable_arrows: false,
-            opacity: 0.6,
-            width_range: vec![1.0, 3.0],
-        }
-    }
+    pub width_range: (f32, f32),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
-pub struct LabelSettings {
-    pub desktop_font_size: u32,
-    pub enable_labels: bool,
-    pub text_color: String,
-    pub text_rendering_mode: String,
-    pub text_resolution: u32,
-    pub text_padding: u32,
-    pub text_outline_width: f32,
-    pub text_outline_color: String,
-    pub billboard_mode: String,
-}
-
-impl Default for LabelSettings {
-    fn default() -> Self {
-        Self {
-            desktop_font_size: 48,
-            enable_labels: true,
-            text_color: "#FFFFFF".to_string(),
-            text_rendering_mode: "sdf".to_string(),
-            text_resolution: 64,
-            text_padding: 4,
-            text_outline_width: 0.4,
-            text_outline_color: "#000000".to_string(),
-            billboard_mode: "camera".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
-pub struct NodeSettings {
-    pub base_color: String,
-    pub base_size: f32,
-    pub clearcoat: f32,
-    pub enable_hover_effect: bool,
-    pub enable_instancing: bool,
-    pub highlight_color: String,
-    pub highlight_duration: u32,
-    pub hover_scale: f32,
-    pub material_type: String,
-    pub metalness: f32,
-    pub opacity: f32,
-    pub roughness: f32,
-    pub size_by_connections: bool,
-    pub size_range: Vec<f32>,
-    pub use_metadata_size: bool,
-    pub use_metadata_shape: bool,
-    pub use_metadata_color: bool,
-    pub shape_age_ranges: Vec<u32>,
-    pub hyperlink_color_min: String,
-    pub hyperlink_color_max: String,
-}
-
-impl Default for NodeSettings {
-    fn default() -> Self {
-        Self {
-            base_color: "#c3ab6f".to_string(),
-            base_size: 1.0,
-            clearcoat: 0.5,
-            enable_hover_effect: false,
-            enable_instancing: false,
-            highlight_color: "#822626".to_string(),
-            highlight_duration: 300,
-            hover_scale: 1.2,
-            material_type: "basic".to_string(),
-            metalness: 0.3,
-            opacity: 0.4,
-            roughness: 0.35,
-            size_by_connections: true,
-            size_range: vec![1.0, 5.0],
-            use_metadata_size: true,
-            use_metadata_shape: true,
-            use_metadata_color: true,
-            shape_age_ranges: vec![7, 30, 90, 365],
-            hyperlink_color_min: "#c3ab6f".to_string(),
-            hyperlink_color_max: "#822626".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
-pub struct PhysicsSettings {
-    pub attraction_strength: f32,
-    pub bounds_size: f32,
-    pub collision_radius: f32,
-    pub damping: f32,
-    pub enable_bounds: bool,
-    pub enabled: bool,
-    pub iterations: u32,
-    pub max_velocity: f32,
-    pub repulsion_strength: f32,
-    pub spring_strength: f32,
-}
-
-impl Default for PhysicsSettings {
-    fn default() -> Self {
-        Self {
-            attraction_strength: 0.015,
-            bounds_size: 12.0,
-            collision_radius: 0.25,
-            damping: 0.88,
-            enable_bounds: true,
-            enabled: false,
-            iterations: 500,
-            max_velocity: 2.5,
-            repulsion_strength: 1500.0,
-            spring_strength: 0.018,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
-pub struct RenderingSettings {
-    pub ambient_light_intensity: f32,
-    pub background_color: String,
-    pub directional_light_intensity: f32,
-    pub enable_ambient_occlusion: bool,
-    pub enable_antialiasing: bool,
-    pub enable_shadows: bool,
-    pub environment_intensity: f32,
-}
-
-impl Default for RenderingSettings {
-    fn default() -> Self {
-        Self {
-            ambient_light_intensity: 0.7,
-            background_color: "#000000".to_string(),
-            directional_light_intensity: 1.0,
-            enable_ambient_occlusion: false,
-            enable_antialiasing: true,
-            enable_shadows: false,
-            environment_intensity: 1.2,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
-pub struct SecuritySettings {
-    pub allowed_origins: Vec<String>,
-    pub audit_log_path: String,
-    pub cookie_httponly: bool,
-    pub cookie_samesite: String,
-    pub cookie_secure: bool,
-    pub csrf_token_timeout: u32,
-    pub enable_audit_logging: bool,
-    pub enable_request_validation: bool,
-    pub session_timeout: u32,
-}
-
-impl Default for SecuritySettings {
-    fn default() -> Self {
-        Self {
-            allowed_origins: Vec::new(),
-            audit_log_path: "/app/logs/audit.log".to_string(),
-            cookie_httponly: true,
-            cookie_samesite: "Strict".to_string(),
-            cookie_secure: true,
-            csrf_token_timeout: 3600,
-            enable_audit_logging: true,
-            enable_request_validation: true,
-            session_timeout: 3600,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
 pub struct HologramSettings {
-    pub xr_quality: String,
-    pub desktop_quality: String,
     pub ring_count: u32,
-    pub ring_color: String,
-    pub ring_opacity: f32,
     pub ring_sizes: Vec<f32>,
     pub ring_rotation_speed: f32,
+    pub global_rotation_speed: f32,
+    pub ring_color: String,
+    pub ring_opacity: f32,
     pub enable_buckminster: bool,
     pub buckminster_scale: f32,
     pub buckminster_opacity: f32,
@@ -688,19 +132,127 @@ pub struct HologramSettings {
     pub enable_triangle_sphere: bool,
     pub triangle_sphere_scale: f32,
     pub triangle_sphere_opacity: f32,
-    pub global_rotation_speed: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LabelSettings {
+    pub enable_labels: bool,
+    pub desktop_font_size: u32,
+    pub text_color: String,
+    pub text_outline_color: String,
+    pub text_outline_width: f32,
+    pub text_resolution: u32,
+    pub text_padding: u32,
+    pub billboard_mode: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NodeSettings {
+    pub quality: String,
+    pub enable_instancing: bool,
+    pub enable_hologram: bool,
+    pub enable_metadata_shape: bool,
+    pub enable_metadata_visualization: bool,
+    pub base_size: f32,
+    pub size_range: (f32, f32),
+    pub base_color: String,
+    pub opacity: f32,
+    pub color_range_age: (String, String),
+    pub color_range_links: (String, String),
+    pub metalness: f32,
+    pub roughness: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PhysicsSettings {
+    pub enabled: bool,
+    pub attraction_strength: f32,
+    pub repulsion_strength: f32,
+    pub spring_strength: f32,
+    pub damping: f32,
+    pub iterations: u32,
+    pub max_velocity: f32,
+    pub collision_radius: f32,
+    pub enable_bounds: bool,
+    pub bounds_size: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RenderingSettings {
+    pub ambient_light_intensity: f32,
+    pub directional_light_intensity: f32,
+    pub environment_intensity: f32,
+    pub background_color: String,
+    pub enable_ambient_occlusion: bool,
+    pub enable_antialiasing: bool,
+    pub enable_shadows: bool,
+}
+
+impl Default for VisualizationSettings {
+    fn default() -> Self {
+        Self {
+            animations: AnimationSettings::default(),
+            bloom: BloomSettings::default(),
+            edges: EdgeSettings::default(),
+            hologram: HologramSettings::default(),
+            labels: LabelSettings::default(),
+            nodes: NodeSettings::default(),
+            physics: PhysicsSettings::default(),
+            rendering: RenderingSettings::default(),
+        }
+    }
+}
+
+impl Default for AnimationSettings {
+    fn default() -> Self {
+        Self {
+            enable_node_animations: true,
+            enable_motion_blur: false,
+            motion_blur_strength: 0.5,
+            selection_wave_enabled: false,
+            pulse_enabled: false,
+            pulse_speed: 1.0,
+            pulse_strength: 0.5,
+            wave_speed: 1.0,
+        }
+    }
+}
+
+impl Default for BloomSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            strength: 0.5,
+            radius: 1.0,
+            edge_bloom_strength: 0.5,
+            node_bloom_strength: 0.5,
+            environment_bloom_strength: 0.5,
+        }
+    }
+}
+
+impl Default for EdgeSettings {
+    fn default() -> Self {
+        Self {
+            color: String::from("#ffffff"),
+            opacity: 0.8,
+            arrow_size: 3.0,
+            base_width: 0.1,
+            enable_arrows: true,
+            width_range: (1.0, 5.0),
+        }
+    }
 }
 
 impl Default for HologramSettings {
     fn default() -> Self {
         Self {
-            xr_quality: "medium".to_string(),
-            desktop_quality: "high".to_string(),
             ring_count: 3,
-            ring_color: "#00FFFF".to_string(),
-            ring_opacity: 0.5,
             ring_sizes: vec![1.0, 1.5, 2.0],
             ring_rotation_speed: 0.1,
+            global_rotation_speed: 0.05,
+            ring_color: String::from("#00FFFF"),
+            ring_opacity: 0.5,
             enable_buckminster: true,
             buckminster_scale: 1.0,
             buckminster_opacity: 0.3,
@@ -710,41 +262,150 @@ impl Default for HologramSettings {
             enable_triangle_sphere: true,
             triangle_sphere_scale: 1.1,
             triangle_sphere_opacity: 0.35,
-            global_rotation_speed: 0.05,
         }
     }
 }
 
-// Note: Connection keep-alive is handled by WebSocket protocol-level ping/pong frames
-// automatically by the actix-web-actors framework on the server and browser WebSocket API
-// on the client. No custom heartbeat implementation is needed.
+impl Default for LabelSettings {
+    fn default() -> Self {
+        Self {
+            enable_labels: true,
+            desktop_font_size: 48,
+            text_color: String::from("#ffffff"),
+            text_outline_color: String::from("#000000"),
+            text_outline_width: 0.1,
+            text_resolution: 512,
+            text_padding: 16,
+            billboard_mode: true,
+        }
+    }
+}
+
+impl Default for NodeSettings {
+    fn default() -> Self {
+        Self {
+            quality: String::from("medium"),
+            enable_instancing: true,
+            enable_hologram: true,
+            enable_metadata_shape: true,
+            enable_metadata_visualization: true,
+            base_size: 1.0,
+            size_range: (0.5, 2.0),
+            base_color: String::from("#ffffff"),
+            opacity: 0.8,
+            color_range_age: (String::from("#ff0000"), String::from("#00ff00")),
+            color_range_links: (String::from("#0000ff"), String::from("#ff00ff")),
+            metalness: 0.5,
+            roughness: 0.2,
+        }
+    }
+}
+
+impl Default for PhysicsSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            attraction_strength: 0.1,
+            repulsion_strength: 0.1,
+            spring_strength: 0.1,
+            damping: 0.5,
+            iterations: 1,
+            max_velocity: 10.0,
+            collision_radius: 1.0,
+            enable_bounds: true,
+            bounds_size: 100.0,
+        }
+    }
+}
+
+impl Default for RenderingSettings {
+    fn default() -> Self {
+        Self {
+            ambient_light_intensity: 0.5,
+            directional_light_intensity: 0.8,
+            environment_intensity: 1.0,
+            background_color: String::from("#000000"),
+            enable_ambient_occlusion: true,
+            enable_antialiasing: true,
+            enable_shadows: true,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct XRSettings {}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
+pub struct SystemSettings {
+    pub websocket: WebSocketSettings,
+    pub debug: DebugSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WebSocketSettings {
-    pub binary_chunk_size: usize,
-    pub compression_enabled: bool,
-    pub compression_threshold: usize,
-    pub max_connections: usize,
-    pub max_message_size: usize,
-    pub reconnect_attempts: u32,
-    pub reconnect_delay: u64,
     pub update_rate: u32,
+    pub max_message_size: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DebugSettings {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GitHubSettings {
+    pub api_key: String,
+    pub api_url: String,
+    pub token: String,
+    pub owner: String,
+    pub repo: String,
+    pub base_path: String,
 }
 
 impl Default for WebSocketSettings {
     fn default() -> Self {
         Self {
-            binary_chunk_size: 65536,
-            compression_enabled: true,
-            compression_threshold: 1024,
-            max_connections: 1000,
-            max_message_size: 100485760,
-            reconnect_attempts: 3,
-            reconnect_delay: 5000,
-            update_rate: 90,
+            update_rate: 100,
+            max_message_size: 65536, // 64KB default max message size
         }
     }
+}
+
+impl Default for GitHubSettings {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            api_url: String::from("https://api.github.com"),
+            token: String::new(),
+            owner: String::new(),
+            repo: String::new(),
+            base_path: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RagFlowSettings {
+    pub api_key: String,
+    pub api_base_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PerplexitySettings {
+    pub api_key: String,
+    pub api_url: String,
+    pub model: String,
+    pub max_tokens: u32,
+    pub temperature: f32,
+    pub top_p: f32,
+    pub presence_penalty: f32,
+    pub frequency_penalty: f32,
+    pub timeout: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OpenAISettings {
+    pub api_key: String,
 }
 
 impl Settings {
@@ -770,67 +431,10 @@ impl Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            visualization: VisualizationSettings {
-                animations: AnimationSettings::default(),
-                ar: ARSettings::default(),
-                audio: AudioSettings::default(),
-                bloom: BloomSettings::default(),
-                edges: EdgeSettings::default(),
-                hologram: HologramSettings::default(),
-                labels: LabelSettings::default(),
-                nodes: NodeSettings::default(),
-                physics: PhysicsSettings::default(),
-                rendering: RenderingSettings::default(),
-            },
-            xr: XRSettings {
-                mode: "immersive-ar".to_string(),
-                room_scale: true,
-                space_type: "local-floor".to_string(),
-                quality: "medium".to_string(),
-                input: XRInputSettings {
-                    enable_hand_tracking: true,
-                    enable_haptics: true,
-                    haptic_intensity: 0.7,
-                    drag_threshold: 0.04,
-                    pinch_threshold: 0.015,
-                    rotation_threshold: 0.08,
-                    interaction_radius: 0.5,
-                },
-                visuals: XRVisualSettings {
-                    hand_mesh_enabled: true,
-                    hand_mesh_color: "#FFD700".to_string(),
-                    hand_mesh_opacity: 0.3,
-                    hand_point_size: 0.01,
-                    hand_ray_enabled: true,
-                    hand_ray_color: "#FFD700".to_string(),
-                    hand_ray_width: 0.002,
-                    gesture_smoothing: 0.9,
-                },
-                environment: XREnvironmentSettings {
-                    enable_light_estimation: true,
-                    enable_plane_detection: true,
-                    enable_scene_understanding: true,
-                    plane_color: "#4A90E2".to_string(),
-                    plane_opacity: 0.3,
-                    show_plane_overlay: true,
-                    snap_to_floor: true,
-                },
-                passthrough: XRPassthroughSettings {
-                    enabled: false,
-                    opacity: 1.0,
-                    brightness: 1.0,
-                    contrast: 1.0,
-                    portal_size: 1.0,
-                    portal_edge_color: "#FFD700".to_string(),
-                    portal_edge_width: 0.02,
-                },
-            },
-            system: SystemSettings {
-                network: NetworkSettings::default(),
-                websocket: WebSocketSettings::default(),
-                security: SecuritySettings::default(),
-                debug: DebugSettings::default(),
-            },
+            visualization: VisualizationSettings::default(),
+            xr: XRSettings::default(),
+            system: SystemSettings::default(),
+            graph: GraphSettings::default(),
             github: GitHubSettings::default(),
             ragflow: RagFlowSettings::default(),
             perplexity: PerplexitySettings::default(),
@@ -839,78 +443,49 @@ impl Default for Settings {
     }
 }
 
-impl Default for VisualizationSettings {
-    fn default() -> Self {
-        Self {
-            animations: AnimationSettings::default(),
-            ar: ARSettings::default(),
-            audio: AudioSettings::default(),
-            bloom: BloomSettings::default(),
-            edges: EdgeSettings::default(),
-            hologram: HologramSettings::default(),
-            labels: LabelSettings::default(),
-            nodes: NodeSettings::default(),
-            physics: PhysicsSettings::default(),
-            rendering: RenderingSettings::default(),
-        }
-    }
-}
-
-impl Default for XRSettings {
-    fn default() -> Self {
-        Self {
-            mode: "immersive-ar".to_string(),
-            room_scale: true,
-            space_type: "local-floor".to_string(),
-            quality: "medium".to_string(),
-            input: XRInputSettings {
-                enable_hand_tracking: true,
-                enable_haptics: true,
-                haptic_intensity: 0.7,
-                drag_threshold: 0.04,
-                pinch_threshold: 0.015,
-                rotation_threshold: 0.08,
-                interaction_radius: 0.5,
-            },
-            visuals: XRVisualSettings {
-                hand_mesh_enabled: true,
-                hand_mesh_color: "#FFD700".to_string(),
-                hand_mesh_opacity: 0.3,
-                hand_point_size: 0.01,
-                hand_ray_enabled: true,
-                hand_ray_color: "#FFD700".to_string(),
-                hand_ray_width: 0.002,
-                gesture_smoothing: 0.9,
-            },
-            environment: XREnvironmentSettings {
-                enable_light_estimation: true,
-                enable_plane_detection: true,
-                enable_scene_understanding: true,
-                plane_color: "#4A90E2".to_string(),
-                plane_opacity: 0.3,
-                show_plane_overlay: true,
-                snap_to_floor: true,
-            },
-            passthrough: XRPassthroughSettings {
-                enabled: false,
-                opacity: 1.0,
-                brightness: 1.0,
-                contrast: 1.0,
-                portal_size: 1.0,
-                portal_edge_color: "#FFD700".to_string(),
-                portal_edge_width: 0.02,
-            },
-        }
-    }
-}
-
 impl Default for SystemSettings {
     fn default() -> Self {
         Self {
-            network: NetworkSettings::default(),
-            websocket: WebSocketSettings::default(),
-            security: SecuritySettings::default(),
-            debug: DebugSettings::default(),
+            websocket: WebSocketSettings {
+                update_rate: 100,
+                max_message_size: 65536,
+            },
+            debug: DebugSettings {
+                enabled: false,
+            },
+        }
+    }
+}
+
+impl Default for PerplexitySettings {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            api_url: String::from("https://api.perplexity.ai"),
+            model: String::from("mistral-7b-instruct"),
+            max_tokens: 1024,
+            temperature: 0.7,
+            top_p: 0.9,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+            timeout: 30,
+        }
+    }
+}
+
+impl Default for RagFlowSettings {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            api_base_url: String::from("http://localhost:8000"),
+        }
+    }
+}
+
+impl Default for OpenAISettings {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
         }
     }
 }

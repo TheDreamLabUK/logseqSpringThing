@@ -5,8 +5,7 @@ import {
     Vector3,
     Quaternion,
     BufferGeometry,
-    Material,
-    Object3D
+    Material
 } from 'three';
 import { Settings } from '../types/settings';
 import { Edge } from '../core/types';
@@ -15,20 +14,15 @@ import { MaterialFactory } from './factories/MaterialFactory';
 
 export class EdgeManager {
     private scene: Scene;
-    private settings: Settings;
-    private edges: Map<string, InstancedMesh> = new Map();
     private edgeGeometry: BufferGeometry;
     private edgeMaterial: Material;
     private instancedMesh: InstancedMesh | null = null;
-    private dummy = new Object3D();
     private geometryFactory: GeometryFactory;
     private materialFactory: MaterialFactory;
     private quaternion = new Quaternion();
-    private upVector = new Vector3(0, 1, 0);
 
     constructor(scene: Scene, settings: Settings) {
         this.scene = scene;
-        this.settings = settings;
         this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
         this.edgeGeometry = this.geometryFactory.getEdgeGeometry();
@@ -43,7 +37,6 @@ export class EdgeManager {
     }
 
     public handleSettingsUpdate(settings: Settings): void {
-        this.settings = settings;
         this.materialFactory.updateMaterial('edge', settings);
     }
 
@@ -54,8 +47,18 @@ export class EdgeManager {
         mesh.count = edges.length;
 
         edges.forEach((edge, index) => {
-            const startPos = new Vector3(edge.source.x, edge.source.y, edge.source.z);
-            const endPos = new Vector3(edge.target.x, edge.target.y, edge.target.z);
+            if (!edge.sourcePosition || !edge.targetPosition) return;
+            
+            const startPos = new Vector3(
+                edge.sourcePosition.x,
+                edge.sourcePosition.y,
+                edge.sourcePosition.z
+            );
+            const endPos = new Vector3(
+                edge.targetPosition.x,
+                edge.targetPosition.y,
+                edge.targetPosition.z
+            );
             
             // Calculate edge direction and length
             const direction = endPos.clone().sub(startPos);
@@ -82,4 +85,4 @@ export class EdgeManager {
             this.scene.remove(this.instancedMesh);
         }
     }
-} 
+}

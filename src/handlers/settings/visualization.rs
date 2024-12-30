@@ -9,10 +9,8 @@ use crate::config::Settings;
 use super::common::{SettingResponse, CategorySettingsResponse, CategorySettingsUpdate, get_setting_value, update_setting_value};
 
 // List of categories that make up visualization settings
-const VISUALIZATION_CATEGORIES: [&str; 10] = [
+const VISUALIZATION_CATEGORIES: [&str; 8] = [
     "animations",
-    "ar",
-    "audio",
     "bloom",
     "edges",
     "hologram",
@@ -36,8 +34,6 @@ async fn get_visualization_settings(
         debug!("Processing category: {}", category);
         let category_value = match *category {
             "animations" => serde_json::to_value(&settings_guard.visualization.animations),
-            "ar" => serde_json::to_value(&settings_guard.visualization.ar),
-            "audio" => serde_json::to_value(&settings_guard.visualization.audio),
             "bloom" => serde_json::to_value(&settings_guard.visualization.bloom),
             "edges" => serde_json::to_value(&settings_guard.visualization.edges),
             "hologram" => serde_json::to_value(&settings_guard.visualization.hologram),

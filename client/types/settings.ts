@@ -1,5 +1,3 @@
-import { XRSessionMode } from './xr';
-
 // Core visualization settings
 export interface VisualizationSettings {
     animations: AnimationSettings;
@@ -207,14 +205,9 @@ export interface DebugSettings {
 
 // Main settings interface
 export interface Settings {
-    visualization: {
-        nodes: NodeSettings;
-        edges: EdgeSettings;
-        labels: LabelSettings;
-        hologram: HologramSettings;
-        animations: AnimationSettings;
-    };
+    visualization: VisualizationSettings;
     xr: XRSettings;
+    system: SystemSettings;
 }
 
 export * from './settings/base';

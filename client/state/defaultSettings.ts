@@ -9,9 +9,9 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         motionBlurStrength: 0.5,
         selectionWaveEnabled: false,
         pulseEnabled: false,
-        rippleEnabled: false,
-        edgeAnimationEnabled: false,
-        flowParticlesEnabled: false
+        pulseSpeed: 1.0,
+        pulseStrength: 0.5,
+        waveSpeed: 1.0
     },
     bloom: {
         enabled: true,
@@ -54,7 +54,7 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         textResolution: 512,
         textPadding: 16,
         desktopFontSize: 48,
-        billboardMode: 'camera'
+        billboardMode: true
     },
     nodes: {
         baseColor: NODE_COLOR.toString(16),
@@ -97,21 +97,12 @@ export const defaultVisualizationSettings: VisualizationSettings = {
 // Main settings object with all defaults
 export const defaultSettings: Settings = {
     visualization: defaultVisualizationSettings,
-    labels: defaultVisualizationSettings.labels, // Add top-level labels property
     xr: {
-        mode: 'immersive-ar',
+        mode: 'ar',
         roomScale: true,
-        spaceType: 'local-floor',
-        quality: 'medium',
-        input: {
-            enableHandTracking: true,
-            enableHaptics: true,
-            hapticIntensity: 0.5,
-            dragThreshold: 0.02,
-            pinchThreshold: 0.7,
-            rotationThreshold: 0.1,
-            interactionRadius: 0.5
-        },
+        spaceType: 'local',
+        quality: 'high',
+        input: 'hands',
         visuals: {
             handMeshEnabled: true,
             handMeshColor: '#ffffff',
@@ -131,15 +122,8 @@ export const defaultSettings: Settings = {
             showPlaneOverlay: true,
             snapToFloor: true
         },
-        passthrough: {
-            enabled: false,
-            opacity: 1,
-            brightness: 1,
-            contrast: 1,
-            portalSize: 2,
-            portalEdgeColor: '#ffffff',
-            portalEdgeWidth: 2
-        }
+        passthrough: false,
+        haptics: true
     },
     system: {
         network: {

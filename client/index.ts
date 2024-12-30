@@ -15,10 +15,7 @@ export class GraphVisualization {
     private hologramManager: HologramManager;
     private textRenderer: TextRenderer;
     private websocketService: WebSocketService;
-    private settings: Settings;
-
     constructor(settings: Settings) {
-        this.settings = settings;
         this.scene = new Scene();
         this.camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.renderer = new WebGLRenderer({ antialias: true });
@@ -51,7 +48,6 @@ export class GraphVisualization {
     }
 
     public handleSettingsUpdate(settings: Settings) {
-        this.settings = settings;
         this.nodeManager.handleSettingsUpdate(settings);
         this.edgeManager.handleSettingsUpdate(settings);
         this.hologramManager.updateSettings(settings);
@@ -71,6 +67,35 @@ export class GraphVisualization {
 // Initialize the visualization
 const settings: Settings = {
     visualization: {
+        bloom: {
+            enabled: true,
+            strength: 0.5,
+            radius: 1,
+            edgeBloomStrength: 0.5,
+            nodeBloomStrength: 0.5,
+            environmentBloomStrength: 0.5
+        },
+        physics: {
+            enabled: true,
+            attractionStrength: 0.1,
+            repulsionStrength: 0.1,
+            springStrength: 0.1,
+            damping: 0.5,
+            iterations: 1,
+            maxVelocity: 10,
+            collisionRadius: 1,
+            enableBounds: true,
+            boundsSize: 100
+        },
+        rendering: {
+            ambientLightIntensity: 0.5,
+            directionalLightIntensity: 0.8,
+            environmentIntensity: 1,
+            backgroundColor: '#000000',
+            enableAmbientOcclusion: true,
+            enableAntialiasing: true,
+            enableShadows: true
+        },
         nodes: {
             quality: 'medium',
             enableInstancing: true,
@@ -139,8 +164,71 @@ const settings: Settings = {
         spaceType: 'local',
         input: 'hands',
         haptics: true,
-        passthrough: false
+        passthrough: false,
+        visuals: {
+            handMeshEnabled: true,
+            handMeshColor: '#ffffff',
+            handMeshOpacity: 0.5,
+            handPointSize: 5,
+            handRayEnabled: true,
+            handRayColor: '#00ff00',
+            handRayWidth: 2,
+            gestureSsmoothing: 0.5
+        },
+        environment: {
+            enableLightEstimation: true,
+            enablePlaneDetection: true,
+            enableSceneUnderstanding: true,
+            planeColor: '#808080',
+            planeOpacity: 0.5,
+            showPlaneOverlay: true,
+            snapToFloor: true
+        }
+    },
+    system: {
+        network: {
+            bindAddress: '127.0.0.1',
+            domain: 'localhost',
+            port: 3000,
+            enableHttp2: true,
+            enableTls: false,
+            minTlsVersion: 'TLS1.2',
+            maxRequestSize: 10485760,
+            enableRateLimiting: true,
+            rateLimitRequests: 100,
+            rateLimitWindow: 60,
+            tunnelId: ''
+        },
+        websocket: {
+            url: '',
+            reconnectAttempts: 5,
+            reconnectDelay: 5000,
+            binaryChunkSize: 65536,
+            compressionEnabled: true,
+            compressionThreshold: 1024,
+            maxConnections: 100,
+            maxMessageSize: 32 * 1024 * 1024,
+            updateRate: 60
+        },
+        security: {
+            allowedOrigins: ['http://localhost:3000'],
+            auditLogPath: './audit.log',
+            cookieHttponly: true,
+            cookieSamesite: 'Lax',
+            cookieSecure: false,
+            csrfTokenTimeout: 3600,
+            enableAuditLogging: true,
+            enableRequestValidation: true,
+            sessionTimeout: 86400
+        },
+        debug: {
+            enabled: false,
+            enableDataDebug: false,
+            enableWebsocketDebug: false,
+            logBinaryHeaders: false,
+            logFullJson: false
+        }
     }
 };
 
-const visualization = new GraphVisualization(settings);
+new GraphVisualization(settings);

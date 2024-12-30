@@ -40,9 +40,11 @@ export interface Position {
 }
 
 export interface Edge {
-  source: Position;
-  target: Position;
+  source: string;
+  target: string;
   id: string;
+  sourcePosition?: Position;
+  targetPosition?: Position;
 }
 
 export interface PaginatedGraphData extends GraphData {
