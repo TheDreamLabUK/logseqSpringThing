@@ -1,6 +1,11 @@
 import { Settings, VisualizationSettings } from '../types/settings';
 import { NODE_COLOR, NODE_SIZE, EDGE_RADIUS, LABEL_COLOR } from '../core/constants';
 
+// Helper function to convert number to hex color
+function toHexColor(num: number): string {
+    return `#${num.toString(16).padStart(6, '0')}`;
+}
+
 // Export visualization defaults separately for reuse
 export const defaultVisualizationSettings: VisualizationSettings = {
     animations: {
@@ -31,7 +36,7 @@ export const defaultVisualizationSettings: VisualizationSettings = {
     },
     hologram: {
         ringCount: 3,
-        ringColor: '#00FFFF',
+        ringColor: '#00ffff',
         ringOpacity: 0.5,
         ringSizes: [1.0, 1.5, 2.0],
         ringRotationSpeed: 0.1,
@@ -48,7 +53,7 @@ export const defaultVisualizationSettings: VisualizationSettings = {
     },
     labels: {
         enableLabels: true,
-        textColor: LABEL_COLOR.toString(16),
+        textColor: toHexColor(LABEL_COLOR),
         textOutlineColor: '#000000',
         textOutlineWidth: 0.1,
         textResolution: 512,
@@ -57,7 +62,7 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         billboardMode: true
     },
     nodes: {
-        baseColor: NODE_COLOR.toString(16),
+        baseColor: toHexColor(NODE_COLOR),
         baseSize: NODE_SIZE,
         sizeRange: [0.5, 2.0],
         enableMetadataShape: true,

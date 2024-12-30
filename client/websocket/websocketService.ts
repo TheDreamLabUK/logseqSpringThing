@@ -1,6 +1,5 @@
 import { createLogger } from '../core/logger';
-import { buildWsUrl, buildApiUrl } from '../core/api';
-import { API_ENDPOINTS } from '../core/constants';
+import { buildWsUrl } from '../core/api';
 import { convertObjectKeysToCamelCase } from '../core/utils';
 
 const logger = createLogger('WebSocketService');
@@ -69,11 +68,16 @@ export class WebSocketService {
         }
 
         try {
-            const settings = await this.loadWebSocketSettings();
-            this.url = settings.url || buildWsUrl();
+            // Always use buildWsUrl() to ensure proper protocol and path
+            this.url = buildWsUrl();
             
             if (!this.url) {
                 throw new Error('No WebSocket URL available');
+            }
+
+            // Ensure URL uses wss:// protocol when on HTTPS
+            if (window.location.protocol === 'https:' && !this.url.startsWith('wss://')) {
+                this.url = this.url.replace('ws://', 'wss://');
             }
 
             this.connectionState = ConnectionState.CONNECTING;
@@ -392,38 +396,6 @@ export class WebSocketService {
         this.settingsUpdateHandler = null;
         this.connectionState = ConnectionState.DISCONNECTED;
         WebSocketService.instance = null;
-    }
-
-    private async loadWebSocketSettings(): Promise<any> {
-        try {
-            // Try both endpoints
-            const endpoints = [
-                API_ENDPOINTS.WEBSOCKET_CONTROL,
-                buildApiUrl('settings/websocket')
-            ];
-
-            let response = null;
-            for (const endpoint of endpoints) {
-                try {
-                    response = await fetch(endpoint);
-                    if (response.ok) break;
-                } catch (e) {
-                    continue;
-                }
-            }
-
-            if (!response || !response.ok) {
-                throw new Error('Failed to load WebSocket settings');
-            }
-
-            return await response.json();
-        } catch (error) {
-            logger.error('Failed to load WebSocket settings:', error);
-            // Return defaults
-            return {
-                url: buildWsUrl()
-            };
-        }
     }
 
     public close(): void {

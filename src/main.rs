@@ -12,8 +12,8 @@ use webxr::{
     Settings,
     handlers::{
         file_handler::{fetch_and_process_files, get_file_content, refresh_graph as file_refresh_graph},
-        graph_handler::{get_graph_data, get_paginated_graph_data, refresh_graph as graph_refresh_graph},
-        settings::visualization::config,
+        graph_handler::{get_graph_data, get_paginated_graph_data, refresh_graph as graph_refresh_graph, update_graph},
+        settings::{self, websocket, visualization},
         socket_flow_handler::socket_flow_handler,
     },
     utils::gpu_compute::GPUCompute,
@@ -42,14 +42,14 @@ async fn main() -> std::io::Result<()> {
         settings.read().await.github.repo.clone(),
         settings.read().await.github.base_path.clone(),
         settings.clone(),
-    ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?);
+    ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?);
 
     let github_pr_service = Arc::new(RealGitHubPRService::new(
         settings.read().await.github.token.clone(),
         settings.read().await.github.owner.clone(),
         settings.read().await.github.repo.clone(),
         settings.read().await.github.base_path.clone(),
-    ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?);
+    ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?);
 
     // Initialize GPU compute with empty graph
     let empty_graph = GraphData::default();
@@ -93,15 +93,27 @@ async fn main() -> std::io::Result<()> {
             .wrap(middleware::Logger::default())
             .service(
                 web::scope("/api")
-                    .route("/files/fetch", web::post().to(fetch_and_process_files))
-                    .route("/files/content/{file_name}", web::get().to(get_file_content))
-                    .route("/files/refresh", web::post().to(file_refresh_graph))
-                    .route("/graph/data", web::get().to(get_graph_data))
-                    .route("/graph/data/paginated", web::get().to(get_paginated_graph_data))
-                    .route("/graph/refresh", web::post().to(graph_refresh_graph))
+                    // Settings routes
                     .service(
                         web::scope("/settings")
-                            .configure(config)
+                            .service(web::scope("/websocket").configure(websocket::config))
+                            .service(web::scope("/visualization").configure(visualization::config))
+                            .configure(settings::config)
+                    )
+                    // Graph routes
+                    .service(
+                        web::scope("/graph")
+                            .route("/data", web::get().to(get_graph_data))
+                            .route("/data/paginated", web::get().to(get_paginated_graph_data))
+                            .route("/update", web::post().to(update_graph))
+                            .route("/refresh", web::post().to(graph_refresh_graph))
+                    )
+                    // File routes
+                    .service(
+                        web::scope("/files")
+                            .route("/fetch", web::post().to(fetch_and_process_files))
+                            .route("/content/{file_name}", web::get().to(get_file_content))
+                            .route("/refresh", web::post().to(file_refresh_graph))
                     )
             )
             .service(

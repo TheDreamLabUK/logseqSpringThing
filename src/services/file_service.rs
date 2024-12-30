@@ -83,8 +83,8 @@ impl RealGitHubService {
         owner: String,
         repo: String,
         base_path: String,
-        settings: Arc<RwLock<Settings>>,
-    ) -> Result<Self, Box<dyn StdError + Send + Sync>> {
+        _settings: Arc<RwLock<Settings>>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let client = Client::builder()
             .user_agent("rust-github-api")
             .timeout(Duration::from_secs(30))
@@ -101,7 +101,7 @@ impl RealGitHubService {
             owner,
             repo,
             base_path,
-            settings: Arc::clone(&settings),
+            settings: Arc::clone(&_settings),
         })
     }
 }

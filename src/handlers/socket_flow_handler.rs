@@ -13,14 +13,10 @@ use crate::config::Settings;
 
 // Constants matching client/state/graphData.ts
 const NODE_POSITION_SIZE: usize = 24;  // 6 floats * 4 bytes
-const FLOATS_PER_NODE: usize = 6;      // x, y, z, vx, vy, vz
-const VERSION_HEADER_SIZE: usize = 4;
-const NODE_DATA_SIZE: usize = 24;
-const BINARY_PROTOCOL_VERSION: i32 = 1;
 const MAX_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB
 const MAX_CONNECTIONS: usize = 100;
-const HEARTBEAT_INTERVAL: u64 = 30;
-const MAX_CLIENT_TIMEOUT: u64 = 60;
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
+const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebSocketSettings {
@@ -32,6 +28,7 @@ pub struct SocketFlowServer {
     settings: Arc<RwLock<Settings>>,
     connection_alive: bool,
     update_handle: Option<SpawnHandle>,
+    last_heartbeat: std::time::Instant,
 }
 
 impl SocketFlowServer {
@@ -43,6 +40,7 @@ impl SocketFlowServer {
             settings,
             connection_alive: true,
             update_handle: None,
+            last_heartbeat: std::time::Instant::now(),
         }
     }
 
@@ -52,36 +50,75 @@ impl SocketFlowServer {
             ctx.cancel_future(handle);
         }
 
+        // Start heartbeat check
+        ctx.run_interval(HEARTBEAT_INTERVAL, |actor, ctx| {
+            if std::time::Instant::now().duration_since(actor.last_heartbeat) > CLIENT_TIMEOUT {
+                error!("Client heartbeat timeout");
+                actor.connection_alive = false;
+                ctx.stop();
+                return;
+            }
+            ctx.ping(b"");
+        });
+
         // Clone Arc references for the interval closure
         let app_state = Arc::clone(&self.app_state);
+        let settings = Arc::clone(&self.settings);
         
         let handle = ctx.run_interval(Self::POSITION_UPDATE_INTERVAL, move |actor, ctx| {
+            // Check connection limit
+            let current_connections = actor.app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
+            if current_connections > MAX_CONNECTIONS {
+                error!("Maximum connections reached: {}", current_connections);
+                ctx.stop();
+                return;
+            }
+
             // Get current node positions and velocities
             let app_state_clone = Arc::clone(&app_state);
+            
+            // Get update rate from settings
+            let update_rate = settings.blocking_read().system.websocket.update_rate;
+            let update_interval = Duration::from_secs(1) / update_rate as u32;
+            
+            if update_interval != Self::POSITION_UPDATE_INTERVAL {
+                debug!("Adjusting update interval to {:.2}ms", update_interval.as_secs_f64() * 1000.0);
+                // Recreate the interval with the new timing
+                if let Some(handle) = actor.update_handle.take() {
+                    ctx.cancel_future(handle);
+                }
+                return;
+            }
             
             // Spawn a future to get positions
             let fut = async move {
                 let nodes = app_state_clone.graph_service.get_node_positions().await;
                 
-                // Create binary data: 24 bytes per node (no header)
+                // Create binary data: NODE_POSITION_SIZE bytes per node
                 let mut binary_data = Vec::with_capacity(nodes.len() * NODE_POSITION_SIZE);
                 
                 for node in nodes {
-                    // Position (x, y, z)
-                    binary_data.extend_from_slice(&node.data.position[0].to_le_bytes());
-                    binary_data.extend_from_slice(&node.data.position[1].to_le_bytes());
-                    binary_data.extend_from_slice(&node.data.position[2].to_le_bytes());
-                    // Velocity (vx, vy, vz)
-                    binary_data.extend_from_slice(&node.data.velocity[0].to_le_bytes());
-                    binary_data.extend_from_slice(&node.data.velocity[1].to_le_bytes());
-                    binary_data.extend_from_slice(&node.data.velocity[2].to_le_bytes());
+                    // Position (x, y, z) and velocity (vx, vy, vz)
+                    for i in 0..3 {
+                        binary_data.extend_from_slice(&node.data.position[i].to_le_bytes());
+                    }
+                    for i in 0..3 {
+                        binary_data.extend_from_slice(&node.data.velocity[i].to_le_bytes());
+                    }
+                }
+                
+                if binary_data.len() > MAX_MESSAGE_SIZE {
+                    error!("Binary message size exceeds limit: {}", binary_data.len());
+                    return Vec::new();
                 }
                 
                 binary_data
             };
             
             ctx.spawn(fut.into_actor(actor).map(|binary_data, _actor, ctx| {
-                ctx.binary(binary_data);
+                if !binary_data.is_empty() {
+                    ctx.binary(binary_data);
+                }
             }));
         });
 
@@ -94,8 +131,16 @@ impl Actor for SocketFlowServer {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("[WebSocket] Client connected");
-        self.app_state.increment_connections();
+        
+        // Check connection limit
         let current = self.app_state.active_connections.load(std::sync::atomic::Ordering::Relaxed);
+        if current > MAX_CONNECTIONS {
+            error!("Maximum connections reached: {}", current);
+            ctx.stop();
+            return;
+        }
+        
+        self.app_state.increment_connections();
         info!("[WebSocket] Active connections: {}", current);
         self.start_position_updates(ctx);
     }

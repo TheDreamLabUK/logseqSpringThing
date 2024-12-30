@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use log::{error, debug};
+use log::debug;
 use crate::config::Settings;
 use convert_case::{Case, Casing};
 
