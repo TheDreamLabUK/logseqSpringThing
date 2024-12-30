@@ -37,7 +37,7 @@ pub struct GPUCompute {
 }
 
 impl GPUCompute {
-    pub async fn new(graph: &GraphData) -> Result<Arc<RwLock<Self>>, Error> {
+    pub async fn new(graph: &GraphData) -> Result<Self, Error> {
         let num_nodes = graph.nodes.len() as u32;
         if num_nodes > MAX_NODES {
             return Err(Error::new(
@@ -77,6 +77,11 @@ impl GPUCompute {
         debug!("Copying initial graph data to device memory");
         instance.update_graph_data(graph)?;
 
+        Ok(instance)
+    }
+
+    pub async fn create_for_app_state(graph: &GraphData) -> Result<Arc<RwLock<Self>>, Error> {
+        let instance = Self::new(graph).await?;
         Ok(Arc::new(RwLock::new(instance)))
     }
 
@@ -227,7 +232,6 @@ mod tests {
         let mut graph = GraphData::default();
         // Add test nodes...
         let gpu_compute = GPUCompute::new(&graph).await.unwrap();
-        let gpu_compute = Arc::try_unwrap(gpu_compute).unwrap().into_inner();
         let node_data = gpu_compute.get_node_data().unwrap();
         assert_eq!(node_data.len(), graph.nodes.len());
     }

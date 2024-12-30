@@ -17,11 +17,11 @@ radius = 0.5
 strength = 1.8
 
 [client_debug]
-enable_data_debug = false
-enable_websocket_debug = false
-enabled = false
-log_binary_headers = false
-log_full_json = false
+enable_data_debug = true
+enable_websocket_debug = true
+enabled = true
+log_binary_headers = true
+log_full_json = true
 
 [default]
 api_client_timeout = 30
@@ -195,6 +195,6 @@ enable_request_validation = true
 session_timeout = 3600
 
 [server_debug]
-enable_data_debug = false
-enable_websocket_debug = false
-enabled = false
+enable_data_debug = true
+enable_websocket_debug = true
+enabled = true

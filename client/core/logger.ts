@@ -1,5 +1,5 @@
-let debugEnabled = false;
-let logFullJson = false;
+let debugEnabled = true;
+let logFullJson = true;
 
 export interface Logger {
     debug: (...args: any[]) => void;

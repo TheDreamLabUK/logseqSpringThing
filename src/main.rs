@@ -7,28 +7,38 @@ use log::{error, info};
 use env_logger;
 use dotenvy::dotenv;
 
-use webxr::{
-    AppState,
-    Settings,
-    handlers::{
-        file_handler::{fetch_and_process_files, get_file_content, refresh_graph as file_refresh_graph},
-        graph_handler::{get_graph_data, get_paginated_graph_data, refresh_graph as graph_refresh_graph, update_graph},
-        settings::{self, websocket, visualization},
-        socket_flow_handler::socket_flow_handler,
-    },
-    utils::gpu_compute::GPUCompute,
-    services::{
-        file_service::RealGitHubService,
-        github_service::RealGitHubPRService,
-    },
-    models::graph::GraphData,
-};
+use crate::app_state::AppState;
+use crate::config::Settings;
+use crate::handlers::file_handler::{fetch_and_process_files, get_file_content, refresh_graph as file_refresh_graph};
+use crate::handlers::graph_handler::{get_graph_data, get_paginated_graph_data, refresh_graph as graph_refresh_graph, update_graph};
+use crate::handlers::settings::{self, websocket, visualization};
+use crate::handlers::socket_flow_handler::socket_flow_handler;
+use crate::utils::gpu_compute::GPUCompute;
+use crate::services::file_service::RealGitHubService;
+use crate::services::github_service::RealGitHubPRService;
+use crate::models::graph::GraphData;
+
+pub mod app_state;
+pub mod config;
+pub mod handlers;
+pub mod models;
+pub mod services;
+pub mod utils;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Initialize environment
     dotenv().ok();
     env_logger::init();
+
+    // Diagnostic logging for GitHub environment variables
+    info!("Environment variables:");
+    info!("GITHUB_TOKEN: {}", std::env::var("GITHUB_TOKEN").unwrap_or_else(|_| "Not found".to_string()));
+    info!("GITHUB_ACCESS_TOKEN: {}", std::env::var("GITHUB_ACCESS_TOKEN").unwrap_or_else(|_| "Not found".to_string()));
+    info!("GITHUB_OWNER: {}", std::env::var("GITHUB_OWNER").unwrap_or_else(|_| "Not found".to_string()));
+    info!("GITHUB_REPO: {}", std::env::var("GITHUB_REPO").unwrap_or_else(|_| "Not found".to_string()));
+    info!("GITHUB_BASE_PATH: {}", std::env::var("GITHUB_BASE_PATH").unwrap_or_else(|_| "Not found".to_string()));
+    info!("GITHUB_DIRECTORY: {}", std::env::var("GITHUB_DIRECTORY").unwrap_or_else(|_| "Not found".to_string()));
 
     // Load settings
     let settings = Arc::new(RwLock::new(
@@ -53,7 +63,7 @@ async fn main() -> std::io::Result<()> {
 
     // Initialize GPU compute with empty graph
     let empty_graph = GraphData::default();
-    let gpu_compute = match GPUCompute::new(&empty_graph).await {
+    let gpu_compute = match GPUCompute::create_for_app_state(&empty_graph).await {
         Ok(compute) => Some(compute),
         Err(e) => {
             error!("Failed to initialize GPU compute: {}", e);
