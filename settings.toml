@@ -170,7 +170,6 @@ min_tls_version = "1.2"
 port = 3001
 rate_limit_requests = 100
 rate_limit_window = 60
-tunnel_id = "dummy"
 
 [system.websocket]
 binary_chunk_size = 65536
@@ -199,8 +198,3 @@ session_timeout = 3600
 enable_data_debug = false
 enable_websocket_debug = false
 enabled = false
-
-[websocket]
-reconnect_attempts = 5
-reconnect_delay = 10000
-update_rate = 60

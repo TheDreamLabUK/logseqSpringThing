@@ -58,10 +58,9 @@ async fn main() -> std::io::Result<()> {
             None, // perplexity_service
             None, // ragflow_service
             None, // gpu_compute
-            String::new(), // ragflow_conversation_id
+            String::new(), // some_string
             Arc::clone(&github_pr_service),
-        ).await;
-        info!("Successfully initialized app state");
+        );
         web::Data::new(state)
     };
 
@@ -81,26 +80,34 @@ async fn main() -> std::io::Result<()> {
         "data/public/dist"
     };
 
+    // Update WebSocket configuration to match settings.toml
+    let ws_config = web::PayloadConfig::new(
+        settings.read().await.system.websocket.max_message_size as usize
+    );
+
     // Configure app with services
     HttpServer::new(move || {
         App::new()
             .wrap(
                 Cors::default()
-                    .allow_any_origin()
+                    .allowed_origin("https://www.visionflow.info")
                     .allow_any_method()
                     .allow_any_header()
                     .max_age(3600)
             )
             .wrap(middleware::Logger::default())
             .app_data(app_state.clone())
+            .app_data(ws_config.clone()) // Use clone to avoid move error
+            // .service(web::scope("/api/settings").configure(settings::config)) // Temporarily disabled for client-side defaults
             .service(
                 web::scope("/api")
-                    .service(web::scope("/settings").configure(webxr::settings::config))
+                    // Comment out settings-related services
+                    // .service(web::scope("/settings").configure(webxr::settings::config))
+                    // .service(web::scope("/websocket").configure(websocket::config))
                     .service(web::scope("/graph").configure(webxr::graph_handler::config))
             )
             .service(
                 web::resource("/wss")
-                    .app_data(web::PayloadConfig::new(1 << 25))  // 32MB max payload
                     .route(web::get().to(socket_flow_handler))
             )
             .service(Files::new("/", static_files_path).index_file("index.html"))

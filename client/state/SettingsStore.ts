@@ -28,7 +28,6 @@ export class SettingsStore {
     }
 
     public async initialize(): Promise<void> {
-        // If already initialized or initializing, return existing promise
         if (this.initialized) {
             return Promise.resolve();
         }
@@ -38,7 +37,7 @@ export class SettingsStore {
 
         this.initializationPromise = (async () => {
             try {
-                // Using default settings while server sync is disabled
+                // Using default settings directly
                 this.settings = { ...defaultSettings };
                 logger.info('Using default settings (server sync disabled)');
 

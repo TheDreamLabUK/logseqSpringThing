@@ -1,5 +1,5 @@
 import { platformManager } from './platform/platformManager';
-import { settingsManager } from './state/settings';
+import { Settings } from './types/settings';
 import { setDebugEnabled } from './core/logger';
 import { createLogger } from './core/logger';
 import { SceneManager } from './rendering/scene';
@@ -9,6 +9,7 @@ import { XRSessionManager } from './xr/xrSessionManager';
 import { ControlPanel } from './ui/ControlPanel';
 import { TextRenderer } from './rendering/textRenderer';
 import { EnhancedNodeManager } from './rendering/EnhancedNodeManager';
+import { SettingsStore } from './state/SettingsStore';
 
 const logger = createLogger('Application');
 
@@ -18,17 +19,22 @@ class Application {
     private xrManager: XRSessionManager | null = null;
     private textRenderer: TextRenderer | null = null;
     private controlPanel: ControlPanel | null = null;
+    private settingsStore: SettingsStore;
 
     constructor() {
+        this.settingsStore = SettingsStore.getInstance();
         this.initializeApplication();
     }
 
     private async initializeApplication(): Promise<void> {
         try {
-            await platformManager.initialize();
-            await settingsManager.initialize();
+            // Initialize settings store with default settings
+            await this.settingsStore.initialize();
+            const settings = this.settingsStore.get('') as Settings;
 
-            const settings = settingsManager.getCurrentSettings();
+            // Initialize platform manager with settings
+            await platformManager.initialize(settings);
+
             setDebugEnabled(settings.system.debug.enabled);
             logger.info(`Debug logging ${settings.system.debug.enabled ? 'enabled' : 'disabled'}`);
 
@@ -63,25 +69,32 @@ class Application {
                     this.nodeManager.updateNodePositionsAndVelocities(nodes);
                 }
             });
-            webSocket.onSettingsUpdate((settings: any) => {
-                settingsManager.batchUpdate(settings);
+            webSocket.onSettingsUpdate((newSettings: Partial<Settings>) => {
+                // Update settings store with new settings
+                Object.entries(newSettings).forEach(([key, value]) => {
+                    this.settingsStore.set(key, value);
+                });
             });
             webSocket.onConnectionStatusChange((status: boolean) => {
                 this.updateConnectionStatus(status);
             });
             webSocket.connect();
 
-            settingsManager.onSettingChange('visualization', () => {
+            // Subscribe to settings changes
+            this.settingsStore.subscribe('visualization', () => {
+                const currentSettings = this.settingsStore.get('') as Settings;
                 if (this.nodeManager) {
-                    this.nodeManager.handleSettingsUpdate(settingsManager.getCurrentSettings());
+                    this.nodeManager.handleSettingsUpdate(currentSettings);
                 }
                 if (this.sceneManager) {
-                    this.sceneManager.handleSettingsUpdate(settingsManager.getCurrentSettings());
+                    this.sceneManager.handleSettingsUpdate(currentSettings);
                 }
             });
-            settingsManager.onSettingChange('labels', () => {
+            
+            this.settingsStore.subscribe('labels', () => {
+                const currentSettings = this.settingsStore.get('') as Settings;
                 if (this.textRenderer) {
-                    this.textRenderer.handleSettingsUpdate(settingsManager.getCurrentSettings().labels);
+                    this.textRenderer.handleSettingsUpdate(currentSettings.labels);
                 }
             });
 
