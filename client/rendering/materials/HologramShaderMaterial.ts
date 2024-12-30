@@ -10,6 +10,7 @@ interface HologramUniforms {
     interactionStrength: { value: number };
     opacity: { value: number };
     pulseIntensity: { value: number };
+    hasTexture: { value: boolean };
 }
 
 export class HologramShaderMaterial extends Material {
@@ -45,8 +46,20 @@ export class HologramShaderMaterial extends Material {
             interactionPoint: { value: new Vector3() },
             interactionStrength: { value: 0.0 },
             opacity: { value: settings.visualization.hologram.ringOpacity },
-            pulseIntensity: { value: 0.2 }
+            pulseIntensity: { value: 0.2 },
+            hasTexture: { value: false }
         };
+
+        // Add texture setter
+        Object.defineProperty(this, 'diffuseTexture', {
+            set: function(texture: Texture | null) {
+                this.uniforms.diffuseTexture.value = texture;
+                this.uniforms.hasTexture.value = texture !== null;
+            },
+            get: function() {
+                return this.uniforms.diffuseTexture.value;
+            }
+        });
 
         this.vertexShader = `
             varying vec2 vUv;
@@ -71,6 +84,7 @@ export class HologramShaderMaterial extends Material {
             uniform float interactionStrength;
             uniform float opacity;
             uniform float pulseIntensity;
+            uniform bool hasTexture;
             varying vec2 vUv;
             varying vec3 vPosition;
 
@@ -87,7 +101,7 @@ export class HologramShaderMaterial extends Material {
                 
                 uv.y += distortion;
                 vec4 texColor = vec4(1.0); // Default white if no texture
-                if (vUv.x >= 0.0) {
+                if (hasTexture) {
                     texColor = texture2D(diffuseTexture, uv);
                 }
                 
