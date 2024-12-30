@@ -157,6 +157,19 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
                     node.set_z(z);
                 }
             }
+
+            // Calculate layout using GPU if available
+            let settings = state.settings.read().await;
+            let params = settings.graph.simulation_params.clone();
+            drop(settings);
+
+            if let Err(e) = GraphService::calculate_layout(
+                &state.gpu_compute,
+                &mut new_graph,
+                &params
+            ).await {
+                error!("Failed to calculate layout: {}", e);
+            }
             
             *graph = new_graph;
             debug!("Graph refreshed successfully");
@@ -238,6 +251,19 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
                             node.set_z(z);
                         }
                     }
+
+                    // Calculate layout using GPU if available
+                    let settings = state.settings.read().await;
+                    let params = settings.graph.simulation_params.clone();
+                    drop(settings);
+
+                    if let Err(e) = GraphService::calculate_layout(
+                        &state.gpu_compute,
+                        &mut new_graph,
+                        &params
+                    ).await {
+                        error!("Failed to calculate layout: {}", e);
+                    }
                     
                     *graph = new_graph;
                     debug!("Graph updated successfully");
@@ -248,10 +274,10 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
                     }))
                 },
                 Err(e) => {
-                    error!("Failed to build new graph: {}", e);
+                    error!("Failed to build graph: {}", e);
                     HttpResponse::InternalServerError().json(serde_json::json!({
                         "success": false,
-                        "error": format!("Failed to build new graph: {}", e)
+                        "error": format!("Failed to build graph: {}", e)
                     }))
                 }
             }

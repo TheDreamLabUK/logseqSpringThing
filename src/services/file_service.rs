@@ -453,7 +453,7 @@ impl FileService {
     /// Initialize the local markdown directory and metadata structure.
     pub async fn initialize_local_storage(
         github_service: &dyn GitHubService,
-        _settings: Arc<RwLock<Settings>>,
+        settings: Arc<RwLock<Settings>>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         info!("Checking local storage status");
         

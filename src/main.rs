@@ -7,6 +7,8 @@ use webxr::{
     RealGitHubService,
     RealGitHubPRService,
     socket_flow_handler,
+    services::file_service::FileService,
+    gpu_compute::GPUCompute,
 };
 
 use actix_web::{web, App, HttpServer, middleware};
@@ -50,6 +52,19 @@ async fn main() -> std::io::Result<()> {
         settings.read().await.github.base_path.clone(),
     ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?);
 
+    // Initialize GPU compute
+    info!("Initializing GPU compute...");
+    let gpu_compute = match GPUCompute::new().await {
+        Ok(gpu) => {
+            info!("GPU initialization successful");
+            Some(Arc::new(RwLock::new(gpu)))
+        }
+        Err(e) => {
+            error!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
+            None
+        }
+    };
+
     // Initialize app state
     let app_state = {
         let state = AppState::new(
@@ -57,12 +72,20 @@ async fn main() -> std::io::Result<()> {
             Arc::clone(&github_service),
             None, // perplexity_service
             None, // ragflow_service
-            None, // gpu_compute
+            gpu_compute,
             String::new(), // some_string
             Arc::clone(&github_pr_service),
         );
         web::Data::new(state)
     };
+
+    // Initialize local storage and fetch files from GitHub
+    info!("Initializing local storage and fetching files from GitHub...");
+    if let Err(e) = FileService::initialize_local_storage(&*github_service, settings.clone()).await {
+        error!("Failed to initialize local storage: {}", e);
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize local storage: {}", e)));
+    }
+    info!("Local storage initialization complete");
 
     // Get port from environment variable or use default
     let port = std::env::var("PORT")
