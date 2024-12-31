@@ -1,6 +1,5 @@
 import { createLogger } from '../core/logger';
 import { buildWsUrl } from '../core/api';
-import { convertObjectKeysToCamelCase } from '../core/utils';
 
 const logger = createLogger('WebSocketService');
 
@@ -137,80 +136,54 @@ export class WebSocketService {
             this.handleReconnect();
         };
 
-        this.ws.onmessage = async (event: MessageEvent): Promise<void> => {
-            try {
-                if (this.connectionState !== ConnectionState.CONNECTED || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-                    logger.warn('WebSocket not connected, ignoring message');
-                    return;
+        this.ws.onmessage = (event: MessageEvent) => {
+            if (event.data instanceof Blob) {
+                this.handleBinaryMessage(event.data);
+            } else {
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.type === 'settings') {
+                        this.handleSettingsUpdate(message);
+                    }
+                } catch (e) {
+                    logger.error('Failed to parse WebSocket message:', e);
                 }
-
-                // Handle text messages
-                if (typeof event.data === 'string') {
-                    try {
-                        const message = JSON.parse(event.data);
-                        if (message.error) {
-                            logger.error('[Server Error]', message.error);
-                            return;
-                        }
-                        // Handle settings update
-                        if (message.type === 'settings_update') {
-                            this.handleSettingsUpdate(message);
-                            return;
-                        }
-                    } catch (e) {
-                        logger.warn('Received non-JSON text message:', event.data);
-                        return;
-                    }
-                }
-
-                // Handle binary position/velocity updates
-                if (event.data instanceof ArrayBuffer && this.binaryMessageCallback) {
-                    // Validate data length (24 bytes per node - 6 floats * 4 bytes)
-                    if (event.data.byteLength % 24 !== 0) {
-                        logger.error('Invalid binary message length:', event.data.byteLength);
-                        return;
-                    }
-
-                    const float32Array = new Float32Array(event.data);
-                    const nodeCount = float32Array.length / 6;
-                    const nodes: NodeData[] = [];
-
-                    for (let i = 0; i < nodeCount; i++) {
-                        const baseIndex = i * 6;
-                        
-                        // Validate float values
-                        const values = float32Array.slice(baseIndex, baseIndex + 6);
-                        if (!values.every(v => Number.isFinite(v))) {
-                            logger.error('Invalid float values in node data at index:', i);
-                            continue;
-                        }
-
-                        nodes.push({
-                            position: [
-                                values[0],
-                                values[1],
-                                values[2]
-                            ],
-                            velocity: [
-                                values[3],
-                                values[4],
-                                values[5]
-                            ]
-                        });
-                    }
-
-                    if (nodes.length > 0) {
-                        await Promise.resolve().then(() => {
-                            if (this.binaryMessageCallback) {
-                                this.binaryMessageCallback(nodes);
-                            }
-                        });
-                    }
-                }
-            } catch (error) {
-                logger.error('Error processing WebSocket message:', error);
             }
         };
+    }
+
+    private async handleBinaryMessage(blob: Blob): Promise<void> {
+        try {
+            const arrayBuffer = await blob.arrayBuffer();
+            const dataView = new DataView(arrayBuffer);
+            const nodeCount = dataView.getUint32(0, true); // true for little-endian
+            const nodes: NodeData[] = [];
+            
+            let offset = 4; // Start after node count
+            for (let i = 0; i < nodeCount; i++) {
+                const position: [number, number, number] = [
+                    dataView.getFloat32(offset, true),
+                    dataView.getFloat32(offset + 4, true),
+                    dataView.getFloat32(offset + 8, true)
+                ];
+                offset += 12;
+
+                const velocity: [number, number, number] = [
+                    dataView.getFloat32(offset, true),
+                    dataView.getFloat32(offset + 4, true),
+                    dataView.getFloat32(offset + 8, true)
+                ];
+                offset += 12;
+
+                nodes.push({ position, velocity });
+            }
+
+            if (this.binaryMessageCallback) {
+                this.binaryMessageCallback(nodes);
+            }
+        } catch (e) {
+            logger.error('Failed to process binary message:', e);
+        }
     }
 
     private handleReconnect(): void {
@@ -250,35 +223,51 @@ export class WebSocketService {
     }
 
     private handleSettingsUpdate(message: SettingsUpdateMessage): void {
-        const { category, setting, value } = message;
-        
-        // Use existing utilities for case conversion
-        const convertedValue = convertObjectKeysToCamelCase({
-            [category]: {
-                [setting]: value
+        try {
+            const { category, setting, value } = message;
+            const settingsKey = `${category}.${setting}`;
+            
+            // Update local settings store
+            this.settingsStore.set(settingsKey, value);
+
+            // Notify settings update handler
+            if (this.settingsUpdateHandler) {
+                const settings = this.getSettingsSnapshot();
+                this.settingsUpdateHandler(settings);
             }
-        }) as Record<string, Record<string, unknown>>;
-        
-        // Extract the converted category, setting and value
-        const entries = Object.entries(convertedValue);
-        if (entries.length > 0) {
-            const [camelCategory, settingsObj] = entries[0];
-            const settingEntries = Object.entries(settingsObj);
-            if (settingEntries.length > 0) {
-                const [camelSetting, camelValue] = settingEntries[0];
-                // Update settings store
-                this.settingsStore.set(`${camelCategory}.${camelSetting}`, camelValue);
-                
-                // Notify settings update handler
-                if (this.settingsUpdateHandler) {
-                    this.settingsUpdateHandler({
-                        [camelCategory]: {
-                            [camelSetting]: camelValue
-                        }
-                    });
-                }
-            }
+
+            logger.debug(`Updated setting ${settingsKey}:`, value);
+        } catch (e) {
+            logger.error('Failed to handle settings update:', e);
         }
+    }
+
+    private getSettingsSnapshot(): any {
+        const settings: any = {};
+        for (const [key, value] of this.settingsStore.entries()) {
+            const [category, setting] = key.split('.');
+            if (!settings[category]) {
+                settings[category] = {};
+            }
+            settings[category][setting] = value;
+        }
+        return settings;
+    }
+
+    public updateSettings(category: string, setting: string, value: any): void {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            logger.warn('WebSocket not connected, cannot update settings');
+            return;
+        }
+
+        const message = {
+            type: 'settings_update',
+            category,
+            setting,
+            value
+        };
+
+        this.sendMessage(message);
     }
 
     public static getInstance(): WebSocketService {
@@ -307,65 +296,32 @@ export class WebSocketService {
     }
 
     public sendNodeUpdates(updates: NodeUpdate[]): void {
-        if (this.connectionState !== ConnectionState.CONNECTED || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             logger.warn('WebSocket not connected, cannot send node updates');
             return;
         }
 
-        try {
-            // Validate updates
-            if (!Array.isArray(updates) || updates.length === 0) {
-                logger.warn('Invalid node updates: empty or not an array');
-                return;
-            }
+        const buffer = new ArrayBuffer(4 + updates.length * 24); // 4 bytes for count + 24 bytes per node (3 floats for position, 3 for velocity)
+        const dataView = new DataView(buffer);
+        
+        dataView.setUint32(0, updates.length, true); // Set node count
+        
+        let offset = 4;
+        updates.forEach(update => {
+            // Position
+            dataView.setFloat32(offset, update.position.x, true);
+            dataView.setFloat32(offset + 4, update.position.y, true);
+            dataView.setFloat32(offset + 8, update.position.z, true);
+            offset += 12;
 
-            // Validate each update
-            const validUpdates = updates.filter(update => {
-                if (!update.position || typeof update.position !== 'object') {
-                    logger.warn('Invalid node update: missing or invalid position', update);
-                    return false;
-                }
+            // Velocity (set to 0 as it's not included in NodeUpdate)
+            dataView.setFloat32(offset, 0, true);
+            dataView.setFloat32(offset + 4, 0, true);
+            dataView.setFloat32(offset + 8, 0, true);
+            offset += 12;
+        });
 
-                const { x, y, z } = update.position;
-                if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-                    logger.warn('Invalid node update: non-finite position values', update);
-                    return false;
-                }
-
-                return true;
-            });
-
-            if (validUpdates.length === 0) {
-                logger.warn('No valid updates to send');
-                return;
-            }
-
-            // Create binary message (24 bytes per node - 6 floats * 4 bytes)
-            const float32Array = new Float32Array(validUpdates.length * 6);
-            
-            validUpdates.forEach((update, index) => {
-                const baseIndex = index * 6;
-                float32Array[baseIndex] = update.position.x;
-                float32Array[baseIndex + 1] = update.position.y;
-                float32Array[baseIndex + 2] = update.position.z;
-                // Set velocity components to 0 as they're not provided in updates
-                float32Array[baseIndex + 3] = 0;
-                float32Array[baseIndex + 4] = 0;
-                float32Array[baseIndex + 5] = 0;
-            });
-
-            this.ws.send(float32Array.buffer);
-            logger.debug(`Sent ${validUpdates.length} node updates`);
-        } catch (error) {
-            logger.error('Error sending node updates:', error);
-            if (error instanceof Error) {
-                logger.error('Error details:', {
-                    name: error.name,
-                    message: error.message,
-                    stack: error.stack
-                });
-            }
-        }
+        this.ws.send(buffer);
     }
 
     public onConnectionStatusChange(handler: (status: boolean) => void): void {

@@ -74,7 +74,7 @@ pub struct RealGitHubService {
     owner: String,
     repo: String,
     base_path: String,
-    settings: Arc<RwLock<Settings>>,
+    _settings: Arc<RwLock<Settings>>,
 }
 
 impl RealGitHubService {
@@ -83,7 +83,7 @@ impl RealGitHubService {
         owner: String,
         repo: String,
         base_path: String,
-        settings: Arc<RwLock<Settings>>,
+        _settings: Arc<RwLock<Settings>>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let client = Client::builder()
             .user_agent("rust-github-api")
@@ -101,7 +101,7 @@ impl RealGitHubService {
             owner,
             repo,
             base_path,
-            settings,
+            _settings,
         })
     }
 }
@@ -166,8 +166,9 @@ impl GitHubService for RealGitHubService {
             }
         };
 
-        let settings = self.settings.read().await;
+        let settings = self._settings.read().await;
         let debug_enabled = settings.system.debug.enabled;
+        drop(settings);
         
         let mut markdown_files = Vec::new();
         
@@ -453,7 +454,7 @@ impl FileService {
     /// Initialize the local markdown directory and metadata structure.
     pub async fn initialize_local_storage(
         github_service: &dyn GitHubService,
-        settings: Arc<RwLock<Settings>>,
+        _settings: Arc<RwLock<Settings>>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         info!("Checking local storage status");
         
@@ -628,14 +629,14 @@ impl FileService {
     /// Handles incremental updates after initial setup
     pub async fn fetch_and_process_files(
         github_service: &dyn GitHubService,
-        settings: Arc<RwLock<Settings>>,
+        _settings: Arc<RwLock<Settings>>,
         metadata_store: &mut MetadataStore,
     ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
         // Ensure directories exist before any operations
         Self::ensure_directories()?;
 
         // Get metadata for markdown files in target directory
-        let settings = settings.read().await;
+        let settings = _settings.read().await;
         let skip_debug_filter = !settings.system.debug.enabled;
         drop(settings);
         let github_files_metadata = github_service.fetch_file_metadata(skip_debug_filter).await?;
