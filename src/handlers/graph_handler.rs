@@ -42,12 +42,47 @@ pub struct GraphQuery {
 
 pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     info!("Received request for graph data");
-    let graph = state.graph_service.graph_data.read().await;
+    
+    // Get graph data with error handling
+    let graph = match state.graph_service.graph_data.try_read() {
+        Ok(graph) => graph,
+        Err(e) => {
+            error!("Failed to acquire read lock on graph data: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "error": "Failed to access graph data",
+                "details": e.to_string()
+            }));
+        }
+    };
+    
+    // Check if graph data is valid
+    if graph.nodes.is_empty() {
+        debug!("Graph is empty, initializing with default data");
+        return HttpResponse::Ok().json(GraphResponse {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            metadata: HashMap::new(),
+        });
+    }
     
     debug!("Preparing graph response with {} nodes and {} edges",
         graph.nodes.len(),
         graph.edges.len()
     );
+
+    // Validate node positions
+    let invalid_nodes: Vec<_> = graph.nodes.iter()
+        .filter(|n| {
+            let pos = [n.x(), n.y(), n.z()];
+            pos.iter().any(|&p| !p.is_finite() || p.abs() > 1000.0)
+        })
+        .map(|n| n.id.clone())
+        .collect();
+
+    if !invalid_nodes.is_empty() {
+        warn!("Found nodes with invalid positions: {:?}", invalid_nodes);
+        // Continue anyway, client will handle invalid positions
+    }
 
     let response = GraphResponse {
         nodes: graph.nodes.clone(),

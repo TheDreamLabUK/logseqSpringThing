@@ -235,7 +235,84 @@ impl GraphService {
                 }
             }
         } else {
-            warn!("GPU not available. Using static random positions.");
+            info!("GPU not available. Using CPU-based force-directed layout.");
+            
+            // Simple force-directed layout on CPU
+            let repulsion = params.repulsion;
+            let spring = params.spring_strength;
+            let damping = params.damping;
+            let dt = params.time_step;
+            
+            for _ in 0..params.iterations {
+                // Calculate forces for each node
+                let mut forces = vec![[0.0f32; 3]; graph.nodes.len()];
+                
+                // Repulsion forces between all nodes
+                for i in 0..graph.nodes.len() {
+                    for j in (i + 1)..graph.nodes.len() {
+                        let dx = graph.nodes[j].x() - graph.nodes[i].x();
+                        let dy = graph.nodes[j].y() - graph.nodes[i].y();
+                        let dz = graph.nodes[j].z() - graph.nodes[i].z();
+                        
+                        let dist = (dx * dx + dy * dy + dz * dz).sqrt().max(0.1);
+                        let force = repulsion / (dist * dist);
+                        
+                        let fx = dx / dist * force;
+                        let fy = dy / dist * force;
+                        let fz = dz / dist * force;
+                        
+                        forces[i][0] -= fx;
+                        forces[i][1] -= fy;
+                        forces[i][2] -= fz;
+                        forces[j][0] += fx;
+                        forces[j][1] += fy;
+                        forces[j][2] += fz;
+                    }
+                }
+                
+                // Spring forces along edges
+                for edge in &graph.edges {
+                    let source_idx = graph.nodes.iter().position(|n| n.id == edge.source).unwrap();
+                    let target_idx = graph.nodes.iter().position(|n| n.id == edge.target).unwrap();
+                    
+                    let dx = graph.nodes[target_idx].x() - graph.nodes[source_idx].x();
+                    let dy = graph.nodes[target_idx].y() - graph.nodes[source_idx].y();
+                    let dz = graph.nodes[target_idx].z() - graph.nodes[source_idx].z();
+                    
+                    let dist = (dx * dx + dy * dy + dz * dz).sqrt().max(0.1);
+                    let force = spring * (dist - params.spring_length) * edge.weight;
+                    
+                    let fx = dx / dist * force;
+                    let fy = dy / dist * force;
+                    let fz = dz / dist * force;
+                    
+                    forces[source_idx][0] += fx;
+                    forces[source_idx][1] += fy;
+                    forces[source_idx][2] += fz;
+                    forces[target_idx][0] -= fx;
+                    forces[target_idx][1] -= fy;
+                    forces[target_idx][2] -= fz;
+                }
+                
+                // Update velocities and positions
+                for (i, node) in graph.nodes.iter_mut().enumerate() {
+                    // Update velocity with damping
+                    node.set_vx(node.vx() * damping + forces[i][0] * dt);
+                    node.set_vy(node.vy() * damping + forces[i][1] * dt);
+                    node.set_vz(node.vz() * damping + forces[i][2] * dt);
+                    
+                    // Update position
+                    node.set_x(node.x() + node.vx() * dt);
+                    node.set_y(node.y() + node.vy() * dt);
+                    node.set_z(node.z() + node.vz() * dt);
+                    
+                    // Clamp positions to prevent nodes from flying too far
+                    let max_pos = 1000.0;
+                    node.set_x(node.x().clamp(-max_pos, max_pos));
+                    node.set_y(node.y().clamp(-max_pos, max_pos));
+                    node.set_z(node.z().clamp(-max_pos, max_pos));
+                }
+            }
         }
         Ok(())
     }
