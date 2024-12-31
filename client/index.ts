@@ -222,11 +222,11 @@ const settings: Settings = {
             sessionTimeout: 86400
         },
         debug: {
-            enabled: false,
-            enableDataDebug: false,
-            enableWebsocketDebug: false,
-            logBinaryHeaders: false,
-            logFullJson: false
+            enabled: true,
+            enableDataDebug: true,
+            enableWebsocketDebug: true,
+            logBinaryHeaders: true,
+            logFullJson: true
         }
     }
 };

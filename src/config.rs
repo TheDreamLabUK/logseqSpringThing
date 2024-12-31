@@ -339,6 +339,26 @@ pub struct XRSettings {}
 pub struct SystemSettings {
     pub websocket: WebSocketSettings,
     pub debug: DebugSettings,
+    pub paths: PathSettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PathSettings {
+    pub data_root: String,
+    pub markdown_dir: String,
+    pub metadata_dir: String,
+    pub data_dir: String,
+}
+
+impl Default for PathSettings {
+    fn default() -> Self {
+        Self {
+            data_root: String::from("/app"),
+            markdown_dir: String::from("/app/data/markdown"),
+            metadata_dir: String::from("/app/data/metadata"),
+            data_dir: String::from("/app/data"),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -424,7 +444,48 @@ impl Settings {
             )
             .build()?;
 
-        config.try_deserialize()
+        let mut settings = Settings::default();
+
+        // Load path settings from environment
+        if let Ok(data_root) = std::env::var("DATA_ROOT") {
+            settings.system.paths.data_root = data_root;
+        }
+        if let Ok(markdown_dir) = std::env::var("MARKDOWN_DIR") {
+            settings.system.paths.markdown_dir = markdown_dir;
+        }
+        if let Ok(metadata_dir) = std::env::var("METADATA_DIR") {
+            settings.system.paths.metadata_dir = metadata_dir;
+        }
+        if let Ok(data_dir) = std::env::var("DATA_DIR") {
+            settings.system.paths.data_dir = data_dir;
+        }
+        
+        // Load GitHub settings from environment
+        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+            settings.github.token = token;
+        }
+        if let Ok(owner) = std::env::var("GITHUB_OWNER") {
+            settings.github.owner = owner;
+        }
+        if let Ok(repo) = std::env::var("GITHUB_REPO") {
+            settings.github.repo = repo;
+        }
+        if let Ok(base_path) = std::env::var("GITHUB_BASE_PATH") {
+            settings.github.base_path = base_path;
+        }
+
+        // Load other settings from config
+        if let Ok(other_settings) = config.try_deserialize::<Settings>() {
+            settings.visualization = other_settings.visualization;
+            settings.xr = other_settings.xr;
+            settings.system = other_settings.system;
+            settings.graph = other_settings.graph;
+            settings.ragflow = other_settings.ragflow;
+            settings.perplexity = other_settings.perplexity;
+            settings.openai = other_settings.openai;
+        }
+
+        Ok(settings)
     }
 }
 
@@ -453,6 +514,7 @@ impl Default for SystemSettings {
             debug: DebugSettings {
                 enabled: false,
             },
+            paths: PathSettings::default(),
         }
     }
 }

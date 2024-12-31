@@ -1,4 +1,5 @@
-use actix_web::{web::{self, ServiceConfig}, HttpResponse, Responder};
+use actix_web::{web::{self, ServiceConfig}, HttpResponse, Responder, Result, Error as ActixError};
+use serde_json::json;
 use crate::AppState;
 use serde::{Serialize, Deserialize};
 use log::{info, debug, error, warn};
@@ -135,56 +136,60 @@ pub async fn get_paginated_graph_data(
 }
 
 // Rebuild graph from existing metadata
-pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
-    info!("Received request to refresh graph");
-    
-    let metadata = state.metadata.read().await.clone();
-    
-    match GraphService::build_graph_from_metadata(&metadata).await {
-        Ok(mut new_graph) => {
-            let mut graph = state.graph_service.graph_data.write().await;
-            
-            // Preserve existing node positions
-            let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
-                .map(|node| (node.id.clone(), (node.x(), node.y(), node.z())))
+pub async fn refresh_graph(state: web::Data<AppState>) -> Result<HttpResponse, ActixError> {
+    info!("Refreshing graph data");
+
+    // Load or create metadata
+    let mut metadata = match FileService::load_or_create_metadata() {
+        Ok(store) => store,
+        Err(e) => {
+            error!("Failed to load or create metadata: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Failed to initialize metadata: {}", e)
+            })));
+        }
+    };
+
+    // Process files with optimized approach
+    let file_service = FileService::new(state.settings.clone());
+    match file_service.fetch_and_process_files(&*state.github_service, state.settings.clone(), &mut metadata).await {
+        Ok(processed_files) => {
+            let file_names: Vec<String> = processed_files.iter()
+                .map(|pf| pf.file_name.clone())
                 .collect();
-            
-            // Update positions in new graph
-            for node in &mut new_graph.nodes {
-                if let Some(&(x, y, z)) = old_positions.get(&node.id) {
-                    node.set_x(x);
-                    node.set_y(y);
-                    node.set_z(z);
+
+            info!("Successfully processed {} public markdown files", processed_files.len());
+
+            // Update metadata store
+            {
+                let mut metadata_store = state.metadata.write().await;
+                for processed_file in &processed_files {
+                    metadata_store.insert(processed_file.file_name.clone(), processed_file.metadata.clone());
                 }
             }
 
-            // Calculate layout using GPU if available
-            let settings = state.settings.read().await;
-            let params = settings.graph.simulation_params.clone();
-            drop(settings);
-
-            if let Err(e) = GraphService::calculate_layout(
-                &state.gpu_compute,
-                &mut new_graph,
-                &params
-            ).await {
-                error!("Failed to calculate layout: {}", e);
+            // Save the updated metadata
+            if let Err(e) = FileService::save_metadata(&metadata) {
+                error!("Failed to save metadata: {}", e);
+                return Ok(HttpResponse::InternalServerError().json(json!({
+                    "status": "error",
+                    "message": format!("Failed to save metadata: {}", e)
+                })));
             }
-            
-            *graph = new_graph;
-            debug!("Graph refreshed successfully");
-            
-            HttpResponse::Ok().json(serde_json::json!({
-                "success": true,
-                "message": "Graph refreshed successfully"
-            }))
-        },
+
+            Ok(HttpResponse::Ok().json(json!({
+                "status": "success",
+                "message": format!("Successfully processed {} files", processed_files.len()),
+                "files": file_names
+            })))
+        }
         Err(e) => {
-            error!("Failed to refresh graph: {}", e);
-            HttpResponse::InternalServerError().json(serde_json::json!({
-                "success": false,
-                "error": format!("Failed to refresh graph: {}", e)
-            }))
+            error!("Failed to process files: {}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Failed to process files: {}", e)
+            })))
         }
     }
 }

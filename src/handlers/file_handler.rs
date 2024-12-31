@@ -3,7 +3,7 @@ use serde_json::json;
 use log::{info, debug, error};
 
 use crate::AppState;
-use crate::services::file_service::{FileService, MARKDOWN_DIR};
+use crate::services::file_service::FileService;
 use crate::services::graph_service::GraphService;
 
 pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse {
@@ -22,7 +22,8 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
     };
     
     // Process files with optimized approach
-    match FileService::fetch_and_process_files(&*state.github_service, state.settings.clone(), &mut metadata_store).await {
+    let file_service = FileService::new(state.settings.clone());
+    match file_service.fetch_and_process_files(&*state.github_service, state.settings.clone(), &mut metadata_store).await {
         Ok(processed_files) => {
             let file_names: Vec<String> = processed_files.iter()
                 .map(|pf| pf.file_name.clone())
@@ -49,50 +50,25 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
                 }));
             }
 
-            // Update graph with processed files
-            match GraphService::build_graph(&state).await {
-                Ok(graph_data) => {
-                    let mut graph = state.graph_service.graph_data.write().await;
-                    *graph = graph_data.clone();
-                    info!("Graph data structure updated successfully");
-
-                    // Send binary position update to clients
-                    if let Some(gpu) = &state.gpu_compute {
-                        if let Ok(_nodes) = gpu.read().await.get_node_data() {
-                            // Note: Socket-flow server will handle broadcasting
-                            debug!("GPU node positions updated successfully");
-                        } else {
-                            error!("Failed to get node positions from GPU");
-                        }
-                    }
-
-                    HttpResponse::Ok().json(json!({
-                        "status": "success",
-                        "processed_files": file_names
-                    }))
-                },
-                Err(e) => {
-                    error!("Failed to build graph data: {}", e);
-                    HttpResponse::InternalServerError().json(json!({
-                        "status": "error",
-                        "message": format!("Failed to build graph data: {}", e)
-                    }))
-                }
-            }
-        },
+            HttpResponse::Ok().json(json!({
+                "status": "success",
+                "message": format!("Successfully processed {} files", processed_files.len()),
+                "files": file_names
+            }))
+        }
         Err(e) => {
-            error!("Error processing files: {}", e);
+            error!("Failed to process files: {}", e);
             HttpResponse::InternalServerError().json(json!({
                 "status": "error",
-                "message": format!("Error processing files: {}", e)
+                "message": format!("Failed to process files: {}", e)
             }))
         }
     }
 }
 
 pub async fn get_file_content(_state: web::Data<AppState>, file_name: web::Path<String>) -> HttpResponse {
-    // Read file directly from disk
-    let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
+    let file_path = format!("{}/{}", crate::services::file_service::MARKDOWN_DIR, file_name);
+    
     match tokio::fs::read_to_string(&file_path).await {
         Ok(content) => HttpResponse::Ok().body(content),
         Err(e) => {

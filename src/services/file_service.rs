@@ -293,9 +293,15 @@ impl GitHubService for RealGitHubService {
     }
 }
 
-pub struct FileService;
+pub struct FileService {
+    settings: Arc<RwLock<Settings>>,
+}
 
 impl FileService {
+    pub fn new(settings: Arc<RwLock<Settings>>) -> Self {
+        Self { settings }
+    }
+
     /// Process uploaded file and return graph data
     pub async fn process_file_upload(&self, payload: web::Bytes) -> Result<GraphData, Box<dyn StdError + Send + Sync>> {
         let content = String::from_utf8(payload.to_vec())?;
