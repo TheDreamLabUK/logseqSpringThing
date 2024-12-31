@@ -3,6 +3,11 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { NodeMetadata } from '../types/metadata';
 
+type GeometryWithBoundingBox = THREE.BufferGeometry & {
+    boundingBox: THREE.Box3 | null;
+    computeBoundingBox: () => void;
+};
+
 export class MetadataVisualizer {
     private scene: THREE.Scene;
     private camera: THREE.PerspectiveCamera;
@@ -60,7 +65,7 @@ export class MetadataVisualizer {
         });
 
         // Create mesh with the text geometry and center it
-        const geometry = textGeometry as unknown as THREE.ExtrudeGeometry;
+        const geometry = textGeometry as unknown as GeometryWithBoundingBox;
         geometry.computeBoundingBox();
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.copy(position);
@@ -94,7 +99,7 @@ export class MetadataVisualizer {
         });
 
         // Create mesh with the text geometry and center it
-        const geometry = textGeometry as unknown as THREE.ExtrudeGeometry;
+        const geometry = textGeometry as unknown as GeometryWithBoundingBox;
         geometry.computeBoundingBox();
         const mesh = new THREE.Mesh(geometry, material);
         mesh.scale.set(this.labelScale, this.labelScale, this.labelScale);
