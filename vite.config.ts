@@ -11,7 +11,7 @@ export default defineConfig(({ mode, command }) => {
     base: './',
     
     build: {
-      outDir: resolve(__dirname, 'static'),
+      outDir: resolve(__dirname, 'data/public/dist'),
       emptyOutDir: true,
       sourcemap: !isProd,
       minify: false,

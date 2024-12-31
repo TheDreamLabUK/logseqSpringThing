@@ -106,6 +106,22 @@ check_fix_permissions() {
         fi
     done
 
+    # Initialize metadata.json if it doesn't exist
+    local metadata_file="$data_dir/markdown/metadata.json"
+    if [ ! -f "$metadata_file" ]; then
+        info "Creating metadata.json"
+        echo '{}' > "$metadata_file" || {
+            error "Failed to create metadata.json"
+            return 1
+        }
+    fi
+
+    # Ensure metadata.json is writable
+    chmod 666 "$metadata_file" || {
+        error "Failed to set permissions on metadata.json"
+        return 1
+    }
+
     success "Directory permissions verified"
     return 0
 }

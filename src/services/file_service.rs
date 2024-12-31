@@ -16,6 +16,7 @@ use std::error::Error as StdError;
 use std::time::Duration;
 use tokio::time::sleep;
 use actix_web::web;
+use reqwest::Url;
 
 // Constants
 const METADATA_PATH: &str = "/app/data/markdown/metadata.json";
@@ -104,21 +105,23 @@ impl RealGitHubService {
             _settings,
         })
     }
+
+    fn encode_url(&self, path: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
+        let base = format!("https://api.github.com/repos/{}/{}/contents", self.owner, self.repo);
+        let url = Url::parse(&base)?
+            .join(path)?
+            .to_string();
+        Ok(url)
+    }
 }
 
 #[async_trait]
 impl GitHubService for RealGitHubService {
     async fn fetch_file_metadata(&self, skip_debug_filter: bool) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
         let url = if self.base_path.is_empty() {
-            format!(
-                "https://api.github.com/repos/{}/{}/contents",
-                self.owner, self.repo
-            )
+            self.encode_url("")?
         } else {
-            format!(
-                "https://api.github.com/repos/{}/{}/contents/{}",
-                self.owner, self.repo, self.base_path
-            )
+            self.encode_url(&self.base_path)?
         };
         
         debug!("Fetching GitHub metadata from URL: {}", url);
@@ -212,13 +215,13 @@ impl GitHubService for RealGitHubService {
     }
 
     async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>> {
-        let url = if self.base_path.is_empty() {
-            format!("https://api.github.com/repos/{}/{}/contents/{}", 
-                self.owner, self.repo, file_name)
+        let path = if self.base_path.is_empty() {
+            file_name.to_string()
         } else {
-            format!("https://api.github.com/repos/{}/{}/contents/{}/{}", 
-                self.owner, self.repo, self.base_path, file_name)
+            format!("{}/{}", self.base_path, file_name)
         };
+        
+        let url = self.encode_url(&path)?;
 
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
@@ -235,7 +238,11 @@ impl GitHubService for RealGitHubService {
     }
 
     async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
-        let response = self.client.get(download_url)
+        // Parse and validate the download URL
+        let parsed_url = Url::parse(download_url)
+            .map_err(|e| format!("Invalid download URL: {}", e))?;
+            
+        let response = self.client.get(parsed_url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
             .send()

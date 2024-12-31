@@ -73,13 +73,13 @@ verify_build() {
     log "Verifying production build..."
     
     # Check build directory exists and is accessible
-    if [ ! -d "/app/static" ]; then
+    if [ ! -d "/app/data/public/dist" ]; then
         log "Error: Production build directory not found"
         return 1
     fi
     
     # Check index.html exists and is readable
-    if [ ! -r "/app/static/index.html" ]; then
+    if [ ! -r "/app/data/public/dist/index.html" ]; then
         log "Error: index.html not found or not readable"
         return 1
     fi

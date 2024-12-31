@@ -11,8 +11,8 @@ COPY package.json pnpm-lock.yaml ./
 COPY tsconfig.json tsconfig.node.json vite.config.ts ./
 COPY client ./client
 
-# Create static directory for build output
-RUN mkdir -p static
+# Create required directories
+RUN mkdir -p /app/data/public/dist
 
 # Install dependencies and build
 RUN pnpm install --frozen-lockfile && \
@@ -94,7 +94,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     BIND_ADDRESS=0.0.0.0 \
     NODE_ENV=production \
     DOMAIN=localhost \
-    STATIC_FILES_PATH=/app/static
+    STATIC_FILES_PATH=/app/data/public/dist
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -165,14 +165,17 @@ RUN mkdir -p /app/data/markdown \
              /app/data/piper \
              /app/data/metadata \
              /tmp/runtime && \
+    # Create metadata.json with empty object
+    echo '{}' > /app/data/markdown/metadata.json && \
     # Set base permissions
     chown -R webxr:webxr /app /tmp/runtime && \
     chmod -R 755 /app /tmp/runtime && \
-    # Make data directories world-writable to handle different UIDs
+    # Make data directories and files world-writable to handle different UIDs
     chmod 1777 /app/data/markdown \
               /app/data/piper \
               /app/data/metadata \
-              /app/data/runtime
+              /app/data/runtime && \
+    chmod 666 /app/data/markdown/metadata.json
 
 # Copy Python virtual environment
 COPY --from=python-builder /app/venv /app/venv
@@ -182,11 +185,11 @@ RUN chown -R webxr:webxr /app/venv
 COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/
 COPY settings.toml /app/
 COPY --from=rust-deps-builder /usr/src/app/src/utils/compute_forces.ptx /app/compute_forces.ptx
-COPY --from=frontend-builder /app/static /app/static
+COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
 
-# Ensure static directory has correct permissions
-RUN chown -R webxr:webxr /app/static && \
-    chmod -R 755 /app/static
+# Ensure public directory has correct permissions
+RUN chown -R webxr:webxr /app/data/public && \
+    chmod -R 755 /app/data/public
 
 # Copy configuration and scripts
 COPY src/generate_audio.py /app/src/

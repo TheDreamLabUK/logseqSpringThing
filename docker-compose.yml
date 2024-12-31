@@ -36,13 +36,8 @@ services:
       - .env
     volumes:
       - type: bind
-        source: ./data/markdown
-        target: /app/data/markdown
-        volume:
-          nocopy: true
-      - type: bind
-        source: ./data/piper
-        target: /app/data/piper
+        source: ./data
+        target: /app/data
         volume:
           nocopy: true
       - type: bind
