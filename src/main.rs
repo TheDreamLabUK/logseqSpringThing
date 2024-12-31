@@ -168,14 +168,14 @@ async fn main() -> std::io::Result<()> {
                     )
             )
             .service(
-                web::scope("/ws")
+                web::scope("/wss")
                     .route("", web::get().to(socket_flow_handler))
             )
             .service(Files::new("/", &static_path).index_file("index.html"))
     })
-    .bind("0.0.0.0:8080")?
+    .bind("0.0.0.0:3001")?
     .run();
 
-    info!("Server running at http://localhost:8080");
+    info!("Server running at http://localhost:3001");
     server.await
 }
