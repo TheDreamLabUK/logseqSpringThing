@@ -11,8 +11,8 @@ COPY package.json pnpm-lock.yaml ./
 COPY tsconfig.json tsconfig.node.json vite.config.ts ./
 COPY client ./client
 
-# Create data/public directory for build output
-RUN mkdir -p data/public
+# Create static directory for build output
+RUN mkdir -p static
 
 # Install dependencies and build
 RUN pnpm install --frozen-lockfile && \
@@ -93,7 +93,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PORT=4000 \
     BIND_ADDRESS=0.0.0.0 \
     NODE_ENV=production \
-    DOMAIN=localhost
+    DOMAIN=localhost \
+    STATIC_FILES_PATH=/app/static
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -158,8 +159,7 @@ RUN mkdir -p /var/lib/nginx/client_temp \
 WORKDIR /app
 
 # Create required directories with proper permissions
-RUN mkdir -p /app/data/public/dist \
-             /app/data/markdown \
+RUN mkdir -p /app/data/markdown \
              /app/data/runtime \
              /app/src/utils \
              /app/data/piper \
@@ -172,8 +172,7 @@ RUN mkdir -p /app/data/public/dist \
     chmod 1777 /app/data/markdown \
               /app/data/piper \
               /app/data/metadata \
-              /app/data/runtime \
-              /app/data/public/dist
+              /app/data/runtime
 
 # Copy Python virtual environment
 COPY --from=python-builder /app/venv /app/venv
@@ -183,7 +182,11 @@ RUN chown -R webxr:webxr /app/venv
 COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/
 COPY settings.toml /app/
 COPY --from=rust-deps-builder /usr/src/app/src/utils/compute_forces.ptx /app/compute_forces.ptx
-COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
+COPY --from=frontend-builder /app/static /app/static
+
+# Ensure static directory has correct permissions
+RUN chown -R webxr:webxr /app/static && \
+    chmod -R 755 /app/static
 
 # Copy configuration and scripts
 COPY src/generate_audio.py /app/src/

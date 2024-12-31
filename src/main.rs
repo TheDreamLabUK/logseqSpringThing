@@ -127,7 +127,7 @@ async fn main() -> std::io::Result<()> {
 
     // Get static files path from environment or use default
     let static_files_path = std::env::var("STATIC_FILES_PATH")
-        .unwrap_or_else(|_| "./static".to_string());
+        .unwrap_or_else(|_| "/app/static".to_string());
 
     // Configure and start server
     let static_path = static_files_path.to_string();
