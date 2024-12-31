@@ -68,7 +68,7 @@ export class GraphVisualization {
 const settings: Settings = {
     visualization: {
         bloom: {
-            enabled: true,
+            enabled: false,
             strength: 0.5,
             radius: 1,
             edgeBloomStrength: 0.5,
@@ -76,7 +76,7 @@ const settings: Settings = {
             environmentBloomStrength: 0.5
         },
         physics: {
-            enabled: true,
+            enabled: false,
             attractionStrength: 0.1,
             repulsionStrength: 0.1,
             springStrength: 0.1,
@@ -147,11 +147,11 @@ const settings: Settings = {
             triangleSphereOpacity: 0.3
         },
         animations: {
-            enableNodeAnimations: true,
+            enableNodeAnimations: false,
             enableMotionBlur: false,
             motionBlurStrength: 0.5,
-            selectionWaveEnabled: true,
-            pulseEnabled: true,
+            selectionWaveEnabled: false,
+            pulseEnabled: false,
             pulseSpeed: 1.0,
             pulseStrength: 0.5,
             waveSpeed: 1.0

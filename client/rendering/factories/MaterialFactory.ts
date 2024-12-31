@@ -1,129 +1,130 @@
-import { Color, DoubleSide, Material, MeshBasicMaterial, MeshPhongMaterial } from 'three';
-import { Settings } from '../../types/settings';
 import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
-
-type CachedMaterial = Material | HologramShaderMaterial;
+import { Color, Material, MeshBasicMaterial, MeshPhongMaterial, LineBasicMaterial } from 'three';
 
 export class MaterialFactory {
     private static instance: MaterialFactory;
-    private materialCache = new Map<string, CachedMaterial>();
+    private materialCache: Map<string, Material>;
 
-    private constructor() {}
+    private constructor() {
+        this.materialCache = new Map();
+    }
 
-    static getInstance(): MaterialFactory {
+    public static getInstance(): MaterialFactory {
         if (!MaterialFactory.instance) {
             MaterialFactory.instance = new MaterialFactory();
         }
         return MaterialFactory.instance;
     }
 
-    getNodeMaterial(settings: Settings): Material {
+    private hexToRgb(hex: string): Color {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        if (!result) {
+            return new Color(0xffffff);
+        }
+        return new Color(`#${result[1]}${result[2]}${result[3]}`);
+    }
+
+    public createHologramMaterial(settings: any): HologramShaderMaterial {
+        const cacheKey = 'hologram';
+        if (this.materialCache.has(cacheKey)) {
+            return this.materialCache.get(cacheKey) as HologramShaderMaterial;
+        }
+
+        const material = new HologramShaderMaterial(settings);
+        
+        if (settings.visualization?.hologram?.color) {
+            const materialColor = this.hexToRgb(settings.visualization.hologram.color);
+            material.uniforms.color.value = materialColor;
+        }
+
+        this.materialCache.set(cacheKey, material);
+        return material;
+    }
+
+    public getHologramMaterial(settings: any): HologramShaderMaterial {
+        return this.createHologramMaterial(settings);
+    }
+
+    public getNodeMaterial(settings: any): Material {
         const cacheKey = 'node-basic';
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey)!;
         }
 
         const material = new MeshBasicMaterial({
-            color: settings.visualization.nodes.baseColor,
-            transparent: true,
-            opacity: settings.visualization.nodes.opacity
+            color: settings.visualization?.node?.color || 0xffffff
         });
 
         this.materialCache.set(cacheKey, material);
         return material;
     }
 
-    getPhongNodeMaterial(): Material {
+    public getPhongNodeMaterial(): Material {
         const cacheKey = 'node-phong';
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey)!;
         }
 
         const material = new MeshPhongMaterial({
-            color: 0x4fc3f7,
-            shininess: 30,
-            specular: 0x004ba0,
-            transparent: true,
-            opacity: 0.9,
+            color: 0xffffff
         });
 
         this.materialCache.set(cacheKey, material);
         return material;
     }
 
-    getMetadataMaterial(): Material {
+    public getEdgeMaterial(settings: any): Material {
+        const cacheKey = 'edge';
+        if (this.materialCache.has(cacheKey)) {
+            return this.materialCache.get(cacheKey)!;
+        }
+
+        const material = new LineBasicMaterial({
+            color: settings.visualization?.edge?.color || 0xffffff
+        });
+
+        this.materialCache.set(cacheKey, material);
+        return material;
+    }
+
+    public getMetadataMaterial(): Material {
         const cacheKey = 'metadata';
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey)!;
         }
 
         const material = new MeshBasicMaterial({
-            color: new Color('#00ff00'),
+            color: 0xffffff,
             transparent: true,
-            opacity: 0.8,
-            side: DoubleSide
+            opacity: 0.8
         });
 
         this.materialCache.set(cacheKey, material);
         return material;
     }
 
-    getHologramMaterial(settings: Settings): HologramShaderMaterial {
-        const cacheKey = 'hologram';
-        const cached = this.materialCache.get(cacheKey);
-        if (cached && cached instanceof HologramShaderMaterial) {
-            return cached;
-        }
-
-        const material = new HologramShaderMaterial(settings);
-        this.materialCache.set(cacheKey, material);
-        return material;
-    }
-
-    updateMaterial(type: string, settings: Settings): void {
+    public updateMaterial(type: string, settings: any): void {
         const material = this.materialCache.get(type);
         if (!material) return;
 
         switch (type) {
             case 'node-basic':
             case 'node-phong':
-                if (material instanceof MeshBasicMaterial || material instanceof MeshPhongMaterial) {
-                    material.color.set(settings.visualization.nodes.baseColor);
-                    material.opacity = settings.visualization.nodes.opacity;
-                }
+                (material as MeshBasicMaterial | MeshPhongMaterial).color = this.hexToRgb(settings.visualization?.node?.color || '#ffffff');
+                break;
+            case 'edge':
+                (material as LineBasicMaterial).color = this.hexToRgb(settings.visualization?.edge?.color || '#ffffff');
                 break;
             case 'hologram':
                 if (material instanceof HologramShaderMaterial) {
-                    const hexColor = settings.visualization.hologram.ringColor;
-                    const hex = hexColor.replace('#', '');
-                    const r = parseInt(hex.substring(0, 2), 16) / 255;
-                    const g = parseInt(hex.substring(2, 4), 16) / 255;
-                    const b = parseInt(hex.substring(4, 6), 16) / 255;
-                    material.uniforms.color.value.set(r, g, b);
-                    material.uniforms.opacity.value = settings.visualization.hologram.ringOpacity;
+                    material.uniforms.color.value = this.hexToRgb(settings.visualization?.hologram?.color || '#ffffff');
                 }
                 break;
         }
     }
 
-    dispose(): void {
+    public dispose(): void {
         this.materialCache.forEach(material => material.dispose());
         this.materialCache.clear();
-    }
-
-    getEdgeMaterial(settings: Settings): Material {
-        const cacheKey = 'edge';
-        if (this.materialCache.has(cacheKey)) {
-            return this.materialCache.get(cacheKey)!;
-        }
-
-        const material = new MeshBasicMaterial({
-            color: new Color(settings.visualization.edges.color),
-            opacity: settings.visualization.edges.opacity,
-            transparent: true
-        });
-
-        this.materialCache.set(cacheKey, material);
-        return material;
     }
 }

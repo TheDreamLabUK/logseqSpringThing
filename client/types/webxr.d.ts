@@ -103,7 +103,7 @@ declare global {
     get(joint: XRHandJoint): XRJointSpace | undefined;
   }
 
-  type XRHandJoint =
+  export type XRHandJoint =
     | 'wrist'
     | 'thumb-metacarpal'
     | 'thumb-phalanx-proximal'
@@ -115,8 +115,10 @@ declare global {
     | 'index-finger-phalanx-distal'
     | 'index-finger-tip';
 
-  interface XRJointSpace extends XRSpace {
+  export interface XRJointSpace extends XRSpace {
     jointRadius: number | undefined;
+    position: { x: number; y: number; z: number };
+    matrixWorld: THREE.Matrix4;
   }
 
   interface Navigator {

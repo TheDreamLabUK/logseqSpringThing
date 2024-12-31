@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@react-three/drei':
-        specifier: ^9.120.4
-        version: 9.120.4(@react-three/fiber@8.17.10(@types/react@19.0.1)(react@18.3.1)(three@0.171.0))(@types/react@19.0.1)(@types/three@0.171.0)(react@18.3.1)(three@0.171.0)(use-sync-external-store@1.2.2(react@18.3.1))
+        specifier: ^9.120.5
+        version: 9.120.5(@react-three/fiber@8.17.10(@types/react@19.0.1)(react@18.3.1)(three@0.171.0))(@types/react@19.0.1)(@types/three@0.171.0)(react@18.3.1)(three@0.171.0)(use-sync-external-store@1.2.2(react@18.3.1))
       '@react-three/fiber':
         specifier: ^8.17.10
         version: 8.17.10(@types/react@19.0.1)(react@18.3.1)(three@0.171.0)
@@ -308,8 +308,8 @@ packages:
   '@react-spring/types@9.7.5':
     resolution: {integrity: sha512-HVj7LrZ4ReHWBimBvu2SKND3cDVUPWKLqRTmWe/fNY6o1owGOX0cAHbdPDTMelgBlVbrTKrre6lFkhqGZErK/g==}
 
-  '@react-three/drei@9.120.4':
-    resolution: {integrity: sha512-keO7gHudafooXZxqukzPYIvhkBLL+PsnteuUPcHE3WZ5Hq1tC78AlY0kvm4NkC0w6tfsxpWl1yAYbUcnSPSmGg==}
+  '@react-three/drei@9.120.5':
+    resolution: {integrity: sha512-hSu3q+gq546Op4aihIkbdIsFfjrmOqcJyMPNGv/IqM0nycJtvv5IzL+MISLplFTNFI6xMBJ9ZwC+7dpq35/FOA==}
     peerDependencies:
       '@react-three/fiber': ^8 || ^9.0.0-0
       react: ^18
@@ -1467,7 +1467,7 @@ snapshots:
 
   '@react-spring/types@9.7.5': {}
 
-  '@react-three/drei@9.120.4(@react-three/fiber@8.17.10(@types/react@19.0.1)(react@18.3.1)(three@0.171.0))(@types/react@19.0.1)(@types/three@0.171.0)(react@18.3.1)(three@0.171.0)(use-sync-external-store@1.2.2(react@18.3.1))':
+  '@react-three/drei@9.120.5(@react-three/fiber@8.17.10(@types/react@19.0.1)(react@18.3.1)(three@0.171.0))(@types/react@19.0.1)(@types/three@0.171.0)(react@18.3.1)(three@0.171.0)(use-sync-external-store@1.2.2(react@18.3.1))':
     dependencies:
       '@babel/runtime': 7.26.0
       '@mediapipe/tasks-vision': 0.10.17

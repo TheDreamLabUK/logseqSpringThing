@@ -3,6 +3,8 @@ import { Platform } from '../core/types';
 
 // Core XR Types
 export type XRSessionMode = 'inline' | 'immersive-vr' | 'immersive-ar';
+export type XRHandedness = 'none' | 'left' | 'right';
+export type XRHand = THREE.XRHand;
 
 export interface XRSessionConfig {
     mode: XRSessionMode;

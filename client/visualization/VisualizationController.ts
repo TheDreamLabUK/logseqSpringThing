@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MetadataVisualizer } from './MetadataVisualizer';
 import { HologramManager } from './HologramManager';
 import { NodeMetadata, HologramSettings } from '../types/metadata';
-import { XRHandedness, XRHand } from '../types/xr';
+import { XRHand } from '../types/xr';
 
 export class VisualizationController {
     private readonly scene: THREE.Scene;
@@ -29,7 +29,7 @@ export class VisualizationController {
 
         // Initialize managers
         this.metadataVisualizer = new MetadataVisualizer(this.scene, this.camera, settings);
-        this.hologramManager = new HologramManager(this.scene, this.camera, settings.hologram);
+        this.hologramManager = new HologramManager(this.scene, settings.hologram);
         this.clock = new THREE.Clock();
 
         // Set up XR session change handling
@@ -76,9 +76,9 @@ export class VisualizationController {
         this.hologramManager.updateSettings(settings);
     }
 
-    public handleHandInput(hand: XRHand, handedness: XRHandedness): void {
+    public handleHandInput(hand: XRHand): void {
         if (this.isXRSession) {
-            this.hologramManager.handleHandInteraction(hand, handedness);
+            this.hologramManager.handleHandInteraction(hand);
         }
     }
 

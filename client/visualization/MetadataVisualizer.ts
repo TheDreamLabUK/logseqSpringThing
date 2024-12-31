@@ -4,34 +4,73 @@ import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { NodeMetadata } from '../types/metadata';
 
 export class MetadataVisualizer {
+    private scene: THREE.Scene;
+    private camera: THREE.PerspectiveCamera;
+    private fontLoader: FontLoader;
+    private font: Font | null;
+    private fontPath: string;
+    private labelGroup: THREE.Group;
+    private settings: any;
+
+    constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera, settings: any) {
+        this.scene = scene;
+        this.camera = camera;
+        this.fontLoader = new FontLoader();
+        this.font = null;
+        this.fontPath = '/fonts/helvetiker_regular.typeface.json';
+        this.labelGroup = new THREE.Group();
+        this.settings = settings;
+        this.scene.add(this.labelGroup);
+        this.loadFont();
+    }
+
     private readonly geometries = {
         SPHERE: new THREE.SphereGeometry(1, 32, 32),
         ICOSAHEDRON: new THREE.IcosahedronGeometry(1),
         OCTAHEDRON: new THREE.OctahedronGeometry(1)
     };
 
-    private font: Font | null = null;
-    private fontLoader: FontLoader;
-    private readonly fontPath = '/fonts/helvetiker_regular.typeface.json';
     private readonly labelScale = 0.1;
     private readonly labelHeight = 0.1;
-    private readonly labelGroup: THREE.Group;
-
-    constructor(
-        private readonly camera: THREE.Camera,
-        private readonly settings: any
-    ) {
-        this.fontLoader = new FontLoader();
-        this.loadFont();
-        this.labelGroup = new THREE.Group();
-    }
 
     private async loadFont(): Promise<void> {
         try {
-            this.font = await this.fontLoader.loadAsync(this.fontPath);
+            this.font = await new Promise((resolve, reject) => {
+                this.fontLoader.load(this.fontPath, resolve, undefined, reject);
+            });
         } catch (error) {
             console.error('Failed to load font:', error);
         }
+    }
+
+    public createLabel(text: string, position: THREE.Vector3): void {
+        if (!this.font) {
+            console.warn('Font not loaded yet');
+            return;
+        }
+
+        const textGeometry = new TextGeometry(text, {
+            font: this.font,
+            size: this.settings.labelSize || 0.1,
+            height: this.settings.labelHeight || 0.01
+        });
+
+        const material = new THREE.MeshBasicMaterial({
+            color: this.settings.labelColor || 0xffffff
+        });
+
+        // Create mesh with the text geometry and center it
+        const geometry = textGeometry as unknown as THREE.ExtrudeGeometry;
+        geometry.computeBoundingBox();
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.copy(position);
+
+        if (geometry.boundingBox) {
+            const width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+            mesh.position.x -= width / 2;
+        }
+        
+        this.labelGroup.add(mesh);
     }
 
     public async createTextMesh(text: string): Promise<THREE.Mesh | null> {
@@ -40,7 +79,7 @@ export class MetadataVisualizer {
             return null;
         }
 
-        const geometry = new TextGeometry(text, {
+        const textGeometry = new TextGeometry(text, {
             font: this.font,
             size: 1,
             height: this.labelHeight,
@@ -54,13 +93,16 @@ export class MetadataVisualizer {
             opacity: 0.8
         });
 
+        // Create mesh with the text geometry and center it
+        const geometry = textGeometry as unknown as THREE.ExtrudeGeometry;
+        geometry.computeBoundingBox();
         const mesh = new THREE.Mesh(geometry, material);
         mesh.scale.set(this.labelScale, this.labelScale, this.labelScale);
 
-        // Center the text
-        geometry.computeBoundingBox();
-        const textWidth = geometry.boundingBox!.max.x - geometry.boundingBox!.min.x;
-        mesh.position.x = -textWidth * this.labelScale / 2;
+        if (geometry.boundingBox) {
+            const width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+            mesh.position.x -= width / 2;
+        }
 
         return mesh;
     }
