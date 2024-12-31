@@ -35,9 +35,21 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data/markdown:/app/data/markdown
-      - ./data/piper:/app/data/piper
-      - ./client:/app/client
+      - type: bind
+        source: ./data/markdown
+        target: /app/data/markdown
+        volume:
+          nocopy: true
+      - type: bind
+        source: ./data/piper
+        target: /app/data/piper
+        volume:
+          nocopy: true
+      - type: bind
+        source: ./client
+        target: /app/client
+        volume:
+          nocopy: true
       - type: bind
         source: ./settings.toml
         target: /app/settings.toml

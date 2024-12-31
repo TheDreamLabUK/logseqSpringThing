@@ -163,15 +163,17 @@ RUN mkdir -p /app/data/public/dist \
              /app/data/runtime \
              /app/src/utils \
              /app/data/piper \
+             /app/data/metadata \
              /tmp/runtime && \
+    # Set base permissions
     chown -R webxr:webxr /app /tmp/runtime && \
     chmod -R 755 /app /tmp/runtime && \
-    # Ensure data/markdown is writable by webxr user
-    chmod 777 /app/data/markdown
-
-# Create necessary directories and set permissions
-RUN mkdir -p /app/data/markdown /app/data/metadata && \
-    chmod -R 777 /app/data
+    # Make data directories world-writable to handle different UIDs
+    chmod 1777 /app/data/markdown \
+              /app/data/piper \
+              /app/data/metadata \
+              /app/data/runtime \
+              /app/data/public/dist
 
 # Copy Python virtual environment
 COPY --from=python-builder /app/venv /app/venv

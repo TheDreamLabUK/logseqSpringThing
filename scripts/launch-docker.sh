@@ -74,6 +74,42 @@ container_is_running() {
     docker ps -q -f name="^/${container_name}$" > /dev/null 2>&1
 }
 
+# Function to check and fix directory permissions
+check_fix_permissions() {
+    local data_dir="$PROJECT_ROOT/data"
+    local current_user=$(id -u)
+    local current_group=$(id -g)
+
+    info "Checking directory permissions..."
+
+    # Create directories if they don't exist
+    for dir in "$data_dir/markdown" "$data_dir/piper" "$data_dir/metadata"; do
+        if [ ! -d "$dir" ]; then
+            info "Creating directory: $dir"
+            mkdir -p "$dir" || {
+                error "Failed to create directory: $dir"
+                return 1
+            }
+        fi
+    done
+
+    # Check permissions and fix if needed
+    for dir in "$data_dir/markdown" "$data_dir/piper" "$data_dir/metadata"; do
+        local dir_perms=$(stat -c "%a" "$dir" 2>/dev/null)
+        if [ "$dir_perms" != "777" ]; then
+            warn "Fixing permissions for $dir"
+            sudo chmod 777 "$dir" || {
+                error "Failed to set permissions on $dir"
+                error "Please run: sudo chmod -R 777 $dir"
+                return 1
+            }
+        fi
+    done
+
+    success "Directory permissions verified"
+    return 0
+}
+
 # Function to setup environment
 setup_env() {
     # Change to project root
@@ -90,6 +126,12 @@ setup_env() {
         set -a
         source .env || warn "Error sourcing .env file"
         set +a
+    fi
+
+    # Check and fix permissions
+    if ! check_fix_permissions; then
+        error "Failed to verify/fix permissions"
+        exit 1
     fi
 }
 
@@ -149,6 +191,11 @@ wait_for_container() {
 # Function to start containers
 start_containers() {
     info "Starting containers..."
+    
+    # Ensure we're using the correct UID/GID
+    export UID=$(id -u)
+    export GID=$(id -g)
+    
     $DOCKER_COMPOSE up -d || {
         error "Failed to start containers"
         return 1
