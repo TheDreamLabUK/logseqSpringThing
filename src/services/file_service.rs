@@ -634,6 +634,7 @@ impl FileService {
 
     /// Handles incremental updates after initial setup
     pub async fn fetch_and_process_files(
+        &self,
         github_service: &dyn GitHubService,
         _settings: Arc<RwLock<Settings>>,
         metadata_store: &mut MetadataStore,
@@ -642,7 +643,7 @@ impl FileService {
         Self::ensure_directories()?;
 
         // Get metadata for markdown files in target directory
-        let settings = _settings.read().await;
+        let settings = self.settings.read().await;
         let skip_debug_filter = !settings.system.debug.enabled;
         drop(settings);
         let github_files_metadata = github_service.fetch_file_metadata(skip_debug_filter).await?;
