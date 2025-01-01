@@ -11,11 +11,13 @@ export interface XRSystem {
     requestSession(mode: XRSessionMode, options?: XRSessionInit): Promise<XRSession>;
 }
 
-export interface XRHand extends Group {
+export interface XRHand extends THREE.Group {
+    type: 'Group';
     joints: Map<string, XRJointSpace>;
+    dispatchEvent<K extends keyof THREE.Object3DEventMap>(event: THREE.Object3DEventMap[K]): void;
 }
 
-export interface XRJointSpace {
+export interface XRJointSpace extends THREE.Object3D<THREE.Object3DEventMap> {
     position: Vector3;
     quaternion: THREE.Quaternion;
     radius: number;
