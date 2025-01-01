@@ -1,350 +1,200 @@
-/**
- * Three.js scene management with simplified setup
- */
-
-import { 
-  BufferGeometry, 
-  Line as Line, 
-  Points as Points, 
-  AmbientLight, 
-  DirectionalLight, 
-  PerspectiveCamera, 
-  Scene, 
-  Vector2, 
-  Material, 
-  Mesh, 
-  Object3D, 
-  Color, 
-  GridHelper, 
-  WebGLRenderer, 
-  OrbitControls, 
-  EffectComposer, 
-  RenderPass, 
-  UnrealBloomPass 
+import {
+    Scene as ThreeScene,
+    PerspectiveCamera,
+    WebGLRenderer,
+    AmbientLight,
+    DirectionalLight,
+    GridHelper,
+    Color,
+    Object3D,
+    Vector3,
+    Camera
 } from 'three';
-import { createLogger } from '../core/utils';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
+import { Logger } from '../core/types';
 import { Settings } from '../types/settings';
 
-interface SceneObject extends Object3D {
-  material?: Material;
-  geometry?: BufferGeometry;
-  children: SceneObject[];
-}
-
-interface RenderCallback {
-  (deltaTime: number): void;
-}
-
-interface SceneEventListener {
-  (event: Event): void;
-}
-
-interface SceneEventMap {
-  [key: string]: SceneEventListener[];
-}
-
-const logger = createLogger('SceneManager');
-
-// Constants
-const BACKGROUND_COLOR = 0x212121;  // Material Design Grey 900
-
 export class SceneManager {
-  private static instance: SceneManager;
-  
-  // Three.js core components
-  private scene: Scene;
-  private camera: PerspectiveCamera;
-  private renderer: WebGLRenderer;
-  private controls: OrbitControls;
-  
-  // Post-processing
-  private composer: EffectComposer;
-  private bloomPass: UnrealBloomPass;
-  
-  // Animation
-  private animationFrameId: number | null = null;
-  private isRunning: boolean = false;
+    private scene: ThreeScene;
+    private camera: PerspectiveCamera;
+    private renderer: WebGLRenderer;
+    private composer: EffectComposer;
+    private controls: OrbitControls;
+    private renderCallbacks: Array<() => void> = [];
+    private isDisposed = false;
+    private grid: GridHelper | null = null;
+    private readonly logger: Logger;
 
-  private constructor(canvas: HTMLCanvasElement) {
-    logger.log('Initializing SceneManager');
-    
-    // Create scene
-    this.scene = new Scene();
-    this.scene.background = new Color(BACKGROUND_COLOR);
-    // Removed fog to ensure graph visibility
+    constructor(container: HTMLElement, settings: Settings, logger: Logger) {
+        this.logger = logger;
+        this.scene = new ThreeScene();
+        this.camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.renderer = new WebGLRenderer({ antialias: true });
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(this.renderer.domElement);
 
-    // Create camera
-    this.camera = new PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
-    this.camera.position.set(0, 5, 20); // Moved camera closer
-    this.camera.lookAt(0, 0, 0);
+        this.composer = new EffectComposer(this.renderer);
+        const renderPass = new RenderPass(this.scene, this.camera);
+        this.composer.addPass(renderPass);
 
-    // Create renderer
-    this.renderer = new WebGLRenderer({
-      canvas,
-      antialias: true,
-      alpha: true,
-      powerPreference: 'high-performance'
-    });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        const bloomPass = new UnrealBloomPass(
+            new Vector3(window.innerWidth, window.innerHeight),
+            1.5,
+            0.4,
+            0.85
+        );
+        this.composer.addPass(bloomPass);
 
-    // Create controls
-    this.controls = new OrbitControls(this.camera, canvas);
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.05;
-    this.controls.screenSpacePanning = false;
-    this.controls.minDistance = 5;  // Reduced min distance
-    this.controls.maxDistance = 100; // Reduced max distance
+        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+        this.controls.enableDamping = true;
+        this.controls.dampingFactor = 0.05;
 
-    // Setup post-processing
-    this.composer = new EffectComposer(this.renderer);
-    const renderPass = new RenderPass(this.scene, this.camera);
-    this.composer.addPass(renderPass);
-
-    this.bloomPass = new UnrealBloomPass(
-      new Vector2(window.innerWidth, window.innerHeight),
-      1.5,  // Strength
-      0.75, // Radius
-      0.3   // Threshold
-    );
-    this.composer.addPass(this.bloomPass);
-
-    // Setup basic lighting
-    this.setupLighting();
-
-    // Setup event listeners
-    window.addEventListener('resize', this.handleResize.bind(this));
-
-    logger.log('SceneManager initialization complete');
-  }
-
-  static getInstance(canvas: HTMLCanvasElement): SceneManager {
-    if (!SceneManager.instance) {
-      SceneManager.instance = new SceneManager(canvas);
-    }
-    return SceneManager.instance;
-  }
-
-  static cleanup(): void {
-    if (SceneManager.instance) {
-      SceneManager.instance.dispose();
-      SceneManager.instance = null as any;
-    }
-  }
-
-  private setupLighting(): void {
-    const ambientLight = new AmbientLight(0xffffff, 0.6);
-    this.scene.add(ambientLight);
-
-    const directionalLight = new DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(1, 1, 1).normalize();
-    this.scene.add(directionalLight);
-
-    // Add smaller grid helper
-    const gridHelper = new GridHelper(50, 50); // Reduced grid size
-    if (gridHelper.material instanceof Material) {
-      gridHelper.material.transparent = true;
-      gridHelper.material.opacity = 0.1;
-    }
-    this.scene.add(gridHelper);
-  }
-
-  private handleResize(): void {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-
-    this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
-
-    this.renderer.setSize(width, height);
-    this.composer.setSize(width, height);
-  }
-
-  start(): void {
-    if (this.isRunning) return;
-    this.isRunning = true;
-    this.animate();
-    logger.log('Scene rendering started');
-  }
-
-  // Alias for start() to maintain compatibility with new client code
-  startRendering(): void {
-    this.start();
-  }
-
-  stop(): void {
-    this.isRunning = false;
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-    }
-    logger.log('Scene rendering stopped');
-  }
-
-  private animate(): void {
-    if (!this.isRunning) return;
-
-    this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
-    this.controls.update();
-    this.composer.render();
-  }
-
-  // Public getters
-  getScene(): Scene {
-    return this.scene;
-  }
-
-  getCamera(): PerspectiveCamera {
-    return this.camera;
-  }
-
-  getRenderer(): WebGLRenderer {
-    return this.renderer;
-  }
-
-  getControls(): OrbitControls {
-    return this.controls;
-  }
-
-  // Scene management methods
-  add(object: SceneObject): void {
-    this.scene.add(object);
-  }
-
-  remove(object: SceneObject): void {
-    this.scene.remove(object);
-  }
-
-  dispose(): void {
-    this.stop();
-    
-    // Remove event listeners
-    const boundResize = this.handleResize.bind(this);
-    window.removeEventListener('resize', boundResize);
-
-    // Dispose of post-processing
-    if (this.composer) {
-      // Dispose of render targets
-      this.composer.renderTarget1.dispose();
-      this.composer.renderTarget2.dispose();
-      
-      // Clear passes
-      this.composer.passes.length = 0;
+        this.setupScene(settings);
+        this.setupEventListeners();
+        this.animate();
     }
 
-    // Dispose of bloom pass resources
-    if (this.bloomPass) {
-      // Dispose of any textures or materials used by the bloom pass
-      if ((this.bloomPass as any).renderTargetsHorizontal) {
-        (this.bloomPass as any).renderTargetsHorizontal.forEach((target: any) => {
-          if (target && target.dispose) target.dispose();
-        });
-      }
-      if ((this.bloomPass as any).renderTargetsVertical) {
-        (this.bloomPass as any).renderTargetsVertical.forEach((target: any) => {
-          if (target && target.dispose) target.dispose();
-        });
-      }
-      if ((this.bloomPass as any).materialHorizontal) {
-        (this.bloomPass as any).materialHorizontal.dispose();
-      }
-      if ((this.bloomPass as any).materialVertical) {
-        (this.bloomPass as any).materialVertical.dispose();
-      }
-    }
+    private setupScene(settings: Settings): void {
+        // Set up camera
+        this.camera.position.z = 5;
+        this.camera.position.y = 2;
+        this.camera.position.x = 2;
+        this.camera.lookAt(0, 0, 0);
 
-    // Dispose of controls
-    if (this.controls) {
-      this.controls.dispose();
-    }
+        // Add lights
+        const ambientLight = new AmbientLight(0x404040);
+        this.scene.add(ambientLight);
 
-    // Dispose of renderer and materials
-    if (this.renderer) {
-      this.renderer.dispose();
-      this.renderer.domElement.remove();
-      (this.renderer.domElement as any).width = 0;
-      (this.renderer.domElement as any).height = 0;
-    }
+        const directionalLight = new DirectionalLight(0xffffff, 0.5);
+        directionalLight.position.set(1, 1, 1);
+        this.scene.add(directionalLight);
 
-    // Dispose of scene objects
-    if (this.scene) {
-      this.scene.traverse((object) => {
-        if (object instanceof Mesh) {
-          if (object.geometry) object.geometry.dispose();
-          if (object.material) {
-            if (Array.isArray(object.material)) {
-              object.material.forEach(material => material.dispose());
-            } else {
-              object.material.dispose();
-            }
-          }
+        // Add grid if enabled
+        if (settings.render.showGrid) {
+            this.grid = new GridHelper(10, 10);
+            this.scene.add(this.grid);
         }
-      });
+
+        // Set background color
+        const backgroundColor = new Color(settings.render.backgroundColor);
+        this.scene.background = backgroundColor;
+        this.renderer.setClearColor(backgroundColor);
     }
 
-    logger.log('Scene manager disposed');
-  }
-
-  private disposeObject(object: Object3D): void {
-    if (object.geometry) {
-      object.geometry.dispose();
+    private setupEventListeners(): void {
+        window.addEventListener('resize', this.onWindowResize.bind(this));
     }
 
-    if (object.material) {
-      if (Array.isArray(object.material)) {
-        object.material.forEach(material => material.dispose());
-      } else {
-        object.material.dispose();
-      }
+    private removeEventListeners(): void {
+        window.removeEventListener('resize', this.onWindowResize.bind(this));
     }
 
-    object.children.forEach(child => {
-      this.disposeObject(child);
-    });
-  }
+    private onWindowResize(): void {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
 
-  public handleSettingsUpdate(settings: Settings): void {
-    if (!settings.visualization?.rendering) {
-      logger.warn('Received settings update without visualization.rendering section');
-      return;
+        this.camera.aspect = width / height;
+        this.camera.updateProjectionMatrix();
+
+        this.renderer.setSize(width, height);
+        this.composer.setSize(width, height);
     }
 
-    const { rendering } = settings.visualization;
-
-    // Update background color
-    if (rendering.backgroundColor) {
-      this.scene.background = new Color(rendering.backgroundColor);
+    public addRenderCallback(callback: () => void): void {
+        this.renderCallbacks.push(callback);
     }
 
-    // Update lighting
-    const lights = this.scene.children.filter(child => 
-      child instanceof AmbientLight || child instanceof DirectionalLight
-    );
-    
-    lights.forEach(light => {
-      if (light instanceof AmbientLight) {
-        light.intensity = rendering.ambientLightIntensity;
-      } else if (light instanceof DirectionalLight) {
-        light.intensity = rendering.directionalLightIntensity;
-      }
-    });
-
-    // Update renderer settings
-    if (this.renderer) {
-      // Note: Some settings can only be changed at renderer creation
-      if (rendering.enableAntialiasing) {
-        logger.warn('Antialiasing setting change requires renderer recreation');
-      }
-      if (rendering.enableShadows) {
-        logger.warn('Shadow settings change requires renderer recreation');
-      }
+    public removeRenderCallback(callback: () => void): void {
+        const index = this.renderCallbacks.indexOf(callback);
+        if (index !== -1) {
+            this.renderCallbacks.splice(index, 1);
+        }
     }
 
-    logger.debug('Scene settings updated:', rendering);
-  }
+    public addObject(object: Object3D): void {
+        this.scene.add(object);
+    }
+
+    public removeObject(object: Object3D): void {
+        this.scene.remove(object);
+    }
+
+    private animate = (): void => {
+        if (this.isDisposed) return;
+
+        requestAnimationFrame(this.animate);
+
+        this.controls.update();
+
+        // Execute render callbacks
+        for (const callback of this.renderCallbacks) {
+            callback();
+        }
+
+        this.composer.render();
+    };
+
+    public dispose(): void {
+        this.isDisposed = true;
+        this.removeEventListeners();
+
+        // Dispose of Three.js objects
+        this.scene.traverse((object: Object3D) => {
+            if (object instanceof Object3D) {
+                if (object.geometry) {
+                    object.geometry.dispose();
+                }
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(material => material.dispose());
+                    } else {
+                        object.material.dispose();
+                    }
+                }
+            }
+        });
+
+        this.renderer.dispose();
+        this.composer.dispose();
+    }
+
+    public updateSettings(settings: Settings): void {
+        // Update background color
+        const backgroundColor = new Color(settings.render.backgroundColor);
+        this.scene.background = backgroundColor;
+        this.renderer.setClearColor(backgroundColor);
+
+        // Update grid visibility
+        if (settings.render.showGrid) {
+            if (!this.grid) {
+                this.grid = new GridHelper(10, 10);
+                this.scene.add(this.grid);
+            }
+        } else if (this.grid) {
+            this.scene.remove(this.grid);
+            this.grid = null;
+        }
+
+        // Update controls
+        this.controls.autoRotate = settings.controls.autoRotate;
+        this.controls.rotateSpeed = settings.controls.rotateSpeed;
+        this.controls.zoomSpeed = settings.controls.zoomSpeed;
+        this.controls.panSpeed = settings.controls.panSpeed;
+    }
+
+    public getCamera(): Camera {
+        return this.camera;
+    }
+
+    public getScene(): ThreeScene {
+        return this.scene;
+    }
+
+    public getRenderer(): WebGLRenderer {
+        return this.renderer;
+    }
 }

@@ -2,7 +2,8 @@
  * Core utilities for the LogseqXR visualization system
  */
 
-import { Vector3 } from './types';
+import { Vector3, Euler, Quaternion, Matrix4 } from 'three';
+import { Logger } from './types';
 import { THROTTLE_INTERVAL } from './constants';
 
 // Debug logging utility
@@ -101,47 +102,29 @@ export class UpdateThrottler {
 
 // Vector operations
 export const vectorOps = {
-  add: (a: Vector3, b: Vector3): Vector3 => ({
-    x: a.x + b.x,
-    y: a.y + b.y,
-    z: a.z + b.z
-  }),
-
-  subtract: (a: Vector3, b: Vector3): Vector3 => ({
-    x: a.x - b.x,
-    y: a.y - b.y,
-    z: a.z - b.z
-  }),
-
-  multiply: (v: Vector3, scalar: number): Vector3 => ({
-    x: v.x * scalar,
-    y: v.y * scalar,
-    z: v.z * scalar
-  }),
-
-  divide: (v: Vector3, scalar: number): Vector3 => ({
-    x: v.x / scalar,
-    y: v.y / scalar,
-    z: v.z / scalar
-  }),
-
+  add: (a: Vector3, b: Vector3): Vector3 => {
+    return new Vector3(a.x + b.x, a.y + b.y, a.z + b.z);
+  },
+  subtract: (a: Vector3, b: Vector3): Vector3 => {
+    return new Vector3(a.x - b.x, a.y - b.y, a.z - b.z);
+  },
+  multiply: (v: Vector3, scalar: number): Vector3 => {
+    return new Vector3(v.x * scalar, v.y * scalar, v.z * scalar);
+  },
+  divide: (v: Vector3, scalar: number): Vector3 => {
+    return new Vector3(v.x / scalar, v.y / scalar, v.z / scalar);
+  },
   length: (v: Vector3): number => 
     Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z),
-
   normalize: (v: Vector3): Vector3 => {
     const len = vectorOps.length(v);
-    return len > 0 ? vectorOps.divide(v, len) : { x: 0, y: 0, z: 0 };
+    return len > 0 ? vectorOps.divide(v, len) : new Vector3(0, 0, 0);
   },
-
   distance: (a: Vector3, b: Vector3): number => 
     vectorOps.length(vectorOps.subtract(a, b)),
-
-  // Convert position array to Vector3
-  fromArray: (arr: number[]): Vector3 => ({
-    x: arr[0] || 0,
-    y: arr[1] || 0,
-    z: arr[2] || 0
-  })
+  fromArray: (arr: number[]): Vector3 => {
+    return new Vector3(arr[0] || 0, arr[1] || 0, arr[2] || 0);
+  }
 };
 
 // Scale utilities
@@ -259,21 +242,30 @@ export type SuccessCallback<T> = (result: T) => void;
 const DEFAULT_TIMEOUT = 5000;
 
 // Logging utilities
-export function createLogger(namespace: string): Logger {
-    return {
-        log: (message: string, ...args: unknown[]) => {
-            console.log(`[${namespace}] ${message}`, ...args);
-        },
-        error: (message: string, ...args: unknown[]) => {
-            console.error(`[${namespace}] ${message}`, ...args);
-        },
-        warn: (message: string, ...args: unknown[]) => {
-            console.warn(`[${namespace}] ${message}`, ...args);
-        },
-        info: (message: string, ...args: unknown[]) => {
-            console.info(`[${namespace}] ${message}`, ...args);
+export type DeepPartial<T> = {
+    [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};
+
+export function deepMerge<T extends Record<string, unknown>>(target: T, source: DeepPartial<T>): T {
+    const output = { ...target };
+
+    for (const key in source) {
+        if (source.hasOwnProperty(key)) {
+            const sourceValue = source[key];
+            if (sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
+                if (!(key in target)) {
+                    Object.assign(output, { [key]: sourceValue });
+                } else {
+                    const targetValue = target[key] as Record<string, unknown>;
+                    output[key] = deepMerge(targetValue, sourceValue as DeepPartial<typeof targetValue>) as T[typeof key];
+                }
+            } else {
+                Object.assign(output, { [key]: sourceValue });
+            }
         }
-    };
+    }
+
+    return output;
 }
 
 // Async utilities
@@ -318,7 +310,6 @@ export type JsonObject = { [key: string]: JsonValue };
 export type JsonArray = JsonValue[];
 
 export type EventCallback<T> = (data: T) => void;
-export type ErrorCallback = (error: Error) => void;
 export type SuccessCallback<T> = (result: T) => void;
 
 // Event handling utilities
@@ -340,132 +331,73 @@ export function createEventEmitter<T>() {
 }
 
 // Object utilities
-export function deepMerge<T extends Record<string, JsonValue>>(
-    target: T,
-    source: DeepPartial<T>
-): T {
-    const result = { ...target };
-    
-    for (const key in source) {
-        const value = source[key];
-        if (value && typeof value === 'object' && !Array.isArray(value)) {
-            result[key] = deepMerge(
-                (target[key] as Record<string, JsonValue>) || {},
-                value as DeepPartial<Record<string, JsonValue>>
-            ) as T[typeof key];
-        } else {
-            result[key] = value as T[typeof key];
-        }
-    }
-    
-    return result;
+export function isObject(item: unknown): item is Record<string, unknown> {
+    return item !== null && typeof item === 'object' && !Array.isArray(item);
 }
 
-// Validation utilities
-export function isNonNullable<T>(value: T): value is NonNullable<T> {
-    return value !== null && value !== undefined;
+export function generateUUID(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
 }
 
-export function assertNonNullable<T>(
-    value: T,
-    message = 'Value must not be null or undefined'
-): asserts value is NonNullable<T> {
-    if (!isNonNullable(value)) {
-        throw new Error(message);
-    }
+export function createVector3FromObject(obj: { x: number; y: number; z: number }): Vector3 {
+    return new Vector3(obj.x, obj.y, obj.z);
 }
 
-// Math utilities
-export function clamp(value: number, min: number, max: number): number {
-    return Math.min(Math.max(value, min), max);
+export function createEulerFromObject(obj: { x: number; y: number; z: number; order?: string }): Euler {
+    return new Euler(obj.x, obj.y, obj.z, obj.order);
 }
 
-export function lerp(start: number, end: number, t: number): number {
-    return start + (end - start) * clamp(t, 0, 1);
+export function createQuaternionFromObject(obj: { x: number; y: number; z: number; w: number }): Quaternion {
+    return new Quaternion(obj.x, obj.y, obj.z, obj.w);
 }
 
-// String utilities
-export function formatBytes(bytes: number, decimals = 2): string {
-    if (bytes === 0) return '0 Bytes';
-    
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`;
+export function createMatrix4FromArray(array: number[]): Matrix4 {
+    return new Matrix4().fromArray(array);
 }
 
-// DOM utilities
-export function createElement<K extends keyof HTMLElementTagNameMap>(
-    tagName: K,
-    options?: ElementCreationOptions
-): HTMLElementTagNameMap[K] {
-    return document.createElement(tagName, options);
+export function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export function removeElement(element: Element): void {
-    element.parentElement?.removeChild(element);
-}
-
-// URL utilities
-export function isValidUrl(url: string): boolean {
+export async function retry<T>(
+    fn: () => Promise<T>,
+    retries: number = 3,
+    delay: number = 1000,
+    onError?: (error: Error) => void
+): Promise<T> {
     try {
-        new URL(url);
-        return true;
-    } catch {
-        return false;
+        return await fn();
+    } catch (error) {
+        if (retries === 0) {
+            throw error;
+        }
+        if (onError) {
+            onError(error as Error);
+        }
+        await sleep(delay);
+        return retry(fn, retries - 1, delay, onError);
     }
 }
 
-export function joinPaths(...paths: string[]): string {
-    return paths
-        .map(path => path.replace(/^\/+|\/+$/g, ''))
-        .filter(Boolean)
-        .join('/');
-}
+export function memoize<T extends (...args: any[]) => any>(
+    fn: T,
+    resolver?: (...args: Parameters<T>) => string
+): T {
+    const cache = new Map<string, ReturnType<T>>();
 
-// Debounce utility
-export function debounce<T extends (...args: unknown[]) => void>(
-    func: T,
-    wait: number
-): (...args: Parameters<T>) => void {
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-
-    return (...args: Parameters<T>) => {
-        const later = () => {
-            timeout = undefined;
-            func(...args);
-        };
-
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
-// Throttle utility
-export function throttle<T extends (...args: unknown[]) => void>(
-    func: T,
-    limit: number
-): (...args: Parameters<T>) => void {
-    let inThrottle = false;
-    let lastFunc: ReturnType<typeof setTimeout>;
-    let lastRan: number;
-
-    return (...args: Parameters<T>) => {
-        if (!inThrottle) {
-            func(...args);
-            lastRan = Date.now();
-            inThrottle = true;
-        } else {
-            clearTimeout(lastFunc);
-            lastFunc = setTimeout(() => {
-                if (Date.now() - lastRan >= limit) {
-                    func(...args);
-                    lastRan = Date.now();
-                }
-            }, limit - (Date.now() - lastRan));
+    return function memoized(...args: Parameters<T>): ReturnType<T> {
+        const key = resolver ? resolver(...args) : JSON.stringify(args);
+        if (cache.has(key)) {
+            return cache.get(key)!;
         }
-    };
+        const result = fn.apply(this, args);
+        cache.set(key, result);
+        return result;
+    } as T;
 }
 
 // Color utilities
@@ -586,32 +518,10 @@ export function isTest(): boolean {
     return process.env.NODE_ENV === 'test';
 }
 
-// Sleep utility
-export function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Deferred promise utility
-export function createDeferredPromise<T>(): {
-    promise: Promise<T>;
-    resolve: (value: T | PromiseLike<T>) => void;
-    reject: (reason?: unknown) => void;
-} {
-    let resolve!: (value: T | PromiseLike<T>) => void;
-    let reject!: (reason?: unknown) => void;
-    
-    const promise = new Promise<T>((res, rej) => {
-        resolve = res;
-        reject = rej;
-    });
-
-    return { promise, resolve, reject };
-}
-
-// Format bytes utility
+// String utilities
 export function formatBytes(bytes: number, decimals = 2): string {
     if (bytes === 0) return '0 Bytes';
-
+    
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
@@ -619,6 +529,35 @@ export function formatBytes(bytes: number, decimals = 2): string {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
 
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}
+
+// DOM utilities
+export function createElement<K extends keyof HTMLElementTagNameMap>(
+    tagName: K,
+    options?: ElementCreationOptions
+): HTMLElementTagNameMap[K] {
+    return document.createElement(tagName, options);
+}
+
+export function removeElement(element: Element): void {
+    element.parentElement?.removeChild(element);
+}
+
+// URL utilities
+export function isValidUrl(url: string): boolean {
+    try {
+        new URL(url);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+export function joinPaths(...paths: string[]): string {
+    return paths
+        .map(path => path.replace(/^\/+|\/+$/g, ''))
+        .filter(Boolean)
+        .join('/');
 }
 
 // Deep clone utility
@@ -657,63 +596,4 @@ export function deepEqual(a: unknown, b: unknown): boolean {
     }
 
     return true;
-}
-
-// Memoize utility
-export function memoize<T extends (...args: unknown[]) => unknown>(
-    fn: T,
-    keyFn?: (...args: Parameters<T>) => string
-): T {
-    const cache = new Map<string, ReturnType<T>>();
-
-    return ((...args: Parameters<T>) => {
-        const key = keyFn ? keyFn(...args) : JSON.stringify(args);
-        if (cache.has(key)) {
-            return cache.get(key);
-        }
-        const result = fn(...args);
-        cache.set(key, result as ReturnType<T>);
-        return result;
-    }) as T;
-}
-
-// Retry utility
-export function retry<T>(
-    fn: () => Promise<T>,
-    options: {
-        maxAttempts?: number;
-        delay?: number;
-        backoff?: number;
-        onRetry?: (attempt: number, error: Error) => void;
-    } = {}
-): Promise<T> {
-    const {
-        maxAttempts = 3,
-        delay = 1000,
-        backoff = 2,
-        onRetry = () => {}
-    } = options;
-
-    return new Promise((resolve, reject) => {
-        let attempts = 0;
-
-        const attempt = async () => {
-            try {
-                const result = await fn();
-                resolve(result);
-            } catch (error) {
-                attempts++;
-                if (attempts >= maxAttempts) {
-                    reject(error);
-                    return;
-                }
-
-                onRetry(attempts, error as Error);
-                const nextDelay = delay * Math.pow(backoff, attempts - 1);
-                setTimeout(attempt, nextDelay);
-            }
-        };
-
-        attempt();
-    });
 }

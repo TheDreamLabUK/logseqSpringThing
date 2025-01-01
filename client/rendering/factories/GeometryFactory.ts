@@ -1,84 +1,77 @@
-import { BufferGeometry, SphereGeometry, CylinderGeometry } from 'three';
+import {
+    BufferGeometry,
+    BoxGeometry,
+    SphereGeometry,
+    TorusGeometry,
+    IcosahedronGeometry,
+    Vector3
+} from 'three';
 
 export class GeometryFactory {
     private static instance: GeometryFactory;
-    private geometryCache = new Map<string, BufferGeometry>();
+    private geometries: Map<string, BufferGeometry> = new Map();
 
     private constructor() {}
 
-    static getInstance(): GeometryFactory {
+    public static getInstance(): GeometryFactory {
         if (!GeometryFactory.instance) {
             GeometryFactory.instance = new GeometryFactory();
         }
         return GeometryFactory.instance;
     }
 
-    getNodeGeometry(quality: 'low' | 'medium' | 'high'): BufferGeometry {
-        const cacheKey = `node-${quality}`;
-        if (this.geometryCache.has(cacheKey)) {
-            return this.geometryCache.get(cacheKey)!;
+    public getNodeGeometry(quality: 'low' | 'medium' | 'high'): BufferGeometry {
+        const key = `node-${quality}`;
+        if (this.geometries.has(key)) {
+            return this.geometries.get(key)!;
         }
 
-        const segments = {
-            low: 8,
-            medium: 16,
-            high: 32
-        }[quality] || 16;
+        let geometry: BufferGeometry;
+        switch (quality) {
+            case 'low':
+                geometry = new BoxGeometry(1, 1, 1);
+                break;
+            case 'medium':
+                geometry = new SphereGeometry(0.5, 16, 16);
+                break;
+            case 'high':
+                geometry = new IcosahedronGeometry(0.5, 2);
+                break;
+            default:
+                geometry = new BoxGeometry(1, 1, 1);
+        }
 
-        const geometry = new SphereGeometry(1, segments, segments);
-        this.geometryCache.set(cacheKey, geometry);
+        this.geometries.set(key, geometry);
         return geometry;
     }
 
-    getHologramGeometry(type: string, quality: string): BufferGeometry {
-        const cacheKey = `hologram-${type}-${quality}`;
-        if (this.geometryCache.has(cacheKey)) {
-            return this.geometryCache.get(cacheKey)!;
+    public getHologramGeometry(type: 'ring' | 'sphere' | 'icosahedron', quality: 'low' | 'medium' | 'high'): BufferGeometry {
+        const key = `hologram-${type}-${quality}`;
+        if (this.geometries.has(key)) {
+            return this.geometries.get(key)!;
         }
-
-        const segments = {
-            low: { ring: 32, sphere: 8 },
-            medium: { ring: 64, sphere: 16 },
-            high: { ring: 128, sphere: 32 }
-        }[quality] || { ring: 64, sphere: 16 };
 
         let geometry: BufferGeometry;
         switch (type) {
             case 'ring':
-                geometry = new SphereGeometry(1, segments.ring, segments.ring);
+                geometry = new TorusGeometry(1, 0.02, 16, 100);
                 break;
-            case 'buckminster':
-                geometry = new SphereGeometry(1, 20, 20);
+            case 'sphere':
+                geometry = new SphereGeometry(1, quality === 'low' ? 16 : quality === 'medium' ? 32 : 64);
                 break;
-            case 'geodesic':
-                geometry = new SphereGeometry(1, 16, 16);
-                break;
-            case 'triangleSphere':
-                geometry = new SphereGeometry(1, segments.sphere, segments.sphere);
+            case 'icosahedron':
+                geometry = new IcosahedronGeometry(1, quality === 'low' ? 1 : quality === 'medium' ? 2 : 3);
                 break;
             default:
-                geometry = new SphereGeometry(1, segments.sphere, segments.sphere);
+                geometry = new TorusGeometry(1, 0.02, 16, 100);
         }
 
-        this.geometryCache.set(cacheKey, geometry);
+        this.geometries.set(key, geometry);
         return geometry;
     }
 
-    getEdgeGeometry(): BufferGeometry {
-        const cacheKey = 'edge';
-        if (this.geometryCache.has(cacheKey)) {
-            return this.geometryCache.get(cacheKey)!;
-        }
-
-        // CylinderGeometry parameters:
-        // radiusTop, radiusBottom, height, radialSegments
-        const geometry = new CylinderGeometry(0.05, 0.05, 1, 8);
-        this.geometryCache.set(cacheKey, geometry);
-        return geometry;
-    }
-
-    dispose(): void {
-        this.geometryCache.forEach(geometry => geometry.dispose());
-        this.geometryCache.clear();
+    public dispose(): void {
+        this.geometries.forEach(geometry => geometry.dispose());
+        this.geometries.clear();
     }
 }

@@ -15,7 +15,7 @@ COPY client ./client
 RUN mkdir -p /app/data/public/dist
 
 # Install dependencies and build
-RUN pnpm install --frozen-lockfile && \
+RUN pnpm install && \
     pnpm run build
 
 # Stage 2: Rust Dependencies Cache

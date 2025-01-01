@@ -1,7 +1,28 @@
-import { Vector3, Color } from 'three';
+import {
+    Vector3,
+    Color,
+    Material,
+    Mesh,
+    BufferGeometry,
+    Object3D,
+    Scene,
+    PerspectiveCamera as ThreePerspectiveCamera,
+    WebGLRenderer,
+    IUniform,
+    Side,
+    ShaderMaterial,
+    Camera as ThreeCamera,
+    MeshBasicMaterial,
+    MeshPhongMaterial,
+    DoubleSide,
+    Group
+} from 'three';
+
+// Re-export Three.js types with our own names to avoid conflicts
+export type PerspectiveCamera = ThreePerspectiveCamera;
+export type Camera = ThreeCamera;
 
 // Core types for the application
-
 export interface GraphNode {
     id: string;
     label: string;
@@ -103,48 +124,168 @@ export interface GraphEventTarget {
     dispatchEvent<K extends keyof GraphEventMap>(event: GraphEventMap[K]): void;
 }
 
-// Settings types
-export interface RenderSettings {
-    nodeSize: number;
-    edgeWidth: number;
-    fontSize: number;
-    backgroundColor: Color;
-    defaultNodeColor: Color;
-    defaultEdgeColor: Color;
-    highlightColor: Color;
+// Node types
+export interface NodeMetadata extends Record<string, unknown> {
+    label?: string;
+    type?: string;
 }
 
-export interface PhysicsSettings {
-    gravity: number;
-    springLength: number;
-    springStrength: number;
-    repulsion: number;
-    damping: number;
-}
-
-export interface ControlSettings {
-    rotateSpeed: number;
-    zoomSpeed: number;
-    panSpeed: number;
-    autoRotate: boolean;
-    enableVR: boolean;
-}
-
-export interface Settings {
-    render: RenderSettings;
-    physics: PhysicsSettings;
-    controls: ControlSettings;
-}
-
-// Platform-specific types
-export interface Platform {
+export interface NodeData {
+    id: string;
     name: string;
-    version: string;
-    capabilities: {
-        webgl2: boolean;
-        webxr: boolean;
-        webgpu: boolean;
+    position: Vector3;
+    color?: Color;
+    size?: number;
+    metadata?: NodeMetadata;
+    properties?: Record<string, unknown>;
+}
+
+export interface NodeUserData extends Record<string, unknown> {
+    id: string;
+    type: 'node';
+    data: NodeData;
+}
+
+export interface NodeMesh extends Mesh {
+    userData: NodeUserData;
+}
+
+// Edge types
+export interface EdgeMetadata extends Record<string, unknown> {
+    label?: string;
+    type?: string;
+}
+
+export interface EdgeData {
+    id: string;
+    source: string;
+    target: string;
+    color?: Color;
+    width?: number;
+    metadata?: EdgeMetadata;
+    properties?: Record<string, unknown>;
+}
+
+export interface EdgeUserData extends Record<string, unknown> {
+    id: string;
+    type: 'edge';
+    data: EdgeData;
+}
+
+export interface EdgeMesh extends Mesh {
+    userData: EdgeUserData;
+}
+
+// Hologram types
+export interface HologramUniforms extends Record<string, IUniform> {
+    time: IUniform<number>;
+    opacity: IUniform<number>;
+    color: IUniform<number>;
+    glowIntensity: IUniform<number>;
+}
+
+export interface HologramShaderMaterial extends ShaderMaterial {
+    uniforms: HologramUniforms;
+    update(deltaTime: number): void;
+    handleInteraction(intensity: number): void;
+}
+
+// Scene types
+export interface SceneManager {
+    scene: Scene;
+    camera: PerspectiveCamera;
+    renderer: WebGLRenderer;
+    init(): void;
+    update(deltaTime: number): void;
+    resize(width: number, height: number): void;
+    dispose(): void;
+}
+
+// Visualization types
+export interface MaterialSettings {
+    type?: 'basic' | 'phong' | 'hologram';
+    color?: Color;
+    opacity?: number;
+    transparent?: boolean;
+    side?: Side;
+    wireframe?: boolean;
+    glowIntensity?: number;
+    emissive?: Color;
+    shininess?: number;
+}
+
+export interface NodeSettings {
+    defaultColor: Color;
+    material?: MaterialSettings;
+    size?: number;
+    selected?: {
+        color: Color;
+        scale: number;
     };
+}
+
+export interface EdgeSettings {
+    defaultColor: Color;
+    material?: MaterialSettings;
+    width?: number;
+    selected?: {
+        color: Color;
+        width: number;
+    };
+}
+
+export interface HologramSettings {
+    color: Color;
+    opacity: number;
+    glowIntensity: number;
+    ringCount: number;
+    ringSizes: number[];
+    rotationSpeed: number;
+    enableBuckminster: boolean;
+    buckminsterScale: number;
+    buckminsterOpacity: number;
+    enableGeodesic: boolean;
+    geodesicScale: number;
+    geodesicOpacity: number;
+    enableTriangleSphere: boolean;
+    triangleSphereScale: number;
+    triangleSphereOpacity: number;
+}
+
+export interface VisualizationSettings {
+    nodes: NodeSettings;
+    edges: EdgeSettings;
+    hologram: HologramSettings;
+    camera?: {
+        position: Vector3;
+        target: Vector3;
+        fov: number;
+    };
+}
+
+// Export utility functions
+export function createNodeMesh(geometry: BufferGeometry, material: Material, userData: NodeUserData): NodeMesh {
+    const mesh = new Mesh(geometry, material);
+    mesh.userData = userData;
+    return mesh as NodeMesh;
+}
+
+export function createEdgeMesh(geometry: BufferGeometry, material: Material, userData: EdgeUserData): EdgeMesh {
+    const mesh = new Mesh(geometry, material);
+    mesh.userData = userData;
+    return mesh as EdgeMesh;
+}
+
+export function isNodeMesh(object: Object3D): object is NodeMesh {
+    return 'userData' in object && 'type' in object.userData && object.userData.type === 'node';
+}
+
+export function isEdgeMesh(object: Object3D): object is EdgeMesh {
+    return 'userData' in object && 'type' in object.userData && object.userData.type === 'edge';
+}
+
+export function transformGraphData(data: GraphData, transformer: GraphDataTransformer): GraphData {
+    return transformer.transform(data);
 }
 
 // Error types
@@ -170,6 +311,18 @@ export class WebSocketError extends Error {
     }
 }
 
+// Logger types
+export interface Logger {
+    debug(message: string, ...args: unknown[]): void;
+    info(message: string, ...args: unknown[]): void;
+    warn(message: string, ...args: unknown[]): void;
+    error(message: string, ...args: unknown[]): void;
+    log(message: string, ...args: unknown[]): void;
+}
+
+export type ErrorCallback = (error: Error) => void;
+export type SuccessCallback = () => void;
+
 // Utility types
 export type DeepPartial<T> = {
     [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
@@ -178,3 +331,22 @@ export type DeepPartial<T> = {
 export type Mutable<T> = {
     -readonly [P in keyof T]: T[P];
 };
+
+export enum PlatformType {
+    Desktop = 'desktop',
+    Mobile = 'mobile',
+    VR = 'vr',
+    AR = 'ar'
+}
+
+export interface PlatformCapabilities {
+    platform: PlatformType;
+    xrSupported: boolean;
+    touchSupported: boolean;
+    mouseSupported: boolean;
+    keyboardSupported: boolean;
+}
+
+export interface GraphDataTransformer {
+    transform(data: GraphData): GraphData;
+}

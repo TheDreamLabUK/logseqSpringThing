@@ -1,171 +1,81 @@
-import { Settings } from '../types/settings';
+import { Logger } from './types';
 
-let loggingEnabled = true;
-
-export enum LogLevel {
-    ERROR = 0,
-    WARN = 1,
-    INFO = 2,
-    DEBUG = 3
+interface LoggerOptions {
+    namespace?: string;
+    level?: 'debug' | 'info' | 'warn' | 'error';
 }
 
-interface LoggerConfig {
-    level: LogLevel;
-    namespace: string;
-    timestamp: boolean;
-    enabled: boolean;
-}
+export class LoggerImpl implements Logger {
+    private namespace: string;
+    private level: string;
+    private static enabled = true;
 
-const defaultConfig: LoggerConfig = {
-    level: LogLevel.INFO,
-    namespace: 'app',
-    timestamp: true,
-    enabled: true
-};
-
-export class LoggerImpl {
-    private config: LoggerConfig;
-    private logBuffer: string[] = [];
-    private readonly MAX_BUFFER_SIZE = 1000;
-    private static settings: Settings;
-
-    constructor(config: Partial<LoggerConfig> = {}) {
-        this.config = { ...defaultConfig, ...config };
-    }
-
-    static setSettings(settings: Settings): void {
-        LoggerImpl.settings = settings;
-    }
-
-    private get isDebugEnabled(): boolean {
-        return LoggerImpl.settings?.system?.debug?.enabled ?? false;
-    }
-
-    private get shouldLogFullJson(): boolean {
-        return LoggerImpl.settings?.system?.debug?.logFullJson ?? false;
-    }
-
-    private formatMessage(level: string, message: string, args: unknown[]): string {
-        const timestamp = this.config.timestamp ? `[${new Date().toISOString()}] ` : '';
-        const namespace = `[${this.config.namespace}] `;
-        const formattedArgs = args.map(arg => 
-            arg instanceof Error ? arg.stack || arg.message : 
-            typeof arg === 'object' ? JSON.stringify(arg, null, this.shouldLogFullJson ? 2 : null) : String(arg)
-        ).join(' ');
-
-        return `${timestamp}${level} ${namespace}${message} ${formattedArgs}`.trim();
-    }
-
-    private addToBuffer(message: string): void {
-        this.logBuffer.push(message);
-        if (this.logBuffer.length > this.MAX_BUFFER_SIZE) {
-            this.logBuffer.shift();
+    constructor(options: LoggerOptions | string = {}) {
+        if (typeof options === 'string') {
+            this.namespace = options;
+            this.level = 'info';
+        } else {
+            this.namespace = options.namespace || 'default';
+            this.level = options.level || 'info';
         }
     }
 
-    private writeToOutput(message: string, level: 'log' | 'error' | 'warn' | 'info' = 'log'): void {
-        if (!this.config.enabled || !loggingEnabled) {
-            return;
-        }
-
-        if (!this.isDebugEnabled && level === 'log') {
-            return;
-        }
-
-        switch (level) {
-            case 'error':
-                console.error(message);
-                break;
-            case 'warn':
-                console.warn(message);
-                break;
-            case 'info':
-                console.info(message);
-                break;
-            default:
-                if (this.isDebugEnabled) {
-                    console.log(message);
-                }
-        }
+    private formatMessage(level: string, message: string): string {
+        return `[${this.namespace}] [${level}] ${message}`;
     }
 
     debug(message: string, ...args: unknown[]): void {
-        if (this.isDebugEnabled && this.config.level >= LogLevel.DEBUG) {
-            const formattedMessage = this.formatMessage('DEBUG', message, args);
-            this.addToBuffer(formattedMessage);
-            this.writeToOutput(formattedMessage);
-        }
-    }
-
-    log(message: string, ...args: unknown[]): void {
-        if (this.config.level >= LogLevel.INFO) {
-            const formattedMessage = this.formatMessage('INFO', message, args);
-            this.addToBuffer(formattedMessage);
-            this.writeToOutput(formattedMessage, 'info');
+        if (!LoggerImpl.enabled) return;
+        if (this.level === 'debug') {
+            console.debug(this.formatMessage('DEBUG', message), ...args);
         }
     }
 
     info(message: string, ...args: unknown[]): void {
-        if (this.config.level >= LogLevel.INFO) {
-            const formattedMessage = this.formatMessage('INFO', message, args);
-            this.addToBuffer(formattedMessage);
-            this.writeToOutput(formattedMessage, 'info');
+        if (!LoggerImpl.enabled) return;
+        if (this.level === 'debug' || this.level === 'info') {
+            console.info(this.formatMessage('INFO', message), ...args);
         }
     }
 
     warn(message: string, ...args: unknown[]): void {
-        if (this.config.level >= LogLevel.WARN) {
-            const formattedMessage = this.formatMessage('WARN', message, args);
-            this.addToBuffer(formattedMessage);
-            this.writeToOutput(formattedMessage, 'warn');
+        if (!LoggerImpl.enabled) return;
+        if (this.level !== 'error') {
+            console.warn(this.formatMessage('WARN', message), ...args);
         }
     }
 
     error(message: string, ...args: unknown[]): void {
-        if (this.config.level >= LogLevel.ERROR) {
-            const formattedMessage = this.formatMessage('ERROR', message, args);
-            this.addToBuffer(formattedMessage);
-            this.writeToOutput(formattedMessage, 'error');
-        }
+        if (!LoggerImpl.enabled) return;
+        console.error(this.formatMessage('ERROR', message), ...args);
     }
 
-    getLogHistory(): string[] {
-        return [...this.logBuffer];
+    log(message: string, ...args: unknown[]): void {
+        if (!LoggerImpl.enabled) return;
+        console.log(this.formatMessage('LOG', message), ...args);
     }
 
-    clearLogHistory(): void {
-        this.logBuffer = [];
+    static setEnabled(enabled: boolean): void {
+        LoggerImpl.enabled = enabled;
     }
 
-    setEnabled(enabled: boolean): void {
-        this.config.enabled = enabled;
+    static isEnabled(): boolean {
+        return LoggerImpl.enabled;
     }
+}
 
-    isEnabled(): boolean {
-        return this.config.enabled && loggingEnabled;
-    }
-
-    setLevel(level: LogLevel): void {
-        this.config.level = level;
-    }
-
-    getLevel(): LogLevel {
-        return this.config.level;
-    }
+export function createLogger(options?: LoggerOptions | string): Logger {
+    return new LoggerImpl(options);
 }
 
 // Global logging controls
 export function setLoggingEnabled(enabled: boolean): void {
-    loggingEnabled = enabled;
+    LoggerImpl.setEnabled(enabled);
 }
 
 export function isLoggingEnabled(): boolean {
-    return loggingEnabled;
-}
-
-export function createLogger(context: string): LoggerImpl {
-    return new LoggerImpl({ namespace: context });
+    return LoggerImpl.isEnabled();
 }
 
 // Create core logger instance
-export const logger = createLogger('core');
+export const logger = createLogger({ namespace: 'core' });

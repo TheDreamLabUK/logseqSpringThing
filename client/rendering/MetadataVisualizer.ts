@@ -7,49 +7,52 @@ import {
     Vector3, 
     Material,
     MeshBasicMaterial,
-    Quaternion
+    Quaternion,
+    BufferGeometry
 } from 'three';
 import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
-import { Metadata } from '../types/metadata';
-import { Settings } from '../types/settings';
-import { defaultSettings } from '../state/defaultSettings';
+import { NodeData, VisualizationSettings } from '../core/types';
 
 export class MetadataVisualizer {
     private readonly camera: PerspectiveCamera;
     private readonly scene: Scene;
     private readonly geometryFactory: GeometryFactory;
     private readonly materialFactory: MaterialFactory;
-    private settings: Settings;
+    private settings: VisualizationSettings;
     private nodes: Map<string, Mesh> = new Map();
+    private nodeGeometry: BufferGeometry;
 
-    constructor(camera: PerspectiveCamera, scene: Scene, settings: Settings = defaultSettings) {
+    constructor(camera: PerspectiveCamera, scene: Scene, settings: VisualizationSettings) {
         this.camera = camera;
         this.scene = scene;
         this.settings = settings;
         this.geometryFactory = GeometryFactory.getInstance();
-        this.materialFactory = MaterialFactory.getInstance();
+        this.materialFactory = MaterialFactory.getInstance(settings);
+        this.nodeGeometry = this.geometryFactory.getNodeGeometry('medium');
     }
 
-    public createNodeMesh(metadata: Metadata): Mesh {
-        const geometry = this.geometryFactory.getNodeGeometry(this.settings.xr.quality);
-        const material = this.materialFactory.getMetadataMaterial();
+    public addNodeMetadata(node: NodeData): void {
+        if (this.nodes.has(node.id)) {
+            return;
+        }
+
+        const material = this.materialFactory.createNodeMaterial('basic', node.color);
+        const mesh = new Mesh(this.nodeGeometry, material);
         
-        const mesh = new Mesh(geometry, material);
-        mesh.position.set(
-            metadata.position?.x || 0,
-            metadata.position?.y || 0,
-            metadata.position?.z || 0
-        );
+        mesh.position.copy(node.position);
+        mesh.scale.setScalar(node.size || this.settings.nodes.defaultSize);
         
-        this.nodes.set(metadata.id, mesh);
+        // Make the metadata mesh always face the camera
+        this.updateMetadataOrientation(mesh);
+        
+        this.nodes.set(node.id, mesh);
         this.scene.add(mesh);
-        
-        return mesh;
     }
 
-    public dispose(): void {
-        this.nodes.forEach(mesh => {
+    public removeNodeMetadata(nodeId: string): void {
+        const mesh = this.nodes.get(nodeId);
+        if (mesh) {
             this.scene.remove(mesh);
             mesh.geometry.dispose();
             if (Array.isArray(mesh.material)) {
@@ -57,39 +60,14 @@ export class MetadataVisualizer {
             } else {
                 mesh.material.dispose();
             }
-        });
-        this.nodes.clear();
+            this.nodes.delete(nodeId);
+        }
     }
 
-    public updateNodeMetadata(
-        mesh: Mesh,
-        _age: number,
-        linkCount: number,
-        material: Material
-    ): void {
-        // Calculate color based on link count
-        if (material instanceof MeshBasicMaterial) {
-            // Simple color interpolation based on link count
-            const intensity = Math.min(linkCount / 10, 1); // Cap at 10 links
-            
-            // Convert RGB values to hex
-            const red = Math.floor(intensity * 255);
-            const green = Math.floor((1 - intensity) * 255);
-            const blue = 0;
-            const hexColor = (red << 16) | (green << 8) | blue;
-            
-            // Create and assign color
-            const newColor = new Color(hexColor);
-            material.color = newColor;
-        }
-
-        // Update mesh orientation to face camera
-        const meshPosition = mesh.position;
-        const cameraPosition = this.camera.position;
-
+    public updateMetadataOrientation(mesh: Mesh): void {
         // Calculate direction from mesh to camera
         const direction = new Vector3()
-            .subVectors(cameraPosition, meshPosition)
+            .subVectors(this.camera.position, mesh.position)
             .normalize();
 
         // Calculate up vector (world up)
@@ -104,51 +82,34 @@ export class MetadataVisualizer {
         up.crossVectors(direction, right).normalize();
 
         // Create rotation matrix
-        const rotationMatrix = new Matrix4();
-        rotationMatrix.elements = [
-            right.x, up.x, direction.x, 0,
-            right.y, up.y, direction.y, 0,
-            right.z, up.z, direction.z, 0,
-            0, 0, 0, 1
-        ];
-
-        // Create quaternion from direction
-        const quaternion = new Quaternion();
-        const m = rotationMatrix.elements;
-        const trace = m[0] + m[5] + m[10];
-
-        if (trace > 0) {
-            const s = 0.5 / Math.sqrt(trace + 1.0);
-            quaternion.w = 0.25 / s;
-            quaternion.x = (m[6] - m[9]) * s;
-            quaternion.y = (m[8] - m[2]) * s;
-            quaternion.z = (m[1] - m[4]) * s;
-        } else {
-            if (m[0] > m[5] && m[0] > m[10]) {
-                const s = 2.0 * Math.sqrt(1.0 + m[0] - m[5] - m[10]);
-                quaternion.w = (m[6] - m[9]) / s;
-                quaternion.x = 0.25 * s;
-                quaternion.y = (m[1] + m[4]) / s;
-                quaternion.z = (m[8] + m[2]) / s;
-            } else if (m[5] > m[10]) {
-                const s = 2.0 * Math.sqrt(1.0 + m[5] - m[0] - m[10]);
-                quaternion.w = (m[8] - m[2]) / s;
-                quaternion.x = (m[1] + m[4]) / s;
-                quaternion.y = 0.25 * s;
-                quaternion.z = (m[6] + m[9]) / s;
-            } else {
-                const s = 2.0 * Math.sqrt(1.0 + m[10] - m[0] - m[5]);
-                quaternion.w = (m[1] - m[4]) / s;
-                quaternion.x = (m[8] + m[2]) / s;
-                quaternion.y = (m[6] + m[9]) / s;
-                quaternion.z = 0.25 * s;
-            }
-        }
+        const rotationMatrix = new Matrix4().makeBasis(right, up, direction);
+        const quaternion = new Quaternion().setFromRotationMatrix(rotationMatrix);
 
         // Apply rotation
-        mesh.quaternion.x = quaternion.x;
-        mesh.quaternion.y = quaternion.y;
-        mesh.quaternion.z = quaternion.z;
-        mesh.quaternion.w = quaternion.w;
+        mesh.quaternion.copy(quaternion);
+    }
+
+    public updateSettings(settings: VisualizationSettings): void {
+        this.settings = settings;
+        this.nodes.forEach((mesh) => {
+            if (mesh.material instanceof MeshBasicMaterial) {
+                mesh.material.opacity = settings.nodes.material?.opacity || 1;
+                mesh.material.transparent = settings.nodes.material?.transparent || false;
+                mesh.material.needsUpdate = true;
+            }
+        });
+    }
+
+    public dispose(): void {
+        this.nodes.forEach(mesh => {
+            this.scene.remove(mesh);
+            if (Array.isArray(mesh.material)) {
+                mesh.material.forEach(m => m.dispose());
+            } else {
+                mesh.material.dispose();
+            }
+        });
+        this.nodes.clear();
+        this.nodeGeometry.dispose();
     }
 }
