@@ -1,6 +1,4 @@
 import * as THREE from 'three';
-import { MaterialFactory } from '../rendering/factories/MaterialFactory';
-import { Settings } from '../types/settings';
 import { createLogger } from '../core/utils';
 
 const logger = createLogger('MetadataVisualizer');
@@ -25,16 +23,12 @@ export interface MetadataProperties {
 
 export class MetadataVisualizer {
     private scene: THREE.Scene;
-    private materialFactory: MaterialFactory;
-    private settings: Settings;
     private metadataObjects: Map<string, THREE.Group>;
     private canvas: HTMLCanvasElement;
     private context: CanvasRenderingContext2D;
 
-    constructor(scene: THREE.Scene, materialFactory: MaterialFactory, settings: Settings) {
+    constructor(scene: THREE.Scene) {
         this.scene = scene;
-        this.materialFactory = materialFactory;
-        this.settings = settings;
         this.metadataObjects = new Map();
 
         this.canvas = document.createElement('canvas');
@@ -190,7 +184,7 @@ export class MetadataVisualizer {
     }
 
     clear(): void {
-        this.metadataObjects.forEach((group, id) => {
+        this.metadataObjects.forEach((_group, id) => {
             this.removeMetadata(id);
         });
     }

@@ -1,11 +1,9 @@
 import * as THREE from 'three';
 import { MetadataVisualizer } from './MetadataVisualizer';
-import { HologramManager } from './HologramManager';
+import { HologramManager } from '../rendering/HologramManager';
 import { NodeMetadata } from '../types/metadata';
 import { XRHand } from '../types/xr';
 import { Settings } from '../types/settings';
-import { MaterialFactory } from '../rendering/factories/MaterialFactory';
-
 export class VisualizationController {
     private readonly scene: THREE.Scene;
     private readonly camera: THREE.PerspectiveCamera;
@@ -30,9 +28,8 @@ export class VisualizationController {
         container.appendChild(this.renderer.domElement);
 
         // Initialize managers
-        const materialFactory = MaterialFactory.getInstance();
-        this.metadataVisualizer = new MetadataVisualizer(this.scene, materialFactory, settings);
-        this.hologramManager = new HologramManager(this.scene, settings);
+        this.metadataVisualizer = new MetadataVisualizer(this.scene);
+        this.hologramManager = new HologramManager(this.scene, this.renderer, settings);
         this.clock = new THREE.Clock();
 
         // Set up XR session change handling
@@ -91,12 +88,12 @@ export class VisualizationController {
     }
 
     public updateHologramSettings(settings: Settings): void {
-        this.hologramManager.updateSettings(settings.visualization.hologram);
+        this.hologramManager.updateSettings(settings);
     }
 
     public handleHandInput(hand: XRHand): void {
         if (this.isXRSession) {
-            this.hologramManager.handleHandInteraction(hand);
+            this.hologramManager.handleInteraction(hand.position);
         }
     }
 

@@ -16,10 +16,14 @@ export class GraphVisualization {
     private hologramManager: HologramManager;
     private textRenderer: TextRenderer;
     private websocketService: WebSocketService;
-    private settings: Settings;
+    private _settings: Settings;
+
+    public get settings(): Settings {
+        return this._settings;
+    }
 
     constructor(settings: Settings) {
-        this.settings = settings;
+        this._settings = settings;
         // Initialize logger settings first
         LoggerImpl.setSettings(settings);
 
@@ -58,7 +62,7 @@ export class GraphVisualization {
     }
 
     public handleSettingsUpdate(settings: Settings) {
-        this.settings = settings;
+        this._settings = settings;
         this.nodeManager.updateSettings(settings.visualization);
         this.edgeManager.handleSettingsUpdate(settings);
         this.hologramManager.updateSettings(settings);

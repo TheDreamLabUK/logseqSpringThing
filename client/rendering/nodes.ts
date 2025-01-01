@@ -27,16 +27,6 @@ interface NodeUserData {
     properties?: NodeProperties;
 }
 
-interface _NodeData {
-    id: string;
-    position: THREE.Vector3;
-    scale?: THREE.Vector3;
-    color?: number;
-    opacity?: number;
-    type?: string;
-    properties?: NodeProperties;
-}
-
 interface _NodeMesh extends THREE.Mesh {
     userData: NodeUserData;
 }
@@ -55,7 +45,7 @@ export class NodeRenderer {
         this.geometryFactory = GeometryFactory.getInstance();
         this.settingsObserver = SettingsObserver.getInstance();
 
-        this.material = this.materialFactory.getPhongNodeMaterial() as THREE.MeshBasicMaterial;
+        this.material = this.materialFactory.createNodeMaterial('phong') as THREE.MeshBasicMaterial;
         this.mesh = new THREE.Mesh(
             this.geometryFactory.getNodeGeometry(this.currentSettings.xr.quality),
             this.material
@@ -134,7 +124,7 @@ export class NodeManager {
 
         this.edgeInstances = new THREE.InstancedMesh(
             this.geometryFactory.getHologramGeometry('ring', this.currentSettings.xr.quality),
-            this.materialFactory.getMetadataMaterial(),
+            this.materialFactory.getMetadataMaterial(new THREE.Color(0xffffff)),
             30000
         );
 
@@ -206,6 +196,9 @@ export class NodeManager {
         if (!node) {
             throw new Error(`Node ${nodeId} not found`);
         }
+        if (!node.data?.position) {
+            throw new Error(`Node ${nodeId} has no position data`);
+        }
         return new THREE.Vector3(
             node.data.position.x,
             node.data.position.y,
@@ -220,7 +213,7 @@ export class NodeManager {
         }
 
         const node = this.currentNodes[index];
-        if (node) {
+        if (node && node.data) {
             node.data.position = {
                 x: newPosition.x,
                 y: newPosition.y,
@@ -243,9 +236,16 @@ export class NodeManager {
         
         nodes.forEach((node, index) => {
             const baseIndex = index * FLOATS_PER_NODE;
-            positions[baseIndex] = node.data.position.x;
-            positions[baseIndex + 1] = node.data.position.y;
-            positions[baseIndex + 2] = node.data.position.z;
+            if (node.data?.position) {
+                positions[baseIndex] = node.data.position.x;
+                positions[baseIndex + 1] = node.data.position.y;
+                positions[baseIndex + 2] = node.data.position.z;
+            } else {
+                positions[baseIndex] = 0;
+                positions[baseIndex + 1] = 0;
+                positions[baseIndex + 2] = 0;
+                logger.warn(`Node ${node.id} has no position data`);
+            }
             // Velocity components (if needed)
             positions[baseIndex + 3] = 0;
             positions[baseIndex + 4] = 0;

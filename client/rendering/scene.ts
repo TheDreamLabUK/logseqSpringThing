@@ -14,7 +14,6 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
-import { Logger } from '../core/types';
 import { Settings } from '../types/settings';
 
 export class SceneManager {
@@ -26,10 +25,7 @@ export class SceneManager {
     private renderCallbacks: Array<() => void> = [];
     private isDisposed = false;
     private grid: GridHelper | null = null;
-    private readonly logger: Logger;
-
-    constructor(container: HTMLElement, settings: Settings, logger: Logger) {
-        this.logger = logger;
+    constructor(container: HTMLElement, settings: Settings) {
         this.scene = new ThreeScene();
         this.camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.renderer = new WebGLRenderer({ antialias: true });

@@ -3,7 +3,6 @@ import {
     InstancedMesh,
     Mesh,
     Object3D,
-    Quaternion,
     BufferGeometry,
     Material,
     PerspectiveCamera
@@ -29,7 +28,6 @@ export class EnhancedNodeManager {
     private isHologram: boolean = false;
     private hologramMaterial: HologramShaderMaterial | null = null;
     private metadataVisualizer: MetadataVisualizer;
-    private quaternion = new Quaternion();
     private camera: PerspectiveCamera;
 
     constructor(scene: Scene, settings: VisualizationSettings, camera: PerspectiveCamera) {
@@ -50,7 +48,7 @@ export class EnhancedNodeManager {
         }
 
         // Initialize MetadataVisualizer
-        this.metadataVisualizer = new MetadataVisualizer(this.camera, this.scene, settings);
+        this.metadataVisualizer = new MetadataVisualizer(this.camera, this.scene);
         
         if (this.isInstanced) {
             this.setupInstancedMesh();

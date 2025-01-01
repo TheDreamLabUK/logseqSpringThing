@@ -44,8 +44,6 @@ export class HologramManager {
         }
 
         const quality = this.isXRMode ? 'high' : this.settings.xr.quality;
-        const material = this.materialFactory.getHologramMaterial(this.settings);
-
         for (let i = 0; i < this.settings.visualization.hologram.ringCount; i++) {
             const ring = this.createHologramMesh('ring', quality);
             const scale = this.settings.visualization.hologram.ringSizes[i] || 20;

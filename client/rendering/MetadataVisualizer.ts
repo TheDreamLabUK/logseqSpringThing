@@ -20,7 +20,7 @@ export class MetadataVisualizer {
     private nodeGeometry: BufferGeometry;
     private readonly materialFactory: MaterialFactory;
 
-    constructor(camera: PerspectiveCamera, scene: Scene, settings: VisualizationSettings) {
+    constructor(camera: PerspectiveCamera, scene: Scene) {
         this.camera = camera;
         this.scene = scene;
         this.geometryFactory = GeometryFactory.getInstance();
@@ -86,7 +86,6 @@ export class MetadataVisualizer {
     }
 
     public updateSettings(settings: VisualizationSettings): void {
-        this.settings = settings;
         this.nodes.forEach((mesh) => {
             if (mesh.material instanceof MeshBasicMaterial) {
                 mesh.material.opacity = settings.nodes.material?.opacity || 1;
