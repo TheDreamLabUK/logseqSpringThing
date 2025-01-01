@@ -1,65 +1,72 @@
 import {
     Color,
-    Material,
+    MeshBasicMaterial,
+    MeshPhongMaterial,
+    MeshStandardMaterial,
+    LineBasicMaterial,
+    LineBasicMaterialParameters,
+    MeshBasicMaterialParameters,
+    MeshPhongMaterialParameters,
+    MeshStandardMaterialParameters,
     createMeshBasicMaterial,
     createMeshPhongMaterial,
     createMeshStandardMaterial,
-    DoubleSide,
-    Side,
-    MaterialParameters,
-    MeshBasicMaterialParameters,
-    MeshPhongMaterialParameters,
-    MeshStandardMaterialParameters
+    createLineBasicMaterial,
+    DoubleSide
 } from '../../core/threeTypes';
 
-export interface MaterialSettings {
+export type MaterialSettings = {
     color?: Color | number | string;
     opacity?: number;
     transparent?: boolean;
     wireframe?: boolean;
-    side?: Side;
     emissive?: Color | number | string;
     metalness?: number;
     roughness?: number;
-}
+};
 
 export class MaterialFactory {
     private static defaultSettings: MaterialSettings = {
         color: 0x666666,
         opacity: 1.0,
         transparent: false,
-        wireframe: false,
-        side: DoubleSide
+        wireframe: false
     };
 
-    static createBasicMaterial(settings: Partial<MaterialSettings> = {}): Material {
-        const finalSettings = { ...this.defaultSettings, ...settings } as MeshBasicMaterialParameters;
-        return createMeshBasicMaterial(finalSettings);
+    private static getBasicMaterialParams(settings: Partial<MaterialSettings>) {
+        return {
+            ...this.defaultSettings,
+            ...settings,
+            side: DoubleSide
+        } as MeshBasicMaterialParameters;
     }
 
-    static createPhongMaterial(settings: Partial<MaterialSettings> = {}): Material {
-        const finalSettings = { ...this.defaultSettings, ...settings } as MeshPhongMaterialParameters;
-        return createMeshPhongMaterial(finalSettings);
+    static createBasicMaterial(settings: Partial<MaterialSettings> = {}): MeshBasicMaterial {
+        return createMeshBasicMaterial(this.getBasicMaterialParams(settings));
     }
 
-    static createStandardMaterial(settings: Partial<MaterialSettings> = {}): Material {
-        const finalSettings = { ...this.defaultSettings, ...settings } as MeshStandardMaterialParameters;
-        return createMeshStandardMaterial(finalSettings);
+    static createPhongMaterial(settings: Partial<MaterialSettings> = {}): MeshPhongMaterial {
+        return createMeshPhongMaterial(this.getBasicMaterialParams(settings));
     }
 
-    static createNodeMaterial(settings: Partial<MaterialSettings> = {}): Material {
+    static createStandardMaterial(settings: Partial<MaterialSettings> = {}): MeshStandardMaterial {
+        return createMeshStandardMaterial(this.getBasicMaterialParams(settings));
+    }
+
+    static createNodeMaterial(settings: Partial<MaterialSettings> = {}): MeshPhongMaterial {
         return this.createPhongMaterial(settings);
     }
 
-    static createEdgeMaterial(settings: Partial<MaterialSettings> = {}): Material {
-        return this.createBasicMaterial({
-            ...settings,
+    static createEdgeMaterial(settings: Partial<MaterialSettings> = {}): LineBasicMaterial {
+        const finalSettings: LineBasicMaterialParameters = {
+            ...this.getBasicMaterialParams(settings),
             transparent: true,
             opacity: 0.6
-        });
+        };
+        return createLineBasicMaterial(finalSettings);
     }
 
-    static createHologramMaterial(settings: Partial<MaterialSettings> = {}): Material {
+    static createHologramMaterial(settings: Partial<MaterialSettings> = {}): MeshStandardMaterial {
         return this.createStandardMaterial({
             ...settings,
             transparent: true,

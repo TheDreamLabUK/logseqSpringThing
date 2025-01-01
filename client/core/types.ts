@@ -1,22 +1,16 @@
 import {
     Vector3,
     Color,
-    Material,
-    Mesh,
-    BufferGeometry,
-    Object3D,
     Scene,
     PerspectiveCamera as ThreePerspectiveCamera,
     WebGLRenderer,
     IUniform,
     Side,
     ShaderMaterial,
-    Camera as ThreeCamera,
-    MeshBasicMaterial,
-    MeshPhongMaterial,
-    DoubleSide,
-    Group
+    Camera as ThreeCamera
 } from 'three';
+
+import { NodeMesh, EdgeMesh, NodeUserData, EdgeUserData, NodeMetadata, EdgeMetadata } from './meshTypes';
 
 // Re-export Three.js types with our own names to avoid conflicts
 export type PerspectiveCamera = ThreePerspectiveCamera;
@@ -125,11 +119,6 @@ export interface GraphEventTarget {
 }
 
 // Node types
-export interface NodeMetadata extends Record<string, unknown> {
-    label?: string;
-    type?: string;
-}
-
 export interface NodeData {
     id: string;
     name: string;
@@ -140,22 +129,7 @@ export interface NodeData {
     properties?: Record<string, unknown>;
 }
 
-export interface NodeUserData extends Record<string, unknown> {
-    id: string;
-    type: 'node';
-    data: NodeData;
-}
-
-export interface NodeMesh extends Mesh {
-    userData: NodeUserData;
-}
-
 // Edge types
-export interface EdgeMetadata extends Record<string, unknown> {
-    label?: string;
-    type?: string;
-}
-
 export interface EdgeData {
     id: string;
     source: string;
@@ -166,15 +140,8 @@ export interface EdgeData {
     properties?: Record<string, unknown>;
 }
 
-export interface EdgeUserData extends Record<string, unknown> {
-    id: string;
-    type: 'edge';
-    data: EdgeData;
-}
-
-export interface EdgeMesh extends Mesh {
-    userData: EdgeUserData;
-}
+// Re-export mesh types
+export type { NodeMesh, EdgeMesh, NodeUserData, EdgeUserData };
 
 // Hologram types
 export interface HologramUniforms extends Record<string, IUniform> {
@@ -263,31 +230,6 @@ export interface VisualizationSettings {
     };
 }
 
-// Export utility functions
-export function createNodeMesh(geometry: BufferGeometry, material: Material, userData: NodeUserData): NodeMesh {
-    const mesh = new Mesh(geometry, material);
-    mesh.userData = userData;
-    return mesh as NodeMesh;
-}
-
-export function createEdgeMesh(geometry: BufferGeometry, material: Material, userData: EdgeUserData): EdgeMesh {
-    const mesh = new Mesh(geometry, material);
-    mesh.userData = userData;
-    return mesh as EdgeMesh;
-}
-
-export function isNodeMesh(object: Object3D): object is NodeMesh {
-    return 'userData' in object && 'type' in object.userData && object.userData.type === 'node';
-}
-
-export function isEdgeMesh(object: Object3D): object is EdgeMesh {
-    return 'userData' in object && 'type' in object.userData && object.userData.type === 'edge';
-}
-
-export function transformGraphData(data: GraphData, transformer: GraphDataTransformer): GraphData {
-    return transformer.transform(data);
-}
-
 // Error types
 export class GraphError extends Error {
     constructor(
@@ -312,6 +254,8 @@ export class WebSocketError extends Error {
 }
 
 // Logger types
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
 export interface Logger {
     debug(message: string, ...args: unknown[]): void;
     info(message: string, ...args: unknown[]): void;
@@ -349,4 +293,8 @@ export interface PlatformCapabilities {
 
 export interface GraphDataTransformer {
     transform(data: GraphData): GraphData;
+}
+
+export function transformGraphData(data: GraphData, transformer: GraphDataTransformer): GraphData {
+    return transformer.transform(data);
 }

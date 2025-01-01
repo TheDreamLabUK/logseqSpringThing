@@ -3,18 +3,8 @@
  */
 
 import { Vector3, Euler, Quaternion, Matrix4 } from 'three';
-import { Logger } from './types';
+import { Logger, LogLevel } from './types';
 import { THROTTLE_INTERVAL } from './constants';
-
-// Debug logging utility
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-
-export interface Logger {
-  debug: (message: string, ...args: unknown[]) => void;
-  info: (message: string, ...args: unknown[]) => void;
-  warn: (message: string, ...args: unknown[]) => void;
-  error: (message: string, ...args: unknown[]) => void;
-}
 
 export function createLogger(namespace: string): Logger {
   return {
@@ -32,6 +22,9 @@ export function createLogger(namespace: string): Logger {
     },
     error: (message: string, ...args: unknown[]) => {
       console.error(`[${namespace}] ${message}`, ...args);
+    },
+    log: (message: string, ...args: unknown[]) => {
+      console.log(`[${namespace}] ${message}`, ...args);
     }
   };
 }
@@ -45,37 +38,37 @@ export const snakeToCamelCase = (str: string): string => {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 };
 
-export const convertObjectKeysToSnakeCase = (obj: Record<string, unknown>): Record<string, unknown> => {
+export function convertObjectKeysToSnakeCase<T>(obj: T): T extends Array<any> ? Array<Record<string, unknown>> : Record<string, unknown> {
+  if (obj === null || typeof obj !== 'object') {
+    return obj as any;
+  }
+  
   if (Array.isArray(obj)) {
-    return obj.map(item => convertObjectKeysToSnakeCase(item));
+    return obj.map(item => convertObjectKeysToSnakeCase(item)) as any;
   }
   
-  if (obj !== null && typeof obj === 'object') {
-    return Object.keys(obj).reduce((acc, key) => {
-      const snakeKey = camelToSnakeCase(key);
-      acc[snakeKey] = convertObjectKeysToSnakeCase(obj[key]);
-      return acc;
-    }, {} as Record<string, unknown>);
-  }
-  
-  return obj;
-};
+  return Object.keys(obj as object).reduce((acc, key) => {
+    const snakeKey = camelToSnakeCase(key);
+    acc[snakeKey] = convertObjectKeysToSnakeCase((obj as any)[key]);
+    return acc;
+  }, {} as Record<string, unknown>) as any;
+}
 
-export const convertObjectKeysToCamelCase = (obj: Record<string, unknown>): Record<string, unknown> => {
+export function convertObjectKeysToCamelCase<T>(obj: T): T extends Array<any> ? Array<Record<string, unknown>> : Record<string, unknown> {
+  if (obj === null || typeof obj !== 'object') {
+    return obj as any;
+  }
+  
   if (Array.isArray(obj)) {
-    return obj.map(item => convertObjectKeysToCamelCase(item));
+    return obj.map(item => convertObjectKeysToCamelCase(item)) as any;
   }
   
-  if (obj !== null && typeof obj === 'object') {
-    return Object.keys(obj).reduce((acc, key) => {
-      const camelKey = snakeToCamelCase(key);
-      acc[camelKey] = convertObjectKeysToCamelCase(obj[key]);
-      return acc;
-    }, {} as Record<string, unknown>);
-  }
-  
-  return obj;
-};
+  return Object.keys(obj as object).reduce((acc, key) => {
+    const camelKey = snakeToCamelCase(key);
+    acc[camelKey] = convertObjectKeysToCamelCase((obj as any)[key]);
+    return acc;
+  }, {} as Record<string, unknown>) as any;
+}
 
 // Update throttler for performance optimization
 export class UpdateThrottler {
@@ -193,11 +186,7 @@ export const binaryToFloat32Array = (buffer: ArrayBuffer): Float32Array => {
 export const float32ArrayToPositions = (array: Float32Array): Vector3[] => {
   const positions: Vector3[] = [];
   for (let i = 0; i < array.length; i += 3) {
-    positions.push({
-      x: array[i],
-      y: array[i + 1],
-      z: array[i + 2]
-    });
+    positions.push(new Vector3(array[i], array[i + 1], array[i + 2]));
   }
   return positions;
 };
@@ -236,7 +225,6 @@ export class PerformanceMonitor {
 // Type definitions for utility functions
 export type LogFunction = (message: string, ...args: unknown[]) => void;
 export type ErrorCallback = (error: Error) => void;
-export type SuccessCallback<T> = (result: T) => void;
 
 // Constants
 const DEFAULT_TIMEOUT = 5000;
@@ -310,7 +298,6 @@ export type JsonObject = { [key: string]: JsonValue };
 export type JsonArray = JsonValue[];
 
 export type EventCallback<T> = (data: T) => void;
-export type SuccessCallback<T> = (result: T) => void;
 
 // Event handling utilities
 export function createEventEmitter<T>() {
@@ -348,7 +335,7 @@ export function createVector3FromObject(obj: { x: number; y: number; z: number }
 }
 
 export function createEulerFromObject(obj: { x: number; y: number; z: number; order?: string }): Euler {
-    return new Euler(obj.x, obj.y, obj.z, obj.order);
+    return new Euler(obj.x, obj.y, obj.z, obj.order as "XYZ" | "YXZ" | "ZXY" | "ZYX" | "YZX" | "XZY" | undefined);
 }
 
 export function createQuaternionFromObject(obj: { x: number; y: number; z: number; w: number }): Quaternion {
@@ -369,14 +356,16 @@ export async function retry<T>(
     delay: number = 1000,
     onError?: (error: Error) => void
 ): Promise<T> {
+    let lastError: Error;
     try {
         return await fn();
     } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
         if (retries === 0) {
-            throw error;
+            throw lastError;
         }
         if (onError) {
-            onError(error as Error);
+            onError(lastError);
         }
         await sleep(delay);
         return retry(fn, retries - 1, delay, onError);
@@ -389,7 +378,7 @@ export function memoize<T extends (...args: any[]) => any>(
 ): T {
     const cache = new Map<string, ReturnType<T>>();
 
-    return function memoized(...args: Parameters<T>): ReturnType<T> {
+    return function memoized(this: unknown, ...args: Parameters<T>): ReturnType<T> {
         const key = resolver ? resolver(...args) : JSON.stringify(args);
         if (cache.has(key)) {
             return cache.get(key)!;
