@@ -32,7 +32,7 @@ pub struct CategorySettingsResponse {
 // Helper function to get all settings
 fn get_all_settings(settings: &Settings) -> Value {
     debug!("Getting all settings");
-    serde_json::to_value(settings).unwrap_or_default()
+    serde_json::to_value(settings.clone()).unwrap_or_default()
 }
 
 // Helper function to get setting value from settings object
@@ -44,7 +44,7 @@ fn get_setting_value(settings: &Settings, category: &str, setting: &str) -> Resu
     let setting_snake = to_snake_case(setting);
     
     // Convert settings to Value for easier access
-    let settings_value = serde_json::to_value(&settings)
+    let settings_value = serde_json::to_value(settings.clone())
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
     
     // Get category object
@@ -67,7 +67,7 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
     let setting_snake = to_snake_case(setting);
     
     // Convert settings to Value for manipulation
-    let mut settings_value = serde_json::to_value(&*settings)
+    let mut settings_value = serde_json::to_value(settings.clone())
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
     
     // Get category object
@@ -95,7 +95,7 @@ fn get_category_settings(settings: &Settings, category: &str) -> Result<Value, S
     let category_snake = to_snake_case(category);
     
     // Convert settings to Value
-    let settings_value = serde_json::to_value(&settings)
+    let settings_value = serde_json::to_value(settings.clone())
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
     
     // Get category object

@@ -1,17 +1,20 @@
 import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
-import { Color, Material, MeshBasicMaterial, MeshPhongMaterial, LineBasicMaterial } from 'three';
+import { Color, Material, MeshBasicMaterial, MeshPhongMaterial, _LineBasicMaterial as LineBasicMaterial, _PointsMaterial as PointsMaterial, _Side as Side } from 'three';
+import { Settings } from '../../types/settings';
 
 export class MaterialFactory {
     private static instance: MaterialFactory;
     private materialCache: Map<string, Material>;
+    private _settings: Settings;
 
-    private constructor() {
+    private constructor(_settings: Settings) {
+        this._settings = _settings;
         this.materialCache = new Map();
     }
 
-    public static getInstance(): MaterialFactory {
+    public static getInstance(_settings: Settings): MaterialFactory {
         if (!MaterialFactory.instance) {
-            MaterialFactory.instance = new MaterialFactory();
+            MaterialFactory.instance = new MaterialFactory(_settings);
         }
         return MaterialFactory.instance;
     }
@@ -24,16 +27,16 @@ export class MaterialFactory {
         return new Color(`#${result[1]}${result[2]}${result[3]}`);
     }
 
-    public createHologramMaterial(settings: any): HologramShaderMaterial {
+    public createHologramMaterial(_settings: Settings): HologramShaderMaterial {
         const cacheKey = 'hologram';
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey) as HologramShaderMaterial;
         }
 
-        const material = new HologramShaderMaterial(settings);
+        const material = new HologramShaderMaterial(_settings);
         
-        if (settings.visualization?.hologram?.color) {
-            const materialColor = this.hexToRgb(settings.visualization.hologram.color);
+        if (_settings.visualization?.hologram?.color) {
+            const materialColor = this.hexToRgb(_settings.visualization.hologram.color);
             material.uniforms.color.value = materialColor;
         }
 
@@ -41,28 +44,28 @@ export class MaterialFactory {
         return material;
     }
 
-    public getHologramMaterial(settings: any): HologramShaderMaterial {
-        return this.createHologramMaterial(settings);
+    public getHologramMaterial(_settings: Settings): HologramShaderMaterial {
+        return this.createHologramMaterial(_settings);
     }
 
-    public getNodeMaterial(settings: any): Material {
+    public getNodeMaterial(_settings: Settings): MeshBasicMaterial {
         const cacheKey = 'node-basic';
         if (this.materialCache.has(cacheKey)) {
-            return this.materialCache.get(cacheKey)!;
+            return this.materialCache.get(cacheKey) as MeshBasicMaterial;
         }
 
         const material = new MeshBasicMaterial({
-            color: settings.visualization?.node?.color || 0xffffff
+            color: _settings.visualization?.node?.color || 0xffffff
         });
 
         this.materialCache.set(cacheKey, material);
         return material;
     }
 
-    public getPhongNodeMaterial(): Material {
+    public getPhongNodeMaterial(): MeshPhongMaterial {
         const cacheKey = 'node-phong';
         if (this.materialCache.has(cacheKey)) {
-            return this.materialCache.get(cacheKey)!;
+            return this.materialCache.get(cacheKey) as MeshPhongMaterial;
         }
 
         const material = new MeshPhongMaterial({
@@ -73,24 +76,24 @@ export class MaterialFactory {
         return material;
     }
 
-    public getEdgeMaterial(settings: any): Material {
+    public getEdgeMaterial(_settings: Settings): LineBasicMaterial {
         const cacheKey = 'edge';
         if (this.materialCache.has(cacheKey)) {
-            return this.materialCache.get(cacheKey)!;
+            return this.materialCache.get(cacheKey) as LineBasicMaterial;
         }
 
         const material = new LineBasicMaterial({
-            color: settings.visualization?.edge?.color || 0xffffff
+            color: _settings.visualization?.edge?.color || 0xffffff
         });
 
         this.materialCache.set(cacheKey, material);
         return material;
     }
 
-    public getMetadataMaterial(): Material {
+    public getMetadataMaterial(): MeshBasicMaterial {
         const cacheKey = 'metadata';
         if (this.materialCache.has(cacheKey)) {
-            return this.materialCache.get(cacheKey)!;
+            return this.materialCache.get(cacheKey) as MeshBasicMaterial;
         }
 
         const material = new MeshBasicMaterial({
@@ -103,21 +106,21 @@ export class MaterialFactory {
         return material;
     }
 
-    public updateMaterial(type: string, settings: any): void {
+    public updateMaterial(type: string, _settings: Settings): void {
         const material = this.materialCache.get(type);
         if (!material) return;
 
         switch (type) {
             case 'node-basic':
             case 'node-phong':
-                (material as MeshBasicMaterial | MeshPhongMaterial).color = this.hexToRgb(settings.visualization?.node?.color || '#ffffff');
+                (material as MeshBasicMaterial | MeshPhongMaterial).color = this.hexToRgb(_settings.visualization?.node?.color || '#ffffff');
                 break;
             case 'edge':
-                (material as LineBasicMaterial).color = this.hexToRgb(settings.visualization?.edge?.color || '#ffffff');
+                (material as LineBasicMaterial).color = this.hexToRgb(_settings.visualization?.edge?.color || '#ffffff');
                 break;
             case 'hologram':
                 if (material instanceof HologramShaderMaterial) {
-                    material.uniforms.color.value = this.hexToRgb(settings.visualization?.hologram?.color || '#ffffff');
+                    material.uniforms.color.value = this.hexToRgb(_settings.visualization?.hologram?.color || '#ffffff');
                 }
                 break;
         }

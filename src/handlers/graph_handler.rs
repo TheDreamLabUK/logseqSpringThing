@@ -4,7 +4,6 @@ use crate::AppState;
 use serde::{Serialize, Deserialize};
 use log::{info, debug, error, warn};
 use std::collections::HashMap;
-use std::sync::Arc;
 use crate::models::metadata::Metadata;
 use crate::utils::socket_flow_messages::Node;
 use crate::services::file_service::FileService;
@@ -45,7 +44,10 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     
     // Get graph data with error handling
     let graph = match state.graph_service.graph_data.try_read() {
-        Ok(graph) => graph,
+        Ok(graph) => {
+            debug!("Successfully acquired read lock on graph data");
+            graph
+        },
         Err(e) => {
             error!("Failed to acquire read lock on graph data: {}", e);
             return HttpResponse::InternalServerError().json(json!({
@@ -57,7 +59,7 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     
     // Check if graph data is valid
     if graph.nodes.is_empty() {
-        debug!("Graph is empty, initializing with default data");
+        info!("Graph is empty, initializing with default data");
         return HttpResponse::Ok().json(GraphResponse {
             nodes: Vec::new(),
             edges: Vec::new(),
@@ -74,23 +76,67 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
     let invalid_nodes: Vec<_> = graph.nodes.iter()
         .filter(|n| {
             let pos = [n.x(), n.y(), n.z()];
-            pos.iter().any(|&p| !p.is_finite() || p.abs() > 1000.0)
+            let invalid = pos.iter().any(|&p| !p.is_finite() || p.abs() > 1000.0);
+            if invalid {
+                error!("Node {} has invalid position: [{}, {}, {}]", n.id, n.x(), n.y(), n.z());
+            }
+            invalid
         })
         .map(|n| n.id.clone())
         .collect();
 
     if !invalid_nodes.is_empty() {
-        warn!("Found nodes with invalid positions: {:?}", invalid_nodes);
-        // Continue anyway, client will handle invalid positions
+        error!("Found {} nodes with invalid positions: {:?}", invalid_nodes.len(), invalid_nodes);
+        return HttpResponse::InternalServerError().json(json!({
+            "error": "Invalid node positions detected",
+            "details": format!("Found {} nodes with invalid positions", invalid_nodes.len()),
+            "invalid_nodes": invalid_nodes
+        }));
     }
 
-    let response = GraphResponse {
+    // Validate edges
+    let invalid_edges: Vec<_> = graph.edges.iter()
+        .filter(|e| {
+            let invalid = !graph.nodes.iter().any(|n| n.id == e.source) || 
+                         !graph.nodes.iter().any(|n| n.id == e.target);
+            if invalid {
+                error!("Edge {}->{} references non-existent nodes", e.source, e.target);
+            }
+            invalid
+        })
+        .map(|e| format!("{}->{}", e.source, e.target))
+        .collect();
+
+    if !invalid_edges.is_empty() {
+        error!("Found {} invalid edges: {:?}", invalid_edges.len(), invalid_edges);
+        return HttpResponse::InternalServerError().json(json!({
+            "error": "Invalid edges detected",
+            "details": format!("Found {} edges referencing non-existent nodes", invalid_edges.len()),
+            "invalid_edges": invalid_edges
+        }));
+    }
+
+    // Validate metadata
+    let missing_metadata: Vec<_> = graph.nodes.iter()
+        .filter(|n| !graph.metadata.contains_key(&format!("{}.md", n.id)))
+        .map(|n| n.id.clone())
+        .collect();
+
+    if !missing_metadata.is_empty() {
+        error!("Found {} nodes missing metadata: {:?}", missing_metadata.len(), missing_metadata);
+        return HttpResponse::InternalServerError().json(json!({
+            "error": "Missing metadata detected",
+            "details": format!("Found {} nodes missing metadata", missing_metadata.len()),
+            "nodes_missing_metadata": missing_metadata
+        }));
+    }
+
+    debug!("All validations passed, returning graph data");
+    HttpResponse::Ok().json(GraphResponse {
         nodes: graph.nodes.clone(),
         edges: graph.edges.clone(),
         metadata: graph.metadata.clone(),
-    };
-
-    HttpResponse::Ok().json(response)
+    })
 }
 
 pub async fn get_paginated_graph_data(

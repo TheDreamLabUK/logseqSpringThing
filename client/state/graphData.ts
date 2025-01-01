@@ -67,9 +67,9 @@ export class GraphDataManager {
       const data = await response.json();
       this.updateGraphData(data);
       logger.info('Initial graph data loaded');
-    } catch (error) {
-      logger.error('Failed to fetch initial graph data:', error);
-      throw error;
+    } catch (_error) {
+      logger.error('Failed to fetch initial graph data:', _error);
+      throw _error;
     }
   }
 
@@ -91,9 +91,9 @@ export class GraphDataManager {
       const data = await response.json();
       this.updateGraphData(data);
       logger.info(`Paginated data loaded for page ${page}`);
-    } catch (error) {
-      logger.error('Failed to fetch paginated data:', error);
-      throw error;
+    } catch (_error) {
+      logger.error('Failed to fetch paginated data:', _error);
+      throw _error;
     }
   }
 
@@ -110,7 +110,7 @@ export class GraphDataManager {
         try {
           response = await fetch(`${endpoint}?page=1&pageSize=100`);
           if (response.ok) break;
-        } catch (e) {
+        } catch (_e) {
           continue;
         }
       }
@@ -154,9 +154,9 @@ export class GraphDataManager {
       }
       
       logger.info('Initial graph data loaded successfully');
-    } catch (error) {
-      logger.error('Failed to fetch graph data:', error);
-      throw new Error('Failed to fetch graph data: ' + error);
+    } catch (_error) {
+      logger.error('Failed to fetch graph data:', _error);
+      throw new Error('Failed to fetch graph data: ' + _error);
     }
   }
 
@@ -173,9 +173,9 @@ export class GraphDataManager {
         // Update listeners after each chunk
         this.notifyUpdateListeners();
       }
-    } catch (error) {
-      logger.error('Error loading remaining pages:', error);
-      throw error;
+    } catch (_error) {
+      logger.error('Error loading remaining pages:', _error);
+      throw _error;
     }
   }
 
@@ -213,9 +213,9 @@ export class GraphDataManager {
       });
 
       logger.debug(`Loaded page ${page} with ${transformedData.nodes.length} nodes`);
-    } catch (error) {
-      logger.error(`Error loading page ${page}:`, error);
-      throw error;
+    } catch (_error) {
+      logger.error(`Error loading page ${page}:`, _error);
+      throw _error;
     }
   }
 
@@ -247,8 +247,8 @@ export class GraphDataManager {
         }
       };
       
-      ws.onerror = (error) => {
-        logger.error('WebSocket error:', error);
+      ws.onerror = (_error) => {
+        logger.error('WebSocket error:', _error);
         this.setBinaryUpdatesEnabled(false);
       };
       
@@ -259,8 +259,8 @@ export class GraphDataManager {
         setTimeout(() => this.enableBinaryUpdates(), 5000);
       };
       
-    } catch (error) {
-      logger.error('Failed to initialize WebSocket:', error);
+    } catch (_error) {
+      logger.error('Failed to initialize WebSocket:', _error);
       this.setBinaryUpdatesEnabled(false);
     }
   }
@@ -388,8 +388,8 @@ export class GraphDataManager {
     this.updateListeners.forEach(listener => {
       try {
         listener(data);
-      } catch (error) {
-        logger.error('Error in graph update listener:', error);
+      } catch (_error) {
+        logger.error('Error in graph update listener:', _error);
       }
     });
   }
@@ -398,8 +398,8 @@ export class GraphDataManager {
     this.positionUpdateListeners.forEach(listener => {
       try {
         listener(positions);
-      } catch (error) {
-        logger.error('Error in position update listener:', error);
+      } catch (_error) {
+        logger.error('Error in position update listener:', _error);
       }
     });
   }
@@ -437,8 +437,8 @@ export class GraphDataManager {
     this.positionUpdateListeners.forEach(listener => {
       try {
         listener(positions);
-      } catch (error) {
-        logger.error('Error in position update listener:', error);
+      } catch (_error) {
+        logger.error('Error in position update listener:', _error);
       }
     });
   }

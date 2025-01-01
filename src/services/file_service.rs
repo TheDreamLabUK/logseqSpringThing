@@ -425,7 +425,7 @@ impl FileService {
             MIN_NODE_SIZE + normalized * (MAX_NODE_SIZE - MIN_NODE_SIZE)
         };
         
-        size.max(MIN_NODE_SIZE).min(MAX_NODE_SIZE)
+        size.clamp(MIN_NODE_SIZE, MAX_NODE_SIZE)
     }
 
     /// Extract references to other files based on their names (case insensitive)
@@ -534,7 +534,7 @@ impl FileService {
 
             // Get GitHub metadata
             let github_meta = file_metadata.get(&file_name).unwrap();
-            let last_modified = github_meta.last_modified.unwrap_or_else(|| Utc::now());
+            let last_modified = github_meta.last_modified.unwrap_or(Utc::now());
 
             // Calculate node size
             let file_size = *file_sizes.get(node_name).unwrap();
@@ -717,7 +717,7 @@ impl FileService {
                         node_size,
                         hyperlink_count: Self::count_hyperlinks(&content),
                         sha1: Self::calculate_sha1(&content),
-                        last_modified: file_meta.last_modified.expect("Last modified time should be present"),
+                        last_modified: file_meta.last_modified.unwrap_or(Utc::now()),
                         perplexity_link: String::new(),
                         last_perplexity_process: None,
                         topic_counts,

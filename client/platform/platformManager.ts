@@ -2,6 +2,7 @@ import { Platform, PlatformCapabilities } from '../core/types';
 import { createLogger } from '../core/utils';
 import { Settings } from '../types/settings';
 import { XRSessionMode } from '../types/xr';
+import { WebGLRenderer } from 'three';
 
 const logger = createLogger('PlatformManager');
 
@@ -11,17 +12,49 @@ declare global {
   }
 }
 
-class BrowserEventEmitter {
-  private listeners: { [event: string]: Function[] } = {};
+interface PlatformFeatures {
+  xr?: {
+    isSupported: boolean;
+    isImmersiveSupported: boolean;
+  };
+  webgl?: {
+    isSupported: boolean;
+    version: number;
+  };
+  handTracking: boolean;
+  planeDetection: boolean;
+  requestAnimationFrame: (callback: FrameRequestCallback) => number;
+  cancelAnimationFrame: (handle: number) => void;
+  getWebGLContext: () => WebGLRenderingContext | null;
+}
 
-  on(event: string, listener: Function): void {
+interface PlatformCapabilities {
+  webgl: boolean;
+  webgl2: boolean;
+  webxr: boolean;
+  handTracking: boolean;
+  planeDetection: boolean;
+}
+
+interface EventListener {
+  (...args: unknown[]): void;
+}
+
+interface EventMap {
+  [event: string]: EventListener[];
+}
+
+class BrowserEventEmitter {
+  private listeners: EventMap = {};
+
+  on(event: string, listener: EventListener): void {
     if (!this.listeners[event]) {
       this.listeners[event] = [];
     }
     this.listeners[event].push(listener);
   }
 
-  emit(event: string, ...args: any[]): void {
+  emit(event: string, ...args: unknown[]): void {
     const eventListeners = this.listeners[event];
     if (eventListeners) {
       eventListeners.forEach(listener => listener(...args));
@@ -36,30 +69,26 @@ class BrowserEventEmitter {
 export class PlatformManager extends BrowserEventEmitter {
   private static instance: PlatformManager | null = null;
   private platform: Platform;
-  private capabilities: PlatformCapabilities;
+  private features: PlatformFeatures;
   private initialized: boolean = false;
+  private renderer: WebGLRenderer | null = null;
+  private _settings: Settings;
 
-  private constructor() {
+  private constructor(settings: Settings) {
     super();
+    this._settings = settings;
     this.platform = 'desktop';
-    this.capabilities = {
-      xrSupported: false,
-      webglSupported: false,
-      websocketSupported: false,
-      webxr: false,
-      handTracking: false,
-      planeDetection: false
-    };
+    this.features = this.detectFeatures();
   }
 
-  static getInstance(): PlatformManager {
+  static getInstance(settings: Settings): PlatformManager {
     if (!PlatformManager.instance) {
-      PlatformManager.instance = new PlatformManager();
+      PlatformManager.instance = new PlatformManager(settings);
     }
     return PlatformManager.instance;
   }
 
-  async initialize(settings: Settings): Promise<void> {
+  async initialize(): Promise<void> {
     if (this.initialized) {
       return;
     }
@@ -68,8 +97,8 @@ export class PlatformManager extends BrowserEventEmitter {
     await this.detectCapabilities();
     
     // Initialize platform with settings
-    if (settings.xr?.mode) {
-      this.capabilities.xrSupported = await this.checkXRSupport(settings.xr.mode as XRSessionMode);
+    if (this._settings.xr?.mode) {
+      this.features.xr = await this.checkXRSupport(this._settings.xr.mode as XRSessionMode);
     }
     
     this.initialized = true;
@@ -93,33 +122,45 @@ export class PlatformManager extends BrowserEventEmitter {
     // WebXR support
     if ('xr' in navigator && navigator.xr) {
       try {
-        this.capabilities.xrSupported = await navigator.xr.isSessionSupported('immersive-ar');
-        this.capabilities.webxr = this.capabilities.xrSupported;
-        this.capabilities.handTracking = this.capabilities.xrSupported;
-        this.capabilities.planeDetection = this.capabilities.xrSupported;
+        this.features.xr = {
+          isSupported: await navigator.xr.isSessionSupported('immersive-ar'),
+          isImmersiveSupported: await navigator.xr.isSessionSupported('immersive-ar')
+        };
+        this.features.handTracking = this.features.xr.isSupported;
+        this.features.planeDetection = this.features.xr.isSupported;
       } catch (error) {
         logger.warn('WebXR not supported:', error);
-        this.capabilities.xrSupported = false;
-        this.capabilities.webxr = false;
-        this.capabilities.handTracking = false;
-        this.capabilities.planeDetection = false;
+        this.features.xr = {
+          isSupported: false,
+          isImmersiveSupported: false
+        };
+        this.features.handTracking = false;
+        this.features.planeDetection = false;
       }
     }
 
-    // WebGL support
-    try {
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-      this.capabilities.webglSupported = !!gl;
-    } catch (error) {
-      logger.warn('WebGL not supported:', error);
-      this.capabilities.webglSupported = false;
-    }
+    logger.log('Platform capabilities detected:', this.getCapabilities());
+  }
 
-    // WebSocket support
-    this.capabilities.websocketSupported = 'WebSocket' in window;
+  private detectFeatures(): PlatformFeatures {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
 
-    logger.log('Platform capabilities detected:', this.capabilities);
+    return {
+      xr: {
+        isSupported: 'xr' in navigator,
+        isImmersiveSupported: 'xr' in navigator
+      },
+      webgl: {
+        isSupported: !!gl,
+        version: gl ? (canvas.getContext('webgl2') ? 2 : 1) : 0
+      },
+      handTracking: false, // Implement proper detection
+      planeDetection: false, // Implement proper detection
+      requestAnimationFrame: window.requestAnimationFrame.bind(window),
+      cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
+      getWebGLContext: () => gl
+    };
   }
 
   getPlatform(): Platform {
@@ -127,7 +168,13 @@ export class PlatformManager extends BrowserEventEmitter {
   }
 
   getCapabilities(): PlatformCapabilities {
-    return { ...this.capabilities };
+    return {
+      webgl: this.features.webgl.isSupported,
+      webgl2: this.features.webgl.version === 2,
+      webxr: this.features.xr.isSupported,
+      handTracking: this.features.handTracking,
+      planeDetection: this.features.planeDetection
+    };
   }
 
   isDesktop(): boolean {
@@ -143,19 +190,19 @@ export class PlatformManager extends BrowserEventEmitter {
   }
 
   isXRSupported(): boolean {
-    return this.capabilities.xrSupported;
+    return this.features.xr.isSupported;
   }
 
   isWebGLSupported(): boolean {
-    return this.capabilities.webglSupported;
+    return this.features.webgl.isSupported;
   }
 
   isWebSocketSupported(): boolean {
-    return this.capabilities.websocketSupported;
+    return 'WebSocket' in window;
   }
 
   async requestXRSession(): Promise<XRSession | null> {
-    if (!this.capabilities.xrSupported || !('xr' in navigator) || !navigator.xr) {
+    if (!this.features.xr.isSupported || !('xr' in navigator) || !navigator.xr) {
       logger.warn('WebXR not supported');
       return null;
     }
@@ -185,9 +232,9 @@ export class PlatformManager extends BrowserEventEmitter {
       try {
         const supported = await navigator.xr.isSessionSupported(mode);
         if (supported) {
-          this.capabilities.webxr = true;
-          this.capabilities.handTracking = true;
-          this.capabilities.planeDetection = true;
+          this.features.xr.isSupported = true;
+          this.features.handTracking = true;
+          this.features.planeDetection = true;
           this.emit('xrdevicechange', true);
           logger.log('WebXR supported for mode:', mode);
           return true;
@@ -196,11 +243,31 @@ export class PlatformManager extends BrowserEventEmitter {
         logger.warn('WebXR check failed:', error);
       }
     }
-    this.capabilities.webxr = false;
-    this.capabilities.handTracking = false;
-    this.capabilities.planeDetection = false;
+    this.features.xr.isSupported = false;
+    this.features.handTracking = false;
+    this.features.planeDetection = false;
     this.emit('xrdevicechange', false);
     return false;
+  }
+
+  setRenderer(renderer: WebGLRenderer): void {
+    this.renderer = renderer;
+  }
+
+  getRenderer(): WebGLRenderer | null {
+    return this.renderer;
+  }
+
+  requestAnimationFrame(callback: FrameRequestCallback): number {
+    return this.features.requestAnimationFrame(callback);
+  }
+
+  cancelAnimationFrame(handle: number): void {
+    this.features.cancelAnimationFrame(handle);
+  }
+
+  getWebGLContext(): WebGLRenderingContext | null {
+    return this.features.getWebGLContext();
   }
 
   dispose(): void {
@@ -210,4 +277,4 @@ export class PlatformManager extends BrowserEventEmitter {
   }
 }
 
-export const platformManager = PlatformManager.getInstance();
+export const platformManager = PlatformManager.getInstance({} as Settings);

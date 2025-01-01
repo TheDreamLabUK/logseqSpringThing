@@ -5,6 +5,7 @@ import { EdgeManager } from './rendering/EdgeManager';
 import { HologramManager } from './rendering/HologramManager';
 import { TextRenderer } from './rendering/textRenderer';
 import { WebSocketService } from './websocket/websocketService';
+import { LoggerImpl } from './logging/loggerImpl'; // Assuming LoggerImpl is defined in this file
 
 export class GraphVisualization {
     private scene: Scene;
@@ -16,6 +17,9 @@ export class GraphVisualization {
     private textRenderer: TextRenderer;
     private websocketService: WebSocketService;
     constructor(settings: Settings) {
+        // Initialize logger settings first
+        LoggerImpl.setSettings(settings);
+        
         this.scene = new Scene();
         this.camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.renderer = new WebGLRenderer({ antialias: true });

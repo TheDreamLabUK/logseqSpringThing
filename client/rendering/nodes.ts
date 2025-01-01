@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Node } from '../core/types';
 import { createLogger } from '../core/logger';
 import { settingsManager } from '../state/settings';
-import type { Settings } from '../types/settings';
+import { Settings } from '../types/settings';
 import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
 import { SettingsObserver } from '../state/SettingsObserver';
@@ -17,8 +17,32 @@ const quaternion = new THREE.Quaternion();
 const position = new THREE.Vector3();
 const scale = new THREE.Vector3(1, 1, 1);
 
+interface NodeProperties {
+    [key: string]: string | number | boolean;
+}
+
+interface NodeUserData {
+    id: string;
+    type: string;
+    properties?: NodeProperties;
+}
+
+interface _NodeData {
+    id: string;
+    position: THREE.Vector3;
+    scale?: THREE.Vector3;
+    color?: number;
+    opacity?: number;
+    type?: string;
+    properties?: NodeProperties;
+}
+
+interface _NodeMesh extends THREE.Mesh {
+    userData: NodeUserData;
+}
+
 export class NodeRenderer {
-    public readonly material: THREE.Material;
+    public readonly material: THREE.MeshBasicMaterial;
     protected currentSettings: Settings;
     public mesh: THREE.Mesh;
     private readonly materialFactory: MaterialFactory;
@@ -31,7 +55,7 @@ export class NodeRenderer {
         this.geometryFactory = GeometryFactory.getInstance();
         this.settingsObserver = SettingsObserver.getInstance();
 
-        this.material = this.materialFactory.getPhongNodeMaterial();
+        this.material = this.materialFactory.getPhongNodeMaterial() as THREE.MeshBasicMaterial;
         this.mesh = new THREE.Mesh(
             this.geometryFactory.getNodeGeometry(this.currentSettings.xr.quality),
             this.material
@@ -233,14 +257,22 @@ export class NodeManager {
         this.updatePositions(positions);
     }
 
+    public getNodesByProperty(propertyName: keyof NodeProperties, propertyValue: NodeProperties[keyof NodeProperties]): _NodeMesh[] {
+        return this.nodeInstances.count > 0 ? this.nodeInstances.children.filter(node => node.userData.properties?.[propertyName] === propertyValue) as _NodeMesh[] : [];
+    }
+
+    public getNodesByType(type: _NodeMesh['userData']['type']): _NodeMesh[] {
+        return this.nodeInstances.count > 0 ? this.nodeInstances.children.filter(node => node.userData.type === type) as _NodeMesh[] : [];
+    }
+
     public dispose(): void {
         if (this.nodeInstances) {
             this.nodeInstances.geometry.dispose();
-            this.nodeInstances.material.dispose();
+            (this.nodeInstances.material as THREE.Material).dispose();
         }
         if (this.edgeInstances) {
             this.edgeInstances.geometry.dispose();
-            this.edgeInstances.material.dispose();
+            (this.edgeInstances.material as THREE.Material).dispose();
         }
     }
 }

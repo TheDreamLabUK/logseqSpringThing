@@ -52,9 +52,7 @@ impl SpeechService {
                         if let TTSProvider::OpenAI = *current_provider {
                             let settings = settings.read().await;
                             
-                            let url = format!(
-                                "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01"
-                            );
+                            let url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01".to_string();
                             let url = match Url::parse(&url) {
                                 Ok(url) => url,
                                 Err(e) => {

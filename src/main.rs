@@ -4,7 +4,6 @@ use actix_web::{web, App, HttpServer, middleware};
 use actix_cors::Cors;
 use actix_files::Files;
 use log::{error, info};
-use env_logger;
 use dotenvy::dotenv;
 
 use webxr::{
@@ -29,7 +28,6 @@ use webxr::{
 async fn main() -> std::io::Result<()> {
     // Initialize environment
     dotenv().ok();
-    env_logger::init();
 
     // Load settings
     let settings = Arc::new(RwLock::new(
@@ -112,7 +110,6 @@ async fn main() -> std::io::Result<()> {
     };
 
     // Create application state with initial graph
-    let graph_service = GraphService::new_with_metadata(&metadata_store).await;
     let state: AppState = AppState::new(
         settings.clone(),
         github_service.clone(),

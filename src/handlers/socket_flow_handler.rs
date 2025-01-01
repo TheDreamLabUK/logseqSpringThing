@@ -79,7 +79,7 @@ impl SocketFlowServer {
             
             // Get update rate from settings
             let update_rate = settings.blocking_read().system.websocket.update_rate;
-            let update_interval = Duration::from_secs(1) / update_rate as u32;
+            let update_interval = Duration::from_secs(1) / update_rate;
             
             if update_interval != Self::POSITION_UPDATE_INTERVAL {
                 debug!("Adjusting update interval to {:.2}ms", update_interval.as_secs_f64() * 1000.0);

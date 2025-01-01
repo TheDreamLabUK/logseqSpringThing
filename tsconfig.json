@@ -34,10 +34,10 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["client/*"]
+      "*": ["client/*"]
     },
     "types": ["vite/client", "node", "three"]
   },
-  "include": ["client/**/*.ts", "client/**/*.d.ts"],
+  "include": ["client/**/*.ts", "client/**/*.d.ts", "vite.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::{HashMap, HashSet};
 use actix_web::web;
-use log::{info, warn, error};
+use log::{info, warn, error, debug};
 use rand::Rng;
 use serde_json;
 
@@ -19,6 +19,12 @@ use crate::services::file_service::FileService;
 #[derive(Clone)]
 pub struct GraphService {
     pub graph_data: Arc<RwLock<GraphData>>,
+}
+
+impl Default for GraphService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GraphService {
@@ -53,6 +59,7 @@ impl GraphService {
             let node_id = file_name.trim_end_matches(".md").to_string();
             valid_nodes.insert(node_id);
         }
+        debug!("Found {} valid nodes in metadata", valid_nodes.len());
 
         // Create nodes for all valid node IDs
         for node_id in &valid_nodes {
@@ -68,6 +75,15 @@ impl GraphService {
                 node.metadata.insert("fileSize".to_string(), metadata.file_size.to_string());
                 node.metadata.insert("hyperlinkCount".to_string(), metadata.hyperlink_count.to_string());
                 node.metadata.insert("lastModified".to_string(), metadata.last_modified.to_string());
+
+                debug!("Created node {} with size={}, file_size={}", 
+                    node_id, 
+                    node.size.unwrap_or(0.0), 
+                    node.file_size
+                );
+            } else {
+                error!("No metadata found for node {}", node_id);
+                return Err(format!("Missing metadata for node {}", node_id).into());
             }
             
             // Add node to graph
@@ -78,6 +94,7 @@ impl GraphService {
         graph.metadata = metadata_store.clone();
 
         // Second pass: Create edges from topic counts
+        let mut edge_count = 0;
         for (source_file, metadata) in metadata_store.iter() {
             let source_id = source_file.trim_end_matches(".md").to_string();
             
@@ -92,24 +109,38 @@ impl GraphService {
                         (target_id.clone(), source_id.clone())
                     };
 
-                    edge_map.entry(edge_key)
-                        .and_modify(|weight| *weight += *count as f32)
-                        .or_insert(*count as f32);
+                    if let Some(existing_count) = edge_map.get_mut(&edge_key) {
+                        *existing_count += *count as f32;
+                        debug!("Updated edge weight for {:?} to {}", edge_key, existing_count);
+                    } else {
+                        edge_map.insert(edge_key, *count as f32);
+                        edge_count += 1;
+                        if edge_count % 100 == 0 {
+                            debug!("Created {} edges so far", edge_count);
+                        }
+                    }
                 }
             }
         }
 
-        // Convert edge map to edges
-        graph.edges = edge_map.into_iter()
-            .map(|((source, target), weight)| {
-                Edge::new(source, target, weight)
-            })
-            .collect();
+        // Create final edges from edge map
+        for ((source, target), weight) in edge_map {
+            let edge = Edge::new(source, target, weight);
+            graph.edges.push(edge);
+        }
 
-        // Initialize random positions using the same method everywhere
-        Self::initialize_random_positions(&mut graph);
+        info!("Completed graph building with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
+        
+        // Validate final graph
+        if graph.nodes.is_empty() {
+            error!("Generated graph has no nodes");
+            return Err("Generated graph has no nodes".into());
+        }
 
-        info!("Built graph with {} nodes and {} edges", graph.nodes.len(), graph.edges.len());
+        if graph.edges.is_empty() {
+            warn!("Generated graph has no edges");
+        }
+
         Ok(graph)
     }
 
@@ -190,6 +221,8 @@ impl GraphService {
         let mut rng = rand::thread_rng();
         let initial_radius = 100.0; // Match default spring length
         
+        debug!("Initializing random positions for {} nodes with radius {}", graph.nodes.len(), initial_radius);
+        
         for node in &mut graph.nodes {
             // Use spherical coordinates for uniform distribution
             let theta = rng.gen_range(0.0..std::f32::consts::PI * 2.0);
@@ -197,13 +230,31 @@ impl GraphService {
             let r = initial_radius * rng.gen::<f32>().cbrt(); // Cube root for uniform volume distribution
             
             // Convert to Cartesian coordinates
-            node.set_x(r * theta.cos() * phi.sin());
-            node.set_y(r * theta.sin() * phi.sin());
-            node.set_z(r * phi.cos());
+            let x = r * theta.cos() * phi.sin();
+            let y = r * theta.sin() * phi.sin();
+            let z = r * phi.cos();
+            
+            // Validate coordinates before setting
+            if !x.is_finite() || !y.is_finite() || !z.is_finite() {
+                warn!("Generated invalid position for node {}: [{}, {}, {}]", node.id, x, y, z);
+                // Use fallback position
+                node.set_x(0.0);
+                node.set_y(0.0);
+                node.set_z(0.0);
+            } else {
+                node.set_x(x);
+                node.set_y(y);
+                node.set_z(z);
+                debug!("Set position for node {}: [{}, {}, {}]", node.id, x, y, z);
+            }
+            
+            // Initialize velocities to zero
             node.set_vx(0.0);
             node.set_vy(0.0);
             node.set_vz(0.0);
         }
+        
+        debug!("Finished initializing random positions");
     }
 
     pub async fn calculate_layout(

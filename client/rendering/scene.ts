@@ -2,13 +2,46 @@
  * Three.js scene management with simplified setup
  */
 
-import { Scene, PerspectiveCamera, WebGLRenderer, Color, AmbientLight, DirectionalLight, GridHelper, Vector2, Material, Mesh, Object3D } from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
+import { 
+  BufferGeometry, 
+  Line as Line, 
+  Points as Points, 
+  AmbientLight, 
+  DirectionalLight, 
+  PerspectiveCamera, 
+  Scene, 
+  Vector2, 
+  Material, 
+  Mesh, 
+  Object3D, 
+  Color, 
+  GridHelper, 
+  WebGLRenderer, 
+  OrbitControls, 
+  EffectComposer, 
+  RenderPass, 
+  UnrealBloomPass 
+} from 'three';
 import { createLogger } from '../core/utils';
 import { Settings } from '../types/settings';
+
+interface SceneObject extends Object3D {
+  material?: Material;
+  geometry?: BufferGeometry;
+  children: SceneObject[];
+}
+
+interface RenderCallback {
+  (deltaTime: number): void;
+}
+
+interface SceneEventListener {
+  (event: Event): void;
+}
+
+interface SceneEventMap {
+  [key: string]: SceneEventListener[];
+}
 
 const logger = createLogger('SceneManager');
 
@@ -179,11 +212,11 @@ export class SceneManager {
   }
 
   // Scene management methods
-  add(object: Object3D): void {
+  add(object: SceneObject): void {
     this.scene.add(object);
   }
 
-  remove(object: Object3D): void {
+  remove(object: SceneObject): void {
     this.scene.remove(object);
   }
 
@@ -255,6 +288,24 @@ export class SceneManager {
     }
 
     logger.log('Scene manager disposed');
+  }
+
+  private disposeObject(object: Object3D): void {
+    if (object.geometry) {
+      object.geometry.dispose();
+    }
+
+    if (object.material) {
+      if (Array.isArray(object.material)) {
+        object.material.forEach(material => material.dispose());
+      } else {
+        object.material.dispose();
+      }
+    }
+
+    object.children.forEach(child => {
+      this.disposeObject(child);
+    });
   }
 
   public handleSettingsUpdate(settings: Settings): void {

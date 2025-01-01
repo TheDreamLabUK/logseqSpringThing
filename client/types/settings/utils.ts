@@ -33,7 +33,7 @@ export function isValidSettingPath(path: string): boolean {
         }
         
         return true;
-    } catch (error: unknown) {
+    } catch (_error: unknown) {
         return false;
     }
 }
@@ -54,8 +54,8 @@ export function getSettingValue(settings: Settings, path: string): any {
             }
             return obj[key];
         }, settings);
-    } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
+    } catch (_error: unknown) {
+        const message = 'Unknown error';
         throw new Error(`Failed to get setting value at path ${path}: ${message}`);
     }
 }
@@ -88,8 +88,8 @@ export function setSettingValue(settings: Settings, path: string, value: any): v
         }
 
         target[lastKey] = value;
-    } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
+    } catch (_error: unknown) {
+        const message = 'Unknown error';
         throw new Error(`Failed to set setting value at path ${path}: ${message}`);
     }
 }

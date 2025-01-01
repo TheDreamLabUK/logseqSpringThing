@@ -1,210 +1,202 @@
 import * as THREE from 'three';
-import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
-import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js';
-import { NodeMetadata } from '../types/metadata';
+import { MaterialFactory } from '../rendering/factories/MaterialFactory';
+import { Settings } from '../types/settings';
+import { createLogger } from '../core/utils';
 
-type GeometryWithBoundingBox = THREE.BufferGeometry & {
-    boundingBox: THREE.Box3 | null;
-    computeBoundingBox: () => void;
-};
+const logger = createLogger('MetadataVisualizer');
+
+export interface MetadataOptions {
+    position?: THREE.Vector3;
+    rotation?: THREE.Euler;
+    scale?: THREE.Vector3;
+    text?: string;
+    fontSize?: number;
+    color?: number;
+    backgroundColor?: number;
+    opacity?: number;
+}
+
+export interface MetadataProperties {
+    title?: string;
+    description?: string;
+    tags?: string[];
+    properties?: Record<string, string | number | boolean>;
+}
 
 export class MetadataVisualizer {
     private scene: THREE.Scene;
-    private camera: THREE.PerspectiveCamera;
-    private fontLoader: FontLoader;
-    private font: Font | null;
-    private fontPath: string;
-    private labelGroup: THREE.Group;
-    private settings: any;
+    private materialFactory: MaterialFactory;
+    private settings: Settings;
+    private metadataObjects: Map<string, THREE.Group>;
+    private canvas: HTMLCanvasElement;
+    private context: CanvasRenderingContext2D;
 
-    constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera, settings: any) {
+    constructor(scene: THREE.Scene, materialFactory: MaterialFactory, settings: Settings) {
         this.scene = scene;
-        this.camera = camera;
-        this.fontLoader = new FontLoader();
-        this.font = null;
-        this.fontPath = '/fonts/helvetiker_regular.typeface.json';
-        this.labelGroup = new THREE.Group();
+        this.materialFactory = materialFactory;
         this.settings = settings;
-        this.scene.add(this.labelGroup);
-        this.loadFont();
-    }
+        this.metadataObjects = new Map();
 
-    private readonly geometries = {
-        SPHERE: new THREE.SphereGeometry(1, 32, 32),
-        ICOSAHEDRON: new THREE.IcosahedronGeometry(1),
-        OCTAHEDRON: new THREE.OctahedronGeometry(1)
-    };
-
-    private readonly labelScale = 0.1;
-    private readonly labelHeight = 0.1;
-
-    private async loadFont(): Promise<void> {
-        try {
-            this.font = await new Promise((resolve, reject) => {
-                this.fontLoader.load(this.fontPath, resolve, undefined, reject);
-            });
-        } catch (error) {
-            console.error('Failed to load font:', error);
+        this.canvas = document.createElement('canvas');
+        const ctx = this.canvas.getContext('2d');
+        if (!ctx) {
+            throw new Error('Failed to get 2D context');
         }
+        this.context = ctx;
     }
 
-    public createLabel(text: string, position: THREE.Vector3): void {
-        if (!this.font) {
-            console.warn('Font not loaded yet');
-            return;
-        }
-
-        const textGeometry = new TextGeometry(text, {
-            font: this.font,
-            size: this.settings.labelSize || 0.1,
-            height: this.settings.labelHeight || 0.01
-        });
-
-        const material = new THREE.MeshBasicMaterial({
-            color: this.settings.labelColor || 0xffffff
-        });
-
-        // Create mesh with the text geometry and center it
-        const geometry = textGeometry as unknown as GeometryWithBoundingBox;
-        geometry.computeBoundingBox();
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.copy(position);
-
-        if (geometry.boundingBox) {
-            const width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
-            mesh.position.x -= width / 2;
-        }
-        
-        this.labelGroup.add(mesh);
-    }
-
-    public async createTextMesh(text: string): Promise<THREE.Mesh | null> {
-        if (!this.font) {
-            console.warn('Font not loaded yet');
-            return null;
-        }
-
-        const textGeometry = new TextGeometry(text, {
-            font: this.font,
-            size: 1,
-            height: this.labelHeight,
-            curveSegments: 4,
-            bevelEnabled: false
-        });
-
-        const material = new THREE.MeshBasicMaterial({
-            color: 0xffffff,
-            transparent: true,
-            opacity: 0.8
-        });
-
-        // Create mesh with the text geometry and center it
-        const geometry = textGeometry as unknown as GeometryWithBoundingBox;
-        geometry.computeBoundingBox();
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.scale.set(this.labelScale, this.labelScale, this.labelScale);
-
-        if (geometry.boundingBox) {
-            const width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
-            mesh.position.x -= width / 2;
-        }
-
-        return mesh;
-    }
-
-    public createNodeVisual(metadata: NodeMetadata): THREE.Mesh {
-        const geometry = this.getGeometryFromAge(metadata.commitAge);
-        const material = this.createMaterialFromHyperlinks(metadata.hyperlinkCount);
-        const mesh = new THREE.Mesh(geometry, material);
-
-        const scale = this.calculateScale(metadata.importance);
-        mesh.scale.set(scale, scale, scale);
-
-        mesh.position.set(
-            metadata.position.x,
-            metadata.position.y,
-            metadata.position.z
-        );
-
-        return mesh;
-    }
-
-    private getGeometryFromAge(age: number): THREE.BufferGeometry {
-        if (age < 7) return this.geometries.SPHERE;
-        if (age < 30) return this.geometries.ICOSAHEDRON;
-        return this.geometries.OCTAHEDRON;
-    }
-
-    private createMaterialFromHyperlinks(count: number): THREE.Material {
-        const hue = Math.min(count / 10, 1) * 0.3; // 0 to 0.3 range
-        const color = new THREE.Color().setHSL(hue, 0.7, 0.5);
-
-        return new THREE.MeshPhongMaterial({
-            color: color,
-            shininess: 30,
-            transparent: true,
-            opacity: 0.9
-        });
-    }
-
-    private calculateScale(importance: number): number {
-        const [min, max] = this.settings.nodes.sizeRange;
-        return min + (max - min) * Math.min(importance, 1);
-    }
-
-    public async createMetadataLabel(metadata: NodeMetadata): Promise<THREE.Group> {
+    createMetadata(id: string, properties: MetadataProperties, options: MetadataOptions = {}): THREE.Group {
         const group = new THREE.Group();
 
-        // Create text for name
-        const nameMesh = await this.createTextMesh(metadata.name);
-        if (nameMesh) {
-            nameMesh.position.y = 1.2;
-            group.add(nameMesh);
+        // Create text texture
+        const text = this.formatMetadata(properties);
+        const texture = this.createTextTexture(text, options);
+
+        // Create plane with text
+        const geometry = new THREE.PlaneGeometry(1, 1);
+        const material = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            opacity: options.opacity ?? 1.0,
+            side: THREE.DoubleSide
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+
+        if (options.position) {
+            group.position.copy(options.position);
+        }
+        if (options.rotation) {
+            group.rotation.copy(options.rotation);
+        }
+        if (options.scale) {
+            group.scale.copy(options.scale);
         }
 
-        // Create text for commit age
-        const ageMesh = await this.createTextMesh(`${Math.round(metadata.commitAge)} days`);
-        if (ageMesh) {
-            ageMesh.position.y = 0.8;
-            group.add(ageMesh);
-        }
-
-        // Create text for hyperlink count
-        const linksMesh = await this.createTextMesh(`${metadata.hyperlinkCount} links`);
-        if (linksMesh) {
-            linksMesh.position.y = 0.4;
-            group.add(linksMesh);
-        }
-
-        // Billboard behavior
-        if (this.settings.labels?.billboard_mode === 'camera') {
-            group.onBeforeRender = () => {
-                group.quaternion.copy(this.camera.quaternion);
-            };
-        } else {
-            // Vertical billboard - only rotate around Y
-            group.onBeforeRender = () => {
-                const cameraPos = this.camera.position.clone();
-                cameraPos.y = group.position.y;
-                group.lookAt(cameraPos);
-            };
-        }
+        group.add(mesh);
+        this.metadataObjects.set(id, group);
+        this.scene.add(group);
 
         return group;
     }
 
-    public dispose(): void {
-        // Clean up geometries
-        Object.values(this.geometries).forEach(geometry => geometry.dispose());
-        
-        // Clean up label group
-        this.labelGroup.traverse(child => {
-            if (child instanceof THREE.Mesh) {
-                child.geometry.dispose();
-                if (child.material instanceof THREE.Material) {
-                    child.material.dispose();
-                }
-            }
+    updateMetadata(id: string, properties: Partial<MetadataProperties>, options: Partial<MetadataOptions> = {}): void {
+        const group = this.metadataObjects.get(id);
+        if (!group) {
+            logger.warn(`Metadata object ${id} not found`);
+            return;
+        }
+
+        const mesh = group.children[0] as THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+        if (!mesh) return;
+
+        if (properties) {
+            const text = this.formatMetadata(properties as MetadataProperties);
+            const texture = this.createTextTexture(text, options);
+            mesh.material.map = texture;
+        }
+
+        if (options.position) {
+            group.position.copy(options.position);
+        }
+        if (options.rotation) {
+            group.rotation.copy(options.rotation);
+        }
+        if (options.scale) {
+            group.scale.copy(options.scale);
+        }
+        if (options.opacity !== undefined) {
+            mesh.material.opacity = options.opacity;
+        }
+    }
+
+    private formatMetadata(properties: MetadataProperties): string {
+        const lines: string[] = [];
+
+        if (properties.title) {
+            lines.push(`Title: ${properties.title}`);
+        }
+        if (properties.description) {
+            lines.push(`Description: ${properties.description}`);
+        }
+        if (properties.tags && properties.tags.length > 0) {
+            lines.push(`Tags: ${properties.tags.join(', ')}`);
+        }
+        if (properties.properties) {
+            Object.entries(properties.properties).forEach(([key, value]) => {
+                lines.push(`${key}: ${value}`);
+            });
+        }
+
+        return lines.join('\n');
+    }
+
+    private createTextTexture(text: string, options: Partial<MetadataOptions> = {}): THREE.CanvasTexture {
+        const fontSize = options.fontSize || 24;
+        const textColor = options.color ? `#${options.color.toString(16)}` : '#ffffff';
+        const bgColor = options.backgroundColor ? `#${options.backgroundColor.toString(16)}` : '#000000';
+
+        this.context.font = `${fontSize}px Arial`;
+        const lines = text.split('\n');
+        const lineHeight = fontSize * 1.2;
+        const padding = fontSize * 0.5;
+
+        // Measure text dimensions
+        let maxWidth = 0;
+        for (const line of lines) {
+            const metrics = this.context.measureText(line);
+            maxWidth = Math.max(maxWidth, metrics.width);
+        }
+
+        // Set canvas size
+        this.canvas.width = maxWidth + padding * 2;
+        this.canvas.height = lines.length * lineHeight + padding * 2;
+
+        // Draw background
+        this.context.fillStyle = bgColor;
+        this.context.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Draw text
+        this.context.font = `${fontSize}px Arial`;
+        this.context.fillStyle = textColor;
+        this.context.textBaseline = 'top';
+
+        lines.forEach((line, i) => {
+            this.context.fillText(line, padding, padding + i * lineHeight);
         });
+
+        // Create texture
+        const texture = new THREE.CanvasTexture(this.canvas);
+        texture.needsUpdate = true;
+
+        return texture;
+    }
+
+    removeMetadata(id: string): void {
+        const group = this.metadataObjects.get(id);
+        if (group) {
+            const mesh = group.children[0] as THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+            if (mesh) {
+                mesh.material.map?.dispose();
+                mesh.material.dispose();
+                mesh.geometry.dispose();
+            }
+            this.scene.remove(group);
+            this.metadataObjects.delete(id);
+        }
+    }
+
+    getMetadata(id: string): THREE.Group | undefined {
+        return this.metadataObjects.get(id);
+    }
+
+    clear(): void {
+        this.metadataObjects.forEach((group, id) => {
+            this.removeMetadata(id);
+        });
+    }
+
+    dispose(): void {
+        this.clear();
+        this.canvas.remove();
     }
 }

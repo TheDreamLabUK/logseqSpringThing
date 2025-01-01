@@ -106,8 +106,8 @@ async fn update_websocket_setting(
         },
         "reconnectDelay" => {
             if let Some(v) = value.as_u64() {
-                if v < 1000 || v > 60000 {
-                    Some("reconnectDelay must be between 1000 and 60000 milliseconds")
+                if !(1..=60000).contains(&v) {
+                    Some("reconnectDelay must be between 1 and 60000 milliseconds")
                 } else {
                     None
                 }
@@ -117,7 +117,7 @@ async fn update_websocket_setting(
         },
         "updateRate" => {
             if let Some(v) = value.as_u64() {
-                if v < 1 || v > 120 {
+                if !(1..=120).contains(&v) {
                     Some("updateRate must be between 1 and 120")
                 } else {
                     None

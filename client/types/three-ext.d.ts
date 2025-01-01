@@ -51,7 +51,7 @@ declare module 'three/examples/jsm/controls/OrbitControls' {
 }
 
 declare module 'three/examples/jsm/webxr/XRControllerModelFactory' {
-  import { Group, Texture } from 'three';
+  import { Group, _Texture } from 'three';
 
   export class XRControllerModelFactory {
     constructor();

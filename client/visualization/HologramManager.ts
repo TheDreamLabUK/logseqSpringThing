@@ -3,10 +3,10 @@ import { HologramShaderMaterial } from '../rendering/materials/HologramShaderMat
 
 export class HologramManager {
     private readonly hologramGroup: THREE.Group;
-    private readonly settings: any;
+    private readonly settings: Settings;
     private isXRMode: boolean = false;
 
-    private readonly segments = {
+    private readonly segments: { [key: string]: { ring: number; sphere: number } } = {
         low: { ring: 32, sphere: 16 },
         medium: { ring: 64, sphere: 32 },
         high: { ring: 128, sphere: 64 }
@@ -14,7 +14,7 @@ export class HologramManager {
 
     constructor(
         private readonly scene: THREE.Scene,
-        settings: any
+        settings: Settings
     ) {
         this.settings = settings;
         this.hologramGroup = new THREE.Group();
@@ -101,7 +101,7 @@ export class HologramManager {
         });
     }
 
-    public updateSettings(settings: any): void {
+    public updateSettings(settings: Settings): void {
         Object.assign(this.settings, settings);
         this.createHolographicStructures();
     }
@@ -117,4 +117,8 @@ export class HologramManager {
         });
         this.scene.remove(this.hologramGroup);
     }
+}
+
+interface Settings {
+    quality?: string;
 }

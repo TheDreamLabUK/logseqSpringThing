@@ -133,7 +133,7 @@ impl GPUCompute {
                 &mut self.node_data,     // nodes buffer
                 &mut self.velocity_data, // velocity buffer
                 0u64,                   // unused parameter
-                self.num_nodes as u32,  // num_nodes
+                self.num_nodes,  // num_nodes
                 params.spring_strength, // spring_strength
                 params.spring_length,   // spring_length
                 params.repulsion,      // repulsion
@@ -193,7 +193,7 @@ impl GPUCompute {
                 &mut self.node_data,     // nodes buffer
                 &mut self.velocity_data, // velocity buffer
                 0u64,                   // unused parameter
-                self.num_nodes as u32,  // num_nodes
+                self.num_nodes,  // num_nodes
                 params.spring_strength, // spring_strength
                 params.spring_length,   // spring_length
                 params.repulsion,      // repulsion
