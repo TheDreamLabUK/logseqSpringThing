@@ -42,6 +42,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: ^8.19.0
         version: 8.19.0(eslint@8.57.1)(typescript@5.4.5)
+      XRControllerModelFactory:
+        specifier: link:@types/three/examples/jsm/webxr/XRControllerModelFactory
+        version: link:@types/three/examples/jsm/webxr/XRControllerModelFactory
       eslint:
         specifier: ^8.57.1
         version: 8.57.1

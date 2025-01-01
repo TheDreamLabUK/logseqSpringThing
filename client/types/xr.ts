@@ -21,16 +21,10 @@ export interface XRJointSpace {
     radius: number;
 }
 
-export interface XRLightEstimate {
-    primaryLightDirection: Vector3;
-    primaryLightIntensity: number;
+export interface CustomXRLightEstimate {
+    primaryLightDirection?: { x: number; y: number; z: number };
+    primaryLightIntensity: { value: number };
     sphericalHarmonicsCoefficients: Float32Array;
-}
-
-declare global {
-    interface Navigator {
-        xr?: XRSystem;
-    }
 }
 
 export interface XRSessionInit {
@@ -67,7 +61,7 @@ export type XRFrameRequestCallback = (time: number, frame: XRFrame) => void;
 export interface XRFrame {
     session: XRSession;
     getViewerPose(referenceSpace: XRReferenceSpace): XRViewerPose | null;
-    getLightEstimate?(): XRLightEstimate | null;
+    getLightEstimate?(): CustomXRLightEstimate | null;
 }
 
 export interface XRViewerPose {
@@ -121,9 +115,7 @@ export interface XRHandState {
 export interface XRHandWithHaptics extends THREE.Group {
     hapticActuators?: HapticActuator[];
     hand: {
-        joints: {
-            [key: string]?: WorldObject3D;
-        };
+        joints: { [key: string]: WorldObject3D };
     };
     pinchStrength: number;
     gripStrength: number;
@@ -136,7 +128,7 @@ export interface XRHandWithHaptics extends THREE.Group {
 export interface XRHandController {
     hapticActuators?: HapticActuator[];
     hand: {
-        joints: Record<string, WorldObject3D>;
+        joints: { [key: string]: WorldObject3D };
     };
     pinchStrength: number;
 }

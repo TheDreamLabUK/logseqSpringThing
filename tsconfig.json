@@ -34,7 +34,8 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "*": ["client/*"]
+      "*": ["client/*"],
+      "three/examples/*": ["client/types/three-examples.d.ts"]
     },
     "types": ["vite/client", "node", "three"]
   },

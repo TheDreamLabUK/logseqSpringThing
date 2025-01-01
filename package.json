@@ -26,6 +26,7 @@
     "@types/three": "0.171.0",
     "@typescript-eslint/eslint-plugin": "^8.19.0",
     "@typescript-eslint/parser": "^8.19.0",
+    "XRControllerModelFactory": "link:@types/three/examples/jsm/webxr/XRControllerModelFactory",
     "eslint": "^8.57.1",
     "prettier": "^3.4.2",
     "terser": "^5.37.0",

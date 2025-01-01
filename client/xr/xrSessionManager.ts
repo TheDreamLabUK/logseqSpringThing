@@ -18,13 +18,14 @@ import {
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory';
 import { createLogger } from '../core/utils';
 import { platformManager } from '../platform/platformManager';
+import { CustomXRLightEstimate } from '../types/xr';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
 
 const _logger = createLogger('XRSessionManager');
 
 // Type guards for WebXR features
-function hasLightEstimate(frame: XRFrame): frame is XRFrame & { getLightEstimate(): XRLightEstimate | null } {
+function hasLightEstimate(frame: XRFrame): frame is XRFrame & { getLightEstimate(): CustomXRLightEstimate | null } {
   return 'getLightEstimate' in frame;
 }
 
@@ -200,7 +201,7 @@ export class XRSessionManager {
             return;
         }
 
-        if (!platformManager.getCapabilities().xrSupported || !navigator.xr) {
+        if (!platformManager.getCapabilities().xr.isSupported || !navigator.xr) {
             throw new Error('XR not supported on this platform');
         }
 
@@ -249,7 +250,7 @@ export class XRSessionManager {
             }, 1000);
             
             this.isPresenting = true;
-            _logger.log('XR session initialized');
+            _logger.log('info', 'XR session initialized');
 
             // Notify session start
             if (this.xrSessionStartCallback) {
@@ -300,7 +301,7 @@ export class XRSessionManager {
         const renderer = this.sceneManager.getRenderer();
         renderer.xr.enabled = false;
 
-        _logger.log('XR session ended');
+        _logger.log('info', 'XR session ended');
 
         // Notify session end
         if (this.xrSessionEndCallback) {
@@ -390,14 +391,14 @@ export class XRSessionManager {
         }
     }
 
-    private updateARLighting(lightEstimate: XRLightEstimate): void {
-        const intensity = lightEstimate.primaryLightIntensity?.value || 1;
+    private updateARLighting(lightEstimate: CustomXRLightEstimate): void {
+        const intensity = lightEstimate.primaryLightIntensity.value;
         const direction = lightEstimate.primaryLightDirection;
         
         if (direction) {
             this.arLight.position.set(direction.x, direction.y, direction.z);
         }
-        this.arLight.intensity = intensity;
+        this.arLight.intensity = intensity || 1;
     }
 
     setSessionCallbacks(
