@@ -3,8 +3,7 @@ import {
     BoxGeometry,
     SphereGeometry,
     TorusGeometry,
-    IcosahedronGeometry,
-    Vector3
+    IcosahedronGeometry
 } from 'three';
 
 export class GeometryFactory {

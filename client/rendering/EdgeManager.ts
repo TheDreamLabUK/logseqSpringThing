@@ -2,9 +2,6 @@ import * as THREE from 'three';
 import { Scene } from 'three';
 import { Settings } from '../types/settings';
 import { Edge } from '../core/types';
-import { createLogger } from '../core/logger';
-
-const logger = createLogger('EdgeManager');
 
 export class EdgeManager {
     private edges = new Map<string, THREE.Line>();

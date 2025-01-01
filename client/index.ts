@@ -1,5 +1,5 @@
 import { Scene, PerspectiveCamera, WebGLRenderer, Camera } from 'three';
-import { Settings, VisualizationSettings } from './types/settings';
+import { Settings } from './types/settings';
 import { EnhancedNodeManager } from './rendering/EnhancedNodeManager';
 import { EdgeManager } from './rendering/EdgeManager';
 import { HologramManager } from './rendering/HologramManager';
@@ -82,6 +82,22 @@ export class GraphVisualization {
 
 // Initialize the visualization
 const settings: Settings = {
+    render: {
+        ambientLightIntensity: 0.5,
+        directionalLightIntensity: 0.8,
+        environmentIntensity: 1,
+        backgroundColor: '#000000',
+        enableAmbientOcclusion: true,
+        enableAntialiasing: true,
+        enableShadows: true,
+        showGrid: true
+    },
+    controls: {
+        autoRotate: false,
+        rotateSpeed: 1.0,
+        zoomSpeed: 1.0,
+        panSpeed: 1.0
+    },
     visualization: {
         bloom: {
             enabled: false,
@@ -103,15 +119,6 @@ const settings: Settings = {
             enableBounds: true,
             boundsSize: 100
         },
-        rendering: {
-            ambientLightIntensity: 0.5,
-            directionalLightIntensity: 0.8,
-            environmentIntensity: 1,
-            backgroundColor: '#000000',
-            enableAmbientOcclusion: true,
-            enableAntialiasing: true,
-            enableShadows: true
-        },
         nodes: {
             color: '#ffffff',
             defaultSize: 1,
@@ -129,7 +136,12 @@ const settings: Settings = {
             roughness: 0.5,
             opacity: 1,
             colorRangeAge: ['#ff0000', '#00ff00'],
-            colorRangeLinks: ['#0000ff', '#ff00ff']
+            colorRangeLinks: ['#0000ff', '#ff00ff'],
+            material: {
+                type: 'phong',
+                transparent: false,
+                opacity: 1.0
+            }
         },
         edges: {
             color: '#666666',
@@ -143,14 +155,12 @@ const settings: Settings = {
             widthRange: [0.5, 3]
         },
         labels: {
+            enabled: true,
+            size: 14,
+            color: '#ffffff',
             enableLabels: true,
             desktopFontSize: 14,
-            textColor: '#ffffff',
-            textOutlineColor: '#000000',
-            textOutlineWidth: 2,
-            textResolution: 32,
-            textPadding: 2,
-            billboardMode: true
+            textColor: '#ffffff'
         },
         hologram: {
             color: '#00ff00',

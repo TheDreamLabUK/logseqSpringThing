@@ -9,6 +9,7 @@ export interface NodeMetadata {
         y: number;
         z: number;
     };
+    properties?: Record<string, any>;
 }
 
 export interface HologramSettings {

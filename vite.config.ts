@@ -1,8 +1,8 @@
-import { defineConfig } from 'vite';
+import { defineConfig, ConfigEnv } from 'vite';
 import { resolve } from 'path';
 
 // https://vitejs.dev/config/
-export default defineConfig(({ _command, mode }) => {
+export default defineConfig(({ mode }: ConfigEnv) => {
   const isProd = mode === 'production';
   const isQuest = process.env.npm_config_platform === 'quest';
 

@@ -1,11 +1,9 @@
 import { 
-    Color, 
     Matrix4, 
     Mesh, 
     PerspectiveCamera, 
     Scene, 
     Vector3, 
-    Material,
     MeshBasicMaterial,
     Quaternion,
     BufferGeometry
@@ -18,17 +16,15 @@ export class MetadataVisualizer {
     private readonly camera: PerspectiveCamera;
     private readonly scene: Scene;
     private readonly geometryFactory: GeometryFactory;
-    private readonly materialFactory: MaterialFactory;
-    private settings: VisualizationSettings;
     private nodes: Map<string, Mesh> = new Map();
     private nodeGeometry: BufferGeometry;
+    private readonly materialFactory: MaterialFactory;
 
     constructor(camera: PerspectiveCamera, scene: Scene, settings: VisualizationSettings) {
         this.camera = camera;
         this.scene = scene;
-        this.settings = settings;
         this.geometryFactory = GeometryFactory.getInstance();
-        this.materialFactory = MaterialFactory.getInstance(settings);
+        this.materialFactory = MaterialFactory.getInstance();
         this.nodeGeometry = this.geometryFactory.getNodeGeometry('medium');
     }
 
@@ -41,7 +37,7 @@ export class MetadataVisualizer {
         const mesh = new Mesh(this.nodeGeometry, material);
         
         mesh.position.copy(node.position);
-        mesh.scale.setScalar(node.size || this.settings.nodes.defaultSize);
+        mesh.scale.setScalar(node.size || 1.0);
         
         // Make the metadata mesh always face the camera
         this.updateMetadataOrientation(mesh);

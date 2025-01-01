@@ -1,9 +1,11 @@
 import * as THREE from 'three';
-import { HologramShaderMaterial } from '../rendering/materials/HologramShaderMaterial';
+import { HologramShaderMaterial, HologramShaderMaterialParameters } from '../rendering/materials/HologramShaderMaterial';
+import { Settings, HologramSettings } from '../types/settings';
 
 export class HologramManager {
     private readonly hologramGroup: THREE.Group;
-    private readonly settings: Settings;
+    private readonly hologramSettings: HologramSettings;
+    private readonly quality: string;
     private isXRMode: boolean = false;
 
     private readonly segments: { [key: string]: { ring: number; sphere: number } } = {
@@ -16,7 +18,8 @@ export class HologramManager {
         private readonly scene: THREE.Scene,
         settings: Settings
     ) {
-        this.settings = settings;
+        this.hologramSettings = settings.visualization.hologram;
+        this.quality = settings.visualization.nodes.quality;
         this.hologramGroup = new THREE.Group();
         this.scene.add(this.hologramGroup);
         this.initializeGeometries();
@@ -24,7 +27,7 @@ export class HologramManager {
     }
 
     private initializeGeometries(): void {
-        const quality = this.isXRMode ? 'high' : (this.settings.quality || 'medium');
+        const quality = this.isXRMode ? 'high' : this.quality;
         const segmentCount = this.segments[quality as keyof typeof this.segments] || this.segments.medium;
         
         // Create base geometries
@@ -32,7 +35,12 @@ export class HologramManager {
         const sphereGeometry = new THREE.SphereGeometry(1, segmentCount.sphere, segmentCount.sphere);
         
         // Create hologram material
-        const material = new HologramShaderMaterial(this.settings);
+        const materialParams: HologramShaderMaterialParameters = {
+            color: new THREE.Color(this.hologramSettings.color),
+            opacity: this.hologramSettings.opacity,
+            glowIntensity: this.hologramSettings.glowIntensity
+        };
+        const material = new HologramShaderMaterial(materialParams);
         
         // Add ring structures
         for (let i = 0; i < 3; i++) {
@@ -80,7 +88,7 @@ export class HologramManager {
     public handleHandInteraction(hand: THREE.XRHand): void {
         if (!this.isXRMode) return;
 
-        const indexTip = hand.joints['index-finger-tip'];
+        const indexTip = hand.joints.get('index-finger-tip');
         if (!indexTip) return;
 
         const position = new THREE.Vector3();
@@ -95,14 +103,14 @@ export class HologramManager {
             if (child instanceof THREE.Mesh && child.material instanceof HologramShaderMaterial) {
                 const distance = position.distanceTo(child.position);
                 if (distance < 0.1) {
-                    child.material.handleInteraction(position);
+                    child.material.handleInteraction(1.0 - distance * 10); // Convert distance to intensity
                 }
             }
         });
     }
 
-    public updateSettings(settings: Settings): void {
-        Object.assign(this.settings, settings);
+    public updateSettings(settings: HologramSettings): void {
+        Object.assign(this.hologramSettings, settings);
         this.createHolographicStructures();
     }
 
@@ -117,8 +125,4 @@ export class HologramManager {
         });
         this.scene.remove(this.hologramGroup);
     }
-}
-
-interface Settings {
-    quality?: string;
 }

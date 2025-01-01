@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Platform } from '../core/types';
-import { Group, Vector3 } from 'three';
+import { Vector3 } from 'three';
 
 // Core XR Types
 export type XRSessionMode = 'immersive-ar' | 'immersive-vr' | 'inline';

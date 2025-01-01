@@ -120,6 +120,9 @@ export interface LabelSettings {
     enabled: boolean;
     size: number;
     color: string;
+    enableLabels: boolean;
+    desktopFontSize: number;
+    textColor: string;
 }
 
 export interface NodeSettings {
@@ -142,11 +145,19 @@ export interface NodeSettings {
     enableHologram: boolean;
     enableInstancing: boolean;
     quality: 'low' | 'medium' | 'high';
-    material?: {
-        type?: 'basic' | 'phong';
-        transparent?: boolean;
-        opacity?: number;
+    material: {
+        type: 'basic' | 'phong';
+        transparent: boolean;
+        opacity: number;
     };
+}
+
+export interface NodeMeshUserData {
+    id: string;
+    type?: string;
+    properties?: Record<string, unknown>;
+    rotationSpeed?: number;
+    data?: any;
 }
 
 export interface PhysicsSettings {
@@ -170,6 +181,7 @@ export interface RenderingSettings {
     enableAmbientOcclusion: boolean;
     enableAntialiasing: boolean;
     enableShadows: boolean;
+    showGrid: boolean;
 }
 
 export interface NetworkSettings {

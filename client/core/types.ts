@@ -173,6 +173,11 @@ export interface NodeSettings {
     enableHologram: boolean;
     enableInstancing: boolean;
     quality: 'low' | 'medium' | 'high';
+    material: {
+        type: 'basic' | 'phong';
+        transparent: boolean;
+        opacity: number;
+    };
 }
 
 export interface EdgeSettings {

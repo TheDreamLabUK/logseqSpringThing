@@ -1,18 +1,15 @@
 import {
     Scene,
     InstancedMesh,
-    Matrix4,
-    Vector3,
     Mesh,
     Object3D,
     Quaternion,
     BufferGeometry,
     Material,
-    PerspectiveCamera,
-    MeshBasicMaterial,
-    MeshPhongMaterial
+    PerspectiveCamera
 } from 'three';
 import { NodeData, NodeMesh, VisualizationSettings } from '../core/types';
+import { NodeMeshUserData } from '../types/settings';
 import { MetadataVisualizer } from './MetadataVisualizer';
 import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
@@ -41,10 +38,10 @@ export class EnhancedNodeManager {
         this.camera = camera;
 
         this.geometryFactory = GeometryFactory.getInstance();
-        this.materialFactory = MaterialFactory.getInstance(settings);
+        this.materialFactory = MaterialFactory.getInstance();
         this.nodeGeometry = this.geometryFactory.getNodeGeometry('medium');
         
-        const materialType = this.settings.nodes.material?.type || 'phong';
+        const materialType = this.settings.nodes.material.type;
         this.nodeMaterial = this.materialFactory.createNodeMaterial(materialType);
 
         if (this.settings.hologram) {
@@ -100,7 +97,7 @@ export class EnhancedNodeManager {
             return;
         }
 
-        const materialType = this.settings.nodes.material?.type || 'phong';
+        const materialType = this.settings.nodes.material.type;
         const material = this.materialFactory.createNodeMaterial(materialType, node.color);
         
         const mesh = new Mesh(this.nodeGeometry, material) as NodeMesh;
@@ -110,14 +107,15 @@ export class EnhancedNodeManager {
         mesh.userData = {
             id: node.id,
             type: 'node',
+            properties: node.properties,
             data: node
-        };
+        } as NodeMeshUserData;
 
         this.nodes.set(node.id, mesh);
         this.scene.add(mesh);
 
         // Add metadata if enabled
-        if (this.settings.nodes.material?.transparent) {
+        if (this.settings.nodes.material.transparent) {
             this.metadataVisualizer.addNodeMetadata(node);
         }
     }

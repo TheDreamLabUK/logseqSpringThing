@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { MetadataVisualizer } from './MetadataVisualizer';
 import { HologramManager } from './HologramManager';
-import { NodeMetadata, HologramSettings } from '../types/metadata';
+import { NodeMetadata } from '../types/metadata';
 import { XRHand } from '../types/xr';
+import { Settings } from '../types/settings';
+import { MaterialFactory } from '../rendering/factories/MaterialFactory';
 
 export class VisualizationController {
     private readonly scene: THREE.Scene;
@@ -13,7 +15,7 @@ export class VisualizationController {
     private clock: THREE.Clock;
     private isXRSession: boolean = false;
 
-    constructor(container: HTMLElement, settings: any) {
+    constructor(container: HTMLElement, settings: Settings) {
         // Initialize Three.js basics
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -28,8 +30,9 @@ export class VisualizationController {
         container.appendChild(this.renderer.domElement);
 
         // Initialize managers
-        this.metadataVisualizer = new MetadataVisualizer(this.scene, this.camera, settings);
-        this.hologramManager = new HologramManager(this.scene, settings.hologram);
+        const materialFactory = MaterialFactory.getInstance();
+        this.metadataVisualizer = new MetadataVisualizer(this.scene, materialFactory, settings);
+        this.hologramManager = new HologramManager(this.scene, settings);
         this.clock = new THREE.Clock();
 
         // Set up XR session change handling
@@ -61,7 +64,22 @@ export class VisualizationController {
 
         // Create new nodes
         nodes.forEach(metadata => {
-            const nodeMesh = this.metadataVisualizer.createNodeVisual(metadata);
+            const nodeMesh = this.metadataVisualizer.createMetadata(
+                metadata.id,
+                {
+                    title: metadata.name,
+                    properties: metadata.properties || {
+                        'Age': `${metadata.commitAge} days`,
+                        'Links': metadata.hyperlinkCount,
+                        'Importance': Math.round(metadata.importance * 100) + '%'
+                    }
+                },
+                {
+                    position: new THREE.Vector3(metadata.position.x, metadata.position.y, metadata.position.z),
+                    color: 0xffffff,
+                    opacity: 0.8
+                }
+            );
             nodeMesh.userData.isNode = true;
             nodeMesh.position.set(
                 metadata.position.x,
@@ -72,8 +90,8 @@ export class VisualizationController {
         });
     }
 
-    public updateHologramSettings(settings: Partial<HologramSettings>): void {
-        this.hologramManager.updateSettings(settings);
+    public updateHologramSettings(settings: Settings): void {
+        this.hologramManager.updateSettings(settings.visualization.hologram);
     }
 
     public handleHandInput(hand: XRHand): void {

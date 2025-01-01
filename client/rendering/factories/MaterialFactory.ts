@@ -17,58 +17,60 @@ export class MaterialFactory {
         return MaterialFactory.instance;
     }
 
-    public createNodeMaterial(settings: MaterialSettings): THREE.Material {
-        const cacheKey = this.createCacheKey(settings);
-        if (this.materialCache.has(cacheKey)) {
-            return this.materialCache.get(cacheKey)!;
-        }
+    public createNodeMaterial(settingsOrType: MaterialSettings | string, color?: THREE.Color): THREE.Material {
+        if (typeof settingsOrType === 'string') {
+            const type = settingsOrType;
+            const key = `node-${type}-${color?.getHexString() || 'default'}`;
+            if (this.materialCache.has(key)) {
+                return this.materialCache.get(key)!;
+            }
 
-        let material: THREE.Material;
+            let material: THREE.Material;
+            switch (type) {
+                case 'basic':
+                    material = new THREE.MeshBasicMaterial({ color });
+                    break;
+                case 'phong':
+                    material = new THREE.MeshPhongMaterial({ color });
+                    break;
+                default:
+                    material = new THREE.MeshBasicMaterial({ color });
+            }
 
-        if (settings.type === 'phong') {
-            material = new THREE.MeshPhongMaterial();
-            if (settings.color) material.color = settings.color;
-            if (settings.transparent !== undefined) material.transparent = settings.transparent;
-            if (settings.opacity !== undefined) material.opacity = settings.opacity;
-            if (settings.side !== undefined) material.side = settings.side;
-        } else if (settings.type === 'hologram') {
-            material = new HologramShaderMaterial({
-                color: settings.color,
-                opacity: settings.opacity,
-                glowIntensity: settings.glowIntensity
-            });
+            this.materialCache.set(key, material);
+            return material;
         } else {
-            material = new THREE.MeshBasicMaterial();
-            if (settings.color) material.color = settings.color;
-            if (settings.transparent !== undefined) material.transparent = settings.transparent;
-            if (settings.opacity !== undefined) material.opacity = settings.opacity;
-            if (settings.side !== undefined) material.side = settings.side;
-        }
+            const settings = settingsOrType;
+            const cacheKey = this.createCacheKey(settings);
+            if (this.materialCache.has(cacheKey)) {
+                return this.materialCache.get(cacheKey)!;
+            }
 
-        this.materialCache.set(cacheKey, material);
-        return material;
-    }
+            let material: THREE.Material;
 
-    public createNodeMaterial(type: string): THREE.Material {
-        const key = `node-${type}`;
-        if (this.materialCache.has(key)) {
-            return this.materialCache.get(key)!;
-        }
-
-        let material: THREE.Material;
-        switch (type) {
-            case 'basic':
-                material = new THREE.MeshBasicMaterial();
-                break;
-            case 'phong':
+            if (settings.type === 'phong') {
                 material = new THREE.MeshPhongMaterial();
-                break;
-            default:
+                if (settings.color) material.color = settings.color;
+                if (settings.transparent !== undefined) material.transparent = settings.transparent;
+                if (settings.opacity !== undefined) material.opacity = settings.opacity;
+                if (settings.side !== undefined) material.side = settings.side;
+            } else if (settings.type === 'hologram') {
+                material = new HologramShaderMaterial({
+                    color: settings.color,
+                    opacity: settings.opacity,
+                    glowIntensity: settings.glowIntensity
+                });
+            } else {
                 material = new THREE.MeshBasicMaterial();
-        }
+                if (settings.color) material.color = settings.color;
+                if (settings.transparent !== undefined) material.transparent = settings.transparent;
+                if (settings.opacity !== undefined) material.opacity = settings.opacity;
+                if (settings.side !== undefined) material.side = settings.side;
+            }
 
-        this.materialCache.set(key, material);
-        return material;
+            this.materialCache.set(cacheKey, material);
+            return material;
+        }
     }
 
     public createHologramMaterial(): HologramShaderMaterial {

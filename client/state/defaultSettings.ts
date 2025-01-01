@@ -1,5 +1,5 @@
 import { Settings, VisualizationSettings } from '../types/settings';
-import { NODE_COLOR, NODE_SIZE, EDGE_RADIUS, LABEL_COLOR } from '../core/constants';
+import { LABEL_COLOR } from '../core/constants';
 
 // Helper function to convert number to hex color
 function toHexColor(num: number): string {
@@ -60,14 +60,12 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         globalRotationSpeed: 0.2
     },
     labels: {
+        enabled: true,
+        size: 1,
+        color: toHexColor(LABEL_COLOR),
         enableLabels: true,
-        textColor: toHexColor(LABEL_COLOR),
-        textOutlineColor: '#000000',
-        textOutlineWidth: 0.1,
-        textResolution: 512,
-        textPadding: 16,
         desktopFontSize: 48,
-        billboardMode: true
+        textColor: toHexColor(LABEL_COLOR)
     },
     nodes: {
         color: '#ffffff',
@@ -86,7 +84,12 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         enableMetadataVisualization: true,
         enableHologram: true,
         enableInstancing: true,
-        quality: 'medium'
+        quality: 'medium',
+        material: {
+            type: 'phong',
+            transparent: false,
+            opacity: 1.0
+        }
     },
     physics: {
         enabled: true,
@@ -100,20 +103,27 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         enableBounds: true,
         boundsSize: 100
     },
-    rendering: {
+};
+
+// Main settings object with all defaults
+export const defaultSettings: Settings = {
+    visualization: defaultVisualizationSettings,
+    render: {
         ambientLightIntensity: 0.5,
         directionalLightIntensity: 0.8,
         environmentIntensity: 1,
         backgroundColor: '#000000',
         enableAmbientOcclusion: true,
         enableAntialiasing: true,
-        enableShadows: true
-    }
-};
-
-// Main settings object with all defaults
-export const defaultSettings: Settings = {
-    visualization: defaultVisualizationSettings,
+        enableShadows: true,
+        showGrid: true
+    },
+    controls: {
+        autoRotate: false,
+        rotateSpeed: 1.0,
+        zoomSpeed: 1.0,
+        panSpeed: 1.0
+    },
     xr: {
         mode: 'ar',
         roomScale: true,
