@@ -209,8 +209,8 @@ start_containers() {
     info "Starting containers..."
     
     # Ensure we're using the correct UID/GID
-    export UID=$(id -u)
-    export GID=$(id -g)
+    export DOCKER_UID=$(id -u)
+    export DOCKER_GID=$(id -g)
     
     $DOCKER_COMPOSE up -d || {
         error "Failed to start containers"
