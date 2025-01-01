@@ -1,132 +1,107 @@
 import * as THREE from 'three';
-import {
-    Scene,
-    Vector3,
-    Color,
-    createBufferAttribute,
-    Object3D
-} from '../core/threeTypes';
-import { MaterialFactory } from './factories/MaterialFactory';
-import { EdgeData } from '../core/types';
+import { Scene } from 'three';
 import { Settings } from '../types/settings';
+import { Edge } from '../core/types';
+import { createLogger } from '../core/logger';
 
-type EdgeObject = THREE.Line & {
-    material: THREE.LineBasicMaterial;
-    geometry: THREE.BufferGeometry;
-};
+const logger = createLogger('EdgeManager');
 
 export class EdgeManager {
-    private edges: Map<string, EdgeObject> = new Map();
-    private readonly scene: Scene;
-    private readonly settings: Settings;
+    private edges = new Map<string, THREE.Line>();
+    private scene: Scene;
+    private settings: Settings;
 
     constructor(scene: Scene, settings: Settings) {
         this.scene = scene;
         this.settings = settings;
     }
 
-    public createEdge(
-        id: string,
-        source: Vector3,
-        target: Vector3,
-        color?: Color
-    ): void {
-        // Create geometry
-        const geometry = new THREE.BufferGeometry();
-        const vertices = new Float32Array([
-            source.x, source.y, source.z,
-            target.x, target.y, target.z
-        ]);
-        geometry.setAttribute('position', createBufferAttribute(vertices, 3));
+    addEdge(edge: Edge): void {
+        const key = `${edge.source}-${edge.target}`;
+        if (this.edges.has(key)) {
+            return;
+        }
 
-        // Create material
+        const positions = new Float32Array(6); // 2 points * 3 coordinates
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
         const material = new THREE.LineBasicMaterial({
-            color: color,
+            color: this.settings.visualization.edges.color,
             transparent: true,
             opacity: 0.6
         });
 
-        // Create line
-        const line = new THREE.Line(geometry);
-        line.material = material;
-        line.userData = { id };
-
-        // Store and add to scene
-        this.edges.set(id, line as EdgeObject);
-        this.scene.add(line as unknown as Object3D);
+        const line = new THREE.Line(geometry, material);
+        this.edges.set(key, line);
+        this.scene.add(line);
     }
 
-    public updateEdge(
-        id: string,
-        source: Vector3,
-        target: Vector3,
-        color?: Color
-    ): void {
-        const edge = this.edges.get(id);
-        if (!edge) return;
-
-        // Update geometry
-        const vertices = new Float32Array([
-            source.x, source.y, source.z,
-            target.x, target.y, target.z
-        ]);
-        edge.geometry.setAttribute('position', createBufferAttribute(vertices, 3));
-        edge.geometry.attributes.position.needsUpdate = true;
-
-        // Update material
-        if (color) {
-            edge.material.color.copy(color);
-            edge.material.needsUpdate = true;
+    removeEdge(edge: Edge): void {
+        const key = `${edge.source}-${edge.target}`;
+        const line = this.edges.get(key);
+        if (line) {
+            this.scene.remove(line);
+            if (line.geometry) {
+                line.geometry.dispose();
+            }
+            if (line.material) {
+                if (Array.isArray(line.material)) {
+                    line.material.forEach(m => m.dispose());
+                } else {
+                    line.material.dispose();
+                }
+            }
+            this.edges.delete(key);
         }
     }
 
-    public removeEdge(id: string): void {
-        const edge = this.edges.get(id);
-        if (!edge) return;
+    updateEdgePosition(edge: Edge, sourcePos: THREE.Vector3, targetPos: THREE.Vector3): void {
+        const key = `${edge.source}-${edge.target}`;
+        const line = this.edges.get(key);
+        if (!line || !line.geometry) return;
 
-        edge.geometry.dispose();
-        edge.material.dispose();
+        const positions = new Float32Array([
+            sourcePos.x, sourcePos.y, sourcePos.z,
+            targetPos.x, targetPos.y, targetPos.z
+        ]);
 
-        this.scene.remove(edge as unknown as Object3D);
-        this.edges.delete(id);
+        (line.geometry.getAttribute('position') as THREE.BufferAttribute).set(positions);
+        line.geometry.getAttribute('position').needsUpdate = true;
+        line.geometry.computeBoundingSphere();
     }
 
-    public getEdge(id: string): EdgeObject | undefined {
-        return this.edges.get(id);
+    handleSettingsUpdate(settings: Settings): void {
+        this.settings = settings;
+        this.edges.forEach(line => {
+            if (line.material) {
+                if (Array.isArray(line.material)) {
+                    line.material.forEach(m => {
+                        if (m instanceof THREE.LineBasicMaterial) {
+                            m.color.set(settings.visualization.edges.color);
+                        }
+                    });
+                } else if (line.material instanceof THREE.LineBasicMaterial) {
+                    line.material.color.set(settings.visualization.edges.color);
+                }
+            }
+        });
     }
 
-    public clear(): void {
-        this.edges.forEach(edge => {
-            edge.geometry.dispose();
-            edge.material.dispose();
-            this.scene.remove(edge as unknown as Object3D);
+    dispose(): void {
+        this.edges.forEach(line => {
+            this.scene.remove(line);
+            if (line.geometry) {
+                line.geometry.dispose();
+            }
+            if (line.material) {
+                if (Array.isArray(line.material)) {
+                    line.material.forEach(m => m.dispose());
+                } else {
+                    line.material.dispose();
+                }
+            }
         });
         this.edges.clear();
-    }
-
-    public updateEdgeVisibility(visible: boolean): void {
-        this.edges.forEach(edge => {
-            edge.visible = visible;
-        });
-    }
-
-    public updateEdgeOpacity(opacity: number): void {
-        this.edges.forEach(edge => {
-            edge.material.opacity = opacity;
-            edge.material.needsUpdate = true;
-        });
-    }
-
-    public getEdgesByData(data: Partial<EdgeData>): EdgeObject[] {
-        return Array.from(this.edges.values()).filter(edge => {
-            const userData = edge.userData as EdgeData;
-            return Object.entries(data).every(([key, value]) => {
-                return key in userData && userData[key as keyof EdgeData] === value;
-            });
-        });
-    }
-
-    public dispose(): void {
-        this.clear();
     }
 }

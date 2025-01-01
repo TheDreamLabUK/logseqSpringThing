@@ -3,7 +3,6 @@ import { Settings } from '../types/settings';
 
 export class LoggerImpl implements Logger {
     private static instance: LoggerImpl;
-    private static settings: Settings;
     private namespace: string;
     private level: LogLevel;
     private jsonFormatting: boolean;
@@ -22,7 +21,6 @@ export class LoggerImpl implements Logger {
     }
 
     public static setSettings(settings: Settings): void {
-        LoggerImpl.settings = settings;
         const instance = LoggerImpl.getInstance();
         if (settings?.system?.debug) {
             instance.setLevel(settings.system.debug.logLevel as LogLevel);

@@ -37,7 +37,7 @@ export type MaterialParameters = THREE.MaterialParameters;
 export type MeshBasicMaterialParameters = THREE.MeshBasicMaterialParameters;
 export type MeshPhongMaterialParameters = THREE.MeshPhongMaterialParameters;
 export type MeshStandardMaterialParameters = THREE.MeshStandardMaterialParameters;
-export type Side = typeof THREE.DoubleSide | typeof THREE.FrontSide | typeof THREE.BackSide;
+export type Side = THREE.Side;
 
 // Export constants and classes
 export const DoubleSide = THREE.DoubleSide;
@@ -46,44 +46,44 @@ export const Quaternion = THREE.Quaternion;
 export const Matrix4 = THREE.Matrix4;
 
 // Factory functions with proper type handling
-export function createLine(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.Line {
-    return new THREE.Line(geometry as any, material as any);
+export function createLine(geometry: THREE.BufferGeometry, material: THREE.LineBasicMaterial): THREE.Line {
+    // Workaround for Three.js 0.171.0 constructor type issues
+    const line = new THREE.Line();
+    (line as any).geometry = geometry;
+    (line as any).material = material;
+    return line;
 }
 
-export function createMeshBasicMaterial(params?: THREE.MeshBasicMaterialParameters): THREE.MeshBasicMaterial {
+export function createMeshBasicMaterial(params: THREE.MeshBasicMaterialParameters = {}): THREE.MeshBasicMaterial {
+    // Workaround for Three.js 0.171.0 constructor type issues
     const material = new THREE.MeshBasicMaterial();
-    if (params) {
-        Object.assign(material, params);
-    }
-    return material;
+    return Object.assign(material, params);
 }
 
-export function createMeshPhongMaterial(params?: THREE.MeshPhongMaterialParameters): THREE.MeshPhongMaterial {
+export function createMeshPhongMaterial(params: THREE.MeshPhongMaterialParameters = {}): THREE.MeshPhongMaterial {
+    // Workaround for Three.js 0.171.0 constructor type issues
     const material = new THREE.MeshPhongMaterial();
-    if (params) {
-        Object.assign(material, params);
-    }
-    return material;
+    return Object.assign(material, params);
 }
 
-export function createMeshStandardMaterial(params?: THREE.MeshStandardMaterialParameters): THREE.MeshStandardMaterial {
+export function createMeshStandardMaterial(params: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial {
+    // Workaround for Three.js 0.171.0 constructor type issues
     const material = new THREE.MeshStandardMaterial();
-    if (params) {
-        Object.assign(material, params);
-    }
-    return material;
+    return Object.assign(material, params);
 }
 
-export function createLineBasicMaterial(params?: THREE.LineBasicMaterialParameters): THREE.LineBasicMaterial {
+export function createLineBasicMaterial(params: THREE.LineBasicMaterialParameters = {}): THREE.LineBasicMaterial {
+    // Workaround for Three.js 0.171.0 constructor type issues
     const material = new THREE.LineBasicMaterial();
-    if (params) {
-        Object.assign(material, params);
-    }
-    return material;
+    return Object.assign(material, params);
 }
 
 export function createMesh(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.Mesh {
-    return new THREE.Mesh(geometry as any, material as any);
+    // Workaround for Three.js 0.171.0 constructor type issues
+    const mesh = new THREE.Mesh();
+    (mesh as any).geometry = geometry;
+    (mesh as any).material = material;
+    return mesh;
 }
 
 export function createBufferAttribute(array: Float32Array | number[], itemSize: number): THREE.BufferAttribute {

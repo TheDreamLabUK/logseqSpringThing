@@ -1,19 +1,24 @@
 import {
+    Scene,
+    Camera,
+    WebGLRenderer,
+    Object3D,
     Vector3,
     Color,
-    Scene,
-    PerspectiveCamera as ThreePerspectiveCamera,
-    WebGLRenderer,
-    IUniform,
-    Side,
-    ShaderMaterial,
-    Camera as ThreeCamera
+    PerspectiveCamera
 } from 'three';
 import * as THREE from 'three';
 
 // Re-export Three.js types with our own names to avoid conflicts
-export type PerspectiveCamera = ThreePerspectiveCamera;
-export type Camera = ThreeCamera;
+export {
+    Scene,
+    Camera,
+    WebGLRenderer,
+    Object3D,
+    Vector3,
+    Color,
+    PerspectiveCamera
+};
 
 // Core types for the application
 export interface Node {
@@ -24,6 +29,10 @@ export interface Node {
     size?: number;
     group?: string;
     properties: Record<string, unknown>;
+    data?: {
+        position: { x: number; y: number; z: number };
+        type?: string;
+    };
 }
 
 export interface Edge {
@@ -121,4 +130,105 @@ export interface Logger {
     setLevel(level: LogLevel): void;
     getLevel(): LogLevel;
     setJsonFormatting(enabled: boolean): void;
+}
+
+// Node types
+export interface NodeData {
+    id: string;
+    label: string;
+    position: Vector3;
+    color?: Color;
+    size?: number;
+    type?: string;
+    properties: Record<string, unknown>;
+}
+
+export interface NodeMesh extends THREE.Mesh {
+    userData: {
+        id: string;
+        type?: string;
+        properties?: Record<string, unknown>;
+        rotationSpeed?: number;
+    };
+}
+
+// Visualization settings
+export interface NodeSettings {
+    color: string;
+    defaultSize: number;
+    minSize: number;
+    maxSize: number;
+    sizeProperty?: string;
+    colorProperty?: string;
+    baseColor: string;
+    baseSize: number;
+    sizeRange: [number, number];
+    enableMetadataShape: boolean;
+    colorRangeAge: [string, string];
+    colorRangeLinks: [string, string];
+    metalness: number;
+    roughness: number;
+    opacity: number;
+    enableMetadataVisualization: boolean;
+    enableHologram: boolean;
+    enableInstancing: boolean;
+    quality: 'low' | 'medium' | 'high';
+}
+
+export interface EdgeSettings {
+    color: string;
+    defaultWidth: number;
+    minWidth: number;
+    maxWidth: number;
+    widthProperty?: string;
+    colorProperty?: string;
+    arrowSize: number;
+    baseWidth: number;
+    enableArrows: boolean;
+    opacity: number;
+    widthRange: [number, number];
+}
+
+export interface HologramSettings {
+    color: string;
+    opacity: number;
+    glowIntensity: number;
+    rotationSpeed: number;
+    enabled: boolean;
+    ringCount: number;
+    ringColor: string;
+    ringOpacity: number;
+    ringSizes: [number, number, number];
+    ringRotationSpeed: number;
+    enableBuckminster: boolean;
+    buckminsterScale: number;
+    buckminsterOpacity: number;
+    enableGeodesic: boolean;
+    geodesicScale: number;
+    geodesicOpacity: number;
+    enableTriangleSphere: boolean;
+    triangleSphereScale: number;
+    triangleSphereOpacity: number;
+    globalRotationSpeed: number;
+}
+
+export interface VisualizationSettings {
+    nodes: NodeSettings;
+    edges: EdgeSettings;
+    hologram: HologramSettings;
+    labels?: {
+        enabled: boolean;
+        size: number;
+        color: string;
+    };
+    render?: {
+        showGrid: boolean;
+        backgroundColor: string;
+    };
+    controls?: {
+        autoRotate: boolean;
+        rotateSpeed: number;
+        zoomSpeed: number;
+        panSpeed: number;
+    };
 }

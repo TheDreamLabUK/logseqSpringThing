@@ -3,6 +3,10 @@ export interface VisualizationSettings {
     nodes: NodeSettings;
     edges: EdgeSettings;
     hologram: HologramSettings;
+    labels: LabelSettings;
+    animations: AnimationSettings;
+    physics: PhysicsSettings;
+    bloom: BloomSettings;
 }
 
 // XR-specific settings
@@ -113,14 +117,9 @@ export interface HologramSettings {
 }
 
 export interface LabelSettings {
-    enableLabels: boolean;
-    desktopFontSize: number;
-    textColor: string;
-    textOutlineColor: string;
-    textOutlineWidth: number;
-    textResolution: number;
-    textPadding: number;
-    billboardMode: boolean;
+    enabled: boolean;
+    size: number;
+    color: string;
 }
 
 export interface NodeSettings {
@@ -143,6 +142,11 @@ export interface NodeSettings {
     enableHologram: boolean;
     enableInstancing: boolean;
     quality: 'low' | 'medium' | 'high';
+    material?: {
+        type?: 'basic' | 'phong';
+        transparent?: boolean;
+        opacity?: number;
+    };
 }
 
 export interface PhysicsSettings {
@@ -220,6 +224,13 @@ export interface Settings {
     visualization: VisualizationSettings;
     xr: XRSettings;
     system: SystemSettings;
+    render: RenderingSettings;
+    controls: {
+        autoRotate: boolean;
+        rotateSpeed: number;
+        zoomSpeed: number;
+        panSpeed: number;
+    };
 }
 
 export * from './settings/base';

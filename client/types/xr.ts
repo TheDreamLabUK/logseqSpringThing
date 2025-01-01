@@ -1,19 +1,93 @@
 import * as THREE from 'three';
 import { Platform } from '../core/types';
+import { Group, Vector3 } from 'three';
 
 // Core XR Types
-export type XRSessionMode = 'inline' | 'immersive-vr' | 'immersive-ar';
+export type XRSessionMode = 'immersive-ar' | 'immersive-vr' | 'inline';
 export type XRHandedness = 'none' | 'left' | 'right';
-export type XRHand = THREE.XRHand;
 
-export interface XRSessionConfig {
-    mode: XRSessionMode;
-    features: {
-        required?: string[];
-        optional?: string[];
-    };
-    spaceType: XRReferenceSpaceType;
+export interface XRSystem {
+    isSessionSupported(mode: XRSessionMode): Promise<boolean>;
+    requestSession(mode: XRSessionMode, options?: XRSessionInit): Promise<XRSession>;
 }
+
+export interface XRHand extends Group {
+    joints: Map<string, XRJointSpace>;
+}
+
+export interface XRJointSpace {
+    position: Vector3;
+    quaternion: THREE.Quaternion;
+    radius: number;
+}
+
+export interface XRLightEstimate {
+    primaryLightDirection: Vector3;
+    primaryLightIntensity: number;
+    sphericalHarmonicsCoefficients: Float32Array;
+}
+
+declare global {
+    interface Navigator {
+        xr?: XRSystem;
+    }
+}
+
+export interface XRSessionInit {
+    optionalFeatures?: string[];
+    requiredFeatures?: string[];
+}
+
+export interface XRSession {
+    addEventListener(type: string, listener: EventListener): void;
+    removeEventListener(type: string, listener: EventListener): void;
+    requestReferenceSpace(type: XRReferenceSpaceType): Promise<XRReferenceSpace>;
+    updateRenderState(renderState: XRRenderState): Promise<void>;
+    requestAnimationFrame(callback: XRFrameRequestCallback): number;
+    end(): Promise<void>;
+}
+
+export type XRReferenceSpaceType = 'local' | 'local-floor' | 'bounded-floor' | 'unbounded';
+
+export interface XRRenderState {
+    baseLayer?: XRWebGLLayer;
+    depthFar?: number;
+    depthNear?: number;
+    inlineVerticalFieldOfView?: number;
+}
+
+export interface XRWebGLLayer {
+    framebuffer: WebGLFramebuffer;
+    framebufferWidth: number;
+    framebufferHeight: number;
+}
+
+export type XRFrameRequestCallback = (time: number, frame: XRFrame) => void;
+
+export interface XRFrame {
+    session: XRSession;
+    getViewerPose(referenceSpace: XRReferenceSpace): XRViewerPose | null;
+    getLightEstimate?(): XRLightEstimate | null;
+}
+
+export interface XRViewerPose {
+    transform: XRRigidTransform;
+    views: XRView[];
+}
+
+export interface XRRigidTransform {
+    position: Vector3;
+    orientation: THREE.Quaternion;
+    matrix: THREE.Matrix4;
+}
+
+export interface XRView {
+    eye: XREye;
+    projectionMatrix: Float32Array;
+    transform: XRRigidTransform;
+}
+
+export type XREye = 'left' | 'right' | 'none';
 
 // Input and Interaction Types
 export interface HapticActuator {
@@ -21,6 +95,11 @@ export interface HapticActuator {
 }
 
 export interface WorldObject3D extends THREE.Object3D {
+    position: THREE.Vector3;
+    quaternion: THREE.Quaternion;
+    scale: THREE.Vector3;
+    matrix: THREE.Matrix4;
+    matrixWorld: THREE.Matrix4;
     getWorldPosition(target: THREE.Vector3): THREE.Vector3;
 }
 
@@ -31,15 +110,9 @@ export interface XRControllerState {
     platform: Platform;
 }
 
-export interface XRHandJointState {
-    position: THREE.Vector3;
-    rotation: THREE.Quaternion;
-    radius?: number;
-}
-
 export interface XRHandState {
     position: THREE.Vector3;
-    joints: Map<XRHandJoint, XRHandJointState>;
+    joints: Map<string, XRJointSpace>;
     pinchStrength: number;
     gripStrength: number;
     platform: Platform;
@@ -49,7 +122,7 @@ export interface XRHandWithHaptics extends THREE.Group {
     hapticActuators?: HapticActuator[];
     hand: {
         joints: {
-            [key in XRHandJoint]?: WorldObject3D;
+            [key: string]?: WorldObject3D;
         };
     };
     pinchStrength: number;
@@ -58,6 +131,14 @@ export interface XRHandWithHaptics extends THREE.Group {
         hapticActuator?: HapticActuator;
         platform: Platform;
     };
+}
+
+export interface XRHandController {
+    hapticActuators?: HapticActuator[];
+    hand: {
+        joints: Record<string, WorldObject3D>;
+    };
+    pinchStrength: number;
 }
 
 // Input Configuration

@@ -1,11 +1,11 @@
-import { Scene, PerspectiveCamera, WebGLRenderer } from 'three';
-import { Settings } from './types/settings';
+import { Scene, PerspectiveCamera, WebGLRenderer, Camera } from 'three';
+import { Settings, VisualizationSettings } from './types/settings';
 import { EnhancedNodeManager } from './rendering/EnhancedNodeManager';
 import { EdgeManager } from './rendering/EdgeManager';
 import { HologramManager } from './rendering/HologramManager';
 import { TextRenderer } from './rendering/textRenderer';
 import { WebSocketService } from './websocket/websocketService';
-import { LoggerImpl } from './logging/loggerImpl'; // Assuming LoggerImpl is defined in this file
+import { LoggerImpl } from './core/logger';
 
 export class GraphVisualization {
     private scene: Scene;
@@ -16,46 +16,58 @@ export class GraphVisualization {
     private hologramManager: HologramManager;
     private textRenderer: TextRenderer;
     private websocketService: WebSocketService;
+    private settings: Settings;
+
     constructor(settings: Settings) {
+        this.settings = settings;
         // Initialize logger settings first
         LoggerImpl.setSettings(settings);
-        
+
+        // Initialize scene
         this.scene = new Scene();
         this.camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.renderer = new WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(this.renderer.domElement);
 
-        this.nodeManager = new EnhancedNodeManager(this.scene, settings);
+        // Initialize managers with visualization settings
+        this.nodeManager = new EnhancedNodeManager(
+            this.scene,
+            settings.visualization,
+            this.camera
+        );
         this.edgeManager = new EdgeManager(this.scene, settings);
         this.hologramManager = new HologramManager(this.scene, this.renderer, settings);
-        this.textRenderer = new TextRenderer(this.camera);
+        this.textRenderer = new TextRenderer(this.camera as Camera);
         this.websocketService = WebSocketService.getInstance();
 
-        this.setupEventListeners();
+        // Start animation loop
         this.animate();
     }
 
-    private setupEventListeners() {
-        window.addEventListener('resize', () => {
-            this.camera.aspect = window.innerWidth / window.innerHeight;
-            this.camera.updateProjectionMatrix();
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-    }
-
     private animate() {
-        requestAnimationFrame(() => this.animate());
-        this.nodeManager.update(0.016);
-        this.hologramManager.update(0.016);
+        requestAnimationFrame(this.animate.bind(this));
+
+        // Update managers
+        const deltaTime = 0.016; // Approximately 60fps
+        this.nodeManager.updateNodePositions([]);
+        this.hologramManager.update(deltaTime);
+
+        // Render
         this.renderer.render(this.scene, this.camera);
     }
 
     public handleSettingsUpdate(settings: Settings) {
-        this.nodeManager.handleSettingsUpdate(settings);
+        this.settings = settings;
+        this.nodeManager.updateSettings(settings.visualization);
         this.edgeManager.handleSettingsUpdate(settings);
         this.hologramManager.updateSettings(settings);
-        this.textRenderer.handleSettingsUpdate(settings.visualization.labels);
+        const labelSettings = settings.visualization.labels || {
+            enabled: false,
+            size: 12,
+            color: '#ffffff'
+        };
+        this.textRenderer.handleSettingsUpdate(labelSettings);
     }
 
     public dispose() {
@@ -101,6 +113,10 @@ const settings: Settings = {
             enableShadows: true
         },
         nodes: {
+            color: '#ffffff',
+            defaultSize: 1,
+            minSize: 0.5,
+            maxSize: 2,
             quality: 'medium',
             enableInstancing: true,
             enableHologram: true,
@@ -109,19 +125,22 @@ const settings: Settings = {
             baseSize: 1,
             sizeRange: [0.5, 2],
             baseColor: '#ffffff',
-            opacity: 0.8,
-            colorRangeAge: ['#ff0000', '#00ff00'],
-            colorRangeLinks: ['#0000ff', '#ff00ff'],
             metalness: 0.5,
-            roughness: 0.5
+            roughness: 0.5,
+            opacity: 1,
+            colorRangeAge: ['#ff0000', '#00ff00'],
+            colorRangeLinks: ['#0000ff', '#ff00ff']
         },
         edges: {
-            color: '#888888',
-            opacity: 0.6,
+            color: '#666666',
+            defaultWidth: 1,
+            minWidth: 0.5,
+            maxWidth: 3,
             arrowSize: 0.2,
-            baseWidth: 0.1,
+            baseWidth: 1,
             enableArrows: false,
-            widthRange: [0.1, 0.3]
+            opacity: 0.8,
+            widthRange: [0.5, 3]
         },
         labels: {
             enableLabels: true,
@@ -134,21 +153,26 @@ const settings: Settings = {
             billboardMode: true
         },
         hologram: {
+            color: '#00ff00',
+            opacity: 0.5,
+            glowIntensity: 0.8,
+            rotationSpeed: 0.5,
+            enabled: true,
             ringCount: 3,
-            ringSizes: [20, 15, 10],
-            ringRotationSpeed: 0.1,
-            globalRotationSpeed: 0.05,
-            ringColor: '#00ffff',
+            ringColor: '#00ff00',
             ringOpacity: 0.5,
+            ringSizes: [1, 1.5, 2],
+            ringRotationSpeed: 0.5,
             enableBuckminster: false,
-            buckminsterScale: 30,
-            buckminsterOpacity: 0.3,
-            enableGeodesic: false,
-            geodesicScale: 25,
-            geodesicOpacity: 0.3,
-            enableTriangleSphere: false,
-            triangleSphereScale: 20,
-            triangleSphereOpacity: 0.3
+            buckminsterScale: 1,
+            buckminsterOpacity: 0.5,
+            enableGeodesic: true,
+            geodesicScale: 1,
+            geodesicOpacity: 0.5,
+            enableTriangleSphere: true,
+            triangleSphereScale: 1,
+            triangleSphereOpacity: 0.5,
+            globalRotationSpeed: 0.2
         },
         animations: {
             enableNodeAnimations: false,
@@ -230,7 +254,8 @@ const settings: Settings = {
             enableDataDebug: true,
             enableWebsocketDebug: true,
             logBinaryHeaders: true,
-            logFullJson: true
+            logFullJson: true,
+            logLevel: 'debug'
         }
     }
 };

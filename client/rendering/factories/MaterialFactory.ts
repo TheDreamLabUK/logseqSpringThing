@@ -4,18 +4,20 @@ import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
 
 export class MaterialFactory {
     private static instance: MaterialFactory;
-    private materialCache = new Map<string, THREE.Material>();
+    private materialCache: Map<string, THREE.Material>;
 
-    private constructor() {}
+    private constructor() {
+        this.materialCache = new Map();
+    }
 
-    static getInstance(): MaterialFactory {
+    public static getInstance(): MaterialFactory {
         if (!MaterialFactory.instance) {
             MaterialFactory.instance = new MaterialFactory();
         }
         return MaterialFactory.instance;
     }
 
-    createNodeMaterial(settings: MaterialSettings): THREE.Material {
+    public createNodeMaterial(settings: MaterialSettings): THREE.Material {
         const cacheKey = this.createCacheKey(settings);
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey)!;
@@ -47,31 +49,61 @@ export class MaterialFactory {
         return material;
     }
 
-    createHologramMaterial(): HologramShaderMaterial {
+    public createNodeMaterial(type: string): THREE.Material {
+        const key = `node-${type}`;
+        if (this.materialCache.has(key)) {
+            return this.materialCache.get(key)!;
+        }
+
+        let material: THREE.Material;
+        switch (type) {
+            case 'basic':
+                material = new THREE.MeshBasicMaterial();
+                break;
+            case 'phong':
+                material = new THREE.MeshPhongMaterial();
+                break;
+            default:
+                material = new THREE.MeshBasicMaterial();
+        }
+
+        this.materialCache.set(key, material);
+        return material;
+    }
+
+    public createHologramMaterial(): HologramShaderMaterial {
         return new HologramShaderMaterial();
     }
 
-    getMetadataMaterial(color: THREE.Color): THREE.Material {
-        const cacheKey = `metadata_${color.getHexString()}`;
-        if (this.materialCache.has(cacheKey)) {
-            return this.materialCache.get(cacheKey)!;
+    public getMetadataMaterial(color: THREE.Color): THREE.Material {
+        const key = `metadata-${color.getHexString()}`;
+        if (this.materialCache.has(key)) {
+            return this.materialCache.get(key)!;
         }
 
-        const material = new THREE.MeshBasicMaterial();
-        material.color = color;
-        material.transparent = true;
-        material.opacity = 0.8;
-        material.side = THREE.DoubleSide;
-
-        this.materialCache.set(cacheKey, material);
+        const material = new THREE.MeshBasicMaterial({ color });
+        this.materialCache.set(key, material);
         return material;
+    }
+
+    public updateMaterial(type: string, settings: any): void {
+        const material = this.materialCache.get(`node-${type}`);
+        if (material) {
+            if ('color' in material) {
+                (material as THREE.MeshBasicMaterial | THREE.MeshPhongMaterial).color.set(settings.color);
+            }
+            if ('transparent' in material) {
+                material.transparent = settings.transparent;
+                material.opacity = settings.opacity;
+            }
+        }
     }
 
     private createCacheKey(settings: MaterialSettings): string {
         return `${settings.type}_${settings.color?.getHexString()}_${settings.opacity}_${settings.transparent}_${settings.side}`;
     }
 
-    dispose(): void {
+    public dispose(): void {
         this.materialCache.forEach(material => material.dispose());
         this.materialCache.clear();
     }

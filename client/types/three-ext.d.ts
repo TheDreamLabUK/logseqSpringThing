@@ -115,3 +115,27 @@ declare module 'three/examples/jsm/postprocessing/UnrealBloomPass' {
     threshold: number;
   }
 }
+
+import { Camera as ThreeCamera, PerspectiveCamera } from 'three';
+
+declare module 'three' {
+    export interface Camera extends ThreeCamera {
+        type: 'Camera' | 'PerspectiveCamera' | 'OrthographicCamera';
+    }
+
+    export interface PerspectiveCamera extends Camera {
+        type: 'PerspectiveCamera';
+    }
+
+    export interface Material {
+        color?: THREE.Color;
+    }
+
+    export interface Mesh<
+        TGeometry extends THREE.BufferGeometry = THREE.BufferGeometry,
+        TMaterial extends THREE.Material | THREE.Material[] = THREE.Material | THREE.Material[]
+    > extends THREE.Object3D {
+        geometry: TGeometry;
+        material: TMaterial;
+    }
+}
