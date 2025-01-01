@@ -1,78 +1,78 @@
-import {
-    Color,
-    MeshBasicMaterial,
-    MeshPhongMaterial,
-    MeshStandardMaterial,
-    LineBasicMaterial,
-    LineBasicMaterialParameters,
-    MeshBasicMaterialParameters,
-    MeshPhongMaterialParameters,
-    MeshStandardMaterialParameters,
-    createMeshBasicMaterial,
-    createMeshPhongMaterial,
-    createMeshStandardMaterial,
-    createLineBasicMaterial,
-    DoubleSide
-} from '../../core/threeTypes';
-
-export type MaterialSettings = {
-    color?: Color | number | string;
-    opacity?: number;
-    transparent?: boolean;
-    wireframe?: boolean;
-    emissive?: Color | number | string;
-    metalness?: number;
-    roughness?: number;
-};
+import * as THREE from 'three';
+import { MaterialSettings } from '../../core/types';
+import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
 
 export class MaterialFactory {
-    private static defaultSettings: MaterialSettings = {
-        color: 0x666666,
-        opacity: 1.0,
-        transparent: false,
-        wireframe: false
-    };
+    private static instance: MaterialFactory;
+    private materialCache = new Map<string, THREE.Material>();
 
-    private static getBasicMaterialParams(settings: Partial<MaterialSettings>) {
-        return {
-            ...this.defaultSettings,
-            ...settings,
-            side: DoubleSide
-        } as MeshBasicMaterialParameters;
+    private constructor() {}
+
+    static getInstance(): MaterialFactory {
+        if (!MaterialFactory.instance) {
+            MaterialFactory.instance = new MaterialFactory();
+        }
+        return MaterialFactory.instance;
     }
 
-    static createBasicMaterial(settings: Partial<MaterialSettings> = {}): MeshBasicMaterial {
-        return createMeshBasicMaterial(this.getBasicMaterialParams(settings));
+    createNodeMaterial(settings: MaterialSettings): THREE.Material {
+        const cacheKey = this.createCacheKey(settings);
+        if (this.materialCache.has(cacheKey)) {
+            return this.materialCache.get(cacheKey)!;
+        }
+
+        let material: THREE.Material;
+
+        if (settings.type === 'phong') {
+            material = new THREE.MeshPhongMaterial();
+            if (settings.color) material.color = settings.color;
+            if (settings.transparent !== undefined) material.transparent = settings.transparent;
+            if (settings.opacity !== undefined) material.opacity = settings.opacity;
+            if (settings.side !== undefined) material.side = settings.side;
+        } else if (settings.type === 'hologram') {
+            material = new HologramShaderMaterial({
+                color: settings.color,
+                opacity: settings.opacity,
+                glowIntensity: settings.glowIntensity
+            });
+        } else {
+            material = new THREE.MeshBasicMaterial();
+            if (settings.color) material.color = settings.color;
+            if (settings.transparent !== undefined) material.transparent = settings.transparent;
+            if (settings.opacity !== undefined) material.opacity = settings.opacity;
+            if (settings.side !== undefined) material.side = settings.side;
+        }
+
+        this.materialCache.set(cacheKey, material);
+        return material;
     }
 
-    static createPhongMaterial(settings: Partial<MaterialSettings> = {}): MeshPhongMaterial {
-        return createMeshPhongMaterial(this.getBasicMaterialParams(settings));
+    createHologramMaterial(): HologramShaderMaterial {
+        return new HologramShaderMaterial();
     }
 
-    static createStandardMaterial(settings: Partial<MaterialSettings> = {}): MeshStandardMaterial {
-        return createMeshStandardMaterial(this.getBasicMaterialParams(settings));
+    getMetadataMaterial(color: THREE.Color): THREE.Material {
+        const cacheKey = `metadata_${color.getHexString()}`;
+        if (this.materialCache.has(cacheKey)) {
+            return this.materialCache.get(cacheKey)!;
+        }
+
+        const material = new THREE.MeshBasicMaterial();
+        material.color = color;
+        material.transparent = true;
+        material.opacity = 0.8;
+        material.side = THREE.DoubleSide;
+
+        this.materialCache.set(cacheKey, material);
+        return material;
     }
 
-    static createNodeMaterial(settings: Partial<MaterialSettings> = {}): MeshPhongMaterial {
-        return this.createPhongMaterial(settings);
+    private createCacheKey(settings: MaterialSettings): string {
+        return `${settings.type}_${settings.color?.getHexString()}_${settings.opacity}_${settings.transparent}_${settings.side}`;
     }
 
-    static createEdgeMaterial(settings: Partial<MaterialSettings> = {}): LineBasicMaterial {
-        const finalSettings: LineBasicMaterialParameters = {
-            ...this.getBasicMaterialParams(settings),
-            transparent: true,
-            opacity: 0.6
-        };
-        return createLineBasicMaterial(finalSettings);
-    }
-
-    static createHologramMaterial(settings: Partial<MaterialSettings> = {}): MeshStandardMaterial {
-        return this.createStandardMaterial({
-            ...settings,
-            transparent: true,
-            opacity: 0.3,
-            metalness: 0.5,
-            roughness: 0.2
-        });
+    dispose(): void {
+        this.materialCache.forEach(material => material.dispose());
+        this.materialCache.clear();
     }
 }

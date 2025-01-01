@@ -1,81 +1,112 @@
-import { Logger } from './types';
-
-interface LoggerOptions {
-    namespace?: string;
-    level?: 'debug' | 'info' | 'warn' | 'error';
-}
+import { Logger, LogLevel, LoggerOptions } from './types';
+import { Settings } from '../types/settings';
 
 export class LoggerImpl implements Logger {
+    private static instance: LoggerImpl;
+    private static settings: Settings;
     private namespace: string;
-    private level: string;
-    private static enabled = true;
+    private level: LogLevel;
+    private jsonFormatting: boolean;
 
-    constructor(options: LoggerOptions | string = {}) {
-        if (typeof options === 'string') {
-            this.namespace = options;
-            this.level = 'info';
-        } else {
-            this.namespace = options.namespace || 'default';
-            this.level = options.level || 'info';
+    constructor(options: LoggerOptions = {}) {
+        this.namespace = options.namespace || 'default';
+        this.level = options.level || 'info';
+        this.jsonFormatting = options.enableJsonFormatting || false;
+    }
+
+    private static getInstance(): LoggerImpl {
+        if (!LoggerImpl.instance) {
+            LoggerImpl.instance = new LoggerImpl();
+        }
+        return LoggerImpl.instance;
+    }
+
+    public static setSettings(settings: Settings): void {
+        LoggerImpl.settings = settings;
+        const instance = LoggerImpl.getInstance();
+        if (settings?.system?.debug) {
+            instance.setLevel(settings.system.debug.logLevel as LogLevel);
+            instance.setJsonFormatting(settings.system.debug.logFullJson);
         }
     }
 
-    private formatMessage(level: string, message: string): string {
-        return `[${this.namespace}] [${level}] ${message}`;
+    private shouldLog(level: LogLevel): boolean {
+        const levels: LogLevel[] = ['error', 'warn', 'info', 'debug', 'trace'];
+        const currentLevelIndex = levels.indexOf(this.level);
+        const targetLevelIndex = levels.indexOf(level);
+        return targetLevelIndex <= currentLevelIndex;
+    }
+
+    private formatMessage(level: LogLevel, message: string): string {
+        return `[${this.namespace}] [${level.toUpperCase()}] ${message}`;
+    }
+
+    private formatArgs(args: unknown[]): unknown[] {
+        if (!this.jsonFormatting) return args;
+        return args.map(arg => 
+            typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg
+        );
     }
 
     debug(message: string, ...args: unknown[]): void {
-        if (!LoggerImpl.enabled) return;
-        if (this.level === 'debug') {
-            console.debug(this.formatMessage('DEBUG', message), ...args);
+        if (this.shouldLog('debug')) {
+            console.debug(this.formatMessage('debug', message), ...this.formatArgs(args));
         }
     }
 
     info(message: string, ...args: unknown[]): void {
-        if (!LoggerImpl.enabled) return;
-        if (this.level === 'debug' || this.level === 'info') {
-            console.info(this.formatMessage('INFO', message), ...args);
+        if (this.shouldLog('info')) {
+            console.info(this.formatMessage('info', message), ...this.formatArgs(args));
         }
     }
 
     warn(message: string, ...args: unknown[]): void {
-        if (!LoggerImpl.enabled) return;
-        if (this.level !== 'error') {
-            console.warn(this.formatMessage('WARN', message), ...args);
+        if (this.shouldLog('warn')) {
+            console.warn(this.formatMessage('warn', message), ...this.formatArgs(args));
         }
     }
 
     error(message: string, ...args: unknown[]): void {
-        if (!LoggerImpl.enabled) return;
-        console.error(this.formatMessage('ERROR', message), ...args);
+        if (this.shouldLog('error')) {
+            console.error(this.formatMessage('error', message), ...this.formatArgs(args));
+        }
     }
 
-    log(message: string, ...args: unknown[]): void {
-        if (!LoggerImpl.enabled) return;
-        console.log(this.formatMessage('LOG', message), ...args);
+    trace(message: string, ...args: unknown[]): void {
+        if (this.shouldLog('trace')) {
+            console.debug(this.formatMessage('trace', message), ...this.formatArgs(args));
+        }
     }
 
-    static setEnabled(enabled: boolean): void {
-        LoggerImpl.enabled = enabled;
+    log(level: LogLevel, message: string, ...args: unknown[]): void {
+        switch (level) {
+            case 'error': this.error(message, ...args); break;
+            case 'warn': this.warn(message, ...args); break;
+            case 'info': this.info(message, ...args); break;
+            case 'debug': this.debug(message, ...args); break;
+            case 'trace': this.trace(message, ...args); break;
+        }
     }
 
-    static isEnabled(): boolean {
-        return LoggerImpl.enabled;
+    setLevel(level: LogLevel): void {
+        this.level = level;
+    }
+
+    getLevel(): LogLevel {
+        return this.level;
+    }
+
+    setJsonFormatting(enabled: boolean): void {
+        this.jsonFormatting = enabled;
     }
 }
 
 export function createLogger(options?: LoggerOptions | string): Logger {
+    if (typeof options === 'string') {
+        options = { namespace: options };
+    }
     return new LoggerImpl(options);
 }
 
-// Global logging controls
-export function setLoggingEnabled(enabled: boolean): void {
-    LoggerImpl.setEnabled(enabled);
-}
-
-export function isLoggingEnabled(): boolean {
-    return LoggerImpl.isEnabled();
-}
-
-// Create core logger instance
+// Global logger instance
 export const logger = createLogger({ namespace: 'core' });

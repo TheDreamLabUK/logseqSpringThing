@@ -8,24 +8,33 @@ import { THROTTLE_INTERVAL } from './constants';
 
 export function createLogger(namespace: string): Logger {
   return {
-    debug: (message: string, ...args: unknown[]) => {
-      // Use debug logging only in development
-      if (process.env.NODE_ENV === 'development') {
-        console.debug(`[${namespace}] ${message}`, ...args);
-      }
+    debug: (message: string, ...args: unknown[]): void => {
+      console.debug(`[${namespace}] ${message}`, ...args);
     },
-    info: (message: string, ...args: unknown[]) => {
+    info: (message: string, ...args: unknown[]): void => {
       console.info(`[${namespace}] ${message}`, ...args);
     },
-    warn: (message: string, ...args: unknown[]) => {
+    warn: (message: string, ...args: unknown[]): void => {
       console.warn(`[${namespace}] ${message}`, ...args);
     },
-    error: (message: string, ...args: unknown[]) => {
+    error: (message: string, ...args: unknown[]): void => {
       console.error(`[${namespace}] ${message}`, ...args);
     },
-    log: (message: string, ...args: unknown[]) => {
-      console.log(`[${namespace}] ${message}`, ...args);
-    }
+    trace: (message: string, ...args: unknown[]): void => {
+      console.debug(`[${namespace}] TRACE ${message}`, ...args);
+    },
+    log: (level: LogLevel, message: string, ...args: unknown[]): void => {
+      switch (level) {
+        case 'error': console.error(`[${namespace}] ${message}`, ...args); break;
+        case 'warn': console.warn(`[${namespace}] ${message}`, ...args); break;
+        case 'info': console.info(`[${namespace}] ${message}`, ...args); break;
+        case 'debug': console.debug(`[${namespace}] ${message}`, ...args); break;
+        case 'trace': console.debug(`[${namespace}] TRACE ${message}`, ...args); break;
+      }
+    },
+    setLevel: (): void => {},
+    getLevel: (): LogLevel => 'info',
+    setJsonFormatting: (): void => {}
   };
 }
 

@@ -171,7 +171,8 @@ export const defaultSettings: Settings = {
             enableDataDebug: true,
             enableWebsocketDebug: true,
             logBinaryHeaders: true,
-            logFullJson: true
+            logFullJson: true,
+            logLevel: 'info'
         }
     }
 };

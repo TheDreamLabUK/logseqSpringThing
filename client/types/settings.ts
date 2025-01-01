@@ -1,13 +1,8 @@
 // Core visualization settings
 export interface VisualizationSettings {
-    animations: AnimationSettings;
-    bloom: BloomSettings;
+    nodes: NodeSettings;
     edges: EdgeSettings;
     hologram: HologramSettings;
-    labels: LabelSettings;
-    nodes: NodeSettings;
-    physics: PhysicsSettings;
-    rendering: RenderingSettings;
 }
 
 // XR-specific settings
@@ -82,20 +77,29 @@ export interface BloomSettings {
 
 export interface EdgeSettings {
     color: string;
-    opacity: number;
+    defaultWidth: number;
+    minWidth: number;
+    maxWidth: number;
+    widthProperty?: string;
+    colorProperty?: string;
     arrowSize: number;
     baseWidth: number;
     enableArrows: boolean;
+    opacity: number;
     widthRange: [number, number];
 }
 
 export interface HologramSettings {
+    color: string;
+    opacity: number;
+    glowIntensity: number;
+    rotationSpeed: number;
+    enabled: boolean;
     ringCount: number;
-    ringSizes: number[];
-    ringRotationSpeed: number;
-    globalRotationSpeed: number;
     ringColor: string;
     ringOpacity: number;
+    ringSizes: [number, number, number];
+    ringRotationSpeed: number;
     enableBuckminster: boolean;
     buckminsterScale: number;
     buckminsterOpacity: number;
@@ -105,6 +109,7 @@ export interface HologramSettings {
     enableTriangleSphere: boolean;
     triangleSphereScale: number;
     triangleSphereOpacity: number;
+    globalRotationSpeed: number;
 }
 
 export interface LabelSettings {
@@ -119,19 +124,25 @@ export interface LabelSettings {
 }
 
 export interface NodeSettings {
-    quality: 'low' | 'medium' | 'high';
-    enableInstancing: boolean;
-    enableHologram: boolean;
-    enableMetadataShape: boolean;
-    enableMetadataVisualization: boolean;
+    color: string;
+    defaultSize: number;
+    minSize: number;
+    maxSize: number;
+    sizeProperty?: string;
+    colorProperty?: string;
+    baseColor: string;
     baseSize: number;
     sizeRange: [number, number];
-    baseColor: string;
-    opacity: number;
+    enableMetadataShape: boolean;
     colorRangeAge: [string, string];
     colorRangeLinks: [string, string];
     metalness: number;
     roughness: number;
+    opacity: number;
+    enableMetadataVisualization: boolean;
+    enableHologram: boolean;
+    enableInstancing: boolean;
+    quality: 'low' | 'medium' | 'high';
 }
 
 export interface PhysicsSettings {
@@ -201,6 +212,7 @@ export interface DebugSettings {
     enableWebsocketDebug: boolean;
     logBinaryHeaders: boolean;
     logFullJson: boolean;
+    logLevel: 'error' | 'warn' | 'info' | 'debug' | 'trace';
 }
 
 // Main settings interface
