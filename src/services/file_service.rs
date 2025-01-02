@@ -108,9 +108,21 @@ impl RealGitHubService {
 
     fn encode_url(&self, path: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
         let base = format!("https://api.github.com/repos/{}/{}/contents", self.owner, self.repo);
-        let url = Url::parse(&base)?
-            .join(path)?
-            .to_string();
+        let full_path = if path.is_empty() {
+            self.base_path.clone()
+        } else if self.base_path.is_empty() {
+            path.to_string()
+        } else {
+            format!("{}/{}", self.base_path, path)
+        };
+
+        let url = if full_path.is_empty() {
+            base
+        } else {
+            format!("{}/{}", base, full_path)
+        };
+
+        debug!("Constructed GitHub API URL: {}", url);
         Ok(url)
     }
 }
@@ -118,11 +130,13 @@ impl RealGitHubService {
 #[async_trait]
 impl GitHubService for RealGitHubService {
     async fn fetch_file_metadata(&self, skip_debug_filter: bool) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        let url = if self.base_path.is_empty() {
-            self.encode_url("")?
-        } else {
-            self.encode_url(&self.base_path)?
-        };
+        // Get the contents of the base directory
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/contents/{}",
+            self.owner,
+            self.repo,
+            self.base_path
+        );
         
         debug!("Fetching GitHub metadata from URL: {}", url);
 
