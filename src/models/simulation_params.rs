@@ -1,10 +1,9 @@
 use serde::{Deserialize, Serialize};
 use bytemuck::{Pod, Zeroable};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum SimulationMode {
-    #[default]
     Remote,  // GPU-accelerated remote computation
     GPU,     // Local GPU computation
     Local,   // CPU-based computation
@@ -16,10 +15,9 @@ impl Default for SimulationMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum SimulationPhase {
-    #[default]
     Initial,    // Heavy computation for initial layout
     Dynamic,    // Lighter computation for dynamic updates
     Finalize,   // Final positioning and cleanup

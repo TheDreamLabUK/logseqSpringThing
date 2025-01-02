@@ -1,6 +1,7 @@
 # WebXR Graph Visualization of Logseq Knowledge Graphs with RAGFlow Integration
 
-![image](https://github.com/user-attachments/assets/269a678d-88a5-42de-9d67-d73b64f4e520)
+![image](https://github.com/user-attachments/assets/3ecac4a3-95d7-4c75-a3b2-e93deee565d6)
+> **Note**: This image is a placeholder and will be updated with a current screenshot of the application.
 
 Inspired by Prof Rob Aspin's work:  
 https://github.com/trebornipsa
@@ -9,11 +10,11 @@ https://github.com/trebornipsa
 
 ## Project Overview
 
-This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it with Perplexity AI and RAGFlow for AI-powered question answering. Changes are automatically submitted back to the source GitHub repository as pull requests. This allows for a dynamic and interactive exploration of your Logseq knowledge base in an immersive environment, leveraging the power of AI to provide context and insights.
+This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it with Perplexity AI, RAGFlow, and local speech synthesis for AI-powered question answering and interaction. Changes can be automatically submitted back to the source GitHub repository as pull requests. This allows for a dynamic and interactive exploration of your Logseq knowledge base in an immersive environment, leveraging the power of AI to provide context and insights.
 
-> **Note**: Settings are currently managed locally in the client for improved development and testing. Server-side settings synchronization is temporarily disabled and will be re-enabled in a future update.
+> **Note**: Settings are currently managed locally in the client for improved development and testing. Server-side settings synchronization is planned for a future update.
 
-## Key Features
+## Features
 
 - **WebXR 3D Visualization:** Immersive exploration of the knowledge graph in AR/VR environments with support for:
   - **Node Interaction and Manipulation:** Click, drag, and reposition nodes within the 3D space.
@@ -24,8 +25,7 @@ This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it
 - **Real-time Updates:**
   - **WebSocket-Based Communication:** Ensures instant synchronization between the server and client.
   - **Optimized Binary Protocol:** 
-    - Efficient position updates 
-    - velocity updates
+    - Efficient position and velocity updates
     - The binary protocol sends 6 floats per node (position + velocity).
 
 - **GPU Acceleration:**
@@ -47,7 +47,7 @@ This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it
   - **Content Relationship Mapping:** Visualizes how different pieces of content interrelate.
 
 - **Spacemouse Support:**
-  - **6-DOF Navigation in VR:** Allows for intuitive movement within the 3D environment.
+  - **6-DOF Navigation:** Allows for intuitive movement within the 3D environment.
   - **Customizable Control Mapping:** Adapts to various input devices.
   - **Smooth Camera Transitions:** Ensures fluid user experience during navigation.
   - **Integration with WebXR Controls:** Combines hardware input with web-based controls for enhanced interaction.
@@ -62,7 +62,7 @@ This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it
   - **OpenAI Text-to-Speech:** Converts text responses into audible speech.
   - **Local Speech Synthesis Fallback:** Ensures functionality without external dependencies.
   - **WebSocket Streaming:** Delivers audio streams efficiently.
-  - **Dynamic Provider Switching:** Allows for flexible configuration of audio sources.
+  - **Dynamic Provider Switching:** Allows for flexible configuration of audio sources (OpenAI or local).
 
 ## Technical Architecture
 
@@ -70,29 +70,33 @@ This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it
 
 The WebSocket binary protocol has been optimized for efficient position updates:
 
-```
-
-```
-
+```rust
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct BinaryNodeData {
+    pub position: [f32; 3],  // x, y, z as f32
+    pub velocity: [f32; 3],  // vx, vy, vz as f32
+}
+// Each node's position and velocity are sent as 6 floats (24 bytes)
 This format provides:
-- Minimal bandwidth usage 
-- High precision where needed 
+- Minimal bandwidth usage
+- High precision where needed
 - Efficient parsing on both client and server
 - Clear distinction between initial and update messages
 
 ### Performance Optimizations
 
-- **Network Efficiency:**
-  - position and velocity values
-  - Compact binary message format
-  - Minimal protocol overhead
-  - Efficient WebSocket streaming
+#### Network Efficiency:
+- Efficient position and velocity values
+- Compact binary message format
+- Minimal protocol overhead
+- Efficient WebSocket streaming
 
-- **Rendering Performance:**
-  - GPU-accelerated computations
-  - Optimized Three.js rendering
-  - Efficient state management
-  - Minimal UI overhead
+#### Rendering Performance:
+- GPU-accelerated computations
+- Optimized Three.js rendering
+- Efficient state management
+- Minimal UI overhead
 
 ### Core System Architecture
 
@@ -108,6 +112,7 @@ graph TB
         GraphUI[Graph Interface]
         ControlPanel[Control Panel]
         VRControls[VR Control System]
+        SceneManager[Scene Manager]
         WSService[WebSocket Service]
         DataManager[Graph Data Manager]
         LayoutEngine[Layout Engine]
@@ -123,7 +128,7 @@ graph TB
         RagFlowH[RagFlow Handler]
         VisualizationH[Visualization Handler]
         FileS[File Service]
-        GraphS[Graph Service]
+        GraphService[Graph Service]
         GPUS[GPU Compute Service]
         PerplexityS[Perplexity Service]
         RagFlowS[RagFlow Service]
@@ -163,7 +168,7 @@ graph TB
     Server --> VisualizationH
 
     FileH --> FileS
-    GraphH --> GraphS
+    GraphH --> GraphService
     WSH --> WSManager
     PerplexityH --> PerplexityS
     RagFlowH --> RagFlowS
@@ -783,21 +788,17 @@ graph TB
     FisheyeEffect --> NewPositions
     FisheyeEffect --> VisualizationData
 
-    %% Define styles for classes
     classDef inputBufferStyle fill:#f9f,stroke:#333,stroke-width:2px
     classDef computePipelineStyle fill:#bbf,stroke:#333,stroke-width:2px
     classDef outputBufferStyle fill:#bfb,stroke:#333,stroke-width:2px
 
-    %% Assign classes to nodes within subgraphs
     class NodesData,EdgesData,ForcesData,ParamsData inputBufferStyle
     class BindGroupLayout,DispatchBlock computePipelineStyle
     class ForceCalculation,PositionUpdate,FisheyeEffect computePipelineStyle
     class NewPositions,VisualizationData outputBufferStyle
 ```
 
-## Development
-
-### Development Scripts
+## Development and Build Scripts
 
 The project includes a comprehensive development script (`scripts/dev.sh`) that provides various commands for managing the Docker containers and testing the application:
 
@@ -808,17 +809,14 @@ The project includes a comprehensive development script (`scripts/dev.sh`) that 
 # Stop all containers
 ./scripts/dev.sh stop
 
-# Rebuild and restart containers
+# Rebuild containers
 ./scripts/dev.sh rebuild
 
 # Run tests
 ./scripts/dev.sh test
 
-# View container logs
-./scripts/dev.sh logs
-
-# Show available endpoints
-./scripts/dev.sh endpoints
+# Check container health
+./scripts/dev.sh health
 
 # Rebuild and test in one command
 ./scripts/dev.sh rebuild-test
@@ -826,11 +824,12 @@ The project includes a comprehensive development script (`scripts/dev.sh`) that 
 
 The script provides the following features:
 - **Environment Setup**: Automatically loads environment variables from `.env`
-- **Container Management**: Start, stop, rebuild, and monitor Docker containers
+- **Container Management**: Start, stop, rebuild, and monitor Docker containers using docker-compose
 - **Health Checks**: Verifies container health and endpoint availability
 - **Error Handling**: Robust error handling and cleanup procedures
 - **Logging**: Detailed logging with timestamps and color-coding
 - **Endpoint Testing**: Automated testing of backend endpoints
+- **Build Process**: Includes steps for building the frontend, backend, and compiling the CUDA kernel to PTX.
 
 ### Environment Variables
 
@@ -846,56 +845,54 @@ Contributions are welcome! Please follow the guidelines below to contribute effe
 
 ### How to Contribute
 
-1. **Fork the Repository:**
-    Click the "Fork" button at the top-right corner of the repository page.
+1. **Fork the Repository**: Click the "Fork" button at the top-right corner of the repository page.
 
-2. **Clone Your Fork:**
-    ```bash
-    git clone https://github.com/yourusername/webxr-graph.git
-    cd webxr-graph
-    ```
+2. **Clone Your Fork**:
+```bash
+git clone https://github.com/yourusername/webxr-graph.git
+cd webxr-graph
+```
 
-3. **Create a Feature Branch:**
-    ```bash
-    git checkout -b feature/YourFeatureName
-    ```
+3. **Create a Feature Branch**:
+```bash
+git checkout -b feature/YourFeatureName
+```
 
-4. **Commit Your Changes:**
-    ```bash
-    git add .
-    git commit -m "Add detailed README sections and diagrams"
-    ```
+4. **Commit Your Changes**:
+```bash
+git add .
+git commit -m "Add detailed README sections and diagrams"
+```
 
-5. **Push to Your Fork:**
-    ```bash
-    git push origin feature/YourFeatureName
-    ```
+5. **Push to Your Fork**:
+```bash
+git push origin feature/YourFeatureName
+```
 
-6. **Open a Pull Request:**
-    Navigate to your fork on GitHub and click "Compare & pull request".
+6. **Open a Pull Request**: Navigate to your fork on GitHub and click "Compare & pull request".
 
 ### Development Guidelines
 
-- **Follow Best Practices:**
-  - Adhere to Rust and JavaScript coding standards.
-  - Write clean, readable, and maintainable code.
-  - Ensure consistent code formatting using tools like `rustfmt` and `eslint`.
+#### Follow Best Practices:
+- Adhere to Rust and JavaScript coding standards
+- Write clean, readable, and maintainable code
+- Ensure consistent code formatting using tools like `rustfmt` and `eslint`
 
-- **Maintain Test Coverage:**
-  - Write unit and integration tests for new features.
-  - Ensure existing tests pass before submitting changes.
+#### Maintain Test Coverage:
+- Write unit and integration tests for new features
+- Ensure existing tests pass before submitting changes
 
-- **Document New Features:**
-  - Update relevant sections in the README.md.
-  - Add or update API documentation as needed.
+#### Document New Features:
+- Update relevant sections in the README.md
+- Add or update API documentation as needed
 
-- **Update API Documentation:**
-  - Ensure all new endpoints and functionalities are well-documented.
-  - Use tools like Swagger for API documentation if applicable.
+#### Update API Documentation:
+- Ensure all new endpoints and functionalities are well-documented
+- Use tools like Swagger for API documentation if applicable
 
 ### Testing
 
-Ensure all tests pass before submitting a pull request.
+Ensure all tests pass before submitting a pull request:
 
 ```bash
 # Run Rust tests
@@ -908,13 +905,13 @@ npm test
 npm run test:e2e
 ```
 
-- **Continuous Integration:**
-  - Automated tests run on every pull request.
-  - Ensure no breaking changes are introduced.
+#### Continuous Integration:
+- Automated tests run on every pull request
+- Ensure no breaking changes are introduced
 
-- **Code Reviews:**
-  - All pull requests should be reviewed by at least one maintainer.
-  - Address all review comments before merging.
+#### Code Reviews:
+- All pull requests should be reviewed by at least one maintainer
+- Address all review comments before merging
 
 ### Issue Reporting
 
@@ -922,24 +919,24 @@ If you encounter any bugs or have feature requests, please open an issue in the 
 
 ## Additional Resources
 
-- **Documentation:**
-  - Comprehensive documentation is available in the `docs/` directory.
-  - API references and usage guides are provided.
+### Documentation:
+- Comprehensive documentation is available in the `docs/` directory
+- API references and usage guides are provided
 
-- **Support:**
-  - Join the project's Slack channel for real-time support.
-  - Reach out via GitHub Issues for any assistance.
+### Support:
+- Join the project's Slack channel for real-time support
+- Reach out via GitHub Issues for any assistance
 
-- **Updates:**
-  - Follow the repository to stay updated with the latest changes and releases.
+### Updates:
+- Follow the repository to stay updated with the latest changes and releases
 
 ## Acknowledgements
 
-- **Prof Rob Aspin:** For inspiring the project's vision and providing valuable resources.
-- **OpenAI:** For their advanced AI models powering the question-answering features.
-- **Perplexity AI and RAGFlow:** For their AI services enhancing content processing and interaction.
-- **Three.js:** For the robust 3D rendering capabilities utilized in the frontend.
-- **Actix:** For the high-performance web framework powering the backend server.
+- **Prof Rob Aspin**: For inspiring the project's vision and providing valuable resources
+- **OpenAI**: For their advanced AI models powering the question-answering features
+- **Perplexity AI and RAGFlow**: For their AI services enhancing content processing and interaction
+- **Three.js**: For the robust 3D rendering capabilities utilized in the frontend
+- **Actix**: For the high-performance web framework powering the backend server
 
 ## License
 
