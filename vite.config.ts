@@ -9,18 +9,17 @@ export default defineConfig(({ mode }: ConfigEnv) => {
   return {
     root: 'client',
     base: './',
-    
     build: {
       outDir: resolve(__dirname, 'data/public/dist'),
       emptyOutDir: true,
-      sourcemap: !isProd,
+      sourcemap: true, //       sourcemap: !isProd,
       minify: false,
       rollupOptions: {
         input: {
           main: resolve(__dirname, 'client/index.html')
         },
         output: {
-          assetFileNames: (assetInfo) => {
+          assetFileNames: (assetInfo: { name?: string }) => {
             if (!assetInfo.name) return 'assets/[name][extname]';
             
             if (/\.(woff2?|eot|ttf|otf)$/i.test(assetInfo.name)) {
@@ -55,18 +54,18 @@ export default defineConfig(({ mode }: ConfigEnv) => {
           ws: true,
           changeOrigin: true,
           secure: false,
-          rewrite: (path) => path.replace(/^\/wss/, '')
+          rewrite: (path: string) => path.replace(/^\/wss/, '')
         },
         '/api': {
           target: 'http://localhost:4000',
           changeOrigin: true,
           secure: false,
-          rewrite: (path) => path.replace(/^\/api/, '/api'),
-          configure: (proxy, _options) => {
-            proxy.on('error', (err, _req, _res) => {
+          rewrite: (path: string) => path.replace(/^\/api/, '/api'),
+          configure: (proxy: any, _options: any) => {
+            proxy.on('error', (err: Error, _req: any, _res: any) => {
               console.log('proxy error', err);
             });
-            proxy.on('proxyReq', (proxyReq, req, _res) => {
+            proxy.on('proxyReq', (proxyReq: any, req: any, _res: any) => {
               console.log('Proxying:', req.method, req.url, '->', proxyReq.path);
             });
           }
