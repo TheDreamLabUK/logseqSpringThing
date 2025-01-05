@@ -10,7 +10,7 @@ function toHexColor(num: number): string {
 export const defaultVisualizationSettings: VisualizationSettings = {
     animations: {
         enableMotionBlur: false,
-        enableNodeAnimations: true,
+        enableNodeAnimations: false,
         motionBlurStrength: 0.5,
         selectionWaveEnabled: false,
         pulseEnabled: false,
@@ -19,7 +19,7 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         waveSpeed: 1.0
     },
     bloom: {
-        enabled: true,
+        enabled: false,
         strength: 0.5,
         radius: 1,
         edgeBloomStrength: 0.5,
@@ -33,7 +33,7 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         maxWidth: 3,
         arrowSize: 0.2,
         baseWidth: 1,
-        enableArrows: true,
+        enableArrows: false,
         opacity: 0.8,
         widthRange: [0.5, 3]
     },
@@ -42,28 +42,28 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         opacity: 0.5,
         glowIntensity: 0.8,
         rotationSpeed: 0.5,
-        enabled: true,
+        enabled: false,
         ringCount: 3,
         ringColor: '#00ff00',
         ringOpacity: 0.5,
         ringSizes: [1, 1.5, 2],
         ringRotationSpeed: 0.5,
-        enableBuckminster: true,
+        enableBuckminster: false,
         buckminsterScale: 1,
         buckminsterOpacity: 0.5,
-        enableGeodesic: true,
+        enableGeodesic: false,
         geodesicScale: 1,
         geodesicOpacity: 0.5,
-        enableTriangleSphere: true,
+        enableTriangleSphere: false,
         triangleSphereScale: 1,
         triangleSphereOpacity: 0.5,
         globalRotationSpeed: 0.2
     },
     labels: {
-        enabled: true,
+        enabled: false,
         size: 1,
         color: toHexColor(LABEL_COLOR),
-        enableLabels: true,
+        enableLabels: false,
         desktopFontSize: 48,
         textColor: toHexColor(LABEL_COLOR)
     },
@@ -75,15 +75,15 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         baseColor: '#ffffff',
         baseSize: 1,
         sizeRange: [0.5, 2],
-        enableMetadataShape: true,
+        enableMetadataShape: false,
         colorRangeAge: ['#ff0000', '#00ff00'],
         colorRangeLinks: ['#0000ff', '#ff00ff'],
         metalness: 0.5,
         roughness: 0.5,
         opacity: 1,
-        enableMetadataVisualization: true,
-        enableHologram: true,
-        enableInstancing: true,
+        enableMetadataVisualization: false,
+        enableHologram: false,
+        enableInstancing: false,
         quality: 'medium',
         material: {
             type: 'phong',
@@ -92,7 +92,7 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         }
     },
     physics: {
-        enabled: true,
+        enabled: false,
         attractionStrength: 0.1,
         repulsionStrength: 0.1,
         springStrength: 0.1,
@@ -100,7 +100,7 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         iterations: 1,
         maxVelocity: 10,
         collisionRadius: 1,
-        enableBounds: true,
+        enableBounds: false,
         boundsSize: 100
     },
 };
@@ -113,9 +113,9 @@ export const defaultSettings: Settings = {
         directionalLightIntensity: 0.8,
         environmentIntensity: 1,
         backgroundColor: '#000000',
-        enableAmbientOcclusion: true,
-        enableAntialiasing: true,
-        enableShadows: true,
+        enableAmbientOcclusion: false,
+        enableAntialiasing: false,
+        enableShadows: false,
         showGrid: true
     },
     controls: {
@@ -126,31 +126,31 @@ export const defaultSettings: Settings = {
     },
     xr: {
         mode: 'ar',
-        roomScale: true,
+        roomScale: false,
         spaceType: 'local',
         quality: 'high',
         input: 'hands',
         visuals: {
-            handMeshEnabled: true,
+            handMeshEnabled: false,
             handMeshColor: '#ffffff',
             handMeshOpacity: 0.5,
             handPointSize: 5,
-            handRayEnabled: true,
+            handRayEnabled: false,
             handRayColor: '#00ff00',
             handRayWidth: 2,
             gestureSsmoothing: 0.5
         },
         environment: {
-            enableLightEstimation: true,
-            enablePlaneDetection: true,
-            enableSceneUnderstanding: true,
+            enableLightEstimation: false,
+            enablePlaneDetection: false,
+            enableSceneUnderstanding: false,
             planeColor: '#808080',
             planeOpacity: 0.5,
-            showPlaneOverlay: true,
-            snapToFloor: true
+            showPlaneOverlay: false,
+            snapToFloor: false
         },
-        passthrough: false,
-        haptics: true
+        passthrough: true,
+        haptics: false
     },
     system: {
         network: {
@@ -184,8 +184,8 @@ export const defaultSettings: Settings = {
             cookieSamesite: 'Lax',
             cookieSecure: false,
             csrfTokenTimeout: 3600,
-            enableAuditLogging: true,
-            enableRequestValidation: true,
+            enableAuditLogging: false,
+            enableRequestValidation: false,
             sessionTimeout: 86400
         },
         debug: {
@@ -194,7 +194,7 @@ export const defaultSettings: Settings = {
             enableWebsocketDebug: true,
             logBinaryHeaders: true,
             logFullJson: true,
-            logLevel: 'info'
+            logLevel: 'debug'
         }
     }
 };
