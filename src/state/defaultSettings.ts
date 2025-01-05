@@ -4,9 +4,16 @@ import { DoubleSide } from 'three';
 export const defaultSettings: Settings = {
     visualization: {
         hologram: {
+            enabled: true,
+            color: '#00ff00',
+            opacity: 0.5,
+            glowIntensity: 0.8,
+            rotationSpeed: 0.5,
             ringCount: 3,
-            ringSizes: [20, 30, 40],
-            ringRotationSpeed: 0.01
+            ringColor: '#00ff00',
+            ringOpacity: 0.5,
+            ringSizes: [1, 1.5, 2],
+            ringRotationSpeed: 0.5
         }
     },
     nodes: {

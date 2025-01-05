@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { 
     Mesh, 
     Material, 
@@ -13,8 +14,10 @@ import {
 import { Settings } from '../types/settings';
 import { MaterialFactory } from '../factories/MaterialFactory';
 import { HologramMaterial } from '../materials/HologramMaterial';
+import { createLogger } from '../core/logger';
 
 export class HologramManager {
+    private logger = createLogger('HologramManager');
     private settings: Settings;
     private isXRMode: boolean;
     private materialFactory: MaterialFactory;
@@ -23,45 +26,85 @@ export class HologramManager {
     private materials: HologramMaterial[] = [];
 
     constructor(settings: Settings, scene: Scene) {
-        console.log('HologramManager constructor called.');
-        this.settings = settings;
-        this.isXRMode = false;
-        this.materialFactory = new MaterialFactory();
-        this.group = new Group();
-        this.createHolograms();
-        scene.add(this.group);
+        this.logger.debug('HologramManager constructor called with settings:', settings);
+        try {
+            if (!settings?.visualization?.hologram) {
+                throw new Error('Missing hologram settings');
+            }
+
+            if (!settings.visualization.hologram.enabled) {
+                this.logger.warn('Holograms are disabled in settings. Some features may not work.');
+            }
+
+            this.settings = settings;
+            this.isXRMode = false;
+            this.materialFactory = new MaterialFactory();
+            this.group = new Group();
+            
+            if (settings.visualization.hologram.enabled) {
+                this.createHolograms();
+            }
+            
+            scene.add(this.group);
+            
+            this.logger.debug('HologramManager initialized successfully', {
+                enabled: settings.visualization.hologram.enabled,
+                groupChildren: this.group.children.length
+            });
+        } catch (error) {
+            this.logger.error('Error in HologramManager constructor:', error);
+            throw error;
+        }
+
+        this.logger.debug('Three.js version:', THREE.REVISION);
     }
 
     createHolograms(): void {
-        console.log('HologramManager.createHolograms called.');
+        this.logger.debug('Creating holograms - start');
         const hologramSettings = this.settings?.visualization?.hologram;
         
+        this.logger.debug('Hologram settings:', hologramSettings);
+        
         if (!hologramSettings) {
-            console.warn("Hologram settings are not available");
+            this.logger.warn("Hologram settings are not available");
             return;
         }
 
-        const quality = this.isXRMode && this.settings?.xr 
-            ? this.settings.xr.quality 
-            : 'medium';
-
-        for (let i = 0; i < (hologramSettings.ringCount || 0); i++) {
-            const ring = this.createHologramMesh("ring", quality);
-            if (!ring) continue;
-
-            const scale = hologramSettings.ringSizes?.[i] || 20;
-            ring.scale.set(scale, scale, scale);
-            ring.rotateX(Math.PI / 2 * i);
-            ring.rotateY(Math.PI / 4 * i);
-            ring.userData.rotationSpeed = hologramSettings.ringRotationSpeed * (i + 1);
-            
-            this.holograms.push(ring);
-            this.group.add(ring);
+        if (!hologramSettings.enabled) {
+            this.logger.warn("Holograms are disabled in settings");
+            return;
         }
+
+        // Create a simple test cube instead of a ring
+        try {
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshBasicMaterial({ 
+                color: 0x00ff00,
+                wireframe: true 
+            });
+            const cube = new THREE.Mesh(geometry, material);
+            
+            this.holograms.push(cube);
+            this.group.add(cube);
+            
+            this.logger.debug('Created test cube', {
+                position: cube.position,
+                geometry: cube.geometry.type,
+                material: cube.material.type
+            });
+        } catch (error) {
+            this.logger.error('Error creating test cube:', error);
+        }
+
+        this.logger.debug('Holograms created', {
+            hologramCount: this.holograms.length,
+            groupChildren: this.group.children.length
+        });
     }
 
     private createHologramMesh(type: string, quality: string): Mesh | null {
         try {
+            this.logger.debug('Creating hologram mesh', { type, quality });
             const geometry = this.createGeometry(type, quality);
             const material = new MeshBasicMaterial({
                 color: 0x00ff00,
@@ -72,7 +115,7 @@ export class HologramManager {
 
             return new Mesh(geometry, material);
         } catch (error) {
-            console.error(`Failed to create hologram mesh: ${error}`);
+            this.logger.error('Failed to create hologram mesh:', error);
             return null;
         }
     }
@@ -109,14 +152,21 @@ export class HologramManager {
     }
 
     public update(delta: number): void {
-        // No time-based updates for now
-        
-        // Update rotations
-        this.holograms.forEach((hologram, index) => {
-            if (hologram.userData.rotationSpeed) {
-                hologram.rotation.y += hologram.userData.rotationSpeed * delta;
-            }
-        });
+        if (!this.holograms.length) {
+            return;
+        }
+
+        try {
+            // Just rotate the first hologram
+            const hologram = this.holograms[0];
+            hologram.rotation.y += 0.01;
+            
+            this.logger.debug('Updated hologram rotation', {
+                rotation: hologram.rotation.y
+            });
+        } catch (error) {
+            this.logger.error('Error in simple rotation update:', error);
+        }
     }
 
     public getGroup(): Group {
