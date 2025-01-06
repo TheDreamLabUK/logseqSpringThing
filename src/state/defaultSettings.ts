@@ -14,6 +14,17 @@ export const defaultSettings: Settings = {
             ringOpacity: 0.5,
             ringSizes: [1, 1.5, 2],
             ringRotationSpeed: 0.5
+        },
+        nodes: {
+            color: '#ffffff',
+            opacity: 1.0,
+            defaultSize: 1.0,
+            enableInstancing: true
+        },
+        edges: {
+            color: '#ffffff',
+            defaultWidth: 1.0,
+            opacity: 1.0
         }
     },
     nodes: {

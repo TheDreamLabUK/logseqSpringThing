@@ -3,9 +3,27 @@ import { Side } from 'three';
 export interface Settings {
     visualization: {
         hologram: {
+            enabled: boolean;
+            color: string;
+            opacity: number;
+            glowIntensity: number;
+            rotationSpeed: number;
             ringCount: number;
+            ringColor: string;
+            ringOpacity: number;
             ringSizes: number[];
             ringRotationSpeed: number;
+        };
+        nodes: {
+            color: string;
+            opacity: number;
+            defaultSize: number;
+            enableInstancing: boolean;
+        };
+        edges: {
+            color: string;
+            defaultWidth: number;
+            opacity: number;
         };
     };
     nodes: {

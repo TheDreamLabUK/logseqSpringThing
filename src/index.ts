@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { Scene, PerspectiveCamera, WebGLRenderer, Clock, Mesh, Material } from 'three';
 import { Settings } from './types/settings';
 import { SettingsStore } from './state/SettingsStore';
@@ -20,69 +21,48 @@ export class GraphVisualization {
     private isDataLoaded: boolean = false;
 
     constructor(initialSettings?: Settings) {
-        // Initialize logger first
-        initializeLogger();
-        
-        this.logger.debug('Initializing GraphVisualization with settings:', {
-            initialSettings,
-            defaultSettings,
-            hasHologramSettings: !!initialSettings?.visualization?.hologram,
-            hologramEnabled: initialSettings?.visualization?.hologram?.enabled
-        });
+        console.log('Starting GraphVisualization initialization');
         
         try {
-            this.settingsStore = SettingsStore.getInstance();
             this.settings = initialSettings || defaultSettings;
-            
-            // Log merged settings
-            this.logger.debug('Using settings:', {
-                hasHologram: !!this.settings?.visualization?.hologram,
-                hologramEnabled: this.settings?.visualization?.hologram?.enabled,
-                fullSettings: this.settings
-            });
-            
-            this.graphDataManager = GraphDataManager.getInstance();
-            
-            if (!this.validateSettings()) {
-                throw new Error('Invalid settings configuration');
-            }
+            console.log('Using settings:', this.settings);
 
-            // Initialize Three.js components
+            // Initialize basic Three.js components
             this.scene = new Scene();
-            this.camera = new PerspectiveCamera(
-                75,
-                window.innerWidth / window.innerHeight,
-                0.1,
-                1000
-            );
-
-            this.logger.debug('Creating WebGL renderer');
-            this.renderer = new WebGLRenderer({ 
+            this.camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            this.camera.position.z = 5;
+            
+            // Create and setup renderer
+            this.renderer = new WebGLRenderer({
                 antialias: true,
                 alpha: true,
                 powerPreference: "high-performance"
             });
-
-            this.clock = new Clock();
-
-            // Setup renderer
             this.renderer.setSize(window.innerWidth, window.innerHeight);
             this.renderer.setPixelRatio(window.devicePixelRatio);
-            this.renderer.setClearColor(0x000000, 0);
             document.body.appendChild(this.renderer.domElement);
 
-            // Setup camera
-            this.camera.position.z = 5;
+            // Create a simple test cube
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshBasicMaterial({ 
+                color: 0xff0000,
+                wireframe: true 
+            });
+            const cube = new THREE.Mesh(geometry, material);
+            this.scene.add(cube);
+            console.log('Added test cube to scene');
 
-            // Setup event listeners
+            // Initialize clock
+            this.clock = new Clock();
+
+            // Setup resize handler
             window.addEventListener('resize', this.onWindowResize.bind(this));
 
-            this.logger.debug('GraphVisualization initialized successfully');
+            console.log('Starting animation loop');
+            requestAnimationFrame(this.animate);
 
-            // Load graph data
-            this.loadGraphData();
         } catch (error) {
-            this.logger.error('Error in GraphVisualization constructor:', error);
+            console.error('Initialization error:', error);
             throw error;
         }
     }
@@ -145,41 +125,22 @@ export class GraphVisualization {
     }
 
     private animate = (): void => {
-        const frameId = Math.random();
-        this.logger.debug(`Animation frame ${frameId} started`);
-
-        if (!this.isDataLoaded) {
-            this.logger.warn(`Frame ${frameId}: Graph data not loaded yet. Skipping.`);
-            requestAnimationFrame(this.animate);
-            return;
-        }
-
         try {
-            const delta = this.clock.getDelta();
-
-            if (this.hologramManager) {
-                this.hologramManager.update(delta);
+            // Simple rotation of the test cube
+            const cube = this.scene.children[0];
+            if (cube) {
+                cube.rotation.x += 0.01;
+                cube.rotation.y += 0.01;
             }
 
-            // Try rendering
-            try {
-                if (this.renderer && this.scene && this.camera) {
-                    this.renderer.render(this.scene, this.camera);
-                }
-            } catch (renderError) {
-                this.logger.error(`Frame ${frameId}: Render error:`, {
-                    error: renderError,
-                    scene: {
-                        children: this.scene?.children.length,
-                        camera: !!this.camera,
-                        renderer: !!this.renderer
-                    }
-                });
+            // Basic render
+            if (this.renderer && this.scene && this.camera) {
+                this.renderer.render(this.scene, this.camera);
             }
 
             requestAnimationFrame(this.animate);
         } catch (error) {
-            this.logger.error(`Frame ${frameId}: Animation error:`, error);
+            console.error('Animation error:', error);
         }
     };
 
@@ -209,5 +170,83 @@ export class GraphVisualization {
         
         const canvas = this.renderer.domElement;
         canvas.parentElement?.removeChild(canvas);
+    }
+
+    private testRender(): void {
+        console.log('Testing minimal render');
+        
+        try {
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshBasicMaterial({ 
+                color: 0xff0000,
+                wireframe: true  // Make it wireframe to rule out any material issues
+            });
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+            
+            // Log pre-render state
+            console.log('Test render pre-state:', {
+                hasScene: !!scene,
+                hasCamera: !!camera,
+                sceneChildren: scene.children.length,
+                cameraPosition: camera.position.toArray(),
+                rendererContext: !!this.renderer.getContext()
+            });
+
+            this.renderer.render(scene, camera);
+            console.log('Test render successful');
+            
+            // Only start animation if test render succeeds
+            this.isDataLoaded = true;  // Set this for now to allow animation
+            requestAnimationFrame(this.animate);
+        } catch (error) {
+            console.error('Test render failed:', {
+                error,
+                stack: error.stack,
+                message: error.message
+            });
+        }
+    }
+
+    private testShader(): void {
+        const vertexShader = `
+            void main() {
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            void main() {
+                gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+            }
+        `;
+
+        try {
+            const geometry = new THREE.PlaneGeometry(1, 1);
+            const material = new THREE.ShaderMaterial({
+                vertexShader,
+                fragmentShader
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            
+            const scene = new THREE.Scene();
+            scene.add(mesh);
+            
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+            
+            this.renderer.render(scene, camera);
+            console.log('Shader test successful');
+        } catch (error) {
+            console.error('Shader test failed:', {
+                error,
+                stack: error.stack,
+                message: error.message
+            });
+        }
     }
 } 

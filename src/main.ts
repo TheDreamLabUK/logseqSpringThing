@@ -5,20 +5,21 @@ import { GraphDataManager } from './state/graphData';
 
 async function init() {
     try {
+        console.log('Starting initialization...');
+
         // Initialize settings first
         const settingsStore = SettingsStore.getInstance();
         await settingsStore.initialize();
+        console.log('Settings initialized');
 
         // Then initialize logger with settings
         await initializeLogger();
-        checkLoggerConfig(); // Check logger configuration
+        checkLoggerConfig();
+        console.log('Logger initialized');
 
-        // Initialize graph data manager
-        const graphDataManager = GraphDataManager.getInstance();
-        await graphDataManager.loadInitialGraphData();
-
-        // Now create visualization
-        const visualization = new GraphVisualization();
+        // Create visualization with settings
+        const visualization = new GraphVisualization(settingsStore.get());
+        console.log('Visualization created');
 
     } catch (error) {
         console.error('Initialization failed:', error);
