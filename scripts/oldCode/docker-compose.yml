@@ -1,0 +1,94 @@
+name: logseq-xr
+
+services:
+  webxr:
+    build: .
+    image: logseq-xr-image:latest
+    container_name: logseq-xr-webxr
+    read_only: false
+    networks:
+      ragflow:
+        aliases:
+          - logseq-xr-webxr
+          - webxr-client
+    deploy:
+      resources:
+        limits:
+          cpus: '16.0'
+          memory: 64G
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']  # Explicitly use GPU 0
+              capabilities: [gpu]
+    ports:
+      - "4000:4000"  # Map container nginx port 4000 to host port 4000
+    environment:
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+      - BIND_ADDRESS=0.0.0.0
+      - PORT=3001  # Explicitly set Rust backend to use port 3001
+      - NGINX_PORT=4000  # Set nginx to use port 4000
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_GPU_UUID:-0}  # Use GPU UUID from launch script
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NODE_ENV=production
+    env_file:
+      - .env
+    volumes:
+      - ./data/markdown:/app/data/markdown
+      - ./data/piper:/app/data/piper
+      - ./client:/app/client
+      - type: bind
+        source: ./settings.toml
+        target: /app/settings.toml
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 4G
+    user: "${UID:-1000}:${GID:-1000}"  # Use host user's UID/GID or default to 1000
+    restart: unless-stopped
+    stop_grace_period: 30s
+    init: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1g"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4000/ || exit 1; curl -f http://localhost:4000/wss || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared-tunnel
+    networks:
+      ragflow:
+        aliases:
+          - cloudflared
+    volumes:
+      - ./config.yml:/etc/cloudflared/config.yml:ro
+    command: tunnel --loglevel info --config /etc/cloudflared/config.yml run
+    restart: unless-stopped
+    stop_grace_period: 10s
+    init: true
+    depends_on: []  # Remove dependency on webxr
+    environment:
+      - TUNNEL_TOKEN=$TUNNEL_TOKEN
+      - TUNNEL_METRICS=0.0.0.0:2000
+      - TUNNEL_DNS_UPSTREAM=https://1.1.1.1/dns-query,https://1.0.0.1/dns-query
+      - TUNNEL_TRANSPORT_PROTOCOL=http2
+      - TUNNEL_ORIGIN_SERVER=http://webxr-client:4000  # Point to nginx port
+      - TUNNEL_WEBSOCKET_ENABLE=true
+      - TUNNEL_WEBSOCKET_HEARTBEAT_INTERVAL=30s  # Match our heartbeat interval
+      - TUNNEL_WEBSOCKET_TIMEOUT=3600s  # Match our max timeout
+      - TUNNEL_RETRIES=5
+      - TUNNEL_GRACE_PERIOD=30s
+    env_file:
+      - .env
+networks:
+  ragflow:
+    external: true
+    name: docker_ragflow  # RAGFlow's network name from docker network ls
