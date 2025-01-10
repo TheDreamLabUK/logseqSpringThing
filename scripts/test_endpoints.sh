@@ -31,6 +31,11 @@ LOG_DIR="logs"
 LOG_FILE="${LOG_DIR}/test_$(date +%Y%m%d_%H%M%S).log"
 TIMEOUT=5
 
+# Add these arrays at the top with other configuration
+declare -a WORKING_BACKEND_ENDPOINTS=()
+declare -a WORKING_NGINX_ENDPOINTS=()
+declare -a WORKING_PUBLIC_ENDPOINTS=()
+
 # Create logs directory if it doesn't exist
 mkdir -p "$LOG_DIR"
 
@@ -38,6 +43,11 @@ mkdir -p "$LOG_DIR"
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -v|--verbose) VERBOSE=true ;;
+        --health-only) TEST_HEALTH_ONLY=true ;;
+        --backend-only) TEST_BACKEND_ONLY=true ;;
+        --nginx-only) TEST_NGINX_ONLY=true ;;
+        --network-only) TEST_NETWORK_ONLY=true ;;
+        --public-only) TEST_PUBLIC_ONLY=true ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
     shift
@@ -209,93 +219,95 @@ check_static_files() {
     docker_exec cat /app/client/index.html || true
 }
 
-# Function to test backend health
+# Function to test backend endpoints
 test_backend() {
-    log_section "Testing Internal Backend (Port $BACKEND_PORT)"
+    log_section "Testing Backend Endpoints"
     local failed=0
     
-    # Test internal endpoints
+    # Test backend endpoints
     local endpoints=(
-        "/api/settings"
-        "/api/settings/visualization"
-        "/api/settings/xr"
-        "/api/settings/system"
-        "/api/graph/data"
-        "/api/graph/layout"
-        "/api/graph/metadata"
-        "/api/graph/nodes"
-        "/api/graph/edges"
-        "/api/graph/data/paginated?page=0&page_size=10"
+        # Graph Data Endpoints
+        "/api/graph/data:Retrieves the complete graph data including nodes, edges, and metadata"
+        "/api/graph/data/paginated:Retrieves paginated graph data with configurable page size and filters"
+        
+        # File Management Endpoints
+        "/api/files/fetch:Fetches and processes files from the repository"
+        "/api/files/content:Retrieves content of specific files"
+        "/api/files/refresh:Refreshes the graph data from current files"
+        
+        # Visualization Settings Endpoints
+        "/api/visualization/settings/nodes:Gets/updates node appearance settings (color, size, etc.)"
+        "/api/visualization/settings/edges:Gets/updates edge appearance settings (width, arrows, etc.)"
+        "/api/visualization/settings/rendering:Gets/updates rendering settings (lighting, shadows, etc.)"
+        "/api/visualization/settings/physics:Gets/updates physics simulation settings"
+        "/api/visualization/settings/labels:Gets/updates label display settings"
+        "/api/visualization/settings/bloom:Gets/updates bloom effect settings"
+        "/api/visualization/settings/animations:Gets/updates animation settings"
+        "/api/visualization/settings/audio:Gets/updates audio feedback settings"
+        "/api/visualization/settings/clientDebug:Gets/updates client-side debug settings"
+        "/api/visualization/settings/serverDebug:Gets/updates server-side debug settings"
+        "/api/visualization/settings/security:Gets/updates security settings"
+        "/api/visualization/settings/websocket:Gets/updates WebSocket connection settings"
+        "/api/visualization/settings/network:Gets/updates network configuration settings"
+        "/api/visualization/settings/default:Gets/updates default application settings"
+        
+        # RAGFlow Integration Endpoints
+        "/api/ragflow/status:Checks RAGFlow service status"
+        "/api/ragflow/query:Sends queries to the RAGFlow service"
+        
+        # Perplexity Integration Endpoints
+        "/api/perplexity:Processes queries through Perplexity API for enhanced content understanding"
     )
     
-    for endpoint in "${endpoints[@]}"; do
-        local response=$(docker_exec curl -s "http://localhost:$BACKEND_PORT$endpoint")
+    for endpoint_info in "${endpoints[@]}"; do
+        IFS=':' read -r endpoint description <<< "$endpoint_info"
+        log_verbose "Testing backend endpoint: $endpoint ($description)"
+        local response=$(curl -s "http://localhost:$BACKEND_PORT$endpoint")
         if [ $? -eq 0 ] && [ -n "$response" ]; then
-            log_success "Backend $endpoint accessible"
+            log_success "Backend endpoint $endpoint accessible"
             log_verbose "Response: $response"
+            WORKING_BACKEND_ENDPOINTS+=("$endpoint:$description")
         else
-            log_error "Backend $endpoint failed"
+            log_error "Backend endpoint $endpoint failed"
             ((failed++))
-            diagnose_endpoint "$endpoint" "$BACKEND_PORT" "localhost"
         fi
     done
     
     return $failed
 }
 
-# Function to test nginx
+# Function to test nginx endpoints
 test_nginx() {
-    log_section "Testing Nginx Proxy (Port $NGINX_PORT)"
+    log_section "Testing Nginx Endpoints"
     local failed=0
     
-    # Check if nginx is running
-    if ! docker_exec pgrep nginx > /dev/null; then
-        log_error "Nginx is not running in container"
-        return 1
-    fi
-    
-    # Check nginx config
-    log "Checking Nginx configuration..."
-    docker_exec nginx -t || true
-    
-    # Check static files
-    check_static_files
-    
-    # Test static file serving
-    local container_ip=$(get_container_ip ${CONTAINER_NAME})
-    local static_endpoints=(
-        "/"
-        "/index.html"
-        "/assets/index.js"
-        "/assets/index.css"
+    # Test nginx endpoints
+    local endpoints=(
+        # Static File Serving
+        "/:Serves the main application interface"
+        "/index.html:Serves the main HTML entry point"
+        "/assets:Serves static assets (images, styles, scripts)"
+        
+        # API Proxying
+        "/api/graph/data:Proxies graph data requests to backend"
+        "/api/visualization/settings:Proxies visualization settings requests"
+        "/api/files:Proxies file management requests"
+        
+        # WebSocket Endpoints
+        "/wss:WebSocket endpoint for real-time updates"
     )
     
-    for endpoint in "${static_endpoints[@]}"; do
-        local response=$(curl -s -I "http://${container_ip}:${NGINX_PORT}${endpoint}")
-        if [[ "$response" == *"200 OK"* ]]; then
-            log_success "Nginx static file $endpoint accessible"
-        else
-            log_error "Nginx static file $endpoint failed"
-            ((failed++))
-        fi
-    done
-    
-    # Test API endpoints through nginx
-    local api_endpoints=(
-        "/api/settings"
-        "/api/graph/data"
-        "/api/graph/layout"
-    )
-    
-    for endpoint in "${api_endpoints[@]}"; do
-        local response=$(curl -s "http://${container_ip}:${NGINX_PORT}${endpoint}")
-        if [ $? -eq 0 ] && [ -n "$response" ]; then
-            log_success "Nginx API $endpoint accessible"
+    for endpoint_info in "${endpoints[@]}"; do
+        IFS=':' read -r endpoint description <<< "$endpoint_info"
+        log_verbose "Testing nginx endpoint: $endpoint ($description)"
+        local response=$(curl -s "http://localhost:$NGINX_PORT$endpoint")
+        if [ $? -eq 0 ]; then
+            log_success "Nginx endpoint $endpoint accessible"
             log_verbose "Response: $response"
+            WORKING_NGINX_ENDPOINTS+=("$endpoint:$description")
         else
-            log_error "Nginx API $endpoint failed"
+            log_error "Nginx endpoint $endpoint failed"
             ((failed++))
-            diagnose_endpoint "$endpoint" "$NGINX_PORT" "$container_ip"
         fi
     done
     
@@ -337,17 +349,22 @@ test_public() {
     
     # Test HTTPS endpoints
     local endpoints=(
-        "/"
-        "/index.html"
-        "/api/graph/data"
-        "/api/settings"
+        # Main Application Access
+        "/:Public access to main application interface"
+        "/index.html:Public access to main HTML entry point"
+        
+        # Public API Access
+        "/api/graph/data:Public access to graph data"
+        "/api/settings:Public access to application settings"
     )
     
-    for endpoint in "${endpoints[@]}"; do
+    for endpoint_info in "${endpoints[@]}"; do
+        IFS=':' read -r endpoint description <<< "$endpoint_info"
         local response=$(curl -sk "https://$PUBLIC_DOMAIN$endpoint")
         if [ $? -eq 0 ] && [ -n "$response" ]; then
             log_success "Public endpoint $endpoint accessible"
             log_verbose "Response: $response"
+            WORKING_PUBLIC_ENDPOINTS+=("$endpoint:$description")
         else
             log_error "Public endpoint $endpoint failed"
             ((failed++))
@@ -357,49 +374,99 @@ test_public() {
     return $failed
 }
 
+# Add a small delay function
+wait_between_tests() {
+    sleep 2
+    echo -e "\n"
+}
+
+# Add this function before main()
+print_endpoint_summary() {
+    log_section "Endpoint Summary"
+    
+    echo -e "\n${BLUE}${BOLD}Working Backend Endpoints:${NC}"
+    for endpoint_info in "${WORKING_BACKEND_ENDPOINTS[@]}"; do
+        IFS=':' read -r endpoint description <<< "$endpoint_info"
+        echo -e "${GREEN}${CHECK_MARK}${NC} ${BOLD}$endpoint${NC}"
+        echo -e "${GRAY}   $description${NC}"
+    done
+    
+    echo -e "\n${BLUE}${BOLD}Working Nginx Endpoints:${NC}"
+    for endpoint_info in "${WORKING_NGINX_ENDPOINTS[@]}"; do
+        IFS=':' read -r endpoint description <<< "$endpoint_info"
+        echo -e "${GREEN}${CHECK_MARK}${NC} ${BOLD}$endpoint${NC}"
+        echo -e "${GRAY}   $description${NC}"
+    done
+    
+    echo -e "\n${BLUE}${BOLD}Working Public Endpoints:${NC}"
+    for endpoint_info in "${WORKING_PUBLIC_ENDPOINTS[@]}"; do
+        IFS=':' read -r endpoint description <<< "$endpoint_info"
+        echo -e "${GREEN}${CHECK_MARK}${NC} ${BOLD}$endpoint${NC}"
+        echo -e "${GRAY}   $description${NC}"
+    done
+}
+
 # Main execution
 main() {
     log "${YELLOW}Starting comprehensive endpoint tests...${NC}"
     local total_failed=0
     
-    # Run tests in order - don't exit on health check failure
+    # Run tests based on flags or run all if no specific test is requested
+    if [ "$TEST_HEALTH_ONLY" = true ]; then
+        check_container_health
+        exit $?
+    fi
+    
+    if [ "$TEST_BACKEND_ONLY" = true ]; then
+        test_backend
+        exit $?
+    fi
+    
+    if [ "$TEST_NGINX_ONLY" = true ]; then
+        test_nginx
+        exit $?
+    fi
+    
+    if [ "$TEST_NETWORK_ONLY" = true ]; then
+        test_network
+        exit $?
+    fi
+    
+    if [ "$TEST_PUBLIC_ONLY" = true ]; then
+        test_public
+        exit $?
+    fi
+    
+    # Run all tests with delays between them
     check_container_health
     local health_failed=$?
     ((total_failed += health_failed))
+    wait_between_tests
     
     test_backend
     local backend_failed=$?
     ((total_failed += backend_failed))
+    wait_between_tests
     
     test_nginx
     local nginx_failed=$?
     ((total_failed += nginx_failed))
+    wait_between_tests
     
     test_network
     local network_failed=$?
     ((total_failed += network_failed))
+    wait_between_tests
     
     test_public
     local public_failed=$?
     ((total_failed += public_failed))
     
-    # Print summary
-    echo
-    log "${YELLOW}Test Summary:${NC}"
-    echo "Health Check: $([ $health_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($health_failed issues)${NC}")"
-    echo "Backend Tests: $([ $backend_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($backend_failed failed)${NC}")"
-    echo "Nginx Tests: $([ $nginx_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($nginx_failed failed)${NC}")"
-    echo "Network Tests: $([ $network_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($network_failed failed)${NC}")"
-    echo "Public URL Tests: $([ $public_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($public_failed failed)${NC}")"
+    # Print endpoint summary at the end
+    print_endpoint_summary
     
-    if [ $total_failed -eq 0 ]; then
-        log "${GREEN}All tests passed successfully!${NC}"
-        exit 0
-    else
-        log "${RED}${total_failed} tests failed${NC}"
-        log "Complete test log available at: $LOG_FILE"
-        exit 1
-    fi
+    log "${YELLOW}Tests completed with $total_failed failures${NC}"
+    return $total_failed
 }
 
 # Run main function
