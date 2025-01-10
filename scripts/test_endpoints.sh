@@ -3,29 +3,78 @@
 # Enable error reporting
 set -e
 
-# Color codes for output
+# Colors and formatting
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+GRAY='\033[0;90m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Symbols
+CHECK_MARK="✓"
+CROSS_MARK="✗"
+ARROW="→"
+BULLET="•"
 
 # Configuration
-CONTAINER_NAME="logseq-xr-webxr"
 BACKEND_PORT=3001
 NGINX_PORT=4000
+CONTAINER_NAME="logseq-xr-webxr"
 PUBLIC_DOMAIN="www.visionflow.info"
 RAGFLOW_NETWORK="docker_ragflow"
+VERBOSE=false
+LOG_DIR="logs"
+LOG_FILE="${LOG_DIR}/test_$(date +%Y%m%d_%H%M%S).log"
 TIMEOUT=5
 
-# Function to log messages
+# Create logs directory if it doesn't exist
+mkdir -p "$LOG_DIR"
+
+# Parse command line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -v|--verbose) VERBOSE=true ;;
+        *) echo "Unknown parameter: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Logging functions
 log() {
-    printf "[%s] %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$1"
+    echo -e "${GRAY}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} $1" | tee -a "$LOG_FILE"
+}
+
+log_verbose() {
+    if [ "$VERBOSE" = true ]; then
+        echo -e "${GRAY}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} ${CYAN}${BULLET}${NC} $1" | tee -a "$LOG_FILE"
+    fi
+}
+
+log_error() {
+    echo -e "${GRAY}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} ${RED}${CROSS_MARK} ERROR:${NC} $1" | tee -a "$LOG_FILE"
+}
+
+log_success() {
+    echo -e "${GRAY}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} ${GREEN}${CHECK_MARK}${NC} $1" | tee -a "$LOG_FILE"
+}
+
+log_section() {
+    echo -e "\n${BLUE}${BOLD}=== $1 ===${NC}\n" | tee -a "$LOG_FILE"
 }
 
 # Function to safely execute docker commands with timeout
 docker_exec() {
     timeout $TIMEOUT docker exec "$CONTAINER_NAME" $@ 2>&1 || echo "Command timed out after ${TIMEOUT}s"
+}
+
+# Function to get container IP
+get_container_ip() {
+    local container=$1
+    docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$container"
 }
 
 # Function to check if port is open
@@ -36,57 +85,121 @@ check_port() {
     return $?
 }
 
-# Function to test endpoint and show response
-test_endpoint() {
-    local url="$1"
-    local description="$2"
-    local extra_opts="${3:-}"
-    local expected_content="${4:-}"
+# Function to diagnose REST endpoint failures
+diagnose_endpoint() {
+    local endpoint=$1
+    local port=$2
+    local container_ip=$3
     
-    log "${BLUE}Testing $description...${NC}"
-    log "URL: $url"
+    log_section "Detailed Diagnostics for ${YELLOW}${endpoint}${NC}"
     
-    # First check if port is open
-    local port=$(echo "$url" | sed -n 's/.*:\([0-9]\+\).*/\1/p')
-    local host=$(echo "$url" | sed -n 's/.*\/\/\([^:\/]*\).*/\1/p')
-    
-    if [ -n "$port" ] && ! check_port "$host" "$port"; then
-        log "${RED}✗ Port $port is not open on $host${NC}"
-        return 1
-    fi
-    
-    # Then try the request
-    local response
-    if [[ -n "$extra_opts" ]]; then
-        response=$(curl -v -m $TIMEOUT -s $extra_opts "$url" 2>&1)
-    else
-        response=$(curl -v -m $TIMEOUT -s "$url" 2>&1)
-    fi
-    local status=$?
-    
-    if [ $status -eq 0 ]; then
-        log "${GREEN}✓ $description successful${NC}"
-        log "Response: $response"
-        
-        # Check for expected content if provided
-        if [ -n "$expected_content" ] && ! echo "$response" | grep -q "$expected_content"; then
-            log "${RED}✗ Expected content not found: $expected_content${NC}"
-            return 1
+    # Get process info and logs
+    echo -e "${MAGENTA}${BOLD}Process and Log Analysis:${NC}" | tee -a "$LOG_FILE"
+    docker exec ${CONTAINER_NAME} bash -c '
+        # Get webxr process info
+        pid=$(pgrep webxr)
+        if [ ! -z "$pid" ]; then
+            echo -e "\n'"${CYAN}${BOLD}"'=== Process Info ==='"${NC}"'"
+            ps -fp $pid
+            echo -e "\n'"${CYAN}${BOLD}"'=== Process Environment ==='"${NC}"'"
+            cat /proc/$pid/environ | tr "\0" "\n"
+            echo -e "\n'"${CYAN}${BOLD}"'=== Process Open Files ==='"${NC}"'"
+            ls -l /proc/$pid/fd
         fi
         
-        return 0
-    else
-        log "${RED}✗ $description failed (status: $status)${NC}"
-        log "Response: $response"
-        return 1
+        # Check webxr logs
+        if [ -f /tmp/webxr.log ]; then
+            echo -e "\n'"${CYAN}${BOLD}"'=== WebXR Log (/tmp/webxr.log) ==='"${NC}"'"
+            tail -n 200 /tmp/webxr.log
+            echo -e "\n'"${RED}${BOLD}"'=== Recent Errors in webxr.log ==='"${NC}"'"
+            grep -i "error\|panic\|fatal" /tmp/webxr.log | tail -n 20
+        fi
+        
+        # Check nginx logs
+        echo -e "\n'"${CYAN}${BOLD}"'=== Nginx Error Log ==='"${NC}"'"
+        if [ -f /var/log/nginx/error.log ]; then
+            tail -n 100 /var/log/nginx/error.log
+            echo -e "\n'"${RED}${BOLD}"'=== Recent Nginx Errors ==='"${NC}"'"
+            grep -i "error\|warn\|notice" /var/log/nginx/error.log | tail -n 20
+        fi' | tee -a "$LOG_FILE"
+    
+    # For graph endpoints, add specific diagnostics
+    if [[ "${endpoint}" == *"graph"* ]]; then
+        echo -e "\n${MAGENTA}${BOLD}Graph-Specific Diagnostics:${NC}" | tee -a "$LOG_FILE"
+        docker exec ${CONTAINER_NAME} bash -c '
+            echo -e "\n'"${CYAN}${BOLD}"'=== Graph Data Directory ==='"${NC}"'"
+            ls -la /app/data/graph/
+            echo -e "\n'"${CYAN}${BOLD}"'=== Graph Cache ==='"${NC}"'"
+            ls -la /app/data/cache/
+            echo -e "\n'"${CYAN}${BOLD}"'=== Memory Usage ==='"${NC}"'"
+            free -h
+            echo -e "\n'"${CYAN}${BOLD}"'=== Graph Settings ==='"${NC}"'"
+            cat /app/settings.toml | grep -i "graph" || echo "No graph settings found"' | tee -a "$LOG_FILE"
     fi
+    
+    # Test endpoint directly with verbose output
+    echo -e "\n${MAGENTA}${BOLD}Direct Endpoint Test:${NC}" | tee -a "$LOG_FILE"
+    curl -v -H "Accept: application/json" "http://${container_ip}:${port}${endpoint}" 2>&1 | tee -a "$LOG_FILE"
 }
 
-# Function to check Nginx logs
-check_nginx_logs() {
-    log "${BLUE}Checking Nginx logs...${NC}"
-    docker_exec tail -n 50 /var/log/nginx/error.log || true
-    docker_exec tail -n 50 /var/log/nginx/access.log || true
+# Function to check container health
+check_container_health() {
+    local container_ip=$(get_container_ip ${CONTAINER_NAME})
+    
+    log_section "Container Health Check"
+    
+    local health_failed=0
+    
+    # Check if container exists and is running
+    if ! docker ps -q -f name=${CONTAINER_NAME} > /dev/null 2>&1; then
+        log_error "Container ${YELLOW}${CONTAINER_NAME}${NC} is not running"
+        docker ps -a -f name=${CONTAINER_NAME} --format "{{.Status}}" | tee -a "$LOG_FILE"
+        return 1
+    fi
+    
+    # Check required processes
+    log "Checking required processes..."
+    if docker_exec pgrep webxr > /dev/null; then
+        log_success "WebXR process is running"
+    else
+        log_error "WebXR process is not running"
+        ((health_failed++))
+    fi
+    
+    if docker_exec pgrep nginx > /dev/null; then
+        log_success "Nginx process is running"
+    else
+        log_error "Nginx process is not running"
+        ((health_failed++))
+    fi
+    
+    # Check port accessibility
+    log "Checking port accessibility..."
+    if check_port "$container_ip" "$BACKEND_PORT"; then
+        log_success "Backend port $BACKEND_PORT is accessible"
+    else
+        log_error "Backend port $BACKEND_PORT is not accessible"
+        ((health_failed++))
+    fi
+    
+    if check_port "$container_ip" "$NGINX_PORT"; then
+        log_success "Nginx port $NGINX_PORT is accessible"
+    else
+        log_error "Nginx port $NGINX_PORT is not accessible"
+        ((health_failed++))
+    fi
+    
+    # Show process status
+    echo -e "\n${CYAN}${BOLD}Running processes:${NC}" | tee -a "$LOG_FILE"
+    docker_exec ps aux | grep -E "nginx|webxr|rust" | tee -a "$LOG_FILE" || true
+    
+    if [ $health_failed -eq 0 ]; then
+        log_success "Container appears healthy"
+        return 0
+    else
+        log_error "Container health check found $health_failed issues"
+        return $health_failed
+    fi
 }
 
 # Function to check static files
@@ -98,46 +211,46 @@ check_static_files() {
 
 # Function to test backend health
 test_backend() {
-    log "\n${BLUE}=== Testing Internal Backend (Port $BACKEND_PORT) ===${NC}"
+    log_section "Testing Internal Backend (Port $BACKEND_PORT)"
     local failed=0
     
-    # Check if container is running
-    if ! docker ps | grep -q "$CONTAINER_NAME"; then
-        log "${RED}Container $CONTAINER_NAME is not running${NC}"
-        docker ps
-        return 1
-    fi
-    
     # Test internal endpoints
-    local response=$(docker_exec curl -s "http://localhost:$BACKEND_PORT/api/graph/data")
-    if [ $? -eq 0 ] && [ -n "$response" ]; then
-        log "${GREEN}✓ Backend /api/graph/data accessible${NC}"
-        log "Response: $response"
-    else
-        log "${RED}✗ Backend /api/graph/data failed${NC}"
-        ((failed++))
-    fi
+    local endpoints=(
+        "/api/settings"
+        "/api/settings/visualization"
+        "/api/settings/xr"
+        "/api/settings/system"
+        "/api/graph/data"
+        "/api/graph/layout"
+        "/api/graph/metadata"
+        "/api/graph/nodes"
+        "/api/graph/edges"
+        "/api/graph/data/paginated?page=0&page_size=10"
+    )
     
-    response=$(docker_exec curl -s "http://localhost:$BACKEND_PORT/api/graph/data/paginated?page=0&page_size=10")
-    if [ $? -eq 0 ] && [ -n "$response" ]; then
-        log "${GREEN}✓ Backend /api/graph/data/paginated accessible${NC}"
-        log "Response: $response"
-    else
-        log "${RED}✗ Backend /api/graph/data/paginated failed${NC}"
-        ((failed++))
-    fi
+    for endpoint in "${endpoints[@]}"; do
+        local response=$(docker_exec curl -s "http://localhost:$BACKEND_PORT$endpoint")
+        if [ $? -eq 0 ] && [ -n "$response" ]; then
+            log_success "Backend $endpoint accessible"
+            log_verbose "Response: $response"
+        else
+            log_error "Backend $endpoint failed"
+            ((failed++))
+            diagnose_endpoint "$endpoint" "$BACKEND_PORT" "localhost"
+        fi
+    done
     
     return $failed
 }
 
 # Function to test nginx
 test_nginx() {
-    log "\n${BLUE}=== Testing Nginx Proxy (Port $NGINX_PORT) ===${NC}"
+    log_section "Testing Nginx Proxy (Port $NGINX_PORT)"
     local failed=0
     
     # Check if nginx is running
     if ! docker_exec pgrep nginx > /dev/null; then
-        log "${RED}Nginx is not running in container${NC}"
+        log_error "Nginx is not running in container"
         return 1
     fi
     
@@ -149,45 +262,68 @@ test_nginx() {
     check_static_files
     
     # Test static file serving
-    test_endpoint "http://localhost:$NGINX_PORT/" "Nginx static files" "" "<!DOCTYPE html>" || ((failed++))
-    test_endpoint "http://localhost:$NGINX_PORT/index.html" "Nginx index.html" "" "<!DOCTYPE html>" || ((failed++))
+    local container_ip=$(get_container_ip ${CONTAINER_NAME})
+    local static_endpoints=(
+        "/"
+        "/index.html"
+        "/assets/index.js"
+        "/assets/index.css"
+    )
     
-    # Test API endpoint
-    test_endpoint "http://localhost:$NGINX_PORT/api/graph/data" "Nginx API proxy" || ((failed++))
+    for endpoint in "${static_endpoints[@]}"; do
+        local response=$(curl -s -I "http://${container_ip}:${NGINX_PORT}${endpoint}")
+        if [[ "$response" == *"200 OK"* ]]; then
+            log_success "Nginx static file $endpoint accessible"
+        else
+            log_error "Nginx static file $endpoint failed"
+            ((failed++))
+        fi
+    done
     
-    # Check logs if there were failures
-    if [ $failed -gt 0 ]; then
-        check_nginx_logs
-    fi
+    # Test API endpoints through nginx
+    local api_endpoints=(
+        "/api/settings"
+        "/api/graph/data"
+        "/api/graph/layout"
+    )
+    
+    for endpoint in "${api_endpoints[@]}"; do
+        local response=$(curl -s "http://${container_ip}:${NGINX_PORT}${endpoint}")
+        if [ $? -eq 0 ] && [ -n "$response" ]; then
+            log_success "Nginx API $endpoint accessible"
+            log_verbose "Response: $response"
+        else
+            log_error "Nginx API $endpoint failed"
+            ((failed++))
+            diagnose_endpoint "$endpoint" "$NGINX_PORT" "$container_ip"
+        fi
+    done
     
     return $failed
 }
 
 # Function to test network
 test_network() {
-    log "\n${BLUE}=== Testing RAGFlow Network ===${NC}"
+    log_section "Testing RAGFlow Network"
     local failed=0
-    
-    # Get container IP
-    local ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER_NAME")
-    if [ -z "$ip" ]; then
-        log "${RED}Failed to get container IP${NC}"
-        return 1
-    fi
-    log "Container IP: $ip"
+    local container_ip=$(get_container_ip ${CONTAINER_NAME})
     
     # Test network connectivity
-    test_endpoint "http://$ip:$NGINX_PORT/api/graph/data" "Network API connectivity" || ((failed++))
-    test_endpoint "http://$ip:$NGINX_PORT/" "Network static files" "" "<!DOCTYPE html>" || ((failed++))
+    if ! check_port "$container_ip" "$NGINX_PORT"; then
+        log_error "Cannot connect to container on port $NGINX_PORT"
+        ((failed++))
+    else
+        log_success "Container port $NGINX_PORT is accessible"
+    fi
     
     # Test DNS resolution
     local dns_response=$(docker run --rm --network "$RAGFLOW_NETWORK" alpine nslookup webxr-client)
     if [ $? -eq 0 ]; then
-        log "${GREEN}✓ DNS resolution working${NC}"
-        log "DNS Response: $dns_response"
+        log_success "DNS resolution working"
+        log_verbose "DNS Response: $dns_response"
     else
-        log "${RED}✗ DNS resolution failed${NC}"
-        log "DNS Response: $dns_response"
+        log_error "DNS resolution failed"
+        log_verbose "DNS Response: $dns_response"
         ((failed++))
     fi
     
@@ -196,15 +332,27 @@ test_network() {
 
 # Function to test public URL
 test_public() {
-    log "\n${BLUE}=== Testing Public URL ===${NC}"
+    log_section "Testing Public URL"
     local failed=0
     
-    # Test HTTPS endpoint
-    test_endpoint "https://$PUBLIC_DOMAIN/api/graph/data" "Public API" "-k" || ((failed++))
+    # Test HTTPS endpoints
+    local endpoints=(
+        "/"
+        "/index.html"
+        "/api/graph/data"
+        "/api/settings"
+    )
     
-    # Test static files
-    test_endpoint "https://$PUBLIC_DOMAIN/" "Public static files" "-k" "<!DOCTYPE html>" || ((failed++))
-    test_endpoint "https://$PUBLIC_DOMAIN/index.html" "Public index.html" "-k" "<!DOCTYPE html>" || ((failed++))
+    for endpoint in "${endpoints[@]}"; do
+        local response=$(curl -sk "https://$PUBLIC_DOMAIN$endpoint")
+        if [ $? -eq 0 ] && [ -n "$response" ]; then
+            log_success "Public endpoint $endpoint accessible"
+            log_verbose "Response: $response"
+        else
+            log_error "Public endpoint $endpoint failed"
+            ((failed++))
+        fi
+    done
     
     return $failed
 }
@@ -214,7 +362,11 @@ main() {
     log "${YELLOW}Starting comprehensive endpoint tests...${NC}"
     local total_failed=0
     
-    # Run tests in order
+    # Run tests in order - don't exit on health check failure
+    check_container_health
+    local health_failed=$?
+    ((total_failed += health_failed))
+    
     test_backend
     local backend_failed=$?
     ((total_failed += backend_failed))
@@ -234,6 +386,7 @@ main() {
     # Print summary
     echo
     log "${YELLOW}Test Summary:${NC}"
+    echo "Health Check: $([ $health_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($health_failed issues)${NC}")"
     echo "Backend Tests: $([ $backend_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($backend_failed failed)${NC}")"
     echo "Nginx Tests: $([ $nginx_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($nginx_failed failed)${NC}")"
     echo "Network Tests: $([ $network_failed -eq 0 ] && echo "${GREEN}PASS${NC}" || echo "${RED}FAIL ($network_failed failed)${NC}")"
@@ -244,6 +397,7 @@ main() {
         exit 0
     else
         log "${RED}${total_failed} tests failed${NC}"
+        log "Complete test log available at: $LOG_FILE"
         exit 1
     fi
 }
