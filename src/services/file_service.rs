@@ -116,29 +116,23 @@ impl GitHubService for RealGitHubService {
             self.base_path
         );
         
-        debug!("Fetching GitHub metadata from URL: {}", url);
+        info!("Fetching GitHub metadata from URL: {}", url);
 
-        // Set headers exactly as in the working curl command
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
             .send()
             .await?;
 
-        // Get status and headers for debugging
         let status = response.status();
         let headers = response.headers().clone();
         
-        debug!("GitHub API response status: {}", status);
+        info!("GitHub API response status: {}", status);
         debug!("GitHub API response headers: {:?}", headers);
 
-        // Get response body
         let body = response.text().await?;
-        
-        // Log the first 1000 characters of the response for debugging
         debug!("GitHub API response preview: {}", &body[..body.len().min(1000)]);
 
-        // Check for error response
         if !status.is_success() {
             let error_msg = match serde_json::from_str::<serde_json::Value>(&body) {
                 Ok(error_json) => {
@@ -151,7 +145,6 @@ impl GitHubService for RealGitHubService {
             return Err(error_msg.into());
         }
 
-        // Parse response as array
         let contents: Vec<serde_json::Value> = match serde_json::from_str(&body) {
             Ok(parsed) => parsed,
             Err(e) => {
@@ -163,6 +156,7 @@ impl GitHubService for RealGitHubService {
 
         let settings = self.settings.read().await;
         let debug_enabled = settings.server_debug.enabled;
+        drop(settings);
         
         let mut markdown_files = Vec::new();
         
@@ -195,14 +189,13 @@ impl GitHubService for RealGitHubService {
                     last_modified,
                 });
             }
-
         }
 
         if debug_enabled {
             info!("Debug mode: Processing only debug test files");
         }
 
-        debug!("Found {} markdown files", markdown_files.len());
+        info!("Found {} markdown files", markdown_files.len());
         Ok(markdown_files)
     }
 
@@ -403,41 +396,24 @@ impl FileService {
 
     /// Calculate node size based on file size
     fn calculate_node_size(file_size: usize) -> f64 {
-        // Use logarithmic scaling for node size
-        let size = if file_size == 0 {
-            MIN_NODE_SIZE
-        } else {
-            let log_size = (file_size as f64).ln();
-            let min_log = 0f64;
-            let max_log = (100_000f64).ln(); // Assuming 100KB as max expected size
-            
-            let normalized = (log_size - min_log) / (max_log - min_log);
-            MIN_NODE_SIZE + normalized * (MAX_NODE_SIZE - MIN_NODE_SIZE)
-        };
-        
-        size.max(MIN_NODE_SIZE).min(MAX_NODE_SIZE)
+        const MIN_SIZE: f64 = 5.0;
+        const MAX_SIZE: f64 = 50.0;
+        const BASE_SIZE: f64 = 1000.0; // Base file size for scaling
+
+        let size = (file_size as f64 / BASE_SIZE).min(5.0);
+        MIN_SIZE + (size * (MAX_SIZE - MIN_SIZE) / 5.0)
     }
 
     /// Extract references to other files based on their names (case insensitive)
-    fn extract_references(content: &str, valid_nodes: &[String]) -> HashMap<String, ReferenceInfo> {
-        let mut references = HashMap::new();
-        let content_lower = content.to_lowercase();
+    fn extract_references(content: &str, valid_nodes: &[String]) -> Vec<String> {
+        let re = Regex::new(r"\[\[([^\]]+)\]\]").unwrap();
+        let mut references = Vec::new();
         
-        for node_name in valid_nodes {
-            let mut ref_info = ReferenceInfo::default();
-            let node_name_lower = node_name.to_lowercase();
-            
-            // Create a regex pattern with word boundaries
-            let pattern = format!(r"\b{}\b", regex::escape(&node_name_lower));
-            if let Ok(re) = Regex::new(&pattern) {
-                // Count case-insensitive matches of the filename
-                let count = re.find_iter(&content_lower).count();
-                
-                // If we found any references, add them to the map
-                if count > 0 {
-                    debug!("Found {} references to {} in content", count, node_name);
-                    ref_info.direct_mentions = count;
-                    references.insert(format!("{}.md", node_name), ref_info);
+        for cap in re.captures_iter(content) {
+            if let Some(reference) = cap.get(1) {
+                let reference = reference.as_str().to_string();
+                if valid_nodes.contains(&reference) {
+                    references.push(reference);
                 }
             }
         }
@@ -445,25 +421,19 @@ impl FileService {
         references
     }
 
-    fn convert_references_to_topic_counts(references: HashMap<String, ReferenceInfo>) -> HashMap<String, usize> {
-        references.into_iter()
-            .map(|(name, info)| {
-                debug!("Converting reference for {} with {} mentions", name, info.direct_mentions);
-                (name, info.direct_mentions)
-            })
-            .collect()
+    fn convert_references_to_topic_counts(references: Vec<String>) -> HashMap<String, usize> {
+        let mut topic_counts = HashMap::new();
+        for reference in references {
+            *topic_counts.entry(reference).or_insert(0) += 1;
+        }
+        topic_counts
     }
 
-    /// Initialize the local markdown directory and metadata structure.
+    /// Initialize local storage with files from GitHub
     pub async fn initialize_local_storage(
         github_service: &dyn GitHubService,
-        _settings: Arc<RwLock<Settings>>,
+        settings: Arc<RwLock<Settings>>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        info!("Checking local storage status");
-        
-        // Ensure required directories exist
-        Self::ensure_directories()?;
-
         // Check if we already have a valid local setup
         if Self::has_valid_local_setup() {
             info!("Valid local setup found, skipping initialization");
@@ -480,21 +450,24 @@ impl FileService {
         let mut file_contents = HashMap::new();
         let mut file_metadata = HashMap::new();
         let mut metadata_store = MetadataStore::new();
-        
-        // Step 2: First pass - collect all files and their contents
+
+        // Step 2: Download and process each file
         for file_meta in github_files {
             match github_service.fetch_file_content(&file_meta.download_url).await {
                 Ok(content) => {
-                    // Check if file starts with "public:: true"
+                    // Check if file is public
                     let first_line = content.lines().next().unwrap_or("").trim();
                     if first_line != "public:: true" {
                         debug!("Skipping non-public file: {}", file_meta.name);
                         continue;
                     }
 
-                    let node_name = file_meta.name.trim_end_matches(".md").to_string();
-                    file_sizes.insert(node_name.clone(), content.len());
-                    file_contents.insert(node_name, content);
+                    let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
+                    fs::write(&file_path, &content)?;
+
+                    let node_name = file_meta.name.trim_end_matches(".md");
+                    file_sizes.insert(node_name.to_string(), content.len());
+                    file_contents.insert(node_name.to_string(), content.clone());
                     file_metadata.insert(file_meta.name.clone(), file_meta);
                 }
                 Err(e) => {
@@ -504,21 +477,13 @@ impl FileService {
             sleep(GITHUB_API_DELAY).await;
         }
 
-        // Get list of valid node names (filenames without .md)
-        let valid_nodes: Vec<String> = file_contents.keys().cloned().collect();
-
-        // Step 3: Second pass - extract references and create metadata
+        // Step 3: Process files and create metadata
         for (node_name, content) in &file_contents {
             let file_name = format!("{}.md", node_name);
-            let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
-            
-            // Calculate SHA1 of content
             let local_sha1 = Self::calculate_sha1(content);
-            
-            // Save file content
-            fs::write(&file_path, content)?;
 
-            // Extract references
+            // Extract references and create metadata
+            let valid_nodes: Vec<String> = file_contents.keys().cloned().collect();
             let references = Self::extract_references(content, &valid_nodes);
             let topic_counts = Self::convert_references_to_topic_counts(references);
 
@@ -551,7 +516,6 @@ impl FileService {
         Self::save_metadata(&metadata_store)?;
 
         info!("Initialization complete. Processed {} public files", metadata_store.len());
-
         Ok(())
     }
 
@@ -571,19 +535,6 @@ impl FileService {
 
     /// Ensures all required directories exist with proper permissions
     fn ensure_directories() -> Result<(), Box<dyn StdError + Send + Sync>> {
-        // Create parent data directory first
-        let data_dir = Path::new("/app/data");
-        if !data_dir.exists() {
-            info!("Creating data directory at {:?}", data_dir);
-            fs::create_dir_all(data_dir)?;
-            // Set permissions to allow writing
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(data_dir, fs::Permissions::from_mode(0o777))?;
-            }
-        }
-
         // Create markdown directory
         let markdown_dir = Path::new(MARKDOWN_DIR);
         if !markdown_dir.exists() {
@@ -602,7 +553,6 @@ impl FileService {
         if !metadata_dir.exists() {
             info!("Creating metadata directory at {:?}", metadata_dir);
             fs::create_dir_all(metadata_dir)?;
-            // Set permissions to allow writing
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -636,55 +586,25 @@ impl FileService {
         _settings: Arc<RwLock<Settings>>,
         metadata_store: &mut MetadataStore,
     ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
+        info!("Starting fetch_and_process_files");
+        
         // Ensure directories exist before any operations
         Self::ensure_directories()?;
 
-        // Get metadata for markdown files in target directory
         let settings = self.settings.read().await;
         let skip_debug_filter = !settings.server_debug.enabled;
+        info!("Debug filter enabled: {}", !skip_debug_filter);
         drop(settings);
         
         let github_files_metadata = github_service.fetch_file_metadata(skip_debug_filter).await?;
-        debug!("Fetched metadata for {} markdown files", github_files_metadata.len());
+        info!("Fetched metadata for {} markdown files", github_files_metadata.len());
 
         let mut processed_files = Vec::new();
 
-        // Save current metadata
-        Self::save_metadata(metadata_store)?;
-
-        // Clean up local files that no longer exist in GitHub
-        let github_files: HashSet<_> = github_files_metadata.iter()
-            .map(|meta| meta.name.clone())
-            .collect();
-
-        let local_files: HashSet<_> = metadata_store.keys().cloned().collect();
-        let removed_files: Vec<_> = local_files.difference(&github_files).collect();
-
-        for file_name in removed_files {
-            let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
-            if let Err(e) = fs::remove_file(&file_path) {
-                error!("Failed to remove file {}: {}", file_path, e);
-            }
-            metadata_store.remove(file_name);
-        }
-
-        // Get list of valid node names (filenames without .md)
-        let valid_nodes: Vec<String> = github_files_metadata.iter()
-            .map(|f| f.name.trim_end_matches(".md").to_string())
-            .collect();
-
-        // Process files that need updating
-        let files_to_process: Vec<_> = github_files_metadata.into_iter()
-            .filter(|file_meta| {
-                let local_meta = metadata_store.get(&file_meta.name);
-                local_meta.map_or(true, |meta| meta.sha1 != file_meta.sha)
-            })
-            .collect();
-
-        // Process each file
-        for file_meta in files_to_process {
+        for file_meta in &github_files_metadata {
             match github_service.fetch_file_content(&file_meta.download_url).await {
                 Ok(content) => {
+                    // Check if file is public
                     let first_line = content.lines().next().unwrap_or("").trim();
                     if first_line != "public:: true" {
                         debug!("Skipping non-public file: {}", file_meta.name);
@@ -694,36 +614,35 @@ impl FileService {
                     let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
                     fs::write(&file_path, &content)?;
 
-                    // Extract references
-                    let references = Self::extract_references(&content, &valid_nodes);
-                    let topic_counts = Self::convert_references_to_topic_counts(references);
-
-                    // Calculate node size
-                    let file_size = content.len();
-                    let node_size = Self::calculate_node_size(file_size);
-
                     let new_metadata = Metadata {
                         file_name: file_meta.name.clone(),
-                        file_size,
-                        node_size,
+                        file_size: content.len(),
+                        node_size: Self::calculate_node_size(content.len()),
                         hyperlink_count: Self::count_hyperlinks(&content),
                         sha1: Self::calculate_sha1(&content),
-                        last_modified: file_meta.last_modified.expect("Last modified time should be present"),
+                        last_modified: Utc::now(),
                         perplexity_link: String::new(),
                         last_perplexity_process: None,
-                        topic_counts,
+                        topic_counts: Self::convert_references_to_topic_counts(
+                            Self::extract_references(
+                                &content,
+                                &metadata_store.keys()
+                                    .map(|k| k.to_string())
+                                    .collect::<Vec<String>>()
+                            )
+                        ),
                     };
 
                     metadata_store.insert(file_meta.name.clone(), new_metadata.clone());
                     processed_files.push(ProcessedFile {
-                        file_name: file_meta.name,
+                        file_name: file_meta.name.clone(),
                         content,
                         is_public: true,
                         metadata: new_metadata,
                     });
                 }
                 Err(e) => {
-                    error!("Failed to fetch content: {}", e);
+                    error!("Failed to fetch content for {}: {}", file_meta.name, e);
                 }
             }
             sleep(GITHUB_API_DELAY).await;
@@ -732,6 +651,7 @@ impl FileService {
         // Save updated metadata
         Self::save_metadata(metadata_store)?;
 
+        info!("Successfully processed {} files", processed_files.len());
         Ok(processed_files)
     }
 
