@@ -195,6 +195,7 @@ impl GitHubService for RealGitHubService {
                     last_modified,
                 });
             }
+
         }
 
         if debug_enabled {
