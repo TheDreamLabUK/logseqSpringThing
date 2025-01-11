@@ -200,6 +200,8 @@ async fn main() -> std::io::Result<()> {
                 web::resource("/wss")
                     .app_data(web::PayloadConfig::new(1 << 25))  // 32MB max payload
                     .route(web::get().to(socket_flow_handler))
+                    .app_data(settings_data.clone())
+                    .app_data(app_state.clone())
             )
             .service(Files::new("/", "/app/client").index_file("index.html"))
     })

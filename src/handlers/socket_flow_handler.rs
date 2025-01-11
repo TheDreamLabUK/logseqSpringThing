@@ -3,7 +3,7 @@ use actix::prelude::*;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use actix_web_actors::ws;
 use tokio::sync::RwLock;
-use log::{info, warn};
+use log::{debug, info, warn};
 
 use crate::app_state::AppState;
 use crate::utils::socket_flow_messages::{PingMessage, PongMessage};
@@ -124,6 +124,28 @@ pub async fn socket_flow_handler(
     app_state: web::Data<AppState>,
     settings: web::Data<Arc<RwLock<crate::config::Settings>>>,
 ) -> Result<HttpResponse, Error> {
-    let server = SocketFlowServer::new(app_state.into_inner(), settings.get_ref().clone());
-    ws::start(server, &req, stream)
+    // Check for WebSocket upgrade headers
+    if !req.headers().contains_key("upgrade") || 
+       !req.headers().contains_key("sec-websocket-key") {
+        debug!("Attempted WebSocket connection without proper upgrade headers");
+        return Ok(HttpResponse::BadRequest()
+            .reason("WebSocket upgrade required")
+            .finish());
+    }
+
+    let ws = SocketFlowServer::new(
+        app_state.into_inner(),
+        settings.get_ref().clone()
+    );
+    
+    match ws::start(ws, &req, stream) {
+        Ok(response) => {
+            info!("[WebSocket] Client connected");
+            Ok(response)
+        }
+        Err(e) => {
+            warn!("WebSocket connection failed: {}", e);
+            Err(e)
+        }
+    }
 }
