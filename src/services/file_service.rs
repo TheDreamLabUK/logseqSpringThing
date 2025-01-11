@@ -109,17 +109,12 @@ impl RealGitHubService {
 #[async_trait]
 impl GitHubService for RealGitHubService {
     async fn fetch_file_metadata(&self, skip_debug_filter: bool) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        let url = if self.base_path.is_empty() {
-            format!(
-                "https://api.github.com/repos/{}/{}/contents",
-                self.owner, self.repo
-            )
-        } else {
-            format!(
-                "https://api.github.com/repos/{}/{}/contents/{}",
-                self.owner, self.repo, self.base_path
-            )
-        };
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/contents/{}",
+            self.owner,
+            self.repo,
+            self.base_path
+        );
         
         debug!("Fetching GitHub metadata from URL: {}", url);
 
@@ -292,9 +287,17 @@ impl GitHubService for RealGitHubService {
     }
 }
 
-pub struct FileService;
+pub struct FileService {
+    settings: Arc<RwLock<Settings>>,
+}
 
 impl FileService {
+    pub fn new(settings: Arc<RwLock<Settings>>) -> Self {
+        Self {
+            settings
+        }
+    }
+
     /// Process uploaded file and return graph data
     pub async fn process_file_upload(&self, payload: web::Bytes) -> Result<GraphData, Box<dyn StdError + Send + Sync>> {
         let content = String::from_utf8(payload.to_vec())?;
@@ -627,6 +630,7 @@ impl FileService {
 
     /// Handles incremental updates after initial setup
     pub async fn fetch_and_process_files(
+        &self,
         github_service: &dyn GitHubService,
         _settings: Arc<RwLock<Settings>>,
         metadata_store: &mut MetadataStore,
@@ -635,7 +639,11 @@ impl FileService {
         Self::ensure_directories()?;
 
         // Get metadata for markdown files in target directory
-        let github_files_metadata = github_service.fetch_file_metadata(true).await?;
+        let settings = self.settings.read().await;
+        let skip_debug_filter = !settings.server_debug.enabled;
+        drop(settings);
+        
+        let github_files_metadata = github_service.fetch_file_metadata(skip_debug_filter).await?;
         debug!("Fetched metadata for {} markdown files", github_files_metadata.len());
 
         let mut processed_files = Vec::new();

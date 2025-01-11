@@ -21,8 +21,11 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
         }
     };
     
+    // Create FileService instance
+    let file_service = FileService::new(state.settings.clone());
+    
     // Process files with optimized approach
-    match FileService::fetch_and_process_files(&*state.github_service, state.settings.clone(), &mut metadata_store).await {
+    match file_service.fetch_and_process_files(&*state.github_service, state.settings.clone(), &mut metadata_store).await {
         Ok(processed_files) => {
             let file_names: Vec<String> = processed_files.iter()
                 .map(|pf| pf.file_name.clone())
@@ -59,7 +62,6 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
                     // Send binary position update to clients
                     if let Some(gpu) = &state.gpu_compute {
                         if let Ok(_nodes) = gpu.read().await.get_node_data() {
-                            // Note: Socket-flow server will handle broadcasting
                             debug!("GPU node positions updated successfully");
                         } else {
                             error!("Failed to get node positions from GPU");

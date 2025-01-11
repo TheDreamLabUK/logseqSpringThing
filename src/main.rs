@@ -118,40 +118,38 @@ async fn main() -> std::io::Result<()> {
     // Initialize our debug logging system
     init_debug_settings(debug_enabled, websocket_debug, data_debug);
 
-    // Initialize local storage and fetch files from GitHub
-    info!("Initializing local storage and fetching files from GitHub...");
+    // Initialize local storage and fetch initial data
+    info!("Initializing local storage and fetching initial data");
     if let Err(e) = FileService::initialize_local_storage(&*github_service, settings.clone()).await {
         error!("Failed to initialize local storage: {}", e);
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize local storage: {}", e)));
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
     }
-    info!("Local storage initialization complete");
 
-    // Load metadata into app state and initialize graph
-    match FileService::load_or_create_metadata() {
-        Ok(metadata_store) => {
-            // Update metadata in app state
-            {
-                let mut app_metadata = app_state.metadata.write().await;
-                *app_metadata = metadata_store.clone();
-                info!("Loaded metadata into app state");
-            }
+    // Load metadata and build initial graph
+    info!("Building initial graph from metadata");
+    let metadata_store = FileService::load_or_create_metadata()
+        .map_err(|e| {
+            error!("Failed to load metadata: {}", e);
+            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+        })?;
 
-            // Build initial graph from metadata
-            match GraphService::build_graph_from_metadata(&metadata_store).await {
-                Ok(graph_data) => {
-                    let mut graph = app_state.graph_service.graph_data.write().await;
-                    *graph = graph_data;
-                    info!("Built initial graph from metadata");
-                },
-                Err(e) => {
-                    error!("Failed to build initial graph: {}", e);
-                    return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to build initial graph: {}", e)));
-                }
-            }
+    // Update metadata in app state
+    {
+        let mut app_metadata = app_state.metadata.write().await;
+        *app_metadata = metadata_store.clone();
+        info!("Loaded metadata into app state");
+    }
+
+    // Build initial graph from metadata
+    match GraphService::build_graph_from_metadata(&metadata_store).await {
+        Ok(graph_data) => {
+            let mut graph = app_state.graph_service.graph_data.write().await;
+            *graph = graph_data;
+            info!("Built initial graph from metadata");
         },
         Err(e) => {
-            error!("Failed to load metadata into app state: {}", e);
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to load metadata: {}", e)));
+            error!("Failed to build initial graph: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to build initial graph: {}", e)));
         }
     }
 
