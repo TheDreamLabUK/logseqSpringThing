@@ -191,8 +191,10 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(github_pr_service.clone()))
             .service(
                 web::scope("/api")
+                    .service(web::scope("/health").configure(health_handler::config))
                     .service(web::scope("/files").configure(configure_file_handler))
                     .service(web::scope("/graph").configure(configure_graph_handler))
+                    .service(web::scope("/pages").configure(pages_handler::config))
                     .service(web::scope("/settings").configure(settings_handler::config))
                     .service(web::scope("/visualization").configure(visualization_handler::config))
             )

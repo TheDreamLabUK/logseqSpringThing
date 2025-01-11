@@ -394,13 +394,15 @@ impl FileService {
         // Ensure metadata directory exists
         std::fs::create_dir_all("/app/data/metadata")
             .map_err(|e| format!("Failed to create metadata directory: {}", e))?;
-
+        
         let metadata_path = "/app/data/metadata/metadata.json";
         
         if let Ok(file) = File::open(metadata_path) {
+            info!("Loading existing metadata from {}", metadata_path);
             serde_json::from_reader(file)
                 .map_err(|e| format!("Failed to parse metadata: {}", e))
         } else {
+            info!("Creating new metadata file at {}", metadata_path);
             let empty_store = MetadataStore::default();
             let file = File::create(metadata_path)
                 .map_err(|e| format!("Failed to create metadata file: {}", e))?;
@@ -408,6 +410,14 @@ impl FileService {
             serde_json::to_writer_pretty(file, &empty_store)
                 .map_err(|e| format!("Failed to write metadata: {}", e))?;
                 
+            // Verify file was created with correct permissions
+            let metadata = std::fs::metadata(metadata_path)
+                .map_err(|e| format!("Failed to verify metadata file: {}", e))?;
+            
+            if !metadata.is_file() {
+                return Err("Metadata file was not created properly".to_string());
+            }
+            
             Ok(empty_store)
         }
     }

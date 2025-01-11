@@ -36,6 +36,7 @@ pub use services::github_service::RealGitHubPRService;
 // Re-export handlers
 pub use handlers::file_handler;
 pub use handlers::graph_handler;
+pub use handlers::pages_handler;
 pub use handlers::perplexity_handler;
 pub use handlers::ragflow_handler;
 pub use handlers::visualization_handler;

@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::utils::case_conversion::to_snake_case;
+use crate::AppState;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -384,4 +385,19 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
             Err(e)
         }
     }
+}
+
+pub async fn get_visualization_settings(
+    app_state: web::Data<AppState>,
+    category: web::Path<String>,
+) -> Result<HttpResponse, actix_web::Error> {
+    debug!("Getting settings for category: {}", category);
+    
+    // Log UI container status
+    if category.as_str() == "clientDebug" {
+        debug!("Checking UI container status for debugging");
+    }
+    
+    let settings = app_state.settings.read().await;
+    Ok(HttpResponse::Ok().json(&*settings))
 }
