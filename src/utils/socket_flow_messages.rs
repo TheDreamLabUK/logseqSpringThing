@@ -4,13 +4,113 @@ use std::collections::HashMap;
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Pod, Zeroable, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct NodeData {
     pub position: [f32; 3],  // 12 bytes - matches THREE.Vector3
     pub velocity: [f32; 3],  // 12 bytes - matches THREE.Vector3
     pub mass: u8,            // 1 byte - quantized mass
     pub flags: u8,           // 1 byte - node state flags
     pub padding: [u8; 2],    // 2 bytes - alignment padding
+}
+
+// Custom serialization for NodeData to convert arrays to Vector3-compatible objects
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "NodeData")]
+struct NodeDataDef {
+    #[serde(getter = "get_position_vec3", setter = "set_position_vec3")]
+    position: [f32; 3],
+    #[serde(getter = "get_velocity_vec3", setter = "set_velocity_vec3")]
+    velocity: [f32; 3],
+    mass: u8,
+    flags: u8,
+    padding: [u8; 2],
+}
+
+// Helper functions for Vector3 serialization
+fn get_position_vec3(data: &NodeData) -> serde_json::Value {
+    serde_json::json!({
+        "x": data.position[0],
+        "y": data.position[1],
+        "z": data.position[2]
+    })
+}
+
+fn set_position_vec3(data: &mut NodeData, value: serde_json::Value) {
+    if let Some(obj) = value.as_object() {
+        if let (Some(x), Some(y), Some(z)) = (
+            obj.get("x").and_then(|v| v.as_f64()),
+            obj.get("y").and_then(|v| v.as_f64()),
+            obj.get("z").and_then(|v| v.as_f64())
+        ) {
+            data.position = [x as f32, y as f32, z as f32];
+        }
+    }
+}
+
+fn get_velocity_vec3(data: &NodeData) -> serde_json::Value {
+    serde_json::json!({
+        "x": data.velocity[0],
+        "y": data.velocity[1],
+        "z": data.velocity[2]
+    })
+}
+
+fn set_velocity_vec3(data: &mut NodeData, value: serde_json::Value) {
+    if let Some(obj) = value.as_object() {
+        if let (Some(x), Some(y), Some(z)) = (
+            obj.get("x").and_then(|v| v.as_f64()),
+            obj.get("y").and_then(|v| v.as_f64()),
+            obj.get("z").and_then(|v| v.as_f64())
+        ) {
+            data.velocity = [x as f32, y as f32, z as f32];
+        }
+    }
+}
+
+// Implement serialization for NodeData
+impl Serialize for NodeData {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("NodeData", 5)?;
+        state.serialize_field("position", &get_position_vec3(self))?;
+        state.serialize_field("velocity", &get_velocity_vec3(self))?;
+        state.serialize_field("mass", &self.mass)?;
+        state.serialize_field("flags", &self.flags)?;
+        state.serialize_field("padding", &self.padding)?;
+        state.end()
+    }
+}
+
+// Implement deserialization for NodeData
+impl<'de> Deserialize<'de> for NodeData {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            position: serde_json::Value,
+            velocity: serde_json::Value,
+            mass: u8,
+            flags: u8,
+            padding: [u8; 2],
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+        let mut data = NodeData {
+            position: [0.0; 3],
+            velocity: [0.0; 3],
+            mass: helper.mass,
+            flags: helper.flags,
+            padding: helper.padding,
+        };
+        set_position_vec3(&mut data, helper.position);
+        set_velocity_vec3(&mut data, helper.velocity);
+        Ok(data)
+    }
 }
 
 // Implement DeviceRepr for NodeData

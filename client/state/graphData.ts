@@ -9,9 +9,7 @@ const logger = createLogger('GraphDataManager');
 
 // Constants
 const THROTTLE_INTERVAL = 16;  // ~60fps max
-const BINARY_VERSION = 1.0;
-const NODE_POSITION_SIZE = 24;  // 6 floats * 4 bytes
-const BINARY_HEADER_SIZE = 4;   // 1 float * 4 bytes
+const NODE_POSITION_SIZE = 24;  // 6 floats * 4 bytes (x,y,z, vx,vy,vz)
 
 export class GraphDataManager {
   private static instance: GraphDataManager;
@@ -140,7 +138,7 @@ export class GraphDataManager {
   private initializeNodePositions(): void {
     // Initialize node positions if they don't have positions yet
     this.nodes.forEach(node => {
-      if (!node.data.position || (Array.isArray(node.data.position) && node.data.position.every(p => p === null))) {
+      if (!node.data.position) {
         node.data.position = {
           x: (Math.random() - 0.5) * 20,
           y: (Math.random() - 0.5) * 20,
@@ -159,9 +157,9 @@ export class GraphDataManager {
     let index = 0;
     this.nodes.forEach(node => {
       const pos = node.data.position;
-      positions[index * 6] = typeof pos.x === 'number' ? pos.x : 0;
-      positions[index * 6 + 1] = typeof pos.y === 'number' ? pos.y : 0;
-      positions[index * 6 + 2] = typeof pos.z === 'number' ? pos.z : 0;
+      positions[index * 6] = pos.x;
+      positions[index * 6 + 1] = pos.y;
+      positions[index * 6 + 2] = pos.z;
       positions[index * 6 + 3] = node.data.velocity.x;
       positions[index * 6 + 4] = node.data.velocity.y;
       positions[index * 6 + 5] = node.data.velocity.z;
@@ -208,25 +206,7 @@ export class GraphDataManager {
     // Store nodes in Map for O(1) access
     if (data.nodes && Array.isArray(data.nodes)) {
       data.nodes.forEach((node: any) => {
-        // Convert position array to object if needed
-        let position;
-        if (Array.isArray(node.data.position)) {
-          position = {
-            x: node.data.position[0],
-            y: node.data.position[1], 
-            z: node.data.position[2]
-          };
-        } else {
-          position = node.data.position || null;
-        }
-
-        this.nodes.set(node.id, {
-          ...node,
-          data: {
-            ...node.data,
-            position
-          }
-        });
+        this.nodes.set(node.id, node);
       });
 
       // Store edges in Map
@@ -281,18 +261,15 @@ export class GraphDataManager {
     }
 
     // Create binary buffer with current positions
-    const buffer = new ArrayBuffer(BINARY_HEADER_SIZE + this.nodes.size * NODE_POSITION_SIZE);
+    const buffer = new ArrayBuffer(this.nodes.size * NODE_POSITION_SIZE);
     const positions = new Float32Array(buffer);
     
-    // Set binary version in header
-    positions[0] = BINARY_VERSION;
-    
-    let index = 1; // Start after header
+    let index = 0;
     this.nodes.forEach(node => {
       const pos = node.data.position;
-      positions[index * 6] = typeof pos.x === 'number' ? pos.x : 0;
-      positions[index * 6 + 1] = typeof pos.y === 'number' ? pos.y : 0;
-      positions[index * 6 + 2] = typeof pos.z === 'number' ? pos.z : 0;
+      positions[index * 6] = pos.x;
+      positions[index * 6 + 1] = pos.y;
+      positions[index * 6 + 2] = pos.z;
       positions[index * 6 + 3] = node.data.velocity.x;
       positions[index * 6 + 4] = node.data.velocity.y;
       positions[index * 6 + 5] = node.data.velocity.z;
@@ -318,19 +295,32 @@ export class GraphDataManager {
     try {
       const floatArray = new Float32Array(buffer);
       
-      // Check binary version
-      const version = floatArray[0];
-      if (version !== BINARY_VERSION) {
-        logger.warn(`Received binary data version ${version}, expected ${BINARY_VERSION}`);
-      }
-
-      // Verify data size
-      const expectedSize = BINARY_HEADER_SIZE + Math.floor((buffer.byteLength - BINARY_HEADER_SIZE) / NODE_POSITION_SIZE) * NODE_POSITION_SIZE;
+      // Verify data size matches node count
+      const expectedSize = this.nodes.size * NODE_POSITION_SIZE;
       if (buffer.byteLength !== expectedSize) {
         logger.error(`Invalid binary data length: ${buffer.byteLength} bytes (expected ${expectedSize})`);
         return;
       }
 
+      // Update node positions in graph data
+      let index = 0;
+      this.nodes.forEach(node => {
+        // Update position
+        node.data.position = {
+          x: floatArray[index * 6],
+          y: floatArray[index * 6 + 1],
+          z: floatArray[index * 6 + 2]
+        };
+        // Update velocity
+        node.data.velocity = {
+          x: floatArray[index * 6 + 3],
+          y: floatArray[index * 6 + 4],
+          z: floatArray[index * 6 + 5]
+        };
+        index++;
+      });
+
+      // Notify listeners after updating positions
       this.notifyPositionUpdateListeners(floatArray);
       this.lastUpdateTime = now;
     } catch (error) {
