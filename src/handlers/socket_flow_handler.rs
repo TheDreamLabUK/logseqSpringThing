@@ -97,8 +97,16 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                     }
                 }
             }
-            Ok(ws::Message::Binary(_)) => {
-                warn!("[WebSocket] Unexpected binary message");
+            Ok(ws::Message::Binary(data)) => {
+                // Handle incoming binary position updates from client
+                // Each node is 24 bytes: [x,y,z, vx,vy,vz] as f32
+                if data.len() % 24 == 0 {
+                    // Process binary data if needed
+                    // Currently we don't handle incoming position updates
+                    warn!("[WebSocket] Received binary position update");
+                } else {
+                    warn!("[WebSocket] Invalid binary message length");
+                }
             }
             Ok(ws::Message::Close(reason)) => {
                 info!("[WebSocket] Client disconnected: {:?}", reason);

@@ -245,9 +245,10 @@ impl GraphService {
                     gpu_compute.step()?;
                     
                     // Update positions every iteration for smoother motion
+                    // gpu_compute.get_node_data() now returns socket_flow_messages::NodeData directly
                     let updated_nodes = gpu_compute.get_node_data()?;
                     for (i, node) in graph.nodes.iter_mut().enumerate() {
-                        node.update_from_gpu_node(&updated_nodes[i]);
+                        node.data = updated_nodes[i].clone();
                     }
                 }
                 Ok(())
