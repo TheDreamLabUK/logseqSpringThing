@@ -13,58 +13,32 @@ pub struct NodeData {
     pub padding: [u8; 2],    // 2 bytes - alignment padding
 }
 
-// Custom serialization for NodeData to convert arrays to Vector3-compatible objects
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "NodeData")]
-struct NodeDataDef {
-    #[serde(getter = "get_position_vec3", setter = "set_position_vec3")]
-    position: [f32; 3],
-    #[serde(getter = "get_velocity_vec3", setter = "set_velocity_vec3")]
-    velocity: [f32; 3],
-    mass: u8,
-    flags: u8,
-    padding: [u8; 2],
-}
-
 // Helper functions for Vector3 serialization
-fn get_position_vec3(data: &NodeData) -> serde_json::Value {
-    serde_json::json!({
-        "x": data.position[0],
-        "y": data.position[1],
-        "z": data.position[2]
-    })
+fn serialize_position<S>(position: &[f32; 3], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeStruct;
+    let mut state = serializer.serialize_struct("Vector3", 3)?;
+    state.serialize_field("x", &position[0])?;
+    state.serialize_field("y", &position[1])?;
+    state.serialize_field("z", &position[2])?;
+    state.end()
 }
 
-fn set_position_vec3(data: &mut NodeData, value: serde_json::Value) {
-    if let Some(obj) = value.as_object() {
-        if let (Some(x), Some(y), Some(z)) = (
-            obj.get("x").and_then(|v| v.as_f64()),
-            obj.get("y").and_then(|v| v.as_f64()),
-            obj.get("z").and_then(|v| v.as_f64())
-        ) {
-            data.position = [x as f32, y as f32, z as f32];
-        }
+fn deserialize_position<'de, D>(deserializer: D) -> Result<[f32; 3], D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct Vector3 {
+        x: f32,
+        y: f32,
+        z: f32,
     }
-}
 
-fn get_velocity_vec3(data: &NodeData) -> serde_json::Value {
-    serde_json::json!({
-        "x": data.velocity[0],
-        "y": data.velocity[1],
-        "z": data.velocity[2]
-    })
-}
-
-fn set_velocity_vec3(data: &mut NodeData, value: serde_json::Value) {
-    if let Some(obj) = value.as_object() {
-        if let (Some(x), Some(y), Some(z)) = (
-            obj.get("x").and_then(|v| v.as_f64()),
-            obj.get("y").and_then(|v| v.as_f64()),
-            obj.get("z").and_then(|v| v.as_f64())
-        ) {
-            data.velocity = [x as f32, y as f32, z as f32];
-        }
-    }
+    let vec = Vector3::deserialize(deserializer)?;
+    Ok([vec.x, vec.y, vec.z])
 }
 
 // Implement serialization for NodeData
@@ -75,8 +49,16 @@ impl Serialize for NodeData {
     {
         use serde::ser::SerializeStruct;
         let mut state = serializer.serialize_struct("NodeData", 5)?;
-        state.serialize_field("position", &get_position_vec3(self))?;
-        state.serialize_field("velocity", &get_velocity_vec3(self))?;
+        state.serialize_field("position", &serde_json::json!({
+            "x": self.position[0],
+            "y": self.position[1],
+            "z": self.position[2]
+        }))?;
+        state.serialize_field("velocity", &serde_json::json!({
+            "x": self.velocity[0],
+            "y": self.velocity[1],
+            "z": self.velocity[2]
+        }))?;
         state.serialize_field("mass", &self.mass)?;
         state.serialize_field("flags", &self.flags)?;
         state.serialize_field("padding", &self.padding)?;
@@ -92,24 +74,23 @@ impl<'de> Deserialize<'de> for NodeData {
     {
         #[derive(Deserialize)]
         struct Helper {
-            position: serde_json::Value,
-            velocity: serde_json::Value,
+            #[serde(deserialize_with = "deserialize_position")]
+            position: [f32; 3],
+            #[serde(deserialize_with = "deserialize_position")]
+            velocity: [f32; 3],
             mass: u8,
             flags: u8,
             padding: [u8; 2],
         }
 
         let helper = Helper::deserialize(deserializer)?;
-        let mut data = NodeData {
-            position: [0.0; 3],
-            velocity: [0.0; 3],
+        Ok(NodeData {
+            position: helper.position,
+            velocity: helper.velocity,
             mass: helper.mass,
             flags: helper.flags,
             padding: helper.padding,
-        };
-        set_position_vec3(&mut data, helper.position);
-        set_velocity_vec3(&mut data, helper.velocity);
-        Ok(data)
+        })
     }
 }
 
@@ -248,5 +229,3 @@ pub enum Message {
     #[serde(rename = "pong")]
     Pong { timestamp: u64 },
 }
-
-// Forward declarations to avoid circular dependencies
