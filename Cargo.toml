@@ -31,7 +31,7 @@ toml = "0.8"
 
 # Logging
 log = "0.4"
-env_logger = "0.10"
+simplelog = "0.12"
 
 # Error handling
 thiserror = "1.0"

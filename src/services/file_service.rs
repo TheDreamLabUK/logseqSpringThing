@@ -6,7 +6,6 @@ use reqwest::Client;
 use async_trait::async_trait;
 use log::{info, debug, error};
 use regex::Regex;
-use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use chrono::{Utc, DateTime};
@@ -16,13 +15,14 @@ use std::error::Error as StdError;
 use std::time::Duration;
 use tokio::time::sleep;
 use actix_web::web;
+use std::collections::HashMap;
 
 // Constants
 const METADATA_PATH: &str = "/app/data/markdown/metadata.json";
 pub const MARKDOWN_DIR: &str = "/app/data/markdown";
 const GITHUB_API_DELAY: Duration = Duration::from_millis(100); // Rate limiting delay
-const MIN_NODE_SIZE: f64 = 5.0;
-const MAX_NODE_SIZE: f64 = 50.0;
+const MIN_SIZE: f64 = 5.0;  // Minimum node size
+const MAX_SIZE: f64 = 50.0; // Maximum node size
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GithubFile {
@@ -54,10 +54,10 @@ pub struct ProcessedFile {
     pub metadata: Metadata,
 }
 
-// Structure to hold reference information
-#[derive(Default)]
+// TODO: This struct will be used in future implementation of reference tracking
 struct ReferenceInfo {
-    direct_mentions: usize,
+    file_name: String,
+    references: Vec<String>,
 }
 
 #[async_trait]
@@ -116,7 +116,13 @@ impl GitHubService for RealGitHubService {
             self.base_path
         );
         
-        info!("Fetching GitHub metadata from URL: {}", url);
+        info!("GitHub API Request: URL={}, Token={}, Owner={}, Repo={}, BasePath={}", 
+            url, 
+            self.token.chars().take(4).collect::<String>() + "...", 
+            self.owner,
+            self.repo,
+            self.base_path
+        );
 
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
@@ -127,11 +133,10 @@ impl GitHubService for RealGitHubService {
         let status = response.status();
         let headers = response.headers().clone();
         
-        info!("GitHub API response status: {}", status);
-        debug!("GitHub API response headers: {:?}", headers);
+        info!("GitHub API Response: Status={}, Headers={:?}", status, headers);
 
         let body = response.text().await?;
-        debug!("GitHub API response preview: {}", &body[..body.len().min(1000)]);
+        info!("GitHub API Response Body (first 1000 chars): {}", &body[..body.len().min(1000)]);
 
         if !status.is_success() {
             let error_msg = match serde_json::from_str::<serde_json::Value>(&body) {
@@ -396,8 +401,6 @@ impl FileService {
 
     /// Calculate node size based on file size
     fn calculate_node_size(file_size: usize) -> f64 {
-        const MIN_SIZE: f64 = 5.0;
-        const MAX_SIZE: f64 = 50.0;
         const BASE_SIZE: f64 = 1000.0; // Base file size for scaling
 
         let size = (file_size as f64 / BASE_SIZE).min(5.0);
@@ -432,7 +435,7 @@ impl FileService {
     /// Initialize local storage with files from GitHub
     pub async fn initialize_local_storage(
         github_service: &dyn GitHubService,
-        settings: Arc<RwLock<Settings>>,
+        _settings: Arc<RwLock<Settings>>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         // Check if we already have a valid local setup
         if Self::has_valid_local_setup() {

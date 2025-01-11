@@ -14,6 +14,7 @@ pub struct NodeData {
 }
 
 // Helper functions for Vector3 serialization
+#[allow(dead_code)]  // This function will be used in future WebSocket implementations
 fn serialize_position<S>(position: &[f32; 3], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,

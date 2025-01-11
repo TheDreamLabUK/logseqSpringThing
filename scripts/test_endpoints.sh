@@ -144,8 +144,33 @@ diagnose_endpoint() {
             tail -n 100 /var/log/nginx/error.log
             echo -e "\n'"${RED}${BOLD}"'=== Recent Nginx Errors ==='"${NC}"'"
             grep -i "error\|warn\|notice" /var/log/nginx/error.log | tail -n 20
-        fi' | tee -a "$LOG_FILE"
-    
+        fi
+
+        # Check application logs
+        echo -e "\n'"${CYAN}${BOLD}"'=== Application Log ==='"${NC}"'"
+        if [ -f /app/webxr.log ]; then
+            tail -n 200 /app/webxr.log
+            echo -e "\n'"${RED}${BOLD}"'=== Recent Application Errors ==='"${NC}"'"
+            grep -i "error\|warn\|panic\|fatal" /app/webxr.log | tail -n 20
+        fi
+
+        # Check metadata
+        echo -e "\n'"${CYAN}${BOLD}"'=== Metadata Status ==='"${NC}"'"
+        if [ -f /app/data/metadata/metadata.json ]; then
+            echo "Metadata file exists and contains:"
+            cat /app/data/metadata/metadata.json | jq length
+            echo -e "\n'"${CYAN}${BOLD}"'=== First few entries ==='"${NC}"'"
+            cat /app/data/metadata/metadata.json | jq "to_entries | .[0:3]"
+        else
+            echo "Metadata file does not exist!"
+        fi
+
+        # Check markdown directory
+        echo -e "\n'"${CYAN}${BOLD}"'=== Markdown Files ==='"${NC}"'"
+        ls -la /app/data/markdown/
+        echo "Total markdown files: $(ls -1 /app/data/markdown/*.md 2>/dev/null | wc -l)"
+' | tee -a "$LOG_FILE"
+
     # For graph endpoints, add specific diagnostics
     if [[ "${endpoint}" == *"graph"* ]]; then
         echo -e "\n${MAGENTA}${BOLD}Graph-Specific Diagnostics:${NC}" | tee -a "$LOG_FILE"
@@ -157,7 +182,19 @@ diagnose_endpoint() {
             echo -e "\n'"${CYAN}${BOLD}"'=== Memory Usage ==='"${NC}"'"
             free -h
             echo -e "\n'"${CYAN}${BOLD}"'=== Graph Settings ==='"${NC}"'"
-            cat /app/settings.toml | grep -i "graph" || echo "No graph settings found"' | tee -a "$LOG_FILE"
+            cat /app/settings.toml | grep -i "graph" || echo "No graph settings found"
+        ' | tee -a "$LOG_FILE"
+    fi
+
+    # For file endpoints, add specific diagnostics
+    if [[ "${endpoint}" == *"file"* ]]; then
+        echo -e "\n${MAGENTA}${BOLD}File-Specific Diagnostics:${NC}" | tee -a "$LOG_FILE"
+        docker exec ${CONTAINER_NAME} bash -c '
+            echo -e "\n'"${CYAN}${BOLD}"'=== GitHub Environment ==='"${NC}"'"
+            env | grep -i "github"
+            echo -e "\n'"${CYAN}${BOLD}"'=== Recent File Operations ==='"${NC}"'"
+            grep -i "file\|github" /tmp/webxr.log | tail -n 50
+        ' | tee -a "$LOG_FILE"
     fi
     
     # Test endpoint directly with verbose output
@@ -236,6 +273,36 @@ check_static_files() {
 test_backend() {
     log_section "Testing Backend Endpoints"
     
+    # First check if webxr process is running
+    local webxr_pid=$(docker exec ${CONTAINER_NAME} pgrep webxr || echo "")
+    if [ -z "$webxr_pid" ]; then
+        log_error "WebXR process is not running!"
+        # Check both possible log locations and show permissions
+        docker exec ${CONTAINER_NAME} bash -c '
+            echo "=== Checking log locations ==="
+            echo "Permissions for /tmp:"
+            ls -la /tmp/
+            echo -e "\nPermissions for /app:"
+            ls -la /app/
+            echo -e "\nAttempting to read logs:"
+            echo "/tmp/webxr.log:"
+            tail -n 50 /tmp/webxr.log 2>&1
+            echo -e "\n/app/webxr.log:"
+            tail -n 50 /app/webxr.log 2>&1
+        '
+        return 1
+    fi
+    log_success "WebXR process running with PID: $webxr_pid"
+    
+    # Check if routes are registered
+    log_message "Checking registered routes..."
+    docker exec ${CONTAINER_NAME} bash -c '
+        echo "=== WebXR Routes ==="
+        if [ -f /tmp/webxr.log ]; then
+            grep -A 10 "Registered routes:" /tmp/webxr.log | tail -n 11
+        fi
+    '
+    
     local endpoints=(
         "/api/settings"
         "/api/graph/data"
@@ -244,18 +311,36 @@ test_backend() {
         "/api/files/fetch"
     )
     
+    local failed=0
+    
     for endpoint in "${endpoints[@]}"; do
         log_message "• Testing backend endpoint: $endpoint (${ENDPOINT_DESCRIPTIONS[$endpoint]})"
-        local response=$(docker exec logseq-xr-webxr curl -s -v -H "Content-Type: application/json" "http://localhost:3001$endpoint" 2>&1)
+        
+        # Test with more verbose output and headers
+        local response=$(docker exec ${CONTAINER_NAME} curl -s -v \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -H "X-Request-ID: test-$(date +%s)" \
+            "http://localhost:3001$endpoint" 2>&1)
         
         if [[ $response == *"200 OK"* ]] || [[ $response == *"201 Created"* ]]; then
             log_success "✓ Endpoint $endpoint is accessible"
+            log_message "Response body: $(echo "$response" | grep -v '^*' | grep -v '^>' | grep -v '^<')"
             WORKING_BACKEND_ENDPOINTS+=("$endpoint")
         else
             log_error "✗ Failed to access $endpoint"
             log_message "Response: $response"
+            # Check logs for errors around this request
+            log_message "Checking recent logs for errors..."
+            docker exec ${CONTAINER_NAME} bash -c "grep -B 5 -A 5 \"${endpoint}\" /tmp/webxr.log | tail -n 20"
+            ((failed++))
         fi
+        
+        # Add a small delay between tests
+        sleep 1
     done
+    
+    return $failed
 }
 
 # Function to test nginx endpoints
@@ -416,10 +501,44 @@ print_summary() {
     fi
 }
 
+# Function to check application state
+check_app_state() {
+    log_section "Checking Application State"
+    
+    docker exec ${CONTAINER_NAME} bash -c '
+        echo -e "\n=== Process Status ==="
+        ps aux | grep -E "webxr|nginx"
+        
+        echo -e "\n=== Directory Structure ==="
+        echo "Markdown directory:"
+        ls -la /app/data/markdown/
+        echo -e "\nMetadata directory:"
+        ls -la /app/data/metadata/
+        
+        echo -e "\n=== Metadata Content ==="
+        if [ -f /app/data/metadata/metadata.json ]; then
+            echo "Metadata file size: $(stat -f %z /app/data/metadata/metadata.json) bytes"
+            echo "Number of entries: $(cat /app/data/metadata/metadata.json | jq length)"
+        else
+            echo "Metadata file does not exist!"
+        fi
+        
+        echo -e "\n=== Recent Logs ==="
+        echo "Last 10 lines of application log:"
+        tail -n 10 /tmp/webxr.log 2>/dev/null || echo "No application log found"
+        
+        echo -e "\nLast 10 lines of nginx error log:"
+        tail -n 10 /var/log/nginx/error.log 2>/dev/null || echo "No nginx error log found"
+    '
+}
+
 # Main execution
 main() {
     log "${YELLOW}Starting comprehensive endpoint tests...${NC}"
     local total_failed=0
+    
+    # Check application state first
+    check_app_state
     
     # Run tests based on flags or run all if no specific test is requested
     if [ "$TEST_HEALTH_ONLY" = true ]; then

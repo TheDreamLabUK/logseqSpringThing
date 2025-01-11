@@ -11,8 +11,8 @@ pub mod models;
 pub mod services;
 pub mod types;
 
-// Re-export debug settings
-pub use crate::utils::debug_logging::init_debug_settings;
+// Re-export standard logging if needed
+pub use log::{debug, error, info, warn};
 
 // Re-export GPU compute
 pub use crate::utils::gpu_compute::GPUCompute;

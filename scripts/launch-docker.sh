@@ -12,9 +12,45 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Add these constants at the top of the file
+MARKDOWN_DIR="$PROJECT_ROOT/data/markdown"
+METADATA_DIR="$PROJECT_ROOT/data/metadata"
+PUBLIC_DIR="$PROJECT_ROOT/data/public"
+METADATA_FILE="$METADATA_DIR/metadata.json"
+
 # Function to log messages with timestamps
 log() {
     echo -e "[$(date "+%Y-%m-%d %H:%M:%S")] $1"
+}
+
+# Function to check environment variables and GitHub access
+check_environment() {
+    log "${YELLOW}Checking environment...${NC}"
+    
+    # Check required environment variables
+    local required_vars=(
+        "GITHUB_TOKEN"
+        "GITHUB_OWNER"
+        "GITHUB_REPO"
+        "GITHUB_BASE_PATH"
+    )
+    
+    for var in "${required_vars[@]}"; do
+        if [ -z "${!var}" ]; then
+            log "${RED}Error: $var is not set in .env file${NC}"
+            return 1
+        fi
+    done
+
+    # Verify GitHub token has required permissions
+    if ! curl -s -H "Authorization: token $GITHUB_TOKEN" \
+        "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO" > /dev/null; then
+        log "${RED}Error: Invalid GitHub token or repository access${NC}"
+        return 1
+    fi
+
+    log "${GREEN}Environment check passed${NC}"
+    return 0
 }
 
 # Function to check pnpm security
@@ -216,6 +252,18 @@ cleanup_existing_processes() {
     docker image prune -f
     
     sleep 2
+
+    # Ensure data directories have correct permissions
+    log "${YELLOW}Verifying data directory permissions...${NC}"
+    for dir in "$MARKDOWN_DIR" "$METADATA_DIR" "$PUBLIC_DIR"; do
+        if [ -d "$dir" ]; then
+            chmod -R 777 "$dir" 2>/dev/null || {
+                log "${RED}Failed to set permissions on $dir${NC}"
+                log "${RED}Please run: sudo chmod -R 777 $dir${NC}"
+                return 1
+            }
+        fi
+    done
 }
 
 # Function to check RAGFlow network availability
@@ -350,6 +398,12 @@ if ! check_ragflow_network; then
     exit 1
 fi
 
+# Add these calls before starting services
+if ! check_environment; then
+    log "${RED}Environment check failed${NC}"
+    exit 1
+fi
+
 # Build and start services
 log "${YELLOW}Building and starting services...${NC}"
 $DOCKER_COMPOSE build --pull --no-cache
@@ -383,3 +437,77 @@ $DOCKER_COMPOSE logs -f &
 
 # Wait for signal
 wait
+
+# Function to check and fix directory permissions
+check_fix_permissions() {
+    local data_dir="$PROJECT_ROOT/data"
+    local current_user=$(id -u)
+    local current_group=$(id -g)
+
+    info "Checking directory permissions..."
+
+    # Create directories if they don't exist
+    for dir in "$data_dir/markdown" "$data_dir/metadata" "$data_dir/public"; do
+        if [ ! -d "$dir" ]; then
+            info "Creating directory: $dir"
+            mkdir -p "$dir" || {
+                error "Failed to create directory: $dir"
+                error "Please run: mkdir -p $dir"
+                return 1
+            }
+        fi
+    done
+
+    # Check if we can write to directories without sudo first
+    local need_sudo=false
+    for dir in "$data_dir/markdown" "$data_dir/metadata" "$data_dir/public"; do
+        local test_file="$dir/.permissions_test"
+        if ! touch "$test_file" 2>/dev/null; then
+            need_sudo=true
+            break
+        else
+            rm "$test_file"
+        fi
+    done
+
+    # If we need sudo, try to fix permissions all at once
+    if [ "$need_sudo" = true ]; then
+        info "Fixing directory permissions (requires sudo)..."
+        # First try without password in case sudo is configured for NOPASSWD
+        if ! sudo -n chmod -R 777 "$data_dir" 2>/dev/null; then
+            # If that fails, notify user and exit
+            error "Cannot set directory permissions automatically"
+            error "Please run the following command manually:"
+            error "sudo chmod -R 777 $data_dir"
+            error "Then run this script again"
+            return 1
+        fi
+    fi
+
+    # Verify permissions with test files
+    for dir in "$data_dir/markdown" "$data_dir/metadata" "$data_dir/public"; do
+        local test_file="$dir/.permissions_test"
+        if ! touch "$test_file"; then
+            error "Failed to verify permissions on $dir"
+            error "Please ensure the directory is writable by running:"
+            error "sudo chmod -R 777 $dir"
+            return 1
+        fi
+        rm "$test_file"
+        info "Verified permissions for $dir"
+    done
+
+    # Initialize metadata.json if it doesn't exist
+    local metadata_file="$data_dir/metadata/metadata.json"
+    if [ ! -f "$metadata_file" ]; then
+        info "Creating metadata.json"
+        echo '{}' > "$metadata_file" || {
+            error "Failed to create metadata.json"
+            error "Please ensure $data_dir/metadata is writable"
+            return 1
+        }
+    fi
+
+    success "Directory permissions verified"
+    return 0
+}

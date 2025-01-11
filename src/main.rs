@@ -1,13 +1,8 @@
-#[macro_use]
-extern crate log;
-
 use webxr::{
     AppState, Settings,
-    init_debug_settings,
     file_handler, graph_handler, visualization_handler,
     RealGitHubService,
     RealGitHubPRService, GPUCompute, GraphData,
-    log_data, log_warn,
     services::{
         file_service::FileService,
         graph_service::GraphService,
@@ -21,6 +16,8 @@ use actix_files::Files;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use dotenvy::dotenv;
+use log::{error, warn, info, debug};
+use webxr::utils::logging::{init_logging_with_config, LogConfig};
 
 // Handler configuration functions
 fn configure_file_handler(cfg: &mut web::ServiceConfig) {
@@ -44,12 +41,53 @@ async fn main() -> std::io::Result<()> {
     // Load settings first to get the log level
     let settings = match Settings::new() {
         Ok(s) => {
-            debug!("Successfully loaded settings: {:?}", s);
             Arc::new(RwLock::new(s))
         },
         Err(e) => {
             eprintln!("Failed to load settings: {:?}", e);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize settings: {:?}", e)));
+        }
+    };
+
+    // Initialize logging with settings-based configuration
+    let log_config = {
+        let settings_read = settings.read().await;
+        let file_level = if settings_read.server_debug.enabled { 
+            "debug" 
+        } else { 
+            &settings_read.default.log_level 
+        };
+        
+        let console_level = if settings_read.server_debug.enable_websocket_debug {
+            "debug"
+        } else {
+            &settings_read.default.log_level
+        };
+        
+        LogConfig::new(
+            file_level,
+            console_level,
+            "/tmp/webxr.log"
+        )
+    };
+
+    init_logging_with_config(log_config)?;
+
+    debug!("Successfully loaded settings");
+
+    info!("Starting WebXR application...");
+    
+    // Replace log_data! and log_warn! with standard log macros
+    info!("Initializing GPU compute...");
+    
+    let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
+        Ok(gpu) => {
+            info!("GPU initialization successful");
+            Some(gpu)
+        }
+        Err(e) => {
+            warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
+            None
         }
     };
 
@@ -80,19 +118,6 @@ async fn main() -> std::io::Result<()> {
     };
     drop(settings_read);
 
-    // Initialize GPU compute
-    log_data!("Initializing GPU compute...");
-    let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
-        Ok(gpu) => {
-            log_data!("GPU initialization successful");
-            Some(gpu)
-        }
-        Err(e) => {
-            log_warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
-            None
-        }
-    };
-
     // Initialize app state
     let app_state = web::Data::new(AppState::new(
         settings.clone(),
@@ -103,20 +128,6 @@ async fn main() -> std::io::Result<()> {
         "default_conversation".to_string(),
         github_pr_service.clone(),
     ));
-
-    // Initialize debug settings
-    let (debug_enabled, websocket_debug, data_debug) = {
-        let settings_read = settings.read().await;
-        let debug_settings = (
-            (*settings_read).server_debug.enabled,
-            (*settings_read).server_debug.enable_websocket_debug,
-            (*settings_read).server_debug.enable_data_debug,
-        );
-        debug_settings
-    };
-
-    // Initialize our debug logging system
-    init_debug_settings(debug_enabled, websocket_debug, data_debug);
 
     // Initialize local storage and fetch initial data
     info!("Initializing local storage and fetching initial data");
@@ -159,7 +170,7 @@ async fn main() -> std::io::Result<()> {
         format!("{}:{}", (*settings_read).network.bind_address, (*settings_read).network.port)
     };
 
-    log_data!("Starting HTTP server on {}", bind_address);
+    info!("Starting HTTP server on {}", bind_address);
 
     HttpServer::new(move || {
         // Configure CORS
@@ -195,6 +206,6 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await?;
 
-    log_data!("HTTP server stopped");
+    info!("HTTP server stopped");
     Ok(())
 }

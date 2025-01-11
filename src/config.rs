@@ -75,16 +75,21 @@ impl Default for DebugSettings {
 #[serde(rename_all = "snake_case")]
 #[serde(default)]
 pub struct DefaultSettings {
-    pub api_client_timeout: u32,
+    pub api_client_timeout: u64,
     pub enable_metrics: bool,
     pub enable_request_logging: bool,
     pub log_format: String,
+    #[serde(default = "default_log_level")]
     pub log_level: String,
     pub max_concurrent_requests: u32,
     pub max_payload_size: usize,
     pub max_retries: u32,
     pub metrics_port: u16,
     pub retry_delay: u32,
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
 }
 
 impl Default for DefaultSettings {
@@ -94,7 +99,7 @@ impl Default for DefaultSettings {
             enable_metrics: true,
             enable_request_logging: true,
             log_format: "json".to_string(),
-            log_level: "debug".to_string(),
+            log_level: default_log_level(),
             max_concurrent_requests: 5,
             max_payload_size: 5242880,
             max_retries: 3,
