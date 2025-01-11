@@ -16,6 +16,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 use actix_web::web;
 use std::collections::HashMap;
+use std::fs::File;
 
 // Constants
 const METADATA_PATH: &str = "/app/data/markdown/metadata.json";
@@ -389,14 +390,26 @@ impl FileService {
     }
 
     /// Load metadata from file or create new if not exists
-    pub fn load_or_create_metadata() -> Result<MetadataStore, Box<dyn StdError + Send + Sync>> {
-        if Path::new(METADATA_PATH).exists() {
-            let content = fs::read_to_string(METADATA_PATH)?;
-            if !content.trim().is_empty() {
-                return Ok(serde_json::from_str(&content)?);
-            }
+    pub fn load_or_create_metadata() -> Result<MetadataStore, String> {
+        // Ensure metadata directory exists
+        std::fs::create_dir_all("/app/data/metadata")
+            .map_err(|e| format!("Failed to create metadata directory: {}", e))?;
+
+        let metadata_path = "/app/data/metadata/metadata.json";
+        
+        if let Ok(file) = File::open(metadata_path) {
+            serde_json::from_reader(file)
+                .map_err(|e| format!("Failed to parse metadata: {}", e))
+        } else {
+            let empty_store = MetadataStore::default();
+            let file = File::create(metadata_path)
+                .map_err(|e| format!("Failed to create metadata file: {}", e))?;
+                
+            serde_json::to_writer_pretty(file, &empty_store)
+                .map_err(|e| format!("Failed to write metadata: {}", e))?;
+                
+            Ok(empty_store)
         }
-        Ok(MetadataStore::new())
     }
 
     /// Calculate node size based on file size

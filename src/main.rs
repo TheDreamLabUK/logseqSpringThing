@@ -1,6 +1,7 @@
 use webxr::{
     AppState, Settings,
     file_handler, graph_handler, visualization_handler,
+    settings_handler,
     RealGitHubService,
     RealGitHubPRService, GPUCompute, GraphData,
     services::{
@@ -66,8 +67,7 @@ async fn main() -> std::io::Result<()> {
         
         LogConfig::new(
             file_level,
-            console_level,
-            "/tmp/webxr.log"
+            console_level
         )
     };
 
@@ -193,6 +193,7 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api")
                     .service(web::scope("/files").configure(configure_file_handler))
                     .service(web::scope("/graph").configure(configure_graph_handler))
+                    .service(web::scope("/settings").configure(settings_handler::config))
                     .service(web::scope("/visualization").configure(visualization_handler::config))
             )
             .service(

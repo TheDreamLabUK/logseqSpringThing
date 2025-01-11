@@ -1,5 +1,5 @@
 use log::LevelFilter;
-use log::{error, info};
+use log::info;
 use simplelog::{CombinedLogger, Config, TermLogger, TerminalMode, WriteLogger};
 use std::fs::File;
 use std::io;
@@ -8,7 +8,6 @@ use std::io;
 pub struct LogConfig {
     file_level: LevelFilter,
     console_level: LevelFilter,
-    log_path: String,
 }
 
 impl Default for LogConfig {
@@ -16,13 +15,12 @@ impl Default for LogConfig {
         Self {
             file_level: LevelFilter::Debug,
             console_level: LevelFilter::Info,
-            log_path: "/tmp/webxr.log".to_string(),
         }
     }
 }
 
 impl LogConfig {
-    pub fn new(file_level: &str, console_level: &str, log_path: &str) -> Self {
+    pub fn new(file_level: &str, console_level: &str) -> Self {
         Self {
             file_level: match file_level {
                 "trace" => LevelFilter::Trace,
@@ -40,7 +38,6 @@ impl LogConfig {
                 "error" => LevelFilter::Error,
                 _ => LevelFilter::Info,
             },
-            log_path: log_path.to_string(),
         }
     }
 }
