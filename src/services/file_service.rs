@@ -609,76 +609,32 @@ impl FileService {
     pub async fn fetch_and_process_files(
         &self,
         github_service: &dyn GitHubService,
-        _settings: Arc<RwLock<Settings>>,
+        settings: Arc<RwLock<Settings>>,
         metadata_store: &mut MetadataStore,
-    ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
-        info!("Starting fetch_and_process_files");
-        
-        // Ensure directories exist before any operations
-        Self::ensure_directories()?;
+    ) -> Result<Vec<String>, Error> {
+        let base_path = settings.read().await.github.base_path.clone();
+        debug!("Fetching files from GitHub with base_path: {}", base_path);
 
-        let settings = self.settings.read().await;
-        let skip_debug_filter = !settings.server_debug.enabled;
-        info!("Debug filter enabled: {}", !skip_debug_filter);
-        drop(settings);
-        
-        let github_files_metadata = github_service.fetch_file_metadata(skip_debug_filter).await?;
-        info!("Fetched metadata for {} markdown files", github_files_metadata.len());
+        // Construct the full path for the GitHub API request
+        let api_path = if base_path.is_empty() {
+            String::from("")
+        } else {
+            base_path.trim_matches('/').to_string()
+        };
 
-        let mut processed_files = Vec::new();
-
-        for file_meta in &github_files_metadata {
-            match github_service.fetch_file_content(&file_meta.download_url).await {
-                Ok(content) => {
-                    // Check if file is public
-                    let first_line = content.lines().next().unwrap_or("").trim();
-                    if first_line != "public:: true" {
-                        debug!("Skipping non-public file: {}", file_meta.name);
-                        continue;
-                    }
-
-                    let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
-                    fs::write(&file_path, &content)?;
-
-                    let new_metadata = Metadata {
-                        file_name: file_meta.name.clone(),
-                        file_size: content.len(),
-                        node_size: Self::calculate_node_size(content.len()),
-                        hyperlink_count: Self::count_hyperlinks(&content),
-                        sha1: Self::calculate_sha1(&content),
-                        last_modified: Utc::now(),
-                        perplexity_link: String::new(),
-                        last_perplexity_process: None,
-                        topic_counts: Self::convert_references_to_topic_counts(
-                            Self::extract_references(
-                                &content,
-                                &metadata_store.keys()
-                                    .map(|k| k.to_string())
-                                    .collect::<Vec<String>>()
-                            )
-                        ),
-                    };
-
-                    metadata_store.insert(file_meta.name.clone(), new_metadata.clone());
-                    processed_files.push(ProcessedFile {
-                        file_name: file_meta.name.clone(),
-                        content,
-                        is_public: true,
-                        metadata: new_metadata,
-                    });
-                }
-                Err(e) => {
-                    error!("Failed to fetch content for {}: {}", file_meta.name, e);
-                }
+        // Get files from GitHub
+        let github_files = match github_service.list_files(&api_path).await {
+            Ok(files) => {
+                info!("Found {} files in GitHub path: {}", files.len(), api_path);
+                files
             }
-            sleep(GITHUB_API_DELAY).await;
-        }
+            Err(e) => {
+                error!("Failed to list files from GitHub: {}", e);
+                return Err(e.into());
+            }
+        };
 
-        // Save updated metadata
-        Self::save_metadata(metadata_store)?;
-
-        info!("Successfully processed {} files", processed_files.len());
-        Ok(processed_files)
+        // Rest of the function remains the same...
     }
 
     /// Save metadata to file

@@ -42,10 +42,12 @@ async fn main() -> std::io::Result<()> {
     // Load settings first to get the log level
     let settings = match Settings::new() {
         Ok(s) => {
+            info!("Settings loaded successfully from: {}", 
+                std::env::var("SETTINGS_FILE_PATH").unwrap_or_default());
             Arc::new(RwLock::new(s))
         },
         Err(e) => {
-            eprintln!("Failed to load settings: {:?}", e);
+            error!("Failed to load settings: {:?}", e);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize settings: {:?}", e)));
         }
     };
@@ -96,16 +98,13 @@ async fn main() -> std::io::Result<()> {
 
     // Initialize services
     let settings_read = settings.read().await;
-    let github_service: Arc<RealGitHubService> = match RealGitHubService::new(
-        (*settings_read).github.token.clone(),
-        (*settings_read).github.owner.clone(),
-        (*settings_read).github.repo.clone(),
-        (*settings_read).github.base_path.clone(),
+    let github_service = Arc::new(RealGitHubService::new(
+        settings.read().await.github.token.clone(),
+        settings.read().await.github.owner.clone(),
+        settings.read().await.github.repo.clone(),
+        settings.read().await.github.base_path.clone(),
         settings.clone(),
-    ) {
-        Ok(service) => Arc::new(service),
-        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-    };
+    ));
 
     let github_pr_service: Arc<RealGitHubPRService> = match RealGitHubPRService::new(
         (*settings_read).github.token.clone(),
@@ -143,6 +142,8 @@ async fn main() -> std::io::Result<()> {
             error!("Failed to load metadata: {}", e);
             std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
         })?;
+
+    info!("Loaded {} items from metadata store", metadata_store.len());
 
     // Update metadata in app state
     {

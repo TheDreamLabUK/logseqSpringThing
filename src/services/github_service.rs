@@ -207,6 +207,21 @@ impl RealGitHubPRService {
         let file_response: FileResponse = response.json().await.map_err(GitHubError::from)?;
         Ok(file_response.sha)
     }
+
+    async fn get_contents_url(&self, path: &str) -> String {
+        let full_path = if path.is_empty() {
+            self.base_path.clone()
+        } else {
+            format!("{}/{}", self.base_path.trim_matches('/'), path.trim_matches('/'))
+        };
+
+        format!(
+            "https://api.github.com/repos/{}/{}/contents/{}",
+            self.owner,
+            self.repo,
+            full_path
+        )
+    }
 }
 
 #[async_trait]

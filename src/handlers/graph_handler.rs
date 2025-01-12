@@ -139,6 +139,7 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
     info!("Received request to refresh graph");
     
     let metadata = state.metadata.read().await.clone();
+    debug!("Building graph from {} metadata entries", metadata.len());
     
     match GraphService::build_graph_from_metadata(&metadata).await {
         Ok(mut new_graph) => {
@@ -148,6 +149,8 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
             let old_positions: HashMap<String, (f32, f32, f32)> = graph.nodes.iter()
                 .map(|node| (node.id.clone(), (node.x(), node.y(), node.z())))
                 .collect();
+            
+            debug!("Preserved positions for {} existing nodes", old_positions.len());
             
             // Update positions in new graph
             for node in &mut new_graph.nodes {
@@ -159,7 +162,10 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
             }
             
             *graph = new_graph;
-            debug!("Graph refreshed successfully");
+            info!("Graph refreshed successfully with {} nodes and {} edges", 
+                graph.nodes.len(), 
+                graph.edges.len()
+            );
             
             HttpResponse::Ok().json(serde_json::json!({
                 "success": true,

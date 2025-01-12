@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libegl1-mesa-dev \
     libasound2-dev \
     ca-certificates \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust with better error handling
@@ -108,6 +109,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iproute2 \
     procps \
     lsof \
+    jq \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /usr/share/doc/* \
     && rm -rf /usr/share/man/*
@@ -183,8 +185,12 @@ COPY scripts/start.sh /app/start.sh
 # Set proper permissions for copied files
 RUN chown -R webxr:webxr /app && \
     chmod 755 /app/start.sh && \
-    chmod 644 /app/settings.toml && \
     chmod -R g+w /app
+
+# Ensure settings.toml is present and set permissions
+RUN touch /app/settings.toml && \
+    chown webxr:webxr /app/settings.toml && \
+    chmod 666 /app/settings.toml
 
 # Switch to non-root user
 USER webxr
