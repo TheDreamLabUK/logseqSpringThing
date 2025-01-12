@@ -1,7 +1,7 @@
 use webxr::{
     AppState, Settings,
     file_handler, graph_handler, visualization_handler,
-    settings_handler,
+    settings_handler, pages_handler, health_handler,
     RealGitHubService,
     RealGitHubPRService, GPUCompute, GraphData,
     services::{

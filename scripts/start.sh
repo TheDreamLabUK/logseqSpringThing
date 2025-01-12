@@ -135,17 +135,45 @@ verify_settings_permissions() {
         return 1
     fi
     
+    # Get current user and group
+    local current_user=$(id -u)
+    local current_group=$(id -g)
+    
+    # Get file owner and group
+    local file_user=$(stat -c '%u' /app/settings.toml)
+    local file_group=$(stat -c '%g' /app/settings.toml)
+    
+    # Check if we need to fix permissions
+    if [ "$file_user" != "$current_user" ] || [ "$file_group" != "$current_group" ]; then
+        log "Attempting to fix settings.toml ownership..."
+        if ! sudo chown $current_user:$current_group /app/settings.toml 2>/dev/null; then
+            log "Warning: Could not change settings.toml ownership"
+            # Continue anyway as the file might still be writable
+        fi
+    }
+    
     # Check if file is readable
     if [ ! -r "/app/settings.toml" ]; then
-        log "Error: settings.toml is not readable"
+        log "Error: settings.toml is not readable by user $current_user"
         return 1
-    fi
+    }
     
     # Check if file is writable
     if [ ! -w "/app/settings.toml" ]; then
-        log "Error: settings.toml is not writable"
+        log "Error: settings.toml is not writable by user $current_user"
+        # Try to fix permissions
+        if ! chmod u+w /app/settings.toml 2>/dev/null; then
+            log "Failed to make settings.toml writable"
+            return 1
+        fi
+    }
+    
+    # Verify file permissions one last time
+    if [ ! -r "/app/settings.toml" ] || [ ! -w "/app/settings.toml" ]; then
+        log "Error: Failed to set correct permissions on settings.toml"
+        log "Please run: sudo chown $(id -u):$(id -g) settings.toml && chmod 644 settings.toml"
         return 1
-    fi
+    }
     
     log "settings.toml permissions verified"
     return 0

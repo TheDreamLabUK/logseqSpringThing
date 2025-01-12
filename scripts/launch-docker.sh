@@ -441,10 +441,33 @@ wait
 # Function to check and fix directory permissions
 check_fix_permissions() {
     local data_dir="$PROJECT_ROOT/data"
+    local settings_file="$PROJECT_ROOT/settings.toml"
     local current_user=$(id -u)
     local current_group=$(id -g)
 
     info "Checking directory permissions..."
+
+    # Check settings.toml permissions
+    if [ -f "$settings_file" ]; then
+        info "Checking settings.toml permissions..."
+        if [ "$(stat -c '%u' "$settings_file")" != "$current_user" ] || \
+           [ "$(stat -c '%g' "$settings_file")" != "$current_group" ]; then
+            info "Fixing settings.toml ownership..."
+            sudo chown "$current_user:$current_group" "$settings_file" || {
+                error "Failed to set ownership on settings.toml"
+                error "Please run: sudo chown $current_user:$current_group $settings_file"
+                return 1
+            }
+        fi
+        chmod 644 "$settings_file" || {
+            error "Failed to set permissions on settings.toml"
+            error "Please run: chmod 644 $settings_file"
+            return 1
+        }
+    else
+        error "settings.toml not found at $settings_file"
+        return 1
+    fi
 
     # Create directories if they don't exist
     for dir in "$data_dir/markdown" "$data_dir/metadata" "$data_dir/public"; do

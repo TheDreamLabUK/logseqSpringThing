@@ -173,7 +173,6 @@ RUN chown -R webxr:webxr /app/venv
 
 # Copy built artifacts
 COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/
-COPY settings.toml /app/
 COPY src/utils/compute_forces.ptx /app/compute_forces.ptx
 COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
 
