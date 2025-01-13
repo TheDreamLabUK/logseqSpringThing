@@ -364,15 +364,19 @@ impl FileService {
     }
 
     /// Process uploaded file and return graph data
-    pub async fn process_file_upload(&self, payload: web::Bytes) -> Result<GraphData, Box<dyn StdError + Send + Sync>> {
-        let content = String::from_utf8(payload.to_vec())?;
-        let metadata = Self::load_or_create_metadata()?;
+    pub async fn process_file_upload(&self, payload: web::Bytes) -> Result<GraphData, Error> {
+        let content = String::from_utf8(payload.to_vec())
+            .map_err(|e| Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        let metadata = Self::load_or_create_metadata()
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
         let mut graph_data = GraphData::new();
         
         // Create a temporary file to process
         let temp_filename = format!("temp_{}.md", Utc::now().timestamp());
         let temp_path = format!("{}/{}", MARKDOWN_DIR, temp_filename);
-        fs::write(&temp_path, &content)?;
+        if let Err(e) = fs::write(&temp_path, &content) {
+            return Err(Error::new(std::io::ErrorKind::Other, e.to_string()));
+        }
 
         // Extract references and create metadata
         let valid_nodes: Vec<String> = metadata.keys()
@@ -409,20 +413,23 @@ impl FileService {
     }
 
     /// List available files
-    pub async fn list_files(&self) -> Result<Vec<String>, Box<dyn StdError + Send + Sync>> {
-        let metadata = Self::load_or_create_metadata()?;
+    pub async fn list_files(&self) -> Result<Vec<String>, Error> {
+        let metadata = Self::load_or_create_metadata()
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
         Ok(metadata.keys().cloned().collect())
     }
 
     /// Load a specific file and return graph data
-    pub async fn load_file(&self, filename: &str) -> Result<GraphData, Box<dyn StdError + Send + Sync>> {
+    pub async fn load_file(&self, filename: &str) -> Result<GraphData, Error> {
         let file_path = format!("{}/{}", MARKDOWN_DIR, filename);
         if !Path::new(&file_path).exists() {
-            return Err(format!("File not found: {}", filename).into());
+            return Err(Error::new(std::io::ErrorKind::NotFound, format!("File not found: {}", filename)));
         }
 
-        let content = fs::read_to_string(&file_path)?;
-        let metadata = Self::load_or_create_metadata()?;
+        let content = fs::read_to_string(&file_path)
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        let metadata = Self::load_or_create_metadata()
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
         let mut graph_data = GraphData::new();
 
         // Extract references and update metadata
@@ -690,17 +697,19 @@ impl FileService {
 
     /// Ensures all required directories exist with proper permissions
     #[allow(dead_code)]
-    fn ensure_directories() -> Result<(), Box<dyn StdError + Send + Sync>> {
+    fn ensure_directories() -> Result<(), Error> {
         // Create markdown directory
         let markdown_dir = Path::new(MARKDOWN_DIR);
         if !markdown_dir.exists() {
             info!("Creating markdown directory at {:?}", markdown_dir);
-            fs::create_dir_all(markdown_dir)?;
+            fs::create_dir_all(markdown_dir)
+                .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("Failed to create markdown directory: {}", e)))?;
             // Set permissions to allow writing
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(markdown_dir, fs::Permissions::from_mode(0o777))?;
+                fs::set_permissions(markdown_dir, fs::Permissions::from_mode(0o777))
+                    .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("Failed to set markdown directory permissions: {}", e)))?;
             }
         }
 
@@ -708,11 +717,13 @@ impl FileService {
         let metadata_dir = Path::new(METADATA_PATH).parent().unwrap();
         if !metadata_dir.exists() {
             info!("Creating metadata directory at {:?}", metadata_dir);
-            fs::create_dir_all(metadata_dir)?;
+            fs::create_dir_all(metadata_dir)
+                .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("Failed to create metadata directory: {}", e)))?;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                fs::set_permissions(metadata_dir, fs::Permissions::from_mode(0o777))?;
+                fs::set_permissions(metadata_dir, fs::Permissions::from_mode(0o777))
+                    .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("Failed to set metadata directory permissions: {}", e)))?;
             }
         }
 
@@ -721,16 +732,21 @@ impl FileService {
         match fs::write(&test_file, "test") {
             Ok(_) => {
                 info!("Successfully wrote test file to {}", test_file);
-                fs::remove_file(&test_file)?;
+                fs::remove_file(&test_file)
+                    .map_err(|e| Error::new(std::io::ErrorKind::Other, format!("Failed to remove test file: {}", e)))?;
                 info!("Successfully removed test file");
                 info!("Directory permissions verified");
                 Ok(())
             },
             Err(e) => {
                 error!("Failed to verify directory permissions: {}", e);
-                error!("Current directory: {:?}", std::env::current_dir()?);
-                error!("Directory contents: {:?}", fs::read_dir(MARKDOWN_DIR)?);
-                Err(Box::new(e))
+                if let Ok(current_dir) = std::env::current_dir() {
+                    error!("Current directory: {:?}", current_dir);
+                }
+                if let Ok(dir_contents) = fs::read_dir(MARKDOWN_DIR) {
+                    error!("Directory contents: {:?}", dir_contents);
+                }
+                Err(Error::new(std::io::ErrorKind::PermissionDenied, format!("Failed to verify directory permissions: {}", e)))
             }
         }
     }
@@ -772,7 +788,9 @@ impl FileService {
         };
 
         // Ensure directories exist and have proper permissions
-        Self::ensure_directories()?;
+        if let Err(e) = Self::ensure_directories() {
+            return Err(Error::new(std::io::ErrorKind::Other, e.to_string()));
+        }
 
         // Get files from GitHub
         let github_files_metadata = match github_service.fetch_files(&api_path).await {
@@ -905,9 +923,11 @@ impl FileService {
     }
 
     /// Save metadata to file
-    pub fn save_metadata(metadata: &MetadataStore) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        let json = serde_json::to_string_pretty(metadata)?;
-        fs::write(METADATA_PATH, json)?;
+    pub fn save_metadata(metadata: &MetadataStore) -> Result<(), Error> {
+        let json = serde_json::to_string_pretty(metadata)
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        fs::write(METADATA_PATH, json)
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         Ok(())
     }
 
