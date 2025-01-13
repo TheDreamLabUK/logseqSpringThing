@@ -156,6 +156,10 @@ declare module 'three' {
     constructor(parameters?: MeshBasicMaterialParameters);
   }
 
+  export class LineBasicMaterial extends Material {
+    constructor(parameters?: MaterialParameters);
+  }
+
   export class MeshPhongMaterial extends Material {
     constructor(parameters?: MeshPhongMaterialParameters);
     shininess: number;
@@ -264,6 +268,8 @@ declare module 'three' {
   export class Color {
     constructor(color?: ColorRepresentation);
     set(color: ColorRepresentation): this;
+    setHSL(h: number, s: number, l: number): Color;
+    clone(): Color;
   }
 
   export class Sprite extends Object3D {
@@ -303,11 +309,14 @@ declare module 'three' {
     render(scene: Scene, camera: Camera): void;
     dispose(): void;
     xr: WebXRManager;
+    setAnimationLoop(callback: ((time: number) => void) | null): void;
   }
 
-  export class WebXRManager {
+  export interface WebXRManager {
     enabled: boolean;
     setSession(session: XRSession): Promise<void>;
+    addEventListener(type: string, listener: EventListener): void;
+    removeEventListener(type: string, listener: EventListener): void;
   }
 
   export class Camera extends Object3D {
@@ -378,4 +387,104 @@ declare module 'three' {
   export const DoubleSide: Side;
   export type Side = 0 | 1 | 2;
   export type ColorRepresentation = Color | string | number;
+
+  export class Clock {
+    constructor(autoStart?: boolean);
+    start(): void;
+    stop(): void;
+    getElapsedTime(): number;
+    getDelta(): number;
+  }
+
+  export class TorusGeometry extends BufferGeometry {
+    constructor(radius?: number, tube?: number, radialSegments?: number, tubularSegments?: number, arc?: number);
+  }
+
+  export class IcosahedronGeometry extends BufferGeometry {
+    constructor(radius?: number, detail?: number);
+  }
+
+  export class OctahedronGeometry extends BufferGeometry {
+    constructor(radius?: number, detail?: number);
+  }
+
+  export class ShaderMaterial extends Material {
+    constructor(parameters?: ShaderMaterialParameters);
+    uniforms: { [uniform: string]: { value: any } };
+    defines: { [define: string]: string | number | boolean };
+    needsUpdate: boolean;
+  }
+
+  export interface Material {
+    clone(): Material;
+    uniforms?: { [uniform: string]: { value: any } };
+    defines?: { [define: string]: string | number | boolean };
+    needsUpdate: boolean;
+  }
+
+  export interface Vector3 {
+    setScalar(scalar: number): Vector3;
+    fromBufferAttribute(attribute: BufferAttribute, index: number): Vector3;
+  }
+
+  export interface Quaternion {
+    copy(quaternion: Quaternion): Quaternion;
+  }
+
+  export interface Mesh extends Object3D {
+    rotation: Euler;
+    material: Material;
+  }
+
+  export interface Group extends Object3D {
+    onBeforeRender?: (renderer: WebGLRenderer, scene: Scene, camera: Camera) => void;
+  }
+
+  export interface Color {
+    setHSL(h: number, s: number, l: number): Color;
+  }
+
+  export interface XRHand extends Map<XRHandJoint, XRJointSpace> {
+    joints: { [key: string]: XRJointSpace };
+  }
+
+  export const AdditiveBlending: number;
+  export const NormalBlending: number;
+  export const MultiplyBlending: number;
+
+  export class TextGeometry extends BufferGeometry {
+    constructor(text: string, parameters?: {
+        font: Font;
+        size?: number;
+        height?: number;
+        curveSegments?: number;
+        bevelEnabled?: boolean;
+        bevelThickness?: number;
+        bevelSize?: number;
+        bevelOffset?: number;
+        bevelSegments?: number;
+    });
+    computeBoundingBox(): void;
+    boundingBox: Box3 | null;
+    dispose(): void;
+    rotateX(angle: number): this;
+    rotateY(angle: number): this;
+    rotateZ(angle: number): this;
+    translate(x: number, y: number, z: number): this;
+  }
+
+  export class Box3 {
+    min: Vector3;
+    max: Vector3;
+    constructor(min?: Vector3, max?: Vector3);
+  }
+
+  export interface XRJointSpace {
+    position: Vector3;
+    matrixWorld: Matrix4;
+  }
+
+  export interface XRHand extends Map<XRHandJoint, XRJointSpace> {
+    joints: { [key: string]: XRJointSpace };
+  }
 }

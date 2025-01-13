@@ -1,243 +1,363 @@
-import {
-  MessageType,
-  WebSocketMessage,
-  WebSocketSettings,
-} from '../core/types';
-import { createLogger } from '../utils/logger';
+import { createLogger } from '../core/logger';
+import { buildWsUrl } from '../core/api';
 
 const logger = createLogger('WebSocketService');
 
-const DEFAULT_SETTINGS: WebSocketSettings = {
-  url: '/wss',
-  heartbeatInterval: 30,
-  heartbeatTimeout: 60,
-  reconnectAttempts: 3,
-  reconnectDelay: 5000,
-  binaryChunkSize: 65536,
-  compressionEnabled: true,
-  compressionThreshold: 1024,
-  maxConnections: 1000,
-  maxMessageSize: 100485760,
-  updateRate: 90
-};
-
-interface Node {
-  data: {
-    position: { x: number; y: number; z: number };
-    velocity: { x: number; y: number; z: number };
-  };
+enum ConnectionState {
+    DISCONNECTED = 'disconnected',
+    CONNECTING = 'connecting',
+    CONNECTED = 'connected',
+    RECONNECTING = 'reconnecting',
+    FAILED = 'failed'
 }
 
-type BinaryUpdateHandler = (data: ArrayBuffer) => void;
-type MessageHandler = (data: any) => void;
+// Simple interface matching server's binary format
+interface NodeData {
+    position: [number, number, number];
+    velocity: [number, number, number];
+}
+
+interface NodeUpdate {
+    id: string;
+    position: {
+        x: number;
+        y: number;
+        z: number;
+    };
+}
+
+interface SettingsUpdateMessage {
+    category: string;
+    setting: string;
+    value: any;
+}
+
+type BinaryMessageCallback = (nodes: NodeData[]) => void;
 
 export class WebSocketService {
-  private ws: WebSocket | null = null;
-  private settings: WebSocketSettings;
-  private reconnectTimeout: NodeJS.Timeout | null = null;
-  private heartbeatTimer: NodeJS.Timeout | null = null;
-  private lastPongTime: number = 0;
-  private reconnectAttempts = 0;
-  private binaryUpdateHandler: BinaryUpdateHandler | null = null;
-  private isReconnecting = false;
-  private messageHandlers: Map<MessageType, MessageHandler[]> = new Map();
+    private static instance: WebSocketService | null = null;
+    private ws: WebSocket | null = null;
+    private binaryMessageCallback: BinaryMessageCallback | null = null;
+    private reconnectTimeout: number | null = null;
+    private connectionState: ConnectionState = ConnectionState.DISCONNECTED;
+    private reconnectAttempts: number = 0;
+    private readonly _maxReconnectAttempts: number = 5;
+    private readonly initialReconnectDelay: number = 5000; // 5 seconds
+    private readonly maxReconnectDelay: number = 60000; // 60 seconds
+    private url: string = '';
+    private settingsStore: Map<string, any> = new Map();
+    private connectionStatusHandler: ((status: boolean) => void) | null = null;
+    private settingsUpdateHandler: ((settings: any) => void) | null = null;
 
-  constructor(settings: Partial<WebSocketSettings> = {}) {
-    this.settings = { ...DEFAULT_SETTINGS, ...settings };
-    this.connect();
-  }
-
-  private connect() {
-    if (this.ws?.readyState === WebSocket.CONNECTING || this.isReconnecting) {
-      return;
+    private constructor() {
+        // Don't automatically connect - wait for explicit connect() call
     }
 
-    try {
-      // Get WebSocket URL from settings
-      const wsUrl = new URL(this.settings.url, window.location.href);
-      wsUrl.protocol = wsUrl.protocol.replace('http', 'ws');
-      const fullUrl = wsUrl.toString();
-
-      this.ws = new WebSocket(fullUrl);
-      this.ws.binaryType = 'arraybuffer';
-
-      this.ws.onopen = this.handleOpen.bind(this);
-      this.ws.onclose = this.handleClose.bind(this);
-      this.ws.onerror = this.handleError.bind(this);
-      this.ws.onmessage = this.handleMessage.bind(this);
-
-      this.startHeartbeat();
-    } catch (error) {
-      this.handleError(error as Event);
-    }
-  }
-
-  private handleOpen() {
-    logger.info('WebSocket connected');
-    this.reconnectAttempts = 0;
-    this.isReconnecting = false;
-    this.lastPongTime = Date.now();
-  }
-
-  private handleClose(event: CloseEvent) {
-    this.cleanup();
-    if (!event.wasClean) {
-      this.attemptReconnect();
-    }
-  }
-
-  private handleError(event: Event) {
-    logger.error('WebSocket error:', event);
-    this.cleanup();
-    this.attemptReconnect();
-  }
-
-  private handleMessage(event: MessageEvent) {
-    this.lastPongTime = Date.now();
-
-    if (event.data instanceof ArrayBuffer) {
-      if (this.binaryUpdateHandler) {
-        this.binaryUpdateHandler(event.data);
-      }
-      // Also notify through the traditional handler
-      const handlers = this.messageHandlers.get('binaryPositionUpdate');
-      if (handlers) {
-        const view = new Float32Array(event.data);
-        const nodes: Node[] = [];
-        for (let i = 0; i < view.length; i += 6) {
-          nodes.push({
-            data: {
-              position: { x: view[i], y: view[i+1], z: view[i+2] },
-              velocity: { x: view[i+3], y: view[i+4], z: view[i+5] }
-            }
-          });
+    public connect(): void {
+        if (this.connectionState !== ConnectionState.DISCONNECTED) {
+            logger.warn('WebSocket already connected or connecting');
+            return;
         }
-        handlers.forEach(h => h({ type: 'binaryPositionUpdate', data: { nodes } }));
-      }
-      return;
+        this.initializeWebSocket();
     }
 
-    try {
-      const message = JSON.parse(event.data) as WebSocketMessage;
-      
-      // Handle message based on type
-      const handlers = this.messageHandlers.get(message.type);
-      if (handlers) {
-        handlers.forEach(h => h(message));
-      }
+    private async initializeWebSocket(): Promise<void> {
+        if (this.connectionState !== ConnectionState.DISCONNECTED) {
+            return;
+        }
 
-      if (message.type === 'ping') {
-        this.handlePing(message);
-      }
-    } catch (error) {
-      logger.error('Failed to parse message:', error);
-    }
-  }
+        try {
+            // Always use buildWsUrl() to ensure proper protocol and path
+            this.url = buildWsUrl();
+            
+            if (!this.url) {
+                throw new Error('No WebSocket URL available');
+            }
 
-  private handlePing(message: { type: 'ping', timestamp: number }) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      const pong = {
-        type: 'pong' as const,
-        timestamp: message.timestamp
-      };
-      this.ws.send(JSON.stringify(pong));
-    }
-  }
+            // Ensure URL uses wss:// protocol when on HTTPS
+            if (window.location.protocol === 'https:' && !this.url.startsWith('wss://')) {
+                this.url = this.url.replace('ws://', 'wss://');
+            }
 
-  private startHeartbeat() {
-    this.stopHeartbeat();
-    
-    this.heartbeatTimer = setInterval(() => {
-      if (this.ws?.readyState !== WebSocket.OPEN) {
-        return;
-      }
-
-      // Check if we've received a pong recently
-      const timeSinceLastPong = Date.now() - this.lastPongTime;
-      if (timeSinceLastPong > this.settings.heartbeatTimeout * 1000) {
-        logger.warn('Connection timeout, reconnecting...');
-        this.cleanup();
-        this.attemptReconnect();
-        return;
-      }
-
-      // Send ping
-      const ping = {
-        type: 'ping' as const,
-        timestamp: Date.now()
-      };
-      this.ws.send(JSON.stringify(ping));
-    }, this.settings.heartbeatInterval * 1000);
-  }
-
-  private stopHeartbeat() {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
-  }
-
-  private cleanup() {
-    this.stopHeartbeat();
-    
-    if (this.ws) {
-      this.ws.onopen = null;
-      this.ws.onclose = null;
-      this.ws.onerror = null;
-      this.ws.onmessage = null;
-      
-      if (this.ws.readyState === WebSocket.OPEN) {
-        this.ws.close();
-      }
-      this.ws = null;
-    }
-  }
-
-  private attemptReconnect() {
-    if (this.isReconnecting || this.reconnectAttempts >= this.settings.reconnectAttempts) {
-      logger.error('Max reconnection attempts reached');
-      return;
+            this.connectionState = ConnectionState.CONNECTING;
+            this.ws = new WebSocket(this.url);
+            this.setupWebSocketHandlers();
+        } catch (error) {
+            logger.error('Failed to initialize WebSocket:', error);
+            this.handleReconnect();
+        }
     }
 
-    this.isReconnecting = true;
-    this.reconnectAttempts++;
-
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
+    private getReconnectDelay(): number {
+        // Exponential backoff with max delay
+        const delay = Math.min(
+            this.initialReconnectDelay * Math.pow(2, this.reconnectAttempts),
+            this.maxReconnectDelay
+        );
+        // Add some jitter
+        return delay + (Math.random() * 1000);
     }
 
-    this.reconnectTimeout = setTimeout(() => {
-      logger.info(`Reconnecting... Attempt ${this.reconnectAttempts}`);
-      this.connect();
-    }, this.settings.reconnectDelay);
-  }
+    private setupWebSocketHandlers(): void {
+        if (!this.ws) return;
+        
+        this.ws.binaryType = 'arraybuffer';
 
-  // Compatibility methods for existing code
-  public onMessage(type: MessageType, handler: MessageHandler) {
-    const handlers = this.messageHandlers.get(type) || [];
-    handlers.push(handler);
-    this.messageHandlers.set(type, handlers);
-  }
+        this.ws.onopen = (): void => {
+            logger.info(`WebSocket connected successfully to ${this.url}`);
+            this.connectionState = ConnectionState.CONNECTED;
+            this.reconnectAttempts = 0;
 
-  public send(data: string) {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(data);
+            // Notify connection status change
+            if (this.connectionStatusHandler) {
+                this.connectionStatusHandler(true);
+            }
+
+            // Send initial protocol messages
+            this.sendMessage({ type: 'requestInitialData' });
+            this.sendMessage({ type: 'enableBinaryUpdates' });
+        };
+
+        this.ws.onerror = (event: Event): void => {
+            logger.error('WebSocket error:', event);
+            if (this.ws) {
+                logger.debug('WebSocket readyState:', this.ws.readyState);
+            }
+        };
+
+        this.ws.onclose = (event: CloseEvent): void => {
+            logger.warn(`WebSocket closed with code ${event.code}: ${event.reason}`);
+            
+            // Notify connection status change
+            if (this.connectionStatusHandler) {
+                this.connectionStatusHandler(false);
+            }
+            
+            this.handleReconnect();
+        };
+
+        this.ws.onmessage = (event: MessageEvent) => {
+            if (event.data instanceof Blob) {
+                this.handleBinaryMessage(event.data);
+            } else {
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.type === 'settings') {
+                        this.handleSettingsUpdate(message);
+                    }
+                } catch (e) {
+                    logger.error('Failed to parse WebSocket message:', e);
+                }
+            }
+        };
     }
-  }
 
-  public onBinaryUpdate(handler: BinaryUpdateHandler) {
-    this.binaryUpdateHandler = handler;
-  }
+    private async handleBinaryMessage(blob: Blob): Promise<void> {
+        try {
+            const arrayBuffer = await blob.arrayBuffer();
+            const dataView = new DataView(arrayBuffer);
+            const nodeCount = dataView.getUint32(0, true); // true for little-endian
+            const nodes: NodeData[] = [];
+            
+            let offset = 4; // Start after node count
+            for (let i = 0; i < nodeCount; i++) {
+                const position: [number, number, number] = [
+                    dataView.getFloat32(offset, true),
+                    dataView.getFloat32(offset + 4, true),
+                    dataView.getFloat32(offset + 8, true)
+                ];
+                offset += 12;
 
-  public dispose() {
-    this.disconnect();
-  }
+                const velocity: [number, number, number] = [
+                    dataView.getFloat32(offset, true),
+                    dataView.getFloat32(offset + 4, true),
+                    dataView.getFloat32(offset + 8, true)
+                ];
+                offset += 12;
 
-  public disconnect() {
-    this.cleanup();
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
+                nodes.push({ position, velocity });
+            }
+
+            if (this.binaryMessageCallback) {
+                this.binaryMessageCallback(nodes);
+            }
+        } catch (e) {
+            logger.error('Failed to process binary message:', e);
+        }
     }
-  }
+
+    private handleReconnect(): void {
+        const wasConnected = this.connectionState === ConnectionState.CONNECTED;
+        this.connectionState = ConnectionState.DISCONNECTED;
+        this.binaryMessageCallback = null;
+        
+        if (this.reconnectTimeout !== null) {
+            window.clearTimeout(this.reconnectTimeout);
+        }
+        
+        if (this.reconnectAttempts < this._maxReconnectAttempts &&
+            (wasConnected || this.reconnectAttempts === 0)) {
+            
+            this.reconnectAttempts++;
+            const delay = this.getReconnectDelay();
+            
+            logger.info(
+                `WebSocket connection closed, attempt ${this.reconnectAttempts}/${this._maxReconnectAttempts} in ${delay}ms`
+            );
+            
+            this.connectionState = ConnectionState.RECONNECTING;
+            
+            this.reconnectTimeout = window.setTimeout(() => {
+                this.reconnectTimeout = null;
+                this.connect();
+            }, delay);
+        } else if (this.reconnectAttempts >= this._maxReconnectAttempts) {
+            logger.warn('Maximum reconnection attempts reached, WebSocket disabled');
+            this.connectionState = ConnectionState.FAILED;
+            if (this.connectionStatusHandler) {
+                this.connectionStatusHandler(false);
+            }
+        } else {
+            logger.info('WebSocket connection closed');
+        }
+    }
+
+    private handleSettingsUpdate(message: SettingsUpdateMessage): void {
+        try {
+            const { category, setting, value } = message;
+            const settingsKey = `${category}.${setting}`;
+            
+            // Update local settings store
+            this.settingsStore.set(settingsKey, value);
+
+            // Notify settings update handler
+            if (this.settingsUpdateHandler) {
+                const settings = this.getSettingsSnapshot();
+                this.settingsUpdateHandler(settings);
+            }
+
+            logger.debug(`Updated setting ${settingsKey}:`, value);
+        } catch (e) {
+            logger.error('Failed to handle settings update:', e);
+        }
+    }
+
+    private getSettingsSnapshot(): any {
+        const settings: any = {};
+        for (const [key, value] of this.settingsStore.entries()) {
+            const [category, setting] = key.split('.');
+            if (!settings[category]) {
+                settings[category] = {};
+            }
+            settings[category][setting] = value;
+        }
+        return settings;
+    }
+
+    public updateSettings(category: string, setting: string, value: any): void {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            logger.warn('WebSocket not connected, cannot update settings');
+            return;
+        }
+
+        const message = {
+            type: 'settings_update',
+            category,
+            setting,
+            value
+        };
+
+        this.sendMessage(message);
+    }
+
+    public static getInstance(): WebSocketService {
+        if (!WebSocketService.instance) {
+            WebSocketService.instance = new WebSocketService();
+        }
+        return WebSocketService.instance;
+    }
+
+    public onBinaryMessage(callback: BinaryMessageCallback): void {
+        this.binaryMessageCallback = callback;
+    }
+
+    public getConnectionStatus(): ConnectionState {
+        return this.connectionState;
+    }
+
+    private sendMessage(message: any): void {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            try {
+                this.ws.send(JSON.stringify(message));
+            } catch (error) {
+                logger.error('Error sending message:', error);
+            }
+        }
+    }
+
+    public sendNodeUpdates(updates: NodeUpdate[]): void {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            logger.warn('WebSocket not connected, cannot send node updates');
+            return;
+        }
+
+        const buffer = new ArrayBuffer(4 + updates.length * 24); // 4 bytes for count + 24 bytes per node (3 floats for position, 3 for velocity)
+        const dataView = new DataView(buffer);
+        
+        dataView.setUint32(0, updates.length, true); // Set node count
+        
+        let offset = 4;
+        updates.forEach(update => {
+            // Position
+            dataView.setFloat32(offset, update.position.x, true);
+            dataView.setFloat32(offset + 4, update.position.y, true);
+            dataView.setFloat32(offset + 8, update.position.z, true);
+            offset += 12;
+
+            // Velocity (set to 0 as it's not included in NodeUpdate)
+            dataView.setFloat32(offset, 0, true);
+            dataView.setFloat32(offset + 4, 0, true);
+            dataView.setFloat32(offset + 8, 0, true);
+            offset += 12;
+        });
+
+        this.ws.send(buffer);
+    }
+
+    public onConnectionStatusChange(handler: (status: boolean) => void): void {
+        this.connectionStatusHandler = handler;
+        // Immediately call handler with current status if connected
+        if (this.connectionState === ConnectionState.CONNECTED && handler) {
+            handler(true);
+        }
+    }
+
+    public onSettingsUpdate(handler: (settings: any) => void): void {
+        this.settingsUpdateHandler = handler;
+    }
+
+    public dispose(): void {
+        if (this.reconnectTimeout !== null) {
+            window.clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
+        
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+        
+        this.binaryMessageCallback = null;
+        this.connectionStatusHandler = null;
+        this.settingsUpdateHandler = null;
+        this.connectionState = ConnectionState.DISCONNECTED;
+        WebSocketService.instance = null;
+    }
+
+    public close(): void {
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+    }
 }

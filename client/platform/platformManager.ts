@@ -1,3 +1,16 @@
+import { Platform, PlatformCapabilities } from '../core/types';
+import { createLogger } from '../core/utils';
+import { Settings } from '../types/settings';
+import { XRSessionMode } from '../types/xr';
+
+const logger = createLogger('PlatformManager');
+
+declare global {
+  interface Navigator {
+    xr?: XRSystem;
+  }
+}
+
 class BrowserEventEmitter {
   private listeners: { [event: string]: Function[] } = {};
 
@@ -17,17 +30,6 @@ class BrowserEventEmitter {
 
   removeAllListeners(): void {
     this.listeners = {};
-  }
-}
-
-import { Platform, PlatformCapabilities } from '../core/types';
-import { createLogger } from '../core/utils';
-
-const logger = createLogger('PlatformManager');
-
-declare global {
-  interface Navigator {
-    xr?: XRSystem;
   }
 }
 
@@ -57,13 +59,19 @@ export class PlatformManager extends BrowserEventEmitter {
     return PlatformManager.instance;
   }
 
-  async initialize(): Promise<void> {
+  async initialize(settings: Settings): Promise<void> {
     if (this.initialized) {
       return;
     }
 
     this.detectPlatform();
     await this.detectCapabilities();
+    
+    // Initialize platform with settings
+    if (settings.xr?.mode) {
+      this.capabilities.xrSupported = await this.checkXRSupport(settings.xr.mode as XRSessionMode);
+    }
+    
     this.initialized = true;
     logger.log('Platform manager initialized');
   }
@@ -172,28 +180,27 @@ export class PlatformManager extends BrowserEventEmitter {
     }
   }
 
-  async checkXRSupport(): Promise<void> {
+  async checkXRSupport(mode: XRSessionMode = 'immersive-ar'): Promise<boolean> {
     if ('xr' in navigator && navigator.xr) {
       try {
-        // Check for AR support
-        const arSupported = await navigator.xr.isSessionSupported('immersive-ar');
-        if (arSupported) {
-          this.capabilities.xrSupported = true;
+        const supported = await navigator.xr.isSessionSupported(mode);
+        if (supported) {
           this.capabilities.webxr = true;
           this.capabilities.handTracking = true;
           this.capabilities.planeDetection = true;
           this.emit('xrdevicechange', true);
-          logger.log('WebXR AR supported');
+          logger.log('WebXR supported for mode:', mode);
+          return true;
         }
       } catch (error) {
         logger.warn('WebXR check failed:', error);
-        this.capabilities.xrSupported = false;
-        this.capabilities.webxr = false;
-        this.capabilities.handTracking = false;
-        this.capabilities.planeDetection = false;
-        this.emit('xrdevicechange', false);
       }
     }
+    this.capabilities.webxr = false;
+    this.capabilities.handTracking = false;
+    this.capabilities.planeDetection = false;
+    this.emit('xrdevicechange', false);
+    return false;
   }
 
   dispose(): void {

@@ -6,22 +6,52 @@ export interface Vector3 {
   z: number;
 }
 
+export interface NodeMetadata {
+  name?: string;
+  lastModified?: number;
+  links?: string[];
+  references?: string[];
+}
+
 export interface NodeData {
   position: Vector3;
   velocity: Vector3;
+  metadata?: NodeMetadata;
 }
 
 export interface Node {
   id: string;
-  data: NodeData;
+  data: {
+    position: Vector3;
+    metadata?: {
+      name?: string;
+      lastModified?: number;
+      links?: string[];
+      references?: string[];
+    };
+  };
   color?: string;
-  metadata?: any;
+}
+
+export interface Position {
+  x: number;
+  y: number;
+  z: number;
 }
 
 export interface Edge {
   source: string;
   target: string;
-  weight?: number;
+  id: string;
+  sourcePosition?: Position;
+  targetPosition?: Position;
+}
+
+export interface PaginatedGraphData extends GraphData {
+  totalPages: number;
+  currentPage: number;
+  totalItems: number;
+  pageSize: number;
 }
 
 export interface GraphData {
@@ -84,6 +114,7 @@ export interface ARSettings {
   rotationThreshold: number;
   showPlaneOverlay: boolean;
   snapToFloor: boolean;
+  interactionRadius: number;
 }
 
 export interface AudioSettings {
@@ -118,10 +149,47 @@ export interface EdgeSettings {
   widthRange: [number, number];
 }
 
+export interface HologramSettings {
+  xrQuality: 'low' | 'medium' | 'high';
+  desktopQuality: 'low' | 'medium' | 'high';
+  ringCount: number;
+  ringColor: string;
+  ringOpacity: number;
+  ringSizes: number[];
+  ringRotationSpeed: number;
+  enableBuckminster: boolean;
+  buckminsterScale: number;
+  buckminsterOpacity: number;
+  enableGeodesic: boolean;
+  geodesicScale: number;
+  geodesicOpacity: number;
+  enableTriangleSphere: boolean;
+  triangleSphereScale: number;
+  triangleSphereOpacity: number;
+  globalRotationSpeed: number;
+}
+
 export interface LabelSettings {
   desktopFontSize: number;
   enableLabels: boolean;
   textColor: string;
+  textOutlineColor: string;
+  textOutlineWidth: number;
+  textResolution: number;
+  textPadding: number;
+  billboardMode: 'camera' | 'up';
+}
+
+export interface NodeSettings {
+  baseColor: string;
+  baseSize: number;
+  sizeRange: [number, number];
+  enableMetadataShape: boolean;
+  colorRangeAge: [string, string];
+  colorRangeLinks: [string, string];
+  metalness: number;
+  roughness: number;
+  opacity: number;
 }
 
 export interface NetworkSettings {
@@ -171,23 +239,6 @@ export interface ServerDebugSettings {
   logFullJson: boolean;
 }
 
-export interface NodeSettings {
-  baseColor: string;
-  baseSize: number;
-  clearcoat: number;
-  enableHoverEffect: boolean;
-  enableInstancing: boolean;
-  highlightColor: string;
-  highlightDuration: number;
-  hoverScale: number;
-  materialType: string;
-  metalness: number;
-  opacity: number;
-  roughness: number;
-  sizeByConnections: boolean;
-  sizeRange: [number, number];
-}
-
 export interface PhysicsSettings {
   attractionStrength: number;
   boundsSize: number;
@@ -211,6 +262,20 @@ export interface RenderingSettings {
   environmentIntensity: number;
 }
 
+export interface WebSocketSettings {
+  url: string;                   // WebSocket server URL
+  heartbeatInterval: number;     // Ping interval in seconds (default: 30)
+  heartbeatTimeout: number;      // Connection timeout in seconds (default: 60)
+  reconnectAttempts: number;     // Max reconnection attempts (default: 3)
+  reconnectDelay: number;        // Delay between reconnects in ms (default: 5000)
+  binaryChunkSize: number;       // Size of binary chunks
+  compressionEnabled: boolean;   // Enable/disable compression
+  compressionThreshold: number;  // Compression threshold
+  maxConnections: number;        // Maximum connections
+  maxMessageSize: number;        // Maximum message size
+  updateRate: number;           // Update rate in Hz
+}
+
 export interface Settings {
   animations: AnimationSettings;
   ar: ARSettings;
@@ -219,6 +284,7 @@ export interface Settings {
   clientDebug: ClientDebugSettings;
   default: DefaultSettings;
   edges: EdgeSettings;
+  hologram: HologramSettings;
   labels: LabelSettings;
   network: NetworkSettings;
   nodes: NodeSettings;
@@ -249,7 +315,14 @@ export interface BaseWebSocketMessage {
 // Binary position update message (server -> client)
 export interface BinaryPositionUpdateMessage extends BaseWebSocketMessage {
   type: 'binaryPositionUpdate';
-  data: ArrayBuffer;  // Raw binary data (24 bytes per node: 6 floats x 4 bytes)
+  data: {
+    nodes: Array<{
+      data: {
+        position: Vector3;
+        velocity: Vector3;
+      }
+    }>
+  };
 }
 
 // Connection health messages
@@ -267,21 +340,6 @@ export type WebSocketMessage =
   | BinaryPositionUpdateMessage
   | PingMessage
   | PongMessage;
-
-// WebSocket settings
-export interface WebSocketSettings {
-  url: string;                   // WebSocket server URL
-  heartbeatInterval: number;     // Ping interval in seconds (default: 30)
-  heartbeatTimeout: number;      // Connection timeout in seconds (default: 60)
-  reconnectAttempts: number;     // Max reconnection attempts (default: 3)
-  reconnectDelay: number;        // Delay between reconnects in ms (default: 5000)
-  binaryChunkSize: number;       // Size of binary chunks
-  compressionEnabled: boolean;   // Enable/disable compression
-  compressionThreshold: number;  // Compression threshold
-  maxConnections: number;        // Maximum connections
-  maxMessageSize: number;        // Maximum message size
-  updateRate: number;           // Update rate in Hz
-}
 
 // WebSocket error types
 export enum WebSocketErrorType {
@@ -321,9 +379,8 @@ export function transformNodeData(node: any): Node {
     id: node.id,
     data: {
       position: node.data.position,
-      velocity: node.data.velocity || { x: 0, y: 0, z: 0 }
+      metadata: node.data.metadata
     },
-    color: node.color,
-    metadata: node.metadata
+    color: node.color
   };
 }

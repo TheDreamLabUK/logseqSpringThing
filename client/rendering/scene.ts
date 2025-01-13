@@ -2,12 +2,13 @@
  * Three.js scene management with simplified setup
  */
 
-import * as THREE from 'three';
+import { Scene, PerspectiveCamera, WebGLRenderer, Color, AmbientLight, DirectionalLight, GridHelper, Vector2, Material, Mesh, Object3D } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
 import { createLogger } from '../core/utils';
+import { Settings } from '../types/settings';
 
 const logger = createLogger('SceneManager');
 
@@ -18,9 +19,9 @@ export class SceneManager {
   private static instance: SceneManager;
   
   // Three.js core components
-  private scene: THREE.Scene;
-  private camera: THREE.PerspectiveCamera;
-  private renderer: THREE.WebGLRenderer;
+  private scene: Scene;
+  private camera: PerspectiveCamera;
+  private renderer: WebGLRenderer;
   private controls: OrbitControls;
   
   // Post-processing
@@ -35,12 +36,12 @@ export class SceneManager {
     logger.log('Initializing SceneManager');
     
     // Create scene
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(BACKGROUND_COLOR);
+    this.scene = new Scene();
+    this.scene.background = new Color(BACKGROUND_COLOR);
     // Removed fog to ensure graph visibility
 
     // Create camera
-    this.camera = new THREE.PerspectiveCamera(
+    this.camera = new PerspectiveCamera(
       75,
       window.innerWidth / window.innerHeight,
       0.1,
@@ -50,7 +51,7 @@ export class SceneManager {
     this.camera.lookAt(0, 0, 0);
 
     // Create renderer
-    this.renderer = new THREE.WebGLRenderer({
+    this.renderer = new WebGLRenderer({
       canvas,
       antialias: true,
       alpha: true,
@@ -73,7 +74,7 @@ export class SceneManager {
     this.composer.addPass(renderPass);
 
     this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      new Vector2(window.innerWidth, window.innerHeight),
       1.5,  // Strength
       0.75, // Radius
       0.3   // Threshold
@@ -96,17 +97,24 @@ export class SceneManager {
     return SceneManager.instance;
   }
 
+  static cleanup(): void {
+    if (SceneManager.instance) {
+      SceneManager.instance.dispose();
+      SceneManager.instance = null as any;
+    }
+  }
+
   private setupLighting(): void {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new AmbientLight(0xffffff, 0.6);
     this.scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(1, 1, 1).normalize();
     this.scene.add(directionalLight);
 
     // Add smaller grid helper
-    const gridHelper = new THREE.GridHelper(50, 50); // Reduced grid size
-    if (gridHelper.material instanceof THREE.Material) {
+    const gridHelper = new GridHelper(50, 50); // Reduced grid size
+    if (gridHelper.material instanceof Material) {
       gridHelper.material.transparent = true;
       gridHelper.material.opacity = 0.1;
     }
@@ -131,6 +139,11 @@ export class SceneManager {
     logger.log('Scene rendering started');
   }
 
+  // Alias for start() to maintain compatibility with new client code
+  startRendering(): void {
+    this.start();
+  }
+
   stop(): void {
     this.isRunning = false;
     if (this.animationFrameId !== null) {
@@ -149,15 +162,15 @@ export class SceneManager {
   }
 
   // Public getters
-  getScene(): THREE.Scene {
+  getScene(): Scene {
     return this.scene;
   }
 
-  getCamera(): THREE.PerspectiveCamera {
+  getCamera(): PerspectiveCamera {
     return this.camera;
   }
 
-  getRenderer(): THREE.WebGLRenderer {
+  getRenderer(): WebGLRenderer {
     return this.renderer;
   }
 
@@ -166,29 +179,121 @@ export class SceneManager {
   }
 
   // Scene management methods
-  add(object: THREE.Object3D): void {
+  add(object: Object3D): void {
     this.scene.add(object);
   }
 
-  remove(object: THREE.Object3D): void {
+  remove(object: Object3D): void {
     this.scene.remove(object);
   }
 
   dispose(): void {
     this.stop();
     
-    window.removeEventListener('resize', this.handleResize.bind(this));
+    // Remove event listeners
+    const boundResize = this.handleResize.bind(this);
+    window.removeEventListener('resize', boundResize);
 
-    this.renderer.dispose();
-    this.scene.traverse((object) => {
-      if (object instanceof THREE.Mesh) {
-        object.geometry.dispose();
-        if (object.material instanceof THREE.Material) {
-          object.material.dispose();
+    // Dispose of post-processing
+    if (this.composer) {
+      // Dispose of render targets
+      this.composer.renderTarget1.dispose();
+      this.composer.renderTarget2.dispose();
+      
+      // Clear passes
+      this.composer.passes.length = 0;
+    }
+
+    // Dispose of bloom pass resources
+    if (this.bloomPass) {
+      // Dispose of any textures or materials used by the bloom pass
+      if ((this.bloomPass as any).renderTargetsHorizontal) {
+        (this.bloomPass as any).renderTargetsHorizontal.forEach((target: any) => {
+          if (target && target.dispose) target.dispose();
+        });
+      }
+      if ((this.bloomPass as any).renderTargetsVertical) {
+        (this.bloomPass as any).renderTargetsVertical.forEach((target: any) => {
+          if (target && target.dispose) target.dispose();
+        });
+      }
+      if ((this.bloomPass as any).materialHorizontal) {
+        (this.bloomPass as any).materialHorizontal.dispose();
+      }
+      if ((this.bloomPass as any).materialVertical) {
+        (this.bloomPass as any).materialVertical.dispose();
+      }
+    }
+
+    // Dispose of controls
+    if (this.controls) {
+      this.controls.dispose();
+    }
+
+    // Dispose of renderer and materials
+    if (this.renderer) {
+      this.renderer.dispose();
+      this.renderer.domElement.remove();
+      (this.renderer.domElement as any).width = 0;
+      (this.renderer.domElement as any).height = 0;
+    }
+
+    // Dispose of scene objects
+    if (this.scene) {
+      this.scene.traverse((object) => {
+        if (object instanceof Mesh) {
+          if (object.geometry) object.geometry.dispose();
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              object.material.forEach(material => material.dispose());
+            } else {
+              object.material.dispose();
+            }
+          }
         }
+      });
+    }
+
+    logger.log('Scene manager disposed');
+  }
+
+  public handleSettingsUpdate(settings: Settings): void {
+    if (!settings.visualization?.rendering) {
+      logger.warn('Received settings update without visualization.rendering section');
+      return;
+    }
+
+    const { rendering } = settings.visualization;
+
+    // Update background color
+    if (rendering.backgroundColor) {
+      this.scene.background = new Color(rendering.backgroundColor);
+    }
+
+    // Update lighting
+    const lights = this.scene.children.filter(child => 
+      child instanceof AmbientLight || child instanceof DirectionalLight
+    );
+    
+    lights.forEach(light => {
+      if (light instanceof AmbientLight) {
+        light.intensity = rendering.ambientLightIntensity;
+      } else if (light instanceof DirectionalLight) {
+        light.intensity = rendering.directionalLightIntensity;
       }
     });
 
-    logger.log('Scene manager disposed');
+    // Update renderer settings
+    if (this.renderer) {
+      // Note: Some settings can only be changed at renderer creation
+      if (rendering.enableAntialiasing) {
+        logger.warn('Antialiasing setting change requires renderer recreation');
+      }
+      if (rendering.enableShadows) {
+        logger.warn('Shadow settings change requires renderer recreation');
+      }
+    }
+
+    logger.debug('Scene settings updated:', rendering);
   }
 }

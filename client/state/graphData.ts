@@ -1,29 +1,30 @@
-/**
- * Graph data management with simplified binary updates
- */
-
-import { GraphData, Node, Edge } from '../core/types';
+import { transformGraphData, Node, Edge, GraphData } from '../core/types';
 import { createLogger } from '../core/utils';
+import { API_ENDPOINTS } from '../core/constants';
 
 const logger = createLogger('GraphDataManager');
 
 // Constants
-const THROTTLE_INTERVAL = 16;  // ~60fps max
-const NODE_POSITION_SIZE = 24;  // 6 floats * 4 bytes (x,y,z, vx,vy,vz)
+const FLOATS_PER_NODE = 6;     // x, y, z, vx, vy, vz
+
+interface WebSocketService {
+  send(data: ArrayBuffer): void;
+}
+
+// Extend Edge interface to include id
+interface EdgeWithId extends Edge {
+  id: string;
+}
 
 export class GraphDataManager {
   private static instance: GraphDataManager;
   private nodes: Map<string, Node>;
-  private edges: Map<string, Edge>;
+  private edges: Map<string, EdgeWithId>;
+  private wsService!: WebSocketService;  // Use definite assignment assertion
   private metadata: Record<string, any>;
   private updateListeners: Set<(data: GraphData) => void>;
   private positionUpdateListeners: Set<(positions: Float32Array) => void>;
-  private lastUpdateTime: number;
   private binaryUpdatesEnabled: boolean = false;
-  private loadingNodes: boolean = false;
-  private currentPage: number = 0;
-  private hasMorePages: boolean = true;
-  private pageSize: number = 100;
 
   private constructor() {
     this.nodes = new Map();
@@ -31,7 +32,22 @@ export class GraphDataManager {
     this.metadata = {};
     this.updateListeners = new Set();
     this.positionUpdateListeners = new Set();
-    this.lastUpdateTime = performance.now();
+    // Initialize with a no-op websocket service
+    this.wsService = {
+      send: () => logger.warn('WebSocket service not configured')
+    };
+    this.enableBinaryUpdates();  // Start binary updates by default
+  }
+
+  /**
+   * Configure the WebSocket service for binary updates
+   */
+  public setWebSocketService(service: WebSocketService): void {
+    this.wsService = service;
+    logger.info('WebSocket service configured');
+    if (this.binaryUpdatesEnabled) {
+      this.updatePositions(new Float32Array());  // Send initial empty update
+    }
   }
 
   static getInstance(): GraphDataManager {
@@ -41,187 +57,264 @@ export class GraphDataManager {
     return GraphDataManager.instance;
   }
 
-  async loadInitialGraphData(): Promise<void> {
+  public async fetchInitialData(): Promise<void> {
     try {
-      // Reset state
-      this.nodes.clear();
-      this.edges.clear();
-      this.currentPage = 0;
-      this.hasMorePages = true;
-      this.loadingNodes = false;
-
-      // Refresh the graph from existing metadata
-      try {
-        const refreshResponse = await fetch('/api/graph/refresh', {
-          method: 'POST',
-        });
-
-        if (!refreshResponse.ok) {
-          logger.warn(`Graph refresh returned ${refreshResponse.status}, continuing with initial load`);
-        } else {
-          const refreshResult = await refreshResponse.json();
-          logger.log('Graph refresh result:', refreshResult);
-        }
-      } catch (refreshError) {
-        logger.warn('Graph refresh failed, continuing with initial load:', refreshError);
-      }
-
-      // Then load the first page
-      await this.loadNextPage();
-      
-      // Start binary updates only after initial data is loaded
-      this.setupBinaryUpdates();
-
-      // Notify listeners of initial data
-      this.notifyUpdateListeners();
-
-      logger.log('Initial graph data loaded:', {
-        nodes: this.nodes.size,
-        edges: this.edges.size
-      });
-    } catch (error) {
-      logger.error('Failed to load initial graph data:', error);
-      // Don't throw here, allow app to continue with empty graph
-      this.notifyUpdateListeners();
-    }
-  }
-
-  private async loadNextPage(): Promise<void> {
-    if (this.loadingNodes || !this.hasMorePages) return;
-
-    try {
-      this.loadingNodes = true;
-      const response = await fetch(`/api/graph/data/paginated?page=${this.currentPage}&pageSize=${this.pageSize}`);
-      
+      const response = await fetch(API_ENDPOINTS.GRAPH_DATA);
       if (!response.ok) {
-        throw new Error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to fetch graph data: ${response.statusText}`);
       }
 
       const data = await response.json();
-      logger.debug('Received graph data:', {
-        nodesCount: data.nodes?.length || 0,
-        edgesCount: data.edges?.length || 0,
-        totalPages: data.total_pages,
-        currentPage: this.currentPage,
-        metadata: data.metadata
+      this.updateGraphData(data);
+      logger.info('Initial graph data loaded');
+    } catch (error) {
+      logger.error('Failed to fetch initial graph data:', error);
+      throw error;
+    }
+  }
+
+  public async fetchPaginatedData(page: number = 1, pageSize: number = 100): Promise<void> {
+    try {
+      const response = await fetch(
+        `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to fetch paginated data: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      this.updateGraphData(data);
+      logger.info(`Paginated data loaded for page ${page}`);
+    } catch (error) {
+      logger.error('Failed to fetch paginated data:', error);
+      throw error;
+    }
+  }
+
+  async loadInitialGraphData(): Promise<void> {
+    try {
+      // Try both endpoints
+      const endpoints = [
+        '/api/graph/paginated',
+        '/api/graph/data/paginated'
+      ];
+
+      let response = null;
+      for (const endpoint of endpoints) {
+        try {
+          response = await fetch(`${endpoint}?page=1&pageSize=100`);
+          if (response.ok) break;
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!response || !response.ok) {
+        throw new Error('Failed to fetch graph data from any endpoint');
+      }
+
+      const data = await response.json();
+      const transformedData = transformGraphData(data);
+      
+      // Update nodes and edges
+      this.nodes = new Map(transformedData.nodes.map((node: Node) => [node.id, node]));
+      const edgesWithIds = transformedData.edges.map((edge: Edge) => ({
+        ...edge,
+        id: this.createEdgeId(edge.source, edge.target)
+      }));
+      this.edges = new Map(edgesWithIds.map(edge => [edge.id, edge]));
+      
+      // Update metadata
+      this.metadata = {
+        ...transformedData.metadata || {},
+        pagination: {
+          totalPages: data.totalPages,
+          currentPage: data.currentPage,
+          totalItems: data.totalItems,
+          pageSize: data.pageSize
+        }
+      };
+
+      // Enable WebSocket updates immediately
+      this.enableBinaryUpdates();
+      this.setBinaryUpdatesEnabled(true);
+      
+      // Notify listeners of initial data
+      this.notifyUpdateListeners();
+      
+      // Load remaining pages if any
+      if (data.totalPages > 1) {
+        await this.loadRemainingPages(data.totalPages, data.pageSize);
+      }
+      
+      logger.info('Initial graph data loaded successfully');
+    } catch (error) {
+      logger.error('Failed to fetch graph data:', error);
+      throw new Error('Failed to fetch graph data: ' + error);
+    }
+  }
+
+  private async loadRemainingPages(totalPages: number, pageSize: number): Promise<void> {
+    try {
+      // Load remaining pages in parallel with a reasonable chunk size
+      const chunkSize = 5;
+      for (let i = 2; i <= totalPages; i += chunkSize) {
+        const pagePromises = [];
+        for (let j = i; j < Math.min(i + chunkSize, totalPages + 1); j++) {
+          pagePromises.push(this.loadPage(j, pageSize));
+        }
+        await Promise.all(pagePromises);
+        // Update listeners after each chunk
+        this.notifyUpdateListeners();
+      }
+    } catch (error) {
+      logger.error('Error loading remaining pages:', error);
+      throw error;
+    }
+  }
+
+  private async loadPage(page: number, pageSize: number): Promise<void> {
+    try {
+      const response = await fetch(
+        `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to fetch page ${page}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const transformedData = transformGraphData(data);
+      
+      // Add new nodes
+      transformedData.nodes.forEach((node: Node) => {
+        if (!this.nodes.has(node.id)) {
+          this.nodes.set(node.id, node);
+        }
       });
       
-      if (!data.nodes || !Array.isArray(data.nodes)) {
-        throw new Error('Invalid graph data: nodes array is missing or invalid');
-      }
-      
-      // Update graph with new nodes and edges
-      data.nodes.forEach((node: Node) => this.nodes.set(node.id, node));
-      if (data.edges && Array.isArray(data.edges)) {
-        data.edges.forEach((edge: Edge) => {
-          const edgeId = this.createEdgeId(edge.source, edge.target);
-          this.edges.set(edgeId, edge);
-        });
-      }
+      // Add new edges
+      transformedData.edges.forEach((edge: Edge) => {
+        const edgeId = this.createEdgeId(edge.source, edge.target);
+        if (!this.edges.has(edgeId)) {
+          this.edges.set(edgeId, { ...edge, id: edgeId });
+        }
+      });
 
-      // Update pagination state
-      this.currentPage++;
-      this.hasMorePages = this.currentPage < data.totalPages;
-
-      // Notify listeners of updated data
-      this.notifyUpdateListeners();
-
-      logger.log(`Loaded page ${this.currentPage} of graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
+      logger.debug(`Loaded page ${page} with ${transformedData.nodes.length} nodes`);
     } catch (error) {
-      logger.error('Failed to load graph data:', error);
-      this.hasMorePages = false;  // Stop trying to load more pages on error
-    } finally {
-      this.loadingNodes = false;
+      logger.error(`Error loading page ${page}:`, error);
+      throw error;
     }
   }
 
-  private initializeNodePositions(): void {
-    // Initialize node positions if they don't have positions yet
-    this.nodes.forEach(node => {
-      if (!node.data.position) {
-        node.data.position = {
-          x: (Math.random() - 0.5) * 20,
-          y: (Math.random() - 0.5) * 20,
-          z: (Math.random() - 0.5) * 20
-        };
-      }
-      if (!node.data.velocity) {
-        node.data.velocity = { x: 0, y: 0, z: 0 };
-      }
-    });
-
-    // Create initial position buffer
-    const buffer = new ArrayBuffer(this.nodes.size * NODE_POSITION_SIZE);
-    const positions = new Float32Array(buffer);
-    
-    let index = 0;
-    this.nodes.forEach(node => {
-      const pos = node.data.position;
-      positions[index * 6] = pos.x;
-      positions[index * 6 + 1] = pos.y;
-      positions[index * 6 + 2] = pos.z;
-      positions[index * 6 + 3] = node.data.velocity.x;
-      positions[index * 6 + 4] = node.data.velocity.y;
-      positions[index * 6 + 5] = node.data.velocity.z;
-      index++;
-    });
-
-    // Notify listeners of initial positions
-    this.positionUpdateListeners.forEach(listener => {
-      listener(positions);
-    });
-  }
-
-  private setupBinaryUpdates(): void {
-    // Always initialize positions
-    this.initializeNodePositions();
-    
-    if (this.binaryUpdatesEnabled) {
-      // Send message to server to start receiving binary updates
-      if (window.ws && window.ws.readyState === WebSocket.OPEN) {
-        window.ws.send(JSON.stringify({ type: 'enableBinaryUpdates' }));
-        logger.log('Requested binary updates from server');
-      } else {
-        logger.warn('WebSocket not ready, cannot enable binary updates');
-      }
+  /**
+   * Enable binary position updates via WebSocket
+   */
+  public enableBinaryUpdates(): void {
+    try {
+      const ws = new WebSocket(`wss://${window.location.host}/wss`);
+      ws.binaryType = 'arraybuffer';
+      
+      ws.onopen = () => {
+        logger.info('WebSocket connection established');
+        this.setWebSocketService({
+          send: (data: ArrayBuffer) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(data);
+            }
+          }
+        });
+        this.setBinaryUpdatesEnabled(true);
+      };
+      
+      ws.onmessage = (event: MessageEvent) => {
+        if (event.data instanceof ArrayBuffer) {
+          const positions = new Float32Array(event.data);
+          this.updateNodePositions(positions);
+          this.notifyPositionUpdateListeners(positions);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        logger.error('WebSocket error:', error);
+        this.setBinaryUpdatesEnabled(false);
+      };
+      
+      ws.onclose = () => {
+        logger.warn('WebSocket connection closed');
+        this.setBinaryUpdatesEnabled(false);
+        // Attempt to reconnect after a delay
+        setTimeout(() => this.enableBinaryUpdates(), 5000);
+      };
+      
+    } catch (error) {
+      logger.error('Failed to initialize WebSocket:', error);
+      this.setBinaryUpdatesEnabled(false);
     }
   }
 
-  public async loadMoreIfNeeded(): Promise<void> {
-    if (this.hasMorePages && !this.loadingNodes) {
-      await this.loadNextPage();
-    }
+  /**
+   * Update node positions from binary data
+   */
+  private updatePositions(positions: Float32Array): void {
+    if (!this.binaryUpdatesEnabled) return;
+    this.wsService.send(positions.buffer);
   }
 
   /**
    * Initialize or update the graph data
    */
   updateGraphData(data: any): void {
-    logger.log('Received graph data update');
-
-    // Clear existing data
-    this.nodes.clear();
-    this.edges.clear();
-
-    // Store nodes in Map for O(1) access
+    // Update nodes
     if (data.nodes && Array.isArray(data.nodes)) {
       data.nodes.forEach((node: any) => {
-        this.nodes.set(node.id, node);
+        // Convert position array to object if needed
+        let position;
+        if (Array.isArray(node.data.position)) {
+          position = {
+            x: node.data.position[0],
+            y: node.data.position[1], 
+            z: node.data.position[2]
+          };
+        } else {
+          position = node.data.position || null;
+        }
+
+        this.nodes.set(node.id, {
+          ...node,
+          data: {
+            ...node.data,
+            position
+          }
+        });
       });
 
-      // Store edges in Map
+      // Store edges in Map with generated IDs
       if (Array.isArray(data.edges)) {
         data.edges.forEach((edge: Edge) => {
           const edgeId = this.createEdgeId(edge.source, edge.target);
-          this.edges.set(edgeId, edge);
+          const edgeWithId: EdgeWithId = {
+            ...edge,
+            id: edgeId
+          };
+          this.edges.set(edgeId, edgeWithId);
         });
       }
 
       // Update metadata
       this.metadata = data.metadata || {};
-
-      // Initialize positions for new nodes
-      this.initializeNodePositions();
 
       // Notify listeners
       this.notifyUpdateListeners();
@@ -237,104 +330,12 @@ export class GraphDataManager {
   }
 
   /**
-   * Enable binary position updates
-   */
-  private enableBinaryUpdates(): void {
-    // Send message to server to enable binary updates
-    if (window.ws && window.ws.readyState === WebSocket.OPEN) {
-      window.ws.send(JSON.stringify({ type: 'enableBinaryUpdates' }));
-      this.binaryUpdatesEnabled = true;
-      
-      // Send current positions to server to initialize GPU layout
-      this.sendPositionsToServer();
-      
-      logger.log('Enabled binary updates and sent initial positions');
-    } else {
-      logger.warn('WebSocket not ready, cannot enable binary updates');
-    }
-  }
-
-  private sendPositionsToServer(): void {
-    if (!window.ws || window.ws.readyState !== WebSocket.OPEN) {
-      logger.warn('WebSocket not ready, cannot send positions to server');
-      return;
-    }
-
-    // Create binary buffer with current positions
-    const buffer = new ArrayBuffer(this.nodes.size * NODE_POSITION_SIZE);
-    const positions = new Float32Array(buffer);
-    
-    let index = 0;
-    this.nodes.forEach(node => {
-      const pos = node.data.position;
-      positions[index * 6] = pos.x;
-      positions[index * 6 + 1] = pos.y;
-      positions[index * 6 + 2] = pos.z;
-      positions[index * 6 + 3] = node.data.velocity.x;
-      positions[index * 6 + 4] = node.data.velocity.y;
-      positions[index * 6 + 5] = node.data.velocity.z;
-      index++;
-    });
-
-    // Send binary positions to server
-    window.ws.send(buffer);
-    logger.log('Sent initial positions to server for GPU layout');
-  }
-
-  /**
-   * Handle binary position updates with throttling
-   */
-  updatePositions(buffer: ArrayBuffer): void {
-    const now = performance.now();
-    const timeSinceLastUpdate = now - this.lastUpdateTime;
-
-    if (timeSinceLastUpdate < THROTTLE_INTERVAL) {
-      return;  // Skip update if too soon
-    }
-
-    try {
-      const floatArray = new Float32Array(buffer);
-      
-      // Verify data size matches node count
-      const expectedSize = this.nodes.size * NODE_POSITION_SIZE;
-      if (buffer.byteLength !== expectedSize) {
-        logger.error(`Invalid binary data length: ${buffer.byteLength} bytes (expected ${expectedSize})`);
-        return;
-      }
-
-      // Update node positions in graph data
-      let index = 0;
-      this.nodes.forEach(node => {
-        // Update position
-        node.data.position = {
-          x: floatArray[index * 6],
-          y: floatArray[index * 6 + 1],
-          z: floatArray[index * 6 + 2]
-        };
-        // Update velocity
-        node.data.velocity = {
-          x: floatArray[index * 6 + 3],
-          y: floatArray[index * 6 + 4],
-          z: floatArray[index * 6 + 5]
-        };
-        index++;
-      });
-
-      // Notify listeners after updating positions
-      this.notifyPositionUpdateListeners(floatArray);
-      this.lastUpdateTime = now;
-    } catch (error) {
-      logger.error('Error processing binary position update:', error);
-    }
-  }
-
-  /**
    * Get the current graph data
    */
   getGraphData(): GraphData {
     return {
       nodes: Array.from(this.nodes.values()),
-      edges: Array.from(this.edges.values()),
+      edges: Array.from(this.edges.values()) as Edge[],
       metadata: this.metadata
     };
   }
@@ -405,15 +406,40 @@ export class GraphDataManager {
 
   public setBinaryUpdatesEnabled(enabled: boolean): void {
     this.binaryUpdatesEnabled = enabled;
+    if (enabled) {
+      this.updatePositions(new Float32Array());  // Send initial empty update
+    }
     logger.info(`Binary updates ${enabled ? 'enabled' : 'disabled'}`);
     
     // Notify listeners of state change
     this.updateListeners.forEach(listener => {
       listener({
         nodes: Array.from(this.nodes.values()),
-        edges: Array.from(this.edges.values()),
+        edges: Array.from(this.edges.values()) as Edge[],
         metadata: { ...this.metadata, binaryUpdatesEnabled: enabled }
       });
+    });
+  }
+
+  public updateNodePositions(positions: Float32Array): void {
+    if (!this.binaryUpdatesEnabled) {
+      return;
+    }
+  
+    // Log for debugging
+    logger.debug('Received binary position update:', positions);
+  
+    if (positions.length % FLOATS_PER_NODE !== 0) {
+      logger.error('Invalid position array length:', positions.length);
+      return;
+    }
+  
+    this.positionUpdateListeners.forEach(listener => {
+      try {
+        listener(positions);
+      } catch (error) {
+        logger.error('Error in position update listener:', error);
+      }
     });
   }
 }

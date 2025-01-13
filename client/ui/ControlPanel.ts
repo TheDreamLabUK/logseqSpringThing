@@ -1,169 +1,295 @@
-/**
- * Control panel for visualization settings
- */
-
-import { Settings, SettingCategory, SettingKey, SettingValueType } from '../types/settings';
-import { settingsManager } from '../state/settings';
-import { createLogger } from '../utils/logger';
+import { Settings } from '../types/settings';
+import { createLogger } from '../core/logger';
+import { SettingsStore } from '../state/SettingsStore';
+import './ControlPanel.css';
 
 const logger = createLogger('ControlPanel');
 
 export class ControlPanel {
     private container: HTMLElement;
-    private currentSettings: Settings;
+    private settings: Settings;
     private unsubscribers: Array<() => void> = [];
+    private settingsStore: SettingsStore;
 
     constructor(container: HTMLElement) {
         this.container = container;
-        this.currentSettings = settingsManager.getCurrentSettings();
-        this.setupUI();
+        this.settingsStore = SettingsStore.getInstance();
+        this.settings = {} as Settings;
+        this.initializePanel();
     }
 
-    private async setupUI(): Promise<void> {
+    private async initializePanel(): Promise<void> {
         try {
-            Object.entries(this.currentSettings).forEach(([categoryName, settings]) => {
-                const category = categoryName as SettingCategory;
-                const categoryContainer = document.createElement('div');
-                categoryContainer.classList.add('settings-category');
-                
-                const categoryTitle = document.createElement('h3');
-                categoryTitle.textContent = this.formatDisplayName(category);
-                categoryContainer.appendChild(categoryTitle);
-
-                Object.entries(settings).forEach(([settingName, value]) => {
-                    const setting = settingName as SettingKey<typeof category>;
-                    this.createSettingControl(
-                        category,
-                        setting,
-                        value as SettingValueType<typeof category, typeof setting>,
-                        categoryContainer
-                    );
-                });
-
-                this.container.appendChild(categoryContainer);
-            });
-
+            await this.settingsStore.initialize();
+            this.settings = this.settingsStore.get('') as Settings;
+            this.createPanelElements();
+            await this.setupSettingsSubscriptions();
         } catch (error) {
-            logger.error('Error setting up UI:', error);
+            logger.error('Failed to initialize control panel:', error);
         }
     }
 
-    private formatDisplayName(name: string): string {
-        return name
-            .replace(/([A-Z])/g, ' $1') // Add space before capital letters
-            .replace(/^./, str => str.toUpperCase()); // Capitalize first letter
-    }
+    private createPanelElements(): void {
+        // Clear existing content
+        this.container.innerHTML = '';
 
-    private createSettingControl<T extends SettingCategory, K extends SettingKey<T>>(
-        category: T,
-        setting: K,
-        value: SettingValueType<T, K>,
-        container: HTMLElement
-    ): void {
-        const controlContainer = document.createElement('div');
-        controlContainer.classList.add('setting-control');
+        // Create settings sections
+        const flatSettings = this.flattenSettings(this.settings);
+        const groupedSettings = this.groupSettingsByCategory(flatSettings);
 
-        const label = document.createElement('label');
-        label.textContent = this.formatDisplayName(String(setting));
-        controlContainer.appendChild(label);
-
-        if (Array.isArray(value)) {
-            // Handle array values (e.g., widthRange, sizeRange)
-            const arrayContainer = document.createElement('div');
-            arrayContainer.classList.add('array-control');
+        for (const [category, settings] of Object.entries(groupedSettings)) {
+            const section = this.createSection(category);
             
-            value.forEach((item, index) => {
-                const itemInput = document.createElement('input');
-                itemInput.type = 'number';
-                itemInput.value = String(item);
-                itemInput.step = '0.1';
-                itemInput.onchange = async (event) => {
-                    const target = event.target as HTMLInputElement;
-                    const newArray = [...value];
-                    newArray[index] = parseFloat(target.value);
-                    try {
-                        await settingsManager.updateSetting(category, setting, newArray as SettingValueType<T, K>);
-                    } catch (error) {
-                        logger.error(`Error updating array setting ${category}.${String(setting)}:`, error);
-                        target.value = String(item);
-                    }
-                };
-                arrayContainer.appendChild(itemInput);
-            });
-            
-            controlContainer.appendChild(arrayContainer);
-        } else if (typeof value === 'object' && value !== null) {
-            // Handle nested objects
-            logger.warn(`Nested object setting not supported in UI: ${category}.${String(setting)}`);
-            return;
-        } else {
-            let input: HTMLInputElement;
-            
-            switch (typeof value) {
-                case 'boolean':
-                    input = document.createElement('input');
-                    input.type = 'checkbox';
-                    input.checked = value as boolean;
-                    break;
-
-                case 'number':
-                    input = document.createElement('input');
-                    input.type = 'number';
-                    input.value = String(value);
-                    input.step = '0.1';
-                    break;
-
-                case 'string':
-                    input = document.createElement('input');
-                    if (value.startsWith('#')) {
-                        input.type = 'color';
-                    } else {
-                        input.type = 'text';
-                    }
-                    input.value = value;
-                    break;
-
-                default:
-                    logger.warn(`Unsupported setting type for ${category}.${String(setting)}`);
-                    return;
+            for (const [path, value] of Object.entries(settings)) {
+                const control = this.createSettingControl(path, value);
+                if (control) {
+                    section.appendChild(control);
+                }
             }
+            
+            this.container.appendChild(section);
+        }
+    }
 
-            input.onchange = async (event) => {
-                const target = event.target as HTMLInputElement;
-                let newValue: SettingValueType<T, K>;
-
-                switch (target.type) {
-                    case 'checkbox':
-                        newValue = target.checked as SettingValueType<T, K>;
-                        break;
-                    case 'number':
-                        newValue = parseFloat(target.value) as SettingValueType<T, K>;
-                        break;
-                    default:
-                        newValue = target.value as SettingValueType<T, K>;
+    private flattenSettings(obj: unknown, prefix: string = ''): Record<string, unknown> {
+        const result: Record<string, unknown> = {};
+        
+        if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+            for (const [key, value] of Object.entries(obj)) {
+                const newKey = prefix ? `${prefix}.${key}` : key;
+                
+                if (value && typeof value === 'object' && !Array.isArray(value)) {
+                    Object.assign(result, this.flattenSettings(value, newKey));
+                } else {
+                    result[newKey] = value;
                 }
+            }
+        }
+        
+        return result;
+    }
 
-                try {
-                    await settingsManager.updateSetting(category, setting, newValue);
-                } catch (error) {
-                    logger.error(`Error updating setting ${category}.${String(setting)}:`, error);
-                    // Revert the UI to the previous value
-                    if (target.type === 'checkbox') {
-                        target.checked = value as boolean;
-                    } else {
-                        target.value = String(value);
-                    }
-                }
-            };
+    private groupSettingsByCategory(flatSettings: Record<string, unknown>): Record<string, Record<string, unknown>> {
+        const result: Record<string, Record<string, unknown>> = {};
+        
+        for (const [path, value] of Object.entries(flatSettings)) {
+            const category = path.split('.')[0];
+            if (!result[category]) {
+                result[category] = {};
+            }
+            result[category][path] = value;
+        }
+        
+        return result;
+    }
 
-            controlContainer.appendChild(input);
+    private createSection(category: string): HTMLElement {
+        const section = document.createElement('div');
+        section.className = 'settings-section';
+        
+        const header = document.createElement('h2');
+        header.textContent = this.formatCategoryName(category);
+        section.appendChild(header);
+        
+        return section;
+    }
+
+    private createSettingControl(path: string, value: unknown): HTMLElement | null {
+        const container = document.createElement('div');
+        container.className = 'setting-control';
+        
+        const label = document.createElement('label');
+        label.textContent = this.formatSettingName(path.split('.').pop()!);
+        container.appendChild(label);
+        
+        const control = this.createInputElement(path, value);
+        if (!control) {
+            return null;
+        }
+        
+        container.appendChild(control);
+        return container;
+    }
+
+    private createInputElement(path: string, value: unknown): HTMLElement | null {
+        const type = this.getInputType(value);
+        if (!type) {
+            return null;
         }
 
-        container.appendChild(controlContainer);
+        let input: HTMLElement;
+        
+        switch (type) {
+            case 'checkbox':
+                input = document.createElement('input');
+                (input as HTMLInputElement).type = 'checkbox';
+                (input as HTMLInputElement).checked = value as boolean;
+                input.onchange = (e: Event) => {
+                    const target = e.target as HTMLInputElement;
+                    this.settingsStore.set(path, target.checked);
+                };
+                break;
+
+            case 'number':
+                input = document.createElement('input');
+                (input as HTMLInputElement).type = 'number';
+                (input as HTMLInputElement).value = String(value);
+                (input as HTMLInputElement).step = this.getStepValue(path);
+                input.onchange = (e: Event) => {
+                    const target = e.target as HTMLInputElement;
+                    this.settingsStore.set(path, parseFloat(target.value));
+                };
+                break;
+
+            case 'color':
+                input = document.createElement('input');
+                (input as HTMLInputElement).type = 'color';
+                (input as HTMLInputElement).value = value as string;
+                input.onchange = (e: Event) => {
+                    const target = e.target as HTMLInputElement;
+                    this.settingsStore.set(path, target.value);
+                };
+                break;
+
+            case 'select':
+                input = document.createElement('select');
+                if (Array.isArray(value)) {
+                    value.forEach(option => {
+                        const opt = document.createElement('option');
+                        opt.value = String(option);
+                        opt.textContent = String(option);
+                        input.appendChild(opt);
+                    });
+                }
+                input.onchange = (e: Event) => {
+                    const target = e.target as HTMLSelectElement;
+                    this.settingsStore.set(path, target.value);
+                };
+                break;
+
+            default:
+                input = document.createElement('input');
+                (input as HTMLInputElement).type = 'text';
+                (input as HTMLInputElement).value = String(value);
+                input.onchange = (e: Event) => {
+                    const target = e.target as HTMLInputElement;
+                    this.settingsStore.set(path, target.value);
+                };
+        }
+
+        input.id = `setting-${path}`;
+        return input;
+    }
+
+    private getInputType(value: unknown): string | null {
+        switch (typeof value) {
+            case 'boolean':
+                return 'checkbox';
+            case 'number':
+                return 'number';
+            case 'string':
+                if (value.match(/^#[0-9a-f]{6}$/i)) {
+                    return 'color';
+                }
+                return 'text';
+            case 'object':
+                if (Array.isArray(value)) {
+                    return 'select';
+                }
+                return null;
+            default:
+                return null;
+        }
+    }
+
+    private getStepValue(path: string): string {
+        if (path.includes('opacity') || path.includes('strength')) {
+            return '0.1';
+        }
+        return '1';
+    }
+
+    private formatCategoryName(category: string): string {
+        return category
+            .split(/(?=[A-Z])/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    }
+
+    private formatSettingName(setting: string): string {
+        return setting
+            .split(/(?=[A-Z])/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    }
+
+    private setupSettingsSubscriptions(): void {
+        // Clear existing subscriptions
+        this.unsubscribers.forEach(unsub => unsub());
+        this.unsubscribers = [];
+
+        const settings = this.settingsStore;
+        let unsubscriber: (() => void) | undefined;
+
+        // Subscribe to settings changes
+        settings.subscribe('visualization.labels.enableLabels', (value) => {
+            this.updateLabelVisibility(typeof value === 'boolean' ? value : value === 'true');
+        }).then(unsub => {
+            unsubscriber = unsub;
+            if (unsubscriber) {
+                this.unsubscribers.push(unsubscriber);
+            }
+        });
+
+        const flatSettings = this.flattenSettings(this.settings);
+        for (const path of Object.keys(flatSettings)) {
+            settings.subscribe(path, (value) => {
+                this.updateSettingValue(path, value);
+            }).then(unsub => {
+                if (unsub) {
+                    this.unsubscribers.push(unsub);
+                }
+            });
+        }
+    }
+
+    private updateLabelVisibility(value: boolean): void {
+        // Update label visibility in the UI
+        const labelElements = document.querySelectorAll('.node-label');
+        labelElements.forEach(el => {
+            (el as HTMLElement).style.display = value ? 'block' : 'none';
+        });
+    }
+
+    private updateSettingValue(path: string, value: unknown): void {
+        const element = document.getElementById(`setting-${path}`);
+        if (!element) {
+            logger.warn(`No element found for setting: ${path}`);
+            return;
+        }
+
+        if (element instanceof HTMLInputElement) {
+            switch (element.type) {
+                case 'checkbox':
+                    element.checked = value as boolean;
+                    break;
+                case 'number':
+                    element.value = String(value);
+                    break;
+                case 'color':
+                    element.value = value as string;
+                    break;
+                default:
+                    element.value = String(value);
+            }
+        } else if (element instanceof HTMLSelectElement) {
+            element.value = String(value);
+        }
     }
 
     public dispose(): void {
-        this.unsubscribers.forEach(unsubscribe => unsubscribe());
+        this.unsubscribers.forEach(unsub => unsub());
         this.unsubscribers = [];
+        this.container.innerHTML = '';
     }
 }
