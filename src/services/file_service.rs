@@ -57,6 +57,7 @@ pub struct ProcessedFile {
 }
 
 // TODO: This struct will be used in future implementation of reference tracking
+#[allow(dead_code)]
 struct ReferenceInfo {
     file_name: String,
     references: Vec<String>,
@@ -236,7 +237,7 @@ impl GitHubService for RealGitHubService {
         Ok(markdown_files)
     }
 
-    async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>> {
+    async fn get_download_url(&self, _file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
             self.owner,
@@ -318,6 +319,7 @@ impl GitHubService for RealGitHubService {
 }
 
 pub struct FileService {
+    #[allow(dead_code)]
     settings: Arc<RwLock<Settings>>,
 }
 
@@ -590,6 +592,7 @@ impl FileService {
     }
 
     /// Ensures all required directories exist with proper permissions
+    #[allow(dead_code)]
     fn ensure_directories() -> Result<(), Box<dyn StdError + Send + Sync>> {
         // Create markdown directory
         let markdown_dir = Path::new(MARKDOWN_DIR);

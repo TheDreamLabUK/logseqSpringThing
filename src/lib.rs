@@ -34,11 +34,11 @@ pub use services::ragflow_service::{RAGFlowService, RAGFlowError};
 pub use services::github_service::RealGitHubPRService;
 
 // Re-export handlers
-pub use handlers::file_handler;
-pub use handlers::graph_handler;
+pub use handlers::api_handler::files as file_handler;
+pub use handlers::api_handler::graph as graph_handler;
 pub use handlers::health_handler;
 pub use handlers::pages_handler;
 pub use handlers::perplexity_handler;
 pub use handlers::ragflow_handler;
-pub use handlers::visualization_handler;
+pub use handlers::api_handler::visualization as visualization_handler;
 pub use handlers::settings_handler;

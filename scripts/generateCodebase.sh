@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Path to the export repository relative to this script
-EXPORT_REPO="../../export-repository-to-prompt-for-llm"
+EXPORT_REPO="/mnt/mldata/githubs/export-repository-to-prompt-for-llm"
 
 # Activate virtual environment and ensure we deactivate it even if script fails
 activate_venv() {

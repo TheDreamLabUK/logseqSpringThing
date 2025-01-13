@@ -1,14 +1,18 @@
 use webxr::{
     AppState, Settings,
-    file_handler, graph_handler, visualization_handler,
-    settings_handler, pages_handler, health_handler,
+    handlers::{
+        api_handler,
+        health_handler,
+        pages_handler,
+        settings_handler,
+        socket_flow_handler::socket_flow_handler,
+    },
     RealGitHubService,
     RealGitHubPRService, GPUCompute, GraphData,
     services::{
         file_service::FileService,
         graph_service::GraphService,
     },
-    socket_flow_handler,
 };
 
 use actix_web::{web, App, HttpServer, middleware};
@@ -19,21 +23,6 @@ use tokio::sync::RwLock;
 use dotenvy::dotenv;
 use log::{error, warn, info, debug};
 use webxr::utils::logging::{init_logging_with_config, LogConfig};
-
-// Handler configuration functions
-fn configure_file_handler(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::resource("/fetch").to(file_handler::fetch_and_process_files))
-       .service(web::resource("/content/{file_name}").to(file_handler::get_file_content))
-       .service(web::resource("/refresh").to(file_handler::refresh_graph))
-       .service(web::resource("/update").to(file_handler::update_graph));
-}
-
-fn configure_graph_handler(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::resource("/data").to(graph_handler::get_graph_data))
-       .service(web::resource("/data/paginated").to(graph_handler::get_paginated_graph_data))
-       .service(web::resource("/update").to(graph_handler::update_graph))
-       .service(web::resource("/refresh").to(graph_handler::refresh_graph));
-}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -194,13 +183,11 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(github_service.clone()))
             .app_data(web::Data::new(github_pr_service.clone()))
             .service(
-                web::scope("/api")
+                web::scope("")
+                    .configure(api_handler::config)
                     .service(web::scope("/health").configure(health_handler::config))
-                    .service(web::scope("/files").configure(configure_file_handler))
-                    .service(web::scope("/graph").configure(configure_graph_handler))
                     .service(web::scope("/pages").configure(pages_handler::config))
                     .service(web::scope("/settings").configure(settings_handler::config))
-                    .service(web::scope("/visualization").configure(visualization_handler::config))
             )
             .service(
                 web::resource("/wss")

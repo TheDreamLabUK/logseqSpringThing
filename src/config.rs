@@ -558,6 +558,8 @@ impl Default for SecuritySettings {
 #[serde(default)]
 pub struct WebSocketSettings {
     pub binary_chunk_size: usize,
+    pub binary_update_rate: u32,
+    pub binary_message_version: u32,
     pub compression_enabled: bool,
     pub compression_threshold: usize,
     pub heartbeat_interval: u64,
@@ -573,6 +575,8 @@ impl Default for WebSocketSettings {
     fn default() -> Self {
         Self {
             binary_chunk_size: 65536,
+            binary_update_rate: 30,
+            binary_message_version: 1,
             compression_enabled: true,
             compression_threshold: 1024,
             heartbeat_interval: 15000,

@@ -208,6 +208,7 @@ impl RealGitHubPRService {
         Ok(file_response.sha)
     }
 
+    #[allow(dead_code)]
     async fn get_contents_url(&self, path: &str) -> String {
         let full_path = if path.is_empty() {
             self.base_path.clone()
