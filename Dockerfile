@@ -39,9 +39,15 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Configure cargo for better network resilience
 RUN mkdir -p ~/.cargo && \
-    echo '[net]' >> ~/.cargo/config && \
-    echo 'retry = 5' >> ~/.cargo/config && \
-    echo 'git-fetch-with-cli = true' >> ~/.cargo/config
+    echo '[source.crates-io]' >> ~/.cargo/config.toml && \
+    echo 'registry = "https://github.com/rust-lang/crates.io-index"' >> ~/.cargo/config.toml && \
+    echo 'replace-with = "ustc"' >> ~/.cargo/config.toml && \
+    echo '[source.ustc]' >> ~/.cargo/config.toml && \
+    echo 'registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"' >> ~/.cargo/config.toml && \
+    echo '[net]' >> ~/.cargo/config.toml && \
+    echo 'retry = 10' >> ~/.cargo/config.toml && \
+    echo 'timeout = 120' >> ~/.cargo/config.toml && \
+    echo 'git-fetch-with-cli = true' >> ~/.cargo/config.toml
 
 WORKDIR /usr/src/app
 
@@ -51,8 +57,12 @@ COPY Cargo.toml Cargo.lock ./
 # Create dummy src directory and build dependencies
 RUN mkdir src && \
     echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
-    rm -rf src target/release/deps/logseq_xr*
+    CARGO_NET_GIT_FETCH_WITH_CLI=true \
+    CARGO_HTTP_TIMEOUT=120 \
+    CARGO_HTTP_CHECK_REVOKE=false \
+    cargo build --release --jobs $(nproc) || \
+    (sleep 2 && CARGO_HTTP_MULTIPLEXING=false cargo build --release --jobs $(nproc)) || \
+    (sleep 5 && CARGO_HTTP_MULTIPLEXING=false cargo build --release --jobs 1)
 
 # Now copy the real source code and build
 COPY src ./src

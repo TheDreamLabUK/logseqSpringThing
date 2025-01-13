@@ -651,8 +651,8 @@ impl Settings {
         if let Ok(repo) = std::env::var("GITHUB_REPO") {
             settings.github.repo = repo;
         }
-        if let Ok(path) = std::env::var("GITHUB_PATH") {
-            settings.github.base_path = path;
+        if let Ok(path) = std::env::var("GITHUB_BASE_PATH") {
+            settings.github.base_path = path.trim_matches('/').to_string();
         }
         if let Ok(version) = std::env::var("GITHUB_VERSION") {
             settings.github.version = version;

@@ -17,6 +17,7 @@ use tokio::time::sleep;
 use actix_web::web;
 use std::collections::HashMap;
 use std::fs::File;
+use std::io::Error;
 
 // Constants
 const METADATA_PATH: &str = "/app/data/markdown/metadata.json";
@@ -67,6 +68,7 @@ pub trait GitHubService: Send + Sync {
     async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>>;
     async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>>;
     async fn get_file_last_modified(&self, file_path: &str) -> Result<DateTime<Utc>, Box<dyn StdError + Send + Sync>>;
+    async fn fetch_files(&self, path: &str) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>>;
 }
 
 pub struct RealGitHubService {
@@ -105,16 +107,45 @@ impl RealGitHubService {
             settings: Arc::clone(&settings),
         })
     }
+
+    fn get_full_path(&self, path: &str) -> String {
+        let base = self.base_path.trim_matches('/');
+        let path = path.trim_matches('/');
+        
+        // Always include base path if it exists
+        if !base.is_empty() {
+            if path.is_empty() {
+                base.to_string()
+            } else {
+                format!("{}/{}", base, path)
+            }
+        } else {
+            path.to_string()
+        }
+    }
+
+    fn get_api_path(&self) -> String {
+        // For API requests, always include the base path
+        if !self.base_path.is_empty() {
+            self.base_path.trim_matches('/').to_string()
+        } else {
+            String::new()
+        }
+    }
 }
 
 #[async_trait]
 impl GitHubService for RealGitHubService {
+    async fn fetch_files(&self, _path: &str) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
+        self.fetch_file_metadata(false).await
+    }
+
     async fn fetch_file_metadata(&self, skip_debug_filter: bool) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
             self.owner,
             self.repo,
-            self.base_path
+            self.get_api_path()
         );
         
         info!("GitHub API Request: URL={}, Token={}, Owner={}, Repo={}, BasePath={}", 
@@ -178,7 +209,7 @@ impl GitHubService for RealGitHubService {
 
                 debug!("Processing markdown file: {}", name);
                 
-                let last_modified = match self.get_file_last_modified(&format!("{}/{}", self.base_path, name)).await {
+                let last_modified = match self.get_file_last_modified(&self.get_full_path(&name)).await {
                     Ok(time) => Some(time),
                     Err(e) => {
                         error!("Failed to get last modified time for {}: {}", name, e);
@@ -206,13 +237,12 @@ impl GitHubService for RealGitHubService {
     }
 
     async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>> {
-        let url = if self.base_path.is_empty() {
-            format!("https://api.github.com/repos/{}/{}/contents/{}", 
-                self.owner, self.repo, file_name)
-        } else {
-            format!("https://api.github.com/repos/{}/{}/contents/{}/{}", 
-                self.owner, self.repo, self.base_path, file_name)
-        };
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/contents/{}",
+            self.owner,
+            self.repo,
+            self.get_api_path()
+        );
 
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
@@ -611,7 +641,7 @@ impl FileService {
         github_service: &dyn GitHubService,
         settings: Arc<RwLock<Settings>>,
         metadata_store: &mut MetadataStore,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<ProcessedFile>, Error> {
         let base_path = settings.read().await.github.base_path.clone();
         debug!("Fetching files from GitHub with base_path: {}", base_path);
 
@@ -623,18 +653,102 @@ impl FileService {
         };
 
         // Get files from GitHub
-        let github_files = match github_service.list_files(&api_path).await {
+        let github_files_metadata = match github_service.fetch_files(&api_path).await {
             Ok(files) => {
                 info!("Found {} files in GitHub path: {}", files.len(), api_path);
                 files
             }
             Err(e) => {
                 error!("Failed to list files from GitHub: {}", e);
-                return Err(e.into());
+                return Err(Error::new(std::io::ErrorKind::Other, e.to_string()));
             }
         };
 
-        // Rest of the function remains the same...
+        let mut processed_files = Vec::new();
+
+        // Remove files that no longer exist in GitHub
+        let github_filenames: std::collections::HashSet<_> = github_files_metadata.iter()
+            .map(|f| f.name.clone())
+            .collect();
+
+        // Remove files from metadata store that don't exist in GitHub anymore
+        let files_to_remove: Vec<_> = metadata_store.keys()
+            .filter(|file_name| !github_filenames.contains(*file_name))
+            .cloned()
+            .collect();
+
+        for file_name in files_to_remove {
+            debug!("Removing metadata for deleted file: {}", file_name);
+            metadata_store.remove(&file_name);
+        }
+
+        // Get list of valid node names (filenames without .md)
+        let valid_nodes: Vec<String> = github_files_metadata.iter()
+            .map(|f| f.name.trim_end_matches(".md").to_string())
+            .collect();
+
+        // Process files that need updating
+        let files_to_process: Vec<_> = github_files_metadata.into_iter()
+            .filter(|file_meta| {
+                let local_meta = metadata_store.get(&file_meta.name);
+                local_meta.map_or(true, |meta| meta.sha1 != file_meta.sha)
+            })
+            .collect();
+
+        // Process each file
+        for file_meta in files_to_process {
+            match github_service.fetch_file_content(&file_meta.download_url).await {
+                Ok(content) => {
+                    let first_line = content.lines().next().unwrap_or("").trim();
+                    if first_line != "public:: true" {
+                        debug!("Skipping non-public file: {}", file_meta.name);
+                        continue;
+                    }
+
+                    let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
+                    fs::write(&file_path, &content)?;
+
+                    // Extract references
+                    let references = Self::extract_references(&content, &valid_nodes);
+                    let topic_counts = Self::convert_references_to_topic_counts(references);
+
+                    // Calculate node size
+                    let file_size = content.len();
+                    let node_size = Self::calculate_node_size(file_size);
+
+                    let new_metadata = Metadata {
+                        file_name: file_meta.name.clone(),
+                        file_size,
+                        node_size,
+                        hyperlink_count: Self::count_hyperlinks(&content),
+                        sha1: Self::calculate_sha1(&content),
+                        last_modified: file_meta.last_modified.expect("Last modified time should be present"),
+                        perplexity_link: String::new(),
+                        last_perplexity_process: None,
+                        topic_counts,
+                    };
+
+                    metadata_store.insert(file_meta.name.clone(), new_metadata.clone());
+                    processed_files.push(ProcessedFile {
+                        file_name: file_meta.name,
+                        content,
+                        is_public: true,
+                        metadata: new_metadata,
+                    });
+                }
+                Err(e) => {
+                    error!("Failed to fetch content: {}", e);
+                }
+            }
+            sleep(GITHUB_API_DELAY).await;
+        }
+
+        // Save updated metadata
+        if let Err(e) = Self::save_metadata(metadata_store) {
+            return Err(Error::new(std::io::ErrorKind::Other, e.to_string()));
+        }
+
+        Ok(processed_files)
     }
 
     /// Save metadata to file
