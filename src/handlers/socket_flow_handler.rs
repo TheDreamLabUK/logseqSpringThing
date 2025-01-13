@@ -189,14 +189,27 @@ pub async fn socket_flow_handler(
     settings: web::Data<Arc<RwLock<crate::config::Settings>>>,
 ) -> Result<HttpResponse, Error> {
     // Check for WebSocket upgrade headers
-    if !req.headers().get("upgrade")
+    let upgrade = req.headers().get("upgrade")
         .and_then(|h| h.to_str().ok())
-        .map(|s| s.to_lowercase() == "websocket")
-        .unwrap_or(false) {
-        debug!("Attempted WebSocket connection without proper upgrade headers");
-        return Ok(HttpResponse::BadRequest()
-            .reason("WebSocket upgrade header required")
-            .finish());
+        .map(|s| s.to_lowercase());
+
+    let connection = req.headers().get("connection")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_lowercase());
+
+    match (upgrade, connection) {
+        (Some(upgrade), Some(connection)) if upgrade == "websocket" && connection.contains("upgrade") => {
+            // Valid WebSocket upgrade request
+            debug!("Valid WebSocket upgrade request received");
+        }
+        _ => {
+            debug!("Attempted WebSocket connection without proper upgrade headers");
+            debug!("Upgrade header: {:?}", req.headers().get("upgrade"));
+            debug!("Connection header: {:?}", req.headers().get("connection"));
+            return Ok(HttpResponse::BadRequest()
+                .reason("WebSocket upgrade headers required")
+                .finish());
+        }
     }
 
     let ws = SocketFlowServer::new(

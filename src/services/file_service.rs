@@ -20,7 +20,7 @@ use std::fs::File;
 use std::io::Error;
 
 // Constants
-const METADATA_PATH: &str = "/app/data/markdown/metadata.json";
+const METADATA_PATH: &str = "/app/data/metadata/metadata.json";
 pub const MARKDOWN_DIR: &str = "/app/data/markdown";
 const GITHUB_API_DELAY: Duration = Duration::from_millis(500); // Increased delay for GitHub rate limits
 const MAX_RETRIES: u32 = 3; // Maximum number of retries for API calls
