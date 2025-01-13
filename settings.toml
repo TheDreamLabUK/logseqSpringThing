@@ -158,8 +158,14 @@ enabled = false
 log_binary_headers = false
 log_full_json = false
 
+[github]
+rate_limit = true
+version = "v3"
+
 [websocket]
 binary_chunk_size = 65536
+binary_update_rate = 30
+binary_message_version = 1
 compression_enabled = true
 compression_threshold = 1024
 heartbeat_interval = 15000
