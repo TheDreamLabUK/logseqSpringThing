@@ -412,7 +412,13 @@ $DOCKER_COMPOSE up -d
 # Check application readiness
 if ! check_application_readiness; then
     log "${RED}Application failed to start properly${NC}"
-    cleanup_existing_processes
+    log "${YELLOW}Containers left running for debugging. To clean up manually:${NC}"
+    log "  $DOCKER_COMPOSE down"
+    log "  docker rm -f logseq-xr-webxr cloudflared-tunnel"
+    log "\nTo view logs:"
+    log "  $DOCKER_COMPOSE logs"
+    log "  docker logs logseq-xr-webxr"
+    log "  docker logs cloudflared-tunnel"
     exit 1
 fi
 

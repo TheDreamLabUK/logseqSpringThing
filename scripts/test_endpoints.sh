@@ -304,11 +304,11 @@ test_backend() {
     '
     
     local endpoints=(
-        "/api/settings"
-        "/api/graph/data"
-        "/api/settings/graph"
-        "/api/pages"
-        "/api/files/fetch"
+        "/settings"
+        "/settings/graph"
+        "/pages"
+        "/health"
+        "/wss"
     )
     
     local failed=0
@@ -317,23 +317,49 @@ test_backend() {
         log_message "• Testing backend endpoint: $endpoint (${ENDPOINT_DESCRIPTIONS[$endpoint]})"
         
         # Test with more verbose output and headers
-        local response=$(docker exec ${CONTAINER_NAME} curl -s -v \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json" \
-            -H "X-Request-ID: test-$(date +%s)" \
-            "http://localhost:3001$endpoint" 2>&1)
-        
-        if [[ $response == *"200 OK"* ]] || [[ $response == *"201 Created"* ]]; then
-            log_success "✓ Endpoint $endpoint is accessible"
-            log_message "Response body: $(echo "$response" | grep -v '^*' | grep -v '^>' | grep -v '^<')"
-            WORKING_BACKEND_ENDPOINTS+=("$endpoint")
+        local response
+        if [[ "$endpoint" == "/wss" ]]; then
+            # Test WebSocket endpoint with proper upgrade headers
+            response=$(docker exec ${CONTAINER_NAME} curl -s -v \
+                -H "Connection: Upgrade" \
+                -H "Upgrade: websocket" \
+                -H "Sec-WebSocket-Version: 13" \
+                -H "Sec-WebSocket-Key: $(openssl rand -base64 16)" \
+                "http://localhost:4000$endpoint" 2>&1)
         else
-            log_error "✗ Failed to access $endpoint"
-            log_message "Response: $response"
-            # Check logs for errors around this request
-            log_message "Checking recent logs for errors..."
-            docker exec ${CONTAINER_NAME} bash -c "grep -B 5 -A 5 \"${endpoint}\" /tmp/webxr.log | tail -n 20"
-            ((failed++))
+            # Test regular HTTP endpoints
+            response=$(docker exec ${CONTAINER_NAME} curl -s -v \
+                -H "Content-Type: application/json" \
+                -H "Accept: application/json" \
+                -H "X-Request-ID: test-$(date +%s)" \
+                "http://localhost:4000$endpoint" 2>&1)
+        fi
+        
+        if [[ "$endpoint" == "/wss" ]]; then
+            # For WebSocket endpoint, check for 101 Switching Protocols
+            if [[ $response == *"101 Switching Protocols"* ]] || [[ $response == *"Upgrade: websocket"* ]]; then
+                log_success "✓ WebSocket endpoint $endpoint is accessible"
+                log_verbose "Response: $response"
+                WORKING_BACKEND_ENDPOINTS+=("$endpoint")
+            else
+                log_error "✗ WebSocket upgrade failed for $endpoint"
+                log_message "Response: $response"
+                ((failed++))
+            fi
+        else
+            # For regular HTTP endpoints
+            if [[ $response == *"200 OK"* ]] || [[ $response == *"201 Created"* ]]; then
+                log_success "✓ Endpoint $endpoint is accessible"
+                log_message "Response body: $(echo "$response" | grep -v '^*' | grep -v '^>' | grep -v '^<')"
+                WORKING_BACKEND_ENDPOINTS+=("$endpoint")
+            else
+                log_error "✗ Failed to access $endpoint"
+                log_message "Response: $response"
+                # Check logs for errors around this request
+                log_message "Checking recent logs for errors..."
+                docker exec ${CONTAINER_NAME} bash -c "grep -B 5 -A 5 \"${endpoint}\" /tmp/webxr.log | tail -n 20"
+                ((failed++))
+            fi
         fi
         
         # Add a small delay between tests
