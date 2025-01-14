@@ -4,17 +4,9 @@ import { API_ENDPOINTS } from './constants';
 export function buildApiUrl(path: string): string {
     const protocol = window.location.protocol;
     const host = window.location.hostname;
-    const port = '3001'; // Use the port where our Rust server is running
+    const port = '4000'; // Use nginx port for all external connections
     const base = `${protocol}//${host}:${port}`;
-    
-    // Handle API paths
-    const apiPaths = ['/api', '/api/settings'];
-    for (const apiPath of apiPaths) {
-        if (path.startsWith(apiPath)) {
-            return `${base}${path}`;
-        }
-    }
-    return `${base}/api/${path}`;
+    return `${base}${path}`; // All paths are already prefixed with /api in constants.ts
 }
 
 // Helper function to build settings URL

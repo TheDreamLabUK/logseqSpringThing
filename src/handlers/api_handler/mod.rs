@@ -27,5 +27,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .configure(files::config)
             .configure(graph::config)
             .configure(visualization::config)
+            .service(web::scope("/settings").configure(crate::handlers::settings_handler::config))
     );
 }

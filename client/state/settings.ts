@@ -31,9 +31,15 @@ export class SettingsManager {
     public async initialize(): Promise<void> {
         if (this.initialized) return;
 
-        // Using default settings while server sync is disabled
-        this.useDefaultSettings();
-        logger.info('Using default settings (server sync disabled)');
+        try {
+            await this.store.initialize();
+            this.settings = this.store.get('') as Settings;
+            this.initialized = true;
+            logger.info('Settings initialized from server');
+        } catch (error) {
+            logger.error('Failed to initialize settings from server:', error);
+            this.useDefaultSettings();
+        }
     }
 
     public getCurrentSettings(): Settings {

@@ -2,6 +2,7 @@ import { Settings } from '../types/settings';
 import { createLogger } from '../core/logger';
 import { defaultSettings } from './defaultSettings';
 import { buildApiUrl } from '../core/api';
+import { API_ENDPOINTS } from '../core/constants';
 
 const logger = createLogger('SettingsStore');
 
@@ -42,7 +43,7 @@ export class SettingsStore {
                 this.settings = { ...defaultSettings };
 
                 // Try to fetch settings from server
-                const response = await fetch(buildApiUrl('/api/settings'));
+                const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT));
                 if (response.ok) {
                     const serverSettings = await response.json();
                     // Deep merge server settings with defaults
@@ -204,7 +205,7 @@ export class SettingsStore {
                         changedSettings[path] = this.get(path);
                     });
 
-                    const response = await fetch('/api/settings', {
+                    const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',

@@ -187,7 +187,6 @@ async fn main() -> std::io::Result<()> {
                     .configure(api_handler::config)
                     .service(web::scope("/health").configure(health_handler::config))
                     .service(web::scope("/pages").configure(pages_handler::config))
-                    .service(web::scope("/settings").configure(settings_handler::config))
             )
             .service(
                 web::resource("/wss")
