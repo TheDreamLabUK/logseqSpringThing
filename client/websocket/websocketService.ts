@@ -285,7 +285,7 @@ export class WebSocketService {
         return this.connectionState;
     }
 
-    private sendMessage(message: any): void {
+    public sendMessage(message: any): void {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             try {
                 this.ws.send(JSON.stringify(message));

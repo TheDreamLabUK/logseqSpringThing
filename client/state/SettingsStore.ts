@@ -37,16 +37,36 @@ export class SettingsStore {
 
         this.initializationPromise = (async () => {
             try {
-                // Using default settings directly
+                // Start with default settings
                 this.settings = { ...defaultSettings };
-                logger.info('Using default settings (server sync disabled)');
+
+                // Fetch settings from server
+                const response = await fetch('/api/settings');
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch settings: ${response.statusText}`);
+                }
+                const serverSettings = await response.json();
+                
+                // Deep merge server settings with defaults
+                this.settings = this.deepMerge(this.settings, serverSettings);
+                
+                // Enable physics by default for graph visualization
+                if (this.settings.visualization?.physics) {
+                    this.settings.visualization.physics.enabled = true;
+                }
 
                 this.initialized = true;
-                logger.info('SettingsStore initialized');
+                logger.info('SettingsStore initialized with server settings');
+                
+                // Start periodic sync
+                this.startSync();
             } catch (error) {
                 logger.error('Failed to initialize settings:', error);
-                // Use defaults on error
+                // Use defaults on error but still enable physics
                 this.settings = { ...defaultSettings };
+                if (this.settings.visualization?.physics) {
+                    this.settings.visualization.physics.enabled = true;
+                }
                 this.initialized = true;
             }
         })();
@@ -150,6 +170,58 @@ export class SettingsStore {
                 }
             });
         }
+    }
+
+    private deepMerge(target: any, source: any): any {
+        const result = { ...target };
+        
+        for (const key in source) {
+            if (source[key] instanceof Object && key in target) {
+                result[key] = this.deepMerge(target[key], source[key]);
+            } else {
+                result[key] = source[key];
+            }
+        }
+        
+        return result;
+    }
+
+    private startSync(): void {
+        // Clear any existing sync timer
+        if (this.syncTimer !== null) {
+            window.clearInterval(this.syncTimer);
+        }
+
+        // Start periodic sync every 30 seconds
+        this.syncTimer = window.setInterval(async () => {
+            try {
+                // Only sync if there are pending changes
+                if (this.pendingChanges.size > 0) {
+                    const changedSettings: Record<string, unknown> = {};
+                    this.pendingChanges.forEach(path => {
+                        changedSettings[path] = this.get(path);
+                    });
+
+                    const response = await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(changedSettings),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Failed to sync settings: ${response.statusText}`);
+                    }
+
+                    // Clear pending changes after successful sync
+                    this.pendingChanges.clear();
+                    logger.debug('Settings synced with server');
+                }
+            } catch (error) {
+                logger.error('Failed to sync settings:', error);
+            }
+        }, 30000); // 30 seconds
     }
 
     public dispose(): void {

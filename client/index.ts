@@ -26,7 +26,22 @@ export class GraphVisualization {
         this.edgeManager = new EdgeManager(this.scene, settings);
         this.hologramManager = new HologramManager(this.scene, this.renderer, settings);
         this.textRenderer = new TextRenderer(this.camera);
+        
+        // Initialize and connect WebSocket
         this.websocketService = WebSocketService.getInstance();
+        this.websocketService.onBinaryMessage((nodes) => {
+            this.nodeManager.updateNodePositions(nodes);
+        });
+        this.websocketService.onSettingsUpdate((updatedSettings) => {
+            this.handleSettingsUpdate(updatedSettings);
+        });
+        this.websocketService.onConnectionStatusChange((connected) => {
+            if (connected) {
+                console.log('WebSocket connected, requesting initial data');
+                this.websocketService.sendMessage({ type: 'requestInitialData' });
+            }
+        });
+        this.websocketService.connect();
 
         this.setupEventListeners();
         this.animate();

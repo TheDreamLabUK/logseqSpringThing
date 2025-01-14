@@ -18,6 +18,11 @@ import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
 import { HologramShaderMaterial } from './materials/HologramShaderMaterial';
 
+interface NodePosition {
+    position: [number, number, number];
+    velocity: [number, number, number];
+}
+
 export class EnhancedNodeManager {
     private scene: Scene;
     private settings: Settings;
@@ -25,6 +30,30 @@ export class EnhancedNodeManager {
     private nodeGeometry: BufferGeometry;
     private nodeMaterial: Material;
     private instancedMesh: InstancedMesh | null = null;
+    private tempMatrix = new Matrix4();
+    private tempVector = new Vector3();
+    private tempQuaternion = new Quaternion();
+
+    public updateNodePositions(nodeData: NodePosition[]): void {
+        const mesh = this.instancedMesh;
+        if (!mesh) return;
+
+        const scale = new Vector3(1, 1, 1);
+        
+        nodeData.forEach((data, index) => {
+            const [x, y, z] = data.position;
+            this.tempVector.set(x, y, z);
+            this.tempMatrix.compose(
+                this.tempVector,
+                this.tempQuaternion,
+                scale
+            );
+            mesh.setMatrixAt(index, this.tempMatrix);
+        });
+
+        // Mark instance matrix as needing update
+        mesh.instanceMatrix.needsUpdate = true;
+    }
     private dummy = new Object3D();
     private geometryFactory: GeometryFactory;
     private materialFactory: MaterialFactory;
