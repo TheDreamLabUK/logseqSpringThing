@@ -4,8 +4,8 @@ import { API_ENDPOINTS } from './constants';
 export function buildApiUrl(path: string): string {
     const protocol = window.location.protocol;
     const host = window.location.hostname;
-    const port = window.location.port || '4000'; // Use current port or default to 4000
-    const base = `${protocol}//${host}${port ? ':' + port : ''}`;
+    const port = '4000'; // Always use nginx port for external connections
+    const base = `${protocol}//${host}:${port}`;
     return `${base}${path}`; // All paths are already prefixed with /api in constants.ts
 }
 
