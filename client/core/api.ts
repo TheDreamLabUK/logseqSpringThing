@@ -43,15 +43,9 @@ export function buildFilesUrl(path: string): string {
 export function buildWsUrl(): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.hostname;
+    const port = '4000'; // Use nginx port for all external connections
     const wsPath = '/wss';
-    
-    // In development, use port 4000
-    if (host === 'localhost' || host === '127.0.0.1') {
-        return `${protocol}//${host}:4000${wsPath}`;
-    }
-    
-    // In production (through cloudflared), use the host without port
-    return `${protocol}//${host}${wsPath}`;
+    return `${protocol}//${host}:${port}${wsPath}`;
 }
 
 // Helper function to build settings item URL
