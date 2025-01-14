@@ -1,6 +1,7 @@
 import { Settings } from '../types/settings';
 import { createLogger } from '../core/logger';
 import { defaultSettings } from './defaultSettings';
+import { buildApiUrl } from '../core/api';
 
 const logger = createLogger('SettingsStore');
 
@@ -40,29 +41,30 @@ export class SettingsStore {
                 // Start with default settings
                 this.settings = { ...defaultSettings };
 
-                // Fetch settings from server
-                const response = await fetch('/api/settings');
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch settings: ${response.statusText}`);
+                // Try to fetch settings from server
+                const response = await fetch(buildApiUrl('/api/settings'));
+                if (response.ok) {
+                    const serverSettings = await response.json();
+                    // Deep merge server settings with defaults
+                    this.settings = this.deepMerge(this.settings, serverSettings);
+                    logger.info('Settings loaded from server');
+                } else {
+                    logger.warn(`Failed to fetch server settings: ${response.statusText}, using defaults`);
                 }
-                const serverSettings = await response.json();
-                
-                // Deep merge server settings with defaults
-                this.settings = this.deepMerge(this.settings, serverSettings);
-                
-                // Enable physics by default for graph visualization
+
+                // Ensure physics is enabled
                 if (this.settings.visualization?.physics) {
                     this.settings.visualization.physics.enabled = true;
                 }
 
                 this.initialized = true;
-                logger.info('SettingsStore initialized with server settings');
-                
+                logger.info('SettingsStore initialized');
+
                 // Start periodic sync
                 this.startSync();
             } catch (error) {
                 logger.error('Failed to initialize settings:', error);
-                // Use defaults on error but still enable physics
+                // Use defaults on error but ensure physics is enabled
                 this.settings = { ...defaultSettings };
                 if (this.settings.visualization?.physics) {
                     this.settings.visualization.physics.enabled = true;

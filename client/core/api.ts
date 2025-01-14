@@ -1,15 +1,20 @@
-import { API_BASE, API_ENDPOINTS } from './constants';
+import { API_ENDPOINTS } from './constants';
 
 // Helper function to build API URLs
 export function buildApiUrl(path: string): string {
+    const protocol = window.location.protocol;
+    const host = window.location.hostname;
+    const port = '3001'; // Use the port where our Rust server is running
+    const base = `${protocol}//${host}:${port}`;
+    
     // Handle API paths
     const apiPaths = ['/api', '/api/settings'];
     for (const apiPath of apiPaths) {
         if (path.startsWith(apiPath)) {
-            return `${API_BASE}${path}`;
+            return `${base}${path}`;
         }
     }
-    return `${API_BASE}/api/${path}`;
+    return `${base}/api/${path}`;
 }
 
 // Helper function to build settings URL
@@ -36,17 +41,16 @@ export function buildFilesUrl(path: string): string {
 
 // Helper function to build WebSocket URL
 export function buildWsUrl(): string {
-    const isProduction = ['www.visionflow.info', 'visionflow.info'].includes(window.location.hostname);
-    const host = window.location.host;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.hostname;
+    const wsPath = '/wss';
     
-    // Always use secure WebSocket in production
-    if (isProduction) {
-        return `wss://www.visionflow.info/wss`;
+    // In development, use port 4000
+    if (host === 'localhost' || host === '127.0.0.1') {
+        return `${protocol}//${host}:4000${wsPath}`;
     }
     
-    // In development, use the current host but ensure proper protocol
-    const wsPath = '/wss';  // Must match nginx location block
+    // In production (through cloudflared), use the host without port
     return `${protocol}//${host}${wsPath}`;
 }
 

@@ -3,11 +3,10 @@
  */
 
 // Environment detection
-export const IS_PRODUCTION = ['www.visionflow.info', 'visionflow.info'].includes(window.location.hostname);
-export const IS_DEVELOPMENT = !IS_PRODUCTION;
+export const IS_DEVELOPMENT = process.env.NODE_ENV !== 'production';
 
 // API configuration
-export const API_BASE = '';  // Empty string means use relative URLs
+export const API_BASE = '';  // Base URL is constructed in buildApiUrl
 
 // API paths
 export const API_PATHS = {
