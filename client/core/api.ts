@@ -45,8 +45,9 @@ export function buildWsUrl(): string {
         return `wss://www.visionflow.info/wss`;
     }
     
-    // In development, follow the page protocol (ws for http, wss for https)
-    return `${protocol}//${host}/wss`;
+    // In development, use the current host but ensure proper protocol
+    const wsPath = '/wss';  // Must match nginx location block
+    return `${protocol}//${host}${wsPath}`;
 }
 
 // Helper function to build settings item URL

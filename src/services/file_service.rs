@@ -504,14 +504,25 @@ impl FileService {
 
     /// Extract references to other files based on their names (case insensitive)
     fn extract_references(content: &str, valid_nodes: &[String]) -> Vec<String> {
-        let re = Regex::new(r"\[\[([^\]]+)\]\]").unwrap();
         let mut references = Vec::new();
+        let content_lower = content.to_lowercase();
         
-        for cap in re.captures_iter(content) {
-            if let Some(reference) = cap.get(1) {
-                let reference = reference.as_str().to_string();
-                if valid_nodes.contains(&reference) {
-                    references.push(reference);
+        for node_name in valid_nodes {
+            let node_name_lower = node_name.to_lowercase();
+            
+            // Create a regex pattern with word boundaries
+            let pattern = format!(r"\b{}\b", regex::escape(&node_name_lower));
+            if let Ok(re) = Regex::new(&pattern) {
+                // Count case-insensitive matches of the filename
+                let count = re.find_iter(&content_lower).count();
+                
+                // If we found any references, add them to the map
+                if count > 0 {
+                    debug!("Found {} references to {} in content", count, node_name);
+                    // Add the reference multiple times based on count
+                    for _ in 0..count {
+                        references.push(node_name.clone());
+                    }
                 }
             }
         }
