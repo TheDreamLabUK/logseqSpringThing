@@ -111,9 +111,11 @@ export class WebSocketService {
             // Notify connection status change
             if (this.connectionStatusHandler) {
                 this.connectionStatusHandler(true);
+                logger.debug('Connection status handler notified: connected');
             }
 
             // Send initial protocol messages
+            logger.debug('Sending initial protocol messages');
             this.sendMessage({ type: 'requestInitialData' });
             this.sendMessage({ type: 'enableBinaryUpdates' });
         };
@@ -131,6 +133,7 @@ export class WebSocketService {
             // Notify connection status change
             if (this.connectionStatusHandler) {
                 this.connectionStatusHandler(false);
+                logger.debug('Connection status handler notified: disconnected');
             }
             
             this.handleReconnect();
@@ -138,10 +141,12 @@ export class WebSocketService {
 
         this.ws.onmessage = (event: MessageEvent) => {
             if (event.data instanceof Blob) {
+                logger.debug('Received binary message');
                 this.handleBinaryMessage(event.data);
             } else {
                 try {
                     const message = JSON.parse(event.data);
+                    logger.debug('Received JSON message:', message);
                     if (message.type === 'settings') {
                         this.handleSettingsUpdate(message);
                     }

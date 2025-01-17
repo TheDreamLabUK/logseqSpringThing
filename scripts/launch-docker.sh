@@ -84,6 +84,7 @@ check_typescript() {
     log "${YELLOW}Running TypeScript type check...${NC}"
     if ! pnpm run type-check; then
         log "${RED}TypeScript check failed${NC}"
+        log "${YELLOW}Containers will be left running for debugging${NC}"
         return 1
     fi
     log "${GREEN}TypeScript check passed${NC}"
@@ -125,7 +126,7 @@ read_settings() {
     
     if [ -z "$DOMAIN" ] || [ -z "$PORT" ]; then
         log "${RED}Error: DOMAIN or PORT not set in settings.toml. Please check your configuration.${NC}"
-        exit 1
+        return 1
     fi
 }
 
@@ -134,7 +135,7 @@ check_system_resources() {
     log "${YELLOW}Checking GPU availability...${NC}"
     if ! command -v nvidia-smi &> /dev/null; then
         log "${RED}Error: nvidia-smi not found${NC}"
-        exit 1
+        return 1
     fi
     
     # Check GPU memory
@@ -155,7 +156,7 @@ check_system_resources() {
     
     if [ "$has_enough_memory" = false ]; then
         log "${RED}Error: No GPU with sufficient free memory (need at least 4GB)${NC}"
-        exit 1
+        return 1
     fi
 }
 
@@ -163,7 +164,7 @@ check_system_resources() {
 check_docker() {
     if ! command -v docker &> /dev/null; then
         log "${RED}Error: Docker is not installed${NC}"
-        exit 1
+        return 1
     fi
 
     if docker compose version &> /dev/null; then
@@ -172,7 +173,7 @@ check_docker() {
         DOCKER_COMPOSE="docker-compose"
     else
         log "${RED}Error: Docker Compose not found${NC}"
-        exit 1
+        return 1
     fi
 }
 
@@ -210,60 +211,6 @@ verify_client_structure() {
     
     log "${GREEN}Client directory structure verified${NC}"
     return 0
-}
-
-# Function to clean up existing processes
-cleanup_existing_processes() {
-    log "${YELLOW}Cleaning up...${NC}"
-    
-    # Save logs before cleanup if there was a failure
-    if [ -n "${SAVE_LOGS:-}" ]; then
-        local log_dir="$PROJECT_ROOT/logs/$(date +%Y%m%d_%H%M%S)"
-        mkdir -p "$log_dir"
-        $DOCKER_COMPOSE logs --no-color > "$log_dir/docker-compose.log"
-        log "${YELLOW}Logs saved to $log_dir${NC}"
-    fi
-    
-    # Stop and remove all containers from the compose project
-    $DOCKER_COMPOSE down --remove-orphans --timeout 30
-    
-    # Clean up any orphaned containers
-    for container in "logseq-xr-webxr" "cloudflared-tunnel"; do
-        if docker ps -a | grep -q "$container"; then
-            log "Removing container $container..."
-            docker rm -f "$container" || true
-        fi
-    done
-
-    # Clean up ports
-    for port in $PORT 4000 3001; do
-        if netstat -tuln | grep -q ":$port "; then
-            local pid=$(lsof -ti ":$port")
-            if [ ! -z "$pid" ]; then
-                log "Killing process using port $port (PID: $pid)"
-                kill -15 $pid 2>/dev/null || kill -9 $pid
-            fi
-        fi
-    done
-    
-    # Clean up old volumes and images
-    log "Cleaning up Docker resources..."
-    docker volume ls -q | grep "logseqXR" | xargs -r docker volume rm
-    docker image prune -f
-    
-    sleep 2
-
-    # Ensure data directories have correct permissions
-    log "${YELLOW}Verifying data directory permissions...${NC}"
-    for dir in "$MARKDOWN_DIR" "$METADATA_DIR" "$PUBLIC_DIR"; do
-        if [ -d "$dir" ]; then
-            chmod -R 777 "$dir" 2>/dev/null || {
-                log "${RED}Failed to set permissions on $dir${NC}"
-                log "${RED}Please run: sudo chmod -R 777 $dir${NC}"
-                return 1
-            }
-        fi
-    done
 }
 
 # Function to check RAGFlow network availability
@@ -343,8 +290,11 @@ check_application_readiness() {
     done
 
     log "${RED}Application failed to become ready. Dumping logs...${NC}"
-    SAVE_LOGS=1
     $DOCKER_COMPOSE logs
+    log "${YELLOW}Containers left running for debugging. Use these commands to inspect:${NC}"
+    log "  $DOCKER_COMPOSE logs -f"
+    log "  docker logs logseq-xr-webxr"
+    log "  docker logs cloudflared-tunnel"
     return 1
 }
 
@@ -372,36 +322,42 @@ source .env
 set +a
 
 # Read settings from TOML
-read_settings
+read_settings || {
+    log "${YELLOW}Settings read failed - continuing for debugging${NC}"
+}
 
 # Initial setup
-check_docker
-check_system_resources
+check_docker || {
+    log "${RED}Docker check failed${NC}"
+    exit 1
+}
+
+check_system_resources || {
+    log "${YELLOW}System resources check failed - continuing for debugging${NC}"
+}
 
 # Verify client structure
 if ! verify_client_structure; then
     log "${RED}Client structure verification failed${NC}"
-    exit 1
+    log "${YELLOW}Continuing for debugging${NC}"
 fi
 
 # Run security checks
 log "\n${YELLOW}Running security checks...${NC}"
 check_pnpm_security || true
-check_typescript || exit 1
+check_typescript || {
+    log "${YELLOW}TypeScript check failed - continuing for debugging${NC}"
+}
 check_rust_security || true
-
-cleanup_existing_processes
 
 # Check RAGFlow network before starting
 if ! check_ragflow_network; then
-    log "${RED}Cannot proceed without RAGFlow network${NC}"
-    exit 1
+    log "${YELLOW}RAGFlow network check failed - continuing for debugging${NC}"
 fi
 
 # Add these calls before starting services
 if ! check_environment; then
-    log "${RED}Environment check failed${NC}"
-    exit 1
+    log "${YELLOW}Environment check failed - continuing for debugging${NC}"
 fi
 
 # Build and start services
@@ -412,11 +368,8 @@ $DOCKER_COMPOSE up -d
 # Check application readiness
 if ! check_application_readiness; then
     log "${RED}Application failed to start properly${NC}"
-    log "${YELLOW}Containers left running for debugging. To clean up manually:${NC}"
-    log "  $DOCKER_COMPOSE down"
-    log "  docker rm -f logseq-xr-webxr cloudflared-tunnel"
-    log "\nTo view logs:"
-    log "  $DOCKER_COMPOSE logs"
+    log "${YELLOW}Containers left running for debugging. Use these commands:${NC}"
+    log "  $DOCKER_COMPOSE logs -f"
     log "  docker logs logseq-xr-webxr"
     log "  docker logs cloudflared-tunnel"
     exit 1
@@ -443,100 +396,3 @@ $DOCKER_COMPOSE logs -f &
 
 # Wait for signal
 wait
-
-# Function to check and fix directory permissions
-check_fix_permissions() {
-    local data_dir="$PROJECT_ROOT/data"
-    local settings_file="$PROJECT_ROOT/settings.toml"
-    local current_user=$(id -u)
-    local current_group=$(id -g)
-
-    info "Checking directory permissions..."
-
-    # Check settings.toml permissions
-    if [ -f "$settings_file" ]; then
-        info "Checking settings.toml permissions..."
-        if [ "$(stat -c '%u' "$settings_file")" != "$current_user" ] || \
-           [ "$(stat -c '%g' "$settings_file")" != "$current_group" ]; then
-            info "Fixing settings.toml ownership..."
-            sudo chown "$current_user:$current_group" "$settings_file" || {
-                error "Failed to set ownership on settings.toml"
-                error "Please run: sudo chown $current_user:$current_group $settings_file"
-                return 1
-            }
-        fi
-        chmod 644 "$settings_file" || {
-            error "Failed to set permissions on settings.toml"
-            error "Please run: chmod 644 $settings_file"
-            return 1
-        }
-    else
-        error "settings.toml not found at $settings_file"
-        return 1
-    fi
-
-    # Create directories if they don't exist
-    for dir in "$data_dir/markdown" "$data_dir/metadata" "$data_dir/public"; do
-        if [ ! -d "$dir" ]; then
-            info "Creating directory: $dir"
-            mkdir -p "$dir" || {
-                error "Failed to create directory: $dir"
-                error "Please run: mkdir -p $dir"
-                return 1
-            }
-        fi
-    done
-
-    # Check if we can write to directories without sudo first
-    local need_sudo=false
-    for dir in "$data_dir/markdown" "$data_dir/metadata" "$data_dir/public"; do
-        local test_file="$dir/.permissions_test"
-        if ! touch "$test_file" 2>/dev/null; then
-            need_sudo=true
-            break
-        else
-            rm "$test_file"
-        fi
-    done
-
-    # If we need sudo, try to fix permissions all at once
-    if [ "$need_sudo" = true ]; then
-        info "Fixing directory permissions (requires sudo)..."
-        # First try without password in case sudo is configured for NOPASSWD
-        if ! sudo -n chmod -R 777 "$data_dir" 2>/dev/null; then
-            # If that fails, notify user and exit
-            error "Cannot set directory permissions automatically"
-            error "Please run the following command manually:"
-            error "sudo chmod -R 777 $data_dir"
-            error "Then run this script again"
-            return 1
-        fi
-    fi
-
-    # Verify permissions with test files
-    for dir in "$data_dir/markdown" "$data_dir/metadata" "$data_dir/public"; do
-        local test_file="$dir/.permissions_test"
-        if ! touch "$test_file"; then
-            error "Failed to verify permissions on $dir"
-            error "Please ensure the directory is writable by running:"
-            error "sudo chmod -R 777 $dir"
-            return 1
-        fi
-        rm "$test_file"
-        info "Verified permissions for $dir"
-    done
-
-    # Initialize metadata.json if it doesn't exist
-    local metadata_file="$data_dir/metadata/metadata.json"
-    if [ ! -f "$metadata_file" ]; then
-        info "Creating metadata.json"
-        echo '{}' > "$metadata_file" || {
-            error "Failed to create metadata.json"
-            error "Please ensure $data_dir/metadata is writable"
-            return 1
-        }
-    fi
-
-    success "Directory permissions verified"
-    return 0
-}

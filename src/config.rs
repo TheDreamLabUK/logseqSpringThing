@@ -47,6 +47,8 @@ pub struct Settings {
     pub perplexity: PerplexitySettings,
     #[serde(default)]
     pub openai: OpenAISettings,
+    #[serde(default)]
+    pub hologram: HologramSettings,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -248,10 +250,14 @@ pub struct AnimationSettings {
     pub enable_motion_blur: bool,
     pub enable_node_animations: bool,
     pub motion_blur_strength: f32,
+    pub selection_wave_enabled: bool,
     pub pulse_enabled: bool,
     pub ripple_enabled: bool,
     pub edge_animation_enabled: bool,
     pub flow_particles_enabled: bool,
+    pub pulse_speed: f32,
+    pub pulse_strength: f32,
+    pub wave_speed: f32,
 }
 
 impl Default for AnimationSettings {
@@ -260,10 +266,14 @@ impl Default for AnimationSettings {
             enable_motion_blur: false,
             enable_node_animations: false,
             motion_blur_strength: 0.4,
+            selection_wave_enabled: false,
             pulse_enabled: false,
             ripple_enabled: false,
             edge_animation_enabled: false,
             flow_particles_enabled: false,
+            pulse_speed: 1.0,
+            pulse_strength: 1.0,
+            wave_speed: 1.0,
         }
     }
 }
@@ -391,6 +401,8 @@ pub struct EdgeSettings {
     pub enable_arrows: bool,
     pub opacity: f32,
     pub width_range: Vec<f32>,
+    pub arrow_size: f32,
+    pub base_width: f32,
 }
 
 impl Default for EdgeSettings {
@@ -400,6 +412,8 @@ impl Default for EdgeSettings {
             enable_arrows: false,
             opacity: 0.6,
             width_range: vec![1.0, 3.0],
+            arrow_size: 0.15,
+            base_width: 2.0,
         }
     }
 }
@@ -590,6 +604,49 @@ impl Default for WebSocketSettings {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+#[serde(default)]
+pub struct HologramSettings {
+    pub ring_count: u32,
+    pub ring_color: String,
+    pub ring_opacity: f32,
+    pub ring_sizes: Vec<f32>,
+    pub ring_rotation_speed: f32,
+    pub enable_buckminster: bool,
+    pub buckminster_scale: f32,
+    pub buckminster_opacity: f32,
+    pub enable_geodesic: bool,
+    pub geodesic_scale: f32,
+    pub geodesic_opacity: f32,
+    pub enable_triangle_sphere: bool,
+    pub triangle_sphere_scale: f32,
+    pub triangle_sphere_opacity: f32,
+    pub global_rotation_speed: f32,
+}
+
+impl Default for HologramSettings {
+    fn default() -> Self {
+        Self {
+            ring_count: 3,
+            ring_color: "#00ff00".to_string(),
+            ring_opacity: 0.5,
+            ring_sizes: vec![20.0, 25.0, 30.0],
+            ring_rotation_speed: 0.001,
+            enable_buckminster: false,
+            buckminster_scale: 15.0,
+            buckminster_opacity: 0.3,
+            enable_geodesic: false,
+            geodesic_scale: 15.0,
+            geodesic_opacity: 0.3,
+            enable_triangle_sphere: false,
+            triangle_sphere_scale: 15.0,
+            triangle_sphere_opacity: 0.3,
+            global_rotation_speed: 0.0005,
+        }
+    }
+}
+
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
         debug!("Initializing settings");
@@ -768,6 +825,7 @@ impl Default for Settings {
             ragflow: RagFlowSettings::default(),
             perplexity: PerplexitySettings::default(),
             openai: OpenAISettings::default(),
+            hologram: HologramSettings::default(),
         }
     }
 }

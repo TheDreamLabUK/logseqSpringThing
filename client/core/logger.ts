@@ -25,27 +25,45 @@ export function createLogger(context: string): Logger {
         }
         return args;
     };
+
+    // Add timestamp to prefix
+    const getPrefix = () => {
+        const now = new Date();
+        const timestamp = now.toISOString().split('T')[1].slice(0, -1);
+        return `${timestamp} ${prefix}`;
+    };
     
     return {
         debug: (...args: any[]): void => {
             if (debugEnabled) {
-                console.debug(prefix, ...formatArgs(args));
+                console.debug(getPrefix(), ...formatArgs(args));
             }
         },
         log: (...args: any[]): void => {
-            console.log(prefix, ...formatArgs(args));
+            console.log(getPrefix(), ...formatArgs(args));
         },
         info: (...args: any[]): void => {
-            console.info(prefix, ...formatArgs(args));
+            console.info(getPrefix(), ...formatArgs(args));
         },
         warn: (...args: any[]): void => {
-            console.warn(prefix, ...formatArgs(args));
+            console.warn(getPrefix(), ...formatArgs(args));
         },
         error: (...args: any[]): void => {
-            console.error(prefix, ...formatArgs(args));
+            console.error(getPrefix(), ...formatArgs(args));
         }
     };
 }
+
+// Create and export a global logger configuration
+export const LoggerConfig = {
+    setGlobalDebug(enabled: boolean) {
+        debugEnabled = enabled;
+        console.log(`[Logger] Debug logging ${enabled ? 'enabled' : 'disabled'}`);
+    },
+    setFullJson(enabled: boolean) {
+        logFullJson = enabled;
+    }
+};
 
 // Create core logger instance
 export const logger = createLogger('core');

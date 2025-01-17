@@ -6,6 +6,9 @@ import { HologramManager } from './rendering/HologramManager';
 import { TextRenderer } from './rendering/textRenderer';
 import { WebSocketService } from './websocket/websocketService';
 import { SettingsStore } from './state/SettingsStore';
+import { LoggerConfig, createLogger } from './core/logger';
+
+const logger = createLogger('GraphVisualization');
 
 export class GraphVisualization {
     private scene: Scene;
@@ -18,27 +21,35 @@ export class GraphVisualization {
     private websocketService!: WebSocketService;
 
     private async initializeWebSocket(): Promise<void> {
+        logger.debug('Initializing WebSocket connection');
         // Initialize settings first
         const settingsStore = SettingsStore.getInstance();
         await settingsStore.initialize();
+        logger.debug('Settings store initialized');
 
         // Then initialize WebSocket
         this.websocketService = WebSocketService.getInstance();
         this.websocketService.onBinaryMessage((nodes) => {
+            logger.debug('Received binary node update', { nodeCount: nodes.length });
             this.nodeManager.updateNodePositions(nodes);
         });
         this.websocketService.onSettingsUpdate((updatedSettings) => {
+            logger.debug('Received settings update');
             this.handleSettingsUpdate(updatedSettings);
         });
         this.websocketService.onConnectionStatusChange((connected) => {
+            logger.info(`WebSocket connection status changed: ${connected}`);
             if (connected) {
-                console.log('WebSocket connected, requesting initial data');
+                logger.debug('Requesting initial data');
                 this.websocketService.sendMessage({ type: 'requestInitialData' });
             }
         });
         this.websocketService.connect();
+        logger.debug('WebSocket initialization complete');
     }
+
     constructor(settings: Settings) {
+        logger.debug('Initializing GraphVisualization');
         this.scene = new Scene();
         this.camera = new PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.renderer = new WebGLRenderer({ antialias: true });
@@ -55,13 +66,16 @@ export class GraphVisualization {
 
         this.setupEventListeners();
         this.animate();
+        logger.debug('GraphVisualization initialization complete');
     }
 
     private setupEventListeners() {
+        logger.debug('Setting up event listeners');
         window.addEventListener('resize', () => {
             this.camera.aspect = window.innerWidth / window.innerHeight;
             this.camera.updateProjectionMatrix();
             this.renderer.setSize(window.innerWidth, window.innerHeight);
+            logger.debug('Window resized, updated renderer dimensions');
         });
     }
 
@@ -73,6 +87,7 @@ export class GraphVisualization {
     }
 
     public handleSettingsUpdate(settings: Settings) {
+        logger.debug('Handling settings update');
         this.nodeManager.handleSettingsUpdate(settings);
         this.edgeManager.handleSettingsUpdate(settings);
         this.hologramManager.updateSettings(settings);
@@ -80,17 +95,23 @@ export class GraphVisualization {
     }
 
     public dispose() {
+        logger.debug('Disposing GraphVisualization');
         this.nodeManager.dispose();
         this.edgeManager.dispose();
         this.hologramManager.dispose();
         this.textRenderer.dispose();
         this.websocketService.close();
         document.body.removeChild(this.renderer.domElement);
+        logger.debug('GraphVisualization disposed');
     }
 }
 
 // Import default settings
 import { defaultSettings } from './state/defaultSettings';
 
-// Initialize the visualization with default settings
+// Enable debug logging
+LoggerConfig.setGlobalDebug(true);
+LoggerConfig.setFullJson(true);
+
+logger.log('Starting application...');
 new GraphVisualization(defaultSettings);

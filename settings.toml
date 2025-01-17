@@ -7,6 +7,9 @@ pulse_enabled = false
 ripple_enabled = false
 edge_animation_enabled = false
 flow_particles_enabled = false
+pulse_speed = 1.0
+pulse_strength = 1.0
+wave_speed = 1.0
 
 [ar]
 drag_threshold = 0.04
@@ -175,3 +178,20 @@ max_message_size = 100485760
 reconnect_attempts = 3
 reconnect_delay = 5000
 update_rate = 90
+
+[hologram]
+ring_count = 3
+ring_color = "#00ff00"
+ring_opacity = 0.5
+ring_sizes = [20.0, 25.0, 30.0]
+ring_rotation_speed = 0.001
+enable_buckminster = false
+buckminster_scale = 15.0
+buckminster_opacity = 0.3
+enable_geodesic = false
+geodesic_scale = 15.0
+geodesic_opacity = 0.3
+enable_triangle_sphere = false
+triangle_sphere_scale = 15.0
+triangle_sphere_opacity = 0.3
+global_rotation_speed = 0.0005

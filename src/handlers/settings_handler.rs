@@ -15,6 +15,9 @@ pub async fn get_settings(app_state: web::Data<AppState>) -> Result<HttpResponse
                 "motionBlurStrength": settings.animations.motion_blur_strength,
                 "selectionWaveEnabled": settings.animations.selection_wave_enabled,
                 "pulseEnabled": settings.animations.pulse_enabled,
+                "rippleEnabled": settings.animations.ripple_enabled,
+                "edgeAnimationEnabled": settings.animations.edge_animation_enabled,
+                "flowParticlesEnabled": settings.animations.flow_particles_enabled,
                 "pulseSpeed": settings.animations.pulse_speed,
                 "pulseStrength": settings.animations.pulse_strength,
                 "waveSpeed": settings.animations.wave_speed
@@ -35,6 +38,14 @@ pub async fn get_settings(app_state: web::Data<AppState>) -> Result<HttpResponse
                 "opacity": settings.edges.opacity,
                 "widthRange": settings.edges.width_range
             },
+            "labels": {
+                "desktopFontSize": settings.labels.desktop_font_size,
+                "enableLabels": settings.labels.enable_labels,
+                "textColor": settings.labels.text_color
+            },
+            "nodes": settings.nodes,
+            "physics": settings.physics,
+            "rendering": settings.rendering,
             "hologram": {
                 "ringCount": settings.hologram.ring_count,
                 "ringColor": settings.hologram.ring_color,
@@ -51,11 +62,7 @@ pub async fn get_settings(app_state: web::Data<AppState>) -> Result<HttpResponse
                 "triangleSphereScale": settings.hologram.triangle_sphere_scale,
                 "triangleSphereOpacity": settings.hologram.triangle_sphere_opacity,
                 "globalRotationSpeed": settings.hologram.global_rotation_speed
-            },
-            "labels": settings.labels,
-            "nodes": settings.nodes,
-            "physics": settings.physics,
-            "rendering": settings.rendering
+            }
         },
         "system": {
             "network": {
@@ -72,34 +79,21 @@ pub async fn get_settings(app_state: web::Data<AppState>) -> Result<HttpResponse
                 "tunnelId": settings.network.tunnel_id
             },
             "websocket": {
-                "url": settings.websocket.url,
-                "reconnectAttempts": settings.websocket.reconnect_attempts,
-                "reconnectDelay": settings.websocket.reconnect_delay,
                 "binaryChunkSize": settings.websocket.binary_chunk_size,
+                "binaryUpdateRate": settings.websocket.binary_update_rate,
+                "binaryMessageVersion": settings.websocket.binary_message_version,
                 "compressionEnabled": settings.websocket.compression_enabled,
                 "compressionThreshold": settings.websocket.compression_threshold,
+                "heartbeatInterval": settings.websocket.heartbeat_interval,
+                "heartbeatTimeout": settings.websocket.heartbeat_timeout,
                 "maxConnections": settings.websocket.max_connections,
                 "maxMessageSize": settings.websocket.max_message_size,
+                "reconnectAttempts": settings.websocket.reconnect_attempts,
+                "reconnectDelay": settings.websocket.reconnect_delay,
                 "updateRate": settings.websocket.update_rate
             },
-            "security": {
-                "allowedOrigins": settings.security.allowed_origins,
-                "auditLogPath": settings.security.audit_log_path,
-                "cookieHttponly": settings.security.cookie_httponly,
-                "cookieSamesite": settings.security.cookie_samesite,
-                "cookieSecure": settings.security.cookie_secure,
-                "csrfTokenTimeout": settings.security.csrf_token_timeout,
-                "enableAuditLogging": settings.security.enable_audit_logging,
-                "enableRequestValidation": settings.security.enable_request_validation,
-                "sessionTimeout": settings.security.session_timeout
-            },
-            "debug": {
-                "enabled": settings.debug.enabled,
-                "enableDataDebug": settings.debug.enable_data_debug,
-                "enableWebsocketDebug": settings.debug.enable_websocket_debug,
-                "logBinaryHeaders": settings.debug.log_binary_headers,
-                "logFullJson": settings.debug.log_full_json
-            }
+            "security": settings.security,
+            "debug": settings.client_debug
         },
         "xr": {
             "mode": "ar",
