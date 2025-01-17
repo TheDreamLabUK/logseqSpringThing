@@ -4,8 +4,10 @@ import { API_ENDPOINTS } from './constants';
 export function buildApiUrl(path: string): string {
     const protocol = window.location.protocol;
     const host = window.location.hostname;
-    const port = '4000'; // Always use nginx port for external connections
-    const base = `${protocol}//${host}:${port}`;
+    // Don't append port for production domain
+    const base = host === 'www.visionflow.info' 
+        ? `${protocol}//${host}`
+        : `${protocol}//${host}:4000`;
     return `${base}${path}`; // All paths are already prefixed with /api in constants.ts
 }
 
@@ -35,9 +37,12 @@ export function buildFilesUrl(path: string): string {
 export function buildWsUrl(): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.hostname;
-    const port = '4000'; // Use nginx port for all external connections
+    // Don't append port for production domain
+    const base = host === 'www.visionflow.info'
+        ? `${protocol}//${host}`
+        : `${protocol}//${host}:4000`;
     const wsPath = '/wss';
-    return `${protocol}//${host}:${port}${wsPath}`;
+    return `${base}${wsPath}`;
 }
 
 // Helper function to build settings item URL
