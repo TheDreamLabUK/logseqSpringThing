@@ -144,20 +144,22 @@ impl GitHubService for RealGitHubService {
     }
 
     async fn fetch_file_metadata(&self, skip_debug_filter: bool) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
+        // Construct the correct GitHub API URL with the base path
+        let base_path = if self.base_path.is_empty() {
+            String::new()
+        } else {
+            format!("/{}", self.base_path.trim_matches('/'))
+        };
+
         let url = format!(
-            "https://api.github.com/repos/{}/{}/contents/{}",
+            "https://api.github.com/repos/{}/{}/contents{}",
             self.owner,
             self.repo,
-            self.get_api_path()
+            base_path
         );
-        
-        info!("GitHub API Request: URL={}, Token={}, Owner={}, Repo={}, BasePath={}", 
-            url, 
-            self.token.chars().take(4).collect::<String>() + "...", 
-            self.owner,
-            self.repo,
-            self.base_path
-        );
+
+        debug!("GitHub API Request: URL={}, Token=gith..., Owner={}, Repo={}, BasePath={}", 
+            url, self.owner, self.repo, self.base_path);
 
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.token))

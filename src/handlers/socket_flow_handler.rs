@@ -225,56 +225,26 @@ pub async fn socket_flow_handler(
     app_state: web::Data<AppState>,
     settings: web::Data<Arc<RwLock<crate::config::Settings>>>,
 ) -> Result<HttpResponse, Error> {
-    // Log request details for debugging
     debug!("WebSocket connection attempt from {:?}", req.peer_addr());
-    debug!("Request URI: {}", req.uri());
-    debug!("Headers:");
-    for (name, value) in req.headers() {
-        debug!("  {}: {:?}", name, value);
+    
+    // Check for WebSocket upgrade
+    if !req.headers().contains_key("Upgrade") {
+        debug!("Not a WebSocket upgrade request");
+        return Ok(HttpResponse::BadRequest().body("WebSocket upgrade required"));
     }
-
-    // Check for WebSocket upgrade - accept any case for headers
-    let upgrade_header = req.headers().get("upgrade")
-        .or_else(|| req.headers().get("Upgrade"))
-        .or_else(|| req.headers().get("UPGRADE"));
-
-    let connection_header = req.headers().get("connection")
-        .or_else(|| req.headers().get("Connection"))
-        .or_else(|| req.headers().get("CONNECTION"));
-
-    let is_websocket = upgrade_header
-        .and_then(|h| h.to_str().ok())
-        .map(|s| s.to_lowercase().contains("websocket"))
-        .unwrap_or(false);
-
-    let has_connection = connection_header
-        .and_then(|h| h.to_str().ok())
-        .map(|s| s.to_lowercase().contains("upgrade"))
-        .unwrap_or(false);
-
-    if !is_websocket || !has_connection {
-        warn!("Invalid WebSocket connection attempt");
-        debug!("Upgrade header: {:?}", upgrade_header);
-        debug!("Connection header: {:?}", connection_header);
-        return Ok(HttpResponse::BadRequest()
-            .append_header(("Content-Type", "text/plain"))
-            .body("WebSocket upgrade required"));
-    }
-
-    info!("Valid WebSocket upgrade request received");
 
     let ws = SocketFlowServer::new(
         app_state.into_inner(),
         settings.get_ref().clone()
     );
-    
+
     match ws::start(ws, &req, stream) {
         Ok(response) => {
-            info!("[WebSocket] Client connected");
+            info!("[WebSocket] Client connected successfully");
             Ok(response)
         }
         Err(e) => {
-            warn!("WebSocket connection failed: {}", e);
+            error!("[WebSocket] Failed to start WebSocket: {}", e);
             Err(e)
         }
     }

@@ -181,18 +181,12 @@ async fn main() -> std::io::Result<()> {
             .app_data(app_state.clone())
             .app_data(web::Data::new(github_service.clone()))
             .app_data(web::Data::new(github_pr_service.clone()))
+            .route("/wss", web::get().to(socket_flow_handler))
             .service(
                 web::scope("")
                     .configure(api_handler::config)
                     .service(web::scope("/health").configure(health_handler::config))
                     .service(web::scope("/pages").configure(pages_handler::config))
-            )
-            .service(
-                web::resource("/wss")
-                    .app_data(web::PayloadConfig::new(1 << 25))  // 32MB max payload
-                    .route(web::get().to(socket_flow_handler))
-                    .app_data(settings_data.clone())
-                    .app_data(app_state.clone())
             )
             .service(Files::new("/", "/app/client").index_file("index.html"))
     })
