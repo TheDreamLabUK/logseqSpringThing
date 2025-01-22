@@ -108,7 +108,7 @@ impl Actor for SocketFlowServer {
         ctx.run_interval(self.update_interval, move |actor, ctx| {
             // Get current node positions and velocities
             let app_state_clone = app_state.clone();
-            let settings_clone = settings.clone();
+            let _settings_clone = settings.clone();
             
             // Spawn a future to get positions
             let fut = async move {
@@ -169,9 +169,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                         if let Ok(response) = serde_json::to_string(&pong) {
                             ctx.text(response);
                         }
-                    }
-                    Ok(_) => {
-                        debug!("[WebSocket] Received unknown text message type");
                     }
                     Err(e) => {
                         warn!("[WebSocket] Failed to parse text message: {}", e);

@@ -1,5 +1,7 @@
 use regex::Regex;
 use lazy_static::lazy_static;
+use serde_json::json;
+use crate::config::NodeSettings;
 
 lazy_static! {
     static ref CAMEL_TO_SNAKE: Regex = Regex::new(r"([a-z0-9])([A-Z])").unwrap();
@@ -38,6 +40,15 @@ pub fn to_kebab_case(s: &str) -> String {
     let snake = to_snake_case(s);
     // Then replace underscores with hyphens
     SNAKE_TO_KEBAB.replace_all(&snake, "-").to_string()
+}
+
+pub fn to_client_node_settings(settings: &NodeSettings) -> serde_json::Value {
+    json!({
+        "baseColor": settings.base_color,
+        "baseSize": settings.base_size,
+        "metalness": settings.metalness,
+        // ... other fields
+    })
 }
 
 #[cfg(test)]

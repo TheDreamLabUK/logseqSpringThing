@@ -1,0 +1,2885 @@
+diff --git a/.cursorignore b/.cursorignore
+deleted file mode 100644
+index 8a8b5775..00000000
+--- a/.cursorignore
++++ /dev/null
+@@ -1,3 +0,0 @@
+-*.md
+-.env
+-# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
+diff --git a/Cargo.lock b/Cargo.lock
+index fdc50b60..81307712 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3213,7 +3213,7 @@ dependencies = [
+  "serde",
+  "serde_spanned",
+  "toml_datetime",
+- "toml_edit 0.22.22",
++ "toml_edit",
+ ]
+ 
+ [[package]]
+@@ -3225,17 +3225,6 @@ dependencies = [
+  "serde",
+ ]
+ 
+-[[package]]
+-name = "toml_edit"
+-version = "0.19.15"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1b5bb770da30e5cbfde35a2d7b9b8a2c4b8ef89548a7a6aeab5c9a576e3e7421"
+-dependencies = [
+- "indexmap 2.7.0",
+- "toml_datetime",
+- "winnow 0.5.40",
+-]
+-
+ [[package]]
+ name = "toml_edit"
+ version = "0.22.22"
+@@ -3246,7 +3235,7 @@ dependencies = [
+  "serde",
+  "serde_spanned",
+  "toml_datetime",
+- "winnow 0.6.24",
++ "winnow",
+ ]
+ 
+ [[package]]
+@@ -3598,7 +3587,6 @@ dependencies = [
+  "tokio-test",
+  "tokio-tungstenite",
+  "toml 0.8.19",
+- "toml_edit 0.19.15",
+  "tungstenite",
+  "url",
+  "uuid",
+@@ -3975,15 +3963,6 @@ version = "0.52.6"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
+ 
+-[[package]]
+-name = "winnow"
+-version = "0.5.40"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f593a95398737aeed53e489c785df13f3618e41dbcd6718c6addbf1395aa6876"
+-dependencies = [
+- "memchr",
+-]
+-
+ [[package]]
+ name = "winnow"
+ version = "0.6.24"
+diff --git a/Cargo.toml b/Cargo.toml
+index 5bd441ec..f1214e51 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -28,7 +28,6 @@ serde_json = "1.0"
+ config = { version = "0.13", features = ["toml"] }
+ dotenvy = "0.15"
+ toml = "0.8"
+-toml_edit = "0.19"
+ 
+ # Logging
+ log = "0.4"
+diff --git a/README.md b/README.md
+index 120aabde..21e58373 100755
+--- a/README.md
++++ b/README.md
+@@ -19,19 +19,14 @@ This project visualizes a Logseq knowledge graph in 3D using WebXR, enhancing it
+   - **Custom Shaders for Visual Effects:** Enhancements like holographic displays and lighting effects.
+   - **Fisheye Distortion for Focus + Context Visualization:** Provides a focus on specific areas while maintaining context.
+ 
+-- **Data Flow Architecture:**
+-  - **Initial Data Loading:**
+-    - Rich JSON endpoint for complete graph data, metadata, and attributes
+-    - Full graph structure and metadata loaded before visualization
+-    - One-time HTTP request for efficient initial state setup
+-  - **Real-time Position Updates:**
+-    - WebSocket channel dedicated to position/velocity updates only
+-    - Optimized binary protocol for interaction events:
+-      - Limited to 2 nodes per update during user interaction
+-      - Efficient quantized position updates (millimeter precision)
+-      - Quantized velocity updates (0.0001 unit precision)
+-      - Compact 28-byte format per node (4-byte header + 24 bytes position/velocity)
+-    - Bi-directional updates only during user interactions
++- **Real-time Updates:**
++  - **WebSocket-Based Communication:** Ensures instant synchronization between the server and client.
++  - **Optimized Binary Protocol:** 
++    - Efficient quantized position updates (millimeter precision)
++    - Quantized velocity updates (0.0001 unit precision)
++    - Compact 28-byte format per node (4-byte header + 24 bytes position/velocity)
++  - **Automatic Graph Layout Recalculation:** Maintains an optimal layout as the graph evolves.
++  - **Live Preview of Changes:** Immediate reflection of updates from the knowledge base.
+ 
+ - **GPU Acceleration:**
+   - **WebGPU Compute Shaders for Layout Calculation:** Utilizes GPU for high-performance graph computations.
+@@ -437,46 +432,26 @@ sequenceDiagram
+ 
+     Client->>WebXRVisualization: initialize()
+     activate WebXRVisualization
+-        WebXRVisualization->>GraphDataManager: loadInitialGraphData()
++        WebXRVisualization->>GraphDataManager: requestInitialData()
+         activate GraphDataManager
+-            GraphDataManager->>Server: HTTP GET /api/graph/data
+-            Server-->>GraphDataManager: Complete graph data with metadata
+-            GraphDataManager-->>WebXRVisualization: Provide rich graph data
++            GraphDataManager->>WebsocketService: subscribe()
++            WebsocketService-->>GraphDataManager: Initial GraphData
++            GraphDataManager-->>WebXRVisualization: Provide GraphData
+         deactivate GraphDataManager
+         WebXRVisualization->>WebXRVisualization: setupThreeJS()
+-        WebXRVisualization->>WebXRVisualization: initializeForceDirectedGraph()
+-        WebXRVisualization->>GraphDataManager: initializeWebSocket()
+-        activate GraphDataManager
+-            GraphDataManager->>WebsocketService: connect()
+-            WebsocketService-->>GraphDataManager: Connection established
+-            note right of WebsocketService: WebSocket now handles only position updates
+-        deactivate GraphDataManager
+         WebXRVisualization->>WebXRVisualization: renderScene()
+     deactivate WebXRVisualization
+     WebXRVisualization-->>Client: Render 3D Graph
+ 
+-    note right of Client: User interactions with graph nodes
++    note right of Client: User interactions
+ 
+-    Client->>Interface: handleNodeDrag(nodeId, position)
+-    Interface->>WebXRVisualization: updateNodePosition(nodeId, position)
+-    WebXRVisualization->>GraphDataManager: sendPositionUpdate(nodeId, position)
+-    activate GraphDataManager
+-        note right of GraphDataManager: Limit updates to max 2 nodes
+-        GraphDataManager->>WebsocketService: send binary position data
+-        WebsocketService->>Server: Binary WebSocket message
+-        Server->>Server: Process position update
+-        Server-->>WebsocketService: Binary position confirmation
+-        WebsocketService-->>GraphDataManager: Update received
+-    deactivate GraphDataManager
+-    WebXRVisualization-->>Client: Update Visualization
+-
+-    note right of Client: Chat interactions (separate from graph updates)
+-    
+-    Client->>Interface: handleChatInput(input)
++    Client->>Interface: handleUserInput(input)
+     Interface->>ChatManager: sendMessage(input)
+     ChatManager->>RAGFlowService: sendQuery(input)
+     RAGFlowService-->>ChatManager: AI Response
+     ChatManager-->>Interface: Display AI Response
++    Interface->>WebXRVisualization: updateGraphData(newData)
++    WebXRVisualization-->>Client: Update Visualization
+ 
+     note right of Client: User requests layout recalculation
+ 
+diff --git "a/\\etc\\nginx\\nginx.conf" "b/\\etc\\nginx\\nginx.conf"
+deleted file mode 100644
+index 58c279ce..00000000
+--- "a/\\etc\\nginx\\nginx.conf"
++++ /dev/null
+@@ -1,9 +0,0 @@
+-http {
+-    types {
+-        # Remove any existing .ts mapping
+-        application/typescript ts;
+-        # Add other MIME types as needed
+-    }
+-    
+-    # Other nginx configuration...
+-} 
+\ No newline at end of file
+diff --git a/client/core/constants.ts b/client/core/constants.ts
+index 0df75623..fe5fe977 100644
+--- a/client/core/constants.ts
++++ b/client/core/constants.ts
+@@ -20,7 +20,7 @@ export const API_PATHS = {
+ export const API_ENDPOINTS = {
+     GRAPH_DATA: '/api/graph/data',
+     GRAPH_UPDATE: '/api/graph/update',
+-    GRAPH_PAGINATED: '/api/graph/get_paginated_data',
++    GRAPH_PAGINATED: '/api/graph/data/paginated',
+     SETTINGS_ROOT: '/api/settings',
+     SETTINGS_UPDATE: '/api/settings/update',
+     SETTINGS_CATEGORY: (category: string) => `/api/settings/${category}`,
+diff --git a/client/index.ts b/client/index.ts
+index 80635532..0d920fad 100644
+--- a/client/index.ts
++++ b/client/index.ts
+@@ -44,6 +44,7 @@ export class GraphVisualization {
+                 this.websocketService.sendMessage({ type: 'requestInitialData' });
+             }
+         });
++        this.websocketService.connect();
+         logger.debug('WebSocket initialization complete');
+     }
+ 
+@@ -60,17 +61,12 @@ export class GraphVisualization {
+         this.hologramManager = new HologramManager(this.scene, this.renderer, settings);
+         this.textRenderer = new TextRenderer(this.camera);
+         
++        // Initialize WebSocket after settings are loaded
++        this.initializeWebSocket();
++
+         this.setupEventListeners();
+         this.animate();
+         logger.debug('GraphVisualization initialization complete');
+-        
+-        // Initialize WebSocket after settings are loaded
+-        this.initializeWebSocket().then(() => {
+-            logger.debug('WebSocket initialized, connecting...');
+-            this.websocketService.connect();
+-        }).catch(error => {
+-            logger.error('Failed to initialize WebSocket:', error);
+-        });
+     }
+ 
+     private setupEventListeners() {
+diff --git a/client/state/SettingsStore.ts b/client/state/SettingsStore.ts
+index 08506ea5..053ad31f 100644
+--- a/client/state/SettingsStore.ts
++++ b/client/state/SettingsStore.ts
+@@ -15,6 +15,7 @@ export class SettingsStore {
+     private initializationPromise: Promise<void> | null = null;
+     private pendingChanges: Set<string> = new Set();
+     private subscribers: Map<string, Set<SettingsChangeCallback>> = new Map();
++    private syncTimer: number | null = null;
+ 
+     private constructor() {
+         // Initialize with default settings
+@@ -59,6 +60,9 @@ export class SettingsStore {
+ 
+                 this.initialized = true;
+                 logger.info('SettingsStore initialized');
++
++                // Start periodic sync
++                this.startSync();
+             } catch (error) {
+                 logger.error('Failed to initialize settings:', error);
+                 // Use defaults on error but ensure physics is enabled
+@@ -129,7 +133,7 @@ export class SettingsStore {
+         }
+     }
+ 
+-    public async set(path: string, value: unknown): Promise<void> {
++    public set(path: string, value: unknown): void {
+         if (!this.initialized) {
+             logger.error('Attempting to set settings before initialization');
+             throw new Error('SettingsStore not initialized');
+@@ -150,11 +154,7 @@ export class SettingsStore {
+             }
+ 
+             target[lastKey] = value;
+-            
+-            // Immediately sync with server
+-            await this.syncSetting(path, value);
+-            
+-            // Notify subscribers after successful sync
++            this.pendingChanges.add(path);
+             this.notifySubscribers(path, value);
+         } catch (error) {
+             logger.error(`Error setting value at path ${path}:`, error);
+@@ -162,33 +162,6 @@ export class SettingsStore {
+         }
+     }
+ 
+-    private async syncSetting(path: string, value: unknown): Promise<void> {
+-        try {
+-            const update = [{
+-                path,
+-                value
+-            }];
+-
+-            const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
+-                method: 'POST',
+-                headers: {
+-                    'Content-Type': 'application/json',
+-                },
+-                body: JSON.stringify(update),
+-            });
+-
+-            if (!response.ok) {
+-                throw new Error(`Failed to sync setting: ${response.statusText}`);
+-            }
+-
+-            logger.debug(`Setting ${path} synced with server`);
+-        } catch (error) {
+-            logger.error(`Failed to sync setting ${path}:`, error);
+-            // Add to pending changes if sync fails
+-            this.pendingChanges.add(path);
+-        }
+-    }
+-
+     private notifySubscribers(path: string, value: unknown): void {
+         const subscribers = this.subscribers.get(path);
+         if (subscribers) {
+@@ -216,7 +189,49 @@ export class SettingsStore {
+         return result;
+     }
+ 
++    private startSync(): void {
++        // Clear any existing sync timer
++        if (this.syncTimer !== null) {
++            window.clearInterval(this.syncTimer);
++        }
++
++        // Start periodic sync every 30 seconds
++        this.syncTimer = window.setInterval(async () => {
++            try {
++                // Only sync if there are pending changes
++                if (this.pendingChanges.size > 0) {
++                    const changedSettings: Record<string, unknown> = {};
++                    this.pendingChanges.forEach(path => {
++                        changedSettings[path] = this.get(path);
++                    });
++
++                    const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
++                        method: 'POST',
++                        headers: {
++                            'Content-Type': 'application/json',
++                        },
++                        body: JSON.stringify(changedSettings),
++                    });
++
++                    if (!response.ok) {
++                        throw new Error(`Failed to sync settings: ${response.statusText}`);
++                    }
++
++                    // Clear pending changes after successful sync
++                    this.pendingChanges.clear();
++                    logger.debug('Settings synced with server');
++                }
++            } catch (error) {
++                logger.error('Failed to sync settings:', error);
++            }
++        }, 30000); // 30 seconds
++    }
++
+     public dispose(): void {
++        if (this.syncTimer !== null) {
++            window.clearInterval(this.syncTimer);
++            this.syncTimer = null;
++        }
+         this.subscribers.clear();
+         this.pendingChanges.clear();
+         this.initialized = false;
+diff --git a/client/state/graphData.ts b/client/state/graphData.ts
+index ded3275d..93296be6 100644
+--- a/client/state/graphData.ts
++++ b/client/state/graphData.ts
+@@ -1,4 +1,4 @@
+-import { Node, Edge, GraphData } from '../core/types';
++import { transformGraphData, Node, Edge, GraphData } from '../core/types';
+ import { createLogger } from '../core/utils';
+ import { API_ENDPOINTS } from '../core/constants';
+ 
+@@ -36,6 +36,7 @@ export class GraphDataManager {
+     this.wsService = {
+       send: () => logger.warn('WebSocket service not configured')
+     };
++    this.enableBinaryUpdates();  // Start binary updates by default
+   }
+ 
+   /**
+@@ -56,10 +57,7 @@ export class GraphDataManager {
+     return GraphDataManager.instance;
+   }
+ 
+-  /**
+-   * Load initial graph data from the rich JSON endpoint
+-   */
+-  public async loadInitialGraphData(): Promise<void> {
++  public async fetchInitialData(): Promise<void> {
+     try {
+       const response = await fetch(API_ENDPOINTS.GRAPH_DATA);
+       if (!response.ok) {
+@@ -68,6 +66,92 @@ export class GraphDataManager {
+ 
+       const data = await response.json();
+       this.updateGraphData(data);
++      logger.info('Initial graph data loaded');
++    } catch (error) {
++      logger.error('Failed to fetch initial graph data:', error);
++      throw error;
++    }
++  }
++
++  public async fetchPaginatedData(page: number = 1, pageSize: number = 100): Promise<void> {
++    try {
++      const response = await fetch(
++        `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`,
++        {
++          method: 'GET',
++          headers: {
++            'Content-Type': 'application/json',
++          },
++        }
++      );
++      if (!response.ok) {
++        throw new Error(`Failed to fetch paginated data: ${response.statusText}`);
++      }
++
++      const data = await response.json();
++      this.updateGraphData(data);
++      logger.info(`Paginated data loaded for page ${page}`);
++    } catch (error) {
++      logger.error('Failed to fetch paginated data:', error);
++      throw error;
++    }
++  }
++
++  async loadInitialGraphData(): Promise<void> {
++    try {
++      // Try both endpoints
++      const endpoints = [
++        '/api/graph/paginated',
++        '/api/graph/data/paginated'
++      ];
++
++      let response = null;
++      for (const endpoint of endpoints) {
++        try {
++          response = await fetch(`${endpoint}?page=1&pageSize=100`);
++          if (response.ok) break;
++        } catch (e) {
++          continue;
++        }
++      }
++
++      if (!response || !response.ok) {
++        throw new Error('Failed to fetch graph data from any endpoint');
++      }
++
++      const data = await response.json();
++      const transformedData = transformGraphData(data);
++      
++      // Update nodes and edges
++      this.nodes = new Map(transformedData.nodes.map((node: Node) => [node.id, node]));
++      const edgesWithIds = transformedData.edges.map((edge: Edge) => ({
++        ...edge,
++        id: this.createEdgeId(edge.source, edge.target)
++      }));
++      this.edges = new Map(edgesWithIds.map(edge => [edge.id, edge]));
++      
++      // Update metadata
++      this.metadata = {
++        ...transformedData.metadata || {},
++        pagination: {
++          totalPages: data.totalPages,
++          currentPage: data.currentPage,
++          totalItems: data.totalItems,
++          pageSize: data.pageSize
++        }
++      };
++
++      // Enable WebSocket updates immediately
++      this.enableBinaryUpdates();
++      this.setBinaryUpdatesEnabled(true);
++      
++      // Notify listeners of initial data
++      this.notifyUpdateListeners();
++      
++      // Load remaining pages if any
++      if (data.totalPages > 1) {
++        await this.loadRemainingPages(data.totalPages, data.pageSize);
++      }
+       
+       logger.info('Initial graph data loaded successfully');
+     } catch (error) {
+@@ -76,6 +160,65 @@ export class GraphDataManager {
+     }
+   }
+ 
++  private async loadRemainingPages(totalPages: number, pageSize: number): Promise<void> {
++    try {
++      // Load remaining pages in parallel with a reasonable chunk size
++      const chunkSize = 5;
++      for (let i = 2; i <= totalPages; i += chunkSize) {
++        const pagePromises = [];
++        for (let j = i; j < Math.min(i + chunkSize, totalPages + 1); j++) {
++          pagePromises.push(this.loadPage(j, pageSize));
++        }
++        await Promise.all(pagePromises);
++        // Update listeners after each chunk
++        this.notifyUpdateListeners();
++      }
++    } catch (error) {
++      logger.error('Error loading remaining pages:', error);
++      throw error;
++    }
++  }
++
++  private async loadPage(page: number, pageSize: number): Promise<void> {
++    try {
++      const response = await fetch(
++        `${API_ENDPOINTS.GRAPH_PAGINATED}?page=${page}&pageSize=${pageSize}`,
++        {
++          method: 'GET',
++          headers: {
++            'Content-Type': 'application/json',
++          },
++        }
++      );
++      if (!response.ok) {
++        throw new Error(`Failed to fetch page ${page}: ${response.statusText}`);
++      }
++
++      const data = await response.json();
++      const transformedData = transformGraphData(data);
++      
++      // Add new nodes
++      transformedData.nodes.forEach((node: Node) => {
++        if (!this.nodes.has(node.id)) {
++          this.nodes.set(node.id, node);
++        }
++      });
++      
++      // Add new edges
++      transformedData.edges.forEach((edge: Edge) => {
++        const edgeId = this.createEdgeId(edge.source, edge.target);
++        if (!this.edges.has(edgeId)) {
++          this.edges.set(edgeId, { ...edge, id: edgeId });
++        }
++      });
++
++      logger.debug(`Loaded page ${page} with ${transformedData.nodes.length} nodes`);
++    } catch (error) {
++      logger.error(`Error loading page ${page}:`, error);
++      throw error;
++    }
++  }
++
+   /**
+    * Enable binary position updates via WebSocket
+    */
+@@ -133,7 +276,7 @@ export class GraphDataManager {
+   /**
+    * Initialize or update the graph data
+    */
+-  private updateGraphData(data: any): void {
++  updateGraphData(data: any): void {
+     // Update nodes
+     if (data.nodes && Array.isArray(data.nodes)) {
+       data.nodes.forEach((node: any) => {
+@@ -176,6 +319,11 @@ export class GraphDataManager {
+       // Notify listeners
+       this.notifyUpdateListeners();
+       logger.log(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
++
++      // Enable binary updates after initial data is received
++      if (!this.binaryUpdatesEnabled) {
++        this.enableBinaryUpdates();
++      }
+     } else {
+       logger.warn('Invalid graph data format received');
+     }
+@@ -184,7 +332,7 @@ export class GraphDataManager {
+   /**
+    * Get the current graph data
+    */
+-  public getGraphData(): GraphData {
++  getGraphData(): GraphData {
+     return {
+       nodes: Array.from(this.nodes.values()),
+       edges: Array.from(this.edges.values()) as Edge[],
+@@ -195,14 +343,14 @@ export class GraphDataManager {
+   /**
+    * Get a specific node by ID
+    */
+-  public getNode(id: string): Node | undefined {
++  getNode(id: string): Node | undefined {
+     return this.nodes.get(id);
+   }
+ 
+   /**
+    * Subscribe to graph data updates
+    */
+-  public subscribe(listener: (data: GraphData) => void): () => void {
++  subscribe(listener: (data: GraphData) => void): () => void {
+     this.updateListeners.add(listener);
+     return () => {
+       this.updateListeners.delete(listener);
+@@ -212,7 +360,7 @@ export class GraphDataManager {
+   /**
+    * Subscribe to position updates only
+    */
+-  public subscribeToPositionUpdates(
++  subscribeToPositionUpdates(
+     listener: (positions: Float32Array) => void
+   ): () => void {
+     this.positionUpdateListeners.add(listener);
+@@ -224,7 +372,7 @@ export class GraphDataManager {
+   /**
+    * Clear all graph data
+    */
+-  public clear(): void {
++  clear(): void {
+     this.nodes.clear();
+     this.edges.clear();
+     this.metadata = {};
+@@ -285,14 +433,6 @@ export class GraphDataManager {
+       logger.error('Invalid position array length:', positions.length);
+       return;
+     }
+-
+-    // Ensure we're only processing up to 2 nodes for interaction events
+-    const nodeCount = positions.length / FLOATS_PER_NODE;
+-    if (nodeCount > 2) {
+-      logger.warn('Received position update for more than 2 nodes, limiting to first 2');
+-      const limitedPositions = new Float32Array(positions.buffer, 0, 2 * FLOATS_PER_NODE);
+-      positions = limitedPositions;
+-    }
+   
+     this.positionUpdateListeners.forEach(listener => {
+       try {
+@@ -302,17 +442,6 @@ export class GraphDataManager {
+       }
+     });
+   }
+-
+-  /**
+-   * Initialize WebSocket connection for position updates.
+-   * Should be called after initial graph data is loaded and force-directed graph is set up.
+-   */
+-  public initializeWebSocket(): void {
+-    if (!this.binaryUpdatesEnabled) {
+-      this.enableBinaryUpdates();
+-      this.setBinaryUpdatesEnabled(true);
+-    }
+-  }
+ }
+ 
+ // Export a singleton instance
+diff --git a/client/websocket/websocketService.ts b/client/websocket/websocketService.ts
+index 8cdecada..88c2853c 100644
+--- a/client/websocket/websocketService.ts
++++ b/client/websocket/websocketService.ts
+@@ -78,8 +78,7 @@ export class WebSocketService {
+             if (window.location.protocol === 'https:' && !this.url.startsWith('wss://')) {
+                 this.url = this.url.replace('ws://', 'wss://');
+             }
+-            
+-            logger.debug('WebSocket URL:', this.url);
++
+             this.connectionState = ConnectionState.CONNECTING;
+             this.ws = new WebSocket(this.url);
+             this.setupWebSocketHandlers();
+@@ -106,9 +105,6 @@ export class WebSocketService {
+ 
+         this.ws.onopen = (): void => {
+             logger.info(`WebSocket connected successfully to ${this.url}`);
+-            if (this.ws) {
+-                logger.debug('WebSocket onopen event:', this.ws.readyState);
+-            }
+             this.connectionState = ConnectionState.CONNECTED;
+             this.reconnectAttempts = 0;
+ 
+@@ -126,8 +122,9 @@ export class WebSocketService {
+ 
+         this.ws.onerror = (event: Event): void => {
+             logger.error('WebSocket error:', event);
+-            
+-            logger.debug('WebSocket readyState:', this.ws?.readyState);
++            if (this.ws) {
++                logger.debug('WebSocket readyState:', this.ws.readyState);
++            }
+         };
+ 
+         this.ws.onclose = (event: CloseEvent): void => {
+@@ -143,7 +140,6 @@ export class WebSocketService {
+         };
+ 
+         this.ws.onmessage = (event: MessageEvent) => {
+-            logger.debug('WebSocket onmessage event:', event);
+             if (event.data instanceof Blob) {
+                 logger.debug('Received binary message');
+                 this.handleBinaryMessage(event.data);
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 3022229a..668a7b67 100755
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -32,7 +32,6 @@ services:
+       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_GPU_UUID:-0}  # Use GPU UUID from launch script
+       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+       - NODE_ENV=production
+-      - SETTINGS_FILE_PATH=/app/settings.toml
+     env_file:
+       - .env
+     volumes:
+diff --git a/nginx.conf b/nginx.conf
+index 6d1a863b..c76adf68 100755
+--- a/nginx.conf
++++ b/nginx.conf
+@@ -52,7 +52,7 @@ http {
+ 
+     # Upstream backend definition for the Rust server
+     upstream backend {
+-        server 127.0.0.1:3001;  # Use localhost since both services are in same container
++        server 0.0.0.0:3001;  # Use 0.0.0.0 to bind to all interfaces
+         keepalive 32;  # Keep connections alive
+     }
+ 
+diff --git a/settings.toml b/settings.toml
+index f2926d3d..763d1dcd 100644
+--- a/settings.toml
++++ b/settings.toml
+@@ -1,15 +1,53 @@
+-[visualization]
+-[visualization.animations]
++[animations]
+ enable_motion_blur = false
+ enable_node_animations = false
+ motion_blur_strength = 0.4
+ selection_wave_enabled = false
+ pulse_enabled = false
++ripple_enabled = false
++edge_animation_enabled = false
++flow_particles_enabled = false
+ pulse_speed = 1.0
+ pulse_strength = 1.0
+ wave_speed = 1.0
+ 
+-[visualization.bloom]
++[ar]
++drag_threshold = 0.04
++enable_hand_tracking = true
++enable_haptics = true
++enable_light_estimation = true
++enable_passthrough_portal = false
++enable_plane_detection = true
++enable_scene_understanding = true
++gesture_smoothing = 0.9
++hand_mesh_color = "#FFD700"
++hand_mesh_enabled = true
++hand_mesh_opacity = 0.3
++hand_point_size = 0.01
++hand_ray_color = "#FFD700"
++hand_ray_enabled = true
++hand_ray_width = 0.002
++haptic_intensity = 0.7
++passthrough_brightness = 1
++passthrough_contrast = 1
++passthrough_opacity = 1
++pinch_threshold = 0.015
++plane_color = "#4A90E2"
++plane_opacity = 0.3
++portal_edge_color = "#FFD700"
++portal_edge_width = 0.02
++portal_size = 1
++room_scale = true
++rotation_threshold = 0.08
++show_plane_overlay = true
++snap_to_floor = true
++
++[audio]
++enable_ambient_sounds = false
++enable_interaction_sounds = false
++enable_spatial_audio = false
++
++[bloom]
+ edge_bloom_strength = 0.3
+ enabled = false
+ environment_bloom_strength = 0.5
+@@ -17,40 +55,74 @@ node_bloom_strength = 0.2
+ radius = 0.5
+ strength = 1.8
+ 
+-[visualization.edges]
++[client_debug]
++enable_data_debug = false
++enable_websocket_debug = false
++enabled = false
++log_binary_headers = false
++log_full_json = false
++
++[default]
++api_client_timeout = 30
++enable_metrics = true
++enable_request_logging = true
++log_format = "json"
++log_level = "debug"
++max_concurrent_requests = 5
++max_payload_size = 5242880
++max_retries = 3
++metrics_port = 9090
++retry_delay = 5
++
++[edges]
+ arrow_size = 0.15
+ base_width = 2
+ color = "#917f18"
+ enable_arrows = false
+ opacity = 0.6
+-width_range = [1, 3]
++width_range = [
++    1,
++    3,
++]
+ 
+-[visualization.labels]
++[labels]
+ desktop_font_size = 48
+ enable_labels = true
+ text_color = "#FFFFFF"
+-text_outline_color = "#000000"
+-text_outline_width = 0.1
+-text_resolution = 512
+-text_padding = 16
+-billboard_mode = true
+ 
+-[visualization.nodes]
++[network]
++bind_address = "0.0.0.0"
++domain = "localhost"
++enable_http2 = false
++enable_rate_limiting = true
++enable_tls = false
++max_request_size = 10485760
++min_tls_version = ""
++port = 3001
++rate_limit_requests = 100
++rate_limit_window = 60
++tunnel_id = "dummy"
++
++[nodes]
+ base_color = "#c3ab6f"
+ base_size = 1
++clearcoat = 1
++enable_hover_effect = false
++enable_instancing = false
++highlight_color = "#822626"
++highlight_duration = 300
++hover_scale = 1.2
++material_type = "basic"
+ metalness = 0.3
+ opacity = 0.4
+ roughness = 0.35
+-size_range = [1, 5]
+-quality = "medium"
+-enable_instancing = false
+-enable_hologram = false
+-enable_metadata_shape = false
+-enable_metadata_visualization = false
+-color_range_age = ["#ff0000", "#00ff00"]
+-color_range_links = ["#0000ff", "#ff00ff"]
++size_by_connections = true
++size_range = [
++    1,
++    5,
++]
+ 
+-[visualization.physics]
++[physics]
+ attraction_strength = 0.015
+ bounds_size = 12
+ collision_radius = 0.25
+@@ -62,7 +134,7 @@ max_velocity = 2.5
+ repulsion_strength = 1500
+ spring_strength = 0.018
+ 
+-[visualization.rendering]
++[rendering]
+ ambient_light_intensity = 0.7
+ background_color = "#000000"
+ directional_light_intensity = 1
+@@ -71,81 +143,7 @@ enable_antialiasing = true
+ enable_shadows = false
+ environment_intensity = 1.2
+ 
+-[visualization.hologram]
+-ring_count = 3
+-ring_color = "#00ff00"
+-ring_opacity = 0.5
+-ring_sizes = [20.0, 25.0, 30.0]
+-ring_rotation_speed = 0.001
+-enable_buckminster = false
+-buckminster_scale = 15.0
+-buckminster_opacity = 0.3
+-enable_geodesic = false
+-geodesic_scale = 15.0
+-geodesic_opacity = 0.3
+-enable_triangle_sphere = false
+-triangle_sphere_scale = 15.0
+-triangle_sphere_opacity = 0.3
+-global_rotation_speed = 0.0005
+-
+-[xr]
+-mode = "ar"
+-room_scale = true
+-space_type = "local"
+-quality = "high"
+-input = "hands"
+-haptics = true
+-passthrough = false
+-
+-[xr.visuals]
+-hand_mesh_enabled = true
+-hand_mesh_color = "#FFD700"
+-hand_mesh_opacity = 0.3
+-hand_point_size = 0.01
+-hand_ray_enabled = true
+-hand_ray_color = "#FFD700"
+-hand_ray_width = 0.002
+-gesture_smoothing = 0.9
+-
+-[xr.environment]
+-enable_light_estimation = true
+-enable_plane_detection = true
+-enable_scene_understanding = true
+-plane_color = "#4A90E2"
+-plane_opacity = 0.3
+-show_plane_overlay = true
+-snap_to_floor = true
+-
+-[system]
+-[system.network]
+-bind_address = "0.0.0.0"
+-domain = "localhost"
+-port = 3001
+-enable_http2 = false
+-enable_tls = false
+-min_tls_version = ""
+-max_request_size = 10485760
+-enable_rate_limiting = true
+-rate_limit_requests = 100
+-rate_limit_window = 60
+-tunnel_id = "dummy"
+-
+-[system.websocket]
+-url = "ws://localhost:3001"
+-binary_chunk_size = 65536
+-binary_update_rate = 30
+-binary_message_version = 1
+-compression_enabled = true
+-compression_threshold = 1024
+-heartbeat_interval = 15000
+-heartbeat_timeout = 60000
+-max_connections = 1000
+-max_message_size = 100485760
+-reconnect_attempts = 3
+-reconnect_delay = 5000
+-update_rate = 90
+-
+-[system.security]
++[security]
+ allowed_origins = []
+ audit_log_path = "/app/logs/audit.log"
+ cookie_httponly = true
+@@ -156,55 +154,44 @@ enable_audit_logging = true
+ enable_request_validation = true
+ session_timeout = 3600
+ 
+-[system.debug]
+-enabled = false
++[server_debug]
+ enable_data_debug = false
+ enable_websocket_debug = false
++enabled = false
+ log_binary_headers = false
+ log_full_json = false
+ 
+-[server]
+-[server.api]
+-client_timeout = 30
+-enable_metrics = true
+-enable_request_logging = true
+-log_format = "json"
+-log_level = "debug"
+-max_concurrent_requests = 5
+-max_payload_size = 5242880
+-max_retries = 3
+-metrics_port = 9090
+-retry_delay = 5
++[github]
++rate_limit = true
++version = "v3"
++
++[websocket]
++binary_chunk_size = 65536
++binary_update_rate = 30
++binary_message_version = 1
++compression_enabled = true
++compression_threshold = 1024
++heartbeat_interval = 15000
++heartbeat_timeout = 60000
++max_connections = 1000
++max_message_size = 100485760
++reconnect_attempts = 3
++reconnect_delay = 5000
++update_rate = 90
+ 
+-[server.github]
+-token = ""
+-owner = ""
+-repo = ""
+-basePath = ""
+-version = "main"
+-rateLimit = true
+-
+-[server.ragflow]
+-apiKey = ""
+-apiBaseUrl = ""
+-timeout = 30
+-maxRetries = 3
+-chatId = ""
+-
+-[server.perplexity]
+-apiKey = ""
+-model = "pplx-7b-online"
+-apiUrl = "https://api.perplexity.ai"
+-maxTokens = 4096
+-temperature = 0.5
+-topP = 0.9
+-presencePenalty = 0.0
+-frequencyPenalty = 1.0
+-timeout = 30
+-rateLimit = 100
+-
+-[server.openai]
+-apiKey = ""
+-baseUrl = "https://api.openai.com/v1"
+-timeout = 30
+-rateLimit = 100
++[hologram]
++ring_count = 3
++ring_color = "#00ff00"
++ring_opacity = 0.5
++ring_sizes = [20.0, 25.0, 30.0]
++ring_rotation_speed = 0.001
++enable_buckminster = false
++buckminster_scale = 15.0
++buckminster_opacity = 0.3
++enable_geodesic = false
++geodesic_scale = 15.0
++geodesic_opacity = 0.3
++enable_triangle_sphere = false
++triangle_sphere_scale = 15.0
++triangle_sphere_opacity = 0.3
++global_rotation_speed = 0.0005
+diff --git a/src/config.rs b/src/config.rs
+index c6481722..aefcca8d 100755
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -1,108 +1,107 @@
+ use serde::{Deserialize, Serialize};
+-use config::{Config, ConfigError, Environment, File};
+-use log::debug;
++use config::{ConfigBuilder, ConfigError, Environment, File};
++use log::{debug, error};
++use std::path::PathBuf;
+ 
+-// Main settings struct matching client structure
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
++#[serde(rename_all = "snake_case")]
+ pub struct Settings {
+-    pub visualization: VisualizationSettings,
+-    pub xr: XRSettings,
+-    pub system: SystemSettings,
+-    
+-    // Server-only settings
+-    #[serde(skip_serializing)]
+-    pub server: ServerSettings,
+-}
+-
+-// Visualization settings
+-#[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
+-pub struct VisualizationSettings {
++    // UI/Rendering settings from settings.toml
++    #[serde(default)]
+     pub animations: AnimationSettings,
++    #[serde(default)]
++    pub ar: ARSettings,
++    #[serde(default)]
++    pub audio: AudioSettings,
++    #[serde(default)]
+     pub bloom: BloomSettings,
++    #[serde(default)]
++    pub client_debug: DebugSettings,
++    #[serde(default)]
++    pub default: DefaultSettings,
++    #[serde(default)]
+     pub edges: EdgeSettings,
+-    pub hologram: HologramSettings,
++    #[serde(default)]
+     pub labels: LabelSettings,
++    #[serde(default)]
++    pub network: NetworkSettings,
++    #[serde(default)]
+     pub nodes: NodeSettings,
++    #[serde(default)]
+     pub physics: PhysicsSettings,
++    #[serde(default)]
+     pub rendering: RenderingSettings,
+-}
+-
+-// XR settings
+-#[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
+-pub struct XRSettings {
+-    pub mode: String,
+-    pub room_scale: bool,
+-    pub space_type: String,
+-    pub quality: String,
+-    pub input: String,
+-    pub haptics: bool,
+-    pub passthrough: bool,
+-    pub visuals: XRVisualsSettings,
+-    pub environment: XREnvironmentSettings,
+-}
+-
+-#[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
+-pub struct XRVisualsSettings {
+-    pub hand_mesh_enabled: bool,
+-    pub hand_mesh_color: String,
+-    pub hand_mesh_opacity: f32,
+-    pub hand_point_size: f32,
+-    pub hand_ray_enabled: bool,
+-    pub hand_ray_color: String,
+-    pub hand_ray_width: f32,
+-    pub gesture_smoothing: f32,
++    #[serde(default)]
++    pub security: SecuritySettings,
++    #[serde(default)]
++    pub server_debug: DebugSettings,
++    #[serde(default)]
++    pub websocket: WebSocketSettings,
++    
++    // Service settings from .env (server-side only)
++    #[serde(default)]
++    pub github: GitHubSettings,
++    #[serde(default)]
++    pub ragflow: RagFlowSettings,
++    #[serde(default)]
++    pub perplexity: PerplexitySettings,
++    #[serde(default)]
++    pub openai: OpenAISettings,
++    #[serde(default)]
++    pub hologram: HologramSettings,
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
+-pub struct XREnvironmentSettings {
+-    pub enable_light_estimation: bool,
+-    pub enable_plane_detection: bool,
+-    pub enable_scene_understanding: bool,
+-    pub plane_color: String,
+-    pub plane_opacity: f32,
+-    pub show_plane_overlay: bool,
+-    pub snap_to_floor: bool,
++#[serde(rename_all = "snake_case")]
++pub struct DebugSettings {
++    pub enable_data_debug: bool,
++    pub enable_websocket_debug: bool,
++    pub enabled: bool,
++    pub log_binary_headers: bool,
++    pub log_full_json: bool,
+ }
+ 
+-// System settings
+-#[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
+-pub struct SystemSettings {
+-    pub network: NetworkSettings,
+-    pub websocket: WebSocketSettings,
+-    pub security: SecuritySettings,
+-    pub debug: DebugSettings,
++impl Default for DebugSettings {
++    fn default() -> Self {
++        Self {
++            enable_data_debug: false,
++            enable_websocket_debug: false,
++            enabled: false,
++            log_binary_headers: false,
++            log_full_json: false,
++        }
++    }
+ }
+ 
+-// Server-only settings
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
+-pub struct ApiSettings {
+-    pub client_timeout: u64,
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
++pub struct DefaultSettings {
++    pub api_client_timeout: u64,
+     pub enable_metrics: bool,
+     pub enable_request_logging: bool,
+     pub log_format: String,
++    #[serde(default = "default_log_level")]
+     pub log_level: String,
+     pub max_concurrent_requests: u32,
+     pub max_payload_size: usize,
+     pub max_retries: u32,
+     pub metrics_port: u16,
+-    pub retry_delay: u64,
++    pub retry_delay: u32,
+ }
+ 
+-impl Default for ApiSettings {
++fn default_log_level() -> String {
++    "info".to_string()
++}
++
++impl Default for DefaultSettings {
+     fn default() -> Self {
+         Self {
+-            client_timeout: 30,
++            api_client_timeout: 30,
+             enable_metrics: true,
+             enable_request_logging: true,
+             log_format: "json".to_string(),
+-            log_level: "info".to_string(),
++            log_level: default_log_level(),
+             max_concurrent_requests: 5,
+             max_payload_size: 5242880,
+             max_retries: 3,
+@@ -112,150 +111,466 @@ impl Default for ApiSettings {
+     }
+ }
+ 
++#[derive(Debug, Serialize, Deserialize, Clone)]
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
++pub struct NetworkSettings {
++    pub bind_address: String,
++    pub domain: String,
++    pub enable_http2: bool,
++    pub enable_rate_limiting: bool,
++    pub enable_tls: bool,
++    pub max_request_size: usize,
++    pub min_tls_version: String,
++    pub port: u16,
++    pub rate_limit_requests: u32,
++    pub rate_limit_window: u32,
++    pub tunnel_id: String,
++}
++
++impl Default for NetworkSettings {
++    fn default() -> Self {
++        Self {
++            bind_address: "0.0.0.0".to_string(),
++            domain: "localhost".to_string(),
++            enable_http2: false,
++            enable_rate_limiting: true,
++            enable_tls: false,
++            max_request_size: 10485760,
++            min_tls_version: String::new(),
++            port: 3001,
++            rate_limit_requests: 100,
++            rate_limit_window: 60,
++            tunnel_id: "dummy".to_string(),
++        }
++    }
++}
++
+ #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+-#[serde(rename_all = "camelCase")]
+-pub struct ServerSettings {
+-    pub github: GitHubSettings,
+-    pub ragflow: RagFlowSettings,
+-    pub perplexity: PerplexitySettings,
+-    pub openai: OpenAISettings,
+-    pub api: ApiSettings,
++pub struct GitHubSettings {
++    #[serde(default)]
++    pub token: String,
++    #[serde(default)]
++    pub owner: String,
++    #[serde(default)]
++    pub repo: String,
++    #[serde(default)]
++    pub base_path: String,
++    #[serde(default)]
++    pub version: String,
++    #[serde(default = "default_true")]
++    pub rate_limit: bool,
++}
++
++#[derive(Debug, Serialize, Deserialize, Clone, Default)]
++pub struct RagFlowSettings {
++    #[serde(default)]
++    pub api_key: String,
++    #[serde(default)]
++    pub api_base_url: String,
++    #[serde(default = "default_timeout")]
++    pub timeout: u64,
++    #[serde(default = "default_max_retries")]
++    pub max_retries: u32,
++    #[serde(default)]
++    pub chat_id: String,
++}
++
++#[derive(Debug, Serialize, Deserialize, Clone, Default)]
++pub struct PerplexitySettings {
++    #[serde(default)]
++    pub api_key: String,
++    #[serde(default)]
++    pub model: String,
++    #[serde(default)]
++    pub api_url: String,
++    #[serde(default = "default_max_tokens")]
++    pub max_tokens: u32,
++    #[serde(default = "default_temperature")]
++    pub temperature: f32,
++    #[serde(default = "default_top_p")]
++    pub top_p: f32,
++    #[serde(default)]
++    pub presence_penalty: f32,
++    #[serde(default)]
++    pub frequency_penalty: f32,
++    #[serde(default = "default_timeout")]
++    pub timeout: u64,
++    #[serde(default = "default_rate_limit")]
++    pub rate_limit: u32,
++}
++
++#[derive(Debug, Serialize, Deserialize, Clone, Default)]
++pub struct OpenAISettings {
++    #[serde(default)]
++    pub api_key: String,
++    #[serde(default)]
++    pub base_url: String,
++    #[serde(default = "default_timeout")]
++    pub timeout: u64,
++    #[serde(default = "default_rate_limit")]
++    pub rate_limit: u32,
++}
++
++// Default value functions
++fn default_true() -> bool {
++    true
++}
++
++fn default_timeout() -> u64 {
++    30
++}
++
++fn default_max_retries() -> u32 {
++    3
++}
++
++fn default_max_tokens() -> u32 {
++    4096
++}
++
++fn default_temperature() -> f32 {
++    0.5
++}
++
++fn default_top_p() -> f32 {
++    0.9
+ }
+ 
+-// Component settings
++fn default_rate_limit() -> u32 {
++    100
++}
++
++// UI/Rendering settings from settings.toml (using snake_case as they're shared with client)
++
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
+ pub struct AnimationSettings {
+     pub enable_motion_blur: bool,
+     pub enable_node_animations: bool,
+     pub motion_blur_strength: f32,
+     pub selection_wave_enabled: bool,
+     pub pulse_enabled: bool,
++    pub ripple_enabled: bool,
++    pub edge_animation_enabled: bool,
++    pub flow_particles_enabled: bool,
+     pub pulse_speed: f32,
+     pub pulse_strength: f32,
+     pub wave_speed: f32,
+ }
+ 
++impl Default for AnimationSettings {
++    fn default() -> Self {
++        Self {
++            enable_motion_blur: false,
++            enable_node_animations: false,
++            motion_blur_strength: 0.4,
++            selection_wave_enabled: false,
++            pulse_enabled: false,
++            ripple_enabled: false,
++            edge_animation_enabled: false,
++            flow_particles_enabled: false,
++            pulse_speed: 1.0,
++            pulse_strength: 1.0,
++            wave_speed: 1.0,
++        }
++    }
++}
++
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
++pub struct ARSettings {
++    pub drag_threshold: f32,
++    pub enable_hand_tracking: bool,
++    pub enable_haptics: bool,
++    pub enable_light_estimation: bool,
++    pub enable_passthrough_portal: bool,
++    pub enable_plane_detection: bool,
++    pub enable_scene_understanding: bool,
++    pub gesture_smoothing: f32,
++    pub hand_mesh_color: String,
++    pub hand_mesh_enabled: bool,
++    pub hand_mesh_opacity: f32,
++    pub hand_point_size: f32,
++    pub hand_ray_color: String,
++    pub hand_ray_enabled: bool,
++    pub hand_ray_width: f32,
++    pub haptic_intensity: f32,
++    pub passthrough_brightness: f32,
++    pub passthrough_contrast: f32,
++    pub passthrough_opacity: f32,
++    pub pinch_threshold: f32,
++    pub plane_color: String,
++    pub plane_opacity: f32,
++    pub portal_edge_color: String,
++    pub portal_edge_width: f32,
++    pub portal_size: f32,
++    pub room_scale: bool,
++    pub rotation_threshold: f32,
++    pub show_plane_overlay: bool,
++    pub snap_to_floor: bool,
++}
++
++impl Default for ARSettings {
++    fn default() -> Self {
++        Self {
++            drag_threshold: 0.04,
++            enable_hand_tracking: true,
++            enable_haptics: true,
++            enable_light_estimation: true,
++            enable_passthrough_portal: false,
++            enable_plane_detection: true,
++            enable_scene_understanding: true,
++            gesture_smoothing: 0.5,
++            hand_mesh_color: "#FFD700".to_string(),
++            hand_mesh_enabled: true,
++            hand_mesh_opacity: 0.3,
++            hand_point_size: 0.01,
++            hand_ray_color: "#FFD700".to_string(),
++            hand_ray_enabled: true,
++            hand_ray_width: 0.002,
++            haptic_intensity: 0.7,
++            passthrough_brightness: 1.0,
++            passthrough_contrast: 1.0,
++            passthrough_opacity: 0.8,
++            pinch_threshold: 0.015,
++            plane_color: "#808080".to_string(),
++            plane_opacity: 0.5,
++            portal_edge_color: "#00FF00".to_string(),
++            portal_edge_width: 0.02,
++            portal_size: 2.0,
++            room_scale: true,
++            rotation_threshold: 0.08,
++            show_plane_overlay: true,
++            snap_to_floor: true,
++        }
++    }
++}
++
++#[derive(Debug, Serialize, Deserialize, Clone)]
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
++pub struct AudioSettings {
++    pub enable_spatial_audio: bool,
++    pub enable_interaction_sounds: bool,
++    pub enable_ambient_sounds: bool,
++}
++
++impl Default for AudioSettings {
++    fn default() -> Self {
++        Self {
++            enable_spatial_audio: false,
++            enable_interaction_sounds: false,
++            enable_ambient_sounds: false,
++        }
++    }
++}
++
++#[derive(Debug, Serialize, Deserialize, Clone)]
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
+ pub struct BloomSettings {
+-    pub enabled: bool,
+-    pub strength: f32,
+-    pub radius: f32,
+     pub edge_bloom_strength: f32,
+-    pub node_bloom_strength: f32,
++    pub enabled: bool,
+     pub environment_bloom_strength: f32,
++    pub node_bloom_strength: f32,
++    pub radius: f32,
++    pub strength: f32,
++}
++
++impl Default for BloomSettings {
++    fn default() -> Self {
++        Self {
++            edge_bloom_strength: 0.3,
++            enabled: false,
++            environment_bloom_strength: 0.5,
++            node_bloom_strength: 0.2,
++            radius: 0.5,
++            strength: 1.8,
++        }
++    }
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
+ pub struct EdgeSettings {
+-    pub arrow_size: f32,
+-    pub base_width: f32,
+     pub color: String,
+     pub enable_arrows: bool,
+     pub opacity: f32,
+     pub width_range: Vec<f32>,
++    pub arrow_size: f32,
++    pub base_width: f32,
++}
++
++impl Default for EdgeSettings {
++    fn default() -> Self {
++        Self {
++            color: "#917f18".to_string(),
++            enable_arrows: false,
++            opacity: 0.6,
++            width_range: vec![1.0, 3.0],
++            arrow_size: 0.15,
++            base_width: 2.0,
++        }
++    }
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
+ pub struct LabelSettings {
+     pub desktop_font_size: u32,
+     pub enable_labels: bool,
+     pub text_color: String,
+-    pub text_outline_color: String,
+-    pub text_outline_width: f32,
+-    pub text_resolution: u32,
+-    pub text_padding: u32,
+-    pub billboard_mode: bool,
++}
++
++impl Default for LabelSettings {
++    fn default() -> Self {
++        Self {
++            desktop_font_size: 48,
++            enable_labels: true,
++            text_color: "#FFFFFF".to_string(),
++        }
++    }
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
+ pub struct NodeSettings {
+     pub base_color: String,
+     pub base_size: f32,
++    pub enable_hover_effect: bool,
++    pub enable_instancing: bool,
++    pub highlight_color: String,
++    pub highlight_duration: u32,
++    pub hover_scale: f32,
++    pub material_type: String,
+     pub metalness: f32,
+     pub opacity: f32,
+     pub roughness: f32,
++    pub size_by_connections: bool,
+     pub size_range: Vec<f32>,
+-    pub quality: String,
+-    pub enable_instancing: bool,
+-    pub enable_hologram: bool,
+-    pub enable_metadata_shape: bool,
+-    pub enable_metadata_visualization: bool,
+-    pub color_range_age: Vec<String>,
+-    pub color_range_links: Vec<String>,
++}
++
++impl Default for NodeSettings {
++    fn default() -> Self {
++        Self {
++            base_color: "#c3ab6f".to_string(),
++            base_size: 1.0,
++            enable_hover_effect: false,
++            enable_instancing: false,
++            highlight_color: "#822626".to_string(),
++            highlight_duration: 300,
++            hover_scale: 1.2,
++            material_type: "basic".to_string(),
++            metalness: 0.3,
++            opacity: 0.4,
++            roughness: 0.35,
++            size_by_connections: true,
++            size_range: vec![1.0, 10.0],
++        }
++    }
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
+ pub struct PhysicsSettings {
+-    pub enabled: bool,
+     pub attraction_strength: f32,
+-    pub repulsion_strength: f32,
+-    pub spring_strength: f32,
++    pub bounds_size: f32,
++    pub collision_radius: f32,
+     pub damping: f32,
++    pub enable_bounds: bool,
++    pub enabled: bool,
+     pub iterations: u32,
+     pub max_velocity: f32,
+-    pub collision_radius: f32,
+-    pub enable_bounds: bool,
+-    pub bounds_size: f32,
++    pub repulsion_strength: f32,
++    pub spring_strength: f32,
++}
++
++impl Default for PhysicsSettings {
++    fn default() -> Self {
++        Self {
++            attraction_strength: 0.015,
++            bounds_size: 12.0,
++            collision_radius: 0.25,
++            damping: 0.88,
++            enable_bounds: true,
++            enabled: false,
++            iterations: 500,
++            max_velocity: 2.5,
++            repulsion_strength: 1500.0,
++            spring_strength: 0.018,
++        }
++    }
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
+ pub struct RenderingSettings {
+     pub ambient_light_intensity: f32,
+-    pub directional_light_intensity: f32,
+-    pub environment_intensity: f32,
+     pub background_color: String,
++    pub directional_light_intensity: f32,
+     pub enable_ambient_occlusion: bool,
+     pub enable_antialiasing: bool,
+     pub enable_shadows: bool,
++    pub environment_intensity: f32,
+ }
+ 
+-#[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
+-pub struct HologramSettings {
+-    pub ring_count: u32,
+-    pub ring_color: String,
+-    pub ring_opacity: f32,
+-    pub ring_sizes: Vec<f32>,
+-    pub ring_rotation_speed: f32,
+-    pub enable_buckminster: bool,
+-    pub buckminster_scale: f32,
+-    pub buckminster_opacity: f32,
+-    pub enable_geodesic: bool,
+-    pub geodesic_scale: f32,
+-    pub geodesic_opacity: f32,
+-    pub enable_triangle_sphere: bool,
+-    pub triangle_sphere_scale: f32,
+-    pub triangle_sphere_opacity: f32,
+-    pub global_rotation_speed: f32,
++impl Default for RenderingSettings {
++    fn default() -> Self {
++        Self {
++            ambient_light_intensity: 0.7,
++            background_color: "#000000".to_string(),
++            directional_light_intensity: 1.0,
++            enable_ambient_occlusion: false,
++            enable_antialiasing: true,
++            enable_shadows: false,
++            environment_intensity: 1.2,
++        }
++    }
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
+-pub struct NetworkSettings {
+-    pub bind_address: String,
+-    pub domain: String,
+-    pub port: u16,
+-    pub enable_http2: bool,
+-    pub enable_tls: bool,
+-    pub min_tls_version: String,
+-    pub max_request_size: usize,
+-    pub enable_rate_limiting: bool,
+-    pub rate_limit_requests: u32,
+-    pub rate_limit_window: u32,
+-    pub tunnel_id: String,
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
++pub struct SecuritySettings {
++    pub allowed_origins: Vec<String>,
++    pub audit_log_path: String,
++    pub cookie_httponly: bool,
++    pub cookie_samesite: String,
++    pub cookie_secure: bool,
++    pub csrf_token_timeout: u32,
++    pub enable_audit_logging: bool,
++    pub enable_request_validation: bool,
++    pub session_timeout: u32,
++}
++
++impl Default for SecuritySettings {
++    fn default() -> Self {
++        Self {
++            allowed_origins: Vec::new(),
++            audit_log_path: "/app/logs/audit.log".to_string(),
++            cookie_httponly: true,
++            cookie_samesite: "Strict".to_string(),
++            cookie_secure: true,
++            csrf_token_timeout: 3600,
++            enable_audit_logging: true,
++            enable_request_validation: true,
++            session_timeout: 3600,
++        }
++    }
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
+ pub struct WebSocketSettings {
+-    pub url: String,
+     pub binary_chunk_size: usize,
+     pub binary_update_rate: u32,
+     pub binary_message_version: u32,
+@@ -270,275 +585,247 @@ pub struct WebSocketSettings {
+     pub update_rate: u32,
+ }
+ 
+-#[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
+-pub struct SecuritySettings {
+-    pub allowed_origins: Vec<String>,
+-    pub audit_log_path: String,
+-    pub cookie_httponly: bool,
+-    pub cookie_samesite: String,
+-    pub cookie_secure: bool,
+-    pub csrf_token_timeout: u32,
+-    pub enable_audit_logging: bool,
+-    pub enable_request_validation: bool,
+-    pub session_timeout: u32,
++impl Default for WebSocketSettings {
++    fn default() -> Self {
++        Self {
++            binary_chunk_size: 65536,
++            binary_update_rate: 30,
++            binary_message_version: 1,
++            compression_enabled: true,
++            compression_threshold: 1024,
++            heartbeat_interval: 15000,
++            heartbeat_timeout: 60000,
++            max_connections: 1000,
++            max_message_size: 100485760,
++            reconnect_attempts: 3,
++            reconnect_delay: 5000,
++            update_rate: 90,
++        }
++    }
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+-#[serde(rename_all = "camelCase")]
+-pub struct DebugSettings {
+-    pub enabled: bool,
+-    pub enable_data_debug: bool,
+-    pub enable_websocket_debug: bool,
+-    pub log_binary_headers: bool,
+-    pub log_full_json: bool,
+-}
+-
+-// Server-only setting types
+-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+-pub struct GitHubSettings {
+-    pub token: String,
+-    pub owner: String,
+-    pub repo: String,
+-    pub base_path: String,
+-    pub version: String,
+-    pub rate_limit: bool,
+-}
+-
+-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+-pub struct RagFlowSettings {
+-    pub api_key: String,
+-    pub api_base_url: String,
+-    pub timeout: u64,
+-    pub max_retries: u32,
+-    pub chat_id: String,
+-}
+-
+-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+-pub struct PerplexitySettings {
+-    pub api_key: String,
+-    pub model: String,
+-    pub api_url: String,
+-    pub max_tokens: u32,
+-    pub temperature: f32,
+-    pub top_p: f32,
+-    pub presence_penalty: f32,
+-    pub frequency_penalty: f32,
+-    pub timeout: u64,
+-    pub rate_limit: u32,
++#[serde(rename_all = "snake_case")]
++#[serde(default)]
++pub struct HologramSettings {
++    pub ring_count: u32,
++    pub ring_color: String,
++    pub ring_opacity: f32,
++    pub ring_sizes: Vec<f32>,
++    pub ring_rotation_speed: f32,
++    pub enable_buckminster: bool,
++    pub buckminster_scale: f32,
++    pub buckminster_opacity: f32,
++    pub enable_geodesic: bool,
++    pub geodesic_scale: f32,
++    pub geodesic_opacity: f32,
++    pub enable_triangle_sphere: bool,
++    pub triangle_sphere_scale: f32,
++    pub triangle_sphere_opacity: f32,
++    pub global_rotation_speed: f32,
+ }
+ 
+-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+-pub struct OpenAISettings {
+-    pub api_key: String,
+-    pub base_url: String,
+-    pub timeout: u64,
+-    pub rate_limit: u32,
++impl Default for HologramSettings {
++    fn default() -> Self {
++        Self {
++            ring_count: 3,
++            ring_color: "#00ff00".to_string(),
++            ring_opacity: 0.5,
++            ring_sizes: vec![20.0, 25.0, 30.0],
++            ring_rotation_speed: 0.001,
++            enable_buckminster: false,
++            buckminster_scale: 15.0,
++            buckminster_opacity: 0.3,
++            enable_geodesic: false,
++            geodesic_scale: 15.0,
++            geodesic_opacity: 0.3,
++            enable_triangle_sphere: false,
++            triangle_sphere_scale: 15.0,
++            triangle_sphere_opacity: 0.3,
++            global_rotation_speed: 0.0005,
++        }
++    }
+ }
+ 
+ impl Settings {
+     pub fn new() -> Result<Self, ConfigError> {
++        debug!("Initializing settings");
++        
++        // Load .env file first
++        dotenvy::dotenv().ok();
++        
+         // Use environment variable or default to /app/settings.toml
+         let settings_path = std::env::var("SETTINGS_FILE_PATH")
+-            .unwrap_or_else(|_| "/app/settings.toml".to_string());
+-
+-        let builder = Config::builder()
+-            .add_source(File::with_name(&settings_path).required(true))
+-            .add_source(Environment::with_prefix("LOGSEQ_XR").separator("_"));
++            .map(PathBuf::from)
++            .unwrap_or_else(|_| PathBuf::from("/app/settings.toml"));
++        
++        debug!("Loading settings from: {:?}", settings_path);
++        
++        let builder = ConfigBuilder::<config::builder::DefaultState>::default();
++        let config = builder
++            .add_source(File::from(settings_path))
++            .add_source(
++                Environment::default()
++                    .separator("_")
++                    .try_parsing(true)
++            )
++            .build()?;
+ 
+-        let config = builder.build()?;
+-        let mut settings: Settings = config.try_deserialize()?;
++        debug!("Deserializing settings");
++        let mut settings: Settings = match config.try_deserialize() {
++            Ok(s) => {
++                debug!("Successfully deserialized settings");
++                s
++            },
++            Err(e) => {
++                error!("Failed to deserialize settings: {}", e);
++                return Err(e);
++            }
++        };
++        
++        debug!("Checking for environment variables");
++        
++        // Network settings from environment variables
++        if let Ok(domain) = std::env::var("DOMAIN") {
++            settings.network.domain = domain;
++        }
++        if let Ok(port) = std::env::var("PORT") {
++            settings.network.port = port.parse().unwrap_or(4000);
++        }
++        if let Ok(bind_address) = std::env::var("BIND_ADDRESS") {
++            settings.network.bind_address = bind_address;
++        }
++        if let Ok(tunnel_id) = std::env::var("TUNNEL_ID") {
++            settings.network.tunnel_id = tunnel_id;
++        }
++        if let Ok(enable_http2) = std::env::var("HTTP2_ENABLED") {
++            settings.network.enable_http2 = enable_http2.parse().unwrap_or(true);
++        }
+ 
+-        // Override with environment variables if needed
++        // GitHub settings from environment variables
+         if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+-            settings.server.github.token = token;
++            settings.github.token = token;
+         }
+         if let Ok(owner) = std::env::var("GITHUB_OWNER") {
+-            settings.server.github.owner = owner;
++            settings.github.owner = owner;
+         }
+         if let Ok(repo) = std::env::var("GITHUB_REPO") {
+-            settings.server.github.repo = repo;
++            settings.github.repo = repo;
+         }
+-        if let Ok(base_path) = std::env::var("GITHUB_BASE_PATH") {
+-            settings.server.github.base_path = base_path;
++        if let Ok(path) = std::env::var("GITHUB_BASE_PATH") {
++            settings.github.base_path = path.trim_matches('/').to_string();
++        }
++        if let Ok(version) = std::env::var("GITHUB_VERSION") {
++            settings.github.version = version;
++        }
++        if let Ok(rate_limit) = std::env::var("GITHUB_RATE_LIMIT") {
++            settings.github.rate_limit = rate_limit.parse().unwrap_or(true);
+         }
+-        // Add other environment variable overrides as needed
+ 
++        // RAGFlow settings from environment variables
++        if let Ok(api_key) = std::env::var("RAGFLOW_API_KEY") {
++            settings.ragflow.api_key = api_key;
++        }
++        if let Ok(base_url) = std::env::var("RAGFLOW_API_BASE_URL") {
++            settings.ragflow.api_base_url = base_url;
++        }
++        if let Ok(timeout) = std::env::var("RAGFLOW_TIMEOUT") {
++            settings.ragflow.timeout = timeout.parse().unwrap_or(30);
++        }
++        if let Ok(max_retries) = std::env::var("RAGFLOW_MAX_RETRIES") {
++            settings.ragflow.max_retries = max_retries.parse().unwrap_or(3);
++        }
++        if let Ok(chat_id) = std::env::var("RAGFLOW_CHAT_ID") {
++            settings.ragflow.chat_id = chat_id;
++        }
++
++        // Perplexity settings from environment variables
++        if let Ok(api_key) = std::env::var("PERPLEXITY_API_KEY") {
++            settings.perplexity.api_key = api_key;
++        }
++        if let Ok(api_url) = std::env::var("PERPLEXITY_API_URL") {
++            settings.perplexity.api_url = api_url;
++        }
++        if let Ok(model) = std::env::var("PERPLEXITY_MODEL") {
++            settings.perplexity.model = model;
++        }
++        if let Ok(max_tokens) = std::env::var("PERPLEXITY_MAX_TOKENS") {
++            settings.perplexity.max_tokens = max_tokens.parse().unwrap_or(4096);
++        }
++        if let Ok(temperature) = std::env::var("PERPLEXITY_TEMPERATURE") {
++            settings.perplexity.temperature = temperature.parse().unwrap_or(0.5);
++        }
++        if let Ok(top_p) = std::env::var("PERPLEXITY_TOP_P") {
++            settings.perplexity.top_p = top_p.parse().unwrap_or(0.9);
++        }
++        if let Ok(presence_penalty) = std::env::var("PERPLEXITY_PRESENCE_PENALTY") {
++            settings.perplexity.presence_penalty = presence_penalty.parse().unwrap_or(0.0);
++        }
++        if let Ok(frequency_penalty) = std::env::var("PERPLEXITY_FREQUENCY_PENALTY") {
++            settings.perplexity.frequency_penalty = frequency_penalty.parse().unwrap_or(1.0);
++        }
++        if let Ok(timeout) = std::env::var("PERPLEXITY_TIMEOUT") {
++            settings.perplexity.timeout = timeout.parse().unwrap_or(30);
++        }
++        if let Ok(rate_limit) = std::env::var("PERPLEXITY_RATE_LIMIT") {
++            settings.perplexity.rate_limit = rate_limit.parse().unwrap_or(100);
++        }
++
++        // OpenAI settings from environment variables
++        if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
++            settings.openai.api_key = api_key;
++        }
++        if let Ok(base_url) = std::env::var("OPENAI_BASE_URL") {
++            settings.openai.base_url = base_url;
++        }
++        if let Ok(timeout) = std::env::var("OPENAI_TIMEOUT") {
++            settings.openai.timeout = timeout.parse().unwrap_or(30);
++        }
++        if let Ok(rate_limit) = std::env::var("OPENAI_RATE_LIMIT") {
++            settings.openai.rate_limit = rate_limit.parse().unwrap_or(100);
++        }
++
++        debug!("Successfully loaded settings");
+         Ok(settings)
+     }
++
++    pub fn from_env() -> Result<Self, ConfigError> {
++        let builder = ConfigBuilder::<config::builder::DefaultState>::default();
++        let config = builder
++            .add_source(
++                Environment::default()
++                    .separator("_")
++                    .try_parsing(true)
++            )
++            .build()?;
++
++        config.try_deserialize()
++    }
+ }
+ 
+ impl Default for Settings {
+     fn default() -> Self {
+         Self {
+-            visualization: VisualizationSettings {
+-                animations: AnimationSettings {
+-                    enable_motion_blur: false,
+-                    enable_node_animations: true,
+-                    motion_blur_strength: 0.5,
+-                    selection_wave_enabled: false,
+-                    pulse_enabled: false,
+-                    pulse_speed: 1.0,
+-                    pulse_strength: 0.5,
+-                    wave_speed: 1.0,
+-                },
+-                bloom: BloomSettings {
+-                    enabled: true,
+-                    strength: 0.5,
+-                    radius: 1.0,
+-                    edge_bloom_strength: 0.5,
+-                    node_bloom_strength: 0.5,
+-                    environment_bloom_strength: 0.5,
+-                },
+-                edges: EdgeSettings {
+-                    arrow_size: 3.0,
+-                    base_width: 2.0,
+-                    color: "#ffffff".to_string(),
+-                    enable_arrows: true,
+-                    opacity: 0.8,
+-                    width_range: vec![1.0, 5.0],
+-                },
+-                hologram: HologramSettings {
+-                    ring_count: 3,
+-                    ring_color: "#00ffff".to_string(),
+-                    ring_opacity: 0.5,
+-                    ring_sizes: vec![1.0, 1.5, 2.0],
+-                    ring_rotation_speed: 0.1,
+-                    enable_buckminster: true,
+-                    buckminster_scale: 1.0,
+-                    buckminster_opacity: 0.3,
+-                    enable_geodesic: true,
+-                    geodesic_scale: 1.2,
+-                    geodesic_opacity: 0.4,
+-                    enable_triangle_sphere: true,
+-                    triangle_sphere_scale: 1.1,
+-                    triangle_sphere_opacity: 0.35,
+-                    global_rotation_speed: 0.05,
+-                },
+-                labels: LabelSettings {
+-                    desktop_font_size: 48,
+-                    enable_labels: true,
+-                    text_color: "#ffffff".to_string(),
+-                    text_outline_color: "#000000".to_string(),
+-                    text_outline_width: 0.1,
+-                    text_resolution: 512,
+-                    text_padding: 16,
+-                    billboard_mode: true,
+-                },
+-                nodes: NodeSettings {
+-                    base_color: "#c3ab6f".to_string(),
+-                    base_size: 1.0,
+-                    metalness: 0.5,
+-                    opacity: 0.8,
+-                    roughness: 0.2,
+-                    size_range: vec![0.5, 2.0],
+-                    quality: "medium".to_string(),
+-                    enable_instancing: true,
+-                    enable_hologram: true,
+-                    enable_metadata_shape: true,
+-                    enable_metadata_visualization: true,
+-                    color_range_age: vec!["#ff0000".to_string(), "#00ff00".to_string()],
+-                    color_range_links: vec!["#0000ff".to_string(), "#ff00ff".to_string()],
+-                },
+-                physics: PhysicsSettings {
+-                    enabled: true,
+-                    attraction_strength: 0.1,
+-                    repulsion_strength: 0.1,
+-                    spring_strength: 0.1,
+-                    damping: 0.5,
+-                    iterations: 1,
+-                    max_velocity: 10.0,
+-                    collision_radius: 1.0,
+-                    enable_bounds: true,
+-                    bounds_size: 100.0,
+-                },
+-                rendering: RenderingSettings {
+-                    ambient_light_intensity: 0.5,
+-                    directional_light_intensity: 0.8,
+-                    environment_intensity: 1.0,
+-                    background_color: "#000000".to_string(),
+-                    enable_ambient_occlusion: true,
+-                    enable_antialiasing: true,
+-                    enable_shadows: true,
+-                },
+-            },
+-            xr: XRSettings {
+-                mode: "ar".to_string(),
+-                room_scale: true,
+-                space_type: "local".to_string(),
+-                quality: "high".to_string(),
+-                input: "hands".to_string(),
+-                haptics: true,
+-                passthrough: false,
+-                visuals: XRVisualsSettings {
+-                    hand_mesh_enabled: true,
+-                    hand_mesh_color: "#ffffff".to_string(),
+-                    hand_mesh_opacity: 0.5,
+-                    hand_point_size: 5.0,
+-                    hand_ray_enabled: true,
+-                    hand_ray_color: "#00ff00".to_string(),
+-                    hand_ray_width: 2.0,
+-                    gesture_smoothing: 0.5,
+-                },
+-                environment: XREnvironmentSettings {
+-                    enable_light_estimation: true,
+-                    enable_plane_detection: true,
+-                    enable_scene_understanding: true,
+-                    plane_color: "#808080".to_string(),
+-                    plane_opacity: 0.5,
+-                    show_plane_overlay: true,
+-                    snap_to_floor: true,
+-                },
+-            },
+-            system: SystemSettings {
+-                network: NetworkSettings {
+-                    bind_address: "127.0.0.1".to_string(),
+-                    domain: "localhost".to_string(),
+-                    port: 3000,
+-                    enable_http2: true,
+-                    enable_tls: false,
+-                    min_tls_version: "TLS1.2".to_string(),
+-                    max_request_size: 10485760,
+-                    enable_rate_limiting: true,
+-                    rate_limit_requests: 100,
+-                    rate_limit_window: 60,
+-                    tunnel_id: String::new(),
+-                },
+-                websocket: WebSocketSettings {
+-                    url: String::new(),
+-                    binary_chunk_size: 65536,
+-                    binary_update_rate: 30,
+-                    binary_message_version: 1,
+-                    compression_enabled: true,
+-                    compression_threshold: 1024,
+-                    heartbeat_interval: 15000,
+-                    heartbeat_timeout: 60000,
+-                    max_connections: 1000,
+-                    max_message_size: 33554432,
+-                    reconnect_attempts: 3,
+-                    reconnect_delay: 5000,
+-                    update_rate: 60,
+-                },
+-                security: SecuritySettings {
+-                    allowed_origins: vec!["http://localhost:3000".to_string()],
+-                    audit_log_path: "./audit.log".to_string(),
+-                    cookie_httponly: true,
+-                    cookie_samesite: "Lax".to_string(),
+-                    cookie_secure: false,
+-                    csrf_token_timeout: 3600,
+-                    enable_audit_logging: true,
+-                    enable_request_validation: true,
+-                    session_timeout: 86400,
+-                },
+-                debug: DebugSettings {
+-                    enabled: true,
+-                    enable_data_debug: true,
+-                    enable_websocket_debug: true,
+-                    log_binary_headers: true,
+-                    log_full_json: true,
+-                },
+-            },
+-            server: ServerSettings::default(),
++            animations: AnimationSettings::default(),
++            ar: ARSettings::default(),
++            audio: AudioSettings::default(),
++            bloom: BloomSettings::default(),
++            client_debug: DebugSettings::default(),
++            default: DefaultSettings::default(),
++            edges: EdgeSettings::default(),
++            labels: LabelSettings::default(),
++            nodes: NodeSettings::default(),
++            physics: PhysicsSettings::default(),
++            rendering: RenderingSettings::default(),
++            security: SecuritySettings::default(),
++            server_debug: DebugSettings::default(),
++            websocket: WebSocketSettings::default(),
++            network: NetworkSettings::default(),
++            github: GitHubSettings::default(),
++            ragflow: RagFlowSettings::default(),
++            perplexity: PerplexitySettings::default(),
++            openai: OpenAISettings::default(),
++            hologram: HologramSettings::default(),
+         }
+     }
+ }
+diff --git a/src/handlers/api_handler/visualization/mod.rs b/src/handlers/api_handler/visualization/mod.rs
+index f9417699..7f8f2eac 100644
+--- a/src/handlers/api_handler/visualization/mod.rs
++++ b/src/handlers/api_handler/visualization/mod.rs
+@@ -2,7 +2,7 @@ use crate::config::Settings;
+ use actix_web::{web, HttpResponse};
+ use log::{error, info, debug};
+ use serde::{Deserialize, Serialize};
+-use serde_json::{Value, json};
++use serde_json::Value;
+ use std::collections::HashMap;
+ use std::fs;
+ use std::path::PathBuf;
+@@ -141,38 +141,39 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str,
+ fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Value, String> {
+     debug!("Getting settings for category: {}", category);
+     let value = match category {
+-        // Visualization settings
+-        "nodes" => serde_json::to_value(&settings.visualization.nodes)
++        "nodes" => serde_json::to_value(&settings.nodes)
+             .map_err(|e| format!("Failed to serialize node settings: {}", e))?,
+-        "edges" => serde_json::to_value(&settings.visualization.edges)
++        "edges" => serde_json::to_value(&settings.edges)
+             .map_err(|e| format!("Failed to serialize edge settings: {}", e))?,
+-        "rendering" => serde_json::to_value(&settings.visualization.rendering)
++        "rendering" => serde_json::to_value(&settings.rendering)
+             .map_err(|e| format!("Failed to serialize rendering settings: {}", e))?,
+-        "labels" => serde_json::to_value(&settings.visualization.labels)
++        "labels" => serde_json::to_value(&settings.labels)
+             .map_err(|e| format!("Failed to serialize labels settings: {}", e))?,
+-        "bloom" => serde_json::to_value(&settings.visualization.bloom)
++        "bloom" => serde_json::to_value(&settings.bloom)
+             .map_err(|e| format!("Failed to serialize bloom settings: {}", e))?,
+-        "animations" => serde_json::to_value(&settings.visualization.animations)
++        "animations" => serde_json::to_value(&settings.animations)
+             .map_err(|e| format!("Failed to serialize animations settings: {}", e))?,
+-        "physics" => serde_json::to_value(&settings.visualization.physics)
++        "ar" => serde_json::to_value(&settings.ar)
++            .map_err(|e| format!("Failed to serialize ar settings: {}", e))?,
++        "audio" => serde_json::to_value(&settings.audio)
++            .map_err(|e| format!("Failed to serialize audio settings: {}", e))?,
++        "physics" => serde_json::to_value(&settings.physics)
+             .map_err(|e| format!("Failed to serialize physics settings: {}", e))?,
+-        
+-        // XR settings
+-        "xr" => serde_json::to_value(&settings.xr)
+-            .map_err(|e| format!("Failed to serialize XR settings: {}", e))?,
+-        
+-        // System settings
+-        "network" => serde_json::to_value(&settings.system.network)
+-            .map_err(|e| format!("Failed to serialize network settings: {}", e))?,
+-        "websocket" => serde_json::to_value(&settings.system.websocket)
+-            .map_err(|e| format!("Failed to serialize websocket settings: {}", e))?,
+-        "security" => serde_json::to_value(&settings.system.security)
++        "client_debug" => serde_json::to_value(&settings.client_debug)
++            .map_err(|e| format!("Failed to serialize client debug settings: {}", e))?,
++        "server_debug" => serde_json::to_value(&settings.server_debug)
++            .map_err(|e| format!("Failed to serialize server debug settings: {}", e))?,
++        "security" => serde_json::to_value(&settings.security)
+             .map_err(|e| format!("Failed to serialize security settings: {}", e))?,
+-        "debug" => serde_json::to_value(&settings.system.debug)
+-            .map_err(|e| format!("Failed to serialize debug settings: {}", e))?,
+-        
+-        // Server settings (restricted)
+-        _ => return Err(format!("Invalid or restricted category: {}", category)),
++        "websocket" => serde_json::to_value(&settings.websocket)
++            .map_err(|e| format!("Failed to serialize websocket settings: {}", e))?,
++        "network" => serde_json::to_value(&settings.network)
++            .map_err(|e| format!("Failed to serialize network settings: {}", e))?,
++        "default" => serde_json::to_value(&settings.default)
++            .map_err(|e| format!("Failed to serialize default settings: {}", e))?,
++        "github" => serde_json::to_value(&settings.github)
++            .map_err(|e| format!("Failed to serialize github settings: {}", e))?,
++        _ => return Err(format!("Invalid category: {}", category)),
+     };
+     debug!("Successfully retrieved settings for category: {}", category);
+     Ok(value)
+@@ -269,8 +270,8 @@ pub async fn get_category_settings(
+     path: web::Path<String>,
+ ) -> HttpResponse {
+     let settings_read = settings.read().await;
+-    let debug_enabled = settings_read.system.debug.enabled;
+-    let log_json = debug_enabled && settings_read.system.debug.log_full_json;
++    let debug_enabled = settings_read.server_debug.enabled;
++    let log_json = debug_enabled && settings_read.server_debug.log_full_json;
+     
+     let category = path.into_inner();
+     match get_category_settings_value(&settings_read, &category) {
+@@ -303,21 +304,16 @@ pub async fn get_category_settings(
+ 
+ pub async fn get_visualization_settings(
+     app_state: web::Data<AppState>,
+-    path: web::Path<String>,
++    category: web::Path<String>,
+ ) -> Result<HttpResponse, actix_web::Error> {
+-    let settings = app_state.settings.read().await;
+-    
+-    let category = path.as_ref();
++    debug!("Getting settings for category: {}", category);
+     
+-    let response = match category.as_str() {
+-        "visualization" => json!(settings.visualization),
+-        "xr" => json!(settings.xr),
+-        "system" => json!(settings.system),
+-        _ => return Ok(HttpResponse::NotFound().finish())
+-    };
++    if category.as_str() == "client_debug" {
++        debug!("Checking UI container status for debugging");
++    }
+     
+-    debug!("Returning settings for category: {}", category);
+-    Ok(HttpResponse::Ok().json(response))
++    let settings = app_state.settings.read().await;
++    Ok(HttpResponse::Ok().json(&*settings))
+ }
+ 
+ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
+@@ -377,6 +373,7 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
+     }
+ }
+ 
++// Configure routes using snake_case
+ pub fn config(cfg: &mut web::ServiceConfig) {
+     cfg.service(
+         web::scope("/visualization")
+diff --git a/src/handlers/settings_handler.rs b/src/handlers/settings_handler.rs
+index 6ca3caa4..19f84ea9 100644
+--- a/src/handlers/settings_handler.rs
++++ b/src/handlers/settings_handler.rs
+@@ -1,122 +1,151 @@
+-use actix_web::{web, HttpResponse, Result, error::ErrorInternalServerError};
+-use crate::{AppState, Settings};
++use actix_web::{web, HttpResponse, Result};
++use crate::AppState;
+ use serde_json::json;
+-use serde::Deserialize;
+-use std::fs;
+-use toml_edit::{Document, Item, Value, Formatted};
+-
+-#[derive(Deserialize)]
+-pub struct SettingsUpdate {
+-    path: String,
+-    value: serde_json::Value,
+-}
++use crate::utils::case_conversion::to_camel_case;
+ 
+ pub async fn get_settings(app_state: web::Data<AppState>) -> Result<HttpResponse> {
+     let settings = app_state.settings.read().await;
+     
+-    // Return only client-relevant settings (excluding server settings)
+-    Ok(HttpResponse::Ok().json(json!({
+-        "visualization": settings.visualization,
+-        "xr": settings.xr,
+-        "system": settings.system
+-    })))
++    // Transform settings into client-expected structure matching defaultSettings.ts
++    let client_settings = json!({
++        "visualization": {
++            "animations": {
++                "enableMotionBlur": settings.animations.enable_motion_blur,
++                "enableNodeAnimations": settings.animations.enable_node_animations,
++                "motionBlurStrength": settings.animations.motion_blur_strength,
++                "selectionWaveEnabled": settings.animations.selection_wave_enabled,
++                "pulseEnabled": settings.animations.pulse_enabled,
++                "rippleEnabled": settings.animations.ripple_enabled,
++                "edgeAnimationEnabled": settings.animations.edge_animation_enabled,
++                "flowParticlesEnabled": settings.animations.flow_particles_enabled,
++                "pulseSpeed": settings.animations.pulse_speed,
++                "pulseStrength": settings.animations.pulse_strength,
++                "waveSpeed": settings.animations.wave_speed
++            },
++            "bloom": {
++                "enabled": settings.bloom.enabled,
++                "strength": settings.bloom.strength,
++                "radius": settings.bloom.radius,
++                "edgeBloomStrength": settings.bloom.edge_bloom_strength,
++                "nodeBloomStrength": settings.bloom.node_bloom_strength,
++                "environmentBloomStrength": settings.bloom.environment_bloom_strength
++            },
++            "edges": {
++                "arrowSize": settings.edges.arrow_size,
++                "baseWidth": settings.edges.base_width,
++                "color": settings.edges.color,
++                "enableArrows": settings.edges.enable_arrows,
++                "opacity": settings.edges.opacity,
++                "widthRange": settings.edges.width_range
++            },
++            "labels": {
++                "desktopFontSize": settings.labels.desktop_font_size,
++                "enableLabels": settings.labels.enable_labels,
++                "textColor": settings.labels.text_color
++            },
++            "nodes": settings.nodes,
++            "physics": settings.physics,
++            "rendering": settings.rendering,
++            "hologram": {
++                "ringCount": settings.hologram.ring_count,
++                "ringColor": settings.hologram.ring_color,
++                "ringOpacity": settings.hologram.ring_opacity,
++                "ringSizes": settings.hologram.ring_sizes,
++                "ringRotationSpeed": settings.hologram.ring_rotation_speed,
++                "enableBuckminster": settings.hologram.enable_buckminster,
++                "buckminsterScale": settings.hologram.buckminster_scale,
++                "buckminsterOpacity": settings.hologram.buckminster_opacity,
++                "enableGeodesic": settings.hologram.enable_geodesic,
++                "geodesicScale": settings.hologram.geodesic_scale,
++                "geodesicOpacity": settings.hologram.geodesic_opacity,
++                "enableTriangleSphere": settings.hologram.enable_triangle_sphere,
++                "triangleSphereScale": settings.hologram.triangle_sphere_scale,
++                "triangleSphereOpacity": settings.hologram.triangle_sphere_opacity,
++                "globalRotationSpeed": settings.hologram.global_rotation_speed
++            }
++        },
++        "system": {
++            "network": {
++                "bindAddress": settings.network.bind_address,
++                "domain": settings.network.domain,
++                "port": settings.network.port,
++                "enableHttp2": settings.network.enable_http2,
++                "enableTls": settings.network.enable_tls,
++                "minTlsVersion": settings.network.min_tls_version,
++                "maxRequestSize": settings.network.max_request_size,
++                "enableRateLimiting": settings.network.enable_rate_limiting,
++                "rateLimitRequests": settings.network.rate_limit_requests,
++                "rateLimitWindow": settings.network.rate_limit_window,
++                "tunnelId": settings.network.tunnel_id
++            },
++            "websocket": {
++                "binaryChunkSize": settings.websocket.binary_chunk_size,
++                "binaryUpdateRate": settings.websocket.binary_update_rate,
++                "binaryMessageVersion": settings.websocket.binary_message_version,
++                "compressionEnabled": settings.websocket.compression_enabled,
++                "compressionThreshold": settings.websocket.compression_threshold,
++                "heartbeatInterval": settings.websocket.heartbeat_interval,
++                "heartbeatTimeout": settings.websocket.heartbeat_timeout,
++                "maxConnections": settings.websocket.max_connections,
++                "maxMessageSize": settings.websocket.max_message_size,
++                "reconnectAttempts": settings.websocket.reconnect_attempts,
++                "reconnectDelay": settings.websocket.reconnect_delay,
++                "updateRate": settings.websocket.update_rate
++            },
++            "security": settings.security,
++            "debug": settings.client_debug
++        },
++        "xr": {
++            "mode": "ar",
++            "roomScale": settings.ar.room_scale,
++            "spaceType": "local",
++            "quality": "high",
++            "input": "hands",
++            "visuals": {
++                "handMeshEnabled": settings.ar.hand_mesh_enabled,
++                "handMeshColor": settings.ar.hand_mesh_color,
++                "handMeshOpacity": settings.ar.hand_mesh_opacity,
++                "handPointSize": settings.ar.hand_point_size,
++                "handRayEnabled": settings.ar.hand_ray_enabled,
++                "handRayColor": settings.ar.hand_ray_color,
++                "handRayWidth": settings.ar.hand_ray_width,
++                "gestureSsmoothing": settings.ar.gesture_smoothing
++            },
++            "environment": {
++                "enableLightEstimation": settings.ar.enable_light_estimation,
++                "enablePlaneDetection": settings.ar.enable_plane_detection,
++                "enableSceneUnderstanding": settings.ar.enable_scene_understanding,
++                "planeColor": settings.ar.plane_color,
++                "planeOpacity": settings.ar.plane_opacity,
++                "showPlaneOverlay": settings.ar.show_plane_overlay,
++                "snapToFloor": settings.ar.snap_to_floor
++            },
++            "passthrough": false,
++            "haptics": settings.ar.enable_haptics
++        }
++    });
++
++    Ok(HttpResponse::Ok().json(client_settings))
+ }
+ 
+ pub async fn get_graph_settings(app_state: web::Data<AppState>) -> Result<HttpResponse> {
+     let settings = app_state.settings.read().await;
+     Ok(HttpResponse::Ok().json(json!({
+         "visualization": {
+-            "nodes": settings.visualization.nodes,
+-            "edges": settings.visualization.edges,
+-            "physics": settings.visualization.physics,
+-            "labels": settings.visualization.labels
++            "nodes": settings.nodes,
++            "edges": settings.edges,
++            "physics": settings.physics,
++            "labels": settings.labels
+         }
+     })))
+ }
+ 
+-pub async fn update_settings(
+-    app_state: web::Data<AppState>,
+-    updates: web::Json<Vec<SettingsUpdate>>,
+-) -> Result<HttpResponse> {
+-    let settings_path = std::env::var("SETTINGS_FILE_PATH")
+-        .unwrap_or_else(|_| "settings.toml".to_string());
+-
+-    // Read current settings file
+-    let content = fs::read_to_string(&settings_path).map_err(ErrorInternalServerError)?;
+-    let mut doc = content.parse::<Document>().map_err(ErrorInternalServerError)?;
+-
+-    // Apply each update
+-    for update in updates.iter() {
+-        let path_parts: Vec<&str> = update.path.split('.').collect();
+-        if path_parts.is_empty() {
+-            return Err(ErrorInternalServerError("Empty path"));
+-        }
+-
+-        // Convert JSON value to TOML value with proper Formatted types
+-        let toml_value = match &update.value {
+-            serde_json::Value::String(s) => Item::Value(Value::String(Formatted::new(s.clone()))),
+-            serde_json::Value::Number(n) => {
+-                if n.is_f64() {
+-                    Item::Value(Value::Float(Formatted::new(n.as_f64().unwrap())))
+-                } else {
+-                    Item::Value(Value::Integer(Formatted::new(n.as_i64().unwrap())))
+-                }
+-            },
+-            serde_json::Value::Bool(b) => Item::Value(Value::Boolean(Formatted::new(*b))),
+-            serde_json::Value::Array(arr) => {
+-                let mut toml_arr = toml_edit::Array::new();
+-                for val in arr {
+-                    match val {
+-                        serde_json::Value::String(s) => toml_arr.push(Value::String(Formatted::new(s.clone()))),
+-                        serde_json::Value::Number(n) => {
+-                            if n.is_f64() {
+-                                toml_arr.push(Value::Float(Formatted::new(n.as_f64().unwrap())))
+-                            } else {
+-                                toml_arr.push(Value::Integer(Formatted::new(n.as_i64().unwrap())))
+-                            }
+-                        },
+-                        serde_json::Value::Bool(b) => toml_arr.push(Value::Boolean(Formatted::new(*b))),
+-                        _ => continue,
+-                    }
+-                }
+-                Item::Value(Value::Array(toml_arr))
+-            },
+-            _ => continue, // Skip other complex values
+-        };
+-
+-        // Navigate through the document, creating tables as needed
+-        let mut table = doc.as_table_mut();
+-        for &part in path_parts.iter().take(path_parts.len() - 1) {
+-            if !table.contains_key(part) {
+-                table.insert(part, Item::Table(Default::default()));
+-            }
+-            table = table.get_mut(part)
+-                .and_then(|v| v.as_table_mut())
+-                .ok_or_else(|| ErrorInternalServerError("Invalid TOML structure"))?;
+-        }
+-
+-        // Set the value at the final key
+-        let final_key = path_parts.last().unwrap();
+-        table.insert(final_key, toml_value);
+-    }
+-
+-    // Write back to file
+-    fs::write(&settings_path, doc.to_string()).map_err(ErrorInternalServerError)?;
+-
+-    // Update app state settings
+-    let mut settings = app_state.settings.write().await;
+-    *settings = Settings::new().map_err(ErrorInternalServerError)?;
+-
+-    Ok(HttpResponse::Ok().json(json!({ "status": "success" })))
+-}
+-
+ pub fn config(cfg: &mut web::ServiceConfig) {
+     cfg.service(
+         web::resource("")
+             .route(web::get().to(get_settings))
+-            .route(web::post().to(update_settings))
+     ).service(
+         web::resource("/graph")
+             .route(web::get().to(get_graph_settings))
+     );
+-}
+\ No newline at end of file
++} 
+\ No newline at end of file
+diff --git a/src/handlers/socket_flow_handler.rs b/src/handlers/socket_flow_handler.rs
+index 84c858bf..1a561444 100644
+--- a/src/handlers/socket_flow_handler.rs
++++ b/src/handlers/socket_flow_handler.rs
+@@ -23,7 +23,7 @@ impl SocketFlowServer {
+         // Calculate update interval from settings
+         let update_rate = settings
+             .try_read()
+-            .map(|s| s.system.websocket.binary_update_rate)
++            .map(|s| s.websocket.binary_update_rate)
+             .unwrap_or(30);
+         
+         let update_interval = std::time::Duration::from_millis((1000.0 / update_rate as f64) as u64);
+@@ -46,7 +46,7 @@ impl SocketFlowServer {
+ 
+     fn maybe_compress(&self, data: Vec<u8>) -> Vec<u8> {
+         if let Ok(settings) = self.settings.try_read() {
+-            if settings.system.websocket.compression_enabled && data.len() >= settings.system.websocket.compression_threshold {
++            if settings.websocket.compression_enabled && data.len() >= settings.websocket.compression_threshold {
+                 let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+                 if encoder.write_all(&data).is_ok() {
+                     if let Ok(compressed) = encoder.finish() {
+@@ -63,7 +63,7 @@ impl SocketFlowServer {
+ 
+     fn maybe_decompress(&self, data: Vec<u8>) -> Result<Vec<u8>, String> {
+         if let Ok(settings) = self.settings.try_read() {
+-            if settings.system.websocket.compression_enabled {
++            if settings.websocket.compression_enabled {
+                 let mut decoder = ZlibDecoder::new(data.as_slice());
+                 let mut decompressed = Vec::new();
+                 match decoder.read_to_end(&mut decompressed) {
+@@ -108,7 +108,7 @@ impl Actor for SocketFlowServer {
+         ctx.run_interval(self.update_interval, move |actor, ctx| {
+             // Get current node positions and velocities
+             let app_state_clone = app_state.clone();
+-            let _settings_clone = settings.clone();
++            let settings_clone = settings.clone();
+             
+             // Spawn a future to get positions
+             let fut = async move {
+@@ -170,6 +170,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer
+                             ctx.text(response);
+                         }
+                     }
++                    Ok(_) => {
++                        debug!("[WebSocket] Received unknown text message type");
++                    }
+                     Err(e) => {
+                         warn!("[WebSocket] Failed to parse text message: {}", e);
+                     }
+diff --git a/src/main.rs b/src/main.rs
+index cd122694..058d4e5b 100755
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -44,16 +44,16 @@ async fn main() -> std::io::Result<()> {
+     // Initialize logging with settings-based configuration
+     let log_config = {
+         let settings_read = settings.read().await;
+-        let file_level = if settings_read.system.debug.enabled {
+-            "debug"
+-        } else {
+-            &settings_read.server.api.log_level
++        let file_level = if settings_read.server_debug.enabled { 
++            "debug" 
++        } else { 
++            &settings_read.default.log_level 
+         };
+         
+-        let console_level = if settings_read.system.debug.enable_websocket_debug {
++        let console_level = if settings_read.server_debug.enable_websocket_debug {
+             "debug"
+         } else {
+-            &settings_read.server.api.log_level
++            &settings_read.default.log_level
+         };
+         
+         LogConfig::new(
+@@ -88,10 +88,10 @@ async fn main() -> std::io::Result<()> {
+     // Initialize services
+     let settings_read = settings.read().await;
+     let github_service = match RealGitHubService::new(
+-        settings.read().await.server.github.token.clone(),
+-        settings.read().await.server.github.owner.clone(),
+-        settings.read().await.server.github.repo.clone(),
+-        settings.read().await.server.github.base_path.clone(),
++        settings.read().await.github.token.clone(),
++        settings.read().await.github.owner.clone(),
++        settings.read().await.github.repo.clone(),
++        settings.read().await.github.base_path.clone(),
+         settings.clone(),
+     ) {
+         Ok(service) => Arc::new(service),
+@@ -99,10 +99,10 @@ async fn main() -> std::io::Result<()> {
+     };
+ 
+     let github_pr_service: Arc<RealGitHubPRService> = match RealGitHubPRService::new(
+-        (*settings_read).server.github.token.clone(),
+-        (*settings_read).server.github.owner.clone(),
+-        (*settings_read).server.github.repo.clone(),
+-        (*settings_read).server.github.base_path.clone()
++        (*settings_read).github.token.clone(),
++        (*settings_read).github.owner.clone(),
++        (*settings_read).github.repo.clone(),
++        (*settings_read).github.base_path.clone()
+     ) {
+         Ok(service) => Arc::new(service),
+         Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+@@ -160,7 +160,7 @@ async fn main() -> std::io::Result<()> {
+     // Start the server
+     let bind_address = {
+         let settings_read = settings.read().await;
+-        format!("{}:{}", (*settings_read).system.network.bind_address, (*settings_read).system.network.port)
++        format!("{}:{}", (*settings_read).network.bind_address, (*settings_read).network.port)
+     };
+ 
+     info!("Starting HTTP server on {}", bind_address);
+diff --git a/src/services/file_service.rs b/src/services/file_service.rs
+index 1333715b..e19a0ba9 100755
+--- a/src/services/file_service.rs
++++ b/src/services/file_service.rs
+@@ -195,7 +195,7 @@ impl GitHubService for RealGitHubService {
+         };
+ 
+         let settings = self.settings.read().await;
+-        let debug_enabled = settings.system.debug.enabled;
++        let debug_enabled = settings.server_debug.enabled;
+         drop(settings);
+         
+         let mut markdown_files = Vec::new();
+@@ -545,7 +545,7 @@ impl FileService {
+     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
+         // Validate GitHub settings
+         let settings_guard = settings.read().await;
+-        let github_settings = &settings_guard.server.github;
++        let github_settings = &settings_guard.github;
+         
+         if github_settings.token.is_empty() {
+             return Err("GitHub token is required".into());
+@@ -771,7 +771,7 @@ impl FileService {
+     ) -> Result<Vec<ProcessedFile>, Error> {
+         // Validate GitHub settings
+         let settings_guard = settings.read().await;
+-        let github_settings = &settings_guard.server.github;
++        let github_settings = &settings_guard.github;
+         
+         if github_settings.token.is_empty() {
+             return Err(Error::new(std::io::ErrorKind::Other, "GitHub token is required"));
+diff --git a/src/services/perplexity_service.rs b/src/services/perplexity_service.rs
+index 2b3f4686..a85cda36 100755
+--- a/src/services/perplexity_service.rs
++++ b/src/services/perplexity_service.rs
+@@ -41,7 +41,7 @@ impl PerplexityService {
+     pub async fn new(settings: Arc<RwLock<Settings>>) -> Result<Self, Box<dyn StdError + Send + Sync>> {
+         let timeout = {
+             let settings_read = settings.read().await;
+-            settings_read.server.perplexity.timeout
++            settings_read.perplexity.timeout
+         };
+ 
+         let client = Client::builder()
+@@ -56,23 +56,23 @@ impl PerplexityService {
+ 
+     pub async fn query(&self, query: &str, conversation_id: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
+         let settings = self.settings.read().await;
+-        let api_url = &settings.server.perplexity.api_url;
++        let api_url = &settings.perplexity.api_url;
+         info!("Sending query to Perplexity API: {}", api_url);
+ 
+         let request = QueryRequest {
+             query: query.to_string(),
+             conversation_id: conversation_id.to_string(),
+-            model: settings.server.perplexity.model.clone(),
+-            max_tokens: settings.server.perplexity.max_tokens,
+-            temperature: settings.server.perplexity.temperature,
+-            top_p: settings.server.perplexity.top_p,
+-            presence_penalty: settings.server.perplexity.presence_penalty,
+-            frequency_penalty: settings.server.perplexity.frequency_penalty,
++            model: settings.perplexity.model.clone(),
++            max_tokens: settings.perplexity.max_tokens,
++            temperature: settings.perplexity.temperature,
++            top_p: settings.perplexity.top_p,
++            presence_penalty: settings.perplexity.presence_penalty,
++            frequency_penalty: settings.perplexity.frequency_penalty,
+         };
+ 
+         let response = self.client
+             .post(api_url)
+-            .header("Authorization", format!("Bearer {}", settings.server.perplexity.api_key))
++            .header("Authorization", format!("Bearer {}", settings.perplexity.api_key))
+             .json(&request)
+             .send()
+             .await?;
+@@ -97,12 +97,12 @@ impl PerplexityService {
+         let content = fs::read_to_string(&file_path)?;
+         let settings = self.settings.read().await;
+         
+-        let api_url = &settings.server.perplexity.api_url;
++        let api_url = &settings.perplexity.api_url;
+         info!("Sending request to Perplexity API: {}", api_url);
+ 
+         let response = self.client
+             .post(api_url)
+-            .header("Authorization", format!("Bearer {}", settings.server.perplexity.api_key))
++            .header("Authorization", format!("Bearer {}", settings.perplexity.api_key))
+             .json(&content)
+             .send()
+             .await?;
+diff --git a/src/services/ragflow_service.rs b/src/services/ragflow_service.rs
+index f51aab0d..fe25167c 100755
+--- a/src/services/ragflow_service.rs
++++ b/src/services/ragflow_service.rs
+@@ -54,8 +54,8 @@ impl RAGFlowService {
+ 
+         Ok(RAGFlowService {
+             client,
+-            api_key: settings.server.ragflow.api_key.clone(),
+-            base_url: settings.server.ragflow.api_base_url.clone(),
++            api_key: settings.ragflow.api_key.clone(),
++            base_url: settings.ragflow.api_base_url.clone(),
+         })
+     }
+ 
+diff --git a/src/services/speech_service.rs b/src/services/speech_service.rs
+index b1d44891..c62bfc98 100755
+--- a/src/services/speech_service.rs
++++ b/src/services/speech_service.rs
+@@ -65,7 +65,7 @@ impl SpeechService {
+                             
+                             let request = match Request::builder()
+                                 .uri(url.as_str())
+-                                .header("Authorization", format!("Bearer {}", settings.server.openai.api_key))
++                                .header("Authorization", format!("Bearer {}", settings.openai.api_key))
+                                 .header("OpenAI-Beta", "realtime=v1")
+                                 .header("Content-Type", "application/json")
+                                 .header("User-Agent", "WebXR Graph")

@@ -1,5 +1,5 @@
 use crate::config::Settings;
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpResponse, error::ErrorInternalServerError, Error, Result};
 use log::{error, info, debug};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -141,40 +141,21 @@ fn update_setting_value(settings: &mut Settings, category: &str, setting: &str, 
 fn get_category_settings_value(settings: &Settings, category: &str) -> Result<Value, String> {
     debug!("Getting settings for category: {}", category);
     let value = match category {
-        "nodes" => serde_json::to_value(&settings.nodes)
-            .map_err(|e| format!("Failed to serialize node settings: {}", e))?,
-        "edges" => serde_json::to_value(&settings.edges)
-            .map_err(|e| format!("Failed to serialize edge settings: {}", e))?,
-        "rendering" => serde_json::to_value(&settings.rendering)
-            .map_err(|e| format!("Failed to serialize rendering settings: {}", e))?,
-        "labels" => serde_json::to_value(&settings.labels)
-            .map_err(|e| format!("Failed to serialize labels settings: {}", e))?,
-        "bloom" => serde_json::to_value(&settings.bloom)
-            .map_err(|e| format!("Failed to serialize bloom settings: {}", e))?,
-        "animations" => serde_json::to_value(&settings.animations)
-            .map_err(|e| format!("Failed to serialize animations settings: {}", e))?,
-        "ar" => serde_json::to_value(&settings.ar)
-            .map_err(|e| format!("Failed to serialize ar settings: {}", e))?,
-        "audio" => serde_json::to_value(&settings.audio)
-            .map_err(|e| format!("Failed to serialize audio settings: {}", e))?,
-        "physics" => serde_json::to_value(&settings.physics)
-            .map_err(|e| format!("Failed to serialize physics settings: {}", e))?,
-        "client_debug" => serde_json::to_value(&settings.client_debug)
-            .map_err(|e| format!("Failed to serialize client debug settings: {}", e))?,
-        "server_debug" => serde_json::to_value(&settings.server_debug)
-            .map_err(|e| format!("Failed to serialize server debug settings: {}", e))?,
-        "security" => serde_json::to_value(&settings.security)
-            .map_err(|e| format!("Failed to serialize security settings: {}", e))?,
-        "websocket" => serde_json::to_value(&settings.websocket)
-            .map_err(|e| format!("Failed to serialize websocket settings: {}", e))?,
-        "network" => serde_json::to_value(&settings.network)
-            .map_err(|e| format!("Failed to serialize network settings: {}", e))?,
-        "default" => serde_json::to_value(&settings.default)
-            .map_err(|e| format!("Failed to serialize default settings: {}", e))?,
-        "github" => serde_json::to_value(&settings.github)
-            .map_err(|e| format!("Failed to serialize github settings: {}", e))?,
+        "nodes" => serde_json::to_value(&settings.nodes),
+        "edges" => serde_json::to_value(&settings.edges),
+        "physics" => serde_json::to_value(&settings.physics),
+        "rendering" => serde_json::to_value(&settings.rendering),
+        "animations" => serde_json::to_value(&settings.animations),
+        "labels" => serde_json::to_value(&settings.labels),
+        "bloom" => serde_json::to_value(&settings.bloom),
+        "hologram" => serde_json::to_value(&settings.hologram),
+        "network" => serde_json::to_value(&settings.network),
+        "websocket" => serde_json::to_value(&settings.websocket),
+        "security" => serde_json::to_value(&settings.security),
+        "debug" => serde_json::to_value(&settings.debug),
         _ => return Err(format!("Invalid category: {}", category)),
-    };
+    }.map_err(|e| format!("Failed to serialize {} settings: {}", category, e))?;
+    
     debug!("Successfully retrieved settings for category: {}", category);
     Ok(value)
 }
@@ -270,8 +251,8 @@ pub async fn get_category_settings(
     path: web::Path<String>,
 ) -> HttpResponse {
     let settings_read = settings.read().await;
-    let debug_enabled = settings_read.server_debug.enabled;
-    let log_json = debug_enabled && settings_read.server_debug.log_full_json;
+    let debug_enabled = settings_read.debug.enabled;
+    let log_json = debug_enabled && settings_read.debug.log_full_json;
     
     let category = path.into_inner();
     match get_category_settings_value(&settings_read, &category) {
@@ -314,6 +295,31 @@ pub async fn get_visualization_settings(
     
     let settings = app_state.settings.read().await;
     Ok(HttpResponse::Ok().json(&*settings))
+}
+
+pub async fn get_settings_category(
+    category: web::Path<String>,
+    app_state: web::Data<AppState>,
+) -> Result<HttpResponse, Error> {
+    let settings = app_state.settings.read().await;
+    
+    let value = match category.as_str() {
+        "nodes" => serde_json::to_value(&settings.nodes),
+        "edges" => serde_json::to_value(&settings.edges),
+        "physics" => serde_json::to_value(&settings.physics),
+        "rendering" => serde_json::to_value(&settings.rendering),
+        "animations" => serde_json::to_value(&settings.animations),
+        "labels" => serde_json::to_value(&settings.labels),
+        "bloom" => serde_json::to_value(&settings.bloom),
+        "hologram" => serde_json::to_value(&settings.hologram),
+        "network" => serde_json::to_value(&settings.network),
+        "websocket" => serde_json::to_value(&settings.websocket),
+        "security" => serde_json::to_value(&settings.security),
+        "debug" => serde_json::to_value(&settings.debug),
+        _ => return Ok(HttpResponse::NotFound().finish()),
+    }.map_err(ErrorInternalServerError)?;
+
+    Ok(HttpResponse::Ok().json(value))
 }
 
 fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {

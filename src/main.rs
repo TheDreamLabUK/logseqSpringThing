@@ -4,7 +4,6 @@ use webxr::{
         api_handler,
         health_handler,
         pages_handler,
-        settings_handler,
         socket_flow_handler::socket_flow_handler,
     },
     RealGitHubService,
@@ -44,21 +43,21 @@ async fn main() -> std::io::Result<()> {
     // Initialize logging with settings-based configuration
     let log_config = {
         let settings_read = settings.read().await;
-        let file_level = if settings_read.server_debug.enabled { 
+        let file_level = if settings_read.debug.enabled { 
             "debug" 
         } else { 
-            &settings_read.default.log_level 
+            &settings_read.debug.log_level 
         };
         
-        let console_level = if settings_read.server_debug.enable_websocket_debug {
+        let console_level = if settings_read.debug.enable_websocket_debug {
             "debug"
         } else {
-            &settings_read.default.log_level
+            &settings_read.debug.log_level
         };
         
         LogConfig::new(
             file_level,
-            console_level
+            console_level,
         )
     };
 

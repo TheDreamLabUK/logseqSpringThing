@@ -1,44 +1,40 @@
 use serde::{Deserialize, Serialize};
 use config::{ConfigBuilder, ConfigError, Environment, File};
-use log::{debug, error};
+use log::debug;
 use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct Settings {
-    // UI/Rendering settings from settings.toml
-    #[serde(default)]
-    pub animations: AnimationSettings,
-    #[serde(default)]
-    pub ar: ARSettings,
-    #[serde(default)]
-    pub audio: AudioSettings,
-    #[serde(default)]
-    pub bloom: BloomSettings,
-    #[serde(default)]
-    pub client_debug: DebugSettings,
-    #[serde(default)]
-    pub default: DefaultSettings,
-    #[serde(default)]
-    pub edges: EdgeSettings,
-    #[serde(default)]
-    pub labels: LabelSettings,
-    #[serde(default)]
-    pub network: NetworkSettings,
+    // Core visualization settings (shared with client)
     #[serde(default)]
     pub nodes: NodeSettings,
+    #[serde(default)]
+    pub edges: EdgeSettings,
     #[serde(default)]
     pub physics: PhysicsSettings,
     #[serde(default)]
     pub rendering: RenderingSettings,
     #[serde(default)]
-    pub security: SecuritySettings,
+    pub animations: AnimationSettings,
     #[serde(default)]
-    pub server_debug: DebugSettings,
+    pub labels: LabelSettings,
+    #[serde(default)]
+    pub bloom: BloomSettings,
+    #[serde(default)]
+    pub hologram: HologramSettings,
+
+    // System settings
+    #[serde(default)]
+    pub network: NetworkSettings,
     #[serde(default)]
     pub websocket: WebSocketSettings,
-    
-    // Service settings from .env (server-side only)
+    #[serde(default)]
+    pub security: SecuritySettings,
+    #[serde(default)]
+    pub debug: DebugSettings,
+
+    // Server-only settings
     #[serde(default)]
     pub github: GitHubSettings,
     #[serde(default)]
@@ -47,8 +43,6 @@ pub struct Settings {
     pub perplexity: PerplexitySettings,
     #[serde(default)]
     pub openai: OpenAISettings,
-    #[serde(default)]
-    pub hologram: HologramSettings,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -59,6 +53,8 @@ pub struct DebugSettings {
     pub enabled: bool,
     pub log_binary_headers: bool,
     pub log_full_json: bool,
+    pub log_level: String,
+    pub log_format: String,
 }
 
 impl Default for DebugSettings {
@@ -69,44 +65,8 @@ impl Default for DebugSettings {
             enabled: false,
             log_binary_headers: false,
             log_full_json: false,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-#[serde(default)]
-pub struct DefaultSettings {
-    pub api_client_timeout: u64,
-    pub enable_metrics: bool,
-    pub enable_request_logging: bool,
-    pub log_format: String,
-    #[serde(default = "default_log_level")]
-    pub log_level: String,
-    pub max_concurrent_requests: u32,
-    pub max_payload_size: usize,
-    pub max_retries: u32,
-    pub metrics_port: u16,
-    pub retry_delay: u32,
-}
-
-fn default_log_level() -> String {
-    "info".to_string()
-}
-
-impl Default for DefaultSettings {
-    fn default() -> Self {
-        Self {
-            api_client_timeout: 30,
-            enable_metrics: true,
-            enable_request_logging: true,
+            log_level: "info".to_string(),
             log_format: "json".to_string(),
-            log_level: default_log_level(),
-            max_concurrent_requests: 5,
-            max_payload_size: 5242880,
-            max_retries: 3,
-            metrics_port: 9090,
-            retry_delay: 5,
         }
     }
 }
@@ -126,6 +86,12 @@ pub struct NetworkSettings {
     pub rate_limit_requests: u32,
     pub rate_limit_window: u32,
     pub tunnel_id: String,
+    pub api_client_timeout: u64,
+    pub enable_metrics: bool,
+    pub max_concurrent_requests: u32,
+    pub max_retries: u32,
+    pub metrics_port: u16,
+    pub retry_delay: u32,
 }
 
 impl Default for NetworkSettings {
@@ -142,6 +108,12 @@ impl Default for NetworkSettings {
             rate_limit_requests: 100,
             rate_limit_window: 60,
             tunnel_id: "dummy".to_string(),
+            api_client_timeout: 30,
+            enable_metrics: true,
+            max_concurrent_requests: 5,
+            max_retries: 3,
+            metrics_port: 9090,
+            retry_delay: 5,
         }
     }
 }
@@ -252,9 +224,6 @@ pub struct AnimationSettings {
     pub motion_blur_strength: f32,
     pub selection_wave_enabled: bool,
     pub pulse_enabled: bool,
-    pub ripple_enabled: bool,
-    pub edge_animation_enabled: bool,
-    pub flow_particles_enabled: bool,
     pub pulse_speed: f32,
     pub pulse_strength: f32,
     pub wave_speed: f32,
@@ -268,9 +237,6 @@ impl Default for AnimationSettings {
             motion_blur_strength: 0.4,
             selection_wave_enabled: false,
             pulse_enabled: false,
-            ripple_enabled: false,
-            edge_animation_enabled: false,
-            flow_particles_enabled: false,
             pulse_speed: 1.0,
             pulse_strength: 1.0,
             wave_speed: 1.0,
@@ -397,23 +363,23 @@ impl Default for BloomSettings {
 #[serde(rename_all = "snake_case")]
 #[serde(default)]
 pub struct EdgeSettings {
+    pub arrow_size: f32,
+    pub base_width: f32,
     pub color: String,
     pub enable_arrows: bool,
     pub opacity: f32,
     pub width_range: Vec<f32>,
-    pub arrow_size: f32,
-    pub base_width: f32,
 }
 
 impl Default for EdgeSettings {
     fn default() -> Self {
         Self {
+            arrow_size: 0.15,
+            base_width: 2.0,
             color: "#917f18".to_string(),
             enable_arrows: false,
             opacity: 0.6,
             width_range: vec![1.0, 3.0],
-            arrow_size: 0.15,
-            base_width: 2.0,
         }
     }
 }
@@ -443,17 +409,15 @@ impl Default for LabelSettings {
 pub struct NodeSettings {
     pub base_color: String,
     pub base_size: f32,
-    pub enable_hover_effect: bool,
-    pub enable_instancing: bool,
-    pub highlight_color: String,
-    pub highlight_duration: u32,
-    pub hover_scale: f32,
-    pub material_type: String,
     pub metalness: f32,
     pub opacity: f32,
     pub roughness: f32,
-    pub size_by_connections: bool,
     pub size_range: Vec<f32>,
+    pub quality: String,
+    pub enable_instancing: bool,
+    pub enable_hologram: bool,
+    pub enable_metadata_shape: bool,
+    pub enable_metadata_visualization: bool,
 }
 
 impl Default for NodeSettings {
@@ -461,17 +425,15 @@ impl Default for NodeSettings {
         Self {
             base_color: "#c3ab6f".to_string(),
             base_size: 1.0,
-            enable_hover_effect: false,
-            enable_instancing: false,
-            highlight_color: "#822626".to_string(),
-            highlight_duration: 300,
-            hover_scale: 1.2,
-            material_type: "basic".to_string(),
             metalness: 0.3,
             opacity: 0.4,
             roughness: 0.35,
-            size_by_connections: true,
-            size_range: vec![1.0, 10.0],
+            size_range: vec![1.0, 5.0],
+            quality: "medium".to_string(),
+            enable_instancing: false,
+            enable_hologram: false,
+            enable_metadata_shape: false,
+            enable_metadata_visualization: false,
         }
     }
 }
@@ -654,7 +616,6 @@ impl Settings {
         // Load .env file first
         dotenvy::dotenv().ok();
         
-        // Use environment variable or default to /app/settings.toml
         let settings_path = std::env::var("SETTINGS_FILE_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("/app/settings.toml"));
@@ -672,117 +633,23 @@ impl Settings {
             .build()?;
 
         debug!("Deserializing settings");
-        let mut settings: Settings = match config.try_deserialize() {
-            Ok(s) => {
-                debug!("Successfully deserialized settings");
-                s
-            },
-            Err(e) => {
-                error!("Failed to deserialize settings: {}", e);
-                return Err(e);
-            }
-        };
+        let mut settings: Settings = config.try_deserialize()?;
         
-        debug!("Checking for environment variables");
-        
-        // Network settings from environment variables
+        // Load environment variables for server settings
+        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+            settings.github.token = token;
+        }
         if let Ok(domain) = std::env::var("DOMAIN") {
             settings.network.domain = domain;
         }
         if let Ok(port) = std::env::var("PORT") {
-            settings.network.port = port.parse().unwrap_or(4000);
+            settings.network.port = port.parse().unwrap_or(3001);
         }
         if let Ok(bind_address) = std::env::var("BIND_ADDRESS") {
             settings.network.bind_address = bind_address;
         }
         if let Ok(tunnel_id) = std::env::var("TUNNEL_ID") {
             settings.network.tunnel_id = tunnel_id;
-        }
-        if let Ok(enable_http2) = std::env::var("HTTP2_ENABLED") {
-            settings.network.enable_http2 = enable_http2.parse().unwrap_or(true);
-        }
-
-        // GitHub settings from environment variables
-        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            settings.github.token = token;
-        }
-        if let Ok(owner) = std::env::var("GITHUB_OWNER") {
-            settings.github.owner = owner;
-        }
-        if let Ok(repo) = std::env::var("GITHUB_REPO") {
-            settings.github.repo = repo;
-        }
-        if let Ok(path) = std::env::var("GITHUB_BASE_PATH") {
-            settings.github.base_path = path.trim_matches('/').to_string();
-        }
-        if let Ok(version) = std::env::var("GITHUB_VERSION") {
-            settings.github.version = version;
-        }
-        if let Ok(rate_limit) = std::env::var("GITHUB_RATE_LIMIT") {
-            settings.github.rate_limit = rate_limit.parse().unwrap_or(true);
-        }
-
-        // RAGFlow settings from environment variables
-        if let Ok(api_key) = std::env::var("RAGFLOW_API_KEY") {
-            settings.ragflow.api_key = api_key;
-        }
-        if let Ok(base_url) = std::env::var("RAGFLOW_API_BASE_URL") {
-            settings.ragflow.api_base_url = base_url;
-        }
-        if let Ok(timeout) = std::env::var("RAGFLOW_TIMEOUT") {
-            settings.ragflow.timeout = timeout.parse().unwrap_or(30);
-        }
-        if let Ok(max_retries) = std::env::var("RAGFLOW_MAX_RETRIES") {
-            settings.ragflow.max_retries = max_retries.parse().unwrap_or(3);
-        }
-        if let Ok(chat_id) = std::env::var("RAGFLOW_CHAT_ID") {
-            settings.ragflow.chat_id = chat_id;
-        }
-
-        // Perplexity settings from environment variables
-        if let Ok(api_key) = std::env::var("PERPLEXITY_API_KEY") {
-            settings.perplexity.api_key = api_key;
-        }
-        if let Ok(api_url) = std::env::var("PERPLEXITY_API_URL") {
-            settings.perplexity.api_url = api_url;
-        }
-        if let Ok(model) = std::env::var("PERPLEXITY_MODEL") {
-            settings.perplexity.model = model;
-        }
-        if let Ok(max_tokens) = std::env::var("PERPLEXITY_MAX_TOKENS") {
-            settings.perplexity.max_tokens = max_tokens.parse().unwrap_or(4096);
-        }
-        if let Ok(temperature) = std::env::var("PERPLEXITY_TEMPERATURE") {
-            settings.perplexity.temperature = temperature.parse().unwrap_or(0.5);
-        }
-        if let Ok(top_p) = std::env::var("PERPLEXITY_TOP_P") {
-            settings.perplexity.top_p = top_p.parse().unwrap_or(0.9);
-        }
-        if let Ok(presence_penalty) = std::env::var("PERPLEXITY_PRESENCE_PENALTY") {
-            settings.perplexity.presence_penalty = presence_penalty.parse().unwrap_or(0.0);
-        }
-        if let Ok(frequency_penalty) = std::env::var("PERPLEXITY_FREQUENCY_PENALTY") {
-            settings.perplexity.frequency_penalty = frequency_penalty.parse().unwrap_or(1.0);
-        }
-        if let Ok(timeout) = std::env::var("PERPLEXITY_TIMEOUT") {
-            settings.perplexity.timeout = timeout.parse().unwrap_or(30);
-        }
-        if let Ok(rate_limit) = std::env::var("PERPLEXITY_RATE_LIMIT") {
-            settings.perplexity.rate_limit = rate_limit.parse().unwrap_or(100);
-        }
-
-        // OpenAI settings from environment variables
-        if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
-            settings.openai.api_key = api_key;
-        }
-        if let Ok(base_url) = std::env::var("OPENAI_BASE_URL") {
-            settings.openai.base_url = base_url;
-        }
-        if let Ok(timeout) = std::env::var("OPENAI_TIMEOUT") {
-            settings.openai.timeout = timeout.parse().unwrap_or(30);
-        }
-        if let Ok(rate_limit) = std::env::var("OPENAI_RATE_LIMIT") {
-            settings.openai.rate_limit = rate_limit.parse().unwrap_or(100);
         }
 
         debug!("Successfully loaded settings");
@@ -806,26 +673,22 @@ impl Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            animations: AnimationSettings::default(),
-            ar: ARSettings::default(),
-            audio: AudioSettings::default(),
-            bloom: BloomSettings::default(),
-            client_debug: DebugSettings::default(),
-            default: DefaultSettings::default(),
-            edges: EdgeSettings::default(),
-            labels: LabelSettings::default(),
             nodes: NodeSettings::default(),
+            edges: EdgeSettings::default(),
             physics: PhysicsSettings::default(),
             rendering: RenderingSettings::default(),
-            security: SecuritySettings::default(),
-            server_debug: DebugSettings::default(),
-            websocket: WebSocketSettings::default(),
+            animations: AnimationSettings::default(),
+            labels: LabelSettings::default(),
+            bloom: BloomSettings::default(),
+            hologram: HologramSettings::default(),
             network: NetworkSettings::default(),
+            websocket: WebSocketSettings::default(),
+            security: SecuritySettings::default(),
+            debug: DebugSettings::default(),
             github: GitHubSettings::default(),
             ragflow: RagFlowSettings::default(),
             perplexity: PerplexitySettings::default(),
             openai: OpenAISettings::default(),
-            hologram: HologramSettings::default(),
         }
     }
 }
