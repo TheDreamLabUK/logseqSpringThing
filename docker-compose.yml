@@ -21,6 +21,8 @@ services:
             - driver: nvidia
               device_ids: ['0']  # Explicitly use GPU 0
               capabilities: [gpu]
+    expose:
+      - "4000"
     ports:
       - "4000:4000"  # Map container nginx port 4000 to host port 4000
     environment:
