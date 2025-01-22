@@ -35,27 +35,21 @@ export type ApiEndpoints = typeof API_ENDPOINTS[keyof typeof API_ENDPOINTS];
 
 // Settings categories matching server's snake_case
 export const SETTINGS_CATEGORIES = {
-    // System settings
-    NETWORK: 'system.network',
-    WEBSOCKET: 'system.websocket',
-    SECURITY: 'system.security',
-    DEBUG: 'system.debug',
-    
     // Visualization settings
-    ANIMATIONS: 'visualization.animations',
-    AR: 'visualization.ar',
-    AUDIO: 'visualization.audio',
-    BLOOM: 'visualization.bloom',
-    EDGES: 'visualization.edges',
-    HOLOGRAM: 'visualization.hologram',
-    LABELS: 'visualization.labels',
-    NODES: 'visualization.nodes',
-    PHYSICS: 'visualization.physics',
-    RENDERING: 'visualization.rendering',
+    NODES: 'nodes',
+    EDGES: 'edges',
+    PHYSICS: 'physics',
+    RENDERING: 'rendering',
+    ANIMATIONS: 'animations',
+    LABELS: 'labels',
+    BLOOM: 'bloom',
+    HOLOGRAM: 'hologram',
     
-    // Default settings
-    DEFAULT: 'default'
-};
+    // System settings
+    NETWORK: 'network',
+    WEBSOCKET: 'websocket',
+    DEBUG: 'debug',
+} as const;
 
 // WebSocket configuration
 export const WS_MESSAGE_QUEUE_SIZE = 1000;

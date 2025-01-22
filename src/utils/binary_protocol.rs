@@ -1,4 +1,5 @@
 use byteorder::{ByteOrder, LittleEndian};
+use glam::Vec3;
 
 #[derive(Debug)]
 pub enum MessageType {
@@ -20,23 +21,20 @@ impl TryFrom<u32> for MessageType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NodeData {
-    pub id: String,
-    pub position: [f32; 3],
-    pub velocity: [f32; 3],
+    pub id: u32,
+    pub position: Vec3,  // 12 bytes (3 × f32)
+    pub velocity: Vec3,  // 12 bytes (3 × f32)
 }
+// Total: 28 bytes per node (4 byte header + 24 bytes data)
 
 pub fn encode_node_data(nodes: &[NodeData], msg_type: MessageType) -> Vec<u8> {
     // Calculate total size needed
     let mut total_size = 8; // 4 bytes for msg_type + 4 bytes for node count
-    for node in nodes {
-        total_size += 4 + node.id.len() + 24; // 4 bytes for id length + id bytes + 24 bytes for position and velocity
-    }
+    total_size += nodes.len() * 28; // 4 bytes for id + 24 bytes for position and velocity
     
     let mut buffer = vec![0u8; total_size];
-    
-    // Write header (message type)
     let mut offset = 0;
     
     // Write message type
@@ -47,24 +45,20 @@ pub fn encode_node_data(nodes: &[NodeData], msg_type: MessageType) -> Vec<u8> {
     LittleEndian::write_u32(&mut buffer[offset..offset + 4], nodes.len() as u32);
     offset += 4;
     
-    for node in nodes {
-        // Write node ID length
-        LittleEndian::write_u32(&mut buffer[offset..offset + 4], node.id.len() as u32);
+    for node in nodes.iter() {
+        // Write node ID
+        LittleEndian::write_u32(&mut buffer[offset..offset + 4], node.id);
         offset += 4;
         
-        // Write node ID content
-        buffer[offset..offset + node.id.len()].copy_from_slice(node.id.as_bytes());
-        offset += node.id.len();
-        
         // Write position
-        for &pos in &node.position {
-            LittleEndian::write_f32(&mut buffer[offset..offset + 4], pos);
+        for component in [node.position.x, node.position.y, node.position.z].iter() {
+            LittleEndian::write_f32(&mut buffer[offset..offset + 4], *component);
             offset += 4;
         }
         
         // Write velocity
-        for &vel in &node.velocity {
-            LittleEndian::write_f32(&mut buffer[offset..offset + 4], vel);
+        for component in [node.velocity.x, node.velocity.y, node.velocity.z].iter() {
+            LittleEndian::write_f32(&mut buffer[offset..offset + 4], *component);
             offset += 4;
         }
     }
@@ -92,44 +86,30 @@ pub fn decode_node_data(data: &[u8]) -> Result<(MessageType, Vec<NodeData>), Str
     let mut nodes = Vec::with_capacity(node_count);
     
     for _ in 0..node_count {
-        // Check if we have enough bytes for ID length
-        if offset + 4 > data.len() {
-            return Err("Unexpected end of data while reading ID length".into());
-        }
-        
-        // Read node ID length
-        let id_len = LittleEndian::read_u32(&data[offset..offset + 4]) as usize;
-        offset += 4;
-        
-        // Check if we have enough bytes for ID content
-        if offset + id_len > data.len() {
-            return Err("Unexpected end of data while reading ID content".into());
+        // Check if we have enough bytes for the node (28 bytes: 4 for id + 24 for position/velocity)
+        if offset + 28 > data.len() {
+            return Err("Unexpected end of data while reading node".into());
         }
         
         // Read node ID
-        let id_bytes = &data[offset..offset + id_len];
-        let id = String::from_utf8(id_bytes.to_vec())
-            .map_err(|e| format!("Invalid UTF-8 in node ID: {}", e))?;
-        offset += id_len;
-        
-        // Check if we have enough bytes for position and velocity (24 bytes)
-        if offset + 24 > data.len() {
-            return Err("Unexpected end of data while reading position/velocity".into());
-        }
+        let id = LittleEndian::read_u32(&data[offset..offset + 4]);
+        offset += 4;
         
         // Read position
-        let mut position = [0.0; 3];
-        for pos in &mut position {
-            *pos = LittleEndian::read_f32(&data[offset..offset + 4]);
-            offset += 4;
-        }
+        let position = Vec3::new(
+            LittleEndian::read_f32(&data[offset..offset + 4]),
+            LittleEndian::read_f32(&data[offset + 4..offset + 8]),
+            LittleEndian::read_f32(&data[offset + 8..offset + 12])
+        );
+        offset += 12;
         
         // Read velocity
-        let mut velocity = [0.0; 3];
-        for vel in &mut velocity {
-            *vel = LittleEndian::read_f32(&data[offset..offset + 4]);
-            offset += 4;
-        }
+        let velocity = Vec3::new(
+            LittleEndian::read_f32(&data[offset..offset + 4]),
+            LittleEndian::read_f32(&data[offset + 4..offset + 8]),
+            LittleEndian::read_f32(&data[offset + 8..offset + 12])
+        );
+        offset += 12;
         
         nodes.push(NodeData {
             id,
@@ -143,9 +123,7 @@ pub fn decode_node_data(data: &[u8]) -> Result<(MessageType, Vec<NodeData>), Str
 
 pub fn calculate_message_size(nodes: &[NodeData]) -> usize {
     let mut size = 8; // 4 bytes for msg_type + 4 bytes for node count
-    for node in nodes {
-        size += 4 + node.id.len() + 24; // 4 bytes for id length + id bytes + 24 bytes for position and velocity
-    }
+    size += nodes.len() * 28; // 28 bytes per node (4 for id + 24 for position/velocity)
     size
 }
 
@@ -157,14 +135,14 @@ mod tests {
     fn test_encode_decode_roundtrip() {
         let nodes = vec![
             NodeData {
-                id: "node1".to_string(),
-                position: [1.0, 2.0, 3.0],
-                velocity: [0.1, 0.2, 0.3],
+                id: 1,
+                position: Vec3::new(1.0, 2.0, 3.0),
+                velocity: Vec3::new(0.1, 0.2, 0.3),
             },
             NodeData {
-                id: "node2".to_string(),
-                position: [4.0, 5.0, 6.0],
-                velocity: [0.4, 0.5, 0.6],
+                id: 2,
+                position: Vec3::new(4.0, 5.0, 6.0),
+                velocity: Vec3::new(0.4, 0.5, 0.6),
             },
         ];
 

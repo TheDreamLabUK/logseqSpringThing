@@ -38,6 +38,7 @@ export class PlatformManager extends BrowserEventEmitter {
   private platform: Platform;
   private capabilities: PlatformCapabilities;
   private initialized: boolean = false;
+  private _isXRMode: boolean = false;
 
   private constructor() {
     super();
@@ -69,7 +70,10 @@ export class PlatformManager extends BrowserEventEmitter {
     
     // Initialize platform with settings
     if (settings.xr?.mode) {
-      this.capabilities.xrSupported = await this.checkXRSupport(settings.xr.mode as XRSessionMode);
+      this._isXRMode = true;
+      this.capabilities.xrSupported = await this.checkXRSupport(
+        settings.xr?.mode as XRSessionMode
+      );
     }
     
     this.initialized = true;
@@ -207,6 +211,15 @@ export class PlatformManager extends BrowserEventEmitter {
     this.removeAllListeners();
     this.initialized = false;
     PlatformManager.instance = null;
+  }
+
+  get isXRMode(): boolean {
+    return this._isXRMode;
+  }
+
+  setXRMode(enabled: boolean): void {
+    this._isXRMode = enabled;
+    this.emit('xrmodechange', enabled);
   }
 }
 

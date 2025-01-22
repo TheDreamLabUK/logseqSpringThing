@@ -102,34 +102,6 @@ export const defaultVisualizationSettings: VisualizationSettings = {
 // Main settings object with all defaults
 export const defaultSettings: Settings = {
     visualization: defaultVisualizationSettings,
-    xr: {
-        mode: 'ar',
-        roomScale: true,
-        spaceType: 'local',
-        quality: 'high',
-        input: 'hands',
-        visuals: {
-            handMeshEnabled: true,
-            handMeshColor: '#ffffff',
-            handMeshOpacity: 0.5,
-            handPointSize: 5,
-            handRayEnabled: true,
-            handRayColor: '#00ff00',
-            handRayWidth: 2,
-            gestureSsmoothing: 0.5
-        },
-        environment: {
-            enableLightEstimation: true,
-            enablePlaneDetection: true,
-            enableSceneUnderstanding: true,
-            planeColor: '#808080',
-            planeOpacity: 0.5,
-            showPlaneOverlay: true,
-            snapToFloor: true
-        },
-        passthrough: false,
-        haptics: true
-    },
     system: {
         network: {
             bindAddress: '127.0.0.1',
@@ -173,5 +145,8 @@ export const defaultSettings: Settings = {
             logBinaryHeaders: true,
             logFullJson: true
         }
+    },
+    xr: {
+        quality: 'medium'
     }
 };

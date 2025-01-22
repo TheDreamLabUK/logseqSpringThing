@@ -6,6 +6,7 @@ use tokio::sync::RwLock;
 use log::{debug, info, warn, error};
 use flate2::{write::ZlibEncoder, read::ZlibDecoder, Compression};
 use std::io::{Write, Read};
+use glam::Vec3;
 
 use crate::app_state::AppState;
 use crate::utils::socket_flow_messages::{PingMessage, PongMessage};
@@ -117,11 +118,19 @@ impl Actor for SocketFlowServer {
                 // Convert to binary protocol NodeData format
                 let nodes: Vec<NodeData> = raw_nodes.into_iter()
                     .map(|node| NodeData {
-                        id: node.id,
-                        position: node.data.position,
-                        velocity: node.data.velocity,
+                        id: node.id.parse().unwrap_or(0),
+                        position: Vec3::new(
+                            node.data.position[0],
+                            node.data.position[1],
+                            node.data.position[2]
+                        ),
+                        velocity: Vec3::new(
+                            node.data.velocity[0],
+                            node.data.velocity[1],
+                            node.data.velocity[2]
+                        ),
                     })
-                    .collect();
+                    .collect::<Vec<_>>();
                 
                 // Only send update if there are nodes
                 if !nodes.is_empty() {
@@ -176,56 +185,19 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 }
             }
             Ok(ws::Message::Binary(data)) => {
-                debug!("[WebSocket] Received binary message of size: {}", data.len());
-                
-                // Try to decompress the data first
-                match self.maybe_decompress(data.to_vec()) {
-                    Ok(decompressed_data) => {
-                        // Decode binary message
-                        match binary_protocol::decode_node_data(&decompressed_data) {
-                            Ok((msg_type, nodes)) => {
-                                match msg_type {
-                                    MessageType::PositionUpdate | MessageType::FullStateUpdate => {
-                                        debug!("[WebSocket] Received {} node updates", nodes.len());
-                                        // Acknowledge receipt with a small response
-                                        let ack = serde_json::json!({
-                                            "type": "update_received",
-                                            "count": nodes.len(),
-                                            "timestamp": chrono::Utc::now().timestamp_millis()
-                                        });
-                                        if let Ok(response) = serde_json::to_string(&ack) {
-                                            ctx.text(response);
-                                        }
-                                    },
-                                    MessageType::VelocityUpdate => {
-                                        debug!("[WebSocket] Received velocity updates for {} nodes", nodes.len());
-                                    }
+                // Only handle position/velocity updates
+                match binary_protocol::decode_node_data(&data) {
+                    Ok((msg_type, nodes)) => {
+                        if nodes.len() <= 2 { // Enforce max 2 nodes per update
+                            match msg_type {
+                                MessageType::PositionUpdate | MessageType::VelocityUpdate => {
+                                    // Process position/velocity updates
                                 }
-                            },
-                            Err(e) => {
-                                error!("[WebSocket] Failed to decode binary message: {}", e);
-                                // Send error message back to client
-                                let error_msg = serde_json::json!({
-                                    "type": "error",
-                                    "message": format!("Failed to decode binary message: {}", e)
-                                });
-                                if let Ok(response) = serde_json::to_string(&error_msg) {
-                                    ctx.text(response);
-                                }
+                                _ => warn!("Unexpected message type")
                             }
                         }
-                    },
-                    Err(e) => {
-                        error!("[WebSocket] Failed to process binary message: {}", e);
-                        // Send error message back to client
-                        let error_msg = serde_json::json!({
-                            "type": "error",
-                            "message": format!("Failed to process binary message: {}", e)
-                        });
-                        if let Ok(response) = serde_json::to_string(&error_msg) {
-                            ctx.text(response);
-                        }
                     }
+                    Err(e) => error!("Failed to decode binary message: {}", e)
                 }
             }
             Ok(ws::Message::Close(reason)) => {

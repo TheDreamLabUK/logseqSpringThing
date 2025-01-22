@@ -74,6 +74,9 @@ web-sys = { version = "0.3", features = [
     "Window"
 ]}
 
+# Added from the code block
+glam = "0.24"
+
 [dev-dependencies]
 tokio-test = "0.4"
 mockall = "0.11"

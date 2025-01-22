@@ -10,47 +10,6 @@ export interface VisualizationSettings {
     rendering: RenderingSettings;
 }
 
-// XR-specific settings
-export interface XRSettings {
-    // Session settings
-    mode: 'ar' | 'vr';
-    roomScale: boolean;
-    spaceType: 'local' | 'bounded' | 'unbounded';
-    quality: 'low' | 'medium' | 'high';
-
-    // Input and interaction
-    input: 'none' | 'controllers' | 'hands';
-
-    // Visual settings
-    visuals: {
-        handMeshEnabled: boolean;
-        handMeshColor: string;
-        handMeshOpacity: number;
-        handPointSize: number;
-        handRayEnabled: boolean;
-        handRayColor: string;
-        handRayWidth: number;
-        gestureSsmoothing: number;
-    };
-
-    // Environment settings
-    environment: {
-        enableLightEstimation: boolean;
-        enablePlaneDetection: boolean;
-        enableSceneUnderstanding: boolean;
-        planeColor: string;
-        planeOpacity: number;
-        showPlaneOverlay: boolean;
-        snapToFloor: boolean;
-    };
-
-    // Passthrough settings
-    passthrough: boolean;
-
-    // Haptics settings
-    haptics: boolean;
-}
-
 // System settings
 export interface SystemSettings {
     network: NetworkSettings;
@@ -205,9 +164,26 @@ export interface DebugSettings {
 
 // Main settings interface
 export interface Settings {
-    visualization: VisualizationSettings;
-    xr: XRSettings;
-    system: SystemSettings;
+    visualization: {
+        nodes: NodeSettings;
+        edges: EdgeSettings;
+        physics: PhysicsSettings;
+        rendering: RenderingSettings;
+        animations: AnimationSettings;
+        labels: LabelSettings;
+        bloom: BloomSettings;
+        hologram: HologramSettings;
+    };
+    system: {
+        network: NetworkSettings;
+        websocket: WebSocketSettings;
+        security: SecuritySettings;
+        debug: DebugSettings;
+    };
+    xr: {
+        mode?: 'ar' | 'vr';
+        quality: 'low' | 'medium' | 'high';
+    };
 }
 
 export * from './settings/base';
