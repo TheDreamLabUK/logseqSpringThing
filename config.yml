@@ -1,19 +1,15 @@
 tunnel: 9a59e21c-7e0d-4cac-8502-59bc66436e0f
-credentials-file: /etc/cloudflared/cert.pem
 
 ingress:
   - hostname: www.visionflow.info
-    service: http://webxr:4000
+    service: http://webxr-client:4000
     originRequest:
+      noTLSVerify: true
       connectTimeout: 30s
       tcpKeepAlive: 30s
       keepAliveTimeout: 2m
       keepAliveConnections: 100
-      noTLSVerify: true
       httpHostHeader: www.visionflow.info
-    config:
-      webSockets: true
-      http2Origin: true
   - service: http_status:404
 
 # Connection settings
@@ -22,7 +18,3 @@ no-autoupdate: true
 
 # Logging settings
 loglevel: debug
-
-# WebSocket specific settings
-warp-routing:
-  enabled: true
