@@ -67,7 +67,7 @@ struct ReferenceInfo {
 
 #[async_trait]
 pub trait GitHubService: Send + Sync {
-    async fn fetch_file_metadata(&self, _skip_debug_filter: bool) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>>;
+    async fn fetch_file_metadata(&self, skip_debug_filter: bool) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>>;
     async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>>;
     async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>>;
     async fn get_file_last_modified(&self, file_path: &str) -> Result<DateTime<Utc>, Box<dyn StdError + Send + Sync>>;
@@ -91,23 +91,15 @@ impl RealGitHubService {
         base_path: String,
         settings: Arc<RwLock<Settings>>,
     ) -> Result<Self, Box<dyn StdError + Send + Sync>> {
-        info!("Creating GitHub service with initial base_path: {}", base_path);
-
         let client = Client::builder()
             .user_agent("rust-github-api")
             .timeout(Duration::from_secs(30))
             .build()?;
 
-        // Ensure base_path is set to mainKnowledgeGraph/pages if empty
-        let base_path = if base_path.trim().is_empty() {
-            info!("Base path was empty, using default: mainKnowledgeGraph/pages");
-            "mainKnowledgeGraph/pages".to_string()
-        } else {
-            info!("Using provided base path: {}", base_path);
-            base_path.trim_matches('/').to_string()
-        };
+        // Trim any leading/trailing slashes from base_path
+        let base_path = base_path.trim_matches('/').to_string();
 
-        info!("Initialized GitHub service with base_path: {}", base_path);
+        debug!("Initializing GitHub service with base_path: {}", base_path);
 
         Ok(Self {
             client,
@@ -137,12 +129,10 @@ impl RealGitHubService {
 
     fn get_api_path(&self) -> String {
         // For API requests, always include the base path
-        // Ensure we don't have double slashes but maintain the path structure
-        let trimmed_path = self.base_path.trim_matches('/');
-        if trimmed_path.is_empty() {
-            String::new()
+        if !self.base_path.is_empty() {
+            self.base_path.trim_matches('/').to_string()
         } else {
-            trimmed_path.to_string()
+            String::new()
         }
     }
 }
@@ -150,110 +140,24 @@ impl RealGitHubService {
 #[async_trait]
 impl GitHubService for RealGitHubService {
     async fn fetch_files(&self, _path: &str) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        // Always use the base_path from settings
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/contents/{}",
-            self.owner,
-            self.repo,
-            self.base_path.trim_matches('/')  // Always use base_path
-        );
-        
-        info!("GitHub API Request: URL={}", url);
-
-        let response = self.client.get(&url)
-            .header("Authorization", format!("Bearer {}", self.token))
-            .header("Accept", "application/vnd.github+json")
-            .send()
-            .await?;
-
-        let status = response.status();
-        let headers = response.headers().clone();
-        
-        info!("GitHub API Response: Status={}, Headers={:?}", status, headers);
-
-        let body = response.text().await?;
-        info!("GitHub API Response Body (first 1000 chars): {}", &body[..body.len().min(1000)]);
-
-        if !status.is_success() {
-            let error_msg = match serde_json::from_str::<serde_json::Value>(&body) {
-                Ok(error_json) => {
-                    let msg = error_json["message"].as_str().unwrap_or("Unknown error");
-                    format!("GitHub API error: {} - {}", status, msg)
-                },
-                Err(_) => format!("GitHub API error: {} - {}", status, body)
-            };
-            error!("{}", error_msg);
-            return Err(error_msg.into());
-        }
-
-        let contents: Vec<serde_json::Value> = match serde_json::from_str(&body) {
-            Ok(parsed) => parsed,
-            Err(e) => {
-                error!("Failed to parse GitHub API response: {}", e);
-                error!("Response body: {}", body);
-                return Err(Box::new(e));
-            }
-        };
-
-        let settings = self.settings.read().await;
-        let debug_enabled = settings.debug.enabled;
-        drop(settings);
-        
-        let mut markdown_files = Vec::new();
-        
-        for item in contents {
-            if item["type"].as_str().unwrap_or("") == "file" && 
-               item["name"].as_str().unwrap_or("").ends_with(".md") {
-                let name = item["name"].as_str().unwrap_or("").to_string();
-                
-                // In debug mode, only process Debug Test Page.md and debug linked node.md
-                if debug_enabled && !name.contains("Debug Test Page") && !name.contains("debug linked node") {
-                    continue;
-                }
-
-                debug!("Processing markdown file: {}", name);
-                
-                let last_modified = match self.get_file_last_modified(&self.get_full_path(&name)).await {
-                    Ok(time) => Some(time),
-                    Err(e) => {
-                        error!("Failed to get last modified time for {}: {}", name, e);
-                        continue;
-                    }
-                };
-                
-                markdown_files.push(GithubFileMetadata {
-                    name,
-                    sha: item["sha"].as_str().unwrap_or("").to_string(),
-                    download_url: item["download_url"].as_str().unwrap_or("").to_string(),
-                    etag: None,
-                    last_checked: Some(Utc::now()),
-                    last_modified,
-                });
-            }
-        }
-
-        if debug_enabled {
-            info!("Debug mode: Processing only debug test files");
-        }
-
-        info!("Found {} markdown files", markdown_files.len());
-        Ok(markdown_files)
+        self.fetch_file_metadata(false).await
     }
 
-    async fn fetch_file_metadata(
-        &self,
-        _skip_debug_filter: bool
-    ) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        // Always use the base_path from settings
+    async fn fetch_file_metadata(&self, skip_debug_filter: bool) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
             self.owner,
             self.repo,
-            self.base_path.trim_matches('/')  // Always use base_path
+            self.get_api_path()
         );
-
-        info!("GitHub API Request: URL={}, Token=gith..., Owner={}, Repo={}, BasePath={}", 
-            url, self.owner, self.repo, self.base_path);
+        
+        info!("GitHub API Request: URL={}, Token={}, Owner={}, Repo={}, BasePath={}", 
+            url, 
+            self.token.chars().take(4).collect::<String>() + "...", 
+            self.owner,
+            self.repo,
+            self.base_path
+        );
 
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
@@ -291,7 +195,7 @@ impl GitHubService for RealGitHubService {
         };
 
         let settings = self.settings.read().await;
-        let debug_enabled = settings.debug.enabled;
+        let debug_enabled = settings.server_debug.enabled;
         drop(settings);
         
         let mut markdown_files = Vec::new();
@@ -301,8 +205,8 @@ impl GitHubService for RealGitHubService {
                item["name"].as_str().unwrap_or("").ends_with(".md") {
                 let name = item["name"].as_str().unwrap_or("").to_string();
                 
-                // In debug mode, only process Debug Test Page.md and debug linked node.md
-                if debug_enabled && !name.contains("Debug Test Page") && !name.contains("debug linked node") {
+                // In debug mode and not skipping filter, only process Debug Test Page.md and debug linked node.md
+                if !skip_debug_filter && debug_enabled && !name.contains("Debug Test Page") && !name.contains("debug linked node") {
                     continue;
                 }
 
@@ -1050,5 +954,204 @@ impl FileService {
     fn count_hyperlinks(content: &str) -> usize {
         let re = Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").unwrap();
         re.find_iter(content).count()
+    }
+}
+use actix_web::{web, Error as ActixError, HttpResponse};
+use serde_json::json;
+use log::{info, debug, error};
+
+use crate::AppState;
+use crate::services::file_service::{FileService, MARKDOWN_DIR};
+use crate::services::graph_service::GraphService;
+
+pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse {
+    info!("Initiating optimized file fetch and processing");
+
+    // Load or create metadata
+    let mut metadata_store = match FileService::load_or_create_metadata() {
+        Ok(store) => store,
+        Err(e) => {
+            error!("Failed to load or create metadata: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Failed to initialize metadata: {}", e)
+            }));
+        }
+    };
+    
+    // Create FileService instance
+    let file_service = FileService::new(state.settings.clone());
+    
+    // Process files with optimized approach
+    match file_service.fetch_and_process_files(&*state.github_service, state.settings.clone(), &mut metadata_store).await {
+        Ok(processed_files) => {
+            let file_names: Vec<String> = processed_files.iter()
+                .map(|pf| pf.file_name.clone())
+                .collect();
+
+            info!("Successfully processed {} public markdown files", processed_files.len());
+
+            // Update metadata store
+            {
+                let mut metadata = state.metadata.write().await;
+                for processed_file in &processed_files {
+                    metadata_store.insert(processed_file.file_name.clone(), processed_file.metadata.clone());
+                    debug!("Updated metadata for: {}", processed_file.file_name);
+                }
+                *metadata = metadata_store.clone();
+            }
+
+            // Save the updated metadata
+            if let Err(e) = FileService::save_metadata(&metadata_store) {
+                error!("Failed to save metadata: {}", e);
+                return HttpResponse::InternalServerError().json(json!({
+                    "status": "error",
+                    "message": format!("Failed to save metadata: {}", e)
+                }));
+            }
+
+            // Update graph with processed files
+            match GraphService::build_graph(&state).await {
+                Ok(graph_data) => {
+                    let mut graph = state.graph_service.graph_data.write().await;
+                    *graph = graph_data.clone();
+                    info!("Graph data structure updated successfully");
+
+                    // Send binary position update to clients
+                    if let Some(gpu) = &state.gpu_compute {
+                        if let Ok(_nodes) = gpu.read().await.get_node_data() {
+                            debug!("GPU node positions updated successfully");
+                        } else {
+                            error!("Failed to get node positions from GPU");
+                        }
+                    }
+
+                    HttpResponse::Ok().json(json!({
+                        "status": "success",
+                        "processed_files": file_names
+                    }))
+                },
+                Err(e) => {
+                    error!("Failed to build graph data: {}", e);
+                    HttpResponse::InternalServerError().json(json!({
+                        "status": "error",
+                        "message": format!("Failed to build graph data: {}", e)
+                    }))
+                }
+            }
+        },
+        Err(e) => {
+            error!("Error processing files: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Error processing files: {}", e)
+            }))
+        }
+    }
+}
+
+pub async fn get_file_content(_state: web::Data<AppState>, file_name: web::Path<String>) -> HttpResponse {
+    // Read file directly from disk
+    let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
+    match std::fs::read_to_string(&file_path) {
+        Ok(content) => HttpResponse::Ok().body(content),
+        Err(e) => {
+            error!("Failed to read file {}: {}", file_name, e);
+            HttpResponse::NotFound().json(json!({
+                "status": "error",
+                "message": format!("File not found or unreadable: {}", file_name)
+            }))
+        }
+    }
+}
+
+pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
+    info!("Manually triggering graph refresh");
+
+    // Load metadata from file
+    let metadata_store = match FileService::load_or_create_metadata() {
+        Ok(store) => store,
+        Err(e) => {
+            error!("Failed to load metadata: {}", e);
+            return HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Failed to load metadata: {}", e)
+            }));
+        }
+    };
+
+    // Build graph directly from metadata
+    match GraphService::build_graph_from_metadata(&metadata_store).await {
+        Ok(graph_data) => {
+            let mut graph = state.graph_service.graph_data.write().await;
+            *graph = graph_data.clone();
+            info!("Graph data structure refreshed successfully");
+
+            // Send binary position update to clients
+            if let Some(gpu) = &state.gpu_compute {
+                if let Ok(_nodes) = gpu.read().await.get_node_data() {
+                    // Note: Socket-flow server will handle broadcasting
+                    debug!("GPU node positions updated successfully");
+                } else {
+                    error!("Failed to get node positions from GPU");
+                }
+            }
+
+            HttpResponse::Ok().json(json!({
+                "status": "success",
+                "message": "Graph refreshed successfully"
+            }))
+        },
+        Err(e) => {
+            error!("Failed to refresh graph data: {}", e);
+            HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Failed to refresh graph data: {}", e)
+            }))
+        }
+    }
+}
+
+pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, ActixError> {
+    // Load metadata from file
+    let metadata_store = match FileService::load_or_create_metadata() {
+        Ok(store) => store,
+        Err(e) => {
+            error!("Failed to load metadata: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Failed to load metadata: {}", e)
+            })));
+        }
+    };
+
+    // Build graph directly from metadata
+    match GraphService::build_graph_from_metadata(&metadata_store).await {
+        Ok(graph) => {
+            // Update graph data
+            *state.graph_service.graph_data.write().await = graph.clone();
+            
+            // Send binary position update to clients
+            if let Some(gpu) = &state.gpu_compute {
+                if let Ok(_nodes) = gpu.read().await.get_node_data() {
+                    // Note: Socket-flow server will handle broadcasting
+                    debug!("GPU node positions updated successfully");
+                } else {
+                    error!("Failed to get node positions from GPU");
+                }
+            }
+            
+            Ok(HttpResponse::Ok().json(json!({
+                "status": "success",
+                "message": "Graph updated successfully"
+            })))
+        },
+        Err(e) => {
+            error!("Failed to build graph: {}", e);
+            Ok(HttpResponse::InternalServerError().json(json!({
+                "status": "error",
+                "message": format!("Failed to build graph: {}", e)
+            })))
+        }
     }
 }

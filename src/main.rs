@@ -87,10 +87,10 @@ async fn main() -> std::io::Result<()> {
     // Initialize services
     let settings_read = settings.read().await;
     let github_service = match RealGitHubService::new(
-        settings.read().await.github.token.clone(),
-        settings.read().await.github.owner.clone(),
-        settings.read().await.github.repo.clone(),
-        settings.read().await.github.base_path.clone(),
+        settings_read.github.token.clone(),
+        settings_read.github.owner.clone(),
+        settings_read.github.repo.clone(),
+        settings_read.github.base_path.clone(),
         settings.clone(),
     ) {
         Ok(service) => Arc::new(service),
@@ -98,10 +98,10 @@ async fn main() -> std::io::Result<()> {
     };
 
     let github_pr_service: Arc<RealGitHubPRService> = match RealGitHubPRService::new(
-        (*settings_read).github.token.clone(),
-        (*settings_read).github.owner.clone(),
-        (*settings_read).github.repo.clone(),
-        (*settings_read).github.base_path.clone()
+        settings_read.github.token.clone(),
+        settings_read.github.owner.clone(),
+        settings_read.github.repo.clone(),
+        settings_read.github.base_path.clone()
     ) {
         Ok(service) => Arc::new(service),
         Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))

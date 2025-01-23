@@ -33,13 +33,13 @@ repulsion_strength = 1500.0
 spring_strength = 0.018
 
 [rendering]
-ambient_light_intensity = 0.7
+ambient_light_intensity = 0.3
 background_color = "#000000"
 directional_light_intensity = 1.0
 enable_ambient_occlusion = false
-enable_antialiasing = true
+enable_antialiasing = false
 enable_shadows = false
-environment_intensity = 1.2
+environment_intensity = 0.6
 
 [animations]
 enable_motion_blur = false
@@ -127,11 +127,11 @@ enable_request_validation = true
 session_timeout = 3600
 
 [debug]
-enable_data_debug = false
+enable_data_debug = true
 enable_websocket_debug = false
-enabled = false
-log_binary_headers = false
-log_full_json = false
+enabled = true
+log_binary_headers = true
+log_full_json = true
 log_level = "info"
 log_format = "json"
 

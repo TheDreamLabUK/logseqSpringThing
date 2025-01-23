@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use config::{ConfigBuilder, ConfigError, Environment, File};
-use log::debug;
+use log::{debug, info};
 use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -118,7 +118,7 @@ impl Default for NetworkSettings {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GitHubSettings {
     #[serde(default)]
     pub token: String,
@@ -128,10 +128,23 @@ pub struct GitHubSettings {
     pub repo: String,
     #[serde(default)]
     pub base_path: String,
-    #[serde(default)]
-    pub version: String,
     #[serde(default = "default_true")]
     pub rate_limit: bool,
+    #[serde(default)]
+    pub version: String,
+}
+
+impl Default for GitHubSettings {
+    fn default() -> Self {
+        Self {
+            token: String::new(),
+            owner: String::new(),
+            repo: String::new(),
+            base_path: String::new(),
+            rate_limit: true,
+            version: "v3".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -635,10 +648,17 @@ impl Settings {
         debug!("Deserializing settings");
         let mut settings: Settings = config.try_deserialize()?;
         
-        // Load environment variables for server settings
-        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-            settings.github.token = token;
-        }
+        // Load required GitHub settings from environment variables
+        settings.github.token = std::env::var("GITHUB_TOKEN")
+            .map_err(|_| ConfigError::NotFound("GITHUB_TOKEN".into()))?;
+        settings.github.owner = std::env::var("GITHUB_OWNER")
+            .map_err(|_| ConfigError::NotFound("GITHUB_OWNER".into()))?;
+        settings.github.repo = std::env::var("GITHUB_REPO")
+            .map_err(|_| ConfigError::NotFound("GITHUB_REPO".into()))?;
+        settings.github.base_path = std::env::var("GITHUB_BASE_PATH")
+            .map_err(|_| ConfigError::NotFound("GITHUB_BASE_PATH".into()))?;
+
+        // Load optional network settings from environment
         if let Ok(domain) = std::env::var("DOMAIN") {
             settings.network.domain = domain;
         }
@@ -652,7 +672,20 @@ impl Settings {
             settings.network.tunnel_id = tunnel_id;
         }
 
-        debug!("Successfully loaded settings");
+        // Validate GitHub settings are not empty
+        if settings.github.token.is_empty() || 
+           settings.github.owner.is_empty() || 
+           settings.github.repo.is_empty() || 
+           settings.github.base_path.is_empty() {
+            return Err(ConfigError::Message("Required GitHub settings cannot be empty".into()));
+        }
+
+        info!("GitHub settings loaded from environment: owner={}, repo={}, base_path={}", 
+            settings.github.owner,
+            settings.github.repo,
+            settings.github.base_path
+        );
+
         Ok(settings)
     }
 

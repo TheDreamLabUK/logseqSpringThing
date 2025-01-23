@@ -223,6 +223,25 @@ impl RealGitHubPRService {
             full_path
         )
     }
+
+    fn get_api_path(&self) -> String {
+        self.base_path.trim_matches('/').to_string()
+    }
+
+    fn get_full_path(&self, path: &str) -> String {
+        let base = self.base_path.trim_matches('/');
+        let path = path.trim_matches('/');
+        
+        if !base.is_empty() {
+            if path.is_empty() {
+                base.to_string()
+            } else {
+                format!("{}/{}", base, path)
+            }
+        } else {
+            path.to_string()
+        }
+    }
 }
 
 #[async_trait]
