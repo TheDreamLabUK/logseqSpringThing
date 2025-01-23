@@ -103,14 +103,21 @@ unsafe impl ValidAsZeroBits for NodeData {}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PingMessage {
+    #[serde(rename = "type")]
     pub type_: String,
+    #[serde(default = "default_timestamp")]
     pub timestamp: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PongMessage {
+    #[serde(rename = "type")]
     pub type_: String,
     pub timestamp: u64,
+}
+
+fn default_timestamp() -> u64 {
+    chrono::Utc::now().timestamp_millis() as u64
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

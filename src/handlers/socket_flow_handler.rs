@@ -91,66 +91,15 @@ impl Actor for SocketFlowServer {
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("[WebSocket] Client connected from {:?}", ctx.address());
         
-        // Send initial connection success message
-        let init_msg = serde_json::json!({
+        // Send simple connection established message
+        let msg = serde_json::json!({
             "type": "connection_established",
             "timestamp": chrono::Utc::now().timestamp_millis()
         });
         
-        if let Ok(msg) = serde_json::to_string(&init_msg) {
-            ctx.text(msg);
+        if let Ok(msg_str) = serde_json::to_string(&msg) {
+            ctx.text(msg_str);
         }
-        
-        // Clone Arc references for the interval closure
-        let app_state = self.app_state.clone();
-        let settings = self.settings.clone();
-        
-        // Start position update interval
-        ctx.run_interval(self.update_interval, move |actor, ctx| {
-            // Get current node positions and velocities
-            let app_state_clone = app_state.clone();
-            let _settings_clone = settings.clone();
-            
-            // Spawn a future to get positions
-            let fut = async move {
-                let raw_nodes = app_state_clone.graph_service.get_node_positions().await;
-                
-                // Convert to binary protocol NodeData format
-                let nodes: Vec<NodeData> = raw_nodes.into_iter()
-                    .map(|node| NodeData {
-                        id: node.id.parse().unwrap_or(0),
-                        position: Vec3::new(
-                            node.data.position[0],
-                            node.data.position[1],
-                            node.data.position[2]
-                        ),
-                        velocity: Vec3::new(
-                            node.data.velocity[0],
-                            node.data.velocity[1],
-                            node.data.velocity[2]
-                        ),
-                    })
-                    .collect::<Vec<_>>();
-                
-                // Only send update if there are nodes
-                if !nodes.is_empty() {
-                    // Encode using binary protocol
-                    binary_protocol::encode_node_data(&nodes, MessageType::FullStateUpdate)
-                } else {
-                    Vec::new()
-                }
-            };
-            
-            // Convert the future to an actix future and handle it
-            let fut = fut.into_actor(actor);
-            ctx.spawn(fut.map(|binary_data, actor, ctx| {
-                if !binary_data.is_empty() {
-                    // Compress if enabled and threshold met
-                    let final_data = actor.maybe_compress(binary_data);
-                    ctx.binary(final_data);
-                }
-            }));
-        });
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
@@ -171,12 +120,75 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 // Update last pong time if needed
             }
             Ok(ws::Message::Text(text)) => {
-                debug!("[WebSocket] Received text message: {}", text);
-                match serde_json::from_str(&text) {
-                    Ok(ping_msg @ PingMessage { .. }) => {
-                        let pong = self.handle_ping(ping_msg);
-                        if let Ok(response) = serde_json::to_string(&pong) {
-                            ctx.text(response);
+                info!("Received text message: {}", text);
+                match serde_json::from_str::<serde_json::Value>(&text) {
+                    Ok(msg) => {
+                        match msg.get("type").and_then(|t| t.as_str()) {
+                            Some("ping") => {
+                                if let Ok(ping_msg) = serde_json::from_value::<PingMessage>(msg.clone()) {
+                                    let pong = self.handle_ping(ping_msg);
+                                    if let Ok(response) = serde_json::to_string(&pong) {
+                                        ctx.text(response);
+                                    }
+                                }
+                            }
+                            Some("requestInitialData") => {
+                                // Start sending GPU-computed position updates
+                                let app_state = self.app_state.clone();
+                                let settings = self.settings.clone();
+                                
+                                ctx.run_interval(self.update_interval, move |actor, ctx| {
+                                    let app_state_clone = app_state.clone();
+                                    
+                                    let fut = async move {
+                                        let raw_nodes = app_state_clone.graph_service.get_node_positions().await;
+                                        
+                                        // Convert to binary protocol NodeData format using Vec3
+                                        let nodes: Vec<NodeData> = raw_nodes.into_iter()
+                                            .map(|node| NodeData {
+                                                id: node.id.parse().unwrap_or(0),
+                                                position: Vec3::new(
+                                                    node.data.position[0],
+                                                    node.data.position[1],
+                                                    node.data.position[2]
+                                                ),
+                                                velocity: Vec3::new(
+                                                    node.data.velocity[0],
+                                                    node.data.velocity[1],
+                                                    node.data.velocity[2]
+                                                ),
+                                            })
+                                            .collect::<Vec<_>>();
+                                        
+                                        if !nodes.is_empty() {
+                                            Some(binary_protocol::encode_node_data(&nodes, MessageType::FullStateUpdate))
+                                        } else {
+                                            None
+                                        }
+                                    };
+                                    
+                                    let fut = fut.into_actor(actor);
+                                    ctx.spawn(fut.map(|maybe_binary_data, actor, ctx| {
+                                        if let Some(binary_data) = maybe_binary_data {
+                                            // Compress if enabled and threshold met
+                                            let final_data = actor.maybe_compress(binary_data);
+                                            ctx.binary(final_data);
+                                        }
+                                    }));
+                                });
+                                
+                                // Send confirmation that updates are starting
+                                let response = serde_json::json!({
+                                    "type": "updatesStarted",
+                                    "timestamp": chrono::Utc::now().timestamp_millis()
+                                });
+                                if let Ok(msg_str) = serde_json::to_string(&response) {
+                                    ctx.text(msg_str);
+                                }
+                            }
+                            _ => {
+                                warn!("[WebSocket] Unknown message type: {:?}", msg);
+                            }
                         }
                     }
                     Err(e) => {
@@ -185,16 +197,44 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 }
             }
             Ok(ws::Message::Binary(data)) => {
-                // Only handle position/velocity updates
+                info!("Received binary message, length: {}", data.len());
+                // Handle user interaction updates
                 match binary_protocol::decode_node_data(&data) {
                     Ok((msg_type, nodes)) => {
-                        if nodes.len() <= 2 { // Enforce max 2 nodes per update
+                        if nodes.len() <= 2 { // Only allow updates for up to 2 nodes during interaction
                             match msg_type {
                                 MessageType::PositionUpdate | MessageType::VelocityUpdate => {
-                                    // Process position/velocity updates
+                                    // Update positions in graph service for interacted nodes
+                                    let app_state = self.app_state.clone();
+                                    let nodes_clone = nodes.clone();
+                                    
+                                    // Spawn a future to update the graph data
+                                    let fut = async move {
+                                        let mut graph = app_state.graph_service.graph_data.write().await;
+                                        for node_data in nodes_clone {
+                                            if let Some(node) = graph.nodes.iter_mut().find(|n| n.id.parse::<u32>().unwrap_or(0) == node_data.id) {
+                                                // Update position and velocity from user interaction
+                                                node.data.position = [
+                                                    node_data.position.x,
+                                                    node_data.position.y,
+                                                    node_data.position.z
+                                                ];
+                                                node.data.velocity = [
+                                                    node_data.velocity.x,
+                                                    node_data.velocity.y,
+                                                    node_data.velocity.z
+                                                ];
+                                            }
+                                        }
+                                    };
+                                    
+                                    let fut = fut.into_actor(self);
+                                    ctx.spawn(fut.map(|_, _, _| ()));
                                 }
                                 _ => warn!("Unexpected message type")
                             }
+                        } else {
+                            warn!("Received update for too many nodes: {}", nodes.len());
                         }
                     }
                     Err(e) => error!("Failed to decode binary message: {}", e)

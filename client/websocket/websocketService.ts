@@ -11,15 +11,25 @@ enum ConnectionState {
     FAILED = 'failed'
 }
 
-// Simple interface matching server's binary format
+// Interface matching server's binary protocol format (28 bytes per node):
+// - id: 4 bytes (u32)
+// - position: 12 bytes (3 × f32)
+// - velocity: 12 bytes (3 × f32)
 interface NodeData {
+    id: number;
     position: [number, number, number];
     velocity: [number, number, number];
 }
 
+// Interface for node updates from user interaction
 interface NodeUpdate {
-    id: string;
-    position: {
+    id: string;          // Node ID (converted to u32 for binary protocol)
+    position: {          // Current position
+        x: number;
+        y: number;
+        z: number;
+    };
+    velocity?: {         // Optional velocity (defaults to 0 if not provided)
         x: number;
         y: number;
         z: number;
@@ -114,10 +124,9 @@ export class WebSocketService {
                 logger.debug('Connection status handler notified: connected');
             }
 
-            // Send initial protocol messages
-            logger.debug('Sending initial protocol messages');
+            // Send request for position updates after connection
+            logger.debug('Requesting position updates');
             this.sendMessage({ type: 'requestInitialData' });
-            this.sendMessage({ type: 'enableBinaryUpdates' });
         };
 
         this.ws.onerror = (event: Event): void => {
@@ -157,15 +166,34 @@ export class WebSocketService {
         };
     }
 
+    // Message types matching server's binary protocol
+    private readonly MessageType = {
+        PositionUpdate: 0x01,
+        VelocityUpdate: 0x02,
+        FullStateUpdate: 0x03
+    } as const;
+
     private async handleBinaryMessage(blob: Blob): Promise<void> {
         try {
             const arrayBuffer = await blob.arrayBuffer();
             const dataView = new DataView(arrayBuffer);
-            const nodeCount = dataView.getUint32(0, true); // true for little-endian
+            let offset = 0;
+
+            // Read message type
+            const messageType = dataView.getUint32(offset, true);
+            offset += 4;
+
+            // Read node count
+            const nodeCount = dataView.getUint32(offset, true);
+            offset += 4;
+
             const nodes: NodeData[] = [];
             
-            let offset = 4; // Start after node count
             for (let i = 0; i < nodeCount; i++) {
+                // Read node ID for position/velocity mapping
+                const id = dataView.getUint32(offset, true);
+                offset += 4;
+
                 const position: [number, number, number] = [
                     dataView.getFloat32(offset, true),
                     dataView.getFloat32(offset + 4, true),
@@ -180,11 +208,14 @@ export class WebSocketService {
                 ];
                 offset += 12;
 
-                nodes.push({ position, velocity });
+                nodes.push({ id, position, velocity });
             }
 
             if (this.binaryMessageCallback) {
-                this.binaryMessageCallback(nodes);
+                // Only process FullStateUpdate messages for position updates
+                if (messageType === this.MessageType.FullStateUpdate) {
+                    this.binaryMessageCallback(nodes);
+                }
             }
         } catch (e) {
             logger.error('Failed to process binary message:', e);
@@ -306,23 +337,45 @@ export class WebSocketService {
             return;
         }
 
-        const buffer = new ArrayBuffer(4 + updates.length * 24); // 4 bytes for count + 24 bytes per node (3 floats for position, 3 for velocity)
+        // Limit to 2 nodes per update as per server requirements
+        if (updates.length > 2) {
+            logger.warn('Too many nodes in update, limiting to first 2');
+            updates = updates.slice(0, 2);
+        }
+
+        // 8 bytes header (4 for type + 4 for count) + 28 bytes per node (4 for id + 24 for position/velocity)
+        const buffer = new ArrayBuffer(8 + updates.length * 28);
         const dataView = new DataView(buffer);
-        
-        dataView.setUint32(0, updates.length, true); // Set node count
-        
-        let offset = 4;
+        let offset = 0;
+
+        // Write message type (PositionUpdate)
+        dataView.setUint32(offset, this.MessageType.PositionUpdate, true);
+        offset += 4;
+
+        // Write node count
+        dataView.setUint32(offset, updates.length, true);
+        offset += 4;
+
         updates.forEach(update => {
-            // Position
+            // Write node ID
+            const id = parseInt(update.id, 10);
+            if (isNaN(id)) {
+                logger.warn('Invalid node ID:', update.id);
+                return;
+            }
+            dataView.setUint32(offset, id, true);
+            offset += 4;
+
+            // Write position
             dataView.setFloat32(offset, update.position.x, true);
             dataView.setFloat32(offset + 4, update.position.y, true);
             dataView.setFloat32(offset + 8, update.position.z, true);
             offset += 12;
 
-            // Velocity (set to 0 as it's not included in NodeUpdate)
-            dataView.setFloat32(offset, 0, true);
-            dataView.setFloat32(offset + 4, 0, true);
-            dataView.setFloat32(offset + 8, 0, true);
+            // Write velocity (use provided velocity or default to 0)
+            dataView.setFloat32(offset, update.velocity?.x ?? 0, true);
+            dataView.setFloat32(offset + 4, update.velocity?.y ?? 0, true);
+            dataView.setFloat32(offset + 8, update.velocity?.z ?? 0, true);
             offset += 12;
         });
 
