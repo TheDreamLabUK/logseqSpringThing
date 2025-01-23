@@ -143,37 +143,44 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                     let fut = async move {
                                         let raw_nodes = app_state_clone.graph_service.get_node_positions().await;
                                         
-                                        // Convert to binary protocol NodeData format using Vec3
-                                        let nodes: Vec<NodeData> = raw_nodes.into_iter()
-                                            .map(|node| NodeData {
-                                                id: node.id.parse().unwrap_or(0),
-                                                position: Vec3::new(
-                                                    node.data.position[0],
-                                                    node.data.position[1],
-                                                    node.data.position[2]
-                                                ),
-                                                velocity: Vec3::new(
-                                                    node.data.velocity[0],
-                                                    node.data.velocity[1],
-                                                    node.data.velocity[2]
-                                                ),
-                                            })
-                                            .collect::<Vec<_>>();
-                                        
-                                        if !nodes.is_empty() {
-                                            Some(binary_protocol::encode_node_data(&nodes, MessageType::FullStateUpdate))
+                                        // Only process and send updates if we have nodes
+                                        if !raw_nodes.is_empty() {
+                                            debug!("Processing binary update for {} nodes", raw_nodes.len());
+                                            // Convert to binary protocol NodeData format using Vec3
+                                            let nodes: Vec<NodeData> = raw_nodes.into_iter()
+                                                .map(|node| NodeData {
+                                                    id: node.id.parse().unwrap_or(0),
+                                                    position: Vec3::new(
+                                                        node.data.position[0],
+                                                        node.data.position[1],
+                                                        node.data.position[2]
+                                                    ),
+                                                    velocity: Vec3::new(
+                                                        node.data.velocity[0],
+                                                        node.data.velocity[1],
+                                                        node.data.velocity[2]
+                                                    ),
+                                                })
+                                                .collect::<Vec<_>>();
+                                            
+                                            debug!("Encoding binary update with {} nodes", nodes.len());
+                                            let data = binary_protocol::encode_node_data(&nodes, MessageType::FullStateUpdate);
+                                            debug!("Binary message size: {} bytes", data.len());
+                                            Some(data)
                                         } else {
+                                            debug!("No nodes to update, skipping binary message");
                                             None
                                         }
                                     };
                                     
                                     let fut = fut.into_actor(actor);
                                     ctx.spawn(fut.map(|maybe_binary_data, actor, ctx| {
+                                        // Only send binary data if we have nodes to update
                                         if let Some(binary_data) = maybe_binary_data {
-                                            // Compress if enabled and threshold met
                                             let final_data = actor.maybe_compress(binary_data);
                                             ctx.binary(final_data);
                                         }
+                                        // Do not send any message if there are no nodes
                                     }));
                                 });
                                 

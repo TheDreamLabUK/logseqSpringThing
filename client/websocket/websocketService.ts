@@ -149,19 +149,29 @@ export class WebSocketService {
         };
 
         this.ws.onmessage = (event: MessageEvent) => {
-            if (event.data instanceof Blob) {
-                logger.debug('Received binary message');
+            if (event.data instanceof ArrayBuffer) {
+                logger.debug('Received binary position update');
                 this.handleBinaryMessage(event.data);
-            } else {
+            } else if (typeof event.data === 'string') {
                 try {
                     const message = JSON.parse(event.data);
                     logger.debug('Received JSON message:', message);
-                    if (message.type === 'settings') {
-                        this.handleSettingsUpdate(message);
+                    switch (message.type) {
+                        case 'settings':
+                            this.handleSettingsUpdate(message);
+                            break;
+                        case 'connection_established':
+                        case 'updatesStarted':
+                            logger.info(`WebSocket ${message.type}`);
+                            break;
+                        default:
+                            logger.warn('Unknown message type:', message.type);
                     }
                 } catch (e) {
                     logger.error('Failed to parse WebSocket message:', e);
                 }
+            } else {
+                logger.warn('Received unknown message type:', typeof event.data);
             }
         };
     }
@@ -173,20 +183,25 @@ export class WebSocketService {
         FullStateUpdate: 0x03
     } as const;
 
-    private async handleBinaryMessage(blob: Blob): Promise<void> {
+    private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
-            const arrayBuffer = await blob.arrayBuffer();
-            const dataView = new DataView(arrayBuffer);
+            const dataView = new DataView(buffer);
             let offset = 0;
 
-            // Read message type
+            // Read and validate message type
             const messageType = dataView.getUint32(offset, true);
             offset += 4;
+
+            if (messageType !== this.MessageType.FullStateUpdate) {
+                logger.warn('Unexpected binary message type:', messageType);
+                return;
+            }
 
             // Read node count
             const nodeCount = dataView.getUint32(offset, true);
             offset += 4;
 
+            logger.debug(`Processing binary update with ${nodeCount} nodes`);
             const nodes: NodeData[] = [];
             
             for (let i = 0; i < nodeCount; i++) {
@@ -212,9 +227,15 @@ export class WebSocketService {
             }
 
             if (this.binaryMessageCallback) {
-                // Only process FullStateUpdate messages for position updates
-                if (messageType === this.MessageType.FullStateUpdate) {
-                    this.binaryMessageCallback(nodes);
+                // Check message type and handle accordingly
+                const msgType = dataView.getUint32(0, true);
+                if (msgType === this.MessageType.FullStateUpdate) {
+                    logger.debug('Received FullStateUpdate with', nodes.length, 'nodes');
+                    if (this.binaryMessageCallback) {
+                        this.binaryMessageCallback(nodes);
+                    }
+                } else {
+                    logger.warn('Unexpected binary message type:', msgType);
                 }
             }
         } catch (e) {
