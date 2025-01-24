@@ -114,12 +114,17 @@ export class EnhancedNodeManager {
         nodes.forEach((node, i) => {
             this.dummy.position.set(node.position[0], node.position[1], node.position[2]);
     
+            // Get base scale from settings
+            const baseScale = this.settings.visualization.nodes.baseSize;
+            
+            // Calculate velocity-based scale with much smaller effect
             const velocityMagnitude = Math.sqrt(
                 node.velocity[0] * node.velocity[0] +
                 node.velocity[1] * node.velocity[1] +
                 node.velocity[2] * node.velocity[2]
             );
-            const scaleFactor = 1 + velocityMagnitude * 0.5;
+            // Limit velocity effect to 10% increase
+            const scaleFactor = baseScale * (1 + Math.min(velocityMagnitude * 0.1, 0.1));
             this.dummy.scale.set(scaleFactor, scaleFactor, scaleFactor);
     
             this.dummy.updateMatrix();

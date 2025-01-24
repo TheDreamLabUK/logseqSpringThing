@@ -21,7 +21,8 @@ export const defaultVisualizationSettings: VisualizationSettings = {
     bloom: {
         enabled: false,
         strength: 0.0,
-        radius: 0,
+        radius: 0.0,
+        threshold: 1.0,
         edgeBloomStrength: 0.0,
         nodeBloomStrength: 0.0,
         environmentBloomStrength: 0.0
@@ -35,21 +36,21 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         widthRange: [1.0, 3.0]
     },
     hologram: {
-        ringCount: 3,
+        ringCount: 0,
         ringColor: '#00ff00',
-        ringOpacity: 0.5,
-        ringSizes: [20.0, 25.0, 30.0],
-        ringRotationSpeed: 0.001,
+        ringOpacity: 0.0,
+        ringSizes: [1.0, 1.2, 1.5],
+        ringRotationSpeed: 0.0,
         enableBuckminster: false,
-        buckminsterScale: 15.0,
-        buckminsterOpacity: 0.3,
+        buckminsterScale: 1.0,
+        buckminsterOpacity: 0.0,
         enableGeodesic: false,
-        geodesicScale: 15.0,
-        geodesicOpacity: 0.3,
+        geodesicScale: 1.0,
+        geodesicOpacity: 0.0,
         enableTriangleSphere: false,
-        triangleSphereScale: 15.0,
-        triangleSphereOpacity: 0.3,
-        globalRotationSpeed: 0.0005
+        triangleSphereScale: 1.0,
+        triangleSphereOpacity: 0.0,
+        globalRotationSpeed: 0.0
     },
     labels: {
         enableLabels: true,
@@ -64,7 +65,7 @@ export const defaultVisualizationSettings: VisualizationSettings = {
     nodes: {
         baseColor: toHexColor(NODE_COLOR),
         baseSize: NODE_SIZE,
-        sizeRange: [1.0, 1.0],
+        sizeRange: [0.5, 1.0],
         enableMetadataShape: false,
         colorRangeAge: ['#ffffff', '#ffffff'],
         colorRangeLinks: ['#ffffff', '#ffffff'],

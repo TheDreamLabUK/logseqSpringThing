@@ -1,11 +1,11 @@
 # Core visualization settings
 [nodes]
 base_color = "#c3ab6f"
-base_size = 1.0
+base_size = 0.5
 metalness = 0.3
 opacity = 0.4
 roughness = 0.35
-size_range = [1.0, 5.0]
+size_range = [0.5, 1.0]
 quality = "medium"
 enable_instancing = false
 enable_hologram = false
@@ -68,16 +68,16 @@ strength = 1.8
 ring_count = 3
 ring_color = "#00ff00"
 ring_opacity = 0.5
-ring_sizes = [20.0, 25.0, 30.0]
+ring_sizes = [1.0, 1.2, 1.5]
 ring_rotation_speed = 0.001
 enable_buckminster = false
-buckminster_scale = 15.0
+buckminster_scale = 1.0
 buckminster_opacity = 0.3
 enable_geodesic = false
-geodesic_scale = 15.0
+geodesic_scale = 1.0
 geodesic_opacity = 0.3
 enable_triangle_sphere = false
-triangle_sphere_scale = 15.0
+triangle_sphere_scale = 1.0
 triangle_sphere_opacity = 0.3
 global_rotation_speed = 0.0005
 

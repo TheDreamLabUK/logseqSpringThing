@@ -34,6 +34,7 @@ export interface BloomSettings {
     enabled: boolean;
     strength: number;
     radius: number;
+    threshold: number;
     edgeBloomStrength: number;
     nodeBloomStrength: number;
     environmentBloomStrength: number;

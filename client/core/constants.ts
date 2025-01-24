@@ -65,7 +65,7 @@ export const THROTTLE_INTERVAL = 16; // ~60fps
 export const EDGE_UPDATE_BATCH_INTERVAL = 16; // Batch edge updates at ~60fps
 
 // Visualization constants
-export const NODE_SIZE = 2.5;
+export const NODE_SIZE = 0.5;
 export const NODE_SEGMENTS = 16;
 export const EDGE_RADIUS = 0.25;
 export const EDGE_SEGMENTS = 8;
