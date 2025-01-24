@@ -204,11 +204,13 @@ export class WebSocketService {
             logger.debug(`Processing binary update with ${nodeCount} nodes`);
             const nodes: NodeData[] = [];
             
+            // Read node data
             for (let i = 0; i < nodeCount; i++) {
-                // Read node ID for position/velocity mapping
+                // Read node ID
                 const id = dataView.getUint32(offset, true);
                 offset += 4;
 
+                // Read position vector
                 const position: [number, number, number] = [
                     dataView.getFloat32(offset, true),
                     dataView.getFloat32(offset + 4, true),
@@ -216,6 +218,7 @@ export class WebSocketService {
                 ];
                 offset += 12;
 
+                // Read velocity vector
                 const velocity: [number, number, number] = [
                     dataView.getFloat32(offset, true),
                     dataView.getFloat32(offset + 4, true),
@@ -226,17 +229,10 @@ export class WebSocketService {
                 nodes.push({ id, position, velocity });
             }
 
+            // Notify callback if registered
             if (this.binaryMessageCallback) {
-                // Check message type and handle accordingly
-                const msgType = dataView.getUint32(0, true);
-                if (msgType === this.MessageType.FullStateUpdate) {
-                    logger.debug('Received FullStateUpdate with', nodes.length, 'nodes');
-                    if (this.binaryMessageCallback) {
-                        this.binaryMessageCallback(nodes);
-                    }
-                } else {
-                    logger.warn('Unexpected binary message type:', msgType);
-                }
+                logger.debug('Notifying callback with', nodes.length, 'nodes');
+                this.binaryMessageCallback(nodes);
             }
         } catch (e) {
             logger.error('Failed to process binary message:', e);

@@ -91,46 +91,15 @@ impl Actor for SocketFlowServer {
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("[WebSocket] Client connected from {:?}", ctx.address());
         
-        // Get initial graph data
-        let app_state = self.app_state.clone();
-        let fut = async move {
-            let graph_data = app_state.graph_service.graph_data.read().await;
-            let raw_nodes = app_state.graph_service.get_node_positions().await;
-            
-            // Convert to a format the client expects
-            let nodes: Vec<serde_json::Value> = raw_nodes.into_iter()
-                .map(|node| serde_json::json!({
-                    "id": node.id,
-                    "position": node.data.position,
-                    "velocity": node.data.velocity,
-                }))
-                .collect();
-
-            let edges: Vec<serde_json::Value> = graph_data.edges.iter()
-                .map(|edge| serde_json::json!({
-                    "source": edge.source.clone(),
-                    "target": edge.target.clone(),
-                }))
-                .collect();
-
-            serde_json::json!({
-                "type": "connection_established",
-                "timestamp": chrono::Utc::now().timestamp_millis(),
-                "data": {
-                    "node_count": nodes.len(),
-                    "edge_count": edges.len(),
-                    "nodes": nodes,
-                    "edges": edges
-                }
-            })
-        };
-
-        let fut = fut.into_actor(self);
-        ctx.spawn(fut.map(|init_msg, _actor, ctx| {
-            if let Ok(msg_str) = serde_json::to_string(&init_msg) {
-                ctx.text(msg_str);
-            }
-        }));
+        // Send simple connection established message
+        let response = serde_json::json!({
+            "type": "connection_established",
+            "timestamp": chrono::Utc::now().timestamp_millis()
+        });
+        
+        if let Ok(msg_str) = serde_json::to_string(&response) {
+            ctx.text(msg_str);
+        }
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
