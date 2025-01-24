@@ -658,20 +658,6 @@ impl Settings {
         settings.github.base_path = std::env::var("GITHUB_BASE_PATH")
             .map_err(|_| ConfigError::NotFound("GITHUB_BASE_PATH".into()))?;
 
-        // Load optional network settings from environment
-        if let Ok(domain) = std::env::var("DOMAIN") {
-            settings.network.domain = domain;
-        }
-        if let Ok(port) = std::env::var("PORT") {
-            settings.network.port = port.parse().unwrap_or(3001);
-        }
-        if let Ok(bind_address) = std::env::var("BIND_ADDRESS") {
-            settings.network.bind_address = bind_address;
-        }
-        if let Ok(tunnel_id) = std::env::var("TUNNEL_ID") {
-            settings.network.tunnel_id = tunnel_id;
-        }
-
         // Validate GitHub settings are not empty
         if settings.github.token.is_empty() || 
            settings.github.owner.is_empty() || 

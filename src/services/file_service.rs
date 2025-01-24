@@ -244,12 +244,12 @@ impl GitHubService for RealGitHubService {
         &self,
         _skip_debug_filter: bool
     ) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        // Always use the base_path from settings
+        // Use the same URL construction as fetch_files
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
             self.owner,
             self.repo,
-            self.base_path.trim_matches('/')  // Always use base_path
+            self.base_path.trim_matches('/')
         );
 
         info!("GitHub API Request: URL={}, Token=gith..., Owner={}, Repo={}, BasePath={}", 
