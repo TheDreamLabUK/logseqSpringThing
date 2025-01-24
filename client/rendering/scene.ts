@@ -40,14 +40,14 @@ export class SceneManager {
     this.scene.background = new Color(BACKGROUND_COLOR);
     // Removed fog to ensure graph visibility
 
-    // Create camera
+    // Create camera with wider view
     this.camera = new PerspectiveCamera(
-      75,
+      60, // Reduced FOV for less distortion
       window.innerWidth / window.innerHeight,
       0.1,
-      1000
+      2000
     );
-    this.camera.position.set(0, 5, 20); // Moved camera closer
+    this.camera.position.set(0, 10, 50); // Position for better overview
     this.camera.lookAt(0, 0, 0);
 
     // Create renderer
@@ -63,10 +63,16 @@ export class SceneManager {
     // Create controls
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.05;
-    this.controls.screenSpacePanning = false;
-    this.controls.minDistance = 5;  // Reduced min distance
-    this.controls.maxDistance = 100; // Reduced max distance
+    this.controls.dampingFactor = 0.1;
+    this.controls.screenSpacePanning = true;
+    this.controls.minDistance = 1;
+    this.controls.maxDistance = 1000;
+    this.controls.enableRotate = true;
+    this.controls.enableZoom = true;
+    this.controls.enablePan = true;
+    this.controls.rotateSpeed = 1.0;
+    this.controls.zoomSpeed = 1.2;
+    this.controls.panSpeed = 0.8;
 
     // Setup post-processing
     this.composer = new EffectComposer(this.renderer);
@@ -153,12 +159,21 @@ export class SceneManager {
     logger.log('Scene rendering stopped');
   }
 
-  private animate(): void {
+  private animate = (): void => {
     if (!this.isRunning) return;
 
-    this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
+    // Request next frame first to ensure smooth animation
+    this.animationFrameId = requestAnimationFrame(this.animate);
+    
+    // Update controls with damping
     this.controls.update();
-    this.composer.render();
+
+    // Render with post-processing
+    if (this.bloomPass.enabled) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 
   // Public getters

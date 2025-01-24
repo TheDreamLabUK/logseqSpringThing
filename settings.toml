@@ -127,13 +127,13 @@ enable_request_validation = true
 session_timeout = 3600
 
 [debug]
-enable_data_debug = true
-enable_websocket_debug = false
 enabled = true
+log_level = "debug"
+log_format = "json"
+enable_data_debug = true
+enable_websocket_debug = true
 log_binary_headers = true
 log_full_json = true
-log_level = "info"
-log_format = "json"
 
 # Server-only settings
 [github]

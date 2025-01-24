@@ -1,5 +1,5 @@
 import { Settings, VisualizationSettings } from '../types/settings';
-import { NODE_COLOR, NODE_SIZE, EDGE_RADIUS, LABEL_COLOR } from '../core/constants';
+import { NODE_COLOR, NODE_SIZE, LABEL_COLOR } from '../core/constants';
 
 // Helper function to convert number to hex color
 function toHexColor(num: number): string {
