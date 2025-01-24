@@ -147,6 +147,49 @@
     background-color: #0d47a1;
 }
 
+/* Loading and Error states */
+.loading, .error {
+    padding: 20px;
+    text-align: center;
+    color: #ffffff;
+    font-size: 14px;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+.loading {
+    background-color: rgba(52, 152, 219, 0.2);
+    border: 1px solid rgba(52, 152, 219, 0.4);
+    animation: pulse 1.5s infinite;
+}
+
+.error {
+    background-color: rgba(231, 76, 60, 0.2);
+    border: 1px solid rgba(231, 76, 60, 0.4);
+}
+
+.retry-button {
+    margin-top: 10px;
+    padding: 8px 16px;
+    background-color: rgba(52, 152, 219, 0.2);
+    border: 1px solid rgba(52, 152, 219, 0.4);
+    border-radius: 4px;
+    color: #3498db;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.retry-button:hover {
+    background-color: rgba(52, 152, 219, 0.3);
+    border-color: rgba(52, 152, 219, 0.6);
+}
+
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
+
 /* Scrollbar styles */
 .control-panel::-webkit-scrollbar {
     width: 8px;

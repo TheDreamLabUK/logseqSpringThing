@@ -43,19 +43,39 @@ export class SettingsStore {
                 this.settings = { ...defaultSettings };
 
                 // Try to fetch settings from server
-                const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT));
-                if (response.ok) {
-                    const serverSettings = await response.json();
-                    // Deep merge server settings with defaults
-                    this.settings = this.deepMerge(this.settings, serverSettings);
-                    logger.info('Settings loaded from server');
-                } else {
-                    logger.warn(`Failed to fetch server settings: ${response.statusText}, using defaults`);
+                try {
+                    logger.info('Fetching settings from:', buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT));
+                    const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT));
+                    logger.info('Server response status:', response.status);
+                    
+                    if (response.ok) {
+                        const serverSettings = await response.json();
+                        logger.info('Received server settings:', serverSettings);
+                        
+                        // Log current defaults before merge
+                        logger.info('Current default settings:', this.settings);
+                        
+                        // Deep merge server settings with defaults
+                        this.settings = this.deepMerge(this.settings, serverSettings);
+                        logger.info('Merged settings:', this.settings);
+                    } else {
+                        const errorText = await response.text();
+                        throw new Error(`Failed to fetch server settings: ${response.statusText}. Details: ${errorText}`);
+                    }
+                } catch (error) {
+                    logger.warn('Error loading server settings:', error);
+                    logger.info('Using default settings:', this.settings);
                 }
 
-                // Ensure physics is enabled
+                // Ensure critical settings are set
                 if (this.settings.visualization?.physics) {
                     this.settings.visualization.physics.enabled = true;
+                }
+                
+                // Validate settings structure
+                if (!this.settings.visualization || !this.settings.system) {
+                    logger.error('Invalid settings structure, resetting to defaults');
+                    this.settings = { ...defaultSettings };
                 }
 
                 this.initialized = true;
@@ -178,11 +198,38 @@ export class SettingsStore {
     private deepMerge(target: any, source: any): any {
         const result = { ...target };
         
+        // Handle visualization section specially since server sends it flat
+        if (source.visualization) {
+            for (const category in source.visualization) {
+                if (result.visualization && result.visualization[category]) {
+                    result.visualization[category] = {
+                        ...result.visualization[category],
+                        ...source.visualization[category]
+                    };
+                }
+            }
+        }
+        
+        // Handle system section
+        if (source.system) {
+            for (const category in source.system) {
+                if (result.system && result.system[category]) {
+                    result.system[category] = {
+                        ...result.system[category],
+                        ...source.system[category]
+                    };
+                }
+            }
+        }
+
+        // Handle any other top-level properties
         for (const key in source) {
-            if (source[key] instanceof Object && key in target) {
-                result[key] = this.deepMerge(target[key], source[key]);
-            } else {
-                result[key] = source[key];
+            if (key !== 'visualization' && key !== 'system') {
+                if (source[key] instanceof Object && key in target) {
+                    result[key] = this.deepMerge(target[key], source[key]);
+                } else {
+                    result[key] = source[key];
+                }
             }
         }
         

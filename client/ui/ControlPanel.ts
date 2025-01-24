@@ -20,12 +20,45 @@ export class ControlPanel {
 
     private async initializePanel(): Promise<void> {
         try {
-            await this.settingsStore.initialize();
-            this.settings = this.settingsStore.get('') as Settings;
+            // Show loading state with more detail
+            this.container.innerHTML = '<div class="loading">Initializing control panel...</div>';
+            
+            // Initialize settings store with timeout
+            const initializePromise = this.settingsStore.initialize();
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Settings initialization timed out')), 10000);
+            });
+            
+            // Wait for settings store to initialize or timeout
+            await Promise.race([initializePromise, timeoutPromise]);
+            this.container.innerHTML = '<div class="loading">Loading settings...</div>';
+            
+            // Get settings after initialization
+            const settings = this.settingsStore.get('');
+            if (!settings) {
+                throw new Error('Failed to get settings after initialization');
+            }
+            
+            this.settings = settings as Settings;
+            logger.info('Settings loaded:', this.settings);
+            
+            // Create panel elements
+            this.container.innerHTML = '<div class="loading">Creating control panel...</div>';
             this.createPanelElements();
+            
+            // Setup subscriptions
             await this.setupSettingsSubscriptions();
+            
+            logger.info('Control panel initialized successfully');
         } catch (error) {
             logger.error('Failed to initialize control panel:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            this.container.innerHTML = `
+                <div class="error">
+                    Failed to load settings: ${errorMessage}<br>
+                    <button onclick="window.location.reload()" class="retry-button">Retry</button>
+                </div>
+            `;
         }
     }
 

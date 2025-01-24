@@ -10,46 +10,46 @@ function toHexColor(num: number): string {
 export const defaultVisualizationSettings: VisualizationSettings = {
     animations: {
         enableMotionBlur: false,
-        enableNodeAnimations: true,
-        motionBlurStrength: 0.5,
+        enableNodeAnimations: false,
+        motionBlurStrength: 0.0,
         selectionWaveEnabled: false,
         pulseEnabled: false,
-        pulseSpeed: 1.0,
-        pulseStrength: 0.5,
-        waveSpeed: 1.0
+        pulseSpeed: 0.0,
+        pulseStrength: 0.0,
+        waveSpeed: 0.0
     },
     bloom: {
-        enabled: true,
-        strength: 0.5,
-        radius: 1,
-        edgeBloomStrength: 0.5,
-        nodeBloomStrength: 0.5,
-        environmentBloomStrength: 0.5
+        enabled: false,
+        strength: 0.0,
+        radius: 0,
+        edgeBloomStrength: 0.0,
+        nodeBloomStrength: 0.0,
+        environmentBloomStrength: 0.0
     },
     edges: {
-        arrowSize: 3,
-        baseWidth: EDGE_RADIUS * 2,
-        color: '#ffffff',
-        enableArrows: true,
-        opacity: 0.8,
-        widthRange: [1, 5]
+        arrowSize: 0.15,
+        baseWidth: 2.0,
+        color: '#917f18',
+        enableArrows: false,
+        opacity: 0.6,
+        widthRange: [1.0, 3.0]
     },
     hologram: {
         ringCount: 3,
-        ringColor: '#00ffff',
+        ringColor: '#00ff00',
         ringOpacity: 0.5,
-        ringSizes: [1.0, 1.5, 2.0],
-        ringRotationSpeed: 0.1,
-        enableBuckminster: true,
-        buckminsterScale: 1.0,
+        ringSizes: [20.0, 25.0, 30.0],
+        ringRotationSpeed: 0.001,
+        enableBuckminster: false,
+        buckminsterScale: 15.0,
         buckminsterOpacity: 0.3,
-        enableGeodesic: true,
-        geodesicScale: 1.2,
-        geodesicOpacity: 0.4,
-        enableTriangleSphere: true,
-        triangleSphereScale: 1.1,
-        triangleSphereOpacity: 0.35,
-        globalRotationSpeed: 0.05
+        enableGeodesic: false,
+        geodesicScale: 15.0,
+        geodesicOpacity: 0.3,
+        enableTriangleSphere: false,
+        triangleSphereScale: 15.0,
+        triangleSphereOpacity: 0.3,
+        globalRotationSpeed: 0.0005
     },
     labels: {
         enableLabels: true,
@@ -64,38 +64,38 @@ export const defaultVisualizationSettings: VisualizationSettings = {
     nodes: {
         baseColor: toHexColor(NODE_COLOR),
         baseSize: NODE_SIZE,
-        sizeRange: [0.5, 2.0],
-        enableMetadataShape: true,
-        colorRangeAge: ['#ff0000', '#00ff00'],
-        colorRangeLinks: ['#0000ff', '#ff00ff'],
-        metalness: 0.5,
-        roughness: 0.2,
-        opacity: 0.8,
-        enableMetadataVisualization: true,
-        enableHologram: true,
-        enableInstancing: true,
-        quality: 'medium'
+        sizeRange: [1.0, 1.0],
+        enableMetadataShape: false,
+        colorRangeAge: ['#ffffff', '#ffffff'],
+        colorRangeLinks: ['#ffffff', '#ffffff'],
+        metalness: 0.0,
+        roughness: 0.5,
+        opacity: 1.0,
+        enableMetadataVisualization: false,
+        enableHologram: false,
+        enableInstancing: false,
+        quality: 'low'
     },
     physics: {
         enabled: true,
-        attractionStrength: 0.1,
-        repulsionStrength: 0.1,
-        springStrength: 0.1,
-        damping: 0.5,
-        iterations: 1,
-        maxVelocity: 10,
-        collisionRadius: 1,
+        attractionStrength: 0.015,
+        repulsionStrength: 1500.0,
+        springStrength: 0.018,
+        damping: 0.88,
+        iterations: 500,
+        maxVelocity: 2.5,
+        collisionRadius: 0.25,
         enableBounds: true,
-        boundsSize: 100
+        boundsSize: 12.0
     },
     rendering: {
-        ambientLightIntensity: 0.5,
-        directionalLightIntensity: 0.8,
-        environmentIntensity: 1,
+        ambientLightIntensity: 0.3,
+        directionalLightIntensity: 1.0,
+        environmentIntensity: 0.6,
         backgroundColor: '#000000',
-        enableAmbientOcclusion: true,
-        enableAntialiasing: true,
-        enableShadows: true
+        enableAmbientOcclusion: false,
+        enableAntialiasing: false,
+        enableShadows: false
     }
 };
 
