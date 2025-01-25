@@ -132,7 +132,15 @@ export class WebSocketService {
         this.ws.onerror = (event: Event): void => {
             logger.error('WebSocket error:', event);
             if (this.ws) {
-                logger.debug('WebSocket readyState:', this.ws.readyState);
+                logger.debug('Connection details:', {
+                    readyState: this.ws.readyState,
+                    url: this.url,
+                    connectionState: this.connectionState,
+                    reconnectAttempts: this.reconnectAttempts
+                });
+            }
+            if (this.ws?.readyState === WebSocket.CLOSED) {
+                this.handleReconnect();
             }
         };
 
@@ -149,29 +157,64 @@ export class WebSocketService {
         };
 
         this.ws.onmessage = (event: MessageEvent) => {
-            if (event.data instanceof ArrayBuffer) {
-                logger.debug('Received binary position update');
-                this.handleBinaryMessage(event.data);
-            } else if (typeof event.data === 'string') {
-                try {
-                    const message = JSON.parse(event.data);
-                    logger.debug('Received JSON message:', message);
-                    switch (message.type) {
-                        case 'settings':
-                            this.handleSettingsUpdate(message);
-                            break;
-                        case 'connection_established':
-                        case 'updatesStarted':
-                            logger.info(`WebSocket ${message.type}`);
-                            break;
-                        default:
-                            logger.warn('Unknown message type:', message.type);
+            try {
+                if (event.data instanceof ArrayBuffer) {
+                    logger.debug('Received binary position update');
+                    try {
+                        this.handleBinaryMessage(event.data);
+                    } catch (error) {
+                        logger.error('Failed to process binary message:', {
+                            error,
+                            dataSize: event.data.byteLength,
+                            connectionState: this.connectionState
+                        });
                     }
-                } catch (e) {
-                    logger.error('Failed to parse WebSocket message:', e);
+                } else if (typeof event.data === 'string') {
+                    try {
+                        const message = JSON.parse(event.data);
+                        logger.debug('Received JSON message:', message);
+                        
+                        switch (message.type) {
+                            case 'settings':
+                                try {
+                                    this.handleSettingsUpdate(message);
+                                } catch (error) {
+                                    logger.error('Failed to handle settings update:', {
+                                        error,
+                                        message,
+                                        connectionState: this.connectionState
+                                    });
+                                }
+                                break;
+                            case 'connection_established':
+                            case 'updatesStarted':
+                                logger.info(`WebSocket ${message.type}`);
+                                break;
+                            default:
+                                logger.warn('Unknown message type:', {
+                                    type: message.type,
+                                    message
+                                });
+                        }
+                    } catch (error) {
+                        logger.error('Failed to parse WebSocket message:', {
+                            error,
+                            data: event.data.slice(0, 200), // Log first 200 chars only
+                            connectionState: this.connectionState
+                        });
+                    }
+                } else {
+                    logger.warn('Received unknown message type:', {
+                        type: typeof event.data,
+                        connectionState: this.connectionState
+                    });
                 }
-            } else {
-                logger.warn('Received unknown message type:', typeof event.data);
+            } catch (error) {
+                logger.error('Critical error in message handler:', {
+                    error,
+                    connectionState: this.connectionState,
+                    wsState: this.ws?.readyState
+                });
             }
         };
     }
@@ -183,6 +226,10 @@ export class WebSocketService {
 
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
+            if (!buffer || buffer.byteLength < 8) {
+                throw new Error(`Invalid buffer size: ${buffer?.byteLength ?? 0} bytes`);
+            }
+
             const dataView = new DataView(buffer);
             let offset = 0;
 
@@ -191,85 +238,182 @@ export class WebSocketService {
             offset += 4;
 
             if (messageType !== this.MessageType.PositionVelocityUpdate) {
-                logger.warn('Unexpected binary message type:', messageType);
+                logger.warn('Unexpected binary message type:', {
+                    received: messageType,
+                    expected: this.MessageType.PositionVelocityUpdate,
+                    bufferSize: buffer.byteLength
+                });
                 return;
             }
 
-            // Read node count
+            // Read and validate node count
             const nodeCount = dataView.getUint32(offset, true);
             offset += 4;
 
-            logger.debug(`Processing binary update with ${nodeCount} nodes`);
+            // Validate total message size
+            const expectedSize = 8 + (nodeCount * 28); // 8 bytes header + 28 bytes per node
+            if (buffer.byteLength !== expectedSize) {
+                throw new Error(`Invalid buffer size: ${buffer.byteLength} bytes (expected ${expectedSize})`);
+            }
+
+            logger.debug('Processing binary update:', {
+                nodeCount,
+                messageType,
+                bufferSize: buffer.byteLength
+            });
+
             const nodes: NodeData[] = [];
             
             // Read node data
             for (let i = 0; i < nodeCount; i++) {
-                // Read node ID
-                const id = dataView.getUint32(offset, true);
-                offset += 4;
+                try {
+                    // Read node ID
+                    const id = dataView.getUint32(offset, true);
+                    offset += 4;
 
-                // Read position vector
-                const position: [number, number, number] = [
-                    dataView.getFloat32(offset, true),
-                    dataView.getFloat32(offset + 4, true),
-                    dataView.getFloat32(offset + 8, true)
-                ];
-                offset += 12;
+                    // Read position vector
+                    const position: [number, number, number] = [
+                        dataView.getFloat32(offset, true),
+                        dataView.getFloat32(offset + 4, true),
+                        dataView.getFloat32(offset + 8, true)
+                    ];
+                    offset += 12;
 
-                // Read velocity vector
-                const velocity: [number, number, number] = [
-                    dataView.getFloat32(offset, true),
-                    dataView.getFloat32(offset + 4, true),
-                    dataView.getFloat32(offset + 8, true)
-                ];
-                offset += 12;
+                    // Read velocity vector
+                    const velocity: [number, number, number] = [
+                        dataView.getFloat32(offset, true),
+                        dataView.getFloat32(offset + 4, true),
+                        dataView.getFloat32(offset + 8, true)
+                    ];
+                    offset += 12;
 
-                nodes.push({ id, position, velocity });
+                    // Validate node data
+                    if (position.some(isNaN) || velocity.some(isNaN)) {
+                        throw new Error(`Invalid node data at index ${i}: NaN values detected`);
+                    }
+
+                    nodes.push({ id, position, velocity });
+                } catch (nodeError) {
+                    logger.error('Error processing node:', {
+                        error: nodeError,
+                        nodeIndex: i,
+                        offset,
+                        bufferSize: buffer.byteLength
+                    });
+                    // Continue processing other nodes
+                }
             }
 
-            // Notify callback if registered
-            if (this.binaryMessageCallback) {
-                logger.debug('Notifying callback with', nodes.length, 'nodes');
-                this.binaryMessageCallback(nodes);
+            if (nodes.length > 0) {
+                // Notify callback if registered
+                if (this.binaryMessageCallback) {
+                    logger.debug('Notifying callback:', {
+                        nodeCount: nodes.length,
+                        firstNode: nodes[0],
+                        lastNode: nodes[nodes.length - 1]
+                    });
+                    try {
+                        this.binaryMessageCallback(nodes);
+                    } catch (error) {
+                        logger.error('Error in binary message callback:', {
+                            error,
+                            nodeCount: nodes.length,
+                            connectionState: this.connectionState
+                        });
+                    }
+                }
+            } else {
+                logger.warn('No valid nodes processed from binary message');
             }
-        } catch (e) {
-            logger.error('Failed to process binary message:', e);
+        } catch (error) {
+            logger.error('Failed to process binary message:', {
+                error,
+                bufferSize: buffer?.byteLength,
+                connectionState: this.connectionState
+            });
         }
     }
 
     private handleReconnect(): void {
-        const wasConnected = this.connectionState === ConnectionState.CONNECTED;
-        this.connectionState = ConnectionState.DISCONNECTED;
-        this.binaryMessageCallback = null;
-        
-        if (this.reconnectTimeout !== null) {
-            window.clearTimeout(this.reconnectTimeout);
-        }
-        
-        if (this.reconnectAttempts < this._maxReconnectAttempts &&
-            (wasConnected || this.reconnectAttempts === 0)) {
+        try {
+            const wasConnected = this.connectionState === ConnectionState.CONNECTED;
+            const previousState = this.connectionState;
             
-            this.reconnectAttempts++;
-            const delay = this.getReconnectDelay();
+            logger.debug('Handling reconnect:', {
+                wasConnected,
+                previousState,
+                attempts: this.reconnectAttempts,
+                maxAttempts: this._maxReconnectAttempts,
+                url: this.url
+            });
+
+            this.connectionState = ConnectionState.DISCONNECTED;
+            this.binaryMessageCallback = null;
             
-            logger.info(
-                `WebSocket connection closed, attempt ${this.reconnectAttempts}/${this._maxReconnectAttempts} in ${delay}ms`
-            );
-            
-            this.connectionState = ConnectionState.RECONNECTING;
-            
-            this.reconnectTimeout = window.setTimeout(() => {
+            if (this.reconnectTimeout !== null) {
+                window.clearTimeout(this.reconnectTimeout);
                 this.reconnectTimeout = null;
-                this.connect();
-            }, delay);
-        } else if (this.reconnectAttempts >= this._maxReconnectAttempts) {
-            logger.warn('Maximum reconnection attempts reached, WebSocket disabled');
-            this.connectionState = ConnectionState.FAILED;
-            if (this.connectionStatusHandler) {
-                this.connectionStatusHandler(false);
             }
-        } else {
-            logger.info('WebSocket connection closed');
+            
+            if (this.reconnectAttempts < this._maxReconnectAttempts &&
+                (wasConnected || this.reconnectAttempts === 0)) {
+                
+                this.reconnectAttempts++;
+                const delay = this.getReconnectDelay();
+                
+                logger.info('Scheduling reconnection:', {
+                    attempt: this.reconnectAttempts,
+                    maxAttempts: this._maxReconnectAttempts,
+                    delay,
+                    url: this.url
+                });
+                
+                this.connectionState = ConnectionState.RECONNECTING;
+                
+                this.reconnectTimeout = window.setTimeout(() => {
+                    try {
+                        this.reconnectTimeout = null;
+                        this.connect();
+                    } catch (error) {
+                        logger.error('Failed to initiate reconnection:', {
+                            error,
+                            attempts: this.reconnectAttempts,
+                            state: this.connectionState
+                        });
+                        this.handleReconnectFailure();
+                    }
+                }, delay);
+            } else if (this.reconnectAttempts >= this._maxReconnectAttempts) {
+                logger.warn('Maximum reconnection attempts reached:', {
+                    attempts: this.reconnectAttempts,
+                    maxAttempts: this._maxReconnectAttempts,
+                    url: this.url
+                });
+                this.handleReconnectFailure();
+            } else {
+                logger.info('WebSocket connection closed without reconnection', {
+                    wasConnected,
+                    attempts: this.reconnectAttempts
+                });
+            }
+        } catch (error) {
+            logger.error('Critical error in reconnect handler:', {
+                error,
+                connectionState: this.connectionState,
+                attempts: this.reconnectAttempts
+            });
+            this.handleReconnectFailure();
+        }
+    }
+
+    private handleReconnectFailure(): void {
+        this.connectionState = ConnectionState.FAILED;
+        if (this.connectionStatusHandler) {
+            try {
+                this.connectionStatusHandler(false);
+            } catch (error) {
+                logger.error('Error in connection status handler during failure:', error);
+            }
         }
     }
 
