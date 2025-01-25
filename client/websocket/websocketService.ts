@@ -176,11 +176,9 @@ export class WebSocketService {
         };
     }
 
-    // Message types matching server's binary protocol
+    // Message type matching server's binary protocol
     private readonly MessageType = {
-        PositionUpdate: 0x01,
-        VelocityUpdate: 0x02,
-        FullStateUpdate: 0x03
+        PositionVelocityUpdate: 0x01
     } as const;
 
     private handleBinaryMessage(buffer: ArrayBuffer): void {
@@ -192,7 +190,7 @@ export class WebSocketService {
             const messageType = dataView.getUint32(offset, true);
             offset += 4;
 
-            if (messageType !== this.MessageType.FullStateUpdate) {
+            if (messageType !== this.MessageType.PositionVelocityUpdate) {
                 logger.warn('Unexpected binary message type:', messageType);
                 return;
             }
@@ -366,7 +364,7 @@ export class WebSocketService {
         let offset = 0;
 
         // Write message type (PositionUpdate)
-        dataView.setUint32(offset, this.MessageType.PositionUpdate, true);
+        dataView.setUint32(offset, this.MessageType.PositionVelocityUpdate, true);
         offset += 4;
 
         // Write node count

@@ -163,7 +163,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                                                 .collect::<Vec<_>>();
                                             
                                             debug!("Encoding binary update with {} nodes", nodes.len());
-                                            let data = binary_protocol::encode_node_data(&nodes, MessageType::FullStateUpdate);
+                                            let data = binary_protocol::encode_node_data(&nodes, MessageType::PositionVelocityUpdate);
                                             debug!("Binary message size: {} bytes", data.len());
                                             Some(data)
                                         } else {
@@ -208,7 +208,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                     Ok((msg_type, nodes)) => {
                         if nodes.len() <= 2 { // Only allow updates for up to 2 nodes during interaction
                             match msg_type {
-                                MessageType::PositionUpdate | MessageType::VelocityUpdate => {
+                                MessageType::PositionVelocityUpdate => {
                                     // Update positions in graph service for interacted nodes
                                     let app_state = self.app_state.clone();
                                     let nodes_clone = nodes.clone();

@@ -1,11 +1,9 @@
 use byteorder::{ByteOrder, LittleEndian};
 use glam::Vec3;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum MessageType {
-    PositionUpdate = 0x01,
-    VelocityUpdate = 0x02,
-    FullStateUpdate = 0x03,
+    PositionVelocityUpdate = 0x01,
 }
 
 impl TryFrom<u32> for MessageType {
@@ -13,9 +11,7 @@ impl TryFrom<u32> for MessageType {
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
-            0x01 => Ok(MessageType::PositionUpdate),
-            0x02 => Ok(MessageType::VelocityUpdate),
-            0x03 => Ok(MessageType::FullStateUpdate),
+            0x01 => Ok(MessageType::PositionVelocityUpdate),
             _ => Err(format!("Invalid message type: {}", value)),
         }
     }
@@ -146,10 +142,10 @@ mod tests {
             },
         ];
 
-        let encoded = encode_node_data(&nodes, MessageType::FullStateUpdate);
+        let encoded = encode_node_data(&nodes, MessageType::PositionVelocityUpdate);
         let (msg_type, decoded) = decode_node_data(&encoded).unwrap();
 
-        assert!(matches!(msg_type, MessageType::FullStateUpdate));
+        assert!(matches!(msg_type, MessageType::PositionVelocityUpdate));
         assert_eq!(nodes.len(), decoded.len());
 
         for (original, decoded) in nodes.iter().zip(decoded.iter()) {
