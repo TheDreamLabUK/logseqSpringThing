@@ -11,9 +11,9 @@ export class ControlPanel {
     private unsubscribers: Array<() => void> = [];
     private settingsStore: SettingsStore;
 
-    constructor(container: HTMLElement) {
+    constructor(container: HTMLElement, settingsStore: SettingsStore) {
         this.container = container;
-        this.settingsStore = SettingsStore.getInstance();
+        this.settingsStore = settingsStore;
         this.settings = {} as Settings;
         this.initializePanel();
     }
@@ -99,32 +99,29 @@ export class ControlPanel {
 
         // Update connection status if header exists
         if (header) {
-            const statusElement = header.querySelector('#connection-status');
-            if (statusElement) {
-                const connected = this.settingsStore.isInitialized();
-                statusElement.textContent = connected ? 'Connected' : 'Disconnected';
-                statusElement.className = connected ? 'connection-status connected' : 'connection-status disconnected';
-            }
+            content.parentNode?.insertBefore(header, content);
         }
 
         logger.debug('Panel elements created');
     }
 
-    private flattenSettings(obj: unknown, prefix: string = ''): Record<string, unknown> {
+    private flattenSettings(settings: Settings): Record<string, unknown> {
         const result: Record<string, unknown> = {};
         
-        if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-            for (const [key, value] of Object.entries(obj)) {
-                const newKey = prefix ? `${prefix}.${key}` : key;
-                
-                if (value && typeof value === 'object' && !Array.isArray(value)) {
-                    Object.assign(result, this.flattenSettings(value, newKey));
-                } else {
-                    result[newKey] = value;
+        function flatten(obj: unknown, prefix = ''): void {
+            if (typeof obj === 'object' && obj !== null) {
+                for (const [key, value] of Object.entries(obj)) {
+                    const newPrefix = prefix ? `${prefix}.${key}` : key;
+                    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                        flatten(value, newPrefix);
+                    } else {
+                        result[newPrefix] = value;
+                    }
                 }
             }
         }
         
+        flatten(settings);
         return result;
     }
 
@@ -171,265 +168,166 @@ export class ControlPanel {
 
     private createSection(category: string): HTMLElement {
         const section = document.createElement('div');
-        section.className = 'settings-section';
+        section.classList.add('settings-section');
         
-        const header = document.createElement('h2');
-        
-        // Handle nested categories (e.g., 'visualization.nodes')
-        const parts = category.split('.');
-        if (parts.length === 2) {
-            // Format as "Nodes Settings" for visualization.nodes
-            const mainCategory = this.formatCategoryName(parts[0]);
-            const subCategory = this.formatCategoryName(parts[1]);
-            header.textContent = `${subCategory} Settings`;
-            
-            // Add a subtitle with the main category
-            const subtitle = document.createElement('span');
-            subtitle.className = 'settings-subtitle';
-            subtitle.textContent = mainCategory;
-            header.appendChild(subtitle);
-        } else {
-            // For top-level categories, just format the name
-            header.textContent = this.formatCategoryName(category);
-        }
-        
+        const header = document.createElement('h4');
+        header.textContent = category;
         section.appendChild(header);
+        
         return section;
     }
 
     private createSettingControl(path: string, value: unknown): HTMLElement | null {
-        const container = document.createElement('div');
-        container.className = 'setting-control';
-        
         const label = document.createElement('label');
-        label.textContent = this.formatSettingName(path.split('.').pop()!);
-        container.appendChild(label);
-        
-        const control = this.createInputElement(path, value);
-        if (!control) {
+        // Use the last part of the path and format it
+        const labelText = path.split('.').pop() || path;
+        label.textContent = `${this.formatSettingLabel(labelText)}:`;  // Use the formatting
+        label.style.whiteSpace = 'nowrap';
+
+        const control = document.createElement('div');
+        control.classList.add('setting-control');
+        control.appendChild(label);
+
+        // Create input element based on value type
+        if (typeof value === 'boolean') {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = value;
+            checkbox.dataset.path = path;
+            checkbox.addEventListener('change', () => {
+                this.settingsStore.set(path, checkbox.checked);
+                logger.debug(`Setting ${path} updated to:`, checkbox.checked);
+            });
+            control.appendChild(checkbox);
+        } else if (typeof value === 'number') {
+            const numberInput = document.createElement('input');
+            numberInput.type = 'number';
+            numberInput.value = value.toString();
+            numberInput.dataset.path = path;
+            numberInput.addEventListener('input', () => {
+                const parsedValue = parseFloat(numberInput.value);
+                if (!isNaN(parsedValue)) {
+                    this.settingsStore.set(path, parsedValue);
+                    logger.debug(`Setting ${path} updated to:`, parsedValue);
+                }
+            });
+            control.appendChild(numberInput);
+        } else if (typeof value === 'string' && (path.endsWith('Color') || path.includes('.color'))) {
+            const colorInput = document.createElement('input');
+            colorInput.type = 'color';
+            colorInput.value = value;
+            colorInput.dataset.path = path;
+            colorInput.addEventListener('change', () => {
+                this.settingsStore.set(path, colorInput.value);
+                logger.debug(`Setting ${path} updated to:`, colorInput.value);
+            });
+            control.appendChild(colorInput);
+        } else if (typeof value === 'string') {
+            const textInput = document.createElement('input');
+            textInput.type = 'text';
+            textInput.value = value;
+            textInput.dataset.path = path;
+            textInput.addEventListener('input', () => {
+                this.settingsStore.set(path, textInput.value);
+                logger.debug(`Setting ${path} updated to:`, textInput.value);
+            });
+            control.appendChild(textInput);
+        } else if (Array.isArray(value)) {
+            const select = document.createElement('select');
+            select.dataset.path = path;
+            value.forEach(optionValue => {
+                const option = document.createElement('option');
+                option.value = String(optionValue);
+                option.text = String(optionValue);
+                select.appendChild(option);
+            });
+            select.addEventListener('change', () => {
+                this.settingsStore.set(path, select.value);
+                logger.debug(`Setting ${path} updated to:`, select.value);
+            });
+            control.appendChild(select);
+        } else {
+            logger.warn(`Unsupported setting type for ${path}:`, typeof value);
             return null;
         }
-        
-        container.appendChild(control);
-        return container;
-    }
 
-    private createInputElement(path: string, value: unknown): HTMLElement | null {
-        const type = this.getInputType(value);
-        if (!type) {
-            return null;
-        }
-
-        let input: HTMLElement;
-        
-        switch (type) {
-            case 'checkbox':
-                input = document.createElement('input');
-                (input as HTMLInputElement).type = 'checkbox';
-                (input as HTMLInputElement).checked = value as boolean;
-                input.onchange = (e: Event) => {
-                    const target = e.target as HTMLInputElement;
-                    this.settingsStore.set(path, target.checked);
-                };
-                break;
-
-            case 'number':
-                input = document.createElement('input');
-                (input as HTMLInputElement).type = 'number';
-                (input as HTMLInputElement).value = String(value);
-                (input as HTMLInputElement).step = this.getStepValue(path);
-                input.onchange = (e: Event) => {
-                    const target = e.target as HTMLInputElement;
-                    this.settingsStore.set(path, parseFloat(target.value));
-                };
-                break;
-
-            case 'color':
-                input = document.createElement('input');
-                (input as HTMLInputElement).type = 'color';
-                (input as HTMLInputElement).value = value as string;
-                input.onchange = (e: Event) => {
-                    const target = e.target as HTMLInputElement;
-                    this.settingsStore.set(path, target.value);
-                };
-                break;
-
-            case 'select':
-                input = document.createElement('select');
-                if (Array.isArray(value)) {
-                    value.forEach(option => {
-                        const opt = document.createElement('option');
-                        opt.value = String(option);
-                        opt.textContent = String(option);
-                        input.appendChild(opt);
-                    });
-                }
-                input.onchange = (e: Event) => {
-                    const target = e.target as HTMLSelectElement;
-                    this.settingsStore.set(path, target.value);
-                };
-                break;
-
-            default:
-                input = document.createElement('input');
-                (input as HTMLInputElement).type = 'text';
-                (input as HTMLInputElement).value = String(value);
-                input.onchange = (e: Event) => {
-                    const target = e.target as HTMLInputElement;
-                    this.settingsStore.set(path, target.value);
-                };
-        }
-
-        input.id = `setting-${path}`;
-        return input;
-    }
-
-    private getInputType(value: unknown): string | null {
-        switch (typeof value) {
-            case 'boolean':
-                return 'checkbox';
-            case 'number':
-                return 'number';
-            case 'string':
-                if (value.match(/^#[0-9a-f]{6}$/i)) {
-                    return 'color';
-                }
-                return 'text';
-            case 'object':
-                if (Array.isArray(value)) {
-                    return 'select';
-                }
-                return null;
-            default:
-                return null;
-        }
-    }
-
-    private getStepValue(path: string): string {
-        if (path.includes('opacity') || path.includes('strength')) {
-            return '0.1';
-        }
-        return '1';
-    }
-
-    private formatCategoryName(category: string): string {
-        return category
-            .split(/(?=[A-Z])/)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-    }
-
-    private formatSettingName(setting: string): string {
-        // Get the last part of the path (e.g., 'baseSize' from 'visualization.nodes.baseSize')
-        const parts = setting.split('.');
-        const name = parts[parts.length - 1];
-        
-        // Convert camelCase to Title Case with spaces
-        return name
-            .split(/(?=[A-Z])/)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-            .join(' ');
+        return control;
     }
 
     private async setupSettingsSubscriptions(): Promise<void> {
+        const flatSettings = this.flattenSettings(this.settings);
+        const paths = Object.keys(flatSettings).sort();
+
+        const promises = paths.map(async path => {
+            return new Promise<void>((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                    reject(new Error(`Timeout setting up subscription for ${path}`));
+                }, 5000);
+
+                // Subscribe to each setting path
+                this.settingsStore.subscribe(path, (value: unknown) => {
+                    logger.debug(`Received update for ${path}:`, value);
+                    this.updateSettingControl(path, value);
+                    clearTimeout(timeoutId);
+                    resolve();
+                }).then(unsub => {
+                    this.unsubscribers.push(unsub);
+                }).catch(error => {
+                    logger.error(`Failed to subscribe to ${path}:`, error);
+                    reject(error);
+                });
+            });
+        });
+
         try {
-            logger.debug('Setting up settings subscriptions');
-            
-            // Clear existing subscriptions
-            this.unsubscribers.forEach(unsub => unsub());
-            this.unsubscribers = [];
+            await Promise.all(promises);
+            logger.info('All settings subscriptions set up successfully.');
+        } catch (error) {
+            logger.error('Failed to set up all settings subscriptions:', error);
+        }
+    }
 
-            const settings = this.settingsStore;
-
-            // Subscribe to all settings changes
-            const flatSettings = this.flattenSettings(this.settings);
-            for (const path of Object.keys(flatSettings)) {
-                try {
-                    const unsub = await settings.subscribe(path, (value) => {
-                        logger.debug(`Setting updated: ${path}`, value);
-                        this.updateSettingValue(path, value);
-                        
-                        // Special handling for label visibility
-                        if (path === 'visualization.labels.enableLabels') {
-                            this.updateLabelVisibility(typeof value === 'boolean' ? value : value === 'true');
-                        }
-                        
-                        // Special handling for connection status
-                        if (path === 'system.network.status') {
-                            // Convert value to boolean, handling different possible types
-                            const isConnected = typeof value === 'boolean' ? value :
-                                              typeof value === 'string' ? value.toLowerCase() === 'true' :
-                                              Boolean(value);
-                            this.updateConnectionStatus(isConnected);
-                        }
-                    });
-                    
-                    if (unsub) {
-                        this.unsubscribers.push(unsub);
-                    }
-                } catch (error) {
-                    logger.error(`Failed to subscribe to setting: ${path}`, error);
-                }
+    private updateSettingControl(path: string, value: unknown): void {
+        try {
+            const control = this.container.querySelector(`[data-path="${path}"]`);
+            if (!control) {
+                logger.warn(`Control not found for setting: ${path}`);
+                return;
             }
 
-            logger.debug('Settings subscriptions setup complete');
-        } catch (error) {
-            logger.error('Failed to setup settings subscriptions:', error);
-            throw error;
-        }
-    }
-
-    private updateConnectionStatus(connected: boolean): void {
-        const statusElement = this.container.querySelector('#connection-status');
-        if (statusElement) {
-            statusElement.textContent = connected ? 'Connected' : 'Disconnected';
-            statusElement.className = `connection-status ${connected ? 'connected' : 'disconnected'}`;
-        }
-    }
-
-    private updateLabelVisibility(value: boolean): void {
-        // Update label visibility in the UI
-        const labelElements = document.querySelectorAll('.node-label');
-        labelElements.forEach(el => {
-            (el as HTMLElement).style.display = value ? 'block' : 'none';
-        });
-    }
-
-    private updateSettingValue(path: string, value: unknown): void {
-        logger.debug(`Updating setting value: ${path}`, { value });
-        
-        const element = document.getElementById(`setting-${path}`);
-        if (!element) {
-            logger.warn(`No element found for setting: ${path}`);
-            return;
-        }
-
-        try {
-            if (element instanceof HTMLInputElement) {
-                switch (element.type) {
+            if (control instanceof HTMLInputElement) {
+                const inputType = control.type;
+                switch (inputType) {
                     case 'checkbox':
-                        element.checked = value as boolean;
-                        logger.debug(`Updated checkbox: ${path}`, { checked: element.checked });
+                        control.checked = value as boolean;
+                        logger.debug(`Updated checkbox: ${path}`, { checked: control.checked });
                         break;
                     case 'number':
-                        element.value = String(value);
-                        logger.debug(`Updated number: ${path}`, { value: element.value });
+                        control.value = String(value);
+                        logger.debug(`Updated number: ${path}`, { value: control.value });
                         break;
                     case 'color':
-                        element.value = value as string;
-                        logger.debug(`Updated color: ${path}`, { value: element.value });
+                        control.value = value as string;
+                        logger.debug(`Updated color: ${path}`, { value: control.value });
                         break;
                     default:
-                        element.value = String(value);
-                        logger.debug(`Updated text: ${path}`, { value: element.value });
+                        control.value = String(value);
+                        logger.debug(`Updated text: ${path}`, { value: control.value });
                 }
-            } else if (element instanceof HTMLSelectElement) {
-                element.value = String(value);
-                logger.debug(`Updated select: ${path}`, { value: element.value });
+            } else if (control instanceof HTMLSelectElement) {
+                control.value = String(value);
+                logger.debug(`Updated select: ${path}`, { value: control.value });
             }
         } catch (error) {
             logger.error(`Failed to update setting value: ${path}`, error);
         }
+    }
+
+    private formatSettingLabel(key: string): string {
+        return key
+            .split(/(?=[A-Z])|[_\.]/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ');
     }
 
     public dispose(): void {
