@@ -60,6 +60,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::resource("")
             .route(web::get().to(get_settings))
+            .route(web::post().to(update_settings))
     ).service(
         web::resource("/graph")
             .route(web::get().to(get_graph_settings))
@@ -73,9 +74,36 @@ pub struct SettingsUpdate {
 }
 
 pub async fn update_settings(
-    _app_state: web::Data<AppState>,
-    _updates: web::Json<Vec<SettingsUpdate>>,
+    app_state: web::Data<AppState>,
+    updates: web::Json<Vec<SettingsUpdate>>,
 ) -> Result<HttpResponse, Error> {
-    // Implementation
+    let mut settings = app_state.settings.write().await;
+    
+    for update in updates.iter() {
+        // Convert camelCase path to snake_case for server-side storage
+        let server_path = to_snake_case(&update.path);
+        
+        // Update the settings using the path
+        let path_parts: Vec<&str> = server_path.split('.').collect();
+        let mut current = &mut *settings;
+        
+        for (i, &part) in path_parts.iter().enumerate() {
+            if i == path_parts.len() - 1 {
+                // Last part - set the value
+                if let Some(obj) = current.as_object_mut() {
+                    obj.insert(part.to_string(), update.value.clone());
+                }
+            } else {
+                // Navigate to next level
+                if let Some(obj) = current.as_object_mut() {
+                    if !obj.contains_key(part) {
+                        obj.insert(part.to_string(), json!({}));
+                    }
+                    current = obj.get_mut(part).unwrap();
+                }
+            }
+        }
+    }
+
     Ok(HttpResponse::Ok().json(json!({ "status": "success" })))
-} 
+}

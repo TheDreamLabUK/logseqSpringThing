@@ -266,9 +266,15 @@ export class ControlPanel {
             checkbox.type = 'checkbox';
             checkbox.checked = value;
             checkbox.dataset.path = path;
-            checkbox.addEventListener('change', () => {
-                this.settingsStore.set(path, checkbox.checked);
-                logger.debug(`Setting ${path} updated to:`, checkbox.checked);
+            checkbox.addEventListener('change', async () => {
+                try {
+                    await this.settingsStore.set(path, checkbox.checked);
+                    logger.debug(`Setting ${path} updated to:`, checkbox.checked);
+                } catch (error) {
+                    logger.error(`Failed to update setting ${path}:`, error);
+                    // Revert the checkbox if the update failed
+                    checkbox.checked = !checkbox.checked;
+                }
             });
             control.appendChild(checkbox);
         } else if (typeof value === 'number') {
@@ -276,11 +282,17 @@ export class ControlPanel {
             numberInput.type = 'number';
             numberInput.value = value.toString();
             numberInput.dataset.path = path;
-            numberInput.addEventListener('input', () => {
+            numberInput.addEventListener('input', async () => {
                 const parsedValue = parseFloat(numberInput.value);
                 if (!isNaN(parsedValue)) {
-                    this.settingsStore.set(path, parsedValue);
-                    logger.debug(`Setting ${path} updated to:`, parsedValue);
+                    try {
+                        await this.settingsStore.set(path, parsedValue);
+                        logger.debug(`Setting ${path} updated to:`, parsedValue);
+                    } catch (error) {
+                        logger.error(`Failed to update setting ${path}:`, error);
+                        // Revert the input if the update failed
+                        numberInput.value = value.toString();
+                    }
                 }
             });
             control.appendChild(numberInput);
@@ -289,9 +301,16 @@ export class ControlPanel {
             colorInput.type = 'color';
             colorInput.value = value;
             colorInput.dataset.path = path;
-            colorInput.addEventListener('change', () => {
-                this.settingsStore.set(path, colorInput.value);
-                logger.debug(`Setting ${path} updated to:`, colorInput.value);
+            colorInput.addEventListener('change', async () => {
+                const newValue = colorInput.value;
+                try {
+                    await this.settingsStore.set(path, newValue);
+                    logger.debug(`Setting ${path} updated to:`, newValue);
+                } catch (error) {
+                    logger.error(`Failed to update setting ${path}:`, error);
+                    // Revert the color if the update failed
+                    colorInput.value = value as string;
+                }
             });
             control.appendChild(colorInput);
         } else if (typeof value === 'string') {
@@ -299,9 +318,16 @@ export class ControlPanel {
             textInput.type = 'text';
             textInput.value = value;
             textInput.dataset.path = path;
-            textInput.addEventListener('input', () => {
-                this.settingsStore.set(path, textInput.value);
-                logger.debug(`Setting ${path} updated to:`, textInput.value);
+            textInput.addEventListener('input', async () => {
+                const newValue = textInput.value;
+                try {
+                    await this.settingsStore.set(path, newValue);
+                    logger.debug(`Setting ${path} updated to:`, newValue);
+                } catch (error) {
+                    logger.error(`Failed to update setting ${path}:`, error);
+                    // Revert the text if the update failed
+                    textInput.value = value as string;
+                }
             });
             control.appendChild(textInput);
         } else if (Array.isArray(value)) {
@@ -313,9 +339,16 @@ export class ControlPanel {
                 option.text = String(optionValue);
                 select.appendChild(option);
             });
-            select.addEventListener('change', () => {
-                this.settingsStore.set(path, select.value);
-                logger.debug(`Setting ${path} updated to:`, select.value);
+            select.addEventListener('change', async () => {
+                const newValue = select.value;
+                try {
+                    await this.settingsStore.set(path, newValue);
+                    logger.debug(`Setting ${path} updated to:`, newValue);
+                } catch (error) {
+                    logger.error(`Failed to update setting ${path}:`, error);
+                    // Revert the selection if the update failed
+                    select.value = String(value[0]); // Reset to first value in array
+                }
             });
             control.appendChild(select);
         } else {

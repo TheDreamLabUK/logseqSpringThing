@@ -13,9 +13,7 @@ export class SettingsStore {
     private settings: Settings;
     private initialized: boolean = false;
     private initializationPromise: Promise<void> | null = null;
-    private pendingChanges: Set<string> = new Set();
     private subscribers: Map<string, Set<SettingsChangeCallback>> = new Map();
-    private syncTimer: number | null = null;
 
     private constructor() {
         // Initialize with default settings
@@ -80,9 +78,6 @@ export class SettingsStore {
 
                 this.initialized = true;
                 logger.info('SettingsStore initialized');
-
-                // Start periodic sync
-                this.startSync();
             } catch (error) {
                 logger.error('Failed to initialize settings:', error);
                 // Use defaults on error but ensure physics is enabled
@@ -153,7 +148,7 @@ export class SettingsStore {
         }
     }
 
-    public set(path: string, value: unknown): void {
+    public async set(path: string, value: unknown): Promise<void> {
         if (!this.initialized) {
             logger.error('Attempting to set settings before initialization');
             throw new Error('SettingsStore not initialized');
@@ -174,7 +169,30 @@ export class SettingsStore {
             }
 
             target[lastKey] = value;
-            this.pendingChanges.add(path);
+            
+            // Immediately sync with server
+            try {
+                const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify([{
+                        path,
+                        value
+                    }]),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to sync setting: ${response.statusText}`);
+                }
+                
+                logger.debug(`Setting ${path} synced with server`);
+            } catch (error) {
+                logger.error(`Failed to sync setting ${path}:`, error);
+                // Continue with local update even if server sync fails
+            }
+
             this.notifySubscribers(path, value);
         } catch (error) {
             logger.error(`Error setting value at path ${path}:`, error);
@@ -236,51 +254,8 @@ export class SettingsStore {
         return result;
     }
 
-    private startSync(): void {
-        // Clear any existing sync timer
-        if (this.syncTimer !== null) {
-            window.clearInterval(this.syncTimer);
-        }
-
-        // Start periodic sync every 30 seconds
-        this.syncTimer = window.setInterval(async () => {
-            try {
-                // Only sync if there are pending changes
-                if (this.pendingChanges.size > 0) {
-                    const changedSettings: Record<string, unknown> = {};
-                    this.pendingChanges.forEach(path => {
-                        changedSettings[path] = this.get(path);
-                    });
-
-                    const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(changedSettings),
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`Failed to sync settings: ${response.statusText}`);
-                    }
-
-                    // Clear pending changes after successful sync
-                    this.pendingChanges.clear();
-                    logger.debug('Settings synced with server');
-                }
-            } catch (error) {
-                logger.error('Failed to sync settings:', error);
-            }
-        }, 30000); // 30 seconds
-    }
-
     public dispose(): void {
-        if (this.syncTimer !== null) {
-            window.clearInterval(this.syncTimer);
-            this.syncTimer = null;
-        }
         this.subscribers.clear();
-        this.pendingChanges.clear();
         this.initialized = false;
     }
 }
