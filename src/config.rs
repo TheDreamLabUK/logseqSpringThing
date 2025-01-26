@@ -25,6 +25,10 @@ pub struct Settings {
     #[serde(default)]
     pub hologram: HologramSettings,
 
+    // XR settings
+    #[serde(default)]
+    pub xr: XRSettings,
+
     // System settings
     #[serde(default)]
     pub network: NetworkSettings,
@@ -623,6 +627,101 @@ impl Default for HologramSettings {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+#[serde(default)]
+pub struct XRSettings {
+    // Session Settings
+    pub mode: String,
+    pub room_scale: bool,
+    pub space_type: String,
+    
+    // Hand Tracking
+    pub enable_hand_tracking: bool,
+    pub hand_mesh_enabled: bool,
+    pub hand_mesh_color: String,
+    pub hand_mesh_opacity: f32,
+    pub hand_point_size: f32,
+    pub hand_ray_enabled: bool,
+    pub hand_ray_color: String,
+    pub hand_ray_width: f32,
+    pub gesture_smoothing: f32,
+    
+    // Interaction
+    pub enable_haptics: bool,
+    pub haptic_intensity: f32,
+    pub drag_threshold: f32,
+    pub pinch_threshold: f32,
+    pub rotation_threshold: f32,
+    pub interaction_radius: f32,
+    
+    // Scene Understanding
+    pub enable_light_estimation: bool,
+    pub enable_plane_detection: bool,
+    pub enable_scene_understanding: bool,
+    pub plane_color: String,
+    pub plane_opacity: f32,
+    pub show_plane_overlay: bool,
+    pub snap_to_floor: bool,
+    
+    // Passthrough
+    pub enable_passthrough_portal: bool,
+    pub passthrough_opacity: f32,
+    pub passthrough_brightness: f32,
+    pub passthrough_contrast: f32,
+    pub portal_size: f32,
+    pub portal_edge_color: String,
+    pub portal_edge_width: f32,
+    
+    // Quality Settings
+    pub quality: String,
+}
+
+impl Default for XRSettings {
+    fn default() -> Self {
+        Self {
+            mode: "immersive-ar".to_string(),
+            room_scale: true,
+            space_type: "local-floor".to_string(),
+            
+            enable_hand_tracking: true,
+            hand_mesh_enabled: true,
+            hand_mesh_color: "#ffffff".to_string(),
+            hand_mesh_opacity: 0.5,
+            hand_point_size: 5.0,
+            hand_ray_enabled: true,
+            hand_ray_color: "#00ff00".to_string(),
+            hand_ray_width: 2.0,
+            gesture_smoothing: 0.5,
+            
+            enable_haptics: true,
+            haptic_intensity: 0.5,
+            drag_threshold: 0.02,
+            pinch_threshold: 0.7,
+            rotation_threshold: 0.1,
+            interaction_radius: 0.5,
+            
+            enable_light_estimation: true,
+            enable_plane_detection: true,
+            enable_scene_understanding: true,
+            plane_color: "#808080".to_string(),
+            plane_opacity: 0.5,
+            show_plane_overlay: true,
+            snap_to_floor: true,
+            
+            enable_passthrough_portal: false,
+            passthrough_opacity: 1.0,
+            passthrough_brightness: 1.0,
+            passthrough_contrast: 1.0,
+            portal_size: 2.0,
+            portal_edge_color: "#ffffff".to_string(),
+            portal_edge_width: 2.0,
+            
+            quality: "medium".to_string(),
+        }
+    }
+}
+
 impl Settings {
     pub fn merge(&mut self, value: Value) -> Result<(), String> {
         // Convert incoming JSON value to snake_case
@@ -672,6 +771,11 @@ impl Settings {
         if let Ok(hologram) = serde_json::to_value(&new_settings.hologram) {
             if !hologram.is_null() {
                 self.hologram = new_settings.hologram;
+            }
+        }
+        if let Ok(xr) = serde_json::to_value(&new_settings.xr) {
+            if !xr.is_null() {
+                self.xr = new_settings.xr;
             }
         }
         
@@ -796,6 +900,7 @@ impl Default for Settings {
             ragflow: RagFlowSettings::default(),
             perplexity: PerplexitySettings::default(),
             openai: OpenAISettings::default(),
+            xr: XRSettings::default(),
         }
     }
 }

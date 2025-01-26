@@ -14,10 +14,27 @@ pub fn config(cfg: &mut web::ServiceConfig) {
 }
 
 async fn get_settings(state: web::Data<Arc<AppState>>) -> Result<HttpResponse, Error> {
-    // RwLock::read() returns the guard directly
     let settings = state.settings.read().await;
-    // Convert settings to camelCase for client
-    let client_settings = convert_struct_to_camel_case(&*settings);
+    
+    // Transform settings using explicit structure
+    let client_settings = json!({
+        "visualization": {
+            "nodes": convert_struct_to_camel_case(&settings.nodes),
+            "edges": convert_struct_to_camel_case(&settings.edges),
+            "physics": convert_struct_to_camel_case(&settings.physics),
+            "rendering": convert_struct_to_camel_case(&settings.rendering),
+            "animations": convert_struct_to_camel_case(&settings.animations),
+            "labels": convert_struct_to_camel_case(&settings.labels),
+            "bloom": convert_struct_to_camel_case(&settings.bloom),
+            "hologram": convert_struct_to_camel_case(&settings.hologram),
+        },
+        "system": {
+            "network": convert_struct_to_camel_case(&settings.network),
+            "websocket": convert_struct_to_camel_case(&settings.websocket),
+            "debug": convert_struct_to_camel_case(&settings.debug)
+        }
+    });
+
     Ok(HttpResponse::Ok().json(client_settings))
 }
 

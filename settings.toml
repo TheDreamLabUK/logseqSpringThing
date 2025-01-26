@@ -135,6 +135,47 @@ enable_websocket_debug = true
 log_binary_headers = true
 log_full_json = true
 
+# XR settings
+[xr]
+mode = "immersive-ar"
+room_scale = true
+space_type = "local-floor"
+
+enable_hand_tracking = true
+hand_mesh_enabled = true
+hand_mesh_color = "#ffffff"
+hand_mesh_opacity = 0.5
+hand_point_size = 5.0
+hand_ray_enabled = true
+hand_ray_color = "#00ff00"
+hand_ray_width = 2.0
+gesture_smoothing = 0.5
+
+enable_haptics = true
+haptic_intensity = 0.5
+drag_threshold = 0.02
+pinch_threshold = 0.7
+rotation_threshold = 0.1
+interaction_radius = 0.5
+
+enable_light_estimation = true
+enable_plane_detection = true
+enable_scene_understanding = true
+plane_color = "#808080"
+plane_opacity = 0.5
+show_plane_overlay = true
+snap_to_floor = true
+
+enable_passthrough_portal = false
+passthrough_opacity = 1.0
+passthrough_brightness = 1.0
+passthrough_contrast = 1.0
+portal_size = 2.0
+portal_edge_color = "#ffffff"
+portal_edge_width = 2.0
+
+quality = "medium"
+
 # Server-only settings
 [github]
 rate_limit = true

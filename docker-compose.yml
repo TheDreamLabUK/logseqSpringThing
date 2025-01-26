@@ -34,6 +34,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_GPU_UUID:-0}  # Use GPU UUID from launch script
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NODE_ENV=production
+      - SETTINGS_FILE_PATH=/app/settings.toml
     env_file:
       - .env
     volumes:
