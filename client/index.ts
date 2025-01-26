@@ -7,6 +7,7 @@ import { WebSocketService } from './websocket/websocketService';
 import { SettingsStore } from './state/SettingsStore';
 import { LoggerConfig, createLogger } from './core/logger';
 import { SceneManager } from './rendering/scene';
+import './ui'; // Import UI initialization
 
 const logger = createLogger('GraphVisualization');
 

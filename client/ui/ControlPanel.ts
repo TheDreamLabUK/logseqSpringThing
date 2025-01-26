@@ -1,6 +1,7 @@
 import { Settings } from '../types/settings';
 import { createLogger } from '../core/logger';
 import { SettingsStore } from '../state/SettingsStore';
+import { WebSocketService } from '../websocket/websocketService';
 import './ControlPanel.css';
 
 const logger = createLogger('ControlPanel');
@@ -10,18 +11,47 @@ export class ControlPanel {
     private settings: Settings;
     private unsubscribers: Array<() => void> = [];
     private settingsStore: SettingsStore;
+    private webSocketService: WebSocketService;
 
     constructor(container: HTMLElement, settingsStore: SettingsStore) {
         this.container = container;
         this.settingsStore = settingsStore;
         this.settings = {} as Settings;
+        this.webSocketService = WebSocketService.getInstance();
+        this.setupConnectionStatus();
         this.initializePanel();
+    }
+
+    private setupConnectionStatus(): void {
+        const statusElement = this.container.querySelector('.connection-status');
+        const statusTextElement = this.container.querySelector('#connection-status');
+        
+        if (!statusElement || !statusTextElement) {
+            logger.error('Connection status elements not found');
+            return;
+        }
+
+        this.webSocketService.onConnectionStatusChange((connected: boolean) => {
+            statusElement.classList.remove('connected', 'disconnected');
+            statusElement.classList.add(connected ? 'connected' : 'disconnected');
+            statusTextElement.textContent = connected ? 'Connected' : 'Disconnected';
+            logger.debug('Connection status updated:', connected);
+        });
     }
 
     private async initializePanel(): Promise<void> {
         try {
-            // Show loading state with more detail
-            this.container.innerHTML = '<div class="loading">Initializing control panel...</div>';
+            logger.debug('Starting panel initialization...');
+            
+            // Get the content container
+            const content = this.container.querySelector('.control-panel-content');
+            if (!content) {
+                throw new Error('Control panel content container not found');
+            }
+            
+            // Show loading state
+            content.innerHTML = '<div class="loading">Initializing control panel...</div>';
+            logger.debug('Container exists:', !!this.container);
             
             // Initialize settings store with timeout
             const initializePromise = this.settingsStore.initialize();
@@ -31,7 +61,7 @@ export class ControlPanel {
             
             // Wait for settings store to initialize or timeout
             await Promise.race([initializePromise, timeoutPromise]);
-            this.container.innerHTML = '<div class="loading">Loading settings...</div>';
+            content.innerHTML = '<div class="loading">Loading settings...</div>';
             
             // Get settings after initialization
             const settings = this.settingsStore.get('');
@@ -40,14 +70,20 @@ export class ControlPanel {
             }
             
             this.settings = settings as Settings;
-            logger.info('Settings loaded:', this.settings);
+            logger.debug('Settings loaded:', {
+                visualization: Object.keys(this.settings.visualization || {}),
+                system: Object.keys(this.settings.system || {}),
+                xr: this.settings.xr
+            });
             
             // Create panel elements
-            this.container.innerHTML = '<div class="loading">Creating control panel...</div>';
+            content.innerHTML = '<div class="loading">Creating control panel...</div>';
             this.createPanelElements();
+            logger.debug('Panel elements created');
             
             // Setup subscriptions
             await this.setupSettingsSubscriptions();
+            logger.debug('Settings subscriptions set up');
             
             logger.info('Control panel initialized successfully');
         } catch (error) {
@@ -63,21 +99,46 @@ export class ControlPanel {
     }
 
     private createPanelElements(): void {
-        // Clear existing content but keep the header
-        const header = this.container.querySelector('.control-panel-header');
+        logger.debug('Creating panel elements...');
+        
+        // First check if the container exists
+        if (!this.container) {
+            logger.error('Control panel container is null');
+            return;
+        }
+
+        // Get the content container
         const content = this.container.querySelector('.control-panel-content');
         if (!content) {
             logger.error('Control panel content container not found');
             return;
         }
-        content.innerHTML = '';
+
+        // Create a temporary container for the new content
+        const tempContainer = document.createElement('div');
 
         // Create settings sections
         const flatSettings = this.flattenSettings(this.settings);
+        logger.debug('Flattened settings:', {
+            count: Object.keys(flatSettings).length,
+            paths: Object.keys(flatSettings)
+        });
+        
         const groupedSettings = this.groupSettingsByCategory(flatSettings);
+        logger.debug('Grouped settings:', {
+            categories: Object.keys(groupedSettings),
+            settingsPerCategory: Object.entries(groupedSettings).map(([cat, settings]) => ({
+                category: cat,
+                count: Object.keys(settings).length
+            }))
+        });
 
         // Sort categories to ensure consistent order
         const sortedCategories = Object.entries(groupedSettings).sort(([a], [b]) => a.localeCompare(b));
+        logger.debug('Processing categories:', sortedCategories.map(([cat]) => ({
+            category: cat,
+            settingCount: Object.keys(groupedSettings[cat]).length
+        })));
 
         for (const [category, settings] of sortedCategories) {
             const section = this.createSection(category);
@@ -86,23 +147,39 @@ export class ControlPanel {
             const sortedSettings = Object.entries(settings).sort(([a], [b]) => a.localeCompare(b));
             
             for (const [path, value] of sortedSettings) {
+                logger.debug(`Creating control for ${path}:`, {
+                    type: typeof value,
+                    value: value
+                });
                 const control = this.createSettingControl(path, value);
                 if (control) {
                     section.appendChild(control);
+                    logger.debug(`Added control for ${path}`);
+                } else {
+                    logger.warn(`Failed to create control for ${path}`);
                 }
             }
             
             if (section.children.length > 1) { // > 1 because section always has a header
-                content.appendChild(section);
+                tempContainer.appendChild(section);
+                logger.debug(`Added section ${category}`, {
+                    totalControls: section.children.length - 1,
+                    paths: Array.from(section.querySelectorAll('[data-path]')).map(el => el.getAttribute('data-path'))
+                });
+            } else {
+                logger.debug(`Skipping empty section ${category}`);
             }
         }
 
-        // Update connection status if header exists
-        if (header) {
-            content.parentNode?.insertBefore(header, content);
-        }
+        // Only update the content once everything is ready
+        content.innerHTML = '';
+        content.appendChild(tempContainer);
+        logger.debug('Panel elements created successfully', {
+            totalSections: tempContainer.children.length,
+            totalControls: tempContainer.querySelectorAll('[data-path]').length
+        });
 
-        logger.debug('Panel elements created');
+        logger.debug('Panel elements creation complete');
     }
 
     private flattenSettings(settings: Settings): Record<string, unknown> {
@@ -128,26 +205,19 @@ export class ControlPanel {
     private groupSettingsByCategory(flatSettings: Record<string, unknown>): Record<string, Record<string, unknown>> {
         const result: Record<string, Record<string, unknown>> = {};
         
-        // Initialize main categories
-        const mainCategories = ['visualization', 'system'];
-        mainCategories.forEach(category => {
-            result[category] = {};
-        });
-        
-        // Group settings by their full category path (e.g., 'visualization.nodes')
+        // Group settings by their category path
         for (const [path, value] of Object.entries(flatSettings)) {
             const parts = path.split('.');
             if (parts.length >= 2) {
-                const mainCategory = parts[0];
-                const subCategory = parts[1];
-                const fullCategory = `${mainCategory}.${subCategory}`;
-                
-                if (!result[fullCategory]) {
-                    result[fullCategory] = {};
+                // For visualization and system settings, use first two parts as category
+                // e.g., 'visualization.nodes' or 'system.network'
+                const category = parts.slice(0, 2).join('.');
+                if (!result[category]) {
+                    result[category] = {};
                 }
-                result[fullCategory][path] = value;
+                result[category][path] = value;
             } else {
-                // Handle top-level settings if any
+                // For top-level settings like 'xr', use the first part
                 const category = parts[0];
                 if (!result[category]) {
                     result[category] = {};
@@ -155,12 +225,14 @@ export class ControlPanel {
                 result[category][path] = value;
             }
         }
-        
-        // Remove empty categories
-        Object.keys(result).forEach(category => {
-            if (Object.keys(result[category]).length === 0) {
-                delete result[category];
-            }
+
+        logger.debug('Grouped settings by category:', {
+            categories: Object.keys(result),
+            settingsPerCategory: Object.entries(result).map(([cat, settings]) => ({
+                category: cat,
+                settingCount: Object.keys(settings).length,
+                example: Object.keys(settings)[0]
+            }))
         });
         
         return result;
@@ -333,6 +405,8 @@ export class ControlPanel {
     public dispose(): void {
         this.unsubscribers.forEach(unsub => unsub());
         this.unsubscribers = [];
+        this.webSocketService.onConnectionStatusChange(() => {}); // Remove connection status handler
         this.container.innerHTML = '';
+        logger.debug('ControlPanel disposed');
     }
 }
