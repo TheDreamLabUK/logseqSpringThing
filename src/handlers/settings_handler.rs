@@ -1,7 +1,6 @@
 use actix_web::{web, HttpResponse, Error};
 use serde_json::{Value, json};
-use std::sync::Arc;
-use crate::state::AppState;
+use crate::app_state::AppState;
 use crate::utils::case_conversion::to_camel_case;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -12,7 +11,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
-async fn get_settings(state: web::Data<Arc<AppState>>) -> Result<HttpResponse, Error> {
+async fn get_settings(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
     let settings_guard = state.settings.read().await;
     let settings_json = serde_json::to_value(&*settings_guard)
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
@@ -20,7 +19,7 @@ async fn get_settings(state: web::Data<Arc<AppState>>) -> Result<HttpResponse, E
 }
 
 async fn update_settings(
-    state: web::Data<Arc<AppState>>,
+    state: web::Data<AppState>,
     payload: web::Json<Value>
 ) -> Result<HttpResponse, Error> {
     if let Err(e) = validate_settings(&payload) {
@@ -64,7 +63,7 @@ fn convert_struct_to_camel_case<T: serde::Serialize>(value: &T) -> serde_json::V
     }
 }
 
-pub async fn get_graph_settings(app_state: web::Data<Arc<AppState>>) -> Result<HttpResponse, Error> {
+pub async fn get_graph_settings(app_state: web::Data<AppState>) -> Result<HttpResponse, Error> {
     let settings = app_state.settings.read().await;
     Ok(HttpResponse::Ok().json(json!({
         "visualization": {
