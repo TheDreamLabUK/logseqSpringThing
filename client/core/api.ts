@@ -45,11 +45,6 @@ export function buildWsUrl(): string {
     return `${base}${wsPath}`;
 }
 
-// Helper function to build settings item URL
-export function buildSettingsItemUrl(category: string, setting: string): string {
-    return API_ENDPOINTS.SETTINGS_ITEM(category, setting);
-}
-
 // Helper function to build visualization settings URL
 export function buildVisualizationSettingsUrl(): string {
     return API_ENDPOINTS.VISUALIZATION_SETTINGS;

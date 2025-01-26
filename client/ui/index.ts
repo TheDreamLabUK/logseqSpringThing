@@ -1,6 +1,5 @@
 import { ControlPanel } from './ControlPanel';
 import { createLogger } from '../core/logger';
-import { SettingsStore } from '../state/SettingsStore';
 import './ControlPanel.css';
 
 const logger = createLogger('UI');
@@ -10,17 +9,10 @@ export async function initializeUI(): Promise<void> {
     try {
         logger.debug('Initializing UI components');
         
-        // Get the singleton instance of SettingsStore
-        const settingsStore = SettingsStore.getInstance();
-        
-        // Initialize settings store
-        await settingsStore.initialize();
-        logger.debug('Settings store initialized');
-        
         const controlPanelElement = document.getElementById('control-panel');
         if (controlPanelElement instanceof HTMLElement) {
             logger.debug('Found control panel element, initializing ControlPanel');
-            new ControlPanel(controlPanelElement, settingsStore);
+            new ControlPanel(controlPanelElement);
         } else {
             logger.error('Control panel element not found');
         }
