@@ -50,9 +50,11 @@ export class GraphVisualization {
     constructor(settings: Settings) {
         logger.debug('Initializing GraphVisualization');
         
-        // Create canvas element
-        const canvas = document.createElement('canvas');
-        document.body.appendChild(canvas);
+        // Get existing canvas element
+        const canvas = document.getElementById('main-canvas') as HTMLCanvasElement;
+        if (!canvas) {
+            throw new Error('Could not find #main-canvas element');
+        }
         
         // Initialize SceneManager
         this.sceneManager = SceneManager.getInstance(canvas);
