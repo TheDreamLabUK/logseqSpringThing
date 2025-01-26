@@ -16,6 +16,9 @@ export class SettingsStore {
     private initializationPromise: Promise<void> | null = null;
     private subscribers: Map<string, SettingsChangeCallback[]> = new Map();
     private logger: Logger;
+    private retryCount: number = 0;
+    private MAX_RETRIES: number = 3;
+    private RETRY_DELAY: number = 1000;
 
     private constructor() {
         this.settings = {} as Settings;
@@ -182,7 +185,7 @@ export class SettingsStore {
 
     private async syncWithServer(): Promise<void> {
         try {
-            const response = await fetch('/api/settings', {
+            const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -191,14 +194,23 @@ export class SettingsStore {
             });
             
             if (!response.ok) {
-                throw new Error(`Server returned ${response.status}: ${await response.text()}`);
+                const errorText = await response.text();
+                throw new Error(`Server returned ${response.status}: ${errorText}`);
             }
             
             // Update local settings with server response
             const serverSettings = await response.json();
             this.settings = serverSettings;
+            this.logger.debug('Settings synced successfully with server');
         } catch (error) {
             this.logger.error('Failed to sync settings with server:', error);
+            // Add retry logic
+            if (this.retryCount < this.MAX_RETRIES) {
+                this.retryCount++;
+                this.logger.info(`Retrying sync (attempt ${this.retryCount}/${this.MAX_RETRIES})...`);
+                await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
+                return this.syncWithServer();
+            }
             throw error;
         }
     }

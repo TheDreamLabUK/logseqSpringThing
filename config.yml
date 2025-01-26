@@ -1,20 +1,14 @@
-tunnel: 9a59e21c-7e0d-4cac-8502-59bc66436e0f
+tunnel: your-tunnel-id
+credentials-file: /etc/cloudflared/creds/credentials.json
 
 ingress:
   - hostname: www.visionflow.info
-    service: http://webxr-client:4000
-    originRequest:
-      noTLSVerify: true
-      connectTimeout: 30s
-      tcpKeepAlive: 30s
-      keepAliveTimeout: 2m
-      keepAliveConnections: 100
-      httpHostHeader: www.visionflow.info
-      proxyProtocol: false
-    config:
-      webSockets: true
-      http2Origin: true
+    service: http://localhost:4000
   - service: http_status:404
+
+# Optional logging configuration
+logfile: /var/log/cloudflared.log
+loglevel: info
 
 # Connection settings
 protocol: quic

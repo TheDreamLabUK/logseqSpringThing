@@ -10,6 +10,7 @@ pub mod handlers;
 pub mod models;
 pub mod services;
 pub mod types;
+pub mod state;
 
 // Re-export standard logging if needed
 pub use log::{debug, error, info, warn};

@@ -19,20 +19,23 @@ pub fn to_snake_case(s: &str) -> String {
 }
 
 pub fn to_camel_case(s: &str) -> String {
-    // First convert kebab-case to snake_case
-    let s = KEBAB_TO_SNAKE.replace_all(s, "_").to_string();
+    let mut result = String::with_capacity(s.len());
+    let mut capitalize_next = false;
     
-    // Then convert snake_case to camelCase
-    let s = SNAKE_TO_CAMEL.replace_all(&s, |caps: &regex::Captures| {
-        caps[1].to_uppercase()
-    }).to_string();
-    
-    // Handle the first character
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(first) => first.to_lowercase().collect::<String>() + chars.as_str(),
+    for (i, c) in s.chars().enumerate() {
+        if c == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(c.to_ascii_uppercase());
+            capitalize_next = false;
+        } else if i == 0 {
+            result.push(c.to_ascii_lowercase());
+        } else {
+            result.push(c);
+        }
     }
+    
+    result
 }
 
 pub fn to_kebab_case(s: &str) -> String {
