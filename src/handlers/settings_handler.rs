@@ -6,12 +6,9 @@ use crate::utils::case_conversion::to_camel_case;
 
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/api")
-            .service(
-                web::resource("/settings")
-                    .route(web::get().to(get_settings))
-                    .route(web::post().to(update_settings))
-            )
+        web::resource("/settings")
+            .route(web::get().to(get_settings))
+            .route(web::post().to(update_settings))
     );
 }
 
