@@ -2,9 +2,9 @@ import { XRSessionMode } from '../xr';
 
 export interface XRSettings {
     // Session Settings
-    mode: 'immersive-ar' | 'immersive-vr';
+    mode: XRSessionMode;
     roomScale: boolean;
-    spaceType: XRReferenceSpaceType;
+    spaceType: 'viewer' | 'local' | 'local-floor' | 'bounded-floor' | 'unbounded';
     
     // Hand Tracking
     enableHandTracking: boolean;

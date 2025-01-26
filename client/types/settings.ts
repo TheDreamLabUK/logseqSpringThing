@@ -1,3 +1,5 @@
+import { XRSessionMode } from './xr';
+
 // Core visualization settings
 export interface VisualizationSettings {
     animations: AnimationSettings;
@@ -185,7 +187,7 @@ export interface Settings {
         mode: XRSessionMode;
         quality: 'low' | 'medium' | 'high';
         roomScale: boolean;
-        spaceType: XRReferenceSpaceType;
+        spaceType: 'viewer' | 'local' | 'local-floor' | 'bounded-floor' | 'unbounded';
         enableHandTracking: boolean;
         handMeshEnabled: boolean;
         handMeshColor: string;
