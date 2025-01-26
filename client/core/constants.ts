@@ -14,20 +14,24 @@ export const API_PATHS = {
     WEBSOCKET: 'websocket',
     GRAPH: 'graph',
     FILES: 'files'
-};
+} as const;
 
 // API endpoints
 export const API_ENDPOINTS = {
+    // Graph endpoints
     GRAPH_DATA: '/api/graph/data',
     GRAPH_UPDATE: '/api/graph/update',
     GRAPH_PAGINATED: '/api/graph/data/paginated',
+    
+    // Settings endpoints
     SETTINGS_ROOT: '/api/settings',
-    SETTINGS_UPDATE: '/api/settings/update',
-    SETTINGS_CATEGORY: (category: string) => `/api/settings/${category}`,
-    SETTINGS_ITEM: (category: string, setting: string) => `/api/settings/${category}/${setting}`,
     VISUALIZATION_SETTINGS: '/api/settings/visualization',
     WEBSOCKET_SETTINGS: '/api/settings/websocket',
+    
+    // WebSocket endpoints
     WEBSOCKET_CONTROL: '/api/websocket/control',
+    
+    // File endpoints
     FILES: '/api/files'
 } as const;
 
@@ -44,6 +48,7 @@ export const SETTINGS_CATEGORIES = {
     LABELS: 'labels',
     BLOOM: 'bloom',
     HOLOGRAM: 'hologram',
+    XR: 'xr',
     
     // System settings
     NETWORK: 'network',
