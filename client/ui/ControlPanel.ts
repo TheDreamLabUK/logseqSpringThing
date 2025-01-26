@@ -63,25 +63,51 @@ export class ControlPanel {
     }
 
     private createPanelElements(): void {
-        // Clear existing content
-        this.container.innerHTML = '';
+        // Clear existing content but keep the header
+        const header = this.container.querySelector('.control-panel-header');
+        const content = this.container.querySelector('.control-panel-content');
+        if (!content) {
+            logger.error('Control panel content container not found');
+            return;
+        }
+        content.innerHTML = '';
 
         // Create settings sections
         const flatSettings = this.flattenSettings(this.settings);
         const groupedSettings = this.groupSettingsByCategory(flatSettings);
 
-        for (const [category, settings] of Object.entries(groupedSettings)) {
+        // Sort categories to ensure consistent order
+        const sortedCategories = Object.entries(groupedSettings).sort(([a], [b]) => a.localeCompare(b));
+
+        for (const [category, settings] of sortedCategories) {
             const section = this.createSection(category);
             
-            for (const [path, value] of Object.entries(settings)) {
+            // Sort settings within each category
+            const sortedSettings = Object.entries(settings).sort(([a], [b]) => a.localeCompare(b));
+            
+            for (const [path, value] of sortedSettings) {
                 const control = this.createSettingControl(path, value);
                 if (control) {
                     section.appendChild(control);
                 }
             }
             
-            this.container.appendChild(section);
+            if (section.children.length > 1) { // > 1 because section always has a header
+                content.appendChild(section);
+            }
         }
+
+        // Update connection status if header exists
+        if (header) {
+            const statusElement = header.querySelector('#connection-status');
+            if (statusElement) {
+                const connected = this.settingsStore.isInitialized();
+                statusElement.textContent = connected ? 'Connected' : 'Disconnected';
+                statusElement.className = connected ? 'connection-status connected' : 'connection-status disconnected';
+            }
+        }
+
+        logger.debug('Panel elements created');
     }
 
     private flattenSettings(obj: unknown, prefix: string = ''): Record<string, unknown> {
@@ -105,13 +131,40 @@ export class ControlPanel {
     private groupSettingsByCategory(flatSettings: Record<string, unknown>): Record<string, Record<string, unknown>> {
         const result: Record<string, Record<string, unknown>> = {};
         
+        // Initialize main categories
+        const mainCategories = ['visualization', 'system'];
+        mainCategories.forEach(category => {
+            result[category] = {};
+        });
+        
+        // Group settings by their full category path (e.g., 'visualization.nodes')
         for (const [path, value] of Object.entries(flatSettings)) {
-            const category = path.split('.')[0];
-            if (!result[category]) {
-                result[category] = {};
+            const parts = path.split('.');
+            if (parts.length >= 2) {
+                const mainCategory = parts[0];
+                const subCategory = parts[1];
+                const fullCategory = `${mainCategory}.${subCategory}`;
+                
+                if (!result[fullCategory]) {
+                    result[fullCategory] = {};
+                }
+                result[fullCategory][path] = value;
+            } else {
+                // Handle top-level settings if any
+                const category = parts[0];
+                if (!result[category]) {
+                    result[category] = {};
+                }
+                result[category][path] = value;
             }
-            result[category][path] = value;
         }
+        
+        // Remove empty categories
+        Object.keys(result).forEach(category => {
+            if (Object.keys(result[category]).length === 0) {
+                delete result[category];
+            }
+        });
         
         return result;
     }
@@ -121,9 +174,26 @@ export class ControlPanel {
         section.className = 'settings-section';
         
         const header = document.createElement('h2');
-        header.textContent = this.formatCategoryName(category);
-        section.appendChild(header);
         
+        // Handle nested categories (e.g., 'visualization.nodes')
+        const parts = category.split('.');
+        if (parts.length === 2) {
+            // Format as "Nodes Settings" for visualization.nodes
+            const mainCategory = this.formatCategoryName(parts[0]);
+            const subCategory = this.formatCategoryName(parts[1]);
+            header.textContent = `${subCategory} Settings`;
+            
+            // Add a subtitle with the main category
+            const subtitle = document.createElement('span');
+            subtitle.className = 'settings-subtitle';
+            subtitle.textContent = mainCategory;
+            header.appendChild(subtitle);
+        } else {
+            // For top-level categories, just format the name
+            header.textContent = this.formatCategoryName(category);
+        }
+        
+        section.appendChild(header);
         return section;
     }
 
@@ -250,39 +320,70 @@ export class ControlPanel {
     }
 
     private formatSettingName(setting: string): string {
-        return setting
+        // Get the last part of the path (e.g., 'baseSize' from 'visualization.nodes.baseSize')
+        const parts = setting.split('.');
+        const name = parts[parts.length - 1];
+        
+        // Convert camelCase to Title Case with spaces
+        return name
             .split(/(?=[A-Z])/)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
             .join(' ');
     }
 
-    private setupSettingsSubscriptions(): void {
-        // Clear existing subscriptions
-        this.unsubscribers.forEach(unsub => unsub());
-        this.unsubscribers = [];
+    private async setupSettingsSubscriptions(): Promise<void> {
+        try {
+            logger.debug('Setting up settings subscriptions');
+            
+            // Clear existing subscriptions
+            this.unsubscribers.forEach(unsub => unsub());
+            this.unsubscribers = [];
 
-        const settings = this.settingsStore;
-        let unsubscriber: (() => void) | undefined;
+            const settings = this.settingsStore;
 
-        // Subscribe to settings changes
-        settings.subscribe('visualization.labels.enableLabels', (value) => {
-            this.updateLabelVisibility(typeof value === 'boolean' ? value : value === 'true');
-        }).then(unsub => {
-            unsubscriber = unsub;
-            if (unsubscriber) {
-                this.unsubscribers.push(unsubscriber);
-            }
-        });
-
-        const flatSettings = this.flattenSettings(this.settings);
-        for (const path of Object.keys(flatSettings)) {
-            settings.subscribe(path, (value) => {
-                this.updateSettingValue(path, value);
-            }).then(unsub => {
-                if (unsub) {
-                    this.unsubscribers.push(unsub);
+            // Subscribe to all settings changes
+            const flatSettings = this.flattenSettings(this.settings);
+            for (const path of Object.keys(flatSettings)) {
+                try {
+                    const unsub = await settings.subscribe(path, (value) => {
+                        logger.debug(`Setting updated: ${path}`, value);
+                        this.updateSettingValue(path, value);
+                        
+                        // Special handling for label visibility
+                        if (path === 'visualization.labels.enableLabels') {
+                            this.updateLabelVisibility(typeof value === 'boolean' ? value : value === 'true');
+                        }
+                        
+                        // Special handling for connection status
+                        if (path === 'system.network.status') {
+                            // Convert value to boolean, handling different possible types
+                            const isConnected = typeof value === 'boolean' ? value :
+                                              typeof value === 'string' ? value.toLowerCase() === 'true' :
+                                              Boolean(value);
+                            this.updateConnectionStatus(isConnected);
+                        }
+                    });
+                    
+                    if (unsub) {
+                        this.unsubscribers.push(unsub);
+                    }
+                } catch (error) {
+                    logger.error(`Failed to subscribe to setting: ${path}`, error);
                 }
-            });
+            }
+
+            logger.debug('Settings subscriptions setup complete');
+        } catch (error) {
+            logger.error('Failed to setup settings subscriptions:', error);
+            throw error;
+        }
+    }
+
+    private updateConnectionStatus(connected: boolean): void {
+        const statusElement = this.container.querySelector('#connection-status');
+        if (statusElement) {
+            statusElement.textContent = connected ? 'Connected' : 'Disconnected';
+            statusElement.className = `connection-status ${connected ? 'connected' : 'disconnected'}`;
         }
     }
 
@@ -295,28 +396,39 @@ export class ControlPanel {
     }
 
     private updateSettingValue(path: string, value: unknown): void {
+        logger.debug(`Updating setting value: ${path}`, { value });
+        
         const element = document.getElementById(`setting-${path}`);
         if (!element) {
             logger.warn(`No element found for setting: ${path}`);
             return;
         }
 
-        if (element instanceof HTMLInputElement) {
-            switch (element.type) {
-                case 'checkbox':
-                    element.checked = value as boolean;
-                    break;
-                case 'number':
-                    element.value = String(value);
-                    break;
-                case 'color':
-                    element.value = value as string;
-                    break;
-                default:
-                    element.value = String(value);
+        try {
+            if (element instanceof HTMLInputElement) {
+                switch (element.type) {
+                    case 'checkbox':
+                        element.checked = value as boolean;
+                        logger.debug(`Updated checkbox: ${path}`, { checked: element.checked });
+                        break;
+                    case 'number':
+                        element.value = String(value);
+                        logger.debug(`Updated number: ${path}`, { value: element.value });
+                        break;
+                    case 'color':
+                        element.value = value as string;
+                        logger.debug(`Updated color: ${path}`, { value: element.value });
+                        break;
+                    default:
+                        element.value = String(value);
+                        logger.debug(`Updated text: ${path}`, { value: element.value });
+                }
+            } else if (element instanceof HTMLSelectElement) {
+                element.value = String(value);
+                logger.debug(`Updated select: ${path}`, { value: element.value });
             }
-        } else if (element instanceof HTMLSelectElement) {
-            element.value = String(value);
+        } catch (error) {
+            logger.error(`Failed to update setting value: ${path}`, error);
         }
     }
 
