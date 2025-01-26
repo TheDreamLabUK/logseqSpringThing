@@ -3,6 +3,7 @@ import { createLogger } from '../core/logger';
 import { defaultSettings } from './defaultSettings';
 import { buildApiUrl } from '../core/api';
 import { API_ENDPOINTS } from '../core/constants';
+import { Logger } from '../core/logger';
 
 const logger = createLogger('SettingsStore');
 
@@ -13,11 +14,13 @@ export class SettingsStore {
     private settings: Settings;
     private initialized: boolean = false;
     private initializationPromise: Promise<void> | null = null;
-    private subscribers: Map<string, Set<SettingsChangeCallback>> = new Map();
+    private subscribers: Map<string, SettingsChangeCallback[]> = new Map();
+    private logger: Logger;
 
     private constructor() {
-        // Initialize with default settings
-        this.settings = { ...defaultSettings };
+        this.settings = {} as Settings;
+        this.subscribers = new Map();
+        this.logger = createLogger('SettingsStore');
     }
 
     public static getInstance(): SettingsStore {
@@ -103,9 +106,13 @@ export class SettingsStore {
         }
 
         if (!this.subscribers.has(path)) {
-            this.subscribers.set(path, new Set());
+            this.subscribers.set(path, []);
         }
-        this.subscribers.get(path)?.add(callback);
+        
+        const subscribers = this.subscribers.get(path);
+        if (subscribers) {
+            subscribers.push(callback);
+        }
 
         // Immediately call callback with current value
         const value = this.get(path);
@@ -117,8 +124,11 @@ export class SettingsStore {
         return () => {
             const pathSubscribers = this.subscribers.get(path);
             if (pathSubscribers) {
-                pathSubscribers.delete(callback);
-                if (pathSubscribers.size === 0) {
+                const index = pathSubscribers.indexOf(callback);
+                if (index > -1) {
+                    pathSubscribers.splice(index, 1);
+                }
+                if (pathSubscribers.length === 0) {
                     this.subscribers.delete(path);
                 }
             }
@@ -149,53 +159,46 @@ export class SettingsStore {
     }
 
     public async set(path: string, value: unknown): Promise<void> {
-        if (!this.initialized) {
-            logger.error('Attempting to set settings before initialization');
-            throw new Error('SettingsStore not initialized');
-        }
-
         try {
-            const parts = path.split('.');
-            const lastKey = parts.pop()!;
-            const target = parts.reduce((obj: any, key) => {
-                if (!(key in obj)) {
-                    obj[key] = {};
-                }
-                return obj[key];
-            }, this.settings);
-
-            if (!target || typeof target !== 'object') {
-                throw new Error(`Invalid settings path: ${path}`);
-            }
-
-            target[lastKey] = value;
+            // Update local state first
+            this.updateSettingValue(path, value);
             
             // Immediately sync with server
-            try {
-                const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify([{
-                        path,
-                        value
-                    }]),
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Failed to sync setting: ${response.statusText}`);
-                }
-                
-                logger.debug(`Setting ${path} synced with server`);
-            } catch (error) {
-                logger.error(`Failed to sync setting ${path}:`, error);
-                // Continue with local update even if server sync fails
-            }
-
+            await this.syncWithServer();
+            
+            // Notify subscribers
             this.notifySubscribers(path, value);
+            
+            this.logger.debug(`Setting updated successfully: ${path}`, value);
         } catch (error) {
-            logger.error(`Error setting value at path ${path}:`, error);
+            this.logger.error(`Failed to update setting: ${path}`, error);
+            // Revert local change
+            const originalValue = this.get(path);
+            this.updateSettingValue(path, originalValue);
+            this.notifySubscribers(path, originalValue);
+            throw error;
+        }
+    }
+
+    private async syncWithServer(): Promise<void> {
+        try {
+            const response = await fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(this.settings)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}: ${await response.text()}`);
+            }
+            
+            // Update local settings with server response
+            const serverSettings = await response.json();
+            this.settings = serverSettings;
+        } catch (error) {
+            this.logger.error('Failed to sync settings with server:', error);
             throw error;
         }
     }
@@ -207,7 +210,7 @@ export class SettingsStore {
                 try {
                     callback(path, value);
                 } catch (error) {
-                    logger.error(`Error in settings subscriber for ${path}:`, error);
+                    this.logger.error(`Error in settings subscriber for ${path}:`, error);
                 }
             });
         }
@@ -254,8 +257,31 @@ export class SettingsStore {
         return result;
     }
 
+    private updateSettingValue(path: string, value: unknown): void {
+        if (!path) {
+            this.settings = value as Settings;
+            return;
+        }
+        
+        const parts = path.split('.');
+        const lastKey = parts.pop()!;
+        const target = parts.reduce((obj: any, key) => {
+            if (!(key in obj)) {
+                obj[key] = {};
+            }
+            return obj[key];
+        }, this.settings);
+
+        if (!target || typeof target !== 'object') {
+            throw new Error(`Invalid settings path: ${path}`);
+        }
+
+        target[lastKey] = value;
+    }
+
     public dispose(): void {
         this.subscribers.clear();
-        this.initialized = false;
+        this.settings = {} as Settings;
+        SettingsStore.instance = null;
     }
 }

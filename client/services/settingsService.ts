@@ -26,15 +26,30 @@ export class SettingsService extends EventEmitter<SettingsServiceEvents> {
         return SettingsService.instance;
     }
 
-    async updateSetting(category: string, setting: string, value: any): Promise<void> {
-        const response = await fetch(
-            API_ENDPOINTS.SETTINGS_ITEM(category, setting), 
-            {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ value })
+    async updateSetting(category: keyof Settings, setting: string, value: any): Promise<void> {
+        const currentSettings = await this.getSettings();
+        
+        // Handle nested settings structure
+        const [mainCategory, subCategory] = category.split('.');
+        if (subCategory) {
+            if (!currentSettings[mainCategory as keyof Settings]) {
+                throw new Error(`Invalid category: ${mainCategory}`);
             }
-        );
+            (currentSettings[mainCategory as keyof Settings] as any)[subCategory][setting] = value;
+        } else {
+            if (!(category in currentSettings)) {
+                throw new Error(`Invalid category: ${category}`);
+            }
+            (currentSettings[category] as any)[setting] = value;
+        }
+
+        // Send the full settings object
+        const response = await fetch(API_ENDPOINTS.SETTINGS_ROOT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(currentSettings)
+        });
+
         if (!response.ok) {
             throw new Error('Failed to update setting');
         }

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use config::{ConfigBuilder, ConfigError, Environment, File};
 use log::{debug, info};
 use std::path::PathBuf;
+use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
@@ -623,6 +624,93 @@ impl Default for HologramSettings {
 }
 
 impl Settings {
+    pub fn merge(&mut self, value: Value) -> Result<(), String> {
+        // Convert incoming JSON value to snake_case
+        let snake_case_value = self.to_snake_case_value(value);
+        
+        // Deserialize the value into a temporary Settings
+        let new_settings: Settings = serde_json::from_value(snake_case_value)
+            .map_err(|e| format!("Failed to deserialize settings: {}", e))?;
+        
+        // Update only the fields that were present in the input
+        // This preserves existing values for fields that weren't included in the update
+        if let Ok(nodes) = serde_json::to_value(&new_settings.nodes) {
+            if !nodes.is_null() {
+                self.nodes = new_settings.nodes;
+            }
+        }
+        if let Ok(edges) = serde_json::to_value(&new_settings.edges) {
+            if !edges.is_null() {
+                self.edges = new_settings.edges;
+            }
+        }
+        if let Ok(physics) = serde_json::to_value(&new_settings.physics) {
+            if !physics.is_null() {
+                self.physics = new_settings.physics;
+            }
+        }
+        if let Ok(rendering) = serde_json::to_value(&new_settings.rendering) {
+            if !rendering.is_null() {
+                self.rendering = new_settings.rendering;
+            }
+        }
+        if let Ok(animations) = serde_json::to_value(&new_settings.animations) {
+            if !animations.is_null() {
+                self.animations = new_settings.animations;
+            }
+        }
+        if let Ok(labels) = serde_json::to_value(&new_settings.labels) {
+            if !labels.is_null() {
+                self.labels = new_settings.labels;
+            }
+        }
+        if let Ok(bloom) = serde_json::to_value(&new_settings.bloom) {
+            if !bloom.is_null() {
+                self.bloom = new_settings.bloom;
+            }
+        }
+        if let Ok(hologram) = serde_json::to_value(&new_settings.hologram) {
+            if !hologram.is_null() {
+                self.hologram = new_settings.hologram;
+            }
+        }
+        
+        Ok(())
+    }
+
+    pub fn save(&self) -> Result<(), String> {
+        let settings_path = std::env::var("SETTINGS_FILE_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("/app/settings.toml"));
+            
+        // Convert to TOML
+        let toml = toml::to_string(&self)
+            .map_err(|e| format!("Failed to serialize settings to TOML: {}", e))?;
+            
+        // Write to file
+        std::fs::write(&settings_path, toml)
+            .map_err(|e| format!("Failed to write settings file: {}", e))?;
+            
+        Ok(())
+    }
+
+    fn to_snake_case_value(&self, value: Value) -> Value {
+        match value {
+            Value::Object(map) => {
+                let converted: serde_json::Map<String, Value> = map
+                    .into_iter()
+                    .map(|(k, v)| {
+                        let snake_case_key = crate::utils::case_conversion::to_snake_case(&k);
+                        (snake_case_key, self.to_snake_case_value(v))
+                    })
+                    .collect();
+                Value::Object(converted)
+            },
+            Value::Array(arr) => Value::Array(arr.into_iter().map(|v| self.to_snake_case_value(v)).collect()),
+            _ => value,
+        }
+    }
+
     pub fn new() -> Result<Self, ConfigError> {
         debug!("Initializing settings");
         

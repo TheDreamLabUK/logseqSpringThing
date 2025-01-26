@@ -2,11 +2,14 @@ import { Settings } from '../types/settings';
 import { createLogger } from '../core/logger';
 import { SettingsStore } from '../state/SettingsStore';
 import { WebSocketService } from '../websocket/websocketService';
+import { XRSessionManager } from '../xr/xrSessionManager';
+import { SceneManager } from '../rendering/scene';
 import './ControlPanel.css';
 
 const logger = createLogger('ControlPanel');
 
 export class ControlPanel {
+    private static instance: ControlPanel | null = null;
     private container: HTMLElement;
     private settings: Settings;
     private unsubscribers: Array<() => void> = [];
@@ -14,12 +17,34 @@ export class ControlPanel {
     private webSocketService: WebSocketService;
 
     constructor(container: HTMLElement, settingsStore: SettingsStore) {
+        if (ControlPanel.instance) {
+            throw new Error('ControlPanel is a singleton');
+        }
         this.container = container;
         this.settingsStore = settingsStore;
         this.settings = {} as Settings;
         this.webSocketService = WebSocketService.getInstance();
         this.setupConnectionStatus();
         this.initializePanel();
+        ControlPanel.instance = this;
+    }
+
+    public static getInstance(): ControlPanel | null {
+        return ControlPanel.instance;
+    }
+
+    public show(): void {
+        if (this.container) {
+            this.container.style.display = 'block';
+            logger.debug('Control panel shown');
+        }
+    }
+
+    public hide(): void {
+        if (this.container) {
+            this.container.style.display = 'none';
+            logger.debug('Control panel hidden');
+        }
     }
 
     private setupConnectionStatus(): void {
@@ -249,7 +274,47 @@ export class ControlPanel {
         return section;
     }
 
+    private getSceneManager(): SceneManager {
+        const canvas = document.querySelector('canvas');
+        if (!canvas) {
+            throw new Error('Canvas not found');
+        }
+        return SceneManager.getInstance(canvas as HTMLCanvasElement);
+    }
+
+    private createXRModeControl(): HTMLElement {
+        const control = document.createElement('div');
+        control.classList.add('setting-control');
+
+        const button = document.createElement('button');
+        button.textContent = 'Enter Immersive Mode';
+        button.classList.add('xr-button');
+        button.addEventListener('click', async () => {
+            try {
+                const sceneManager = this.getSceneManager();
+                const xrManager = XRSessionManager.getInstance(sceneManager);
+                if (!xrManager.isXRPresenting()) {
+                    await xrManager.initXRSession();
+                    button.textContent = 'Exit Immersive Mode';
+                } else {
+                    await xrManager.endXRSession();
+                    button.textContent = 'Enter Immersive Mode';
+                }
+            } catch (error) {
+                logger.error('Failed to toggle XR session:', error);
+            }
+        });
+
+        control.appendChild(button);
+        return control;
+    }
+
     private createSettingControl(path: string, value: unknown): HTMLElement | null {
+        // Special handling for XR mode
+        if (path === 'xr.mode') {
+            return this.createXRModeControl();
+        }
+
         const label = document.createElement('label');
         // Use the last part of the path and format it
         const labelText = path.split('.').pop() || path;

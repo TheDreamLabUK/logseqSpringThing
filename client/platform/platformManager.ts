@@ -158,17 +158,30 @@ export class PlatformManager extends BrowserEventEmitter {
     return this.capabilities.websocketSupported;
   }
 
-  async requestXRSession(): Promise<XRSession | null> {
+  async requestXRSession(mode: XRSessionMode = 'immersive-ar'): Promise<XRSession | null> {
     if (!this.capabilities.xrSupported || !('xr' in navigator) || !navigator.xr) {
       logger.warn('WebXR not supported');
       return null;
     }
 
     try {
-      const session = await navigator.xr.requestSession('immersive-ar', {
-        requiredFeatures: ['local-floor', 'hit-test'],
-        optionalFeatures: ['hand-tracking', 'plane-detection']
-      });
+      const requiredFeatures: string[] = ['local-floor'];
+      const optionalFeatures: string[] = ['hand-tracking'];
+
+      // Add mode-specific features
+      if (mode === 'immersive-ar') {
+        requiredFeatures.push('hit-test');
+        optionalFeatures.push('plane-detection');
+      } else if (mode === 'immersive-vr') {
+        optionalFeatures.push('bounded-floor');
+      }
+
+      const features: XRSessionInit = {
+        requiredFeatures,
+        optionalFeatures
+      };
+
+      const session = await navigator.xr.requestSession(mode, features);
 
       // Update capabilities based on session features
       session.addEventListener('end', () => {
@@ -176,7 +189,7 @@ export class PlatformManager extends BrowserEventEmitter {
         this.emit('xrsessionend');
       });
 
-      logger.log('XR session started');
+      logger.log(`XR session started in ${mode} mode`);
       return session;
     } catch (error) {
       logger.error('Failed to start XR session:', error);
@@ -191,7 +204,8 @@ export class PlatformManager extends BrowserEventEmitter {
         if (supported) {
           this.capabilities.webxr = true;
           this.capabilities.handTracking = true;
-          this.capabilities.planeDetection = true;
+          // Only set plane detection for AR mode
+          this.capabilities.planeDetection = mode === 'immersive-ar';
           this.emit('xrdevicechange', true);
           logger.log('WebXR supported for mode:', mode);
           return true;

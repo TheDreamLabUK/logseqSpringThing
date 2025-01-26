@@ -148,6 +148,24 @@ export const defaultSettings: Settings = {
         }
     },
     xr: {
-        quality: 'medium'
+        mode: 'immersive-ar' as const,
+        quality: 'medium',
+        roomScale: true,
+        spaceType: 'local-floor' as XRReferenceSpaceType,
+        enableHandTracking: true,
+        handMeshEnabled: true,
+        handMeshColor: '#ffffff',
+        handMeshOpacity: 0.5,
+        handPointSize: 5,
+        handRayEnabled: true,
+        handRayColor: '#ffffff',
+        handRayWidth: 2,
+        gestureSsmoothing: 0.5,
+        enableHaptics: true,
+        hapticIntensity: 0.5,
+        dragThreshold: 0.1,
+        pinchThreshold: 0.5,
+        rotationThreshold: 0.1,
+        interactionRadius: 0.1
     }
 };

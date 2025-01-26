@@ -2,7 +2,7 @@ import { XRSessionMode } from '../xr';
 
 export interface XRSettings {
     // Session Settings
-    mode: XRSessionMode;
+    mode: 'immersive-ar' | 'immersive-vr';
     roomScale: boolean;
     spaceType: XRReferenceSpaceType;
     

@@ -182,8 +182,25 @@ export interface Settings {
         debug: DebugSettings;
     };
     xr: {
-        mode?: 'ar' | 'vr';
+        mode: XRSessionMode;
         quality: 'low' | 'medium' | 'high';
+        roomScale: boolean;
+        spaceType: XRReferenceSpaceType;
+        enableHandTracking: boolean;
+        handMeshEnabled: boolean;
+        handMeshColor: string;
+        handMeshOpacity: number;
+        handPointSize: number;
+        handRayEnabled: boolean;
+        handRayColor: string;
+        handRayWidth: number;
+        gestureSsmoothing: number;
+        enableHaptics: boolean;
+        hapticIntensity: number;
+        dragThreshold: number;
+        pinchThreshold: number;
+        rotationThreshold: number;
+        interactionRadius: number;
     };
 }
 

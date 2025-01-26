@@ -24,6 +24,28 @@
     padding: 16px;
 }
 
+/* XR Button Styles */
+.xr-button {
+    width: 100%;
+    padding: 8px 16px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.3s;
+    margin-top: 8px;
+}
+
+.xr-button:hover {
+    background-color: #45a049;
+}
+
+.xr-button:active {
+    background-color: #3d8b40;
+}
+
 .control-panel-header {
     display: flex;
     justify-content: space-between;

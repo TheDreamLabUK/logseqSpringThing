@@ -20,6 +20,7 @@ import { createLogger } from '../core/utils';
 import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
+import { ControlPanel } from '../ui/ControlPanel';
 
 const _logger = createLogger('XRSessionManager');
 
@@ -251,6 +252,12 @@ export class XRSessionManager {
             this.isPresenting = true;
             _logger.log('XR session initialized');
 
+            // Hide control panel in XR mode
+            const controlPanel = ControlPanel.getInstance();
+            if (controlPanel) {
+                controlPanel.hide();
+            }
+
             // Notify session start
             if (this.xrSessionStartCallback) {
                 this.xrSessionStartCallback();
@@ -301,6 +308,12 @@ export class XRSessionManager {
         renderer.xr.enabled = false;
 
         _logger.log('XR session ended');
+
+        // Show control panel again
+        const controlPanel = ControlPanel.getInstance();
+        if (controlPanel) {
+            controlPanel.show();
+        }
 
         // Notify session end
         if (this.xrSessionEndCallback) {
