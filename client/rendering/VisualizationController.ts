@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { MetadataVisualizer } from './MetadataVisualizer';
-import { HologramManager } from './HologramManager';
+import { MetadataVisualizer } from '../rendering/MetadataVisualizer';
+import { HologramManager } from '../rendering/HologramManager';
 import { NodeMetadata, HologramSettings } from '../types/metadata';
 import { XRHand } from '../types/xr';
+import { Settings } from '../types/settings';
 
 export class VisualizationController {
     private readonly scene: THREE.Scene;
@@ -13,7 +14,8 @@ export class VisualizationController {
     private clock: THREE.Clock;
     private isXRSession: boolean = false;
 
-    constructor(container: HTMLElement, settings: any) {
+    constructor(container: HTMLElement, settings: Settings) {
+        this.currentSettings = settings;
         // Initialize Three.js basics
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -28,8 +30,8 @@ export class VisualizationController {
         container.appendChild(this.renderer.domElement);
 
         // Initialize managers
-        this.metadataVisualizer = new MetadataVisualizer(this.scene, this.camera, settings);
-        this.hologramManager = new HologramManager(this.scene, settings.hologram);
+        this.metadataVisualizer = new MetadataVisualizer(this.camera, this.scene, settings);
+        this.hologramManager = new HologramManager(this.scene, this.renderer, settings);
         this.clock = new THREE.Clock();
 
         // Set up XR session change handling
@@ -61,7 +63,7 @@ export class VisualizationController {
 
         // Create new nodes
         nodes.forEach(metadata => {
-            const nodeMesh = this.metadataVisualizer.createNodeVisual(metadata);
+            const nodeMesh = this.metadataVisualizer.createNodeMesh(metadata);
             nodeMesh.userData.isNode = true;
             nodeMesh.position.set(
                 metadata.position.x,
@@ -72,13 +74,28 @@ export class VisualizationController {
         });
     }
 
-    public updateHologramSettings(settings: Partial<HologramSettings>): void {
-        this.hologramManager.updateSettings(settings);
+    private currentSettings: Settings;
+
+    public updateHologramSettings(hologramSettings: Partial<HologramSettings>): void {
+        this.currentSettings = {
+            ...this.currentSettings,
+            visualization: {
+                ...this.currentSettings.visualization,
+                hologram: {
+                    ...this.currentSettings.visualization.hologram,
+                    ...hologramSettings
+                }
+            }
+        };
+        this.hologramManager.updateSettings(this.currentSettings);
     }
 
     public handleHandInput(hand: XRHand): void {
-        if (this.isXRSession) {
-            this.hologramManager.handleHandInteraction(hand);
+        if (this.isXRSession && hand.joints) {
+            const indexTip = hand.joints['index-finger-tip'];
+            if (indexTip) {
+                this.hologramManager.handleInteraction(indexTip.position);
+            }
         }
     }
 
