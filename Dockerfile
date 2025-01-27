@@ -197,10 +197,10 @@ RUN chown -R webxr:webxr /app && \
     chmod 755 /app/start.sh && \
     chmod -R g+w /app
 
-# Ensure settings.toml is present and set permissions
-RUN touch /app/settings.toml && \
-    chown webxr:webxr /app/settings.toml && \
-    chmod 666 /app/settings.toml
+# Ensure settings.yaml is present and set permissions
+RUN touch /app/settings.yaml && \
+    chown webxr:webxr /app/settings.yaml && \
+    chmod 666 /app/settings.yaml
 
 # Switch to non-root user
 USER webxr

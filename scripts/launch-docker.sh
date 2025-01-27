@@ -117,15 +117,20 @@ check_rust_security() {
     return 0
 }
 
-# Function to read settings from TOML file
+# Function to read settings from YAML file
 read_settings() {
-    local settings_file="$PROJECT_ROOT/settings.toml"
-    # Extract domain and port from settings.toml
-    export DOMAIN=$(grep "domain = " "$settings_file" | cut -d'"' -f2)
-    export PORT=$(grep "port = " "$settings_file" | awk '{print $3}')
+    local settings_file="$PROJECT_ROOT/settings.yaml"
+    # Extract domain and port from settings.yaml using yq
+    if ! command -v yq &> /dev/null; then
+        log "${YELLOW}Installing yq for YAML parsing...${NC}"
+        GO111MODULE=on go install github.com/mikefarah/yq/v4@latest
+    fi
     
-    if [ -z "$DOMAIN" ] || [ -z "$PORT" ]; then
-        log "${RED}Error: DOMAIN or PORT not set in settings.toml. Please check your configuration.${NC}"
+    export DOMAIN=$(yq '.system.network.domain' "$settings_file")
+    export PORT=$(yq '.system.network.port' "$settings_file")
+    
+    if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "null" ] || [ -z "$PORT" ] || [ "$PORT" = "null" ]; then
+        log "${RED}Error: DOMAIN or PORT not set in settings.yaml. Please check your configuration.${NC}"
         return 1
     fi
 }

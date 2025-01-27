@@ -7,13 +7,13 @@ log() {
 }
 
 # Verify settings file permissions
-log "Verifying settings.toml permissions..."
-if [ ! -f "/app/settings.toml" ]; then
-    log "Error: settings.toml not found"
+log "Verifying settings.yaml permissions..."
+if [ ! -f "/app/settings.yaml" ]; then
+    log "Error: settings.yaml not found"
     exit 1
 fi
-chmod 666 /app/settings.toml
-log "settings.toml permissions verified"
+chmod 666 /app/settings.yaml
+log "settings.yaml permissions verified"
 
 # Set up runtime environment
 log "Setting up runtime environment..."

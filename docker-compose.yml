@@ -41,8 +41,8 @@ services:
       - ./data/piper:/app/data/piper
       - ./client:/app/client
       - type: bind
-        source: ${PWD}/settings.toml
-        target: /app/settings.toml
+        source: ${PWD}/settings.yaml
+        target: /app/settings.yaml
         read_only: false
       - type: tmpfs
         target: /tmp

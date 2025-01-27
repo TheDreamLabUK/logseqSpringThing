@@ -25,9 +25,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Configuration
-config = { version = "0.13", features = ["toml"] }
+config = { version = "0.13", features = ["yaml"] }
 dotenvy = "0.15"
-toml = "0.8"
+serde_yaml = "0.9"
 
 # Logging
 log = "0.4"

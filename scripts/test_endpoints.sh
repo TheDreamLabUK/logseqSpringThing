@@ -95,7 +95,7 @@ check_settings_endpoint() {
         netstat -tulpn | grep -E ":(3001|4000)"
         
         echo -e "\n=== Settings File Status ==="
-        ls -l /app/settings.toml
+        ls -l /app/settings.yaml
         
         echo -e "\n=== Backend Logs ==="
         if [ -f /tmp/webxr.log ]; then

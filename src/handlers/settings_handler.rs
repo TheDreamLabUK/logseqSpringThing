@@ -1,5 +1,5 @@
 use crate::app_state::AppState;
-use crate::config::{BloomSettings, HologramSettings, PhysicsSettings, Settings};
+use crate::config::{Settings, SystemSettings, VisualizationSettings};
 use crate::utils::case_conversion::to_camel_case;
 use actix_web::{web, Error, HttpResponse};
 use serde_json::{json, Value};
@@ -327,7 +327,6 @@ fn validate_range_f64(
     Ok(())
 }
 
-// Helper function to convert struct fields to camelCase
 fn convert_struct_to_camel_case<T: serde::Serialize>(value: &T) -> serde_json::Value {
     let json_value = serde_json::to_value(value).unwrap_or_default();
 
@@ -363,10 +362,10 @@ pub async fn get_graph_settings(app_state: web::Data<AppState>) -> Result<HttpRe
     let settings = app_state.settings.read().await;
     Ok(HttpResponse::Ok().json(json!({
         "visualization": {
-            "nodes": settings.nodes,
-            "edges": settings.edges,
-            "physics": settings.physics,
-            "labels": settings.labels
+            "nodes": settings.visualization.nodes,
+            "edges": settings.visualization.edges,
+            "physics": settings.visualization.physics,
+            "labels": settings.visualization.labels
         }
     })))
 }
