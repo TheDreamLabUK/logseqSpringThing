@@ -120,6 +120,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     lsof \
     jq \
+    wget \
+    && wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq \
+    && chmod +x /usr/bin/yq \
+    && wget https://github.com/vi/websocat/releases/latest/download/websocat.x86_64-unknown-linux-musl -O /usr/bin/websocat \
+    && chmod +x /usr/bin/websocat \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /usr/share/doc/* \
     && rm -rf /usr/share/man/*

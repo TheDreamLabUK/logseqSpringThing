@@ -380,7 +380,7 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
 
     let settings_path = std::env::var("SETTINGS_FILE_PATH")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/app/settings.yaml"));
+        .unwrap_or_else(|_| PathBuf::from("/app/settings.toml"));
 
     info!("Attempting to save settings to: {:?}", settings_path);
 
@@ -412,15 +412,15 @@ fn save_settings_to_file(settings: &Settings) -> std::io::Result<()> {
         }
     }
 
-    let yaml_string = match serde_yaml::to_string(&settings) {
+    let toml_string = match toml::to_string(&settings) {
         Ok(s) => s,
         Err(e) => {
-            error!("Failed to serialize settings to YAML: {}", e);
+            error!("Failed to serialize settings to TOML: {}", e);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
         }
     };
 
-    match fs::write(&settings_path, yaml_string) {
+    match fs::write(&settings_path, toml_string) {
         Ok(_) => {
             info!("Settings saved successfully to: {:?}", settings_path);
             Ok(())

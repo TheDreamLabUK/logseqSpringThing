@@ -2,6 +2,7 @@ use config::{ConfigBuilder, ConfigError, Environment};
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_yaml;
 use std::path::PathBuf;
 
 // Core visualization settings
