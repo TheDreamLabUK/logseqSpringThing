@@ -12,7 +12,7 @@ export async function initializeUI(): Promise<void> {
         const controlPanelElement = document.getElementById('control-panel');
         if (controlPanelElement instanceof HTMLElement) {
             logger.debug('Found control panel element, initializing ControlPanel');
-            new ControlPanel(controlPanelElement);
+            ControlPanel.initialize(controlPanelElement);
         } else {
             logger.error('Control panel element not found');
         }

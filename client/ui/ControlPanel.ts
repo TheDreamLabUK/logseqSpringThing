@@ -1,307 +1,261 @@
-import { Settings } from '../types/settings';
+import { SettingsStore } from '../state/SettingsStore';
+import { getAllSettingPaths, formatSettingName, getSettingInputType, getStepValue } from '../types/settings/utils';
+import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDisplay';
 import { createLogger } from '../core/logger';
-import { settingsManager } from '../state/settings';
-import { WebSocketService } from '../websocket/websocketService';
-import { XRSessionManager } from '../xr/xrSessionManager';
-import { SceneManager } from '../rendering/scene';
-import { SettingValue, getAllSettingPaths, formatSettingName, getSettingInputType } from '../types/settings/utils';
-import './ControlPanel.css';
 
 const logger = createLogger('ControlPanel');
 
 export class ControlPanel {
     private static instance: ControlPanel | null = null;
-    private container: HTMLElement;
-    private settings: Settings;
-    private unsubscribers: Array<() => void> = [];
-    private webSocketService: WebSocketService;
+    private container: HTMLDivElement;
+    private settingsStore: SettingsStore;
+    private validationDisplay: ValidationErrorDisplay;
+    private unsubscribers: (() => void)[] = [];
 
-    constructor(container: HTMLElement) {
-        if (ControlPanel.instance) {
-            throw new Error('ControlPanel is a singleton');
-        }
-        this.container = container;
-        this.settings = {} as Settings;
-        this.webSocketService = WebSocketService.getInstance();
-        this.setupConnectionStatus();
+    private constructor(parentElement: HTMLElement) {
+        this.settingsStore = SettingsStore.getInstance();
+        this.container = document.createElement('div');
+        this.container.className = 'settings-panel';
+        parentElement.appendChild(this.container);
+
+        // Initialize validation error display
+        this.validationDisplay = new ValidationErrorDisplay(this.container);
+
         this.initializePanel();
-        ControlPanel.instance = this;
     }
 
-    public static getInstance(): ControlPanel | null {
+    public static getInstance(): ControlPanel {
+        if (!ControlPanel.instance) {
+            // Create instance with document.body as default parent
+            ControlPanel.instance = new ControlPanel(document.body);
+        }
         return ControlPanel.instance;
     }
 
-    public show(): void {
-        if (this.container) {
-            this.container.style.display = 'block';
-            logger.debug('Control panel shown');
+    public static initialize(parentElement: HTMLElement): ControlPanel {
+        if (!ControlPanel.instance) {
+            ControlPanel.instance = new ControlPanel(parentElement);
         }
-    }
-
-    public hide(): void {
-        if (this.container) {
-            this.container.style.display = 'none';
-            logger.debug('Control panel hidden');
-        }
-    }
-
-    private setupConnectionStatus(): void {
-        const statusElement = this.container.querySelector('.connection-status');
-        const statusTextElement = this.container.querySelector('#connection-status');
-        
-        if (!statusElement || !statusTextElement) {
-            logger.error('Connection status elements not found');
-            return;
-        }
-
-        this.webSocketService.onConnectionStatusChange((connected: boolean) => {
-            statusElement.classList.remove('connected', 'disconnected');
-            statusElement.classList.add(connected ? 'connected' : 'disconnected');
-            statusTextElement.textContent = connected ? 'Connected' : 'Disconnected';
-            logger.debug('Connection status updated:', connected);
-        });
+        return ControlPanel.instance;
     }
 
     private async initializePanel(): Promise<void> {
         try {
-            logger.debug('Starting panel initialization...');
+            await this.settingsStore.initialize();
             
-            const content = this.container.querySelector('.control-panel-content');
-            if (!content) {
-                throw new Error('Control panel content container not found');
+            // Get all setting paths
+            const settings = this.settingsStore.get('') as any;
+            const paths = getAllSettingPaths(settings);
+            
+            // Group settings by category
+            const groupedSettings = this.groupSettingsByCategory(paths);
+            
+            // Create sections for each category
+            for (const [category, paths] of Object.entries(groupedSettings)) {
+                const section = await this.createSection(category, paths);
+                this.container.appendChild(section);
             }
+
+            // Add styles
+            this.addStyles();
             
-            content.innerHTML = '<div class="loading">Initializing control panel...</div>';
-            
-            // Initialize settings
-            await settingsManager.initialize();
-            content.innerHTML = '<div class="loading">Loading settings...</div>';
-            
-            // Get settings
-            this.settings = settingsManager.getCurrentSettings();
-            logger.debug('Settings loaded:', {
-                visualization: Object.keys(this.settings.visualization || {}),
-                system: Object.keys(this.settings.system || {}),
-                xr: this.settings.xr
-            });
-            
-            // Create panel elements
-            content.innerHTML = '<div class="loading">Creating control panel...</div>';
-            this.createPanelElements();
-            logger.debug('Panel elements created');
-            
-            // Setup subscriptions
-            await this.setupSettingsSubscriptions();
-            logger.debug('Settings subscriptions set up');
-            
-            logger.info('Control panel initialized successfully');
+            logger.info('Control panel initialized');
         } catch (error) {
             logger.error('Failed to initialize control panel:', error);
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            this.container.innerHTML = `
-                <div class="error">
-                    Failed to load settings: ${errorMessage}<br>
-                    <button onclick="window.location.reload()" class="retry-button">Retry</button>
-                </div>
-            `;
         }
-    }
-
-    private createPanelElements(): void {
-        logger.debug('Creating panel elements...');
-        
-        if (!this.container) {
-            logger.error('Control panel container is null');
-            return;
-        }
-
-        const content = this.container.querySelector('.control-panel-content');
-        if (!content) {
-            logger.error('Control panel content container not found');
-            return;
-        }
-
-        const tempContainer = document.createElement('div');
-        const paths = getAllSettingPaths(this.settings);
-        
-        // Group settings by category
-        const groupedSettings = this.groupSettingsByCategory(paths);
-        const sortedCategories = Object.keys(groupedSettings).sort();
-
-        for (const category of sortedCategories) {
-            const section = this.createSection(category);
-            const categorySettings = groupedSettings[category].sort();
-
-            for (const path of categorySettings) {
-                const value = settingsManager.get(path);
-                const control = this.createSettingControl(path, value);
-                if (control) {
-                    section.appendChild(control);
-                    logger.debug(`Added control for ${path}`);
-                }
-            }
-
-            if (section.children.length > 1) {
-                tempContainer.appendChild(section);
-            }
-        }
-
-        content.innerHTML = '';
-        content.appendChild(tempContainer);
     }
 
     private groupSettingsByCategory(paths: string[]): Record<string, string[]> {
         const groups: Record<string, string[]> = {};
         
-        for (const path of paths) {
-            const parts = path.split('.');
-            const category = parts.slice(0, 2).join('.');
+        paths.forEach(path => {
+            const [category] = path.split('.');
             if (!groups[category]) {
                 groups[category] = [];
             }
             groups[category].push(path);
-        }
-
+        });
+        
         return groups;
     }
 
-    private createSection(category: string): HTMLElement {
+    private async createSection(category: string, paths: string[]): Promise<HTMLElement> {
         const section = document.createElement('div');
-        section.classList.add('settings-section');
+        section.className = 'settings-section';
         
-        const header = document.createElement('h4');
+        const header = document.createElement('h2');
         header.textContent = formatSettingName(category);
+        header.className = 'settings-section-header';
         section.appendChild(header);
+        
+        // Group paths by subcategory
+        const subcategories = this.groupBySubcategory(paths);
+        
+        for (const [subcategory, subPaths] of Object.entries(subcategories)) {
+            const subsection = await this.createSubsection(subcategory, subPaths);
+            section.appendChild(subsection);
+        }
         
         return section;
     }
 
-    private createSettingControl(path: string, value: SettingValue): HTMLElement | null {
-        // Special handling for XR mode
-        if (path === 'xr.mode') {
-            return this.createXRModeControl();
-        }
-
-        const control = document.createElement('div');
-        control.classList.add('setting-control');
-
-        const label = document.createElement('label');
-        label.textContent = `${formatSettingName(path.split('.').pop() || '')}: `;
-        control.appendChild(label);
-
-        const input = this.createInputElement(path, value);
-        if (!input) return null;
-
-        control.appendChild(input);
-        return control;
-    }
-
-    private createInputElement(path: string, value: SettingValue): HTMLElement | null {
-        const type = getSettingInputType(value);
-        const input = document.createElement(type === 'select' ? 'select' : 'input');
-        input.dataset.path = path;
-
-        if (input instanceof HTMLInputElement) {
-            input.type = type;
-            if (type === 'checkbox') {
-                input.checked = value as boolean;
+    private groupBySubcategory(paths: string[]): Record<string, string[]> {
+        const groups: Record<string, string[]> = {};
+        
+        paths.forEach(path => {
+            const parts = path.split('.');
+            if (parts.length > 2) {
+                const subcategory = parts[1];
+                if (!groups[subcategory]) {
+                    groups[subcategory] = [];
+                }
+                groups[subcategory].push(path);
             } else {
-                input.value = String(value);
-            }
-        } else if (input instanceof HTMLSelectElement && Array.isArray(value)) {
-            value.forEach(opt => {
-                const option = document.createElement('option');
-                option.value = String(opt);
-                option.text = String(opt);
-                input.appendChild(option);
-            });
-        }
-
-        input.addEventListener(type === 'checkbox' ? 'change' : 'input', async () => {
-            try {
-                const newValue = this.getInputValue(input);
-                await settingsManager.updateSetting(path, newValue);
-            } catch (error) {
-                logger.error(`Failed to update setting ${path}:`, error);
-                this.revertInput(input, value);
+                if (!groups['general']) {
+                    groups['general'] = [];
+                }
+                groups['general'].push(path);
             }
         });
+        
+        return groups;
+    }
 
+    private async createSubsection(subcategory: string, paths: string[]): Promise<HTMLElement> {
+        const subsection = document.createElement('div');
+        subsection.className = 'settings-subsection';
+        
+        const header = document.createElement('h3');
+        header.textContent = formatSettingName(subcategory);
+        header.className = 'settings-subsection-header';
+        subsection.appendChild(header);
+        
+        for (const path of paths) {
+            const control = await this.createSettingControl(path);
+            subsection.appendChild(control);
+        }
+        
+        return subsection;
+    }
+
+    private async createSettingControl(path: string): Promise<HTMLElement> {
+        const container = document.createElement('div');
+        container.className = 'setting-control';
+        
+        const label = document.createElement('label');
+        label.textContent = formatSettingName(path.split('.').pop() || '');
+        container.appendChild(label);
+        
+        const value = this.settingsStore.get(path);
+        const input = this.createInputElement(path, value);
+        container.appendChild(input);
+        
+        // Subscribe to changes
+        const unsubscribe = await this.settingsStore.subscribe(path, (_, newValue) => {
+            this.updateInputValue(input, newValue);
+        });
+        this.unsubscribers.push(unsubscribe);
+        
+        return container;
+    }
+
+    private createInputElement(path: string, value: any): HTMLElement {
+        const inputType = getSettingInputType(value);
+        let input: HTMLElement;
+        
+        switch (inputType) {
+            case 'checkbox':
+                input = document.createElement('input');
+                (input as HTMLInputElement).type = 'checkbox';
+                (input as HTMLInputElement).checked = value as boolean;
+                input.addEventListener('change', async (e) => {
+                    const target = e.target as HTMLInputElement;
+                    try {
+                        await this.settingsStore.set(path, target.checked);
+                    } catch (error) {
+                        logger.error(`Failed to update ${path}:`, error);
+                        // Revert the checkbox state
+                        target.checked = !target.checked;
+                    }
+                });
+                break;
+                
+            case 'number':
+                input = document.createElement('input');
+                (input as HTMLInputElement).type = 'number';
+                (input as HTMLInputElement).value = String(value);
+                (input as HTMLInputElement).step = getStepValue(path);
+                input.addEventListener('change', async (e) => {
+                    const target = e.target as HTMLInputElement;
+                    try {
+                        await this.settingsStore.set(path, Number(target.value));
+                    } catch (error) {
+                        logger.error(`Failed to update ${path}:`, error);
+                        // Revert the input value
+                        target.value = String(value);
+                    }
+                });
+                break;
+                
+            case 'color':
+                input = document.createElement('input');
+                (input as HTMLInputElement).type = 'color';
+                (input as HTMLInputElement).value = value as string;
+                input.addEventListener('change', async (e) => {
+                    const target = e.target as HTMLInputElement;
+                    try {
+                        await this.settingsStore.set(path, target.value);
+                    } catch (error) {
+                        logger.error(`Failed to update ${path}:`, error);
+                        // Revert the color
+                        target.value = value as string;
+                    }
+                });
+                break;
+                
+            case 'select':
+                input = document.createElement('select');
+                if (Array.isArray(value)) {
+                    value.forEach(option => {
+                        const opt = document.createElement('option');
+                        opt.value = String(option);
+                        opt.textContent = String(option);
+                        input.appendChild(opt);
+                    });
+                }
+                input.addEventListener('change', async (e) => {
+                    const target = e.target as HTMLSelectElement;
+                    try {
+                        await this.settingsStore.set(path, target.value);
+                    } catch (error) {
+                        logger.error(`Failed to update ${path}:`, error);
+                        // Revert the selection
+                        target.value = value as string;
+                    }
+                });
+                break;
+                
+            default:
+                input = document.createElement('input');
+                (input as HTMLInputElement).type = 'text';
+                (input as HTMLInputElement).value = String(value);
+                input.addEventListener('change', async (e) => {
+                    const target = e.target as HTMLInputElement;
+                    try {
+                        await this.settingsStore.set(path, target.value);
+                    } catch (error) {
+                        logger.error(`Failed to update ${path}:`, error);
+                        // Revert the input value
+                        target.value = String(value);
+                    }
+                });
+        }
+        
+        input.className = 'setting-input';
         return input;
     }
 
-    private getInputValue(input: HTMLElement): SettingValue {
-        if (input instanceof HTMLInputElement) {
-            switch (input.type) {
-                case 'checkbox': return input.checked;
-                case 'number': return parseFloat(input.value);
-                default: return input.value;
-            }
-        }
-        if (input instanceof HTMLSelectElement) {
-            return input.value;
-        }
-        throw new Error('Unsupported input element');
-    }
-
-    private revertInput(input: HTMLElement, originalValue: SettingValue): void {
-        if (input instanceof HTMLInputElement) {
-            if (input.type === 'checkbox') {
-                input.checked = originalValue as boolean;
-            } else {
-                input.value = String(originalValue);
-            }
-        } else if (input instanceof HTMLSelectElement) {
-            input.value = String(originalValue);
-        }
-    }
-
-    private createXRModeControl(): HTMLElement {
-        const control = document.createElement('div');
-        control.classList.add('setting-control');
-
-        const button = document.createElement('button');
-        button.textContent = 'Enter Immersive Mode';
-        button.classList.add('xr-button');
-        button.addEventListener('click', async () => {
-            try {
-                const sceneManager = SceneManager.getInstance(
-                    document.querySelector('canvas') as HTMLCanvasElement
-                );
-                const xrManager = XRSessionManager.getInstance(sceneManager);
-                
-                if (!xrManager.isXRPresenting()) {
-                    await xrManager.initXRSession();
-                    button.textContent = 'Exit Immersive Mode';
-                } else {
-                    await xrManager.endXRSession();
-                    button.textContent = 'Enter Immersive Mode';
-                }
-            } catch (error) {
-                logger.error('Failed to toggle XR session:', error);
-            }
-        });
-
-        control.appendChild(button);
-        return control;
-    }
-
-    private async setupSettingsSubscriptions(): Promise<void> {
-        const paths = getAllSettingPaths(this.settings);
-        
-        for (const path of paths) {
-            const unsubscribe = settingsManager.onSettingChange(path, (value) => {
-                this.updateSettingControl(path, value);
-            });
-            this.unsubscribers.push(unsubscribe);
-        }
-    }
-
-    private updateSettingControl(path: string, value: SettingValue): void {
-        const input = this.container.querySelector(`[data-path="${path}"]`);
-        if (!input) return;
-
+    private updateInputValue(input: HTMLElement, value: any): void {
         if (input instanceof HTMLInputElement) {
             if (input.type === 'checkbox') {
                 input.checked = value as boolean;
@@ -313,11 +267,108 @@ export class ControlPanel {
         }
     }
 
+    private addStyles(): void {
+        const style = document.createElement('style');
+        style.textContent = `
+            .settings-panel {
+                padding: 20px;
+                background: #f5f5f5;
+                border-radius: 8px;
+                max-width: 800px;
+                margin: 0 auto;
+            }
+
+            .settings-section {
+                margin-bottom: 24px;
+                background: white;
+                padding: 16px;
+                border-radius: 4px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+
+            .settings-section-header {
+                margin: 0 0 16px 0;
+                padding-bottom: 8px;
+                border-bottom: 2px solid #eee;
+                color: #333;
+                font-size: 18px;
+            }
+
+            .settings-subsection {
+                margin: 16px 0;
+                padding: 16px;
+                background: #f9f9f9;
+                border-radius: 4px;
+            }
+
+            .settings-subsection-header {
+                margin: 0 0 12px 0;
+                color: #666;
+                font-size: 16px;
+            }
+
+            .setting-control {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin: 8px 0;
+                padding: 8px;
+                border-radius: 4px;
+            }
+
+            .setting-control:hover {
+                background: #f0f0f0;
+            }
+
+            .setting-control label {
+                flex: 1;
+                margin-right: 16px;
+                color: #444;
+            }
+
+            .setting-input {
+                padding: 4px 8px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+
+            .setting-input[type="checkbox"] {
+                width: 20px;
+                height: 20px;
+            }
+
+            .setting-input[type="color"] {
+                padding: 0;
+                width: 40px;
+                height: 24px;
+            }
+
+            .setting-input[type="number"] {
+                width: 80px;
+            }
+
+            .setting-input:focus {
+                outline: none;
+                border-color: #007bff;
+                box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    public show(): void {
+        this.container.style.display = 'block';
+    }
+
+    public hide(): void {
+        this.container.style.display = 'none';
+    }
+
     public dispose(): void {
-        this.unsubscribers.forEach(unsub => unsub());
-        this.unsubscribers = [];
-        this.webSocketService.onConnectionStatusChange(() => {});
-        this.container.innerHTML = '';
-        logger.debug('ControlPanel disposed');
+        this.unsubscribers.forEach(unsubscribe => unsubscribe());
+        this.validationDisplay.dispose();
+        this.container.remove();
+        ControlPanel.instance = null;
     }
 }
