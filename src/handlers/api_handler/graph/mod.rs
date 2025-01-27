@@ -254,9 +254,11 @@ pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/graph")
-            .route("/get_data", web::get().to(get_graph_data))
-            .route("/get_paginated_data", web::get().to(get_paginated_graph_data))
-            .route("/refresh", web::post().to(refresh_graph))
+            // Match client's endpoint pattern exactly
+            .route("/data", web::get().to(get_graph_data))
+            .route("/data/paginated", web::get().to(get_paginated_graph_data))
             .route("/update", web::post().to(update_graph))
+            // Keep refresh endpoint for admin/maintenance
+            .route("/refresh", web::post().to(refresh_graph))
     );
 }

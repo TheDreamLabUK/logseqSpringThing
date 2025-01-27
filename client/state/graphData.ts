@@ -59,14 +59,26 @@ export class GraphDataManager {
 
   public async fetchInitialData(): Promise<void> {
     try {
-      const response = await fetch(API_ENDPOINTS.GRAPH_DATA);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch graph data: ${response.statusText}`);
+      // Start with first page
+      await this.fetchPaginatedData(1, 100);
+      logger.info('Initial graph data page loaded');
+      
+      // Get total pages from metadata
+      const totalPages = this.metadata.pagination?.totalPages || 1;
+      
+      if (totalPages > 1) {
+        logger.info(`Loading remaining ${totalPages - 1} pages in background`);
+        // Load remaining pages in background
+        for (let page = 2; page <= totalPages; page++) {
+          try {
+            await this.fetchPaginatedData(page, 100);
+            logger.debug(`Loaded page ${page}/${totalPages}`);
+          } catch (error) {
+            logger.error(`Failed to load page ${page}:`, error);
+            // Continue with next page even if one fails
+          }
+        }
       }
-
-      const data = await response.json();
-      this.updateGraphData(data);
-      logger.info('Initial graph data loaded');
     } catch (error) {
       logger.error('Failed to fetch initial graph data:', error);
       throw error;
@@ -101,8 +113,7 @@ export class GraphDataManager {
     try {
       // Try both endpoints
       const endpoints = [
-        '/api/graph/paginated',
-        '/api/graph/data/paginated'
+        API_ENDPOINTS.GRAPH_PAGINATED
       ];
 
       let response = null;
@@ -277,55 +288,44 @@ export class GraphDataManager {
    * Initialize or update the graph data
    */
   updateGraphData(data: any): void {
-    // Update nodes
-    if (data.nodes && Array.isArray(data.nodes)) {
-      data.nodes.forEach((node: any) => {
-        // Convert position array to object if needed
-        let position;
-        if (Array.isArray(node.data.position)) {
-          position = {
-            x: node.data.position[0],
-            y: node.data.position[1], 
-            z: node.data.position[2]
-          };
-        } else {
-          position = node.data.position || null;
-        }
+    // Transform and validate incoming data
+    const transformedData = transformGraphData(data);
+    
+    // Update nodes with proper position and velocity
+    transformedData.nodes.forEach((node: Node) => {
+      this.nodes.set(node.id, node);
+    });
 
-        this.nodes.set(node.id, {
-          ...node,
-          data: {
-            ...node.data,
-            position
-          }
-        });
+    // Store edges in Map with generated IDs
+    if (Array.isArray(transformedData.edges)) {
+      transformedData.edges.forEach((edge: Edge) => {
+        const edgeId = this.createEdgeId(edge.source, edge.target);
+        const edgeWithId: EdgeWithId = {
+          ...edge,
+          id: edgeId
+        };
+        this.edges.set(edgeId, edgeWithId);
       });
+    }
 
-      // Store edges in Map with generated IDs
-      if (Array.isArray(data.edges)) {
-        data.edges.forEach((edge: Edge) => {
-          const edgeId = this.createEdgeId(edge.source, edge.target);
-          const edgeWithId: EdgeWithId = {
-            ...edge,
-            id: edgeId
-          };
-          this.edges.set(edgeId, edgeWithId);
-        });
-      }
+    // Update metadata, including pagination info if available
+    this.metadata = {
+      ...transformedData.metadata,
+      pagination: data.totalPages ? {
+        totalPages: data.totalPages,
+        currentPage: data.currentPage,
+        totalItems: data.totalItems,
+        pageSize: data.pageSize
+      } : undefined
+    };
 
-      // Update metadata
-      this.metadata = data.metadata || {};
+    // Notify listeners
+    this.notifyUpdateListeners();
+    logger.debug(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
 
-      // Notify listeners
-      this.notifyUpdateListeners();
-      logger.log(`Updated graph data: ${this.nodes.size} nodes, ${this.edges.size} edges`);
-
-      // Enable binary updates after initial data is received
-      if (!this.binaryUpdatesEnabled) {
-        this.enableBinaryUpdates();
-      }
-    } else {
-      logger.warn('Invalid graph data format received');
+    // Enable binary updates after initial data is received
+    if (!this.binaryUpdatesEnabled) {
+      this.enableBinaryUpdates();
     }
   }
 

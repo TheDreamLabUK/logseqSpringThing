@@ -23,6 +23,7 @@ export interface Node {
   id: string;
   data: {
     position: Vector3;
+    velocity: Vector3;
     metadata?: {
       name?: string;
       lastModified?: number;
@@ -366,10 +367,47 @@ export interface Logger {
 }
 
 // Helper functions
-export function transformGraphData(data: any): GraphData {
+interface RawNode {
+  id: string;
+  data: {
+    position: Vector3;
+    metadata?: NodeMetadata;
+  };
+  color?: string;
+}
+
+interface RawEdge {
+  source: string;
+  target: string;
+  id?: string;
+}
+
+interface RawGraphData {
+  nodes: RawNode[];
+  edges: RawEdge[];
+  metadata?: any;
+  totalPages?: number;
+  currentPage?: number;
+  totalItems?: number;
+  pageSize?: number;
+}
+
+export function transformGraphData(data: RawGraphData): GraphData {
+  const nodes = data.nodes.map((node: RawNode) => transformNodeData(node));
+  const nodePositions = new Map(nodes.map((node: Node) => [
+    node.id,
+    node.data.position
+  ]));
+
+  const edges = data.edges.map((edge: any) => ({
+    ...edge,
+    sourcePosition: nodePositions.get(edge.source),
+    targetPosition: nodePositions.get(edge.target)
+  }));
+
   return {
-    nodes: data.nodes.map((node: any) => transformNodeData(node)),
-    edges: data.edges,
+    nodes,
+    edges,
     metadata: data.metadata
   };
 }
@@ -379,6 +417,7 @@ export function transformNodeData(node: any): Node {
     id: node.id,
     data: {
       position: node.data.position,
+      velocity: node.data.velocity || { x: 0, y: 0, z: 0 }, // Add default velocity
       metadata: node.data.metadata
     },
     color: node.color

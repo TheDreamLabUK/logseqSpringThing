@@ -7,6 +7,7 @@ import { WebSocketService } from './websocket/websocketService';
 import { SettingsStore } from './state/SettingsStore';
 import { LoggerConfig, createLogger } from './core/logger';
 import { SceneManager } from './rendering/scene';
+import { graphDataManager } from './state/graphData';
 import './ui'; // Import UI initialization
 
 const logger = createLogger('GraphVisualization');
@@ -26,7 +27,20 @@ export class GraphVisualization {
         await settingsStore.initialize();
         logger.debug('Settings store initialized');
 
-        // Then initialize WebSocket
+        // Load initial graph data
+        logger.debug('Loading initial graph data');
+        try {
+            await graphDataManager.fetchInitialData();
+            // Update visualization with initial data
+            const graphData = graphDataManager.getGraphData();
+            this.nodeManager.updateNodes(graphData.nodes);
+            this.edgeManager.updateEdges(graphData.edges);
+            logger.debug('Initial graph data loaded and visualization updated');
+        } catch (error) {
+            logger.error('Failed to load initial graph data:', error);
+        }
+
+        // Then initialize WebSocket for position updates
         this.websocketService = WebSocketService.getInstance();
         this.websocketService.onBinaryMessage((nodes) => {
             logger.debug('Received binary node update', { nodeCount: nodes.length });
@@ -39,7 +53,7 @@ export class GraphVisualization {
         this.websocketService.onConnectionStatusChange((connected) => {
             logger.info(`WebSocket connection status changed: ${connected}`);
             if (connected) {
-                logger.debug('Requesting initial data');
+                logger.debug('Requesting position updates');
                 this.websocketService.sendMessage({ type: 'requestInitialData' });
             }
         });

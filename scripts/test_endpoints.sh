@@ -71,6 +71,25 @@ log_section() {
     echo -e "\n${BLUE}${BOLD}=== $1 ===${NC}\n" | tee -a "$LOG_FILE"
 }
 
+# Function to check graph endpoints
+check_graph_endpoints() {
+    log_section "Checking Graph Endpoints"
+    
+    # Test graph data endpoint
+    log_message "Testing graph data endpoint..."
+    docker exec ${CONTAINER_NAME} curl -v \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json" \
+        "http://localhost:4000/api/graph/data" 2>&1 | tee -a "$LOG_FILE"
+    
+    # Test paginated graph data endpoint
+    log_message "Testing paginated graph data endpoint..."
+    docker exec ${CONTAINER_NAME} curl -v \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json" \
+        "http://localhost:4000/api/graph/data/paginated?page=1&pageSize=100" 2>&1 | tee -a "$LOG_FILE"
+}
+
 # Function to check settings endpoint
 check_settings_endpoint() {
     log_section "Checking Settings Endpoint"
@@ -141,6 +160,9 @@ main() {
     
     # Check settings endpoint
     check_settings_endpoint
+    
+    # Check graph endpoints
+    check_graph_endpoints
     
     log "${YELLOW}Diagnostics completed${NC}"
 }
