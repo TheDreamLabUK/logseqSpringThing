@@ -1,7 +1,5 @@
-use regex::Regex;
 use lazy_static::lazy_static;
-use serde_json::json;
-use crate::config::NodeSettings;
+use regex::Regex;
 
 lazy_static! {
     static ref CAMEL_TO_SNAKE: Regex = Regex::new(r"([a-z0-9])([A-Z])").unwrap();
@@ -21,7 +19,7 @@ pub fn to_snake_case(s: &str) -> String {
 pub fn to_camel_case(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut capitalize_next = false;
-    
+
     for (i, c) in s.chars().enumerate() {
         if c == '_' {
             capitalize_next = true;
@@ -34,7 +32,7 @@ pub fn to_camel_case(s: &str) -> String {
             result.push(c);
         }
     }
-    
+
     result
 }
 
@@ -43,15 +41,6 @@ pub fn to_kebab_case(s: &str) -> String {
     let snake = to_snake_case(s);
     // Then replace underscores with hyphens
     SNAKE_TO_KEBAB.replace_all(&snake, "-").to_string()
-}
-
-pub fn to_client_node_settings(settings: &NodeSettings) -> serde_json::Value {
-    json!({
-        "baseColor": settings.base_color,
-        "baseSize": settings.base_size,
-        "metalness": settings.metalness,
-        // ... other fields
-    })
 }
 
 #[cfg(test)]
@@ -64,15 +53,15 @@ mod tests {
         assert_eq!(to_snake_case("baseSize"), "base_size");
         assert_eq!(to_snake_case("enableHoverEffect"), "enable_hover_effect");
         assert_eq!(to_snake_case("backgroundColor"), "background_color");
-        
+
         // Test kebab-case to snake_case
         assert_eq!(to_snake_case("base-size"), "base_size");
         assert_eq!(to_snake_case("enable-hover-effect"), "enable_hover_effect");
-        
+
         // Test already snake_case
         assert_eq!(to_snake_case("base_size"), "base_size");
         assert_eq!(to_snake_case("enable_hover_effect"), "enable_hover_effect");
-        
+
         // Test mixed cases
         assert_eq!(to_snake_case("base-Size"), "base_size");
         assert_eq!(to_snake_case("enable_hoverEffect"), "enable_hover_effect");
@@ -83,15 +72,15 @@ mod tests {
         // Test snake_case to camelCase
         assert_eq!(to_camel_case("base_size"), "baseSize");
         assert_eq!(to_camel_case("enable_hover_effect"), "enableHoverEffect");
-        
+
         // Test kebab-case to camelCase
         assert_eq!(to_camel_case("base-size"), "baseSize");
         assert_eq!(to_camel_case("enable-hover-effect"), "enableHoverEffect");
-        
+
         // Test already camelCase
         assert_eq!(to_camel_case("baseSize"), "baseSize");
         assert_eq!(to_camel_case("enableHoverEffect"), "enableHoverEffect");
-        
+
         // Test mixed cases
         assert_eq!(to_camel_case("base-Size"), "baseSize");
         assert_eq!(to_camel_case("enable_hoverEffect"), "enableHoverEffect");
@@ -102,15 +91,15 @@ mod tests {
         // Test camelCase to kebab-case
         assert_eq!(to_kebab_case("baseSize"), "base-size");
         assert_eq!(to_kebab_case("enableHoverEffect"), "enable-hover-effect");
-        
+
         // Test snake_case to kebab-case
         assert_eq!(to_kebab_case("base_size"), "base-size");
         assert_eq!(to_kebab_case("enable_hover_effect"), "enable-hover-effect");
-        
+
         // Test already kebab-case
         assert_eq!(to_kebab_case("base-size"), "base-size");
         assert_eq!(to_kebab_case("enable-hover-effect"), "enable-hover-effect");
-        
+
         // Test mixed cases
         assert_eq!(to_kebab_case("base_Size"), "base-size");
         assert_eq!(to_kebab_case("enable-hoverEffect"), "enable-hover-effect");

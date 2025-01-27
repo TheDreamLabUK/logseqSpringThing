@@ -43,16 +43,16 @@ async fn main() -> std::io::Result<()> {
     // Initialize logging with settings-based configuration
     let log_config = {
         let settings_read = settings.read().await;
-        let file_level = if settings_read.debug.enabled { 
-            "debug" 
-        } else { 
-            &settings_read.debug.log_level 
-        };
-        
-        let console_level = if settings_read.debug.enable_websocket_debug {
+        let file_level = if settings_read.system.debug.enabled {
             "debug"
         } else {
-            &settings_read.debug.log_level
+            &settings_read.system.debug.log_level
+        };
+        
+        let console_level = if settings_read.system.debug.enable_websocket_debug {
+            "debug"
+        } else {
+            &settings_read.system.debug.log_level
         };
         
         LogConfig::new(
@@ -159,7 +159,7 @@ async fn main() -> std::io::Result<()> {
     // Start the server
     let bind_address = {
         let settings_read = settings.read().await;
-        format!("{}:{}", (*settings_read).network.bind_address, (*settings_read).network.port)
+        format!("{}:{}", (*settings_read).system.network.bind_address, (*settings_read).system.network.port)
     };
 
     info!("Starting HTTP server on {}", bind_address);

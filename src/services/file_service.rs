@@ -196,7 +196,7 @@ impl GitHubService for RealGitHubService {
         };
 
         let settings = self.settings.read().await;
-        let debug_enabled = settings.debug.enabled;
+        let debug_enabled = settings.system.debug.enabled;
         drop(settings);
         
         let mut markdown_files = Vec::new();
@@ -291,7 +291,7 @@ impl GitHubService for RealGitHubService {
         };
 
         let settings = self.settings.read().await;
-        let debug_enabled = settings.debug.enabled;
+        let debug_enabled = settings.system.debug.enabled;
         drop(settings);
         
         let mut markdown_files = Vec::new();
