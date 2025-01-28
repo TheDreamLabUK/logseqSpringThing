@@ -61,6 +61,7 @@ docs/*.png
 !.env.example
 !.env_template
 settings.local.toml
+certs
 
 # TypeScript
 *.tsbuildinfo

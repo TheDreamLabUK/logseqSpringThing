@@ -61,6 +61,7 @@ sha1 = "0.10"
 url = "2.5"
 flate2 = "1.0"
 byteorder = "1.5"
+urlencoding = "2.1"
 
 # Math/Linear Algebra (needed for GPU compute)
 nalgebra = "0.32"

@@ -98,16 +98,28 @@ impl RealGitHubService {
             .timeout(Duration::from_secs(30))
             .build()?;
 
-        // Ensure base_path is set to mainKnowledgeGraph/pages if empty
+        // Clean and validate base_path
         let base_path = if base_path.trim().is_empty() {
             info!("Base path was empty, using default: mainKnowledgeGraph/pages");
             "mainKnowledgeGraph/pages".to_string()
         } else {
-            info!("Using provided base path: {}", base_path);
-            base_path.trim_matches('/').to_string()
+            // First decode any existing encoding
+            let decoded_path = urlencoding::decode(&base_path)
+                .unwrap_or(std::borrow::Cow::Owned(base_path.clone()))
+                .into_owned();
+            
+            // Clean the path
+            let cleaned_path = decoded_path
+                .trim_matches('/')
+                .replace("//", "/")
+                .replace('\\', "/");
+            
+            info!("Using cleaned base path: {} (original: {})", cleaned_path, base_path);
+            cleaned_path
         };
 
         info!("Initialized GitHub service with base_path: {}", base_path);
+        debug!("Base path details - Original: {}, Cleaned: {}", base_path.clone(), base_path);
 
         Ok(Self {
             client,
@@ -123,26 +135,43 @@ impl RealGitHubService {
         let base = self.base_path.trim_matches('/');
         let path = path.trim_matches('/');
         
-        // Always include base path if it exists
-        if !base.is_empty() {
-            if path.is_empty() {
-                base.to_string()
+        // First decode any existing encoding to prevent double-encoding
+        let decoded_path = urlencoding::decode(path)
+            .unwrap_or(std::borrow::Cow::Owned(path.to_string()))
+            .into_owned();
+        let decoded_base = urlencoding::decode(base)
+            .unwrap_or(std::borrow::Cow::Owned(base.to_string()))
+            .into_owned();
+        
+        let full_path = if !decoded_base.is_empty() {
+            if decoded_path.is_empty() {
+                decoded_base
             } else {
-                format!("{}/{}", base, path)
+                format!("{}/{}", decoded_base, decoded_path)
             }
         } else {
-            path.to_string()
-        }
+            decoded_path
+        };
+
+        // Properly encode the full path for GitHub API
+        url::form_urlencoded::byte_serialize(full_path.as_bytes())
+            .collect::<String>()
     }
 
     fn get_api_path(&self) -> String {
         // For API requests, always include the base path
-        // Ensure we don't have double slashes but maintain the path structure
-        let trimmed_path = self.base_path.trim_matches('/');
+        // First decode any existing encoding
+        let decoded_path = urlencoding::decode(&self.base_path)
+            .unwrap_or(std::borrow::Cow::Owned(self.base_path.clone()))
+            .into_owned();
+        let trimmed_path = decoded_path.trim_matches('/');
+        
         if trimmed_path.is_empty() {
             String::new()
         } else {
-            trimmed_path.to_string()
+            // Properly encode for GitHub API
+            url::form_urlencoded::byte_serialize(trimmed_path.as_bytes())
+                .collect::<String>()
         }
     }
 }
@@ -150,15 +179,17 @@ impl RealGitHubService {
 #[async_trait]
 impl GitHubService for RealGitHubService {
     async fn fetch_files(&self, _path: &str) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        // Always use the base_path from settings
+        // Get properly encoded path
+        let encoded_path = self.get_api_path();
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
             self.owner,
             self.repo,
-            self.base_path.trim_matches('/')  // Always use base_path
+            encoded_path
         );
         
-        info!("GitHub API Request: URL={}", url);
+        info!("GitHub API Request: URL={}, Encoded Path={}, Original Path={}",
+            url, encoded_path, self.base_path);
 
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
@@ -245,11 +276,13 @@ impl GitHubService for RealGitHubService {
         _skip_debug_filter: bool
     ) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
         // Use the same URL construction as fetch_files
+        // Get properly encoded path
+        let encoded_path = self.get_api_path();
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
             self.owner,
             self.repo,
-            self.base_path.trim_matches('/')
+            encoded_path
         );
 
         info!("GitHub API Request: URL={}, Token=gith..., Owner={}, Repo={}, BasePath={}", 
@@ -412,10 +445,16 @@ impl GitHubService for RealGitHubService {
             self.owner, self.repo
         );
 
+        // Properly encode the file path for query parameters
+        let encoded_path = url::form_urlencoded::byte_serialize(file_path.as_bytes()).collect::<String>();
+        
+        debug!("Getting last modified time - Original path: {}, Encoded path: {}",
+            file_path, encoded_path);
+        
         let response = self.client.get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .query(&[("path", file_path), ("per_page", "1")])
+            .query(&[("path", encoded_path.as_str()), ("per_page", "1")])
             .send()
             .await?;
 

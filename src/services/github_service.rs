@@ -210,17 +210,14 @@ impl RealGitHubPRService {
 
     #[allow(dead_code)]
     async fn get_contents_url(&self, path: &str) -> String {
-        let full_path = if path.is_empty() {
-            self.base_path.clone()
-        } else {
-            format!("{}/{}", self.base_path.trim_matches('/'), path.trim_matches('/'))
-        };
+        // Get the properly encoded full path using our get_full_path method
+        let encoded_path = self.get_full_path(path);
 
         format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
             self.owner,
             self.repo,
-            full_path
+            encoded_path
         )
     }
 
@@ -232,15 +229,27 @@ impl RealGitHubPRService {
         let base = self.base_path.trim_matches('/');
         let path = path.trim_matches('/');
         
-        if !base.is_empty() {
-            if path.is_empty() {
-                base.to_string()
+        // First decode any existing encoding to prevent double-encoding
+        let decoded_path = urlencoding::decode(path)
+            .unwrap_or(std::borrow::Cow::Owned(path.to_string()))
+            .into_owned();
+        let decoded_base = urlencoding::decode(base)
+            .unwrap_or(std::borrow::Cow::Owned(base.to_string()))
+            .into_owned();
+        
+        let full_path = if !decoded_base.is_empty() {
+            if decoded_path.is_empty() {
+                decoded_base
             } else {
-                format!("{}/{}", base, path)
+                format!("{}/{}", decoded_base, decoded_path)
             }
         } else {
-            path.to_string()
-        }
+            decoded_path
+        };
+
+        // Properly encode the full path for GitHub API
+        url::form_urlencoded::byte_serialize(full_path.as_bytes())
+            .collect::<String>()
     }
 }
 
