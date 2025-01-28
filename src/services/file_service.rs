@@ -2,8 +2,6 @@ use crate::models::metadata::{Metadata, MetadataStore, MetadataOps};
 use crate::models::graph::GraphData;
 use crate::config::Settings;
 use serde::{Deserialize, Serialize};
-use reqwest::Client;
-use async_trait::async_trait;
 use log::{info, debug, error};
 use regex::Regex;
 use std::fs;
@@ -18,37 +16,12 @@ use actix_web::web;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Error;
+use super::github::GitHubService;
 
 // Constants
 const METADATA_PATH: &str = "/app/data/metadata/metadata.json";
 pub const MARKDOWN_DIR: &str = "/app/data/markdown";
-const GITHUB_API_DELAY: Duration = Duration::from_millis(500); // Increased delay for GitHub rate limits
-const MAX_RETRIES: u32 = 3; // Maximum number of retries for API calls
-const RETRY_DELAY: Duration = Duration::from_secs(2); // Delay between retries
-const MIN_SIZE: f64 = 5.0;  // Minimum node size
-const MAX_SIZE: f64 = 50.0; // Maximum node size
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct GithubFile {
-    pub name: String,
-    pub path: String,
-    pub sha: String,
-    pub size: usize,
-    pub url: String,
-    pub download_url: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
-pub struct GithubFileMetadata {
-    pub name: String,
-    pub sha: String,
-    pub download_url: String,
-    pub etag: Option<String>,
-    #[serde(with = "chrono::serde::ts_seconds_option")]
-    pub last_checked: Option<DateTime<Utc>>,
-    #[serde(with = "chrono::serde::ts_seconds_option")]
-    pub last_modified: Option<DateTime<Utc>>,
-}
+const GITHUB_API_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ProcessedFile {
@@ -58,444 +31,13 @@ pub struct ProcessedFile {
     pub metadata: Metadata,
 }
 
-// TODO: This struct will be used in future implementation of reference tracking
-#[allow(dead_code)]
-struct ReferenceInfo {
-    file_name: String,
-    references: Vec<String>,
-}
-
-#[async_trait]
-pub trait GitHubService: Send + Sync {
-    async fn fetch_file_metadata(&self, _skip_debug_filter: bool) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>>;
-    async fn get_download_url(&self, file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>>;
-    async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>>;
-    async fn get_file_last_modified(&self, file_path: &str) -> Result<DateTime<Utc>, Box<dyn StdError + Send + Sync>>;
-    async fn fetch_files(&self, path: &str) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>>;
-}
-
-pub struct RealGitHubService {
-    client: Client,
-    token: String,
-    owner: String,
-    repo: String,
-    base_path: String,
-    settings: Arc<RwLock<Settings>>,
-}
-
-impl RealGitHubService {
-    pub fn new(
-        token: String,
-        owner: String,
-        repo: String,
-        base_path: String,
-        settings: Arc<RwLock<Settings>>,
-    ) -> Result<Self, Box<dyn StdError + Send + Sync>> {
-        info!("Creating GitHub service with initial base_path: {}", base_path);
-
-        let client = Client::builder()
-            .user_agent("rust-github-api")
-            .timeout(Duration::from_secs(30))
-            .build()?;
-
-        // Clean and validate base_path
-        let base_path = if base_path.trim().is_empty() {
-            info!("Base path was empty, using default: mainKnowledgeGraph/pages");
-            "mainKnowledgeGraph/pages".to_string()
-        } else {
-            // First decode any existing encoding
-            let decoded_path = urlencoding::decode(&base_path)
-                .unwrap_or(std::borrow::Cow::Owned(base_path.clone()))
-                .into_owned();
-            
-            // Clean the path
-            let cleaned_path = decoded_path
-                .trim_matches('/')
-                .replace("//", "/")
-                .replace('\\', "/");
-            
-            info!("Using cleaned base path: {} (original: {})", cleaned_path, base_path);
-            cleaned_path
-        };
-
-        info!("Initialized GitHub service with base_path: {}", base_path);
-        debug!("Base path details - Original: {}, Cleaned: {}", base_path.clone(), base_path);
-
-        Ok(Self {
-            client,
-            token,
-            owner,
-            repo,
-            base_path,
-            settings: Arc::clone(&settings),
-        })
-    }
-
-    fn get_full_path(&self, path: &str) -> String {
-        let base = self.base_path.trim_matches('/');
-        let path = path.trim_matches('/');
-        
-        // First decode any existing encoding to prevent double-encoding
-        let decoded_path = urlencoding::decode(path)
-            .unwrap_or(std::borrow::Cow::Owned(path.to_string()))
-            .into_owned();
-        let decoded_base = urlencoding::decode(base)
-            .unwrap_or(std::borrow::Cow::Owned(base.to_string()))
-            .into_owned();
-        
-        let full_path = if !decoded_base.is_empty() {
-            if decoded_path.is_empty() {
-                decoded_base
-            } else {
-                format!("{}/{}", decoded_base, decoded_path)
-            }
-        } else {
-            decoded_path
-        };
-
-        // Properly encode the full path for GitHub API
-        url::form_urlencoded::byte_serialize(full_path.as_bytes())
-            .collect::<String>()
-    }
-
-    fn get_api_path(&self) -> String {
-        // For API requests, always include the base path
-        // First decode any existing encoding
-        let decoded_path = urlencoding::decode(&self.base_path)
-            .unwrap_or(std::borrow::Cow::Owned(self.base_path.clone()))
-            .into_owned();
-        let trimmed_path = decoded_path.trim_matches('/');
-        
-        if trimmed_path.is_empty() {
-            String::new()
-        } else {
-            // Properly encode for GitHub API
-            url::form_urlencoded::byte_serialize(trimmed_path.as_bytes())
-                .collect::<String>()
-        }
-    }
-}
-
-#[async_trait]
-impl GitHubService for RealGitHubService {
-    async fn fetch_files(&self, _path: &str) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        // Get properly encoded path
-        let encoded_path = self.get_api_path();
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/contents/{}",
-            self.owner,
-            self.repo,
-            encoded_path
-        );
-        
-        info!("GitHub API Request: URL={}, Encoded Path={}, Original Path={}",
-            url, encoded_path, self.base_path);
-
-        let response = self.client.get(&url)
-            .header("Authorization", format!("Bearer {}", self.token))
-            .header("Accept", "application/vnd.github+json")
-            .send()
-            .await?;
-
-        let status = response.status();
-        let headers = response.headers().clone();
-        
-        info!("GitHub API Response: Status={}, Headers={:?}", status, headers);
-
-        let body = response.text().await?;
-        info!("GitHub API Response Body (first 1000 chars): {}", &body[..body.len().min(1000)]);
-
-        if !status.is_success() {
-            let error_msg = match serde_json::from_str::<serde_json::Value>(&body) {
-                Ok(error_json) => {
-                    let msg = error_json["message"].as_str().unwrap_or("Unknown error");
-                    format!("GitHub API error: {} - {}", status, msg)
-                },
-                Err(_) => format!("GitHub API error: {} - {}", status, body)
-            };
-            error!("{}", error_msg);
-            return Err(error_msg.into());
-        }
-
-        let contents: Vec<serde_json::Value> = match serde_json::from_str(&body) {
-            Ok(parsed) => parsed,
-            Err(e) => {
-                error!("Failed to parse GitHub API response: {}", e);
-                error!("Response body: {}", body);
-                return Err(Box::new(e));
-            }
-        };
-
-        let settings = self.settings.read().await;
-        let debug_enabled = settings.system.debug.enabled;
-        drop(settings);
-        
-        let mut markdown_files = Vec::new();
-        
-        for item in contents {
-            if item["type"].as_str().unwrap_or("") == "file" && 
-               item["name"].as_str().unwrap_or("").ends_with(".md") {
-                let name = item["name"].as_str().unwrap_or("").to_string();
-                
-                // In debug mode, only process Debug Test Page.md and debug linked node.md
-                if debug_enabled && !name.contains("Debug Test Page") && !name.contains("debug linked node") {
-                    continue;
-                }
-
-                debug!("Processing markdown file: {}", name);
-                
-                let last_modified = match self.get_file_last_modified(&self.get_full_path(&name)).await {
-                    Ok(time) => Some(time),
-                    Err(e) => {
-                        error!("Failed to get last modified time for {}: {}", name, e);
-                        continue;
-                    }
-                };
-                
-                markdown_files.push(GithubFileMetadata {
-                    name,
-                    sha: item["sha"].as_str().unwrap_or("").to_string(),
-                    download_url: item["download_url"].as_str().unwrap_or("").to_string(),
-                    etag: None,
-                    last_checked: Some(Utc::now()),
-                    last_modified,
-                });
-            }
-        }
-
-        if debug_enabled {
-            info!("Debug mode: Processing only debug test files");
-        }
-
-        info!("Found {} markdown files", markdown_files.len());
-        Ok(markdown_files)
-    }
-
-    async fn fetch_file_metadata(
-        &self,
-        _skip_debug_filter: bool
-    ) -> Result<Vec<GithubFileMetadata>, Box<dyn StdError + Send + Sync>> {
-        // Use the same URL construction as fetch_files
-        // Get properly encoded path
-        let encoded_path = self.get_api_path();
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/contents/{}",
-            self.owner,
-            self.repo,
-            encoded_path
-        );
-
-        info!("GitHub API Request: URL={}, Token=gith..., Owner={}, Repo={}, BasePath={}", 
-            url, self.owner, self.repo, self.base_path);
-
-        let response = self.client.get(&url)
-            .header("Authorization", format!("Bearer {}", self.token))
-            .header("Accept", "application/vnd.github+json")
-            .send()
-            .await?;
-
-        let status = response.status();
-        let headers = response.headers().clone();
-        
-        info!("GitHub API Response: Status={}, Headers={:?}", status, headers);
-
-        let body = response.text().await?;
-        info!("GitHub API Response Body (first 1000 chars): {}", &body[..body.len().min(1000)]);
-
-        if !status.is_success() {
-            let error_msg = match serde_json::from_str::<serde_json::Value>(&body) {
-                Ok(error_json) => {
-                    let msg = error_json["message"].as_str().unwrap_or("Unknown error");
-                    format!("GitHub API error: {} - {}", status, msg)
-                },
-                Err(_) => format!("GitHub API error: {} - {}", status, body)
-            };
-            error!("{}", error_msg);
-            return Err(error_msg.into());
-        }
-
-        let contents: Vec<serde_json::Value> = match serde_json::from_str(&body) {
-            Ok(parsed) => parsed,
-            Err(e) => {
-                error!("Failed to parse GitHub API response: {}", e);
-                error!("Response body: {}", body);
-                return Err(Box::new(e));
-            }
-        };
-
-        let settings = self.settings.read().await;
-        let debug_enabled = settings.system.debug.enabled;
-        drop(settings);
-        
-        let mut markdown_files = Vec::new();
-        
-        for item in contents {
-            if item["type"].as_str().unwrap_or("") == "file" && 
-               item["name"].as_str().unwrap_or("").ends_with(".md") {
-                let name = item["name"].as_str().unwrap_or("").to_string();
-                
-                // In debug mode, only process Debug Test Page.md and debug linked node.md
-                if debug_enabled && !name.contains("Debug Test Page") && !name.contains("debug linked node") {
-                    continue;
-                }
-
-                debug!("Processing markdown file: {}", name);
-                
-                let last_modified = match self.get_file_last_modified(&self.get_full_path(&name)).await {
-                    Ok(time) => Some(time),
-                    Err(e) => {
-                        error!("Failed to get last modified time for {}: {}", name, e);
-                        continue;
-                    }
-                };
-                
-                markdown_files.push(GithubFileMetadata {
-                    name,
-                    sha: item["sha"].as_str().unwrap_or("").to_string(),
-                    download_url: item["download_url"].as_str().unwrap_or("").to_string(),
-                    etag: None,
-                    last_checked: Some(Utc::now()),
-                    last_modified,
-                });
-            }
-        }
-
-        if debug_enabled {
-            info!("Debug mode: Processing only debug test files");
-        }
-
-        info!("Found {} markdown files", markdown_files.len());
-        Ok(markdown_files)
-    }
-
-    async fn get_download_url(&self, _file_name: &str) -> Result<Option<String>, Box<dyn StdError + Send + Sync>> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/contents/{}",
-            self.owner,
-            self.repo,
-            self.get_api_path()
-        );
-
-        let response = self.client.get(&url)
-            .header("Authorization", format!("Bearer {}", self.token))
-            .header("Accept", "application/vnd.github+json")
-            .send()
-            .await?;
-
-        if response.status().is_success() {
-            let file: GithubFile = response.json().await?;
-            Ok(Some(file.download_url))
-        } else {
-            Ok(None)
-        }
-    }
-
-    async fn fetch_file_content(&self, download_url: &str) -> Result<String, Box<dyn StdError + Send + Sync>> {
-        let mut retries = 0;
-        loop {
-            match self.client.get(download_url)
-                .header("Authorization", format!("Bearer {}", self.token))
-                .header("Accept", "application/vnd.github+json")
-                .send()
-                .await
-            {
-                Ok(response) => {
-                    let status = response.status();
-                    if status.is_success() {
-                        match response.text().await {
-                            Ok(content) => return Ok(content),
-                            Err(e) => {
-                                error!("Failed to read response content: {}", e);
-                                if retries >= MAX_RETRIES {
-                                    return Err(e.into());
-                                }
-                            }
-                        }
-                    } else {
-                        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-                        error!("Failed to fetch file content. Status: {}, Error: {}", status, error_text);
-                        
-                        // Check if we should retry based on status code
-                        if status.as_u16() == 429 || (status.as_u16() >= 500 && status.as_u16() < 600) {
-                            if retries >= MAX_RETRIES {
-                                return Err(format!("Failed after {} retries: {}", MAX_RETRIES, error_text).into());
-                            }
-                        } else {
-                            return Err(format!("GitHub API error: {} - {}", status, error_text).into());
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("Request failed: {}", e);
-                    if retries >= MAX_RETRIES {
-                        return Err(e.into());
-                    }
-                }
-            }
-
-            retries += 1;
-            info!("Retrying request ({}/{})", retries, MAX_RETRIES);
-            sleep(RETRY_DELAY).await;
-        }
-    }
-
-    async fn get_file_last_modified(&self, file_path: &str) -> Result<DateTime<Utc>, Box<dyn StdError + Send + Sync>> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/commits",
-            self.owner, self.repo
-        );
-
-        // Properly encode the file path for query parameters
-        let encoded_path = url::form_urlencoded::byte_serialize(file_path.as_bytes()).collect::<String>();
-        
-        debug!("Getting last modified time - Original path: {}, Encoded path: {}",
-            file_path, encoded_path);
-        
-        let response = self.client.get(&url)
-            .header("Authorization", format!("Bearer {}", self.token))
-            .header("Accept", "application/vnd.github+json")
-            .query(&[("path", encoded_path.as_str()), ("per_page", "1")])
-            .send()
-            .await?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = response.text().await?;
-            error!("Failed to get last modified time. Status: {}, Error: {}", status, error_text);
-            return Err(format!("GitHub API error: {} - {}", status, error_text).into());
-        }
-
-        let commits: Vec<serde_json::Value> = response.json().await?;
-        
-        if let Some(last_commit) = commits.first() {
-            if let Some(commit) = last_commit["commit"]["committer"]["date"].as_str() {
-                if let Ok(date) = DateTime::parse_from_rfc3339(commit) {
-                    return Ok(date.with_timezone(&Utc));
-                } else {
-                    error!("Failed to parse commit date: {}", commit);
-                    return Err("Failed to parse commit date from GitHub response".into());
-                }
-            } else {
-                error!("No committer date found in commit data");
-                return Err("No committer date found in GitHub response".into());
-            }
-        } else {
-            error!("No commits found for file: {}", file_path);
-            return Err(format!("No commit history found for file: {}", file_path).into());
-        }
-    }
-}
-
 pub struct FileService {
-    #[allow(dead_code)]
     settings: Arc<RwLock<Settings>>,
 }
 
 impl FileService {
     pub fn new(settings: Arc<RwLock<Settings>>) -> Self {
-        Self {
-            settings
-        }
+        Self { settings }
     }
 
     /// Process uploaded file and return graph data
@@ -632,6 +174,8 @@ impl FileService {
     /// Calculate node size based on file size
     fn calculate_node_size(file_size: usize) -> f64 {
         const BASE_SIZE: f64 = 1000.0; // Base file size for scaling
+        const MIN_SIZE: f64 = 5.0;  // Minimum node size
+        const MAX_SIZE: f64 = 50.0; // Maximum node size
 
         let size = (file_size as f64 / BASE_SIZE).min(5.0);
         MIN_SIZE + (size * (MAX_SIZE - MIN_SIZE) / 5.0)
@@ -675,7 +219,7 @@ impl FileService {
 
     /// Initialize local storage with files from GitHub
     pub async fn initialize_local_storage(
-        github_service: &dyn GitHubService,
+        github_service: &GitHubService,
         settings: Arc<RwLock<Settings>>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         // Validate GitHub settings
@@ -710,23 +254,11 @@ impl FileService {
         // Ensure directories exist and have proper permissions
         Self::ensure_directories()?;
 
-        // Step 1: Get all markdown files from GitHub with proper error handling
-        let github_files = match github_service.fetch_file_metadata(false).await {
-            Ok(files) => {
-                info!("Found {} markdown files in GitHub", files.len());
-                files
-            },
-            Err(e) => {
-                error!("Failed to fetch file metadata: {}", e);
-                return Err(e);
-            }
-        };
+        // Get all markdown files from GitHub
+        let github_files = github_service.content().list_markdown_files("").await?;
+        info!("Found {} markdown files in GitHub", github_files.len());
 
-        let mut file_sizes = HashMap::new();
-        let mut file_contents = HashMap::new();
-        let mut file_metadata = HashMap::new();
         let mut metadata_store = MetadataStore::new();
-        let mut failed_files = Vec::new();
 
         // Process files in batches to prevent timeouts
         const BATCH_SIZE: usize = 5;
@@ -738,46 +270,67 @@ impl FileService {
                 let github_service = github_service;
                 
                 futures.push(async move {
-                    match github_service.fetch_file_content(&file_meta.download_url).await {
-                        Ok(content) => {
-                            // Check if file is public
-                            let first_line = content.lines().next().unwrap_or("").trim();
-                            if first_line != "public:: true" {
+                    // First check if file is public
+                    match github_service.content().check_file_public(&file_meta.download_url).await {
+                        Ok(is_public) => {
+                            if !is_public {
                                 debug!("Skipping non-public file: {}", file_meta.name);
                                 return Ok(None);
                             }
 
-                            let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
-                            if let Err(e) = fs::write(&file_path, &content) {
-                                error!("Failed to write file {}: {}", file_path, e);
-                                return Err(e.into());
-                            }
+                            // Only fetch full content for public files
+                            match github_service.content().fetch_file_content(&file_meta.download_url).await {
+                                Ok(content) => {
+                                    let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
+                                    if let Err(e) = fs::write(&file_path, &content) {
+                                        error!("Failed to write file {}: {}", file_path, e);
+                                        return Err(e.into());
+                                    }
 
-                            Ok(Some((file_meta, content)))
+                                    Ok(Some((file_meta, content)))
+                                }
+                                Err(e) => {
+                                    error!("Failed to fetch content for {}: {}", file_meta.name, e);
+                                    Err(e)
+                                }
+                            }
                         }
                         Err(e) => {
-                            error!("Failed to fetch content for {}: {}", file_meta.name, e);
+                            error!("Failed to check public status for {}: {}", file_meta.name, e);
                             Err(e)
                         }
                     }
                 });
             }
 
-            // Wait for batch to complete with timeout
+            // Wait for batch to complete
             let results = futures::future::join_all(futures).await;
             
             for result in results {
                 match result {
                     Ok(Some((file_meta, content))) => {
                         let node_name = file_meta.name.trim_end_matches(".md").to_string();
-                        file_sizes.insert(node_name.clone(), content.len());
-                        file_contents.insert(node_name, content.clone());
-                        file_metadata.insert(file_meta.name.clone(), file_meta);
+                        let file_size = content.len();
+                        let node_size = Self::calculate_node_size(file_size);
+
+                        // Create metadata entry
+                        let metadata = Metadata {
+                            file_name: file_meta.name.clone(),
+                            file_size,
+                            node_size,
+                            hyperlink_count: Self::count_hyperlinks(&content),
+                            sha1: Self::calculate_sha1(&content),
+                            last_modified: file_meta.last_modified.unwrap_or_else(|| Utc::now()),
+                            perplexity_link: String::new(),
+                            last_perplexity_process: None,
+                            topic_counts: HashMap::new(), // Will be updated later
+                        };
+
+                        metadata_store.insert(file_meta.name, metadata);
                     }
                     Ok(None) => continue, // Skipped non-public file
                     Err(e) => {
                         error!("Failed to process file in batch: {}", e);
-                        failed_files.push(e.to_string());
                     }
                 }
             }
@@ -785,45 +338,35 @@ impl FileService {
             sleep(GITHUB_API_DELAY).await;
         }
 
-        // Step 3: Process files and create metadata
-        for (node_name, content) in &file_contents {
-            let file_name = format!("{}.md", node_name);
-            let local_sha1 = Self::calculate_sha1(content);
+        // Update topic counts after all files are processed
+        Self::update_topic_counts(&mut metadata_store)?;
 
-            // Extract references and create metadata
-            let valid_nodes: Vec<String> = file_contents.keys().cloned().collect();
-            let references = Self::extract_references(content, &valid_nodes);
-            let topic_counts = Self::convert_references_to_topic_counts(references);
-
-            // Get GitHub metadata
-            let github_meta = file_metadata.get(&file_name).unwrap();
-            let last_modified = github_meta.last_modified.unwrap_or_else(|| Utc::now());
-
-            // Calculate node size
-            let file_size = *file_sizes.get(node_name).unwrap();
-            let node_size = Self::calculate_node_size(file_size);
-
-            // Create metadata entry
-            let metadata = Metadata {
-                file_name: file_name.clone(),
-                file_size,
-                node_size,
-                hyperlink_count: Self::count_hyperlinks(content),
-                sha1: local_sha1,
-                last_modified,
-                perplexity_link: String::new(),
-                last_perplexity_process: None,
-                topic_counts,
-            };
-
-            metadata_store.insert(file_name, metadata);
-        }
-
-        // Step 4: Save metadata
+        // Save metadata
         info!("Saving metadata for {} public files", metadata_store.len());
         Self::save_metadata(&metadata_store)?;
 
         info!("Initialization complete. Processed {} public files", metadata_store.len());
+        Ok(())
+    }
+
+    /// Update topic counts for all files
+    fn update_topic_counts(metadata_store: &mut MetadataStore) -> Result<(), Error> {
+        let valid_nodes: Vec<String> = metadata_store.keys()
+            .map(|name| name.trim_end_matches(".md").to_string())
+            .collect();
+
+        for file_name in metadata_store.keys().cloned().collect::<Vec<_>>() {
+            let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
+            if let Ok(content) = fs::read_to_string(&file_path) {
+                let references = Self::extract_references(&content, &valid_nodes);
+                let topic_counts = Self::convert_references_to_topic_counts(references);
+                
+                if let Some(metadata) = metadata_store.get_mut(&file_name) {
+                    metadata.topic_counts = topic_counts;
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -842,7 +385,6 @@ impl FileService {
     }
 
     /// Ensures all required directories exist with proper permissions
-    #[allow(dead_code)]
     fn ensure_directories() -> Result<(), Error> {
         // Create markdown directory
         let markdown_dir = Path::new(MARKDOWN_DIR);
@@ -895,177 +437,6 @@ impl FileService {
                 Err(Error::new(std::io::ErrorKind::PermissionDenied, format!("Failed to verify directory permissions: {}", e)))
             }
         }
-    }
-
-    /// Handles incremental updates after initial setup
-    pub async fn fetch_and_process_files(
-        &self,
-        github_service: &dyn GitHubService,
-        settings: Arc<RwLock<Settings>>,
-        metadata_store: &mut MetadataStore,
-    ) -> Result<Vec<ProcessedFile>, Error> {
-        // Validate GitHub settings
-        let settings_guard = settings.read().await;
-        let github_settings = &settings_guard.github;
-        
-        if github_settings.token.is_empty() {
-            return Err(Error::new(std::io::ErrorKind::Other, "GitHub token is required"));
-        }
-        if github_settings.owner.is_empty() {
-            return Err(Error::new(std::io::ErrorKind::Other, "GitHub owner is required"));
-        }
-        if github_settings.repo.is_empty() {
-            return Err(Error::new(std::io::ErrorKind::Other, "GitHub repository name is required"));
-        }
-        
-        let base_path = github_settings.base_path.clone();
-        debug!("Using GitHub settings - Owner: {}, Repo: {}, Base Path: {}",
-            github_settings.owner,
-            github_settings.repo,
-            base_path
-        );
-        drop(settings_guard);
-
-        // Construct the full path for the GitHub API request
-        let api_path = if base_path.is_empty() {
-            String::from("")
-        } else {
-            base_path.trim_matches('/').to_string()
-        };
-
-        // Ensure directories exist and have proper permissions
-        if let Err(e) = Self::ensure_directories() {
-            return Err(Error::new(std::io::ErrorKind::Other, e.to_string()));
-        }
-
-        // Get files from GitHub
-        let github_files_metadata = match github_service.fetch_files(&api_path).await {
-            Ok(files) => {
-                info!("Found {} files in GitHub path: {}", files.len(), api_path);
-                files
-            }
-            Err(e) => {
-                error!("Failed to list files from GitHub: {}", e);
-                return Err(Error::new(std::io::ErrorKind::Other, e.to_string()));
-            }
-        };
-
-        let mut processed_files = Vec::new();
-
-        // Remove files that no longer exist in GitHub
-        let github_filenames: std::collections::HashSet<_> = github_files_metadata.iter()
-            .map(|f| f.name.clone())
-            .collect();
-
-        // Remove files from metadata store that don't exist in GitHub anymore
-        let files_to_remove: Vec<_> = metadata_store.keys()
-            .filter(|file_name| !github_filenames.contains(*file_name))
-            .cloned()
-            .collect();
-
-        for file_name in files_to_remove {
-            debug!("Removing metadata for deleted file: {}", file_name);
-            metadata_store.remove(&file_name);
-        }
-
-        // Get list of valid node names (filenames without .md)
-        let valid_nodes: Vec<String> = github_files_metadata.iter()
-            .map(|f| f.name.trim_end_matches(".md").to_string())
-            .collect();
-
-        // Process files that need updating
-        let files_to_process: Vec<_> = github_files_metadata.into_iter()
-            .filter(|file_meta| {
-                let local_meta = metadata_store.get(&file_meta.name);
-                local_meta.map_or(true, |meta| meta.sha1 != file_meta.sha)
-            })
-            .collect();
-
-        // Process files in batches to prevent timeouts
-        const BATCH_SIZE: usize = 5;
-        for chunk in files_to_process.chunks(BATCH_SIZE) {
-            let mut futures = Vec::new();
-            
-            for file_meta in chunk {
-                let file_meta = file_meta.clone();
-                let github_service = github_service;
-                let valid_nodes = valid_nodes.clone();
-                
-                futures.push(async move {
-                    match github_service.fetch_file_content(&file_meta.download_url).await {
-                        Ok(content) => {
-                            let first_line = content.lines().next().unwrap_or("").trim();
-                            if first_line != "public:: true" {
-                                debug!("Skipping non-public file: {}", file_meta.name);
-                                return Ok(None);
-                            }
-
-                            let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
-                            if let Err(e) = fs::write(&file_path, &content) {
-                                error!("Failed to write file {}: {}", file_path, e);
-                                return Err(Error::new(std::io::ErrorKind::Other, e.to_string()));
-                            }
-
-                            // Extract references
-                            let references = Self::extract_references(&content, &valid_nodes);
-                            let topic_counts = Self::convert_references_to_topic_counts(references);
-
-                            // Calculate node size
-                            let file_size = content.len();
-                            let node_size = Self::calculate_node_size(file_size);
-
-                            let new_metadata = Metadata {
-                                file_name: file_meta.name.clone(),
-                                file_size,
-                                node_size,
-                                hyperlink_count: Self::count_hyperlinks(&content),
-                                sha1: Self::calculate_sha1(&content),
-                                last_modified: file_meta.last_modified.expect("Last modified time should be present"),
-                                perplexity_link: String::new(),
-                                last_perplexity_process: None,
-                                topic_counts,
-                            };
-
-                            Ok(Some((file_meta.name, content, new_metadata)))
-                        }
-                        Err(e) => {
-                            error!("Failed to fetch content for {}: {}", file_meta.name, e);
-                            Err(Error::new(std::io::ErrorKind::Other, e.to_string()))
-                        }
-                    }
-                });
-            }
-
-            // Wait for batch to complete
-            let results = futures::future::join_all(futures).await;
-            
-            for result in results {
-                match result {
-                    Ok(Some((file_name, content, new_metadata))) => {
-                        metadata_store.insert(file_name.clone(), new_metadata.clone());
-                        processed_files.push(ProcessedFile {
-                            file_name,
-                            content,
-                            is_public: true,
-                            metadata: new_metadata,
-                        });
-                    }
-                    Ok(None) => continue, // Skipped non-public file
-                    Err(e) => {
-                        error!("Failed to process file in batch: {}", e);
-                    }
-                }
-            }
-
-            sleep(GITHUB_API_DELAY).await;
-        }
-
-        // Save updated metadata
-        if let Err(e) = Self::save_metadata(metadata_store) {
-            return Err(Error::new(std::io::ErrorKind::Other, e.to_string()));
-        }
-
-        Ok(processed_files)
     }
 
     /// Save metadata to file
