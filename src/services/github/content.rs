@@ -127,24 +127,38 @@ impl ContentAPI {
 
     /// Get the last modified time for a file
     pub async fn get_file_last_modified(&self, file_path: &str) -> Result<DateTime<Utc>, Box<dyn Error + Send + Sync>> {
+        // First decode any existing encoding to prevent double-encoding
+        let decoded_path = urlencoding::decode(file_path)
+            .unwrap_or(std::borrow::Cow::Owned(file_path.to_string()))
+            .into_owned();
+            
         let url = format!(
             "https://api.github.com/repos/{}/{}/commits",
             self.client.owner(), self.client.repo()
         );
 
-        // First decode any existing encoding to prevent double-encoding
-        let decoded_path = urlencoding::decode(file_path)
+        debug!("GitHub API URL: {}", url);
+        debug!("Query parameters: path={}, per_page=1", decoded_path);
             .unwrap_or(std::borrow::Cow::Owned(file_path.to_string()))
             .into_owned();
             
         debug!("Getting last modified time - Original path: {}, Decoded path: {}",
             file_path, decoded_path);
         
+        // Ensure path is relative to base path
+        let full_path = if !decoded_path.starts_with(&self.client.base_path()) {
+            format!("{}/{}", self.client.base_path(), decoded_path)
+        } else {
+            decoded_path.clone()
+        };
+        
+        debug!("Using full path for commits query: {}", full_path);
+        
         let response = self.client.client()
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.client.token()))
             .header("Accept", "application/vnd.github+json")
-            .query(&[("path", decoded_path.as_str()), ("per_page", "1")])
+            .query(&[("path", full_path.as_str()), ("per_page", "1")])
             .send()
             .await?;
 
@@ -155,9 +169,18 @@ impl ContentAPI {
             return Err(format!("GitHub API error: {} - {}", status, error_text).into());
         }
 
-        let commits: Vec<serde_json::Value> = response.json().await?;
+        let response_text = response.text().await?;
+        debug!("GitHub API Response for commits: {}", response_text);
+        
+        let commits: Vec<serde_json::Value> = serde_json::from_str(&response_text)?;
+        
+        if commits.is_empty() {
+            error!("Empty commits array returned for path: {} (decoded: {})", file_path, decoded_path);
+            return Err(format!("No commit history found for file: {} (API path: {})", file_path, decoded_path).into());
+        }
         
         if let Some(last_commit) = commits.first() {
+            debug!("Found commit data: {}", serde_json::to_string_pretty(last_commit)?);
             if let Some(commit) = last_commit["commit"]["committer"]["date"].as_str() {
                 if let Ok(date) = DateTime::parse_from_rfc3339(commit) {
                     return Ok(date.with_timezone(&Utc));
@@ -170,8 +193,8 @@ impl ContentAPI {
                 return Err("No committer date found in GitHub response".into());
             }
         } else {
-            error!("No commits found for file: {}", file_path);
-            return Err(format!("No commit history found for file: {}", file_path).into());
+            error!("No commits found for file: {} (decoded path: {})", file_path, decoded_path);
+            return Err(format!("No commit history found for file: {} (API path: {})", file_path, decoded_path).into());
         }
     }
 
