@@ -6,11 +6,11 @@ use webxr::{
         pages_handler,
         socket_flow_handler::socket_flow_handler,
     },
-    RealGitHubService,
-    RealGitHubPRService, GPUCompute, GraphData,
+    GPUCompute, GraphData,
     services::{
         file_service::FileService,
         graph_service::GraphService,
+        github::{GitHubClient, ContentAPI},
     },
 };
 
@@ -86,42 +86,34 @@ async fn main() -> std::io::Result<()> {
 
     // Initialize services
     let settings_read = settings.read().await;
-    let github_service = match RealGitHubService::new(
+    let github_client = match GitHubClient::new(
         settings_read.github.token.clone(),
         settings_read.github.owner.clone(),
         settings_read.github.repo.clone(),
         settings_read.github.base_path.clone(),
         settings.clone(),
     ) {
-        Ok(service) => Arc::new(service),
+        Ok(client) => Arc::new(client),
         Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
     };
 
-    let github_pr_service: Arc<RealGitHubPRService> = match RealGitHubPRService::new(
-        settings_read.github.token.clone(),
-        settings_read.github.owner.clone(),
-        settings_read.github.repo.clone(),
-        settings_read.github.base_path.clone()
-    ) {
-        Ok(service) => Arc::new(service),
-        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-    };
+    let content_api = Arc::new(ContentAPI::new(&github_client));
     drop(settings_read);
 
     // Initialize app state
     let app_state = web::Data::new(AppState::new(
         settings.clone(),
-        github_service.clone(),
+        github_client.clone(),
+        content_api.clone(),
         None,
         None,
         gpu_compute,
         "default_conversation".to_string(),
-        github_pr_service.clone(),
     ));
 
     // Initialize local storage and fetch initial data
     info!("Initializing local storage and fetching initial data");
-    if let Err(e) = FileService::initialize_local_storage(&*github_service, settings.clone()).await {
+    if let Err(e) = FileService::initialize_local_storage(settings.clone()).await {
         error!("Failed to initialize local storage: {}", e);
         return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
     }
@@ -179,8 +171,8 @@ async fn main() -> std::io::Result<()> {
             .wrap(middleware::Compress::default())
             .app_data(settings_data.clone())
             .app_data(app_state.clone())
-            .app_data(web::Data::new(github_service.clone()))
-            .app_data(web::Data::new(github_pr_service.clone()))
+            .app_data(web::Data::new(github_client.clone()))
+            .app_data(web::Data::new(content_api.clone()))
             .route("/wss", web::get().to(socket_flow_handler))
             .service(
                 web::scope("")

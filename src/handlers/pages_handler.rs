@@ -2,7 +2,7 @@ use actix_web::{web, HttpResponse, Result};
 use crate::AppState;
 use serde::Serialize;
 use futures::future::join_all;
-use crate::services::file_service::GitHubService;
+use crate::services::github::ContentAPI;
 
 #[derive(Serialize)]
 pub struct PageInfo {
@@ -18,8 +18,8 @@ pub async fn get_pages(app_state: web::Data<AppState>) -> Result<HttpResponse> {
     let metadata = app_state.metadata.read().await;
     let futures: Vec<_> = metadata.iter()
         .map(|(id, meta)| async {
-            let github_meta = app_state.github_service
-                .fetch_file_metadata(false)
+            let github_meta = app_state.content_api
+                .list_markdown_files("")
                 .await
                 .ok()
                 .and_then(|files| files.into_iter()

@@ -16,7 +16,7 @@ use actix_web::web;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Error;
-use super::github::GitHubService;
+use super::github::{GitHubClient, ContentAPI};
 
 // Constants
 const METADATA_PATH: &str = "/app/data/metadata/metadata.json";
@@ -219,28 +219,21 @@ impl FileService {
 
     /// Initialize local storage with files from GitHub
     pub async fn initialize_local_storage(
-        github_service: &GitHubService,
         settings: Arc<RwLock<Settings>>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        // Validate GitHub settings
+        // Create GitHub client
         let settings_guard = settings.read().await;
         let github_settings = &settings_guard.github;
         
-        if github_settings.token.is_empty() {
-            return Err("GitHub token is required".into());
-        }
-        if github_settings.owner.is_empty() {
-            return Err("GitHub owner is required".into());
-        }
-        if github_settings.repo.is_empty() {
-            return Err("GitHub repository name is required".into());
-        }
+        let github = GitHubClient::new(
+            github_settings.token.clone(),
+            github_settings.owner.clone(),
+            github_settings.repo.clone(),
+            github_settings.base_path.clone(),
+            Arc::clone(&settings),
+        )?;
         
-        debug!("Using GitHub settings - Owner: {}, Repo: {}, Base Path: {}",
-            github_settings.owner,
-            github_settings.repo,
-            github_settings.base_path
-        );
+        let content_api = ContentAPI::new(&github);
         drop(settings_guard);
 
         // Check if we already have a valid local setup
@@ -255,7 +248,7 @@ impl FileService {
         Self::ensure_directories()?;
 
         // Get all markdown files from GitHub
-        let github_files = github_service.content().list_markdown_files("").await?;
+        let github_files = content_api.list_markdown_files("").await?;
         info!("Found {} markdown files in GitHub", github_files.len());
 
         let mut metadata_store = MetadataStore::new();
@@ -267,11 +260,11 @@ impl FileService {
             
             for file_meta in chunk {
                 let file_meta = file_meta.clone();
-                let github_service = github_service;
+                let content_api = content_api.clone();
                 
                 futures.push(async move {
                     // First check if file is public
-                    match github_service.content().check_file_public(&file_meta.download_url).await {
+                    match content_api.check_file_public(&file_meta.download_url).await {
                         Ok(is_public) => {
                             if !is_public {
                                 debug!("Skipping non-public file: {}", file_meta.name);
@@ -279,7 +272,7 @@ impl FileService {
                             }
 
                             // Only fetch full content for public files
-                            match github_service.content().fetch_file_content(&file_meta.download_url).await {
+                            match content_api.fetch_file_content(&file_meta.download_url).await {
                                 Ok(content) => {
                                     let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
                                     if let Err(e) = fs::write(&file_path, &content) {
@@ -460,5 +453,105 @@ impl FileService {
     fn count_hyperlinks(content: &str) -> usize {
         let re = Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").unwrap();
         re.find_iter(content).count()
+    }
+
+    /// Fetch and process files from GitHub
+    pub async fn fetch_and_process_files(
+        &self,
+        content_api: &ContentAPI,
+        settings: Arc<RwLock<Settings>>,
+        metadata_store: &mut MetadataStore,
+    ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
+        let mut processed_files = Vec::new();
+
+        // Get all markdown files from GitHub
+        let github_files = content_api.list_markdown_files("").await?;
+        info!("Found {} markdown files in GitHub", github_files.len());
+
+        // Process files in batches to prevent timeouts
+        const BATCH_SIZE: usize = 5;
+        for chunk in github_files.chunks(BATCH_SIZE) {
+            let mut futures = Vec::new();
+            
+            for file_meta in chunk {
+                let file_meta = file_meta.clone();
+                let content_api = content_api.clone();
+                
+                futures.push(async move {
+                    // First check if file is public
+                    match content_api.check_file_public(&file_meta.download_url).await {
+                        Ok(is_public) => {
+                            if !is_public {
+                                debug!("Skipping non-public file: {}", file_meta.name);
+                                return Ok(None);
+                            }
+
+                            // Only fetch full content for public files
+                            match content_api.fetch_file_content(&file_meta.download_url).await {
+                                Ok(content) => {
+                                    let file_path = format!("{}/{}", MARKDOWN_DIR, file_meta.name);
+                                    if let Err(e) = fs::write(&file_path, &content) {
+                                        error!("Failed to write file {}: {}", file_path, e);
+                                        return Err(e.into());
+                                    }
+
+                                    let file_size = content.len();
+                                    let node_size = Self::calculate_node_size(file_size);
+
+                                    let metadata = Metadata {
+                                        file_name: file_meta.name.clone(),
+                                        file_size,
+                                        node_size,
+                                        hyperlink_count: Self::count_hyperlinks(&content),
+                                        sha1: Self::calculate_sha1(&content),
+                                        last_modified: file_meta.last_modified.unwrap_or_else(|| Utc::now()),
+                                        perplexity_link: String::new(),
+                                        last_perplexity_process: None,
+                                        topic_counts: HashMap::new(), // Will be updated later
+                                    };
+
+                                    Ok(Some(ProcessedFile {
+                                        file_name: file_meta.name.clone(),
+                                        content,
+                                        is_public: true,
+                                        metadata,
+                                    }))
+                                }
+                                Err(e) => {
+                                    error!("Failed to fetch content for {}: {}", file_meta.name, e);
+                                    Err(e)
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to check public status for {}: {}", file_meta.name, e);
+                            Err(e)
+                        }
+                    }
+                });
+            }
+
+            // Wait for batch to complete
+            let results = futures::future::join_all(futures).await;
+            
+            for result in results {
+                match result {
+                    Ok(Some(processed_file)) => {
+                        processed_files.push(processed_file);
+                    }
+                    Ok(None) => continue, // Skipped non-public file
+                    Err(e) => {
+                        error!("Failed to process file in batch: {}", e);
+                    }
+                }
+            }
+
+            sleep(GITHUB_API_DELAY).await;
+        }
+
+        // Update topic counts after all files are processed
+        Self::update_topic_counts(metadata_store)?;
+
+        Ok(processed_files)
     }
 }

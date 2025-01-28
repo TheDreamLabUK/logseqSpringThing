@@ -29,10 +29,10 @@ pub use models::metadata::MetadataStore;
 pub use models::simulation_params::SimulationParams;
 pub use models::graph::GraphData;
 pub use services::graph_service::GraphService;
-pub use services::file_service::{RealGitHubService, FileService};
+pub use services::file_service::FileService;
 pub use services::perplexity_service::PerplexityService;
 pub use services::ragflow_service::{RAGFlowService, RAGFlowError};
-pub use services::github_service::RealGitHubPRService;
+pub use services::github::{GitHubClient, ContentAPI};
 
 // Re-export handlers
 pub use handlers::api_handler::files as file_handler;
