@@ -12,15 +12,15 @@ use crate::app_state::AppState;
 use crate::utils::binary_protocol::{self, MessageType, NodeData};
 use crate::utils::socket_flow_messages::{PingMessage, PongMessage};
 
-pub struct SocketFlowServer {
-    app_state: Arc<AppState>,
+pub struct SocketFlowServer<'a> {
+    app_state: Arc<AppState<'a>>,
     settings: Arc<RwLock<crate::config::Settings>>,
     last_ping: Option<u64>,
     update_interval: std::time::Duration,
 }
 
-impl SocketFlowServer {
-    pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<crate::config::Settings>>) -> Self {
+impl<'a> SocketFlowServer<'a> {
+    pub fn new(app_state: Arc<AppState<'a>>, settings: Arc<RwLock<crate::config::Settings>>) -> Self {
         // Calculate update interval from settings
         let update_rate = settings
             .try_read()
@@ -96,7 +96,7 @@ impl SocketFlowServer {
     }
 }
 
-impl Actor for SocketFlowServer {
+impl<'a> Actor for SocketFlowServer<'a> {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
@@ -119,7 +119,7 @@ impl Actor for SocketFlowServer {
     }
 }
 
-impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer {
+impl<'a> StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer<'a> {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Ping(msg)) => {
@@ -292,10 +292,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
     }
 }
 
-pub async fn socket_flow_handler(
+pub async fn socket_flow_handler<'a>(
     req: HttpRequest,
     stream: web::Payload,
-    app_state: web::Data<AppState>,
+    app_state: web::Data<AppState<'a>>,
     settings: web::Data<Arc<RwLock<crate::config::Settings>>>,
 ) -> Result<HttpResponse, Error> {
     debug!("WebSocket connection attempt from {:?}", req.peer_addr());

@@ -37,7 +37,7 @@ impl ResponseError for RAGFlowError {
 
 /// Handler for sending a message to the RAGFlow service.
 pub async fn send_message(
-    state: web::Data<AppState>,
+    state: web::Data<AppState<'_>>,
     request: web::Json<SendMessageRequest>,
 ) -> impl Responder {
     let ragflow_service = match &state.ragflow_service {
@@ -79,7 +79,7 @@ pub async fn send_message(
 
 /// Handler for initiating a new chat conversation.
 pub async fn init_chat(
-    state: web::Data<AppState>,
+    state: web::Data<AppState<'_>>,
     request: web::Json<InitChatRequest>,
 ) -> impl Responder {
     let user_id = request.user_id.clone();
@@ -107,7 +107,7 @@ pub async fn init_chat(
 
 /// Handler for retrieving chat history.
 pub async fn get_chat_history(
-    _state: web::Data<AppState>,
+    _state: web::Data<AppState<'_>>,
     _conversation_id: web::Path<String>,
 ) -> impl Responder {
     HttpResponse::NotImplemented().json(json!({

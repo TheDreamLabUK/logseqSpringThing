@@ -1,10 +1,11 @@
 use super::api::GitHubClient;
-use super::types::{GitHubError, GitHubFileMetadata};
+use super::types::GitHubFileMetadata;
 use chrono::{DateTime, Utc};
 use log::{debug, error, info};
 use std::error::Error;
 
 /// Handles GitHub content API operations
+#[derive(Clone)]
 pub struct ContentAPI<'a> {
     client: &'a GitHubClient,
 }

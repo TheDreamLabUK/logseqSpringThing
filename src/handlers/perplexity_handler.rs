@@ -18,7 +18,7 @@ pub struct PerplexityResponse {
 
 #[post("")]
 pub async fn handle_perplexity(
-    state: web::Data<AppState>,
+    state: web::Data<AppState<'_>>,
     request: web::Json<PerplexityRequest>,
 ) -> impl Responder {
     info!("Received perplexity request: {:?}", request);

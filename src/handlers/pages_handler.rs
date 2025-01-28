@@ -2,7 +2,6 @@ use actix_web::{web, HttpResponse, Result};
 use crate::AppState;
 use serde::Serialize;
 use futures::future::join_all;
-use crate::services::github::ContentAPI;
 
 #[derive(Serialize)]
 pub struct PageInfo {
@@ -14,7 +13,7 @@ pub struct PageInfo {
     modified: i64,
 }
 
-pub async fn get_pages(app_state: web::Data<AppState>) -> Result<HttpResponse> {
+pub async fn get_pages(app_state: web::Data<AppState<'_>>) -> Result<HttpResponse> {
     let metadata = app_state.metadata.read().await;
     let futures: Vec<_> = metadata.iter()
         .map(|(id, meta)| async {

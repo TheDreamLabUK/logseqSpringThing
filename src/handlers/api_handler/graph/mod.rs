@@ -38,7 +38,7 @@ pub struct GraphQuery {
     pub filter: Option<String>,
 }
 
-pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
+pub async fn get_graph_data(state: web::Data<AppState<'_>>) -> impl Responder {
     info!("Received request for graph data");
     let graph = state.graph_service.graph_data.read().await;
     
@@ -57,7 +57,7 @@ pub async fn get_graph_data(state: web::Data<AppState>) -> impl Responder {
 }
 
 pub async fn get_paginated_graph_data(
-    state: web::Data<AppState>,
+    state: web::Data<AppState<'_>>,
     query: web::Query<GraphQuery>,
 ) -> impl Responder {
     info!("Received request for paginated graph data with params: {:?}", query);
@@ -130,7 +130,7 @@ pub async fn get_paginated_graph_data(
     HttpResponse::Ok().json(response)
 }
 
-pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
+pub async fn refresh_graph(state: web::Data<AppState<'_>>) -> impl Responder {
     info!("Received request to refresh graph");
     
     let metadata = state.metadata.read().await.clone();
@@ -175,7 +175,7 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> impl Responder {
     }
 }
 
-pub async fn update_graph(state: web::Data<AppState>) -> impl Responder {
+pub async fn update_graph(state: web::Data<AppState<'_>>) -> impl Responder {
     info!("Received request to update graph");
     
     let mut metadata = match FileService::load_or_create_metadata() {

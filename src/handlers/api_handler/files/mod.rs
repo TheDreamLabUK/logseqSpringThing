@@ -6,7 +6,7 @@ use crate::AppState;
 use crate::services::file_service::{FileService, MARKDOWN_DIR};
 use crate::services::graph_service::GraphService;
 
-pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse {
+pub async fn fetch_and_process_files(state: web::Data<AppState<'_>>) -> HttpResponse {
     info!("Initiating optimized file fetch and processing");
 
     let mut metadata_store = match FileService::load_or_create_metadata() {
@@ -85,7 +85,7 @@ pub async fn fetch_and_process_files(state: web::Data<AppState>) -> HttpResponse
     }
 }
 
-pub async fn get_file_content(_state: web::Data<AppState>, file_name: web::Path<String>) -> HttpResponse {
+pub async fn get_file_content(_state: web::Data<AppState<'_>>, file_name: web::Path<String>) -> HttpResponse {
     let file_path = format!("{}/{}", MARKDOWN_DIR, file_name);
     match std::fs::read_to_string(&file_path) {
         Ok(content) => HttpResponse::Ok().body(content),
@@ -99,7 +99,7 @@ pub async fn get_file_content(_state: web::Data<AppState>, file_name: web::Path<
     }
 }
 
-pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
+pub async fn refresh_graph(state: web::Data<AppState<'_>>) -> HttpResponse {
     info!("Manually triggering graph refresh");
 
     let metadata_store = match FileService::load_or_create_metadata() {
@@ -142,7 +142,7 @@ pub async fn refresh_graph(state: web::Data<AppState>) -> HttpResponse {
     }
 }
 
-pub async fn update_graph(state: web::Data<AppState>) -> Result<HttpResponse, ActixError> {
+pub async fn update_graph(state: web::Data<AppState<'_>>) -> Result<HttpResponse, ActixError> {
     let metadata_store = match FileService::load_or_create_metadata() {
         Ok(store) => store,
         Err(e) => {

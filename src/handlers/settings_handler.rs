@@ -11,14 +11,14 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
-async fn get_settings(state: web::Data<AppState>) -> Result<HttpResponse, Error> {
+async fn get_settings(state: web::Data<AppState<'_>>) -> Result<HttpResponse, Error> {
     let settings_guard = state.settings.read().await;
     let settings_json = convert_struct_to_camel_case(&*settings_guard);
     Ok(HttpResponse::Ok().json(settings_json))
 }
 
 async fn update_settings(
-    state: web::Data<AppState>,
+    state: web::Data<AppState<'_>>,
     payload: web::Json<Value>,
 ) -> Result<HttpResponse, Error> {
     if let Err(e) = validate_settings(&payload) {
@@ -357,7 +357,7 @@ fn convert_struct_to_camel_case_value(value: &serde_json::Value) -> serde_json::
     }
 }
 
-pub async fn get_graph_settings(app_state: web::Data<AppState>) -> Result<HttpResponse, Error> {
+pub async fn get_graph_settings(app_state: web::Data<AppState<'_>>) -> Result<HttpResponse, Error> {
     let settings = app_state.settings.read().await;
     Ok(HttpResponse::Ok().json(json!({
         "visualization": {

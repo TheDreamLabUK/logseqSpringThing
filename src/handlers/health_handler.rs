@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse, Result};
 use crate::AppState;
 
-pub async fn health_check(app_state: web::Data<AppState>) -> Result<HttpResponse> {
+pub async fn health_check(app_state: web::Data<AppState<'_>>) -> Result<HttpResponse> {
     let metadata = app_state.metadata.read().await;
     let graph = app_state.graph_service.graph_data.read().await;
     

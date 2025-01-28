@@ -6,7 +6,7 @@ use log::{info, debug, error};
 use regex::Regex;
 use std::fs;
 use std::path::Path;
-use chrono::{Utc, DateTime};
+use chrono::Utc;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::error::Error as StdError;
@@ -458,7 +458,7 @@ impl FileService {
     /// Fetch and process files from GitHub
     pub async fn fetch_and_process_files(
         &self,
-        content_api: &ContentAPI,
+        content_api: &ContentAPI<'_>,
         settings: Arc<RwLock<Settings>>,
         metadata_store: &mut MetadataStore,
     ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
