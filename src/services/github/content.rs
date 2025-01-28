@@ -3,16 +3,17 @@ use super::types::GitHubFileMetadata;
 use chrono::{DateTime, Utc};
 use log::{debug, error, info};
 use std::error::Error;
+use std::sync::Arc;
 
 /// Handles GitHub content API operations
 #[derive(Clone)]
-pub struct ContentAPI<'a> {
-    client: &'a GitHubClient,
+pub struct ContentAPI {
+    client: Arc<GitHubClient>,
 }
 
-impl<'a> ContentAPI<'a> {
+impl ContentAPI {
     /// Create a new ContentAPI instance
-    pub fn new(client: &'a GitHubClient) -> Self {
+    pub fn new(client: Arc<GitHubClient>) -> Self {
         Self { client }
     }
 
@@ -131,16 +132,19 @@ impl<'a> ContentAPI<'a> {
             self.client.owner(), self.client.repo()
         );
 
-        let encoded_path = url::form_urlencoded::byte_serialize(file_path.as_bytes()).collect::<String>();
-        
-        debug!("Getting last modified time - Original path: {}, Encoded path: {}",
-            file_path, encoded_path);
+        // First decode any existing encoding to prevent double-encoding
+        let decoded_path = urlencoding::decode(file_path)
+            .unwrap_or(std::borrow::Cow::Owned(file_path.to_string()))
+            .into_owned();
+            
+        debug!("Getting last modified time - Original path: {}, Decoded path: {}",
+            file_path, decoded_path);
         
         let response = self.client.client()
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.client.token()))
             .header("Accept", "application/vnd.github+json")
-            .query(&[("path", encoded_path.as_str()), ("per_page", "1")])
+            .query(&[("path", decoded_path.as_str()), ("per_page", "1")])
             .send()
             .await?;
 
@@ -235,7 +239,8 @@ impl<'a> ContentAPI<'a> {
                     Ok(time) => Some(time),
                     Err(e) => {
                         error!("Failed to get last modified time for {}: {}", name, e);
-                        continue;
+                        // Don't skip the file, just use current time as fallback
+                        Some(Utc::now())
                     }
                 };
                 

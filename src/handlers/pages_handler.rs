@@ -13,7 +13,7 @@ pub struct PageInfo {
     modified: i64,
 }
 
-pub async fn get_pages(app_state: web::Data<AppState<'_>>) -> Result<HttpResponse> {
+pub async fn get_pages(app_state: web::Data<AppState>) -> Result<HttpResponse> {
     let metadata = app_state.metadata.read().await;
     let futures: Vec<_> = metadata.iter()
         .map(|(id, meta)| async {

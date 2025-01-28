@@ -1,10 +1,9 @@
 use reqwest::Client;
 use std::time::Duration;
-use log::{debug, error, info};
+use log::info;
 use crate::config::Settings;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use super::types::{GitHubError, GitHubFileMetadata};
 use std::error::Error;
 
 const GITHUB_API_DELAY: Duration = Duration::from_millis(500);

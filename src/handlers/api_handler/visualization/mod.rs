@@ -359,7 +359,7 @@ pub async fn get_category_settings(
 }
 
 pub async fn get_visualization_settings(
-    app_state: web::Data<AppState<'_>>,
+    app_state: web::Data<AppState>,
     category: web::Path<String>,
 ) -> Result<HttpResponse, actix_web::Error> {
     debug!("Getting settings for category: {}", category);
@@ -374,7 +374,7 @@ pub async fn get_visualization_settings(
 
 pub async fn get_settings_category(
     category: web::Path<String>,
-    app_state: web::Data<AppState<'_>>,
+    app_state: web::Data<AppState>,
 ) -> Result<HttpResponse, Error> {
     let settings = app_state.settings.read().await;
     let settings_value = serde_json::to_value(&*settings).map_err(ErrorInternalServerError)?;

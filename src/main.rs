@@ -97,7 +97,7 @@ async fn main() -> std::io::Result<()> {
         Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
     };
 
-    let content_api = Arc::new(ContentAPI::new(&github_client));
+    let content_api = Arc::new(ContentAPI::new(github_client.clone()));
     drop(settings_read);
 
     // Initialize app state

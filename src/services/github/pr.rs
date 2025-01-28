@@ -6,13 +6,15 @@ use std::error::Error;
 use chrono::Utc;
 
 /// Handles GitHub Pull Request operations
-pub struct PullRequestAPI<'a> {
-    client: &'a GitHubClient,
+use std::sync::Arc;
+
+pub struct PullRequestAPI {
+    client: Arc<GitHubClient>,
 }
 
-impl<'a> PullRequestAPI<'a> {
+impl PullRequestAPI {
     /// Create a new PullRequestAPI instance
-    pub fn new(client: &'a GitHubClient) -> Self {
+    pub fn new(client: Arc<GitHubClient>) -> Self {
         Self { client }
     }
 

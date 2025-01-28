@@ -233,7 +233,7 @@ impl FileService {
             Arc::clone(&settings),
         )?;
         
-        let content_api = ContentAPI::new(&github);
+        let content_api = ContentAPI::new(Arc::new(github));
         drop(settings_guard);
 
         // Check if we already have a valid local setup
@@ -302,7 +302,7 @@ impl FileService {
             for result in results {
                 match result {
                     Ok(Some((file_meta, content))) => {
-                        let node_name = file_meta.name.trim_end_matches(".md").to_string();
+                        let _node_name = file_meta.name.trim_end_matches(".md").to_string();
                         let file_size = content.len();
                         let node_size = Self::calculate_node_size(file_size);
 
@@ -458,8 +458,8 @@ impl FileService {
     /// Fetch and process files from GitHub
     pub async fn fetch_and_process_files(
         &self,
-        content_api: &ContentAPI<'_>,
-        settings: Arc<RwLock<Settings>>,
+        content_api: Arc<ContentAPI>,
+        _settings: Arc<RwLock<Settings>>,
         metadata_store: &mut MetadataStore,
     ) -> Result<Vec<ProcessedFile>, Box<dyn StdError + Send + Sync>> {
         let mut processed_files = Vec::new();

@@ -131,7 +131,7 @@ impl GraphService {
         Ok(graph)
     }
 
-    pub async fn build_graph(state: &web::Data<AppState<'_>>) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn build_graph(state: &web::Data<AppState>) -> Result<GraphData, Box<dyn std::error::Error + Send + Sync>> {
         let current_graph = state.graph_service.graph_data.read().await;
         let mut graph = GraphData::new();
 
