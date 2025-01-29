@@ -36,25 +36,18 @@ impl GitHubClient {
             .timeout(Duration::from_secs(30))
             .build()?;
 
-        // Clean and validate base_path
-        let base_path = if base_path.trim().is_empty() {
-            info!("Base path was empty, using default: mainKnowledgeGraph/pages");
-            "mainKnowledgeGraph/pages".to_string()
-        } else {
-            // First decode any existing encoding
-            let decoded_path = urlencoding::decode(&base_path)
-                .unwrap_or(std::borrow::Cow::Owned(base_path.clone()))
-                .into_owned();
-            
-            // Clean the path
-            let cleaned_path = decoded_path
-                .trim_matches('/')
-                .replace("//", "/")
-                .replace('\\', "/");
-            
-            info!("Using cleaned base path: {} (original: {})", cleaned_path, base_path);
-            cleaned_path
-        };
+        // First decode any existing encoding
+        let decoded_path = urlencoding::decode(&base_path)
+            .unwrap_or(std::borrow::Cow::Owned(base_path.clone()))
+            .into_owned();
+        
+        // Clean the path
+        let base_path = decoded_path
+            .trim_matches('/')
+            .replace("//", "/")
+            .replace('\\', "/");
+        
+        info!("Using cleaned base path: {} (original: {})", base_path, base_path);
 
         Ok(Self {
             client,

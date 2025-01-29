@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use log::{debug, error, info};
 use std::error::Error;
 use std::sync::Arc;
-use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::header::HeaderMap;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
@@ -58,21 +58,6 @@ impl ContentAPI {
             }
         }
         Ok(())
-    }
-
-    /// Normalize a repository path
-    fn normalize_path(path: &str) -> String {
-        path.trim_matches('/')
-            .replace("\\", "/")
-            .replace("//", "/")
-    }
-
-    /// URL encode path components while preserving slashes
-    fn encode_path(path: &str) -> String {
-        path.split('/')
-            .map(|component| urlencoding::encode(component).into_owned())
-            .collect::<Vec<_>>()
-            .join("/")
     }
 
     /// Check if a file is public by reading just the first line
@@ -168,10 +153,8 @@ impl ContentAPI {
         // Check rate limits before making request
         self.check_rate_limit().await?;
 
-        // Normalize and encode the path
-        let clean_path = Self::normalize_path(file_path);
-        let encoded_path = Self::encode_path(&clean_path);
-            
+        // Use GitHubClient's path handling
+        let encoded_path = self.client.get_full_path(file_path);
         let url = format!(
             "https://api.github.com/repos/{}/{}/commits",
             self.client.owner(), self.client.repo()
@@ -179,8 +162,8 @@ impl ContentAPI {
 
         debug!("GitHub API URL: {}", url);
         debug!("Query parameters: path={}, per_page=1", encoded_path);
-        debug!("Getting last modified time - Original path: {}, Clean path: {}, Encoded path: {}",
-            file_path, clean_path, encoded_path);
+        debug!("Getting last modified time - Original path: {}, Encoded path: {}",
+            file_path, encoded_path);
 
         let response = self.client.client()
             .get(&url)
@@ -199,7 +182,7 @@ impl ContentAPI {
             error!("Failed to get last modified time. Status: {}, Error: {}", status, error_text);
             
             return match status.as_u16() {
-                404 => Err(Box::new(GitHubError::NotFound(clean_path))),
+                404 => Err(Box::new(GitHubError::NotFound(file_path.to_string()))),
                 429 => {
                     let limits = self.rate_limits.read().await;
                     if let Some(info) = limits.get("core") {
@@ -219,7 +202,7 @@ impl ContentAPI {
         
         if commits.is_empty() {
             error!("Empty commits array returned for path: {} (encoded: {})", file_path, encoded_path);
-            return Err(Box::new(GitHubError::NotFound(clean_path)));
+            return Err(Box::new(GitHubError::NotFound(format!("No commit history found for {}", file_path))));
         }
         
         if let Some(last_commit) = commits.first() {
@@ -243,16 +226,11 @@ impl ContentAPI {
 
     /// List all markdown files in a directory
     pub async fn list_markdown_files(&self, path: &str) -> Result<Vec<GitHubFileMetadata>, Box<dyn Error + Send + Sync>> {
-        let encoded_path = self.client.get_api_path();
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/contents/{}",
-            self.client.owner(),
-            self.client.repo(),
-            encoded_path
-        );
+        // Use GitHubClient's contents URL construction
+        let url = self.client.get_contents_url(path);
         
-        info!("GitHub API Request: URL={}, Encoded Path={}, Original Path={}",
-            url, encoded_path, path);
+        info!("GitHub API Request: URL={}, Original Path={}",
+            url, path);
 
         let response = self.client.client()
             .get(&url)
@@ -301,11 +279,10 @@ impl ContentAPI {
 
                 debug!("Processing markdown file: {}", name);
                 
-                // Construct the exact path as it appears in the repository
-                let repo_path = format!("mainKnowledgeGraph/pages/{}", name);
-                debug!("Repository path for commits query: {}", repo_path);
+                // Use the file name directly since base path is already handled
+                debug!("Repository path for commits query: {}", name);
                 
-                let last_modified = match self.get_file_last_modified(&repo_path).await {
+                let last_modified = match self.get_file_last_modified(&name).await {
                     Ok(time) => Some(time),
                     Err(e) => {
                         error!("Failed to get last modified time for {}: {}", name, e);
