@@ -18,7 +18,7 @@ pub async fn get_pages(app_state: web::Data<AppState>) -> Result<HttpResponse> {
     let futures: Vec<_> = metadata.iter()
         .map(|(id, meta)| async {
             let github_meta = app_state.content_api
-                .list_markdown_files("")
+                .list_markdown_files("mainKnowledgeGraph/pages")
                 .await
                 .ok()
                 .and_then(|files| files.into_iter()

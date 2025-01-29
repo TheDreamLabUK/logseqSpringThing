@@ -454,7 +454,7 @@ impl FileService {
         let re = Regex::new(r"\[([^\]]+)\]\(([^)]+)\)").unwrap();
         re.find_iter(content).count()
     }
-i
+
     /// Fetch and process files from GitHub
     pub async fn fetch_and_process_files(
         &self,

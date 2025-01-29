@@ -135,9 +135,90 @@ check_settings_endpoint() {
         "http://localhost:4000/api/settings" 2>&1 | tee -a "$LOG_FILE"
 }
 
+# Function to test GitHub API endpoints
+check_github_endpoints() {
+    log_section "Testing GitHub API Endpoints"
+    
+    # Load GitHub credentials from .env
+    if [ -f ../.env ]; then
+        source ../.env
+    else
+        log_error ".env file not found"
+        return 1
+    fi
+    
+    # Test files with different path patterns
+    local test_files=(
+        "Two Heads Are Better Than One.md"
+        "p(doom).md"
+        "chatgpt__2024-08-20 09:48:00.md"
+    )
+    
+    for file in "${test_files[@]}"; do
+        log_message "Testing commits for file: $file"
+        
+        # Test with and without base path
+        paths=(
+            "${file}"
+            "${GITHUB_BASE_PATH}/${file}"
+        )
+        
+        for path in "${paths[@]}"; do
+            # URL encode the path
+            encoded_path=$(echo -n "${path}" | jq -sRr @uri)
+            
+            # Test the commits endpoint
+            log_message "Testing commits API with path: ${path}"
+            log_message "GET /repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits?path=${encoded_path}"
+            
+            response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                           -H "Accept: application/vnd.github+json" \
+                           "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits?path=${encoded_path}")
+            
+            # Log full response in verbose mode
+            if [ "$VERBOSE" = true ]; then
+                log_verbose "Full response:"
+                echo "$response" | jq '.' | tee -a "$LOG_FILE"
+            fi
+            
+            # Check commit count
+            count=$(echo "$response" | jq -r '. | length')
+            if [ "$count" = "0" ]; then
+                log_error "No commits found for path: ${path}"
+            else
+                log_success "Found ${count} commits for path: ${path}"
+            fi
+            
+            # Test contents endpoint as well
+            log_message "Testing contents API with path: ${path}"
+            log_message "GET /repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encoded_path}"
+            
+            content_response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                                  -H "Accept: application/vnd.github+json" \
+                                  "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encoded_path}")
+            
+            # Log full response in verbose mode
+            if [ "$VERBOSE" = true ]; then
+                log_verbose "Full contents response:"
+                echo "$content_response" | jq '.' | tee -a "$LOG_FILE"
+            fi
+            
+            # Check if file exists
+            if echo "$content_response" | jq -e 'has("message")' > /dev/null; then
+                log_error "File not found at path: ${path}"
+            else
+                log_success "File exists at path: ${path}"
+            fi
+            
+            # Add a small delay to respect rate limits
+            sleep 1
+        done
+    done
+}
+
 # Main execution
 main() {
-    log "${YELLOW}Starting settings endpoint diagnostics...${NC}"
+    log "${YELLOW}Starting endpoint diagnostics...${NC}"
     
     # Check container status
     if ! docker ps -q -f name=${CONTAINER_NAME} > /dev/null 2>&1; then
@@ -163,6 +244,9 @@ main() {
     
     # Check graph endpoints
     check_graph_endpoints
+    
+    # Check GitHub API endpoints
+    check_github_endpoints
     
     log "${YELLOW}Diagnostics completed${NC}"
 }

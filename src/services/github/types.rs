@@ -3,6 +3,14 @@ use chrono::{DateTime, Utc};
 use std::error::Error;
 use std::fmt;
 
+/// Rate limit information from GitHub API
+#[derive(Debug, Clone)]
+pub struct RateLimitInfo {
+    pub remaining: u32,
+    pub limit: u32,
+    pub reset_time: DateTime<Utc>,
+}
+
 /// Represents errors that can occur during GitHub API operations
 #[derive(Debug)]
 pub enum GitHubError {
@@ -17,10 +25,9 @@ pub enum GitHubError {
     /// Base64 encoding/decoding errors
     Base64Error(base64::DecodeError),
     /// Rate limit exceeded
-    RateLimitExceeded {
-        reset_time: DateTime<Utc>,
-        remaining: u32,
-    },
+    RateLimitExceeded(RateLimitInfo),
+    /// Resource not found
+    NotFound(String),
 }
 
 impl fmt::Display for GitHubError {
@@ -31,8 +38,12 @@ impl fmt::Display for GitHubError {
             GitHubError::SerializationError(e) => write!(f, "Serialization error: {}", e),
             GitHubError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
             GitHubError::Base64Error(e) => write!(f, "Base64 encoding error: {}", e),
-            GitHubError::RateLimitExceeded { reset_time, remaining } => {
-                write!(f, "Rate limit exceeded. Remaining: {}, Reset time: {}", remaining, reset_time)
+            GitHubError::RateLimitExceeded(info) => {
+                write!(f, "Rate limit exceeded. Remaining: {}/{}, Reset time: {}",
+                    info.remaining, info.limit, info.reset_time)
+            }
+            GitHubError::NotFound(path) => {
+                write!(f, "Resource not found: {}", path)
             }
         }
     }
