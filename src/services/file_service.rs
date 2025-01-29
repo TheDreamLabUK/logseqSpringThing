@@ -226,12 +226,12 @@ impl FileService {
         let github_settings = &settings_guard.github;
         
         let github = GitHubClient::new(
-            github_settings.token.clone(),
-            github_settings.owner.clone(),
-            github_settings.repo.clone(),
-            github_settings.base_path.clone(),
-            Arc::clone(&settings),
-        )?;
+           github_settings.token.clone(),
+           github_settings.owner.clone(),
+           github_settings.repo.clone(),
+           github_settings.base_path.clone(),
+           Arc::clone(&settings),
+       ).await?;
         
         let content_api = ContentAPI::new(Arc::new(github));
         drop(settings_guard);

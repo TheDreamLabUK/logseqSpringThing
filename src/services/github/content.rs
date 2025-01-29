@@ -7,6 +7,12 @@ use std::sync::Arc;
 use reqwest::header::HeaderMap;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
+use std::time::Duration;
+use std::pin::Pin;
+use std::future::Future;
+
+const BATCH_SIZE: usize = 5;
+const BATCH_DELAY: Duration = Duration::from_millis(500);
 
 /// Handles GitHub content API operations
 #[derive(Clone)]
@@ -24,8 +30,56 @@ impl ContentAPI {
         }
     }
 
+    /// Ensure consistent URL encoding for paths
+    async fn encode_path(&self, path: &str) -> String {
+        let settings = self.client.settings().read().await;
+        let debug_enabled = settings.system.debug.enabled;
+        drop(settings);
+
+        if debug_enabled {
+            debug!("Encoding path: '{}'", path);
+        }
+
+        // First decode to prevent double-encoding
+        let decoded = urlencoding::decode(path)
+            .unwrap_or(std::borrow::Cow::Owned(path.to_string()))
+            .into_owned();
+        
+        if debug_enabled {
+            debug!("Decoded path: '{}'", decoded);
+        }
+        
+        // Clean the path
+        let cleaned = decoded
+            .trim_matches('/')
+            .replace("//", "/")
+            .replace('\\', "/");
+
+        if debug_enabled {
+            debug!("Cleaned path: '{}'", cleaned);
+        }
+
+        // Encode using form URL encoding for consistent handling
+        let encoded = url::form_urlencoded::byte_serialize(cleaned.as_bytes())
+            .collect::<String>();
+
+        if debug_enabled {
+            debug!("Final encoded path: '{}'", encoded);
+        }
+
+        encoded
+    }
+
     /// Extract and update rate limit information from response headers
     async fn update_rate_limits(&self, headers: &HeaderMap) {
+        let settings = self.client.settings().read().await;
+        let debug_enabled = settings.system.debug.enabled;
+        drop(settings);
+
+        if debug_enabled {
+            debug!("Processing rate limit headers: {:?}", headers);
+        }
+
         if let (Some(remaining), Some(limit), Some(reset)) = (
             headers.get("x-ratelimit-remaining"),
             headers.get("x-ratelimit-limit"),
@@ -34,6 +88,11 @@ impl ContentAPI {
             let remaining = remaining.to_str().unwrap_or("0").parse().unwrap_or(0);
             let limit = limit.to_str().unwrap_or("0").parse().unwrap_or(0);
             let reset = reset.to_str().unwrap_or("0").parse().unwrap_or(0);
+            
+            if debug_enabled {
+                debug!("Rate limit values - Remaining: {}, Limit: {}, Reset: {}",
+                    remaining, limit, reset);
+            }
             
             let reset_time = DateTime::from_timestamp(reset, 0)
                 .unwrap_or_else(|| Utc::now());
@@ -44,20 +103,79 @@ impl ContentAPI {
                 reset_time,
             };
 
+            if debug_enabled {
+                debug!("Updating rate limits - New info: {:?}", info);
+            }
+
             let mut limits = self.rate_limits.write().await;
             limits.insert("core".to_string(), info);
+        } else if debug_enabled {
+            debug!("No rate limit headers found in response");
         }
     }
 
-    /// Check if we're rate limited
-    async fn check_rate_limit(&self) -> Result<(), GitHubError> {
-        let limits = self.rate_limits.read().await;
-        if let Some(info) = limits.get("core") {
-            if info.remaining == 0 {
-                return Err(GitHubError::RateLimitExceeded(info.clone()));
+    /// Check rate limits and handle backoff if needed
+    fn check_rate_limit(&self) -> Pin<Box<dyn Future<Output = Result<(), GitHubError>> + '_>> {
+        Box::pin(async move {
+            let settings = self.client.settings().read().await;
+            let debug_enabled = settings.system.debug.enabled;
+            drop(settings);
+
+            if debug_enabled {
+                debug!("Checking rate limits...");
             }
-        }
-        Ok(())
+
+            let limits = self.rate_limits.read().await;
+            if let Some(info) = limits.get("core") {
+                if debug_enabled {
+                    debug!("Current rate limit info: {:?}", info);
+                }
+
+                if info.remaining == 0 {
+                    let now = Utc::now();
+                    if debug_enabled {
+                        debug!("Rate limit exhausted. Current time: {}, Reset time: {}",
+                            now, info.reset_time);
+                    }
+
+                    if now < info.reset_time {
+                        let wait_time = info.reset_time - now;
+                        let backoff = wait_time.num_seconds().min(30) as u64;
+                        
+                        if debug_enabled {
+                            debug!("Rate limited. Wait time: {}s, Using backoff: {}s",
+                                wait_time.num_seconds(), backoff);
+                        }
+                        
+                        // Drop the read lock before sleeping
+                        drop(limits);
+                        
+                        // Sleep with exponential backoff, max 30 seconds
+                        tokio::time::sleep(Duration::from_secs(backoff)).await;
+                        
+                        if debug_enabled {
+                            debug!("Backoff complete, rechecking rate limits");
+                        }
+                        
+                        // Recursively check rate limit
+                        return self.check_rate_limit().await;
+                    }
+
+                    if debug_enabled {
+                        debug!("Rate limit exceeded and reset time passed");
+                    }
+                    return Err(GitHubError::RateLimitExceeded(info.clone()));
+                }
+
+                if debug_enabled {
+                    debug!("Rate limit check passed. Remaining: {}/{}",
+                        info.remaining, info.limit);
+                }
+            } else if debug_enabled {
+                debug!("No rate limit information available");
+            }
+            Ok(())
+        })
     }
 
     /// Check if a file is public by reading just the first line
@@ -65,11 +183,39 @@ impl ContentAPI {
         // Check rate limits before making request
         self.check_rate_limit().await?;
 
+        // First try a HEAD request to get content length
+        let head_response = self.client.client()
+            .head(download_url)
+            .header("Authorization", format!("Bearer {}", self.client.token()))
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await?;
+
+        // Update rate limits from HEAD response
+        self.update_rate_limits(head_response.headers()).await;
+
+        // Get content length, default to 1024 if not available
+        let content_length: u64 = head_response
+            .headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1024);
+
+        // Calculate appropriate range based on content length
+        let range = if content_length < 100 {
+            format!("bytes=0-{}", content_length - 1)
+        } else {
+            "bytes=0-100".to_string()
+        };
+
+        debug!("Using range {} for file of size {}", range, content_length);
+
         let response = self.client.client()
             .get(download_url)
             .header("Authorization", format!("Bearer {}", self.client.token()))
             .header("Accept", "application/vnd.github+json")
-            .header("Range", "bytes=0-100") // More flexible range to handle different line endings
+            .header("Range", range)
             .send()
             .await?;
 
@@ -154,7 +300,7 @@ impl ContentAPI {
         self.check_rate_limit().await?;
 
         // Use GitHubClient's path handling
-        let encoded_path = self.client.get_full_path(file_path);
+        let encoded_path = self.client.get_full_path(file_path).await;
         let url = format!(
             "https://api.github.com/repos/{}/{}/commits",
             self.client.owner(), self.client.repo()
@@ -227,7 +373,7 @@ impl ContentAPI {
     /// List all markdown files in a directory
     pub async fn list_markdown_files(&self, path: &str) -> Result<Vec<GitHubFileMetadata>, Box<dyn Error + Send + Sync>> {
         // Use GitHubClient's contents URL construction
-        let url = self.client.get_contents_url(path);
+        let url = self.client.get_contents_url(path).await;
         
         info!("GitHub API Request: URL={}, Original Path={}",
             url, path);
@@ -264,41 +410,152 @@ impl ContentAPI {
         let settings = self.client.settings().read().await;
         let debug_enabled = settings.system.debug.enabled;
         drop(settings);
+
+        if debug_enabled {
+            debug!("Found {} total items in directory", contents.len());
+            debug!("Batch size: {}, Expected batches: {}",
+                BATCH_SIZE,
+                (contents.len() + BATCH_SIZE - 1) / BATCH_SIZE
+            );
+            
+            // Log file types distribution
+            let file_count = contents.iter()
+                .filter(|item| item["type"].as_str().unwrap_or("") == "file")
+                .count();
+            let md_count = contents.iter()
+                .filter(|item| {
+                    item["type"].as_str().unwrap_or("") == "file" &&
+                    item["name"].as_str().unwrap_or("").ends_with(".md")
+                })
+                .count();
+            debug!("Content distribution - Total: {}, Files: {}, Markdown: {}",
+                contents.len(), file_count, md_count);
+        }
         
         let mut markdown_files = Vec::new();
+        let mut current_idx = 0;
         
-        for item in contents {
-            if item["type"].as_str().unwrap_or("") == "file" && 
-               item["name"].as_str().unwrap_or("").ends_with(".md") {
-                let name = item["name"].as_str().unwrap_or("").to_string();
+        // Process files in batches
+        while current_idx < contents.len() {
+            let end_idx = (current_idx + BATCH_SIZE).min(contents.len());
+            let batch_number = current_idx / BATCH_SIZE + 1;
+            let total_batches = (contents.len() + BATCH_SIZE - 1) / BATCH_SIZE;
+            
+            if debug_enabled {
+                debug!("Starting batch {}/{} (items {}-{} of {})",
+                    batch_number,
+                    total_batches,
+                    current_idx + 1,
+                    end_idx,
+                    contents.len()
+                );
+            }
+            
+            for item in &contents[current_idx..end_idx] {
+                let item_type = item["type"].as_str().unwrap_or("");
+                let item_name = item["name"].as_str().unwrap_or("");
                 
-                // In debug mode, only process Debug Test Page.md and debug linked node.md
-                if debug_enabled && !name.contains("Debug Test Page") && !name.contains("debug linked node") {
-                    continue;
+                if debug_enabled {
+                    debug!("Examining item: type='{}', name='{}'", item_type, item_name);
                 }
 
-                debug!("Processing markdown file: {}", name);
+                if item_type == "file" && item_name.ends_with(".md") {
+                    let name = item_name.to_string();
+                    
+                    if debug_enabled {
+                        if !name.contains("Debug Test Page") && !name.contains("debug linked node") {
+                            debug!("Skipping non-debug file in debug mode: {}", name);
+                            continue;
+                        }
+                        debug!("Processing debug markdown file: {}", name);
+                    } else {
+                        debug!("Processing markdown file: {}", name);
+                    }
                 
                 // Use the file name directly since base path is already handled
                 debug!("Repository path for commits query: {}", name);
                 
-                let last_modified = match self.get_file_last_modified(&name).await {
-                    Ok(time) => Some(time),
+                // Combine with base path and get last modified time
+                let full_path = if path.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{}/{}", path.trim_matches('/'), name)
+                };
+                // Add delay between API calls within batch
+                tokio::time::sleep(BATCH_DELAY).await;
+                
+                if debug_enabled {
+                    debug!("Fetching last modified time for: {}", full_path);
+                }
+
+                let last_modified = match self.get_file_last_modified(&full_path).await {
+                    Ok(time) => {
+                        if debug_enabled {
+                            debug!("Got last modified time for {}: {}", name, time);
+                        }
+                        Some(time)
+                    },
                     Err(e) => {
                         error!("Failed to get last modified time for {}: {}", name, e);
-                        // Don't skip the file, just use current time as fallback
+                        if debug_enabled {
+                            debug!("Using current time as fallback for {}", name);
+                        }
                         Some(Utc::now())
                     }
                 };
+
+                let sha = item["sha"].as_str().unwrap_or("").to_string();
+                let download_url = item["download_url"].as_str().unwrap_or("").to_string();
+                
+                if debug_enabled {
+                    debug!("Collecting metadata - Name: {}, SHA: {}, URL: {}",
+                        name, sha, download_url);
+                }
                 
                 markdown_files.push(GitHubFileMetadata {
                     name,
-                    sha: item["sha"].as_str().unwrap_or("").to_string(),
-                    download_url: item["download_url"].as_str().unwrap_or("").to_string(),
+                    sha,
+                    download_url,
                     etag: None,
                     last_checked: Some(Utc::now()),
                     last_modified,
                 });
+                }
+            }
+            
+            // Move to next batch
+            current_idx = end_idx;
+            
+            let batch_number = current_idx / BATCH_SIZE;
+            let total_batches = (contents.len() + BATCH_SIZE - 1) / BATCH_SIZE;
+            let progress = (current_idx * 100) / contents.len();
+            
+            // Log batch completion with detailed stats
+            info!("Completed batch {}/{} - {}% complete ({} files processed)",
+                batch_number,
+                total_batches,
+                progress,
+                markdown_files.len()
+            );
+            
+            if debug_enabled {
+                let remaining_items = contents.len() - current_idx;
+                let est_remaining_batches = (remaining_items + BATCH_SIZE - 1) / BATCH_SIZE;
+                let est_remaining_time = est_remaining_batches as u64 * BATCH_DELAY.as_secs();
+                
+                debug!("Batch performance - Remaining items: {}, Est. remaining batches: {}, Est. time: {}s",
+                    remaining_items,
+                    est_remaining_batches,
+                    est_remaining_time
+                );
+            }
+            
+            // Add delay between batches if not the last batch
+            if current_idx < contents.len() {
+                if debug_enabled {
+                    debug!("Adding inter-batch delay of {}ms", BATCH_DELAY.as_millis());
+                }
+                tokio::time::sleep(BATCH_DELAY).await;
             }
         }
 
@@ -306,7 +563,10 @@ impl ContentAPI {
             info!("Debug mode: Processing only debug test files");
         }
 
-        info!("Found {} markdown files", markdown_files.len());
+        info!("Found {} markdown files in {} batches",
+            markdown_files.len(),
+            (contents.len() + BATCH_SIZE - 1) / BATCH_SIZE
+        );
         Ok(markdown_files)
     }
 }

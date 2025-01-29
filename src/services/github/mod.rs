@@ -8,7 +8,7 @@
 mod api;
 mod content;
 mod pr;
-mod types;
+pub mod types;
 
 pub use api::GitHubClient;
 pub use content::ContentAPI;

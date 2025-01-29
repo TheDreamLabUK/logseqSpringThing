@@ -92,7 +92,7 @@ async fn main() -> std::io::Result<()> {
         settings_read.github.repo.clone(),
         settings_read.github.base_path.clone(),
         settings.clone(),
-    ) {
+    ).await {
         Ok(client) => Arc::new(client),
         Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
     };
