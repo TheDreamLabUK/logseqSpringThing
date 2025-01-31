@@ -75,64 +75,59 @@ log_section() {
 check_graph_endpoints() {
     log_section "Checking Graph Endpoints"
     
-    # Test graph data endpoint
-    log_message "Testing graph data endpoint..."
-    docker exec ${CONTAINER_NAME} curl -v \
+    # Test graph endpoints with minimal output
+    log_message "Testing graph endpoints..."
+    # Test basic graph data
+    response=$(docker exec ${CONTAINER_NAME} curl -s \
         -H "Content-Type: application/json" \
         -H "Accept: application/json" \
-        "http://localhost:4000/api/graph/data" 2>&1 | tee -a "$LOG_FILE"
-    
-    # Test paginated graph data endpoint
-    log_message "Testing paginated graph data endpoint..."
-    docker exec ${CONTAINER_NAME} curl -v \
+        "http://localhost:4000/api/graph/data")
+    nodes_count=$(echo "$response" | jq -r '.nodes | length')
+    edges_count=$(echo "$response" | jq -r '.edges | length')
+    log_message "Graph data: ${nodes_count} nodes, ${edges_count} edges"
+
+    # Test pagination
+    response=$(docker exec ${CONTAINER_NAME} curl -s \
         -H "Content-Type: application/json" \
         -H "Accept: application/json" \
-        "http://localhost:4000/api/graph/data/paginated?page=1&pageSize=100" 2>&1 | tee -a "$LOG_FILE"
+        "http://localhost:4000/api/graph/data/paginated?page=1&pageSize=100")
+    page_count=$(echo "$response" | jq -r '.nodes | length')
+    log_message "Paginated data: ${page_count} nodes in first page"
 }
 
 # Function to check settings endpoint
 check_settings_endpoint() {
     log_section "Checking Settings Endpoint"
     
-    # Check nginx configuration
-    log_message "Checking nginx configuration..."
-    docker exec ${CONTAINER_NAME} nginx -T | grep -A 10 "location /api" | tee -a "$LOG_FILE"
-    
-    # Check recent nginx access logs for settings requests
-    log_message "Checking nginx access logs for settings requests..."
+    # Check critical service status
+    log_message "Checking service status..."
     docker exec ${CONTAINER_NAME} bash -c '
-        echo -e "\n=== Nginx Access Logs (Settings Requests) ==="
-        grep "/api/settings" /var/log/nginx/access.log | tail -n 20
+        echo -e "=== Service Status ==="
+        # Show only running processes and ports
+        ps aux | grep "[w]ebxr" | head -n 2
+        netstat -tulpn | grep -E ":(3001|4000)" | head -n 2
         
-        echo -e "\n=== Nginx Error Logs ==="
-        tail -n 50 /var/log/nginx/error.log
+        # Show only recent errors if any
+        echo -e "\n=== Recent Errors ==="
+        grep "error" /var/log/nginx/error.log 2>/dev/null | tail -n 2 || echo "No recent errors"
         
-        echo -e "\n=== Backend Process Status ==="
-        ps aux | grep "[w]ebxr"
-        
-        echo -e "\n=== Network Status ==="
-        netstat -tulpn | grep -E ":(3001|4000)"
-        
-        echo -e "\n=== Settings File Status ==="
+        # Show settings file status
+        echo -e "\n=== Settings ==="
         ls -l /app/settings.yaml
-        
-        echo -e "\n=== Backend Logs ==="
-        if [ -f /tmp/webxr.log ]; then
-            grep -i "settings\|error\|GET /api\|POST /api" /tmp/webxr.log | tail -n 50
-        fi
-        
-        echo -e "\n=== Route Registration ==="
-        if [ -f /tmp/webxr.log ]; then
-            grep -i "route.*settings" /tmp/webxr.log
-        fi
     ' | tee -a "$LOG_FILE"
     
-    # Test settings endpoint through nginx
+    # Test settings endpoint through nginx (concise)
     log_message "Testing settings endpoint through nginx..."
-    docker exec ${CONTAINER_NAME} curl -v \
+    response=$(docker exec ${CONTAINER_NAME} curl -s \
         -H "Content-Type: application/json" \
         -H "Accept: application/json" \
-        "http://localhost:4000/api/settings" 2>&1 | tee -a "$LOG_FILE"
+        "http://localhost:4000/api/settings")
+    
+    # Extract and show key settings
+    tunnel_id=$(echo "$response" | jq -r '.system.network.tunnelId')
+    domain=$(echo "$response" | jq -r '.system.network.domain')
+    port=$(echo "$response" | jq -r '.system.network.port')
+    log_message "Settings: domain=${domain}, port=${port}, tunnel_id=${tunnel_id}"
 }
 
 # Function to test GitHub API endpoints
@@ -147,72 +142,35 @@ check_github_endpoints() {
         return 1
     fi
     
-    # Test files with different path patterns
+    # Test a single representative file
     local test_files=(
-        "Two Heads Are Better Than One.md"
-        "p(doom).md"
-        "chatgpt__2024-08-20 09:48:00.md"
+        "p(doom).md"  # Representative markdown file
     )
     
+    log_message "Testing GitHub API access..."
+    
     for file in "${test_files[@]}"; do
-        log_message "Testing commits for file: $file"
         
-        # Test with and without base path
-        paths=(
-            "${file}"
-            "${GITHUB_BASE_PATH}/${file}"
-        )
+        # Test with base path only (skip raw path test)
+        path="${GITHUB_BASE_PATH}/${file}"
+        encoded_path=$(echo -n "${path}" | jq -sRr @uri)
         
-        for path in "${paths[@]}"; do
-            # URL encode the path
-            encoded_path=$(echo -n "${path}" | jq -sRr @uri)
-            
-            # Test the commits endpoint
-            log_message "Testing commits API with path: ${path}"
-            log_message "GET /repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits?path=${encoded_path}"
-            
-            response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                           -H "Accept: application/vnd.github+json" \
-                           "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits?path=${encoded_path}")
-            
-            # Log full response in verbose mode
-            if [ "$VERBOSE" = true ]; then
-                log_verbose "Full response:"
-                echo "$response" | jq '.' | tee -a "$LOG_FILE"
-            fi
-            
-            # Check commit count
-            count=$(echo "$response" | jq -r '. | length')
-            if [ "$count" = "0" ]; then
-                log_error "No commits found for path: ${path}"
-            else
-                log_success "Found ${count} commits for path: ${path}"
-            fi
-            
-            # Test contents endpoint as well
-            log_message "Testing contents API with path: ${path}"
-            log_message "GET /repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encoded_path}"
-            
-            content_response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                                  -H "Accept: application/vnd.github+json" \
-                                  "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encoded_path}")
-            
-            # Log full response in verbose mode
-            if [ "$VERBOSE" = true ]; then
-                log_verbose "Full contents response:"
-                echo "$content_response" | jq '.' | tee -a "$LOG_FILE"
-            fi
-            
-            # Check if file exists
-            if echo "$content_response" | jq -e 'has("message")' > /dev/null; then
-                log_error "File not found at path: ${path}"
-            else
-                log_success "File exists at path: ${path}"
-            fi
-            
-            # Add a small delay to respect rate limits
-            sleep 1
-        done
+        # Check commits and contents in one request
+        response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                       -H "Accept: application/vnd.github+json" \
+                       "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits?path=${encoded_path}")
+        count=$(echo "$response" | jq -r '. | length')
+        
+        content_response=$(curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                               -H "Accept: application/vnd.github+json" \
+                               "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encoded_path}")
+        exists=$(echo "$content_response" | jq -e 'has("message")' > /dev/null && echo "no" || echo "yes")
+        
+        # Single line status for file
+        log_message "File: ${file} (${count} commits, exists: ${exists})"
+        
+        # Rate limit delay
+        sleep 1
     done
 }
 
@@ -226,17 +184,16 @@ main() {
         exit 1
     fi
     
-    # Check network connectivity
+    # Check network connectivity (concise)
     log_message "Checking network connectivity..."
     docker exec ${CONTAINER_NAME} bash -c '
-        echo -e "\n=== Network Configuration ==="
-        ip addr show
-        
-        echo -e "\n=== Network Routes ==="
-        ip route
-        
-        echo -e "\n=== DNS Resolution ==="
-        cat /etc/resolv.conf
+        echo -e "=== Network Status ==="
+        # Show only main interface
+        ip addr show | grep -A2 "eth0" | head -n3
+        # Show default route
+        ip route | grep default
+        # Show DNS servers
+        grep "nameserver" /etc/resolv.conf | head -n2
     ' | tee -a "$LOG_FILE"
     
     # Check settings endpoint

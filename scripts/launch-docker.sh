@@ -350,11 +350,26 @@ check_application_readiness() {
     log "  docker logs cloudflared-tunnel"
     return 1
 }
+###############################################################################
+# COMMAND LINE ARGUMENTS
+###############################################################################
+REBUILD_TEST=false
+
+# Parse command line arguments
+for arg in "$@"; do
+    case $arg in
+        rebuild-test)
+            REBUILD_TEST=true
+            shift # Remove from processing
+            ;;
+    esac
+done
 
 ###############################################################################
 # MAIN EXECUTION
 ###############################################################################
 cd "$PROJECT_ROOT"
+
 
 # 1. Ensure .env exists
 if [ ! -f .env ]; then
@@ -409,6 +424,34 @@ fi
 
 # 10. Build & start containers
 log "${YELLOW}Building and starting services...${NC}"
+
+# Clean up existing containers
+log "${YELLOW}Cleaning up existing containers...${NC}"
+
+# Get container IDs for our specific containers
+cloudflared_id=$(docker ps -aq --filter "name=cloudflared-tunnel")
+webxr_id=$(docker ps -aq --filter "name=logseq-xr-webxr")
+
+# Stop and remove cloudflared container if it exists
+if [ -n "$cloudflared_id" ]; then
+    log "${YELLOW}Stopping cloudflared container $cloudflared_id...${NC}"
+    docker stop "$cloudflared_id"
+    docker rm "$cloudflared_id"
+fi
+
+# Stop and remove webxr container if it exists
+if [ -n "$webxr_id" ]; then
+    log "${YELLOW}Stopping webxr container $webxr_id...${NC}"
+    docker stop "$webxr_id"
+    docker rm "$webxr_id"
+fi
+
+# If in rebuild-test mode, do additional cleanup
+if [ "$REBUILD_TEST" = true ]; then
+    log "${YELLOW}Rebuild-test mode: Performing additional cleanup...${NC}"
+    docker system prune -f
+fi
+
 $DOCKER_COMPOSE build --pull --no-cache
 $DOCKER_COMPOSE up -d
 
