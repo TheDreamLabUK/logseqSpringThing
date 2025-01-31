@@ -104,40 +104,13 @@ export const defaultVisualizationSettings: VisualizationSettings = {
 export const defaultSettings: Settings = {
     visualization: defaultVisualizationSettings,
     system: {
-        network: {
-            bindAddress: '127.0.0.1',
-            domain: 'localhost',
-            port: 3000,
-            enableHttp2: true,
-            enableTls: false,
-            minTlsVersion: 'TLS1.2',
-            maxRequestSize: 10485760,
-            enableRateLimiting: true,
-            rateLimitRequests: 100,
-            rateLimitWindow: 60,
-            tunnelId: ''
-        },
         websocket: {
-            url: '',
             reconnectAttempts: 5,
             reconnectDelay: 5000,
             binaryChunkSize: 65536,
             compressionEnabled: true,
             compressionThreshold: 1024,
-            maxConnections: 100,
-            maxMessageSize: 32 * 1024 * 1024,
             updateRate: 60
-        },
-        security: {
-            allowedOrigins: ['http://localhost:3000'],
-            auditLogPath: './audit.log',
-            cookieHttponly: true,
-            cookieSamesite: 'Lax',
-            cookieSecure: false,
-            csrfTokenTimeout: 3600,
-            enableAuditLogging: true,
-            enableRequestValidation: true,
-            sessionTimeout: 86400
         },
         debug: {
             enabled: true,
@@ -151,7 +124,7 @@ export const defaultSettings: Settings = {
         mode: 'immersive-ar' as const,
         quality: 'medium',
         roomScale: true,
-        spaceType: 'local-floor' as XRReferenceSpaceType,
+        spaceType: 'local-floor',
         enableHandTracking: true,
         handMeshEnabled: true,
         handMeshColor: '#ffffff',

@@ -12,14 +12,6 @@ export interface VisualizationSettings {
     rendering: RenderingSettings;
 }
 
-// System settings
-export interface SystemSettings {
-    network: NetworkSettings;
-    websocket: WebSocketSettings;
-    security: SecuritySettings;
-    debug: DebugSettings;
-}
-
 // Component settings interfaces
 export interface AnimationSettings {
     enableNodeAnimations: boolean;
@@ -119,50 +111,46 @@ export interface RenderingSettings {
     enableShadows: boolean;
 }
 
-export interface NetworkSettings {
-    bindAddress: string;
-    domain: string;
-    port: number;
-    enableHttp2: boolean;
-    enableTls: boolean;
-    minTlsVersion: string;
-    maxRequestSize: number;
-    enableRateLimiting: boolean;
-    rateLimitRequests: number;
-    rateLimitWindow: number;
-    tunnelId: string;
-}
-
+// Client-side WebSocket settings (non-sensitive)
 export interface WebSocketSettings {
-    url: string;
     reconnectAttempts: number;
     reconnectDelay: number;
     binaryChunkSize: number;
     compressionEnabled: boolean;
     compressionThreshold: number;
-    maxConnections: number;
-    maxMessageSize: number;
     updateRate: number;
 }
 
-export interface SecuritySettings {
-    allowedOrigins: string[];
-    auditLogPath: string;
-    cookieHttponly: boolean;
-    cookieSamesite: string;
-    cookieSecure: boolean;
-    csrfTokenTimeout: number;
-    enableAuditLogging: boolean;
-    enableRequestValidation: boolean;
-    sessionTimeout: number;
-}
-
+// Debug settings (UI-only)
 export interface DebugSettings {
     enabled: boolean;
     enableDataDebug: boolean;
     enableWebsocketDebug: boolean;
     logBinaryHeaders: boolean;
     logFullJson: boolean;
+}
+
+// XR settings
+export interface XRSettings {
+    mode: XRSessionMode;
+    quality: 'low' | 'medium' | 'high';
+    roomScale: boolean;
+    spaceType: 'viewer' | 'local' | 'local-floor' | 'bounded-floor' | 'unbounded';
+    enableHandTracking: boolean;
+    handMeshEnabled: boolean;
+    handMeshColor: string;
+    handMeshOpacity: number;
+    handPointSize: number;
+    handRayEnabled: boolean;
+    handRayColor: string;
+    handRayWidth: number;
+    gestureSsmoothing: number;
+    enableHaptics: boolean;
+    hapticIntensity: number;
+    dragThreshold: number;
+    pinchThreshold: number;
+    rotationThreshold: number;
+    interactionRadius: number;
 }
 
 // Main settings interface
@@ -178,32 +166,10 @@ export interface Settings {
         hologram: HologramSettings;
     };
     system: {
-        network: NetworkSettings;
         websocket: WebSocketSettings;
-        security: SecuritySettings;
         debug: DebugSettings;
     };
-    xr: {
-        mode: XRSessionMode;
-        quality: 'low' | 'medium' | 'high';
-        roomScale: boolean;
-        spaceType: 'viewer' | 'local' | 'local-floor' | 'bounded-floor' | 'unbounded';
-        enableHandTracking: boolean;
-        handMeshEnabled: boolean;
-        handMeshColor: string;
-        handMeshOpacity: number;
-        handPointSize: number;
-        handRayEnabled: boolean;
-        handRayColor: string;
-        handRayWidth: number;
-        gestureSsmoothing: number;
-        enableHaptics: boolean;
-        hapticIntensity: number;
-        dragThreshold: number;
-        pinchThreshold: number;
-        rotationThreshold: number;
-        interactionRadius: number;
-    };
+    xr: XRSettings;
 }
 
 export * from './settings/base';

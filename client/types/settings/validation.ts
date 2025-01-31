@@ -74,26 +74,13 @@ function validateVisualizationSettings(visualization: Settings['visualization'],
 }
 
 function validateSystemSettings(system: Settings['system'], errors: ValidationError[]): void {
-    // Validate network settings
-    if (system.network) {
-        validateNumericRange('system.network.port', system.network.port, 1, 65535, errors);
-        if (system.network.enableRateLimiting && system.network.rateLimitRequests <= 0) {
-            errors.push({
-                path: 'system.network.rateLimitRequests',
-                message: 'Rate limit requests must be greater than 0'
-            });
-        }
-    }
-
     // Validate websocket settings
     if (system.websocket) {
         validateNumericRange('system.websocket.updateRate', system.websocket.updateRate, 1, 120, errors);
-        if (system.websocket.maxMessageSize > 100 * 1024 * 1024) { // 100MB limit
-            errors.push({
-                path: 'system.websocket.maxMessageSize',
-                message: 'Max message size cannot exceed 100MB'
-            });
-        }
+        validateNumericRange('system.websocket.reconnectAttempts', system.websocket.reconnectAttempts, 1, 10, errors);
+        validateNumericRange('system.websocket.reconnectDelay', system.websocket.reconnectDelay, 1000, 30000, errors);
+        validateNumericRange('system.websocket.binaryChunkSize', system.websocket.binaryChunkSize, 1024, 1048576, errors);
+        validateNumericRange('system.websocket.compressionThreshold', system.websocket.compressionThreshold, 512, 1048576, errors);
     }
 }
 
