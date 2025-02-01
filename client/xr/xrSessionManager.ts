@@ -206,24 +206,44 @@ export class XRSessionManager {
         }
 
         try {
-            // Get XR mode from platform manager
+            // Check if session mode is supported
             const mode = platformManager.isQuest() ? 'immersive-ar' : 'immersive-vr';
+            const isSupported = await navigator.xr.isSessionSupported(mode);
+            
+            if (!isSupported) {
+                throw new Error(`${mode} not supported on this device`);
+            }
             
             // Configure features based on mode and platform
             const requiredFeatures = ['local-floor'];
             const optionalFeatures = ['hand-tracking', 'layers'];
             
-            // Add mode-specific features
-            if (mode === 'immersive-ar') {
+            // Add mode-specific features for Quest
+            if (platformManager.isQuest()) {
+                // For Quest AR, require hit-test and make plane detection optional
                 requiredFeatures.push('hit-test');
-                optionalFeatures.push('light-estimation', 'plane-detection');
+                optionalFeatures.push(
+                    'light-estimation',
+                    'plane-detection',
+                    'anchors',
+                    'depth-sensing',
+                    'dom-overlay'
+                );
             }
             
             // Request session with configured features
-            const session = await navigator.xr.requestSession(mode, {
+            const sessionInit: XRSessionInit = {
                 requiredFeatures,
-                optionalFeatures
+                optionalFeatures,
+                domOverlay: platformManager.isQuest() ? { root: document.body } : undefined
+            };
+            
+            _logger.info('Requesting XR session with config:', {
+                mode,
+                features: sessionInit
             });
+            
+            const session = await navigator.xr.requestSession(mode, sessionInit);
 
             if (!session) {
                 throw new Error('Failed to create XR session');
@@ -238,12 +258,19 @@ export class XRSessionManager {
             // Configure renderer for AR
             renderer.xr.enabled = true;
             
-            // Clear background for AR passthrough
+            // Set up scene for XR mode
             const scene = this.sceneManager.getScene();
-            scene.background = null;
+            if (platformManager.isQuest()) {
+                // Clear background for AR passthrough
+                scene.background = null;
+            } else {
+                // Keep background for VR mode
+                scene.background = new Color(BACKGROUND_COLOR);
+            }
             
-            // Get reference space
-            this.referenceSpace = await this.session.requestReferenceSpace('local-floor');
+            // Get reference space based on platform
+            const spaceType = platformManager.isQuest() ? 'local-floor' : 'bounded-floor';
+            this.referenceSpace = await this.session.requestReferenceSpace(spaceType);
             
             // Setup session event handlers
             this.session.addEventListener('end', this.onXRSessionEnd);
@@ -289,23 +316,27 @@ export class XRSessionManager {
     }
 
     private onXRSessionEnd = (): void => {
+        // Clean up hit test source
         if (this.hitTestSource) {
             this.hitTestSource.cancel();
             this.hitTestSource = null;
         }
         
+        // Reset session state
         this.session = null;
         this.referenceSpace = null;
         this.hitTestSourceRequested = false;
         this.isPresenting = false;
 
-        // Hide AR visualization elements
-        this.gridHelper.visible = false;
-        this.groundPlane.visible = false;
-        this.hitTestMarker.visible = false;
-        this.arLight.visible = false;
+        // Hide AR visualization elements if in Quest mode
+        if (platformManager.isQuest()) {
+            this.gridHelper.visible = false;
+            this.groundPlane.visible = false;
+            this.hitTestMarker.visible = false;
+            this.arLight.visible = false;
+        }
 
-        // Reset camera rig
+        // Reset camera and scene
         this.cameraRig.position.set(0, 0, 0);
         this.cameraRig.quaternion.identity();
 
@@ -313,13 +344,19 @@ export class XRSessionManager {
         const scene = this.sceneManager.getScene();
         scene.background = new Color(BACKGROUND_COLOR);
 
-        // Disable AR layer for camera
+        // Reset camera layers
         const camera = this.sceneManager.getCamera();
-        camera.layers.disable(1);
+        camera.layers.disable(1); // AR layer
 
-        // Reset renderer settings
+        // Reset renderer
         const renderer = this.sceneManager.getRenderer();
         renderer.xr.enabled = false;
+
+        _logger.log('XR session ended');
+
+        // Show control panel again and notify session end
+        ControlPanel.getInstance()?.show();
+        this.xrSessionEndCallback?.();
 
         _logger.log('XR session ended');
 

@@ -364,11 +364,11 @@ export class ControlPanel {
     }
 
     public show(): void {
-        this.container.style.display = 'block';
+        this.container.classList.remove('hidden');
     }
 
     public hide(): void {
-        this.container.style.display = 'none';
+        this.container.classList.add('hidden');
     }
 
     public dispose(): void {

@@ -6,6 +6,9 @@ import { TextRenderer } from './rendering/textRenderer';
 import { WebSocketService } from './websocket/websocketService';
 import { SettingsStore } from './state/SettingsStore';
 import { LoggerConfig, createLogger } from './core/logger';
+import { platformManager } from './platform/platformManager';
+import { XRSessionManager } from './xr/xrSessionManager';
+import { XRInitializer } from './xr/xrInitializer';
 import { SceneManager } from './rendering/scene';
 import { graphDataManager } from './state/graphData';
 import { debugState } from './core/debugState';
@@ -141,7 +144,39 @@ async function init() {
     });
     
     logger.log('Starting application...');
-    new GraphVisualization(defaultSettings);
+    
+    try {
+        // Initialize settings first
+        const settingsStore = SettingsStore.getInstance();
+        await settingsStore.initialize();
+
+        // Initialize UI with settings
+        const { initializeUI } = await import('./ui');
+        await initializeUI();
+        
+        // Initialize main visualization and store globally
+        const viz = new GraphVisualization(defaultSettings);
+        (window as any).visualization = viz;
+        
+        // Initialize platform and XR components
+        await platformManager.initialize(defaultSettings);
+        
+        // Get canvas and scene manager
+        const canvas = document.getElementById('main-canvas') as HTMLCanvasElement;
+        if (!canvas) {
+            throw new Error('Could not find #main-canvas element');
+        }
+        const sceneManager = SceneManager.getInstance(canvas);
+        
+        // Initialize XR components
+        const xrSessionManager = XRSessionManager.getInstance(sceneManager);
+        XRInitializer.getInstance(xrSessionManager);
+        
+        logger.info('Application initialized successfully');
+    } catch (error) {
+        logger.error('Failed to initialize application components:', error);
+        throw error;
+    }
 }
 
 init().catch(error => {

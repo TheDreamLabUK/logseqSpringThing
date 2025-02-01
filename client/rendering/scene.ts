@@ -50,12 +50,15 @@ export class SceneManager {
     this.camera.position.set(0, 10, 50); // Position for better overview
     this.camera.lookAt(0, 0, 0);
 
-    // Create renderer
+    // Create renderer with WebXR support
     this.renderer = new WebGLRenderer({
       canvas,
       antialias: true,
       alpha: true,
-      powerPreference: 'high-performance'
+      powerPreference: 'high-performance',
+      xr: {
+        enabled: true
+      }
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -155,29 +158,50 @@ export class SceneManager {
 
   stop(): void {
     this.isRunning = false;
+    
+    // Clean up animation loops
+    if (this.renderer.xr.enabled) {
+      this.renderer.setAnimationLoop(null);
+    }
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
+    
     logger.log('Scene rendering stopped');
   }
 
   private animate = (): void => {
     if (!this.isRunning) return;
 
-    // Request next frame first to ensure smooth animation
-    this.animationFrameId = requestAnimationFrame(this.animate);
-    
-    // Update controls with damping
-    this.controls.update();
+    // Set up animation loop
+    if (this.renderer.xr.enabled) {
+      // For XR, use the built-in animation loop
+      this.renderer.setAnimationLoop(this.render);
+    } else {
+      // For non-XR, use requestAnimationFrame
+      this.animationFrameId = requestAnimationFrame(this.animate);
+      this.render();
+    }
+  }
 
-    // Only use composer when bloom is actually enabled and has non-zero values
-    if (this.bloomPass.enabled &&
-        (this.bloomPass.strength > 0 ||
-         this.bloomPass.radius > 0 ||
-         (this.bloomPass as any).edgeStrength > 0 ||
-         (this.bloomPass as any).nodeStrength > 0 ||
-         (this.bloomPass as any).environmentStrength > 0)) {
+  private render = (): void => {
+    // Update controls only in non-XR mode
+    if (!this.renderer.xr.enabled) {
+      this.controls.update();
+    }
+
+    // Determine if we should use post-processing
+    const usePostProcessing = !this.renderer.xr.enabled &&
+                            this.bloomPass.enabled &&
+                            (this.bloomPass.strength > 0 ||
+                             this.bloomPass.radius > 0 ||
+                             (this.bloomPass as any).edgeStrength > 0 ||
+                             (this.bloomPass as any).nodeStrength > 0 ||
+                             (this.bloomPass as any).environmentStrength > 0);
+
+    // Render scene
+    if (usePostProcessing) {
       this.composer.render();
     } else {
       this.renderer.render(this.scene, this.camera);

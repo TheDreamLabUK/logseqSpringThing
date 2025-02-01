@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="immersive-ar" content="true">
+  <meta name="oculus-hand-tracking" content="true">
   <title>LogseqXR Graph Visualization</title>
   <style>
     body {
@@ -33,6 +35,37 @@
       min-width: 300px;
       overflow-y: auto;
       box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3);
+      transition: opacity 0.3s ease;
+    }
+
+    #control-panel.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #xr-button {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 24px;
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 20px;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+      z-index: 1000;
+      transition: all 0.3s ease;
+    }
+
+    #xr-button:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    #xr-button.hidden {
+      opacity: 0;
+      pointer-events: none;
     }
 
     .control-panel-header {
