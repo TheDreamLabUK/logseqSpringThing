@@ -232,6 +232,14 @@ export class WebSocketService {
         try {
             // Try to decompress using pako
             const decompressed = pako.inflate(new Uint8Array(buffer));
+            // Check if decompressed data has a valid structure (at least 8 bytes and aligned to 4 bytes)
+            if (decompressed.length < 8 || decompressed.length % 4 !== 0) {
+                logger.warn('Decompressed data does not align properly; using original buffer.', {
+                    originalSize: buffer.byteLength,
+                    decompressedSize: decompressed.length
+                });
+                return buffer;
+            }
             logger.debug('Successfully decompressed binary data:', {
                 originalSize: buffer.byteLength,
                 decompressedSize: decompressed.length
@@ -289,6 +297,10 @@ export class WebSocketService {
             // Read and validate node count
             const nodeCount = dataView.getUint32(offset, true);
             offset += 4;
+            if (nodeCount === 0) {
+                logger.warn('Received binary update with zero nodes');
+                return;
+            }
 
             // Validate total message size
             const expectedSize = 8 + (nodeCount * 28); // 8 bytes header + 28 bytes per node
