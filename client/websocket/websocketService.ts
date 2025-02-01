@@ -1,7 +1,11 @@
 import { createLogger } from '../core/logger';
 import { buildWsUrl } from '../core/api';
+import pako from 'pako';
 
 const logger = createLogger('WebSocketService');
+
+// Compression settings
+const COMPRESSION_THRESHOLD = 1024; // Only compress messages larger than 1KB
 
 enum ConnectionState {
     DISCONNECTED = 'disconnected',
@@ -224,13 +228,49 @@ export class WebSocketService {
         PositionVelocityUpdate: 0x01
     } as const;
 
+    private tryDecompress(buffer: ArrayBuffer): ArrayBuffer {
+        try {
+            // Try to decompress using pako
+            const decompressed = pako.inflate(new Uint8Array(buffer));
+            logger.debug('Successfully decompressed binary data:', {
+                originalSize: buffer.byteLength,
+                decompressedSize: decompressed.length
+            });
+            return decompressed.buffer;
+        } catch (error) {
+            // If decompression fails, assume the data wasn't compressed
+            logger.debug('Data appears to be uncompressed:', error);
+            return buffer;
+        }
+    }
+
+    private compressIfNeeded(buffer: ArrayBuffer): ArrayBuffer {
+        if (buffer.byteLength > COMPRESSION_THRESHOLD) {
+            try {
+                const compressed = pako.deflate(new Uint8Array(buffer));
+                logger.debug('Successfully compressed binary data:', {
+                    originalSize: buffer.byteLength,
+                    compressedSize: compressed.length
+                });
+                return compressed.buffer;
+            } catch (error) {
+                logger.warn('Compression failed, using original data:', error);
+                return buffer;
+            }
+        }
+        return buffer;
+    }
+
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
-            if (!buffer || buffer.byteLength < 8) {
-                throw new Error(`Invalid buffer size: ${buffer?.byteLength ?? 0} bytes`);
+            // Try to decompress the buffer first
+            const decompressedBuffer = this.tryDecompress(buffer);
+            
+            if (!decompressedBuffer || decompressedBuffer.byteLength < 8) {
+                throw new Error(`Invalid buffer size: ${decompressedBuffer?.byteLength ?? 0} bytes`);
             }
 
-            const dataView = new DataView(buffer);
+            const dataView = new DataView(decompressedBuffer);
             let offset = 0;
 
             // Read and validate message type
@@ -252,14 +292,15 @@ export class WebSocketService {
 
             // Validate total message size
             const expectedSize = 8 + (nodeCount * 28); // 8 bytes header + 28 bytes per node
-            if (buffer.byteLength !== expectedSize) {
-                throw new Error(`Invalid buffer size: ${buffer.byteLength} bytes (expected ${expectedSize})`);
+            if (decompressedBuffer.byteLength !== expectedSize) {
+                throw new Error(`Invalid buffer size: ${decompressedBuffer.byteLength} bytes (expected ${expectedSize})`);
             }
 
             logger.debug('Processing binary update:', {
                 nodeCount,
                 messageType,
-                bufferSize: buffer.byteLength
+                originalSize: buffer.byteLength,
+                decompressedSize: decompressedBuffer.byteLength
             });
 
             const nodes: NodeData[] = [];
@@ -328,7 +369,7 @@ export class WebSocketService {
         } catch (error) {
             logger.error('Failed to process binary message:', {
                 error,
-                bufferSize: buffer?.byteLength,
+                originalSize: buffer?.byteLength,
                 connectionState: this.connectionState
             });
         }
@@ -538,7 +579,9 @@ export class WebSocketService {
             offset += 12;
         });
 
-        this.ws.send(buffer);
+        // Compress the buffer if it's large enough
+        const finalBuffer = this.compressIfNeeded(buffer);
+        this.ws.send(finalBuffer);
     }
 
     public onConnectionStatusChange(handler: (status: boolean) => void): void {
