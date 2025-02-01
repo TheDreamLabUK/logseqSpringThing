@@ -132,10 +132,18 @@ export interface DebugSettings {
 
 // XR settings
 export interface XRSettings {
+    // Session Settings
     mode: XRSessionMode;
     quality: 'low' | 'medium' | 'high';
     roomScale: boolean;
     spaceType: 'viewer' | 'local' | 'local-floor' | 'bounded-floor' | 'unbounded';
+    
+    // Platform Settings
+    autoEnterAR?: boolean;
+    hideControlPanel?: boolean;
+    preferredMode?: XRSessionMode;
+    
+    // Hand Tracking
     enableHandTracking: boolean;
     handMeshEnabled: boolean;
     handMeshColor: string;
@@ -145,12 +153,23 @@ export interface XRSettings {
     handRayColor: string;
     handRayWidth: number;
     gestureSsmoothing: number;
+    
+    // Interaction
     enableHaptics: boolean;
     hapticIntensity: number;
     dragThreshold: number;
     pinchThreshold: number;
     rotationThreshold: number;
     interactionRadius: number;
+    
+    // Scene Understanding
+    enableLightEstimation?: boolean;
+    enablePlaneDetection?: boolean;
+    enableSceneUnderstanding?: boolean;
+    planeColor?: string;
+    planeOpacity?: number;
+    showPlaneOverlay?: boolean;
+    snapToFloor?: boolean;
 }
 
 // Main settings interface

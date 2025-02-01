@@ -206,9 +206,23 @@ export class XRSessionManager {
         }
 
         try {
-            const session = await navigator.xr.requestSession('immersive-ar', {
-                requiredFeatures: ['local-floor', 'hit-test'],
-                optionalFeatures: ['hand-tracking', 'layers', 'light-estimation']
+            // Get XR mode from platform manager
+            const mode = platformManager.isQuest() ? 'immersive-ar' : 'immersive-vr';
+            
+            // Configure features based on mode and platform
+            const requiredFeatures = ['local-floor'];
+            const optionalFeatures = ['hand-tracking', 'layers'];
+            
+            // Add mode-specific features
+            if (mode === 'immersive-ar') {
+                requiredFeatures.push('hit-test');
+                optionalFeatures.push('light-estimation', 'plane-detection');
+            }
+            
+            // Request session with configured features
+            const session = await navigator.xr.requestSession(mode, {
+                requiredFeatures,
+                optionalFeatures
             });
 
             if (!session) {

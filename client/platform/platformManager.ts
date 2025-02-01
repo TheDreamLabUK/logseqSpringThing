@@ -92,12 +92,29 @@ export class PlatformManager extends BrowserEventEmitter {
   }
 
   private detectPlatform(): void {
+    // Try modern User-Agent Client Hints API first
+    if ('userAgentData' in navigator) {
+      const brands = (navigator as any).userAgentData.brands;
+      const isOculusDevice = brands.some((b: any) =>
+        /oculus|meta|quest/i.test(b.brand)
+      );
+      if (isOculusDevice) {
+        this.platform = 'quest';
+        logger.log('Quest platform detected via userAgentData');
+        return;
+      }
+    }
+
+    // Fallback to traditional user agent detection
     const userAgent = navigator.userAgent.toLowerCase();
-    const isQuest = userAgent.includes('quest');
+    const isQuest = userAgent.includes('quest') ||
+                    userAgent.includes('oculus') ||
+                    userAgent.includes('oculusbrowser') ||
+                    userAgent.includes('meta');
     
     if (isQuest) {
       this.platform = 'quest';
-      logger.log('Quest platform detected');
+      logger.log('Quest platform detected via userAgent');
     } else if (userAgent.includes('chrome') || userAgent.includes('firefox') || userAgent.includes('safari')) {
       this.platform = 'browser';
     } else {

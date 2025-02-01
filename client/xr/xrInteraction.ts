@@ -3,6 +3,7 @@ import { NodeManager } from '../rendering/nodes';
 import { SettingsStore } from '../state/SettingsStore';
 import { createLogger } from '../core/logger';
 import { WebSocketService } from '../websocket/websocketService';
+import { XRSettings } from '../types/settings/xr';
 import * as THREE from 'three';
 
 const logger = createLogger('XRInteraction');
@@ -16,10 +17,28 @@ export class XRInteraction {
     private interactionEnabled: boolean = false;
     private websocketService: WebSocketService;
 
-    private constructor(_: XRSessionManager, __: NodeManager) {
+    private xrManager: XRSessionManager;
+    private constructor(xrManager: XRSessionManager, _: NodeManager) {
+        this.xrManager = xrManager;
         this.settingsStore = SettingsStore.getInstance();
         this.websocketService = WebSocketService.getInstance();
         this.initializeSettings();
+        this.initializeXRSession();
+    }
+
+    private async initializeXRSession(): Promise<void> {
+        try {
+            const { platformManager } = require('../platform/platformManager');
+            const settings = this.settingsStore.get('xr') as XRSettings;
+            
+            // Auto-enter AR for Quest devices if enabled in settings
+            if (platformManager.isQuest() && settings && settings.autoEnterAR) {
+                logger.info('Auto-entering AR mode for Quest device');
+                await this.xrManager.initXRSession();
+            }
+        } catch (error) {
+            logger.error('Failed to initialize XR session:', error);
+        }
     }
 
     private initializeSettings(): void {

@@ -6,6 +6,11 @@ export interface XRSettings {
     roomScale: boolean;
     spaceType: 'viewer' | 'local' | 'local-floor' | 'bounded-floor' | 'unbounded';
     
+    // Platform Settings
+    autoEnterAR?: boolean;
+    hideControlPanel?: boolean;
+    preferredMode?: XRSessionMode;
+    
     // Hand Tracking
     enableHandTracking: boolean;
     handMeshEnabled: boolean;
@@ -62,10 +67,17 @@ export interface WebXRSettings extends XRSettings {
 
 // Default XR settings
 export const defaultXRSettings: XRSettings = {
+    // Session Settings
     mode: 'immersive-ar',
     roomScale: true,
     spaceType: 'local-floor',
     
+    // Platform Settings
+    autoEnterAR: true,
+    hideControlPanel: true,
+    preferredMode: 'immersive-ar',
+    
+    // Hand Tracking
     enableHandTracking: true,
     handMeshEnabled: true,
     handMeshColor: '#ffffff',
@@ -76,6 +88,7 @@ export const defaultXRSettings: XRSettings = {
     handRayWidth: 2,
     gestureSsmoothing: 0.5,
     
+    // Interaction
     enableHaptics: true,
     hapticIntensity: 0.5,
     dragThreshold: 0.02,
@@ -83,6 +96,7 @@ export const defaultXRSettings: XRSettings = {
     rotationThreshold: 0.1,
     interactionRadius: 0.5,
     
+    // Scene Understanding
     enableLightEstimation: true,
     enablePlaneDetection: true,
     enableSceneUnderstanding: true,
@@ -91,6 +105,7 @@ export const defaultXRSettings: XRSettings = {
     showPlaneOverlay: true,
     snapToFloor: true,
     
+    // Passthrough
     enablePassthroughPortal: false,
     passthroughOpacity: 1,
     passthroughBrightness: 1,
@@ -99,5 +114,6 @@ export const defaultXRSettings: XRSettings = {
     portalEdgeColor: '#ffffff',
     portalEdgeWidth: 2,
     
-    quality: 'medium'
+    // Quality
+    quality: 'high'
 };

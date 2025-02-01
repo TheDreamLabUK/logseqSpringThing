@@ -122,7 +122,7 @@ export const defaultSettings: Settings = {
     },
     xr: {
         mode: 'immersive-ar' as const,
-        quality: 'medium',
+        quality: 'high',
         roomScale: true,
         spaceType: 'local-floor',
         enableHandTracking: true,
@@ -139,6 +139,18 @@ export const defaultSettings: Settings = {
         dragThreshold: 0.1,
         pinchThreshold: 0.5,
         rotationThreshold: 0.1,
-        interactionRadius: 0.1
+        interactionRadius: 0.1,
+        // Platform settings
+        autoEnterAR: true,
+        hideControlPanel: true,
+        preferredMode: 'immersive-ar',
+        // Scene understanding
+        enableLightEstimation: true,
+        enablePlaneDetection: true,
+        enableSceneUnderstanding: true,
+        planeColor: '#808080',
+        planeOpacity: 0.5,
+        showPlaneOverlay: true,
+        snapToFloor: true
     }
 };

@@ -21,6 +21,12 @@ export class ControlPanel {
         // Initialize validation error display
         this.validationDisplay = new ValidationErrorDisplay(this.container);
 
+        // Check platform and settings before showing panel
+        const { platformManager } = require('../platform/platformManager');
+        if (platformManager.isQuest()) {
+            this.container.style.display = 'none';
+        }
+
         this.initializePanel();
     }
 
