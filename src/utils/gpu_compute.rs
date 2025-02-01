@@ -1,4 +1,4 @@
-use cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchConfig, LaunchAsync};
+uuse cudarc::driver::{CudaDevice, CudaFunction, CudaSlice, LaunchConfig, LaunchAsync};
 use cudarc::nvrtc::Ptx;
 use std::io::Error;
 use std::sync::Arc;
@@ -103,6 +103,37 @@ impl GPUCompute {
                 params.damping,
             )).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         }
+        
+        // Sanity-check: retrieve updated node data and correct any NaN values
+        let mut updated_nodes = self.get_node_data()?;
+        let mut needs_fix = false;
+        for node in &mut updated_nodes {
+            for v in &mut node.position {
+                if v.is_nan() {
+                    *v = 0.0;
+                    needs_fix = true;
+                }
+            }
+            for v in &mut node.velocity {
+                if v.is_nan() {
+                    *v = 0.0;
+                    needs_fix = true;
+                }
+            }
+        }
+        if needs_fix {
+            // Log the correction
+            eprintln!("GPUCompute: Detected NaN in node data. Correcting values to 0.");
+            self.device.htod_sync_copy_into(&updated_nodes, &mut self.node_data)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        }
+        
+        // Debug: log a sample of node positions after update
+        debug!("Sample node positions after update:");
+        for (i, node) in updated_nodes.iter().take(5).enumerate() {
+            debug!("Node {}: pos={:?}, vel={:?}", i, node.position, node.velocity);
+        }
+        
         Ok(())
     }
 

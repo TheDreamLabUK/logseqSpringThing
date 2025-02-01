@@ -244,7 +244,7 @@ export class WebSocketService {
                 originalSize: buffer.byteLength,
                 decompressedSize: decompressed.length
             });
-            return decompressed.buffer;
+            return decompressed.buffer.slice(decompressed.byteOffset, decompressed.byteOffset + decompressed.byteLength);
         } catch (error) {
             // If decompression fails, assume the data wasn't compressed
             logger.debug('Data appears to be uncompressed:', error);
@@ -340,18 +340,21 @@ export class WebSocketService {
                     ];
                     offset += 12;
 
-                    // Validate node data
+                    // Sanitize node data: replace any NaN value with 0
+                    const sanitizedPosition = position.map(v => isNaN(v) ? 0 : v) as [number, number, number];
+                    const sanitizedVelocity = velocity.map(v => isNaN(v) ? 0 : v) as [number, number, number];
                     if (position.some(isNaN) || velocity.some(isNaN)) {
-                        throw new Error(`Invalid node data at index ${i}: NaN values detected`);
+                        logger.warn(`Sanitized node data at index ${i}: replaced NaN values with 0`);
                     }
-
-                    nodes.push({ id, position, velocity });
+                    nodes.push({ id, position: sanitizedPosition, velocity: sanitizedVelocity });
                 } catch (nodeError) {
                     logger.error('Error processing node:', {
-                        error: nodeError,
+                        error: (typeof nodeError === 'object' && nodeError !== null && 'message' in nodeError)
+                            ? (nodeError as Error).message
+                            : nodeError,
                         nodeIndex: i,
                         offset,
-                        bufferSize: buffer.byteLength
+                        bufferSize: decompressedBuffer.byteLength
                     });
                     // Continue processing other nodes
                 }

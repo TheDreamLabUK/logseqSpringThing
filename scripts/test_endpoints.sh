@@ -130,6 +130,25 @@ check_settings_endpoint() {
     log_message "Settings: domain=${domain}, port=${port}, tunnel_id=${tunnel_id}"
 }
 
+# Function to check WebSocket Endpoint with verbose output for detailed diagnostics
+check_websocket_endpoint() {
+    log_section "Checking WebSocket Endpoint"
+    log_message "Attempting WebSocket upgrade test with verbose output..."
+    ws_response=$(docker exec ${CONTAINER_NAME} curl -v -i -N -s \
+        -H "Connection: Upgrade" \
+        -H "Upgrade: websocket" \
+        -H "Sec-WebSocket-Version: 13" \
+        -H "Sec-WebSocket-Key: testkey" \
+        "http://localhost:${NGINX_PORT}/wss" || true)
+    log_message "WebSocket test response (verbose):"
+    if [ -z "$ws_response" ]; then
+        log_error "No response received from WebSocket upgrade test."
+    else
+        echo "$ws_response" | tee -a "$LOG_FILE"
+        log_message "WebSocket response length: $(echo "$ws_response" | wc -c) characters"
+    fi
+}
+
 # Function to test GitHub API endpoints
 check_github_endpoints() {
     log_section "Testing GitHub API Endpoints"
