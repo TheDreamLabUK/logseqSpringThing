@@ -43,7 +43,7 @@ wgpu = { version = "0.17", features = ["spirv", "webgl"] }
 bytemuck = { version = "1.14", features = ["derive"] }
 pollster = "0.3"
 naga = { version = "0.13", features = ["wgsl-in", "spv-out", "wgsl-out"] }
-cudarc = "0.10"
+cudarc = { version = "0.10", features = ["driver"] }
 
 # HTTP client and API
 reqwest = { version = "0.11", features = ["json", "stream"] }
@@ -86,7 +86,8 @@ pretty_assertions = "1.4"
 
 [features]
 default = ["gpu"]
-gpu = []
+gpu = ["cudarc/driver"]  # Enable GPU support with CUDA driver
+cpu = []  # CPU-only mode
 
 [profile.release]
 opt-level = 3

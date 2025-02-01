@@ -70,15 +70,21 @@ async fn main() -> std::io::Result<()> {
     // Replace log_data! and log_warn! with standard log macros
     info!("Initializing GPU compute...");
     
-    let gpu_compute = match GPUCompute::new(&GraphData::default()).await {
-        Ok(gpu) => {
-            info!("GPU initialization successful");
-            Some(gpu)
+    let gpu_compute = if cfg!(feature = "gpu") {
+        match GPUCompute::new(&GraphData::default()).await {
+            Ok(gpu) => {
+                info!("GPU initialization successful");
+                Some(gpu)
+            }
+            Err(e) => {
+                warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
+                debug!("GPU initialization error details: {:?}", e);
+                None
+            }
         }
-        Err(e) => {
-            warn!("Failed to initialize GPU: {}. Falling back to CPU computations.", e);
-            None
-        }
+    } else {
+        info!("GPU feature disabled, using CPU computations");
+        None
     };
 
     // Create web::Data instances first

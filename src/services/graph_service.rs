@@ -31,12 +31,12 @@ impl GraphService {
         tokio::spawn(async move {
             let params = SimulationParams {
                 iterations: 1,  // One iteration per frame
-                spring_length: 100.0,  // Default spring length
-                spring_strength: 0.1,  // Gentler forces for continuous updates
-                repulsion: 50.0,  // Reduced repulsion
-                attraction: 0.5,  // Reduced attraction
-                damping: 0.8,  // More damping for stability
-                time_step: 0.016,  // 60fps
+                spring_length: 50.0,  // Match ideal_length in CPU layout
+                spring_strength: 0.05,  // Reduced for stability
+                repulsion: 10.0,  // Significantly reduced repulsion
+                attraction: 0.2,  // Reduced attraction
+                damping: 0.95,  // Higher damping for more stability
+                time_step: 0.1,  // Match dt in CPU layout
                 phase: SimulationPhase::Dynamic,
                 mode: SimulationMode::Local,  // Use CPU for continuous updates
             };
@@ -206,16 +206,26 @@ impl GraphService {
 
     fn initialize_random_positions(graph: &mut GraphData) {
         let mut rng = rand::thread_rng();
-        let initial_radius = 30.0;
+        let node_count = graph.nodes.len() as f32;
+        let initial_radius = 100.0; // Larger initial radius
+        let golden_ratio = (1.0 + 5.0_f32.sqrt()) / 2.0;
         
-        for node in &mut graph.nodes {
-            let theta = rng.gen_range(0.0..std::f32::consts::PI * 2.0);
-            let phi = rng.gen_range(0.0..std::f32::consts::PI);
-            let r = rng.gen_range(0.0..initial_radius);
+        // Use Fibonacci sphere distribution for more uniform initial positions
+        for (i, node) in graph.nodes.iter_mut().enumerate() {
+            let i = i as f32;
             
-            node.set_x(r * theta.cos() * phi.sin());
-            node.set_y(r * theta.sin() * phi.sin());
+            // Calculate Fibonacci sphere coordinates
+            let theta = 2.0 * std::f32::consts::PI * i / golden_ratio;
+            let phi = (1.0 - 2.0 * (i + 0.5) / node_count).acos();
+            
+            // Add slight randomness to prevent exact overlaps
+            let r = initial_radius * (0.9 + rng.gen_range(0.0..0.2));
+            
+            node.set_x(r * phi.sin() * theta.cos());
+            node.set_y(r * phi.sin() * theta.sin());
             node.set_z(r * phi.cos());
+            
+            // Initialize with zero velocity
             node.set_vx(0.0);
             node.set_vy(0.0);
             node.set_vz(0.0);
@@ -262,7 +272,8 @@ impl GraphService {
     }
 
     fn calculate_layout_cpu(graph: &mut GraphData, iterations: u32, spring_strength: f32, damping: f32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let repulsion_strength = spring_strength * 10000.0;
+        let repulsion_strength = spring_strength * 1000.0; // Reduced repulsion strength
+        let min_distance = 0.1; // Minimum distance to prevent division by zero
         
         for _ in 0..iterations {
             // Calculate forces between nodes
@@ -275,26 +286,31 @@ impl GraphService {
                     let dy = graph.nodes[j].y() - graph.nodes[i].y();
                     let dz = graph.nodes[j].z() - graph.nodes[i].z();
                     
-                    let distance = (dx * dx + dy * dy + dz * dz).sqrt();
-                    if distance > 0.0 {
-                        let force = repulsion_strength / (distance * distance);
-                        
-                        let fx = dx * force / distance;
-                        let fy = dy * force / distance;
-                        let fz = dz * force / distance;
-                        
-                        forces[i].0 -= fx;
-                        forces[i].1 -= fy;
-                        forces[i].2 -= fz;
-                        
-                        forces[j].0 += fx;
-                        forces[j].1 += fy;
-                        forces[j].2 += fz;
-                    }
+                    let distance_squared = dx * dx + dy * dy + dz * dz;
+                    let distance = distance_squared.sqrt().max(min_distance);
+                    
+                    // Use inverse square law with clamped maximum force
+                    let force = (repulsion_strength / distance_squared).min(100.0);
+                    
+                    // Normalize direction vector
+                    let fx = (dx / distance) * force;
+                    let fy = (dy / distance) * force;
+                    let fz = (dz / distance) * force;
+                    
+                    forces[i].0 -= fx;
+                    forces[i].1 -= fy;
+                    forces[i].2 -= fz;
+                    
+                    forces[j].0 += fx;
+                    forces[j].1 += fy;
+                    forces[j].2 += fz;
                 }
             }
 
             // Calculate spring forces along edges
+            let ideal_length = 50.0; // Ideal spring length
+            let max_spring_force = 10.0; // Maximum spring force
+            
             for edge in &graph.edges {
                 // Find indices of source and target nodes
                 let source_idx = graph.nodes.iter().position(|n| n.id == edge.source);
@@ -308,40 +324,62 @@ impl GraphService {
                     let dy = target.y() - source.y();
                     let dz = target.z() - source.z();
                     
-                    let distance = (dx * dx + dy * dy + dz * dz).sqrt();
-                    if distance > 0.0 {
-                        // Scale force by edge weight
-                        let force = spring_strength * (distance - 30.0) * edge.weight;
-                        
-                        let fx = dx * force / distance;
-                        let fy = dy * force / distance;
-                        let fz = dz * force / distance;
-                        
-                        forces[si].0 += fx;
-                        forces[si].1 += fy;
-                        forces[si].2 += fz;
-                        
-                        forces[ti].0 -= fx;
-                        forces[ti].1 -= fy;
-                        forces[ti].2 -= fz;
-                    }
+                    let distance_squared = dx * dx + dy * dy + dz * dz;
+                    let distance = distance_squared.sqrt().max(0.1); // Prevent division by zero
+                    
+                    // Calculate spring force with ideal length and weight
+                    let displacement = distance - ideal_length;
+                    let force = (spring_strength * displacement * edge.weight)
+                        .clamp(-max_spring_force, max_spring_force);
+                    
+                    // Normalize direction vector and apply force
+                    let fx = (dx / distance) * force;
+                    let fy = (dy / distance) * force;
+                    let fz = (dz / distance) * force;
+                    
+                    forces[si].0 += fx;
+                    forces[si].1 += fy;
+                    forces[si].2 += fz;
+                    
+                    forces[ti].0 -= fx;
+                    forces[ti].1 -= fy;
+                    forces[ti].2 -= fz;
                 }
             }
             
-            // Apply forces and update positions
+            // Apply forces and update positions with stability constraints
+            let max_velocity = 5.0; // Maximum allowed velocity
+            let dt = 0.1; // Time step for integration
+            
             for (i, node) in graph.nodes.iter_mut().enumerate() {
-                let vx = node.vx() + forces[i].0;
-                let vy = node.vy() + forces[i].1;
-                let vz = node.vz() + forces[i].2;
+                // Update velocity with damping and clamping
+                let mut vx = node.vx() + forces[i].0 * dt;
+                let mut vy = node.vy() + forces[i].1 * dt;
+                let mut vz = node.vz() + forces[i].2 * dt;
                 
-                let x = node.x() + vx;
-                let y = node.y() + vy;
-                let z = node.z() + vz;
+                // Apply damping
+                vx *= damping;
+                vy *= damping;
+                vz *= damping;
                 
-                node.set_vx(vx * damping);
-                node.set_vy(vy * damping);
-                node.set_vz(vz * damping);
+                // Clamp velocity magnitude
+                let v_mag = (vx * vx + vy * vy + vz * vz).sqrt();
+                if v_mag > max_velocity {
+                    let scale = max_velocity / v_mag;
+                    vx *= scale;
+                    vy *= scale;
+                    vz *= scale;
+                }
                 
+                // Update position using clamped velocity
+                let x = node.x() + vx * dt;
+                let y = node.y() + vy * dt;
+                let z = node.z() + vz * dt;
+                
+                // Store updated values
+                node.set_vx(vx);
+                node.set_vy(vy);
+                node.set_vz(vz);
                 node.set_x(x);
                 node.set_y(y);
                 node.set_z(z);
