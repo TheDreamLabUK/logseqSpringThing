@@ -68,8 +68,15 @@ export class PlatformManager extends BrowserEventEmitter {
     this.detectPlatform();
     await this.detectCapabilities();
     
-    // Initialize platform with settings
-    if (settings.xr?.mode) {
+    // Auto-enable XR mode for Quest devices unless explicitly disabled in settings
+    if (this.isQuest()) {
+      this._isXRMode = settings.xr?.mode !== 'inline';
+      if (this._isXRMode) {
+        this.capabilities.xrSupported = await this.checkXRSupport('immersive-ar');
+      }
+    }
+    // For other platforms, initialize based on settings
+    else if (settings.xr?.mode) {
       this._isXRMode = true;
       this.capabilities.xrSupported = await this.checkXRSupport(
         settings.xr?.mode as XRSessionMode
@@ -77,7 +84,11 @@ export class PlatformManager extends BrowserEventEmitter {
     }
     
     this.initialized = true;
-    logger.log('Platform manager initialized');
+    logger.log('Platform manager initialized:', {
+      platform: this.platform,
+      isXRMode: this._isXRMode,
+      capabilities: this.capabilities
+    });
   }
 
   private detectPlatform(): void {
@@ -86,6 +97,7 @@ export class PlatformManager extends BrowserEventEmitter {
     
     if (isQuest) {
       this.platform = 'quest';
+      logger.log('Quest platform detected');
     } else if (userAgent.includes('chrome') || userAgent.includes('firefox') || userAgent.includes('safari')) {
       this.platform = 'browser';
     } else {
@@ -97,7 +109,16 @@ export class PlatformManager extends BrowserEventEmitter {
     // WebXR support
     if ('xr' in navigator && navigator.xr) {
       try {
-        this.capabilities.xrSupported = await navigator.xr.isSessionSupported('immersive-ar');
+        // For Quest devices, prioritize checking immersive-ar support
+        if (this.isQuest()) {
+          this.capabilities.xrSupported = await navigator.xr.isSessionSupported('immersive-ar');
+        } else {
+          // For other platforms, check both VR and AR
+          this.capabilities.xrSupported = 
+            await navigator.xr.isSessionSupported('immersive-ar') ||
+            await navigator.xr.isSessionSupported('immersive-vr');
+        }
+        
         this.capabilities.webxr = this.capabilities.xrSupported;
         this.capabilities.handTracking = this.capabilities.xrSupported;
         this.capabilities.planeDetection = this.capabilities.xrSupported;
@@ -183,7 +204,6 @@ export class PlatformManager extends BrowserEventEmitter {
 
       const session = await navigator.xr.requestSession(mode, features);
 
-      // Update capabilities based on session features
       session.addEventListener('end', () => {
         logger.log('XR session ended');
         this.emit('xrsessionend');
@@ -204,7 +224,6 @@ export class PlatformManager extends BrowserEventEmitter {
         if (supported) {
           this.capabilities.webxr = true;
           this.capabilities.handTracking = true;
-          // Only set plane detection for AR mode
           this.capabilities.planeDetection = mode === 'immersive-ar';
           this.emit('xrdevicechange', true);
           logger.log('WebXR supported for mode:', mode);
