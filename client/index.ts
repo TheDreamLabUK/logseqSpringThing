@@ -8,9 +8,17 @@ import { SettingsStore } from './state/SettingsStore';
 import { LoggerConfig, createLogger } from './core/logger';
 import { SceneManager } from './rendering/scene';
 import { graphDataManager } from './state/graphData';
+import { debugState } from './core/debugState';
 import './ui'; // Import UI initialization
 
 const logger = createLogger('GraphVisualization');
+
+// Helper for conditional debug logging
+function debugLog(message: string, ...args: any[]) {
+    if (debugState.isDataDebugEnabled()) {
+        logger.debug(message, ...args);
+    }
+}
 
 export class GraphVisualization {
     private sceneManager: SceneManager;
@@ -21,21 +29,17 @@ export class GraphVisualization {
     private websocketService!: WebSocketService;
 
     private async initializeWebSocket(): Promise<void> {
-        logger.debug('Initializing WebSocket connection');
-        // Initialize settings first
-        const settingsStore = SettingsStore.getInstance();
-        await settingsStore.initialize();
-        logger.debug('Settings store initialized');
-
+        debugLog('Initializing WebSocket connection');
+        
         // Load initial graph data
-        logger.debug('Loading initial graph data');
+        debugLog('Loading initial graph data');
         try {
             await graphDataManager.fetchInitialData();
             // Update visualization with initial data
             const graphData = graphDataManager.getGraphData();
             this.nodeManager.updateNodes(graphData.nodes);
             this.edgeManager.updateEdges(graphData.edges);
-            logger.debug('Initial graph data loaded and visualization updated');
+            debugLog('Initial graph data loaded and visualization updated');
         } catch (error) {
             logger.error('Failed to load initial graph data:', error);
         }
@@ -43,26 +47,26 @@ export class GraphVisualization {
         // Then initialize WebSocket for position updates
         this.websocketService = WebSocketService.getInstance();
         this.websocketService.onBinaryMessage((nodes) => {
-            logger.debug('Received binary node update', { nodeCount: nodes.length });
+            debugLog('Received binary node update', { nodeCount: nodes.length });
             this.nodeManager.updateNodePositions(nodes);
         });
         this.websocketService.onSettingsUpdate((updatedSettings) => {
-            logger.debug('Received settings update');
+            debugLog('Received settings update');
             this.handleSettingsUpdate(updatedSettings);
         });
         this.websocketService.onConnectionStatusChange((connected) => {
             logger.info(`WebSocket connection status changed: ${connected}`);
             if (connected) {
-                logger.debug('Requesting position updates');
+                debugLog('Requesting position updates');
                 this.websocketService.sendMessage({ type: 'requestInitialData' });
             }
         });
         this.websocketService.connect();
-        logger.debug('WebSocket initialization complete');
+        debugLog('WebSocket initialization complete');
     }
 
     constructor(settings: Settings) {
-        logger.debug('Initializing GraphVisualization');
+        debugLog('Initializing GraphVisualization');
         
         // Get existing canvas element
         const canvas = document.getElementById('main-canvas') as HTMLCanvasElement;
@@ -88,12 +92,12 @@ export class GraphVisualization {
         
         // Start rendering
         this.sceneManager.start();
-        logger.debug('GraphVisualization initialization complete');
+        debugLog('GraphVisualization initialization complete');
     }
 
 
     public handleSettingsUpdate(settings: Settings) {
-        logger.debug('Handling settings update');
+        debugLog('Handling settings update');
         this.nodeManager.handleSettingsUpdate(settings);
         this.edgeManager.handleSettingsUpdate(settings);
         this.hologramManager.updateSettings(settings);
@@ -102,23 +106,44 @@ export class GraphVisualization {
     }
 
     public dispose() {
-        logger.debug('Disposing GraphVisualization');
+        debugLog('Disposing GraphVisualization');
         this.nodeManager.dispose();
         this.edgeManager.dispose();
         this.hologramManager.dispose();
         this.textRenderer.dispose();
         this.websocketService.close();
         SceneManager.cleanup();
-        logger.debug('GraphVisualization disposed');
+        debugLog('GraphVisualization disposed');
     }
 }
 
 // Import default settings
 import { defaultSettings } from './state/defaultSettings';
 
-// Enable debug logging
-LoggerConfig.setGlobalDebug(true);
-LoggerConfig.setFullJson(true);
+// Initialize settings and logging
+async function init() {
+    // Initialize settings first
+    const settingsStore = SettingsStore.getInstance();
+    await settingsStore.initialize();
+    
+    // Configure logging based on settings
+    const debugEnabled = settingsStore.get('system.debug.enabled') as boolean;
+    const logFullJson = settingsStore.get('system.debug.log_full_json') as boolean;
+    LoggerConfig.setGlobalDebug(debugEnabled);
+    LoggerConfig.setFullJson(logFullJson);
+    
+    // Subscribe to debug setting changes
+    settingsStore.subscribe('system.debug.enabled', (_, value) => {
+        LoggerConfig.setGlobalDebug(value as boolean);
+    });
+    settingsStore.subscribe('system.debug.log_full_json', (_, value) => {
+        LoggerConfig.setFullJson(value as boolean);
+    });
+    
+    logger.log('Starting application...');
+    new GraphVisualization(defaultSettings);
+}
 
-logger.log('Starting application...');
-new GraphVisualization(defaultSettings);
+init().catch(error => {
+    console.error('Failed to initialize application:', error);
+});

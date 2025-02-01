@@ -1,8 +1,16 @@
 import { createLogger } from '../core/logger';
 import { buildWsUrl } from '../core/api';
+import { debugState } from '../core/debugState';
 import pako from 'pako';
 
 const logger = createLogger('WebSocketService');
+
+// Helper for conditional debug logging
+function debugLog(message: string, ...args: any[]) {
+    if (debugState.isWebsocketDebugEnabled()) {
+        logger.debug(message, ...args);
+    }
+}
 
 // Compression settings
 const COMPRESSION_THRESHOLD = 1024; // Only compress messages larger than 1KB
@@ -125,23 +133,25 @@ export class WebSocketService {
             // Notify connection status change
             if (this.connectionStatusHandler) {
                 this.connectionStatusHandler(true);
-                logger.debug('Connection status handler notified: connected');
+                debugLog('Connection status handler notified: connected');
             }
 
             // Send request for position updates after connection
-            logger.debug('Requesting position updates');
+            debugLog('Requesting position updates');
             this.sendMessage({ type: 'requestInitialData' });
         };
 
         this.ws.onerror = (event: Event): void => {
             logger.error('WebSocket error:', event);
             if (this.ws) {
-                logger.debug('Connection details:', {
-                    readyState: this.ws.readyState,
-                    url: this.url,
-                    connectionState: this.connectionState,
-                    reconnectAttempts: this.reconnectAttempts
-                });
+                if (debugState.isWebsocketDebugEnabled()) {
+                    debugLog('Connection details:', {
+                        readyState: this.ws.readyState,
+                        url: this.url,
+                        connectionState: this.connectionState,
+                        reconnectAttempts: this.reconnectAttempts
+                    });
+                }
             }
             if (this.ws?.readyState === WebSocket.CLOSED) {
                 this.handleReconnect();
@@ -154,7 +164,9 @@ export class WebSocketService {
             // Notify connection status change
             if (this.connectionStatusHandler) {
                 this.connectionStatusHandler(false);
-                logger.debug('Connection status handler notified: disconnected');
+                if (debugState.isWebsocketDebugEnabled()) {
+                    debugLog('Connection status handler notified: disconnected');
+                }
             }
             
             this.handleReconnect();
@@ -163,7 +175,7 @@ export class WebSocketService {
         this.ws.onmessage = (event: MessageEvent) => {
             try {
                 if (event.data instanceof ArrayBuffer) {
-                    logger.debug('Received binary position update');
+                    debugLog('Received binary position update');
                     try {
                         this.handleBinaryMessage(event.data);
                     } catch (error) {
@@ -176,7 +188,9 @@ export class WebSocketService {
                 } else if (typeof event.data === 'string') {
                     try {
                         const message = JSON.parse(event.data);
-                        logger.debug('Received JSON message:', message);
+                        if (debugState.isWebsocketDebugEnabled()) {
+                            debugLog('Received JSON message:', message);
+                        }
                         
                         switch (message.type) {
                             case 'settings':
@@ -240,14 +254,18 @@ export class WebSocketService {
                 });
                 return buffer;
             }
-            logger.debug('Successfully decompressed binary data:', {
-                originalSize: buffer.byteLength,
-                decompressedSize: decompressed.length
-            });
+            if (debugState.shouldLogBinaryHeaders()) {
+                debugLog('Successfully decompressed binary data:', {
+                    originalSize: buffer.byteLength,
+                    decompressedSize: decompressed.length
+                });
+            }
             return decompressed.buffer.slice(decompressed.byteOffset, decompressed.byteOffset + decompressed.byteLength);
         } catch (error) {
             // If decompression fails, assume the data wasn't compressed
-            logger.debug('Data appears to be uncompressed:', error);
+            if (debugState.isWebsocketDebugEnabled()) {
+                debugLog('Data appears to be uncompressed:', error);
+            }
             return buffer;
         }
     }
@@ -256,10 +274,12 @@ export class WebSocketService {
         if (buffer.byteLength > COMPRESSION_THRESHOLD) {
             try {
                 const compressed = pako.deflate(new Uint8Array(buffer));
-                logger.debug('Successfully compressed binary data:', {
-                    originalSize: buffer.byteLength,
-                    compressedSize: compressed.length
-                });
+                if (debugState.shouldLogBinaryHeaders()) {
+                    debugLog('Successfully compressed binary data:', {
+                        originalSize: buffer.byteLength,
+                        compressedSize: compressed.length
+                    });
+                }
                 return compressed.buffer;
             } catch (error) {
                 logger.warn('Compression failed, using original data:', error);
@@ -308,12 +328,14 @@ export class WebSocketService {
                 throw new Error(`Invalid buffer size: ${decompressedBuffer.byteLength} bytes (expected ${expectedSize})`);
             }
 
-            logger.debug('Processing binary update:', {
-                nodeCount,
-                messageType,
-                originalSize: buffer.byteLength,
-                decompressedSize: decompressedBuffer.byteLength
-            });
+            if (debugState.shouldLogBinaryHeaders()) {
+                debugLog('Processing binary update:', {
+                    nodeCount,
+                    messageType,
+                    originalSize: buffer.byteLength,
+                    decompressedSize: decompressedBuffer.byteLength
+                });
+            }
 
             const nodes: NodeData[] = [];
             
@@ -363,11 +385,13 @@ export class WebSocketService {
             if (nodes.length > 0) {
                 // Notify callback if registered
                 if (this.binaryMessageCallback) {
-                    logger.debug('Notifying callback:', {
-                        nodeCount: nodes.length,
-                        firstNode: nodes[0],
-                        lastNode: nodes[nodes.length - 1]
-                    });
+                    if (debugState.isWebsocketDebugEnabled()) {
+                        debugLog('Notifying callback:', {
+                            nodeCount: nodes.length,
+                            firstNode: nodes[0],
+                            lastNode: nodes[nodes.length - 1]
+                        });
+                    }
                     try {
                         this.binaryMessageCallback(nodes);
                     } catch (error) {
@@ -395,13 +419,15 @@ export class WebSocketService {
             const wasConnected = this.connectionState === ConnectionState.CONNECTED;
             const previousState = this.connectionState;
             
-            logger.debug('Handling reconnect:', {
-                wasConnected,
-                previousState,
-                attempts: this.reconnectAttempts,
-                maxAttempts: this._maxReconnectAttempts,
-                url: this.url
-            });
+            if (debugState.isWebsocketDebugEnabled()) {
+                debugLog('Handling reconnect:', {
+                    wasConnected,
+                    previousState,
+                    attempts: this.reconnectAttempts,
+                    maxAttempts: this._maxReconnectAttempts,
+                    url: this.url
+                });
+            }
 
             this.connectionState = ConnectionState.DISCONNECTED;
             this.binaryMessageCallback = null;
@@ -487,7 +513,9 @@ export class WebSocketService {
                 this.settingsUpdateHandler(settings);
             }
 
-            logger.debug(`Updated setting ${settingsKey}:`, value);
+            if (debugState.isWebsocketDebugEnabled()) {
+                debugLog(`Updated setting ${settingsKey}:`, value);
+            }
         } catch (e) {
             logger.error('Failed to handle settings update:', e);
         }
