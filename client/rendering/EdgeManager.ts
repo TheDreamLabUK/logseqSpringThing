@@ -19,7 +19,7 @@ export class EdgeManager {
     private instancedMesh: InstancedMesh | null = null;
     private geometryFactory: GeometryFactory;
     private materialFactory: MaterialFactory;
-    private quaternion = new Quaternion();
+    private static UP = new Vector3(0, 1, 0);
 
     constructor(scene: Scene, settings: Settings) {
         this.scene = scene;
@@ -63,14 +63,27 @@ export class EdgeManager {
             // Calculate edge direction and length
             const direction = endPos.clone().sub(startPos);
             const length = direction.length();
+            direction.normalize();
             
             // Position the edge at the midpoint between source and target
-            const position = startPos.clone().add(direction.multiplyScalar(0.5));
+            const position = startPos.clone().add(direction.clone().multiplyScalar(length * 0.5));
             
-            // Calculate rotation
-            const matrix = new Matrix4();
+            // Create transformation components
             const scale = new Vector3(1, length, 1);
-            matrix.compose(position, this.quaternion, scale);
+            
+            // Calculate rotation from UP vector to edge direction
+            const upDot = EdgeManager.UP.dot(direction);
+            const rotationAxis = new Vector3().crossVectors(EdgeManager.UP, direction).normalize();
+            const rotationAngle = Math.acos(upDot);
+            
+            // Create matrix from components
+            const matrix = new Matrix4().compose(
+                position,
+                Math.abs(Math.abs(upDot) - 1) > 0.001
+                    ? new Quaternion().setFromAxisAngle(rotationAxis, rotationAngle)
+                    : new Quaternion(),
+                scale
+            );
 
             mesh.setMatrixAt(index, matrix);
         });
