@@ -14,6 +14,7 @@ visualization/MetadataVisualizer.ts
 websocket/websocketService.ts
 xr/xrInteraction.ts
 xr/xrSessionManager.ts
+xr/xrInitializer.ts
 components/settings/ValidationErrorDisplay.ts
 core/constants.ts
 core/types.ts
