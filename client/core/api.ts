@@ -37,10 +37,9 @@ export function buildFilesUrl(path: string): string {
 export function buildWsUrl(): string {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.hostname;
-    // Don't append port for production domain
-    const base = host === 'www.visionflow.info'
-        ? `${protocol}//${host}`
-        : `${protocol}//${host}:4000`;
+    // Always use port 4000 for WebSocket in development
+    const port = process.env.NODE_ENV === 'production' ? '' : ':4000';
+    const base = `${protocol}//${host}${port}`;
     const wsPath = '/wss';
     return `${base}${wsPath}`;
 }

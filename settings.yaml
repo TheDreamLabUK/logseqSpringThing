@@ -1,18 +1,18 @@
 visualization:
   nodes:
     base_color: '#00ffff'
-    base_size: 3.0
+    base_size: 4.0
     metalness: 0.8
-    opacity: 0.2
-    roughness: 1.0
+    opacity: 1.0
+    roughness: 0.2
     size_range:
     - 1.0
     - 3.0
     quality: high
-    enable_instancing: true
-    enable_hologram: true
-    enable_metadata_shape: true
-    enable_metadata_visualization: true
+    enable_instancing: false
+    enable_hologram: false
+    enable_metadata_shape: false
+    enable_metadata_visualization: false
   edges:
     arrow_size: 0.0
     base_width: 1.0
@@ -35,7 +35,7 @@ visualization:
     spring_strength: 0.018
   rendering:
     ambient_light_intensity: 0.5
-    background_color: '#121212'
+    background_color: '#d95e5e'
     directional_light_intensity: 1.5
     enable_ambient_occlusion: true
     enable_antialiasing: true
@@ -55,12 +55,12 @@ visualization:
     enable_labels: true
     text_color: '#ffffff'
   bloom:
-    edge_bloom_strength: 0.5
+    edge_bloom_strength: 0.3
     enabled: true
-    environment_bloom_strength: 1.0
-    node_bloom_strength: 2.0
-    radius: 0.8
-    strength: 1.5
+    environment_bloom_strength: 0.3
+    node_bloom_strength: 0.2
+    radius: 0.0
+    strength: 0.2
   hologram:
     ring_count: 3
     ring_color: '#00ffff'

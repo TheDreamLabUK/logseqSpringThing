@@ -47,15 +47,11 @@ export class GraphVisualization {
             logger.error('Failed to load initial graph data:', error);
         }
 
-        // Then initialize WebSocket for position updates
+        // Initialize WebSocket for position updates only
         this.websocketService = WebSocketService.getInstance();
         this.websocketService.onBinaryMessage((nodes) => {
             debugLog('Received binary node update', { nodeCount: nodes.length });
             this.nodeManager.updateNodePositions(nodes);
-        });
-        this.websocketService.onSettingsUpdate((updatedSettings) => {
-            debugLog('Received settings update');
-            this.handleSettingsUpdate(updatedSettings);
         });
         this.websocketService.onConnectionStatusChange((connected) => {
             logger.info(`WebSocket connection status changed: ${connected}`);
@@ -89,6 +85,9 @@ export class GraphVisualization {
         this.edgeManager = new EdgeManager(scene, settings);
         this.hologramManager = new HologramManager(scene, renderer, settings);
         this.textRenderer = new TextRenderer(camera);
+        
+        // Apply initial settings to all components
+        this.handleSettingsUpdate(settings);
         
         // Initialize WebSocket after settings are loaded
         this.initializeWebSocket();
