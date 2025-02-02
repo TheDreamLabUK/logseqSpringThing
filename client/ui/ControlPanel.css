@@ -212,6 +212,33 @@ input[type="color"] {
     background: rgba(255, 255, 255, 0.15);
 }
 
+/* XR Button */
+#xr-button {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 12px 24px;
+    background: rgba(76, 175, 80, 0.2);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    border-radius: 20px;
+    color: #4CAF50;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    z-index: 1000;
+    transition: all 0.3s ease;
+}
+
+#xr-button:hover {
+    background: rgba(76, 175, 80, 0.3);
+}
+
+#xr-button.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
 /* Select dropdowns */
 select {
     background: rgba(255, 255, 255, 0.05);

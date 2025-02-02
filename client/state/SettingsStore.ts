@@ -5,6 +5,7 @@ import { buildApiUrl } from '../core/api';
 import { API_ENDPOINTS } from '../core/constants';
 import { Logger } from '../core/logger';
 import { validateSettings, validateSettingValue, ValidationError } from '../types/settings/validation';
+import { convertObjectKeysToSnakeCase, convertObjectKeysToCamelCase } from '../core/utils';
 
 const logger = createLogger('SettingsStore');
 
@@ -211,32 +212,74 @@ export class SettingsStore {
         }
     }
 
+    private prepareSettingsForSync(settings: Settings): any {
+        // Create a copy of settings
+        const preparedSettings = JSON.parse(JSON.stringify(settings));
+
+        // Only include debug settings if debug is enabled
+        if (!preparedSettings.system?.debug?.enabled) {
+            if (preparedSettings.system?.debug) {
+                // Keep only the enabled flag when debug is disabled
+                preparedSettings.system.debug = {
+                    enabled: false
+                };
+            }
+        }
+
+        // Convert to snake_case for server
+        return convertObjectKeysToSnakeCase(preparedSettings);
+    }
+
     private async syncWithServer(): Promise<void> {
         try {
+            // Prepare settings for server sync
+            const serverSettings = this.prepareSettingsForSync(this.settings);
+            
+            this.logger.debug('Sending settings to server:', {
+                debug: serverSettings.system?.debug,
+                debugEnabled: this.settings.system?.debug?.enabled
+            });
+            
             const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(this.settings)
+                body: JSON.stringify(serverSettings)
             });
             
             if (!response.ok) {
                 const errorText = await response.text();
+                this.logger.error('Server sync failed:', {
+                    status: response.status,
+                    error: errorText,
+                    sentSettings: serverSettings.system?.debug
+                });
                 throw new Error(`Server returned ${response.status}: ${errorText}`);
             }
             
-            // Update local settings with server response
-            const serverSettings = await response.json();
+            // Convert server response back to camelCase
+            const responseData = await response.json();
+            const camelCaseSettings = convertObjectKeysToCamelCase(responseData);
+            
+            this.logger.debug('Received settings from server:', {
+                debug: camelCaseSettings.system?.debug
+            });
             
             // Validate server response
-            const validationResult = validateSettings(serverSettings);
+            const validationResult = validateSettings(camelCaseSettings);
             if (!validationResult.isValid) {
+                this.logger.error('Settings validation failed:', {
+                    errors: validationResult.errors,
+                    receivedSettings: camelCaseSettings.system?.debug
+                });
                 throw new Error(`Invalid server response: ${JSON.stringify(validationResult.errors)}`);
             }
             
-            this.settings = this.deepMerge(this.settings, serverSettings);
-            this.logger.debug('Settings synced successfully with server');
+            this.settings = this.deepMerge(this.settings, camelCaseSettings);
+            this.logger.debug('Settings synced successfully:', {
+                finalDebug: this.settings.system?.debug
+            });
         } catch (error) {
             this.logger.error('Failed to sync settings with server:', error);
             if (this.retryCount < this.MAX_RETRIES) {
@@ -275,27 +318,37 @@ export class SettingsStore {
     private deepMerge(target: any, source: any): any {
         const result = { ...target };
         
+        // Ensure all required sections exist
+        result.system = result.system || {};
+        result.system.debug = result.system.debug || {};
+        result.system.websocket = result.system.websocket || {};
+        result.visualization = result.visualization || {};
+        result.xr = result.xr || {};
+
+        // Deep merge each section
+        if (source.system) {
+            result.system = {
+                ...result.system,
+                debug: source.system.debug?.enabled ? {
+                    ...result.system.debug,
+                    ...source.system.debug
+                } : {
+                    enabled: false
+                },
+                websocket: {
+                    ...result.system.websocket,
+                    ...source.system.websocket
+                }
+            };
+        }
+
         // Handle visualization section
         if (source.visualization) {
-            result.visualization = result.visualization || {};
             for (const category in source.visualization) {
                 if (result.visualization[category]) {
                     result.visualization[category] = {
                         ...result.visualization[category],
                         ...source.visualization[category]
-                    };
-                }
-            }
-        }
-        
-        // Handle system section
-        if (source.system) {
-            result.system = result.system || {};
-            for (const category in source.system) {
-                if (result.system[category]) {
-                    result.system[category] = {
-                        ...result.system[category],
-                        ...source.system[category]
                     };
                 }
             }
@@ -309,17 +362,6 @@ export class SettingsStore {
             };
         }
 
-        // Handle any other top-level properties
-        for (const key in source) {
-            if (!['visualization', 'system', 'xr'].includes(key)) {
-                if (source[key] instanceof Object && key in target) {
-                    result[key] = this.deepMerge(target[key], source[key]);
-                } else {
-                    result[key] = source[key];
-                }
-            }
-        }
-        
         return result;
     }
 

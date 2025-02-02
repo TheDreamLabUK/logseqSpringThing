@@ -115,6 +115,13 @@ export class GraphVisualization {
         this.hologramManager.dispose();
         this.textRenderer.dispose();
         this.websocketService.close();
+        
+        // Clean up XR components
+        if ((window as any).xrInitializer) {
+            (window as any).xrInitializer.dispose();
+            delete (window as any).xrInitializer;
+        }
+        
         SceneManager.cleanup();
         debugLog('GraphVisualization disposed');
     }
@@ -146,31 +153,48 @@ async function init() {
     logger.log('Starting application...');
     
     try {
-        // Initialize settings first
+        // Initialize settings first and wait for completion
         const settingsStore = SettingsStore.getInstance();
         await settingsStore.initialize();
+        const settings = settingsStore.get('') as Settings || defaultSettings;
 
-        // Initialize platform detection before UI
-        await platformManager.initialize(defaultSettings);
+        // Initialize platform detection with current settings
+        await platformManager.initialize(settings);
 
-        // Initialize UI with settings after platform detection
-        const { initializeUI } = await import('./ui');
-        await initializeUI();
-        
-        // Initialize main visualization and store globally
-        const viz = new GraphVisualization(defaultSettings);
-        (window as any).visualization = viz;
-        
-        // Get canvas and scene manager
+        // Create XR button if it doesn't exist
+        if (!document.getElementById('xr-button')) {
+            const xrButton = document.createElement('button');
+            xrButton.id = 'xr-button';
+            xrButton.className = 'hidden';
+            document.body.appendChild(xrButton);
+        }
+
+        // Get canvas and scene manager first for XR setup
         const canvas = document.getElementById('main-canvas') as HTMLCanvasElement;
         if (!canvas) {
             throw new Error('Could not find #main-canvas element');
         }
         const sceneManager = SceneManager.getInstance(canvas);
-        
-        // Initialize XR components
+
+        // Initialize XR components before UI
         const xrSessionManager = XRSessionManager.getInstance(sceneManager);
-        XRInitializer.getInstance(xrSessionManager);
+        // Keep XRInitializer instance to maintain event listeners, but store in window for cleanup
+        (window as any).xrInitializer = XRInitializer.getInstance(xrSessionManager);
+
+        // Initialize UI with settings after XR setup
+        const { initializeUI } = await import('./ui');
+        await initializeUI();
+        
+        // Initialize main visualization and store globally
+        const viz = new GraphVisualization(settings);
+        (window as any).visualization = viz;
+
+        // Log successful initialization
+        logger.info('Application components initialized successfully', {
+            platformType: platformManager.getPlatform(),
+            xrSupported: platformManager.isXRSupported(),
+            isQuest: platformManager.isQuest()
+        });
         
         logger.info('Application initialized successfully');
     } catch (error) {
