@@ -20,7 +20,7 @@ export interface XRSettings {
     handRayEnabled: boolean;
     handRayColor: string;
     handRayWidth: number;
-    gestureSsmoothing: number;
+    gestureSmoothing: number;
     
     // Interaction
     enableHaptics: boolean;
@@ -86,7 +86,7 @@ export const defaultXRSettings: XRSettings = {
     handRayEnabled: true,
     handRayColor: '#00ff00',
     handRayWidth: 2,
-    gestureSsmoothing: 0.5,
+    gestureSmoothing: 0.5,
     
     // Interaction
     enableHaptics: true,

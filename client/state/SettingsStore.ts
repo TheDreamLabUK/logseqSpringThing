@@ -233,13 +233,22 @@ export class SettingsStore {
         };
 
         // Always include required XR fields
+        const defaultXR = defaultSettings.xr;
         preparedSettings.xr = {
             ...preparedSettings.xr,
-            gesture_smoothing: preparedSettings.xr.gestureSsmoothing ?? 0.5,
-            mode: preparedSettings.xr.mode ?? 'immersive-ar',
-            room_scale: preparedSettings.xr.roomScale ?? true,
-            quality: preparedSettings.xr.quality ?? 'high',
-            space_type: preparedSettings.xr.spaceType ?? 'local-floor'
+            gesture_smoothing: preparedSettings.xr.gestureSmoothing ?? defaultXR.gestureSmoothing,
+            mode: preparedSettings.xr.mode ?? defaultXR.mode,
+            room_scale: preparedSettings.xr.roomScale ?? defaultXR.roomScale,
+            quality: preparedSettings.xr.quality ?? defaultXR.quality,
+            space_type: preparedSettings.xr.spaceType ?? defaultXR.spaceType,
+            enable_hand_tracking: preparedSettings.xr.enableHandTracking ?? defaultXR.enableHandTracking,
+            hand_mesh_enabled: preparedSettings.xr.handMeshEnabled ?? defaultXR.handMeshEnabled,
+            hand_mesh_color: preparedSettings.xr.handMeshColor ?? defaultXR.handMeshColor,
+            hand_mesh_opacity: preparedSettings.xr.handMeshOpacity ?? defaultXR.handMeshOpacity,
+            hand_point_size: preparedSettings.xr.handPointSize ?? defaultXR.handPointSize,
+            hand_ray_enabled: preparedSettings.xr.handRayEnabled ?? defaultXR.handRayEnabled,
+            hand_ray_color: preparedSettings.xr.handRayColor ?? defaultXR.handRayColor,
+            hand_ray_width: preparedSettings.xr.handRayWidth ?? defaultXR.handRayWidth
         };
 
         // Handle array types
@@ -402,6 +411,7 @@ export class SettingsStore {
         }
         
         const parts = path.split('.');
+        const section = parts[0];
         const lastKey = parts.pop()!;
         const target = parts.reduce((obj: any, key) => {
             if (!(key in obj)) {
@@ -414,7 +424,32 @@ export class SettingsStore {
             throw new Error(`Invalid settings path: ${path}`);
         }
 
+        // Update the specific value
         target[lastKey] = value;
+
+        // If this is an XR setting, ensure all required fields are present
+        if (section === 'xr') {
+            const currentXR = this.settings.xr;
+            const defaultXR = defaultSettings.xr;
+            
+            // Ensure all required XR fields are present with defaults
+            this.settings.xr = {
+                ...currentXR,
+                mode: currentXR.mode ?? defaultXR.mode,
+                roomScale: currentXR.roomScale ?? defaultXR.roomScale,
+                spaceType: currentXR.spaceType ?? defaultXR.spaceType,
+                quality: currentXR.quality ?? defaultXR.quality,
+                gestureSmoothing: currentXR.gestureSmoothing ?? defaultXR.gestureSmoothing,
+                enableHandTracking: currentXR.enableHandTracking ?? defaultXR.enableHandTracking,
+                handMeshEnabled: currentXR.handMeshEnabled ?? defaultXR.handMeshEnabled,
+                handMeshColor: currentXR.handMeshColor ?? defaultXR.handMeshColor,
+                handMeshOpacity: currentXR.handMeshOpacity ?? defaultXR.handMeshOpacity,
+                handPointSize: currentXR.handPointSize ?? defaultXR.handPointSize,
+                handRayEnabled: currentXR.handRayEnabled ?? defaultXR.handRayEnabled,
+                handRayColor: currentXR.handRayColor ?? defaultXR.handRayColor,
+                handRayWidth: currentXR.handRayWidth ?? defaultXR.handRayWidth
+            };
+        }
     }
 
     public dispose(): void {

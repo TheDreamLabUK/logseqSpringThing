@@ -154,7 +154,7 @@ export interface XRSettings {
     handRayEnabled: boolean;
     handRayColor: string;
     handRayWidth: number;
-    gestureSsmoothing: number;
+    gestureSmoothing: number;
     
     // Interaction
     enableHaptics: boolean;

@@ -106,7 +106,7 @@ function validateXRSettings(xr: Settings['xr'], errors: ValidationError[]): void
     validateNumericRange('xr.handPointSize', xr.handPointSize, 0.1, 20, errors);
     validateNumericRange('xr.handRayWidth', xr.handRayWidth, 0.1, 10, errors);
     validateNumericRange('xr.hapticIntensity', xr.hapticIntensity, 0, 1, errors);
-    validateNumericRange('xr.gestureSsmoothing', xr.gestureSsmoothing, 0, 1, errors);
+    validateNumericRange('xr.gestureSmoothing', xr.gestureSmoothing, 0, 1, errors);
     validateNumericRange('xr.dragThreshold', xr.dragThreshold, 0, 1, errors);
     validateNumericRange('xr.pinchThreshold', xr.pinchThreshold, 0, 1, errors);
     validateNumericRange('xr.rotationThreshold', xr.rotationThreshold, 0, 1, errors);
@@ -178,7 +178,7 @@ function isInterdependentSetting(changedPath: string, errorPath: string): boolea
         'xr.enableHandTracking': [
             'xr.handMeshEnabled',
             'xr.handRayEnabled',
-            'xr.gestureSsmoothing'
+            'xr.gestureSmoothing'
         ]
     };
 

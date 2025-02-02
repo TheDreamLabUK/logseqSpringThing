@@ -135,7 +135,7 @@ export const defaultSettings: Settings = {
         handRayEnabled: true,
         handRayColor: toHexColor(0xffffff),
         handRayWidth: 2,
-        gestureSsmoothing: 0.5,
+        gestureSmoothing: 0.5,
         enableHaptics: true,
         hapticIntensity: 0.5,
         dragThreshold: 0.1,
