@@ -5,6 +5,7 @@ use webxr::{
         health_handler,
         pages_handler,
         socket_flow_handler::socket_flow_handler,
+        nostr_handler,
     },
     GPUCompute, GraphData,
     services::{
@@ -67,7 +68,6 @@ async fn main() -> std::io::Result<()> {
 
     info!("Starting WebXR application...");
     
-    // Replace log_data! and log_warn! with standard log macros
     info!("Initializing GPU compute...");
     
     let gpu_compute = if cfg!(feature = "gpu") {
@@ -107,7 +107,7 @@ async fn main() -> std::io::Result<()> {
     drop(settings_read);
 
     // Initialize app state
-    let app_state = web::Data::new(AppState::new(
+    let mut app_state = AppState::new(
         settings.clone(),
         github_client.clone(),
         content_api.clone(),
@@ -115,7 +115,12 @@ async fn main() -> std::io::Result<()> {
         None,
         gpu_compute,
         "default_conversation".to_string(),
-    ));
+    );
+
+    // Initialize Nostr service
+    nostr_handler::init_nostr_service(&mut app_state);
+
+    let app_state = web::Data::new(app_state);
 
     // Initialize local storage and fetch initial data
     info!("Initializing local storage and fetching initial data");
@@ -183,6 +188,7 @@ async fn main() -> std::io::Result<()> {
             .service(
                 web::scope("")
                     .configure(api_handler::config)
+                    .configure(nostr_handler::config)
                     .service(web::scope("/health").configure(health_handler::config))
                     .service(web::scope("/pages").configure(pages_handler::config))
             )

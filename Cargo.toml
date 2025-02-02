@@ -49,6 +49,7 @@ cudarc = { version = "0.10", features = ["driver"] }
 reqwest = { version = "0.11", features = ["json", "stream"] }
 async-openai = "0.14"
 backoff = { version = "0.4", features = ["tokio"] }
+nostr-sdk = "0.24"
 
 # Utilities
 uuid = { version = "1.4", features = ["v4", "serde"] }

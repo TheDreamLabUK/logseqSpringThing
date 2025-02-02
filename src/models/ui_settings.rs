@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::config::{
-    AnimationSettings, BloomSettings, DebugSettings, EdgeSettings,
-    HologramSettings, LabelSettings, NodeSettings, PhysicsSettings,
-    RenderingSettings, VisualizationSettings, XRSettings, Settings,
+    DebugSettings, Settings, VisualizationSettings, XRSettings,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

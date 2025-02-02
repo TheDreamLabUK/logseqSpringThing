@@ -1,10 +1,30 @@
 use serde::{Deserialize, Serialize};
+use chrono::Utc;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiKeys {
+    pub perplexity: Option<String>,
+    pub openai: Option<String>,
+    pub ragflow: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrUser {
+    pub pubkey: String,
+    pub npub: String,
+    pub is_power_user: bool,
+    pub api_keys: ApiKeys,
+    pub last_seen: i64,
+    pub session_token: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProtectedSettings {
     pub network: NetworkSettings,
     pub security: SecuritySettings,
     pub websocket_server: WebSocketServerSettings,
+    pub users: std::collections::HashMap<String, NostrUser>,
+    pub default_api_keys: ApiKeys,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +62,16 @@ pub struct WebSocketServerSettings {
     pub url: String,
 }
 
+impl Default for ApiKeys {
+    fn default() -> Self {
+        Self {
+            perplexity: None,
+            openai: None,
+            ragflow: None,
+        }
+    }
+}
+
 impl Default for ProtectedSettings {
     fn default() -> Self {
         Self {
@@ -74,6 +104,8 @@ impl Default for ProtectedSettings {
                 max_message_size: 32 * 1024 * 1024, // 32MB
                 url: String::new(),
             },
+            users: std::collections::HashMap::new(),
+            default_api_keys: ApiKeys::default(),
         }
     }
 }
@@ -98,7 +130,77 @@ impl ProtectedSettings {
             }
         }
 
+        if let Some(users) = other.get("users") {
+            if let Ok(user_settings) = serde_json::from_value(users.clone()) {
+                self.users = user_settings;
+            }
+        }
+
+        if let Some(api_keys) = other.get("defaultApiKeys") {
+            if let Ok(keys) = serde_json::from_value(api_keys.clone()) {
+                self.default_api_keys = keys;
+            }
+        }
+
         Ok(())
+    }
+
+    pub fn get_api_keys(&self, pubkey: &str) -> ApiKeys {
+        if let Some(user) = self.users.get(pubkey) {
+            if user.is_power_user {
+                // Power users get environment-based keys
+                ApiKeys {
+                    perplexity: std::env::var("PERPLEXITY_API_KEY").ok(),
+                    openai: std::env::var("OPENAI_API_KEY").ok(),
+                    ragflow: std::env::var("RAGFLOW_API_KEY").ok(),
+                }
+            } else {
+                // Normal users get their stored keys
+                user.api_keys.clone()
+            }
+        } else {
+            // Default keys for unauthenticated users
+            self.default_api_keys.clone()
+        }
+    }
+
+    pub fn validate_client_token(&self, pubkey: &str, token: &str) -> bool {
+        if let Some(user) = self.users.get(pubkey) {
+            if let Some(session_token) = &user.session_token {
+                return session_token == token;
+            }
+        }
+        false
+    }
+
+    pub fn store_client_token(&mut self, pubkey: String, token: String) {
+        if let Some(user) = self.users.get_mut(&pubkey) {
+            user.session_token = Some(token);
+            user.last_seen = Utc::now().timestamp();
+        }
+    }
+
+    pub fn cleanup_expired_tokens(&mut self, max_age_hours: i64) {
+        let now = Utc::now().timestamp();
+        let max_age_secs = max_age_hours * 3600;
+        
+        self.users.retain(|_, user| {
+            now - user.last_seen < max_age_secs
+        });
+    }
+
+    pub fn update_user_api_keys(&mut self, pubkey: &str, api_keys: ApiKeys) -> Result<NostrUser, String> {
+        if let Some(user) = self.users.get_mut(pubkey) {
+            if !user.is_power_user {
+                user.api_keys = api_keys;
+                user.last_seen = Utc::now().timestamp();
+                Ok(user.clone())
+            } else {
+                Err("Cannot update API keys for power users".to_string())
+            }
+        } else {
+            Err("User not found".to_string())
+        }
     }
 
     pub fn load(path: &str) -> Result<Self, String> {
