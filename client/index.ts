@@ -150,16 +150,16 @@ async function init() {
         const settingsStore = SettingsStore.getInstance();
         await settingsStore.initialize();
 
-        // Initialize UI with settings
+        // Initialize platform detection before UI
+        await platformManager.initialize(defaultSettings);
+
+        // Initialize UI with settings after platform detection
         const { initializeUI } = await import('./ui');
         await initializeUI();
         
         // Initialize main visualization and store globally
         const viz = new GraphVisualization(defaultSettings);
         (window as any).visualization = viz;
-        
-        // Initialize platform and XR components
-        await platformManager.initialize(defaultSettings);
         
         // Get canvas and scene manager
         const canvas = document.getElementById('main-canvas') as HTMLCanvasElement;

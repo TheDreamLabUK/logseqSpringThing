@@ -2,6 +2,7 @@ import { SettingsStore } from '../state/SettingsStore';
 import { getAllSettingPaths, formatSettingName, getSettingInputType, getStepValue } from '../types/settings/utils';
 import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDisplay';
 import { createLogger } from '../core/logger';
+import { platformManager } from '../platform/platformManager';
 
 const logger = createLogger('ControlPanel');
 
@@ -14,17 +15,23 @@ export class ControlPanel {
 
     private constructor(parentElement: HTMLElement) {
         this.settingsStore = SettingsStore.getInstance();
-        this.container = document.createElement('div');
-        this.container.className = 'settings-panel';
-        parentElement.appendChild(this.container);
+        
+        // Use existing control-panel element if it exists, otherwise create new
+        const existingPanel = document.getElementById('control-panel');
+        if (existingPanel instanceof HTMLDivElement) {
+            this.container = existingPanel;
+        } else {
+            this.container = document.createElement('div');
+            this.container.id = 'control-panel';
+            parentElement.appendChild(this.container);
+        }
 
         // Initialize validation error display
         this.validationDisplay = new ValidationErrorDisplay(this.container);
 
         // Check platform and settings before showing panel
-        const { platformManager } = require('../platform/platformManager');
         if (platformManager.isQuest()) {
-            this.container.style.display = 'none';
+            this.hide();
         }
 
         this.initializePanel();
@@ -274,93 +281,8 @@ export class ControlPanel {
     }
 
     private addStyles(): void {
-        const style = document.createElement('style');
-        style.textContent = `
-            .settings-panel {
-                padding: 20px;
-                background: #f5f5f5;
-                border-radius: 8px;
-                max-width: 800px;
-                margin: 0 auto;
-            }
-
-            .settings-section {
-                margin-bottom: 24px;
-                background: white;
-                padding: 16px;
-                border-radius: 4px;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }
-
-            .settings-section-header {
-                margin: 0 0 16px 0;
-                padding-bottom: 8px;
-                border-bottom: 2px solid #eee;
-                color: #333;
-                font-size: 18px;
-            }
-
-            .settings-subsection {
-                margin: 16px 0;
-                padding: 16px;
-                background: #f9f9f9;
-                border-radius: 4px;
-            }
-
-            .settings-subsection-header {
-                margin: 0 0 12px 0;
-                color: #666;
-                font-size: 16px;
-            }
-
-            .setting-control {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin: 8px 0;
-                padding: 8px;
-                border-radius: 4px;
-            }
-
-            .setting-control:hover {
-                background: #f0f0f0;
-            }
-
-            .setting-control label {
-                flex: 1;
-                margin-right: 16px;
-                color: #444;
-            }
-
-            .setting-input {
-                padding: 4px 8px;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                font-size: 14px;
-            }
-
-            .setting-input[type="checkbox"] {
-                width: 20px;
-                height: 20px;
-            }
-
-            .setting-input[type="color"] {
-                padding: 0;
-                width: 40px;
-                height: 24px;
-            }
-
-            .setting-input[type="number"] {
-                width: 80px;
-            }
-
-            .setting-input:focus {
-                outline: none;
-                border-color: #007bff;
-                box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
-            }
-        `;
-        document.head.appendChild(style);
+        // Styles are now loaded from ControlPanel.css
+        return;
     }
 
     public show(): void {
