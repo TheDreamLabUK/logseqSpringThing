@@ -1,10 +1,11 @@
 use reqwest::Client;
 use std::time::Duration;
 use log::debug;
-use crate::config::Settings;
+use super::config::GitHubConfig;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::error::Error;
+use crate::config::Settings;
 
 const GITHUB_API_DELAY: Duration = Duration::from_millis(500);
 const MAX_RETRIES: u32 = 3;
@@ -23,10 +24,7 @@ pub struct GitHubClient {
 impl GitHubClient {
     /// Create a new GitHub API client
     pub async fn new(
-        token: String,
-        owner: String,
-        repo: String,
-        base_path: String,
+        config: GitHubConfig,
         settings: Arc<RwLock<Settings>>,
     ) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let settings_guard = settings.read().await;
@@ -35,7 +33,7 @@ impl GitHubClient {
 
         if debug_enabled {
             debug!("Initializing GitHub client - Owner: '{}', Repo: '{}', Base path: '{}'",
-                owner, repo, base_path);
+                config.owner, config.repo, config.base_path);
         }
 
         // Build HTTP client with configuration
@@ -53,8 +51,8 @@ impl GitHubClient {
         }
 
         // First decode any existing encoding
-        let decoded_path = urlencoding::decode(&base_path)
-            .unwrap_or(std::borrow::Cow::Owned(base_path.clone()))
+        let decoded_path = urlencoding::decode(&config.base_path)
+            .unwrap_or(std::borrow::Cow::Owned(config.base_path.clone()))
             .into_owned();
         
         if debug_enabled {
@@ -74,9 +72,9 @@ impl GitHubClient {
 
         Ok(Self {
             client,
-            token,
-            owner,
-            repo,
+            token: config.token,
+            owner: config.owner,
+            repo: config.repo,
             base_path,
             settings: Arc::clone(&settings),
         })

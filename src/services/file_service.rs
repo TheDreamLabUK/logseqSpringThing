@@ -16,7 +16,7 @@ use actix_web::web;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Error;
-use super::github::{GitHubClient, ContentAPI};
+use super::github::{GitHubClient, ContentAPI, GitHubConfig};
 
 // Constants
 const METADATA_PATH: &str = "/app/data/metadata/metadata.json";
@@ -221,20 +221,12 @@ impl FileService {
     pub async fn initialize_local_storage(
         settings: Arc<RwLock<Settings>>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        // Create GitHub client
-        let settings_guard = settings.read().await;
-        let github_settings = &settings_guard.github;
-        
-        let github = GitHubClient::new(
-           github_settings.token.clone(),
-           github_settings.owner.clone(),
-           github_settings.repo.clone(),
-           github_settings.base_path.clone(),
-           Arc::clone(&settings),
-       ).await?;
-        
+        // Create GitHub client using environment variables
+        let github_config = GitHubConfig::from_env()
+            .map_err(|e| Box::new(e) as Box<dyn StdError + Send + Sync>)?;
+            
+        let github = GitHubClient::new(github_config, Arc::clone(&settings)).await?;
         let content_api = ContentAPI::new(Arc::new(github));
-        drop(settings_guard);
 
         // Check if we already have a valid local setup
         if Self::has_valid_local_setup() {

@@ -11,7 +11,7 @@ use webxr::{
     services::{
         file_service::FileService,
         graph_service::GraphService,
-        github::{GitHubClient, ContentAPI},
+        github::{GitHubClient, ContentAPI, GitHubConfig},
     },
 };
 
@@ -91,20 +91,17 @@ async fn main() -> std::io::Result<()> {
     let settings_data = web::Data::new(settings.clone());
 
     // Initialize services
-    let settings_read = settings.read().await;
-    let github_client = match GitHubClient::new(
-        settings_read.github.token.clone(),
-        settings_read.github.owner.clone(),
-        settings_read.github.repo.clone(),
-        settings_read.github.base_path.clone(),
-        settings.clone(),
-    ).await {
+    let github_config = match GitHubConfig::from_env() {
+        Ok(config) => config,
+        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to load GitHub config: {}", e)))
+    };
+
+    let github_client = match GitHubClient::new(github_config, settings.clone()).await {
         Ok(client) => Arc::new(client),
-        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        Err(e) => return Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to initialize GitHub client: {}", e)))
     };
 
     let content_api = Arc::new(ContentAPI::new(github_client.clone()));
-    drop(settings_read);
 
     // Initialize app state
     let mut app_state = AppState::new(

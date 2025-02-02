@@ -33,7 +33,6 @@ pub struct Settings {
     pub visualization: VisualizationSettings,
     pub system: SystemSettings,
     pub xr: XRSettings,
-    pub github: GitHubSettings,
     pub ragflow: RagFlowSettings,
     pub perplexity: PerplexitySettings,
     pub openai: OpenAISettings,
@@ -236,16 +235,6 @@ pub struct XRSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GitHubSettings {
-    pub token: String,
-    pub owner: String,
-    pub repo: String,
-    pub base_path: String,
-    pub rate_limit: bool,
-    pub version: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RagFlowSettings {
     pub api_key: String,
     pub api_base_url: String,
@@ -302,50 +291,11 @@ impl Settings {
             settings.merge_env(env_settings);
         }
 
-        // Load required GitHub settings from environment variables
-        settings.github.token = std::env::var("GITHUB_TOKEN")
-            .map_err(|_| ConfigError::NotFound("GITHUB_TOKEN".into()))?;
-        settings.github.owner = std::env::var("GITHUB_OWNER")
-            .map_err(|_| ConfigError::NotFound("GITHUB_OWNER".into()))?;
-        settings.github.repo = std::env::var("GITHUB_REPO")
-            .map_err(|_| ConfigError::NotFound("GITHUB_REPO".into()))?;
-        settings.github.base_path = std::env::var("GITHUB_BASE_PATH")
-            .map_err(|_| ConfigError::NotFound("GITHUB_BASE_PATH".into()))?;
-
-        // Validate GitHub settings are not empty
-        if settings.github.token.is_empty()
-            || settings.github.owner.is_empty()
-            || settings.github.repo.is_empty()
-            || settings.github.base_path.is_empty()
-        {
-            return Err(ConfigError::Message(
-                "Required GitHub settings cannot be empty".into(),
-            ));
-        }
-
-        info!(
-            "GitHub settings loaded: owner={}, repo={}, base_path={}",
-            settings.github.owner, settings.github.repo, settings.github.base_path
-        );
-
         Ok(settings)
     }
 
-    pub fn merge_env(&mut self, env_settings: Settings) {
-        // Merge environment settings, only overwriting if they are non-default values
-        if !env_settings.github.token.is_empty() {
-            self.github.token = env_settings.github.token;
-        }
-        if !env_settings.github.owner.is_empty() {
-            self.github.owner = env_settings.github.owner;
-        }
-        if !env_settings.github.repo.is_empty() {
-            self.github.repo = env_settings.github.repo;
-        }
-        if !env_settings.github.base_path.is_empty() {
-            self.github.base_path = env_settings.github.base_path;
-        }
-        // Add other environment-specific settings as needed
+    pub fn merge_env(&mut self, _env_settings: Settings) {
+        // Environment-specific settings are now handled by their respective modules
     }
 
     pub fn merge(&mut self, value: Value) -> Result<(), String> {
@@ -600,14 +550,6 @@ impl Default for Settings {
                 portal_size: 2.0,
                 portal_edge_color: "#ffffff".to_string(),
                 portal_edge_width: 2.0,
-            },
-            github: GitHubSettings {
-                token: String::new(),
-                owner: String::new(),
-                repo: String::new(),
-                base_path: String::new(),
-                rate_limit: true,
-                version: "v3".to_string(),
             },
             ragflow: RagFlowSettings {
                 api_key: String::new(),
