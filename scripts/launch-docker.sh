@@ -452,7 +452,12 @@ if [ "$REBUILD_TEST" = true ]; then
     docker system prune -f
 fi
 
-$DOCKER_COMPOSE build --pull --no-cache
+# Get current git hash or use "development" if not in a git repo
+GIT_HASH=$(git rev-parse HEAD 2>/dev/null || echo "development")
+export GIT_HASH
+
+# Build with GIT_HASH environment variable
+GIT_HASH=$GIT_HASH $DOCKER_COMPOSE build --pull --no-cache
 $DOCKER_COMPOSE up -d
 
 # 11. Check readiness (fatal if fails)

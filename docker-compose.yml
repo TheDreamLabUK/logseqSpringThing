@@ -34,6 +34,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_GPU_UUID:-0}  # Use GPU UUID from launch script
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NODE_ENV=production
+      - GIT_HASH=${GIT_HASH:-development}  # Pass GIT_HASH from build environment
     env_file:
       - .env
     volumes:

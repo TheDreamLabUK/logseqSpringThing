@@ -54,21 +54,26 @@ WORKDIR /usr/src/app
 # Copy Cargo files first for better layer caching
 COPY Cargo.toml Cargo.lock ./
 
+# Install git and set GIT_HASH
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
 # Create dummy src directory and build dependencies
 RUN mkdir src && \
     echo "fn main() {}" > src/main.rs && \
+    GIT_HASH=$(git rev-parse HEAD || echo "development") \
     CARGO_NET_GIT_FETCH_WITH_CLI=true \
     CARGO_HTTP_TIMEOUT=120 \
     CARGO_HTTP_CHECK_REVOKE=false \
     cargo build --release --jobs $(nproc) || \
-    (sleep 2 && CARGO_HTTP_MULTIPLEXING=false cargo build --release --jobs $(nproc)) || \
-    (sleep 5 && CARGO_HTTP_MULTIPLEXING=false cargo build --release --jobs 1)
+    (sleep 2 && GIT_HASH=$(git rev-parse HEAD || echo "development") CARGO_HTTP_MULTIPLEXING=false cargo build --release --jobs $(nproc)) || \
+    (sleep 5 && GIT_HASH=$(git rev-parse HEAD || echo "development") CARGO_HTTP_MULTIPLEXING=false cargo build --release --jobs 1)
 
 # Now copy the real source code and build
 COPY src ./src
-RUN cargo build --release --jobs $(nproc) || \
-    (sleep 2 && cargo build --release --jobs $(nproc)) || \
-    (sleep 5 && cargo build --release --jobs 1)
+RUN GIT_HASH=$(git rev-parse HEAD || echo "development") \
+    cargo build --release --jobs $(nproc) || \
+    (sleep 2 && GIT_HASH=$(git rev-parse HEAD || echo "development") cargo build --release --jobs $(nproc)) || \
+    (sleep 5 && GIT_HASH=$(git rev-parse HEAD || echo "development") cargo build --release --jobs 1)
 
 # Stage 3: Python Dependencies
 FROM python:3.10.12-slim AS python-builder
