@@ -258,6 +258,250 @@ classDiagram
     AppState --> SpeechService
 ```
 
+### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Client as Client (Browser)
+    participant Platform as PlatformManager
+    participant XR as XRSessionManager
+    participant Scene as SceneManager
+    participant Node as EnhancedNodeManager
+    participant Edge as EdgeManager
+    participant Hologram as HologramManager
+    participant Text as TextRenderer
+    participant WS as WebSocketService
+    participant Settings as SettingsStore
+    participant Server as Actix Server
+    participant AppState as AppState
+    participant FileH as FileHandler
+    participant GraphH as GraphHandler
+    participant WSH as WebSocketHandler
+    participant PerplexityH as PerplexityHandler
+    participant RagFlowH as RagFlowHandler
+    participant NostrH as NostrHandler
+    participant SettingsH as SettingsHandler
+    participant FileS as FileService
+    participant GraphS as GraphService
+    participant GPUS as GPUService
+    participant PerplexityS as PerplexityService
+    participant RagFlowS as RagFlowService
+    participant NostrS as NostrService
+    participant SpeechS as SpeechService
+    participant WSM as WebSocketManager
+    participant GitHub as GitHub API
+    participant Perplexity as Perplexity AI
+    participant RagFlow as RagFlow API
+    participant OpenAI as OpenAI API
+    participant Nostr as Nostr API
+
+    activate Server
+    Server->>Server: Load settings.yaml & env vars (config.rs)
+    alt Settings Load Error
+        Server-->>Client: Error Response (500)
+    else Settings Loaded Successfully
+        Server->>AppState: new() (app_state.rs)
+        activate AppState
+            AppState->>GPUS: initialize_gpu_compute()
+            activate GPUS
+                GPUS->>GPUS: setup_compute_pipeline()
+                GPUS->>GPUS: load_wgsl_shaders()
+                GPUS-->>AppState: GPU Compute Instance
+            deactivate GPUS
+            
+            AppState->>WSM: initialize()
+            activate WSM
+                WSM->>WSM: setup_binary_protocol()
+                WSM-->>AppState: WebSocket Manager
+            deactivate WSM
+            
+            AppState->>SpeechS: start()
+            activate SpeechS
+                SpeechS->>SpeechS: initialize_tts()
+                SpeechS-->>AppState: Speech Service
+            deactivate SpeechS
+            
+            AppState->>NostrS: initialize()
+            activate NostrS
+                NostrS->>NostrS: setup_nostr_client()
+                NostrS-->>AppState: Nostr Service
+            deactivate NostrS
+            
+            AppState-->>Server: Initialized AppState
+        deactivate AppState
+
+        Server->>FileS: fetch_and_process_files()
+        activate FileS
+            FileS->>GitHub: fetch_files()
+            activate GitHub
+                GitHub-->>FileS: Files or Error
+            deactivate GitHub
+            
+            loop For Each File
+                FileS->>FileS: should_process_file()
+                alt File Needs Processing
+                    FileS->>PerplexityS: process_file()
+                    activate PerplexityS
+                        PerplexityS->>Perplexity: analyze_content()
+                        Perplexity-->>PerplexityS: Analysis Results
+                        PerplexityS-->>FileS: Processed Content
+                    deactivate PerplexityS
+                    FileS->>FileS: save_metadata()
+                end
+            end
+            FileS-->>Server: Processed Files
+        deactivate FileS
+
+        Server->>GraphS: build_graph()
+        activate GraphS
+            GraphS->>GraphS: create_nodes_and_edges()
+            GraphS->>GPUS: calculate_layout()
+            activate GPUS
+                GPUS->>GPUS: bind_gpu_buffers()
+                GPUS->>GPUS: dispatch_compute_shader()
+                GPUS->>GPUS: read_buffer_results()
+                GPUS-->>GraphS: Updated Positions
+            deactivate GPUS
+            GraphS-->>Server: Graph Data
+        deactivate GraphS
+    end
+
+    Client->>Platform: initialize()
+    activate Platform
+        Platform->>Platform: detect_capabilities()
+        Platform->>Settings: load_settings()
+        activate Settings
+            Settings->>Settings: validate_settings()
+            Settings-->>Platform: Settings Object
+        deactivate Settings
+        
+        Platform->>WS: connect()
+        activate WS
+            WS->>Server: ws_connect
+            Server->>WSH: handle_connection()
+            WSH->>WSM: register_client()
+            WSM-->>WS: connection_established
+            
+            WS->>WS: setup_binary_handlers()
+            WS->>WS: initialize_reconnection_logic()
+            
+            WSM-->>WS: initial_graph_data (Binary)
+            WS->>WS: decode_binary_message()
+        deactivate WS
+        
+        Platform->>XR: initialize()
+        activate XR
+            XR->>XR: check_xr_support()
+            XR->>Scene: create()
+            activate Scene
+                Scene->>Scene: setup_three_js()
+                Scene->>Scene: setup_render_pipeline()
+                Scene->>Node: initialize()
+                activate Node
+                    Node->>Node: create_geometries()
+                    Node->>Node: setup_materials()
+                deactivate Node
+                Scene->>Edge: initialize()
+                activate Edge
+                    Edge->>Edge: create_line_geometries()
+                    Edge->>Edge: setup_line_materials()
+                deactivate Edge
+                Scene->>Hologram: initialize()
+                activate Hologram
+                    Hologram->>Hologram: setup_hologram_shader()
+                    Hologram->>Hologram: create_hologram_geometry()
+                deactivate Hologram
+                Scene->>Text: initialize()
+                activate Text
+                    Text->>Text: load_fonts()
+                    Text->>Text: setup_text_renderer()
+                deactivate Text
+            deactivate Scene
+        deactivate XR
+    deactivate Platform
+
+    note over Client,Nostr: User Interaction Flows
+
+    alt User Drags Node
+        Client->>Node: handle_node_drag()
+        Node->>WS: send_position_update()
+        WS->>Server: binary_position_update
+        Server->>GraphS: update_layout()
+        GraphS->>GPUS: recalculate_forces()
+        GPUS-->>Server: new_positions
+        Server->>WSM: broadcast()
+        WSM-->>WS: binary_update
+        WS->>Node: update_positions()
+        Node-->>Client: render_update
+    end
+
+    alt User Asks Question
+        Client->>RagFlowH: send_query()
+        RagFlowH->>RagFlowS: process_query()
+        activate RagFlowS
+            RagFlowS->>RagFlow: get_context()
+            RagFlow-->>RagFlowS: relevant_context
+            RagFlowS->>OpenAI: generate_response()
+            OpenAI-->>RagFlowS: ai_response
+            RagFlowS-->>Client: streaming_response
+        deactivate RagFlowS
+        
+        alt Speech Enabled
+            Client->>SpeechS: synthesize_speech()
+            activate SpeechS
+                SpeechS->>OpenAI: text_to_speech()
+                OpenAI-->>SpeechS: audio_stream
+                SpeechS-->>Client: audio_data
+            deactivate SpeechS
+        end
+    end
+
+    alt User Updates Graph
+        Client->>FileH: update_file()
+        FileH->>FileS: process_update()
+        FileS->>GitHub: create_pull_request()
+        GitHub-->>FileS: pr_created
+        FileS-->>Client: success_response
+    end
+
+    alt WebSocket Reconnection
+        WS->>WS: connection_lost()
+        loop Until Max Attempts
+            WS->>WS: attempt_reconnect()
+            WS->>Server: ws_connect
+            alt Connection Successful
+                Server-->>WS: connection_established
+                WSM-->>WS: resend_graph_data
+                WS->>Node: restore_state()
+                break
+            end
+        end
+    end
+
+    alt Settings Update
+        Client->>SettingsH: update_settings()
+        SettingsH->>AppState: apply_settings()
+        AppState->>WSM: broadcast_settings()
+        WSM-->>WS: settings_update
+        WS->>Settings: update_settings()
+        Settings->>Platform: apply_platform_settings()
+        Platform->>Scene: update_rendering()
+        Scene->>Node: update_visuals()
+        Scene->>Edge: update_visuals()
+        Scene->>Hologram: update_effects()
+    end
+
+    alt Nostr Authentication
+        Client->>NostrH: authenticate()
+        NostrH->>NostrS: validate_session()
+        NostrS->>Nostr: verify_credentials()
+        Nostr-->>NostrS: auth_result
+        NostrS-->>Client: session_token
+    end
+
+    deactivate Server
+```
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
