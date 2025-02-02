@@ -16,10 +16,10 @@ xr/xrInteraction.ts
 xr/xrSessionManager.ts
 xr/xrInitializer.ts
 components/settings/ValidationErrorDisplay.ts
-core/constants.ts
 core/types.ts
 core/utils.ts
 core/debugState.ts
+core/constants.ts
 public/fonts/Roboto-Regular.woff2
 public/fonts/helvetiker_regular.typeface.json
 rendering/EdgeManager.ts

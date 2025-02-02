@@ -8,24 +8,12 @@ activate_venv() {
     source "$EXPORT_REPO/venv/bin/activate"
 }
 
-# Export both directories and combine them
-export_and_combine() {
-    # Export server (src) code
-    #python "$EXPORT_REPO/export-repository-to-file.py" "../src"
-    #mv output.txt server.txt
-
-    # Export client code
-    python "$EXPORT_REPO/export-repository-to-file.py" "../client"
-    mv output.txt client.txt
-
-    # Combine files and cleanup
-    cat client.txt >> server.txt
-    mv server.txt codebase.txt
-    rm client.txt
-}
 
 # Export Docker and deployment configuration
 export_docker_config() {
+    echo -e "\n--- README.md ---\n" >> codebase.txt
+    cat ../README.md >> codebase.txt
+
     echo -e "\n\n=== Docker Configuration ===\n" >> codebase.txt
     
     echo -e "\n--- docker-compose.yml ---\n" >> codebase.txt
@@ -51,6 +39,23 @@ export_network_info() {
     docker network inspect docker_ragflow >> codebase.txt 2>/dev/null || echo "Unable to fetch network info - docker daemon not running or network doesn't exist" >> codebase.txt
 }
 
+# Export both directories and combine them
+export_and_combine() {
+    # Export server (src) code
+    python "$EXPORT_REPO/export-repository-to-file.py" "../src"
+    mv output.txt server.txt
+
+    # Export client code
+    python "$EXPORT_REPO/export-repository-to-file.py" "../client"
+    mv output.txt client.txt
+
+    # Combine files and cleanup
+    cat server.txt >> codebase.txt
+    cat client.txt >> codebase.txt
+    rm server.txt
+    rm client.txt
+}
+
 # Main execution
 if [ ! -d "$EXPORT_REPO" ]; then
     echo "Error: Export repository not found at $EXPORT_REPO"
@@ -64,11 +69,14 @@ fi
 
 # Execute the export process
 activate_venv
-export_and_combine
-deactivate
 
 # Add Docker configuration and network info
 export_docker_config
 export_network_info
+
+export_and_combine
+deactivate
+
+
 
 echo "Successfully generated codebase.txt with Docker configuration and network info"
