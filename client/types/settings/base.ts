@@ -124,11 +124,15 @@ export interface BaseSettings {
     system: {
         debug: {
             enabled: boolean;
+            enableDataDebug: boolean;  // Added required field
+            enableWebsocketDebug: boolean;  // Added to match server
+            logBinaryHeaders: boolean;  // Added to match server
             logLevel: 'error' | 'warn' | 'info' | 'debug' | 'trace';
-            showStats: boolean;
-            showFPS: boolean;
-            showMemory: boolean;
+            logFormat: string;  // Added to match server
             logFullJson: boolean;
+            showStats?: boolean;  // Made optional since not in server
+            showFPS?: boolean;  // Made optional since not in server
+            showMemory?: boolean;  // Made optional since not in server
         };
         network: {
             websocketUrl: string;

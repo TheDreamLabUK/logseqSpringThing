@@ -50,7 +50,7 @@ export_and_combine() {
     mv output.txt client.txt
 
     # Combine files and cleanup
-    cat server.txt >> codebase.txt
+    # cat server.txt >> codebase.txt
     cat client.txt >> codebase.txt
     rm server.txt
     rm client.txt

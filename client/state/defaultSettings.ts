@@ -117,7 +117,9 @@ export const defaultSettings: Settings = {
             enableDataDebug: false,
             enableWebsocketDebug: false,
             logBinaryHeaders: false,
-            logFullJson: false
+            logFullJson: false,
+            logLevel: 'info',
+            logFormat: 'json'  // Added missing field
         }
     },
     xr: {

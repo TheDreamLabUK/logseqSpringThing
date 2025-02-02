@@ -128,6 +128,8 @@ export interface DebugSettings {
     enableWebsocketDebug: boolean;
     logBinaryHeaders: boolean;
     logFullJson: boolean;
+    logLevel: 'error' | 'warn' | 'info' | 'debug' | 'trace';
+    logFormat: string;
 }
 
 // XR settings
