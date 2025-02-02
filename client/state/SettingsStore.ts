@@ -23,6 +23,7 @@ export class SettingsStore {
     private retryCount: number = 0;
     private MAX_RETRIES: number = 3;
     private RETRY_DELAY: number = 1000;
+    private settingsOrigin: 'server' | 'default' = 'default';
 
     private constructor() {
         this.settings = {} as Settings;
@@ -47,17 +48,7 @@ export class SettingsStore {
 
         this.initializationPromise = (async () => {
             try {
-                // Start with default settings
-                this.settings = { ...defaultSettings };
-
-                // Validate default settings
-                const validationResult = validateSettings(this.settings);
-                if (!validationResult.isValid) {
-                    this.logger.error('Default settings validation failed:', validationResult.errors);
-                    this.notifyValidationErrors(validationResult.errors);
-                }
-
-                // Try to fetch settings from server
+                // Try to fetch settings from server first
                 try {
                     logger.info('Fetching settings from:', buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT));
                     const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT));
@@ -67,29 +58,43 @@ export class SettingsStore {
                         const serverSettings = await response.json();
                         logger.info('Received server settings:', serverSettings);
                         
-                        // Validate server settings before merging
+                        // Validate server settings
                         const serverValidation = validateSettings(serverSettings);
                         if (!serverValidation.isValid) {
                             throw new Error(`Invalid server settings: ${JSON.stringify(serverValidation.errors)}`);
                         }
                         
-                        // Deep merge server settings with defaults
-                        this.settings = this.deepMerge(this.settings, serverSettings);
-                        logger.info('Merged settings:', this.settings);
+                        // Use server settings as base, filling in any missing fields with defaults
+                        this.settings = this.deepMerge({ ...defaultSettings }, serverSettings);
+                        this.settingsOrigin = 'server';
+                        logger.info('Using server settings with defaults as fallback');
                     } else {
                         const errorText = await response.text();
                         throw new Error(`Failed to fetch server settings: ${response.statusText}. Details: ${errorText}`);
                     }
                 } catch (error) {
-                    logger.warn('Error loading server settings:', error);
+                    // If server settings fail, fall back to defaults
+                    logger.warn('Error loading server settings, falling back to defaults:', error);
+                    this.settings = { ...defaultSettings };
+                    this.settingsOrigin = 'default';
+                    
+                    // Validate default settings
+                    const validationResult = validateSettings(this.settings);
+                    if (!validationResult.isValid) {
+                        this.logger.error('Default settings validation failed:', validationResult.errors);
+                        this.notifyValidationErrors(validationResult.errors);
+                    }
+                    
                     logger.info('Using default settings:', this.settings);
                 }
 
                 this.initialized = true;
-                logger.info('SettingsStore initialized');
+                logger.info('SettingsStore initialized with origin:', this.settingsOrigin);
             } catch (error) {
-                logger.error('Failed to initialize settings:', error);
+                logger.error('Critical initialization failure:', error);
+                // Last resort: use defaults without validation
                 this.settings = { ...defaultSettings };
+                this.settingsOrigin = 'default';
                 this.initialized = true;
             }
         })();
@@ -179,25 +184,30 @@ export class SettingsStore {
             
             // Create a copy of settings for rollback
             const previousSettings = JSON.parse(JSON.stringify(this.settings));
+            const previousOrigin = this.settingsOrigin;
             
             // Update local state
             this.updateSettingValue(path, value);
+            // Mark as modified from default since this is a user action
+            this.settingsOrigin = 'default';
             
             // Validate entire settings object after update
             const fullValidation = validateSettings(this.settings);
             if (!fullValidation.isValid) {
                 // Rollback and notify of validation errors
                 this.settings = previousSettings;
+                this.settingsOrigin = previousOrigin;
                 this.notifyValidationErrors(fullValidation.errors);
                 throw new Error(`Full validation failed: ${JSON.stringify(fullValidation.errors)}`);
             }
             
-            // Sync with server
+            // Sync with server (not an initial sync)
             try {
-                await this.syncWithServer();
+                await this.syncWithServer(false);
             } catch (error) {
                 // Rollback on server sync failure
                 this.settings = previousSettings;
+                this.settingsOrigin = previousOrigin;
                 this.notifySubscribers(path, this.get(path));
                 throw error;
             }
@@ -205,11 +215,18 @@ export class SettingsStore {
             // Notify subscribers of successful update
             this.notifySubscribers(path, value);
             
-            this.logger.debug(`Setting updated successfully: ${path}`, value);
+            this.logger.debug(`Setting updated successfully: ${path}`, {
+                value,
+                origin: this.settingsOrigin
+            });
         } catch (error) {
             this.logger.error(`Failed to update setting: ${path}`, error);
             throw error;
         }
+    }
+
+    public isFromServer(): boolean {
+        return this.settingsOrigin === 'server';
     }
 
     private prepareSettingsForSync(settings: Settings): any {
@@ -264,14 +281,21 @@ export class SettingsStore {
         return convertObjectKeysToSnakeCase(preparedSettings);
     }
 
-    private async syncWithServer(): Promise<void> {
+    private async syncWithServer(isInitialSync: boolean = false): Promise<void> {
+        // Don't sync to server during initialization if we got settings from server
+        if (isInitialSync && this.settingsOrigin === 'server') {
+            this.logger.debug('Skipping initial sync as settings came from server');
+            return;
+        }
+
         try {
             // Prepare settings for server sync
             const serverSettings = this.prepareSettingsForSync(this.settings);
             
             this.logger.debug('Sending settings to server:', {
-                debug: serverSettings.system?.debug,
-                debugEnabled: this.settings.system?.debug?.enabled
+                origin: this.settingsOrigin,
+                isInitialSync,
+                debug: serverSettings.system?.debug
             });
             
             const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
