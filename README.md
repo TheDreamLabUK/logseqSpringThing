@@ -295,6 +295,7 @@ sequenceDiagram
     participant OpenAI as OpenAI API
     participant Nostr as Nostr API
 
+    %% Server initialization and AppState setup
     activate Server
     Server->>Server: Load settings.yaml & env vars (config.rs)
     alt Settings Load Error
@@ -366,6 +367,7 @@ sequenceDiagram
         deactivate GraphS
     end
 
+    %% Client and Platform initialization
     Client->>Platform: initialize()
     activate Platform
         Platform->>Platform: detect_capabilities()
@@ -420,8 +422,9 @@ sequenceDiagram
         deactivate XR
     deactivate Platform
 
-    note over Client,Nostr: User Interaction Flows
+    Note over Client, Nostr: User Interaction Flows
 
+    %% User drags a node
     alt User Drags Node
         Client->>Node: handle_node_drag()
         Node->>WS: send_position_update()
@@ -435,6 +438,7 @@ sequenceDiagram
         Node-->>Client: render_update
     end
 
+    %% User asks a question
     alt User Asks Question
         Client->>RagFlowH: send_query()
         RagFlowH->>RagFlowS: process_query()
@@ -445,7 +449,6 @@ sequenceDiagram
             OpenAI-->>RagFlowS: ai_response
             RagFlowS-->>Client: streaming_response
         deactivate RagFlowS
-        
         alt Speech Enabled
             Client->>SpeechS: synthesize_speech()
             activate SpeechS
@@ -456,6 +459,7 @@ sequenceDiagram
         end
     end
 
+    %% User updates the graph
     alt User Updates Graph
         Client->>FileH: update_file()
         FileH->>FileS: process_update()
@@ -464,6 +468,7 @@ sequenceDiagram
         FileS-->>Client: success_response
     end
 
+    %% WebSocket reconnection flow
     alt WebSocket Reconnection
         WS->>WS: connection_lost()
         loop Until Max Attempts
@@ -473,11 +478,13 @@ sequenceDiagram
                 Server-->>WS: connection_established
                 WSM-->>WS: resend_graph_data
                 WS->>Node: restore_state()
-                break
+            else Connection Failed
+                Note right of WS: Continue reconnect attempts
             end
         end
     end
 
+    %% Settings update flow
     alt Settings Update
         Client->>SettingsH: update_settings()
         SettingsH->>AppState: apply_settings()
@@ -491,6 +498,7 @@ sequenceDiagram
         Scene->>Hologram: update_effects()
     end
 
+    %% Nostr authentication flow
     alt Nostr Authentication
         Client->>NostrH: authenticate()
         NostrH->>NostrS: validate_session()
@@ -500,6 +508,7 @@ sequenceDiagram
     end
 
     deactivate Server
+
 ```
 
 ## License
