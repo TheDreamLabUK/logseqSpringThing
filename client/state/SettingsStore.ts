@@ -216,14 +216,39 @@ export class SettingsStore {
         // Create a copy of settings
         const preparedSettings = JSON.parse(JSON.stringify(settings));
 
-        // Only include debug settings if debug is enabled
-        if (!preparedSettings.system?.debug?.enabled) {
-            if (preparedSettings.system?.debug) {
-                // Keep only the enabled flag when debug is disabled
-                preparedSettings.system.debug = {
-                    enabled: false
-                };
-            }
+        // Ensure required sections exist
+        if (!preparedSettings.system) preparedSettings.system = {};
+        if (!preparedSettings.system.debug) preparedSettings.system.debug = {};
+        if (!preparedSettings.xr) preparedSettings.xr = {};
+
+        // Always include all required debug fields
+        preparedSettings.system.debug = {
+            enabled: preparedSettings.system.debug.enabled ?? false,
+            enable_data_debug: preparedSettings.system.debug.enableDataDebug ?? false,
+            enable_websocket_debug: preparedSettings.system.debug.enableWebsocketDebug ?? false,
+            log_binary_headers: preparedSettings.system.debug.logBinaryHeaders ?? false,
+            log_full_json: preparedSettings.system.debug.logFullJson ?? false,
+            log_level: preparedSettings.system.debug.logLevel ?? 'info',
+            log_format: preparedSettings.system.debug.logFormat ?? 'json'
+        };
+
+        // Always include required XR fields
+        preparedSettings.xr = {
+            ...preparedSettings.xr,
+            gesture_smoothing: preparedSettings.xr.gestureSsmoothing ?? 0.5,
+            mode: preparedSettings.xr.mode ?? 'immersive-ar',
+            room_scale: preparedSettings.xr.roomScale ?? true,
+            quality: preparedSettings.xr.quality ?? 'high',
+            space_type: preparedSettings.xr.spaceType ?? 'local-floor'
+        };
+
+        // Handle array types
+        if (preparedSettings.visualization?.nodes?.sizeRange) {
+            const sizeRange = preparedSettings.visualization.nodes.sizeRange;
+            preparedSettings.visualization.nodes.size_range =
+                Array.isArray(sizeRange) ? sizeRange : [1.0, 3.0];
+            // Remove the camelCase version since we've created the snake_case version
+            delete preparedSettings.visualization.nodes.sizeRange;
         }
 
         // Convert to snake_case for server
@@ -329,11 +354,17 @@ export class SettingsStore {
         if (source.system) {
             result.system = {
                 ...result.system,
-                debug: source.system.debug?.enabled ? {
+                debug: {
                     ...result.system.debug,
-                    ...source.system.debug
-                } : {
-                    enabled: false
+                    ...source.system.debug,
+                    // Always ensure required debug fields are present
+                    enabled: source.system.debug?.enabled ?? false,
+                    enableDataDebug: source.system.debug?.enableDataDebug ?? false,
+                    enableWebsocketDebug: source.system.debug?.enableWebsocketDebug ?? false,
+                    logBinaryHeaders: source.system.debug?.logBinaryHeaders ?? false,
+                    logFullJson: source.system.debug?.logFullJson ?? false,
+                    logLevel: source.system.debug?.logLevel ?? 'info',
+                    logFormat: source.system.debug?.logFormat ?? 'json'
                 },
                 websocket: {
                     ...result.system.websocket,
