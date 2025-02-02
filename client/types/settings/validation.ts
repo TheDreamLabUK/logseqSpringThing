@@ -101,15 +101,31 @@ function validateXRSettings(xr: Settings['xr'], errors: ValidationError[]): void
         });
     }
 
-    // Validate numeric ranges
+    // Validate quality
+    validateQualityEnum('xr.quality', xr.quality, errors);
+
+    // Validate hand tracking settings
     validateNumericRange('xr.handMeshOpacity', xr.handMeshOpacity, 0, 1, errors);
     validateNumericRange('xr.handPointSize', xr.handPointSize, 0.1, 20, errors);
     validateNumericRange('xr.handRayWidth', xr.handRayWidth, 0.1, 10, errors);
-    validateNumericRange('xr.hapticIntensity', xr.hapticIntensity, 0, 1, errors);
     validateNumericRange('xr.gestureSmoothing', xr.gestureSmoothing, 0, 1, errors);
+
+    // Validate interaction settings
+    validateNumericRange('xr.hapticIntensity', xr.hapticIntensity, 0, 1, errors);
     validateNumericRange('xr.dragThreshold', xr.dragThreshold, 0, 1, errors);
     validateNumericRange('xr.pinchThreshold', xr.pinchThreshold, 0, 1, errors);
     validateNumericRange('xr.rotationThreshold', xr.rotationThreshold, 0, 1, errors);
+    validateNumericRange('xr.interactionRadius', xr.interactionRadius, 0.1, 2, errors);
+
+    // Validate scene understanding settings
+    validateNumericRange('xr.planeOpacity', xr.planeOpacity, 0, 1, errors);
+
+    // Validate passthrough settings
+    validateNumericRange('xr.passthroughOpacity', xr.passthroughOpacity, 0, 1, errors);
+    validateNumericRange('xr.passthroughBrightness', xr.passthroughBrightness, 0, 2, errors);
+    validateNumericRange('xr.passthroughContrast', xr.passthroughContrast, 0, 2, errors);
+    validateNumericRange('xr.portalSize', xr.portalSize, 0.1, 10, errors);
+    validateNumericRange('xr.portalEdgeWidth', xr.portalEdgeWidth, 0.1, 5, errors);
 }
 
 function validateNumericRange(path: string, value: number, min: number, max: number, errors: ValidationError[]): void {
@@ -179,6 +195,13 @@ function isInterdependentSetting(changedPath: string, errorPath: string): boolea
             'xr.handMeshEnabled',
             'xr.handRayEnabled',
             'xr.gestureSmoothing'
+        ],
+        'xr.enablePassthroughPortal': [
+            'xr.passthroughOpacity',
+            'xr.passthroughBrightness',
+            'xr.passthroughContrast',
+            'xr.portalSize',
+            'xr.portalEdgeWidth'
         ]
     };
 

@@ -119,14 +119,17 @@ export const defaultSettings: Settings = {
             logBinaryHeaders: false,
             logFullJson: false,
             logLevel: 'info',
-            logFormat: 'json'  // Added missing field
+            logFormat: 'json'
         }
     },
     xr: {
+        // Mode and Space Settings
         mode: 'immersive-ar' as const,
         quality: 'high',
         roomScale: true,
         spaceType: 'local-floor',
+
+        // Hand Tracking Settings
         enableHandTracking: true,
         handMeshEnabled: true,
         handMeshColor: toHexColor(0xffffff),
@@ -136,23 +139,36 @@ export const defaultSettings: Settings = {
         handRayColor: toHexColor(0xffffff),
         handRayWidth: 2,
         gestureSmoothing: 0.5,
+
+        // Interaction Settings
         enableHaptics: true,
         hapticIntensity: 0.5,
         dragThreshold: 0.1,
         pinchThreshold: 0.5,
         rotationThreshold: 0.1,
         interactionRadius: 0.1,
-        // Platform settings
+
+        // Platform Settings
         autoEnterAR: true,
         hideControlPanel: true,
         preferredMode: 'immersive-ar',
-        // Scene understanding
+
+        // Scene Understanding
         enableLightEstimation: true,
         enablePlaneDetection: true,
         enableSceneUnderstanding: true,
         planeColor: toHexColor(0x808080),
         planeOpacity: 0.5,
         showPlaneOverlay: true,
-        snapToFloor: true
+        snapToFloor: true,
+
+        // Passthrough Settings
+        enablePassthroughPortal: false,
+        passthroughOpacity: 1.0,
+        passthroughBrightness: 1.0,
+        passthroughContrast: 1.0,
+        portalSize: 2.0,
+        portalEdgeColor: toHexColor(0xffffff),
+        portalEdgeWidth: 2.0
     }
-}
+};

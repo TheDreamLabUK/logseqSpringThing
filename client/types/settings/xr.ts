@@ -5,6 +5,7 @@ export interface XRSettings {
     mode: XRSessionMode;
     roomScale: boolean;
     spaceType: 'viewer' | 'local' | 'local-floor' | 'bounded-floor' | 'unbounded';
+    quality: 'low' | 'medium' | 'high';
     
     // Platform Settings
     autoEnterAR?: boolean;
@@ -47,9 +48,6 @@ export interface XRSettings {
     portalSize: number;
     portalEdgeColor: string;
     portalEdgeWidth: number;
-    
-    // Quality Settings
-    quality: 'low' | 'medium' | 'high';
 }
 
 // Platform-specific XR settings
@@ -71,6 +69,7 @@ export const defaultXRSettings: XRSettings = {
     mode: 'immersive-ar',
     roomScale: true,
     spaceType: 'local-floor',
+    quality: 'high',
     
     // Platform Settings
     autoEnterAR: true,
@@ -107,13 +106,10 @@ export const defaultXRSettings: XRSettings = {
     
     // Passthrough
     enablePassthroughPortal: false,
-    passthroughOpacity: 1,
-    passthroughBrightness: 1,
-    passthroughContrast: 1,
-    portalSize: 2,
+    passthroughOpacity: 1.0,
+    passthroughBrightness: 1.0,
+    passthroughContrast: 1.0,
+    portalSize: 2.0,
     portalEdgeColor: '#ffffff',
-    portalEdgeWidth: 2,
-    
-    // Quality
-    quality: 'high'
+    portalEdgeWidth: 2.0
 };

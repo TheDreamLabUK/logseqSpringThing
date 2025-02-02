@@ -1,5 +1,5 @@
 import { SettingsStore } from '../state/SettingsStore';
-import { getAllSettingPaths, formatSettingName, getSettingInputType, getStepValue } from '../types/settings/utils';
+import { getAllSettingPaths, formatSettingName, getStepValue } from '../types/settings/utils';
 import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDisplay';
 import { createLogger } from '../core/logger';
 import { platformManager } from '../platform/platformManager';
@@ -16,15 +16,16 @@ export class ControlPanel {
     private constructor(parentElement: HTMLElement) {
         this.settingsStore = SettingsStore.getInstance();
         
-        // Use existing control-panel element if it exists, otherwise create new
-        const existingPanel = document.getElementById('control-panel');
-        if (existingPanel instanceof HTMLDivElement) {
-            this.container = existingPanel;
-        } else {
-            this.container = document.createElement('div');
-            this.container.id = 'control-panel';
-            parentElement.appendChild(this.container);
-        }
+        // Create main container
+        this.container = document.createElement('div');
+        this.container.id = 'control-panel';
+        parentElement.appendChild(this.container);
+
+        // Create toggle tab
+        const toggleTab = document.createElement('div');
+        toggleTab.className = 'panel-toggle';
+        toggleTab.addEventListener('click', () => this.togglePanel());
+        parentElement.appendChild(toggleTab);
 
         // Initialize validation error display
         this.validationDisplay = new ValidationErrorDisplay(this.container);
@@ -37,9 +38,12 @@ export class ControlPanel {
         this.initializePanel();
     }
 
+    private togglePanel() {
+        this.container.classList.toggle('visible');
+    }
+
     public static getInstance(): ControlPanel {
         if (!ControlPanel.instance) {
-            // Create instance with document.body as default parent
             ControlPanel.instance = new ControlPanel(document.body);
         }
         return ControlPanel.instance;
@@ -68,9 +72,6 @@ export class ControlPanel {
                 const section = await this.createSection(category, paths);
                 this.container.appendChild(section);
             }
-
-            // Add styles
-            this.addStyles();
             
             logger.info('Control panel initialized');
         } catch (error) {
@@ -96,19 +97,33 @@ export class ControlPanel {
         const section = document.createElement('div');
         section.className = 'settings-section';
         
-        const header = document.createElement('h2');
-        header.textContent = formatSettingName(category);
-        header.className = 'settings-section-header';
+        const header = document.createElement('div');
+        header.className = 'section-header';
+        header.addEventListener('click', () => {
+            header.classList.toggle('expanded');
+            const content = section.querySelector('.section-content');
+            if (content) {
+                content.classList.toggle('expanded');
+            }
+        });
+        
+        const title = document.createElement('h4');
+        title.textContent = formatSettingName(category);
+        header.appendChild(title);
         section.appendChild(header);
         
         // Group paths by subcategory
         const subcategories = this.groupBySubcategory(paths);
         
+        const content = document.createElement('div');
+        content.className = 'section-content';
+        
         for (const [subcategory, subPaths] of Object.entries(subcategories)) {
             const subsection = await this.createSubsection(subcategory, subPaths);
-            section.appendChild(subsection);
+            content.appendChild(subsection);
         }
         
+        section.appendChild(content);
         return section;
     }
 
@@ -155,123 +170,237 @@ export class ControlPanel {
         const container = document.createElement('div');
         container.className = 'setting-control';
         
-        const label = document.createElement('label');
+        const labelContainer = document.createElement('div');
+        labelContainer.className = 'setting-label';
+        
+        const label = document.createElement('span');
         label.textContent = formatSettingName(path.split('.').pop() || '');
-        container.appendChild(label);
+        labelContainer.appendChild(label);
         
         const value = this.settingsStore.get(path);
-        const input = this.createInputElement(path, value);
+        const valueDisplay = document.createElement('span');
+        valueDisplay.className = 'setting-value';
+        labelContainer.appendChild(valueDisplay);
+        
+        container.appendChild(labelContainer);
+        
+        const input = this.createInputElement(path, value, valueDisplay);
         container.appendChild(input);
         
         // Subscribe to changes
         const unsubscribe = await this.settingsStore.subscribe(path, (_, newValue) => {
-            this.updateInputValue(input, newValue);
+            this.updateInputValue(input, newValue, valueDisplay);
         });
         this.unsubscribers.push(unsubscribe);
         
         return container;
     }
 
-    private createInputElement(path: string, value: any): HTMLElement {
-        const inputType = getSettingInputType(value);
+    private createInputElement(path: string, value: any, valueDisplay: HTMLElement): HTMLElement {
+        const inputType = this.getInputTypeForSetting(path, value);
         let input: HTMLElement;
         
         switch (inputType) {
-            case 'checkbox':
-                input = document.createElement('input');
-                (input as HTMLInputElement).type = 'checkbox';
-                (input as HTMLInputElement).checked = value as boolean;
-                input.addEventListener('change', async (e) => {
-                    const target = e.target as HTMLInputElement;
-                    try {
-                        await this.settingsStore.set(path, target.checked);
-                    } catch (error) {
-                        logger.error(`Failed to update ${path}:`, error);
-                        // Revert the checkbox state
-                        target.checked = !target.checked;
-                    }
-                });
+            case 'toggle':
+                input = this.createToggleSwitch(path, value as boolean);
                 break;
-                
-            case 'number':
-                input = document.createElement('input');
-                (input as HTMLInputElement).type = 'number';
-                (input as HTMLInputElement).value = String(value);
-                (input as HTMLInputElement).step = getStepValue(path);
-                input.addEventListener('change', async (e) => {
-                    const target = e.target as HTMLInputElement;
-                    try {
-                        await this.settingsStore.set(path, Number(target.value));
-                    } catch (error) {
-                        logger.error(`Failed to update ${path}:`, error);
-                        // Revert the input value
-                        target.value = String(value);
-                    }
-                });
+            case 'slider':
+                input = this.createSlider(path, value as number, valueDisplay);
                 break;
-                
-            case 'color':
-                input = document.createElement('input');
-                (input as HTMLInputElement).type = 'color';
-                (input as HTMLInputElement).value = value as string;
-                input.addEventListener('change', async (e) => {
-                    const target = e.target as HTMLInputElement;
-                    try {
-                        await this.settingsStore.set(path, target.value);
-                    } catch (error) {
-                        logger.error(`Failed to update ${path}:`, error);
-                        // Revert the color
-                        target.value = value as string;
-                    }
-                });
-                break;
-                
             case 'select':
-                input = document.createElement('select');
-                if (Array.isArray(value)) {
-                    value.forEach(option => {
-                        const opt = document.createElement('option');
-                        opt.value = String(option);
-                        opt.textContent = String(option);
-                        input.appendChild(opt);
-                    });
-                }
-                input.addEventListener('change', async (e) => {
-                    const target = e.target as HTMLSelectElement;
-                    try {
-                        await this.settingsStore.set(path, target.value);
-                    } catch (error) {
-                        logger.error(`Failed to update ${path}:`, error);
-                        // Revert the selection
-                        target.value = value as string;
-                    }
-                });
+                input = this.createSelect(path, value);
                 break;
-                
+            case 'color':
+                input = this.createColorPicker(path, value as string);
+                break;
             default:
-                input = document.createElement('input');
-                (input as HTMLInputElement).type = 'text';
-                (input as HTMLInputElement).value = String(value);
-                input.addEventListener('change', async (e) => {
-                    const target = e.target as HTMLInputElement;
-                    try {
-                        await this.settingsStore.set(path, target.value);
-                    } catch (error) {
-                        logger.error(`Failed to update ${path}:`, error);
-                        // Revert the input value
-                        target.value = String(value);
-                    }
-                });
+                input = this.createTextInput(path, value);
         }
         
-        input.className = 'setting-input';
         return input;
     }
 
-    private updateInputValue(input: HTMLElement, value: any): void {
+    private getInputTypeForSetting(path: string, value: any): string {
+        // XR mode and space type should be dropdowns
+        if (path.endsWith('.mode') || path.endsWith('.spaceType') || path.endsWith('.quality')) {
+            return 'select';
+        }
+        
+        // Most numeric values should be sliders
+        if (typeof value === 'number') {
+            return 'slider';
+        }
+        
+        // Boolean values should be toggles
+        if (typeof value === 'boolean') {
+            return 'toggle';
+        }
+        
+        // Color values should use color picker
+        if (typeof value === 'string' && value.startsWith('#')) {
+            return 'color';
+        }
+        
+        return 'text';
+    }
+
+    private createToggleSwitch(path: string, value: boolean): HTMLElement {
+        const label = document.createElement('label');
+        label.className = 'toggle-switch';
+        
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = value;
+        
+        const slider = document.createElement('span');
+        slider.className = 'toggle-slider';
+        
+        input.addEventListener('change', async () => {
+            try {
+                await this.settingsStore.set(path, input.checked);
+            } catch (error) {
+                logger.error(`Failed to update ${path}:`, error);
+                input.checked = !input.checked;
+            }
+        });
+        
+        label.appendChild(input);
+        label.appendChild(slider);
+        return label;
+    }
+
+    private createSlider(path: string, value: number, valueDisplay: HTMLElement): HTMLElement {
+        const container = document.createElement('div');
+        container.className = 'slider-container';
+        
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = '0';
+        input.max = '1';
+        input.step = getStepValue(path);
+        input.value = String(value);
+        
+        // Set appropriate ranges based on the setting
+        if (path.includes('Strength')) {
+            input.max = '2';
+        } else if (path.includes('Size')) {
+            input.max = '10';
+        } else if (path.includes('Opacity')) {
+            input.max = '1';
+        }
+        
+        valueDisplay.textContent = value.toFixed(2);
+        
+        input.addEventListener('input', () => {
+            valueDisplay.textContent = Number(input.value).toFixed(2);
+        });
+        
+        input.addEventListener('change', async () => {
+            try {
+                await this.settingsStore.set(path, Number(input.value));
+            } catch (error) {
+                logger.error(`Failed to update ${path}:`, error);
+                input.value = String(value);
+                valueDisplay.textContent = value.toFixed(2);
+            }
+        });
+        
+        container.appendChild(input);
+        return container;
+    }
+
+    private createSelect(path: string, value: string): HTMLElement {
+        const container = document.createElement('div');
+        container.className = 'select-container';
+        
+        const select = document.createElement('select');
+        
+        // Add appropriate options based on the setting
+        if (path.endsWith('.mode')) {
+            ['immersive-ar', 'immersive-vr'].forEach(option => {
+                const opt = document.createElement('option');
+                opt.value = option;
+                opt.textContent = formatSettingName(option);
+                select.appendChild(opt);
+            });
+        } else if (path.endsWith('.spaceType')) {
+            ['viewer', 'local', 'local-floor', 'bounded-floor', 'unbounded'].forEach(option => {
+                const opt = document.createElement('option');
+                opt.value = option;
+                opt.textContent = formatSettingName(option);
+                select.appendChild(opt);
+            });
+        } else if (path.endsWith('.quality')) {
+            ['low', 'medium', 'high'].forEach(option => {
+                const opt = document.createElement('option');
+                opt.value = option;
+                opt.textContent = formatSettingName(option);
+                select.appendChild(opt);
+            });
+        }
+        
+        select.value = value;
+        
+        select.addEventListener('change', async () => {
+            try {
+                await this.settingsStore.set(path, select.value);
+            } catch (error) {
+                logger.error(`Failed to update ${path}:`, error);
+                select.value = value;
+            }
+        });
+        
+        container.appendChild(select);
+        return container;
+    }
+
+    private createColorPicker(path: string, value: string): HTMLElement {
+        const container = document.createElement('div');
+        container.className = 'color-picker';
+        
+        const input = document.createElement('input');
+        input.type = 'color';
+        input.value = value;
+        
+        input.addEventListener('change', async () => {
+            try {
+                await this.settingsStore.set(path, input.value);
+            } catch (error) {
+                logger.error(`Failed to update ${path}:`, error);
+                input.value = value;
+            }
+        });
+        
+        container.appendChild(input);
+        return container;
+    }
+
+    private createTextInput(path: string, value: any): HTMLElement {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = String(value);
+        
+        input.addEventListener('change', async () => {
+            try {
+                await this.settingsStore.set(path, input.value);
+            } catch (error) {
+                logger.error(`Failed to update ${path}:`, error);
+                input.value = String(value);
+            }
+        });
+        
+        return input;
+    }
+
+    private updateInputValue(input: HTMLElement, value: any, valueDisplay?: HTMLElement): void {
         if (input instanceof HTMLInputElement) {
             if (input.type === 'checkbox') {
                 input.checked = value as boolean;
+            } else if (input.type === 'range') {
+                input.value = String(value);
+                if (valueDisplay) {
+                    valueDisplay.textContent = Number(value).toFixed(2);
+                }
             } else {
                 input.value = String(value);
             }
@@ -280,17 +409,12 @@ export class ControlPanel {
         }
     }
 
-    private addStyles(): void {
-        // Styles are now loaded from ControlPanel.css
-        return;
-    }
-
     public show(): void {
-        this.container.classList.remove('hidden');
+        this.container.classList.add('visible');
     }
 
     public hide(): void {
-        this.container.classList.add('hidden');
+        this.container.classList.remove('visible');
     }
 
     public dispose(): void {
