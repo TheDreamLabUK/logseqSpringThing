@@ -104,6 +104,9 @@ export class EnhancedNodeManager {
         if (this.isInstanced) {
             this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 1000);
             this.instancedMesh.count = 0;
+            // Enable both default and AR layers for the instanced mesh
+            this.instancedMesh.layers.enable(0);
+            this.instancedMesh.layers.enable(1);
             this.scene.add(this.instancedMesh);
         }
     }
@@ -176,6 +179,9 @@ export class EnhancedNodeManager {
         if (this.isInstanced) {
             this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 1000);
             this.instancedMesh.count = 0;
+            // Enable both default and AR layers for the instanced mesh
+            this.instancedMesh.layers.enable(0);
+            this.instancedMesh.layers.enable(1);
             this.scene.add(this.instancedMesh);
         }
     }
@@ -293,6 +299,9 @@ export class EnhancedNodeManager {
                 importance: this.calculateImportance({ id, data }),
                 position: data.position
             });
+            // Enable both default and AR layers
+            nodeMesh.layers.enable(0);
+            nodeMesh.layers.enable(1);
             this.nodes.set(id, nodeMesh);
             this.scene.add(nodeMesh);
         } else if (this.instancedMesh) {
@@ -302,6 +311,9 @@ export class EnhancedNodeManager {
             this.instancedMesh.setMatrixAt(index, matrix);
             this.instancedMesh.count = index + 1;
             this.instancedMesh.instanceMatrix.needsUpdate = true;
+            // Enable both default and AR layers for the instanced mesh
+            this.instancedMesh.layers.enable(0);
+            this.instancedMesh.layers.enable(1);
             // Store a reference to the instanced mesh for this node
             this.nodes.set(id, this.instancedMesh);
         }

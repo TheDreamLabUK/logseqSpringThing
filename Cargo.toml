@@ -16,7 +16,7 @@ tungstenite = "0.21"
 tokio-tungstenite = { version = "0.21" }
 
 # Async runtime
-tokio = { version = "1.32", features = ["full"] }
+tokio = { version = "1.43", features = ["full"] }
 futures = "0.3"
 async-trait = "0.1"
 
@@ -40,7 +40,7 @@ anyhow = "1.0"
 
 # GPU/Compute
 wgpu = { version = "0.17", features = ["spirv", "webgl"] }
-bytemuck = { version = "1.14", features = ["derive"] }
+bytemuck = { version = "1.21", features = ["derive"] }
 pollster = "0.3"
 naga = { version = "0.13", features = ["wgsl-in", "spv-out", "wgsl-out"] }
 cudarc = { version = "0.10", features = ["driver"] }
@@ -52,12 +52,12 @@ backoff = { version = "0.4", features = ["tokio"] }
 nostr-sdk = "0.25"
 
 # Utilities
-uuid = { version = "1.4", features = ["v4", "serde"] }
+uuid = { version = "1.12", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.21"
 rand = "0.8"
-regex = "1.10"
-lazy_static = "1.4"
+regex = "1.11"
+lazy_static = "1.5"
 sha1 = "0.10"
 url = "2.5"
 flate2 = "1.0"

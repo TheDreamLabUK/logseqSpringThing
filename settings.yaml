@@ -3,7 +3,7 @@ visualization:
     base_color: '#00ffff'
     base_size: 1.5
     metalness: 0.8
-    opacity: 1.0
+    opacity: 0.3
     roughness: 0.2
     size_range:
     - 1.0
