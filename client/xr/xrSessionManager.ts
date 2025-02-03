@@ -43,6 +43,8 @@ export class XRSessionManager {
     private session: XRSession | null = null;
     private referenceSpace: XRReferenceSpace | null = null;
     private isPresenting: boolean = false;
+    private settingsUnsubscribe: (() => void) | null = null;
+    private currentSettings: XRSettings;
 
     // XR specific objects
     private cameraRig: Group;
@@ -69,6 +71,12 @@ export class XRSessionManager {
     constructor(sceneManager: SceneManager) {
         this.sceneManager = sceneManager;
         this.settingsStore = SettingsStore.getInstance();
+        
+        // Initialize with current settings
+        this.currentSettings = this.settingsStore.get('xr') as XRSettings;
+        
+        // Set up settings subscription
+        this.setupSettingsSubscription();
         
         // Initialize XR objects
         this.cameraRig = new Group();
@@ -405,14 +413,13 @@ export class XRSessionManager {
                 // Handle gamepad input for movement
                 if (inputSource.gamepad) {
                     const { axes } = inputSource.gamepad;
-                    const settings = this.settingsStore.get('xr') as XRSettings;
                     
-                    // Use configured axes for movement
-                    const moveX = axes[settings.movementAxes?.horizontal ?? 2] || 0;
-                    const moveZ = axes[settings.movementAxes?.vertical ?? 3] || 0;
+                    // Use cached settings for better performance
+                    const moveX = axes[this.currentSettings.movementAxes?.horizontal ?? 2] || 0;
+                    const moveZ = axes[this.currentSettings.movementAxes?.vertical ?? 3] || 0;
 
                     // Apply dead zone to avoid drift from small joystick movements
-                    const deadZone = settings.deadZone ?? 0.1;
+                    const deadZone = this.currentSettings.deadZone ?? 0.1;
                     const processedX = Math.abs(moveX) > deadZone ? moveX : 0;
                     const processedZ = Math.abs(moveZ) > deadZone ? moveZ : 0;
 
@@ -424,11 +431,11 @@ export class XRSessionManager {
                         const deltaTime = 1 / 60; // Target 60 FPS
                         
                         // Combine horizontal and forward movement with time-based scaling
-                        moveDirection.x = processedX * settings.movementSpeed * deltaTime;
-                        moveDirection.z = processedZ * settings.movementSpeed * deltaTime;
+                        moveDirection.x = processedX * (this.currentSettings.movementSpeed ?? 1) * deltaTime;
+                        moveDirection.z = processedZ * (this.currentSettings.movementSpeed ?? 1) * deltaTime;
                         
                         // If snap to floor is enabled, keep y position constant
-                        if (settings.snapToFloor) {
+                        if (this.currentSettings.snapToFloor) {
                             const currentY = this.cameraRig.position.y;
                             this.cameraRig.position.add(moveDirection);
                             this.cameraRig.position.y = currentY;
@@ -559,7 +566,60 @@ export class XRSessionManager {
         return this.referenceSpace;
     }
 
+    private async setupSettingsSubscription(): Promise<void> {
+        // Subscribe to XR settings changes
+        this.settingsUnsubscribe = await this.settingsStore.subscribe('xr', () => {
+            this.currentSettings = this.settingsStore.get('xr') as XRSettings;
+            this.applyXRSettings();
+        });
+    }
+
+    private applyXRSettings(): void {
+        if (!this.isPresenting) return;
+
+        // Update movement settings
+        const controllers = this.getControllers();
+        controllers.forEach(controller => {
+            const inputSource = controller.userData.inputSource as XRInputSource;
+            if (inputSource?.gamepad) {
+                // Settings will be applied on next frame in onXRFrame
+            }
+        });
+
+        // Update visual settings if needed
+        if (this.currentSettings.handMeshEnabled !== undefined) {
+            controllers.forEach(controller => {
+                controller.traverse((object: { name?: string; visible: boolean }) => {
+                    if (object.name === 'handMesh') {
+                        object.visible = !!this.currentSettings.handMeshEnabled;
+                    }
+                });
+            });
+        }
+
+        if (this.currentSettings.handRayEnabled !== undefined) {
+            controllers.forEach(controller => {
+                controller.traverse((object: { name?: string; visible: boolean }) => {
+                    if (object.name === 'ray') {
+                        object.visible = !!this.currentSettings.handRayEnabled;
+                    }
+                });
+            });
+        }
+
+        // Update room scale if changed
+        if (this.currentSettings.roomScale !== undefined) {
+            this.cameraRig.scale.setScalar(Number(this.currentSettings.roomScale));
+        }
+    }
+
     dispose(): void {
+        // Clean up settings subscription
+        if (this.settingsUnsubscribe) {
+            this.settingsUnsubscribe();
+            this.settingsUnsubscribe = null;
+        }
+
         // End XR session if active
         if (this.session) {
             // Remove session event listener before ending
