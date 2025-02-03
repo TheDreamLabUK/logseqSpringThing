@@ -147,6 +147,7 @@ export const defaultSettings: Settings = {
         pinchThreshold: 0.5,
         rotationThreshold: 0.1,
         interactionRadius: 0.1,
+        movementSpeed: 0.05,
 
         // Platform Settings
         autoEnterAR: true,

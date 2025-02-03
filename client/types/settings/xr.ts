@@ -30,6 +30,7 @@ export interface XRSettings {
     pinchThreshold: number;
     rotationThreshold: number;
     interactionRadius: number;
+    movementSpeed: number;
     
     // Scene Understanding
     enableLightEstimation: boolean;
@@ -94,6 +95,7 @@ export const defaultXRSettings: XRSettings = {
     pinchThreshold: 0.7,
     rotationThreshold: 0.1,
     interactionRadius: 0.5,
+    movementSpeed: 0.05,
     
     // Scene Understanding
     enableLightEstimation: true,

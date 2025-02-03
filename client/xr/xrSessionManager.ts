@@ -13,7 +13,8 @@ import {
     DirectionalLight,
     SphereGeometry,
     Color,
-    DoubleSide
+    DoubleSide,
+    Vector3
 } from 'three';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory';
 import { createLogger } from '../core/utils';
@@ -21,6 +22,8 @@ import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
 import { ControlPanel } from '../ui/ControlPanel';
+import { SettingsStore } from '../state/SettingsStore';
+import { XRSettings } from '../types/settings/xr';
 
 const _logger = createLogger('XRSessionManager');
 
@@ -36,6 +39,7 @@ function hasHitTest(session: XRSession): session is XRSession & { requestHitTest
 export class XRSessionManager {
     private static instance: XRSessionManager;
     private sceneManager: SceneManager;
+    private settingsStore: SettingsStore;
     private session: XRSession | null = null;
     private referenceSpace: XRReferenceSpace | null = null;
     private isPresenting: boolean = false;
@@ -64,6 +68,7 @@ export class XRSessionManager {
 
     constructor(sceneManager: SceneManager) {
         this.sceneManager = sceneManager;
+        this.settingsStore = SettingsStore.getInstance();
         
         // Initialize XR objects
         this.cameraRig = new Group();
@@ -383,14 +388,48 @@ export class XRSessionManager {
         // Handle hit testing
         this.handleHitTest(frame);
 
-        // Update controller poses
+        // Update controller poses and handle gamepad input
         this.controllers.forEach((controller) => {
             const inputSource = controller.userData.inputSource as XRInputSource;
             if (inputSource) {
+                // Update controller pose
                 const targetRayPose = frame.getPose(inputSource.targetRaySpace, this.referenceSpace!);
                 if (targetRayPose) {
                     controller.matrix.fromArray(targetRayPose.transform.matrix);
                     controller.matrix.decompose(controller.position, controller.quaternion, controller.scale);
+                }
+
+                // Handle gamepad input for movement
+                if (inputSource.gamepad) {
+                    const { axes } = inputSource.gamepad;
+                    // Use axes[2] and axes[3] for movement (typically right joystick)
+                    const moveX = axes[2] || 0;
+                    const moveZ = axes[3] || 0;
+
+                    // Apply dead zone to avoid drift from small joystick movements
+                    const deadZone = 0.1;
+                    const processedX = Math.abs(moveX) > deadZone ? moveX : 0;
+                    const processedZ = Math.abs(moveZ) > deadZone ? moveZ : 0;
+
+                    if (processedX !== 0 || processedZ !== 0) {
+                        const settings = this.settingsStore.get('xr') as XRSettings;
+                        
+                        // Get camera's view direction (ignoring vertical rotation)
+                        const moveDirection = new Vector3();
+                        
+                        // Combine horizontal and forward movement
+                        moveDirection.x = processedX * settings.movementSpeed;
+                        moveDirection.z = processedZ * settings.movementSpeed;
+                        
+                        // If snap to floor is enabled, keep y position constant
+                        if (settings.snapToFloor) {
+                            const currentY = this.cameraRig.position.y;
+                            this.cameraRig.position.add(moveDirection);
+                            this.cameraRig.position.y = currentY;
+                        } else {
+                            this.cameraRig.position.add(moveDirection);
+                        }
+                    }
                 }
             }
         });

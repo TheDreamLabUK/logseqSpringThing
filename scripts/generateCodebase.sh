@@ -42,8 +42,8 @@ export_network_info() {
 # Export both directories and combine them
 export_and_combine() {
     # Export server (src) code
-    python "$EXPORT_REPO/export-repository-to-file.py" "../src"
-    mv output.txt server.txt
+    #python "$EXPORT_REPO/export-repository-to-file.py" "../src"
+    #mv output.txt server.txt
 
     # Export client code
     python "$EXPORT_REPO/export-repository-to-file.py" "../client"
