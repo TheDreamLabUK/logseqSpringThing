@@ -8,7 +8,7 @@ visualization:
     size_range:
     - 1.0
     - 3.0
-    quality: medium
+    quality: high
     enable_instancing: true
     enable_hologram: false
     enable_metadata_shape: true
@@ -56,7 +56,7 @@ visualization:
     text_color: '#ffffff'
   bloom:
     edge_bloom_strength: 0.5
-    enabled: true
+    enabled: false
     environment_bloom_strength: 1.0
     node_bloom_strength: 2.0
     radius: 0.8
@@ -150,6 +150,11 @@ xr:
   pinch_threshold: 0.5
   rotation_threshold: 0.1
   interaction_radius: 0.1
+  movement_speed: 0.05
+  dead_zone: 0.1
+  movement_axes:
+    horizontal: 2
+    vertical: 3
   enable_light_estimation: true
   enable_plane_detection: true
   enable_scene_understanding: true

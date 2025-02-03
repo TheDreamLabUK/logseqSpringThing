@@ -171,16 +171,29 @@ export class XRSessionManager {
         const controller = this.controllers[index];
         const controllerGrip = this.controllerGrips[index];
 
-        controller.addEventListener('connected', (event: any) => {
-            const controllerModel = this.buildController(event.data);
+        // Store event handlers as properties for proper cleanup
+        const onControllerConnected = (event: any) => {
+            const inputSource = event.data;
+            controller.userData.inputSource = inputSource;
+            const controllerModel = this.buildController(inputSource);
             controller.add(controllerModel);
             this.notifyControllerAdded(controller);
-        });
+        };
 
-        controller.addEventListener('disconnected', () => {
+        const onControllerDisconnected = () => {
+            controller.userData.inputSource = null;
             controller.remove(...controller.children);
             this.notifyControllerRemoved(controller);
-        });
+        };
+
+        // Store handlers in userData for cleanup
+        controller.userData.eventHandlers = {
+            connected: onControllerConnected,
+            disconnected: onControllerDisconnected
+        };
+
+        controller.addEventListener('connected', onControllerConnected);
+        controller.addEventListener('disconnected', onControllerDisconnected);
 
         this.cameraRig.add(controller);
         this.cameraRig.add(controllerGrip);
@@ -359,22 +372,9 @@ export class XRSessionManager {
 
         _logger.log('XR session ended');
 
-        // Show control panel again and notify session end
+        // Show control panel and notify session end (only once)
         ControlPanel.getInstance()?.show();
         this.xrSessionEndCallback?.();
-
-        _logger.log('XR session ended');
-
-        // Show control panel again
-        const controlPanel = ControlPanel.getInstance();
-        if (controlPanel) {
-            controlPanel.show();
-        }
-
-        // Notify session end
-        if (this.xrSessionEndCallback) {
-            this.xrSessionEndCallback();
-        }
     }
 
     onXRFrame(frame: XRFrame): void {
@@ -392,34 +392,40 @@ export class XRSessionManager {
         this.controllers.forEach((controller) => {
             const inputSource = controller.userData.inputSource as XRInputSource;
             if (inputSource) {
-                // Update controller pose
-                const targetRayPose = frame.getPose(inputSource.targetRaySpace, this.referenceSpace!);
-                if (targetRayPose) {
-                    controller.matrix.fromArray(targetRayPose.transform.matrix);
+                // Try to use gripSpace for more accurate hand position, fall back to targetRaySpace
+                const pose = inputSource.gripSpace
+                    ? frame.getPose(inputSource.gripSpace, this.referenceSpace!)
+                    : frame.getPose(inputSource.targetRaySpace, this.referenceSpace!);
+                
+                if (pose) {
+                    controller.matrix.fromArray(pose.transform.matrix);
                     controller.matrix.decompose(controller.position, controller.quaternion, controller.scale);
                 }
 
                 // Handle gamepad input for movement
                 if (inputSource.gamepad) {
                     const { axes } = inputSource.gamepad;
-                    // Use axes[2] and axes[3] for movement (typically right joystick)
-                    const moveX = axes[2] || 0;
-                    const moveZ = axes[3] || 0;
+                    const settings = this.settingsStore.get('xr') as XRSettings;
+                    
+                    // Use configured axes for movement
+                    const moveX = axes[settings.movementAxes?.horizontal ?? 2] || 0;
+                    const moveZ = axes[settings.movementAxes?.vertical ?? 3] || 0;
 
                     // Apply dead zone to avoid drift from small joystick movements
-                    const deadZone = 0.1;
+                    const deadZone = settings.deadZone ?? 0.1;
                     const processedX = Math.abs(moveX) > deadZone ? moveX : 0;
                     const processedZ = Math.abs(moveZ) > deadZone ? moveZ : 0;
 
                     if (processedX !== 0 || processedZ !== 0) {
-                        const settings = this.settingsStore.get('xr') as XRSettings;
-                        
                         // Get camera's view direction (ignoring vertical rotation)
                         const moveDirection = new Vector3();
                         
-                        // Combine horizontal and forward movement
-                        moveDirection.x = processedX * settings.movementSpeed;
-                        moveDirection.z = processedZ * settings.movementSpeed;
+                        // Calculate frame-rate independent movement using fixed time step
+                        const deltaTime = 1 / 60; // Target 60 FPS
+                        
+                        // Combine horizontal and forward movement with time-based scaling
+                        moveDirection.x = processedX * settings.movementSpeed * deltaTime;
+                        moveDirection.z = processedZ * settings.movementSpeed * deltaTime;
                         
                         // If snap to floor is enabled, keep y position constant
                         if (settings.snapToFloor) {
@@ -554,33 +560,44 @@ export class XRSessionManager {
     }
 
     dispose(): void {
+        // End XR session if active
         if (this.session) {
+            // Remove session event listener before ending
+            this.session.removeEventListener('end', this.onXRSessionEnd);
             this.session.end().catch(console.error);
         }
 
+        // Clean up controller event listeners using stored handlers
         this.controllers.forEach(controller => {
-            controller.removeEventListener('connected', (event: any) => {
-                const controllerModel = this.buildController(event.data);
-                controller.add(controllerModel);
-                this.notifyControllerAdded(controller);
-            });
-
-            controller.removeEventListener('disconnected', () => {
-                controller.remove(...controller.children);
-                this.notifyControllerRemoved(controller);
-            });
+            const handlers = controller.userData.eventHandlers;
+            if (handlers) {
+                controller.removeEventListener('connected', handlers.connected);
+                controller.removeEventListener('disconnected', handlers.disconnected);
+                delete controller.userData.eventHandlers;
+            }
+            controller.userData.inputSource = null;
         });
 
+        // Clean up controller grip models
         this.controllerGrips.forEach(grip => {
             grip.remove(...grip.children);
         });
 
+        // Clean up hit test resources
         this.hitTestSource?.cancel();
         this.hitTestSource = null;
         this.hitTestSourceRequested = false;
 
+        // Reset session state
         this.session = null;
         this.referenceSpace = null;
         this.isPresenting = false;
+
+        // Clear callbacks
+        this.xrSessionStartCallback = null;
+        this.xrSessionEndCallback = null;
+        this.xrAnimationFrameCallback = null;
+        this.controllerAddedCallback = null;
+        this.controllerRemovedCallback = null;
     }
 }

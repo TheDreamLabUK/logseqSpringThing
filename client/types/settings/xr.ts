@@ -31,6 +31,11 @@ export interface XRSettings {
     rotationThreshold: number;
     interactionRadius: number;
     movementSpeed: number;
+    deadZone: number;
+    movementAxes: {
+        horizontal: number;
+        vertical: number;
+    };
     
     // Scene Understanding
     enableLightEstimation: boolean;
@@ -96,7 +101,12 @@ export const defaultXRSettings: XRSettings = {
     rotationThreshold: 0.1,
     interactionRadius: 0.5,
     movementSpeed: 0.05,
-    
+    deadZone: 0.1,
+    movementAxes: {
+        horizontal: 2, // Right joystick X
+        vertical: 3   // Right joystick Y
+    },
+
     // Scene Understanding
     enableLightEstimation: true,
     enablePlaneDetection: true,

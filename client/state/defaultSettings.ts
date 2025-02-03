@@ -148,6 +148,11 @@ export const defaultSettings: Settings = {
         rotationThreshold: 0.1,
         interactionRadius: 0.1,
         movementSpeed: 0.05,
+        deadZone: 0.1,
+        movementAxes: {
+            horizontal: 2, // Right joystick X
+            vertical: 3   // Right joystick Y
+        },
 
         // Platform Settings
         autoEnterAR: true,

@@ -5,6 +5,13 @@ use serde_json::Value;
 use serde_yaml;
 use std::path::PathBuf;
 
+// XR movement axes configuration
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MovementAxes {
+    pub horizontal: i32,
+    pub vertical: i32,
+}
+
 // Core visualization settings
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VisualizationSettings {
@@ -218,6 +225,9 @@ pub struct XRSettings {
     pub pinch_threshold: f32,
     pub rotation_threshold: f32,
     pub interaction_radius: f32,
+    pub movement_speed: f32,
+    pub dead_zone: f32,
+    pub movement_axes: MovementAxes,
     pub enable_light_estimation: bool,
     pub enable_plane_detection: bool,
     pub enable_scene_understanding: bool,
@@ -536,6 +546,12 @@ impl Default for Settings {
                 pinch_threshold: 0.7,
                 rotation_threshold: 0.1,
                 interaction_radius: 0.5,
+                movement_speed: 0.05,
+                dead_zone: 0.1,
+                movement_axes: MovementAxes {
+                    horizontal: 2,
+                    vertical: 3,
+                },
                 enable_light_estimation: true,
                 enable_plane_detection: true,
                 enable_scene_understanding: true,

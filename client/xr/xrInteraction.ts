@@ -12,7 +12,7 @@ export class XRInteraction {
     private static instance: XRInteraction | null = null;
     private readonly settingsStore: SettingsStore;
     private updateBatch: Map<string, THREE.Vector3> = new Map();
-    private batchUpdateTimeout: NodeJS.Timeout | null = null;
+    private batchUpdateTimeout: number | null = null;
     private settingsUnsubscribers: Array<() => void> = [];
     private interactionEnabled: boolean = false;
     private websocketService: WebSocketService;
@@ -84,6 +84,15 @@ export class XRInteraction {
         }
     }
 
+    private scheduleFlush(): void {
+        if (this.batchUpdateTimeout !== null) return;
+        
+        this.batchUpdateTimeout = requestAnimationFrame(() => {
+            this.flushPositionUpdates();
+            this.batchUpdateTimeout = null;
+        });
+    }
+
     private flushPositionUpdates(): void {
         if (this.updateBatch.size === 0) return;
 
@@ -102,7 +111,7 @@ export class XRInteraction {
 
     public update(): void {
         if (!this.interactionEnabled) return;
-        this.flushPositionUpdates();
+        this.scheduleFlush();
     }
 
     public dispose(): void {

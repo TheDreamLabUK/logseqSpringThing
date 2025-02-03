@@ -25,16 +25,33 @@ export class XRInitializer {
         return XRInitializer.instance;
     }
 
-    private setupEventListeners(): void {
-        // Button click handler
-        this.xrButton.addEventListener('click', () => this.onXRButtonClick());
+    private isProcessingClick = false;
+    private keyboardShortcutEnabled = !platformManager.isQuest(); // Disable for Quest
 
-        // Keyboard shortcut (Ctrl + Shift + A)
-        document.addEventListener('keydown', (event) => {
-            if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'a') {
-                this.onXRButtonClick();
+    private setupEventListeners(): void {
+        // Button click handler with debounce
+        this.xrButton.addEventListener('click', async () => {
+            if (this.isProcessingClick) return;
+            this.isProcessingClick = true;
+            
+            try {
+                await this.onXRButtonClick();
+            } finally {
+                // Reset after a short delay to prevent rapid clicks
+                setTimeout(() => {
+                    this.isProcessingClick = false;
+                }, 1000);
             }
         });
+
+        // Keyboard shortcut only for non-Quest devices
+        if (this.keyboardShortcutEnabled) {
+            document.addEventListener('keydown', (event) => {
+                if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'a') {
+                    this.onXRButtonClick();
+                }
+            });
+        }
 
         // Update button visibility based on XR session state
         this.xrSessionManager.setSessionCallbacks(
