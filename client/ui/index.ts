@@ -15,6 +15,11 @@ export async function initializeUI(): Promise<void> {
         const controlPanelElement = document.getElementById('control-panel');
         if (controlPanelElement instanceof HTMLElement) {
             logger.debug('Found control panel element, initializing ControlPanel');
+            
+            // Initialize settings first
+            const settingsStore = SettingsStore.getInstance();
+            await settingsStore.initialize();
+            
             const controlPanel = ControlPanel.initialize(controlPanelElement);
             
             // Check if we should hide control panel based on platform
@@ -22,22 +27,20 @@ export async function initializeUI(): Promise<void> {
                 controlPanel.hide();
             }
             
-            // Initialize with current settings
-            const settingsStore = SettingsStore.getInstance();
-            if (settingsStore.isInitialized()) {
-                const settings = settingsStore.get('');
-                if (settings) {
-                    logger.debug('Applying initial settings to control panel');
-                    // Settings will be handled by ControlPanel's internal subscription
-                }
+            // Settings should now be initialized
+            const settings = settingsStore.get('');
+            if (settings) {
+                logger.debug('Applying initial settings to control panel');
+                // Settings will be handled by ControlPanel's internal subscription
             } else {
-                logger.warn('Settings not initialized when initializing UI');
+                logger.error('Settings still not available after initialization');
             }
         } else {
             logger.error('Control panel element not found');
         }
     } catch (error) {
         logger.error('Failed to initialize UI:', error);
+        throw error; // Re-throw to ensure caller knows initialization failed
     }
 }
 

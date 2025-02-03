@@ -26,7 +26,7 @@ export class SettingsStore {
     private settingsOrigin: 'server' | 'default' = 'default';
 
     private constructor() {
-        this.settings = {} as Settings;
+        this.settings = { ...defaultSettings };
         this.subscribers = new Map();
         this.logger = createLogger('SettingsStore');
     }
@@ -58,14 +58,17 @@ export class SettingsStore {
                         const serverSettings = await response.json();
                         logger.info('Received server settings:', serverSettings);
                         
+                        // Convert snake_case to camelCase
+                        const camelCaseSettings = convertObjectKeysToCamelCase(serverSettings);
+                        
                         // Validate server settings
-                        const serverValidation = validateSettings(serverSettings);
+                        const serverValidation = validateSettings(camelCaseSettings);
                         if (!serverValidation.isValid) {
                             throw new Error(`Invalid server settings: ${JSON.stringify(serverValidation.errors)}`);
                         }
                         
                         // Use server settings as base, filling in any missing fields with defaults
-                        this.settings = this.deepMerge({ ...defaultSettings }, serverSettings);
+                        this.settings = this.deepMerge({ ...defaultSettings }, camelCaseSettings);
                         this.settingsOrigin = 'server';
                         logger.info('Using server settings with defaults as fallback');
                     } else {
@@ -241,41 +244,33 @@ export class SettingsStore {
         // Always include all required debug fields
         preparedSettings.system.debug = {
             enabled: preparedSettings.system.debug.enabled ?? false,
-            enable_data_debug: preparedSettings.system.debug.enableDataDebug ?? false,
-            enable_websocket_debug: preparedSettings.system.debug.enableWebsocketDebug ?? false,
-            log_binary_headers: preparedSettings.system.debug.logBinaryHeaders ?? false,
-            log_full_json: preparedSettings.system.debug.logFullJson ?? false,
-            log_level: preparedSettings.system.debug.logLevel ?? 'info',
-            log_format: preparedSettings.system.debug.logFormat ?? 'json'
+            enableDataDebug: preparedSettings.system.debug.enableDataDebug ?? false,
+            enableWebsocketDebug: preparedSettings.system.debug.enableWebsocketDebug ?? false,
+            logBinaryHeaders: preparedSettings.system.debug.logBinaryHeaders ?? false,
+            logFullJson: preparedSettings.system.debug.logFullJson ?? false,
+            logLevel: preparedSettings.system.debug.logLevel ?? 'info',
+            logFormat: preparedSettings.system.debug.logFormat ?? 'json'
         };
 
         // Always include required XR fields
         const defaultXR = defaultSettings.xr;
         preparedSettings.xr = {
             ...preparedSettings.xr,
-            gesture_smoothing: preparedSettings.xr.gestureSmoothing ?? defaultXR.gestureSmoothing,
+            gestureSmoothing: preparedSettings.xr.gestureSmoothing ?? defaultXR.gestureSmoothing,
             mode: preparedSettings.xr.mode ?? defaultXR.mode,
-            room_scale: preparedSettings.xr.roomScale ?? defaultXR.roomScale,
+            roomScale: preparedSettings.xr.roomScale ?? defaultXR.roomScale,
             quality: preparedSettings.xr.quality ?? defaultXR.quality,
-            space_type: preparedSettings.xr.spaceType ?? defaultXR.spaceType,
-            enable_hand_tracking: preparedSettings.xr.enableHandTracking ?? defaultXR.enableHandTracking,
-            hand_mesh_enabled: preparedSettings.xr.handMeshEnabled ?? defaultXR.handMeshEnabled,
-            hand_mesh_color: preparedSettings.xr.handMeshColor ?? defaultXR.handMeshColor,
-            hand_mesh_opacity: preparedSettings.xr.handMeshOpacity ?? defaultXR.handMeshOpacity,
-            hand_point_size: preparedSettings.xr.handPointSize ?? defaultXR.handPointSize,
-            hand_ray_enabled: preparedSettings.xr.handRayEnabled ?? defaultXR.handRayEnabled,
-            hand_ray_color: preparedSettings.xr.handRayColor ?? defaultXR.handRayColor,
-            hand_ray_width: preparedSettings.xr.handRayWidth ?? defaultXR.handRayWidth
+            spaceType: preparedSettings.xr.spaceType ?? defaultXR.spaceType,
+            enableHandTracking: preparedSettings.xr.enableHandTracking ?? defaultXR.enableHandTracking,
+            handMeshEnabled: preparedSettings.xr.handMeshEnabled ?? defaultXR.handMeshEnabled,
+            handMeshColor: preparedSettings.xr.handMeshColor ?? defaultXR.handMeshColor,
+            handMeshOpacity: preparedSettings.xr.handMeshOpacity ?? defaultXR.handMeshOpacity,
+            handPointSize: preparedSettings.xr.handPointSize ?? defaultXR.handPointSize,
+            handRayEnabled: preparedSettings.xr.handRayEnabled ?? defaultXR.handRayEnabled,
+            handRayColor: preparedSettings.xr.handRayColor ?? defaultXR.handRayColor,
+            handRayWidth: preparedSettings.xr.handRayWidth ?? defaultXR.handRayWidth,
+            movementAxes: preparedSettings.xr.movementAxes ?? defaultXR.movementAxes
         };
-
-        // Handle array types
-        if (preparedSettings.visualization?.nodes?.sizeRange) {
-            const sizeRange = preparedSettings.visualization.nodes.sizeRange;
-            preparedSettings.visualization.nodes.size_range =
-                Array.isArray(sizeRange) ? sizeRange : [1.0, 3.0];
-            // Remove the camelCase version since we've created the snake_case version
-            delete preparedSettings.visualization.nodes.sizeRange;
-        }
 
         // Convert to snake_case for server
         return convertObjectKeysToSnakeCase(preparedSettings);
@@ -376,56 +371,21 @@ export class SettingsStore {
     private deepMerge(target: any, source: any): any {
         const result = { ...target };
         
-        // Ensure all required sections exist
-        result.system = result.system || {};
-        result.system.debug = result.system.debug || {};
-        result.system.websocket = result.system.websocket || {};
-        result.visualization = result.visualization || {};
-        result.xr = result.xr || {};
-
-        // Deep merge each section
-        if (source.system) {
-            result.system = {
-                ...result.system,
-                debug: {
-                    ...result.system.debug,
-                    ...source.system.debug,
-                    // Always ensure required debug fields are present
-                    enabled: source.system.debug?.enabled ?? false,
-                    enableDataDebug: source.system.debug?.enableDataDebug ?? false,
-                    enableWebsocketDebug: source.system.debug?.enableWebsocketDebug ?? false,
-                    logBinaryHeaders: source.system.debug?.logBinaryHeaders ?? false,
-                    logFullJson: source.system.debug?.logFullJson ?? false,
-                    logLevel: source.system.debug?.logLevel ?? 'info',
-                    logFormat: source.system.debug?.logFormat ?? 'json'
-                },
-                websocket: {
-                    ...result.system.websocket,
-                    ...source.system.websocket
+        // Handle arrays
+        if (Array.isArray(source)) {
+            return [...source];
+        }
+        
+        if (source && typeof source === 'object') {
+            Object.keys(source).forEach(key => {
+                if (source[key] instanceof Object && !Array.isArray(source[key])) {
+                    result[key] = this.deepMerge(result[key] || {}, source[key]);
+                } else {
+                    result[key] = source[key];
                 }
-            };
+            });
         }
-
-        // Handle visualization section
-        if (source.visualization) {
-            for (const category in source.visualization) {
-                if (result.visualization[category]) {
-                    result.visualization[category] = {
-                        ...result.visualization[category],
-                        ...source.visualization[category]
-                    };
-                }
-            }
-        }
-
-        // Handle XR section
-        if (source.xr) {
-            result.xr = {
-                ...result.xr,
-                ...source.xr
-            };
-        }
-
+        
         return result;
     }
 
@@ -471,7 +431,8 @@ export class SettingsStore {
                 handPointSize: currentXR.handPointSize ?? defaultXR.handPointSize,
                 handRayEnabled: currentXR.handRayEnabled ?? defaultXR.handRayEnabled,
                 handRayColor: currentXR.handRayColor ?? defaultXR.handRayColor,
-                handRayWidth: currentXR.handRayWidth ?? defaultXR.handRayWidth
+                handRayWidth: currentXR.handRayWidth ?? defaultXR.handRayWidth,
+                movementAxes: currentXR.movementAxes ?? defaultXR.movementAxes
             };
         }
     }
@@ -479,7 +440,7 @@ export class SettingsStore {
     public dispose(): void {
         this.subscribers.clear();
         this.validationSubscribers = [];
-        this.settings = {} as Settings;
+        this.settings = { ...defaultSettings };
         SettingsStore.instance = null;
     }
 }

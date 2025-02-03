@@ -116,6 +116,14 @@ function validateXRSettings(xr: Settings['xr'], errors: ValidationError[]): void
     validateNumericRange('xr.pinchThreshold', xr.pinchThreshold, 0, 1, errors);
     validateNumericRange('xr.rotationThreshold', xr.rotationThreshold, 0, 1, errors);
     validateNumericRange('xr.interactionRadius', xr.interactionRadius, 0.1, 2, errors);
+    validateNumericRange('xr.movementSpeed', xr.movementSpeed, 0.01, 1, errors);
+    validateNumericRange('xr.deadZone', xr.deadZone, 0, 0.5, errors);
+
+    // Validate movement axes
+    if (xr.movementAxes) {
+        validateNumericRange('xr.movementAxes.horizontal', xr.movementAxes.horizontal, 0, 5, errors);
+        validateNumericRange('xr.movementAxes.vertical', xr.movementAxes.vertical, 0, 5, errors);
+    }
 
     // Validate scene understanding settings
     validateNumericRange('xr.planeOpacity', xr.planeOpacity, 0, 1, errors);
