@@ -41,10 +41,13 @@ export class NodeManager {
         this.geometryFactory = GeometryFactory.getInstance();
         this.settingsObserver = SettingsObserver.getInstance();
 
-        // Create node instances with basic material for better performance
+        // Determine context based on XR mode
+        const context = this.currentSettings.xr.mode === 'immersive-ar' ? 'ar' : 'desktop';
+
+        // Create node instances with context-aware geometry and material
         this.nodeInstances = new THREE.InstancedMesh(
-            this.geometryFactory.getNodeGeometry(this.currentSettings.xr.quality),
-            this.materialFactory.getNodeMaterial(this.currentSettings),
+            this.geometryFactory.getNodeGeometry(this.currentSettings.xr.quality, context),
+            this.materialFactory.getNodeMaterial(this.currentSettings, context),
             10000
         );
 
@@ -71,9 +74,32 @@ export class NodeManager {
 
     private setupSettingsSubscriptions(): void {
         this.settingsObserver.subscribe('NodeManager', (settings) => {
+            const prevContext = this.currentSettings.xr.mode === 'immersive-ar' ? 'ar' : 'desktop';
             this.currentSettings = settings;
-            this.materialFactory.updateMaterial('node-basic', settings);
-            this.materialFactory.updateMaterial('edge', settings);
+            const newContext = this.currentSettings.xr.mode === 'immersive-ar' ? 'ar' : 'desktop';
+
+            // Update materials and geometry if context changed
+            if (prevContext !== newContext && this.nodeInstances) {
+                // Update geometry with new context
+                const geometry = this.geometryFactory.getNodeGeometry(
+                    this.currentSettings.xr.quality,
+                    newContext
+                );
+                this.nodeInstances.geometry.dispose();
+                this.nodeInstances.geometry = geometry;
+
+                // Update material with new context
+                const material = this.materialFactory.getNodeMaterial(
+                    this.currentSettings,
+                    newContext
+                );
+                this.nodeInstances.material.dispose();
+                this.nodeInstances.material = material;
+            } else {
+                // Just update material properties if context hasn't changed
+                this.materialFactory.updateMaterial('node-basic', settings);
+                this.materialFactory.updateMaterial('edge', settings);
+            }
         });
     }
 

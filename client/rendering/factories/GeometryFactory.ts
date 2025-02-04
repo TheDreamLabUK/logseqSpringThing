@@ -13,19 +13,38 @@ export class GeometryFactory {
         return GeometryFactory.instance;
     }
 
-    getNodeGeometry(quality: 'low' | 'medium' | 'high'): BufferGeometry {
-        const cacheKey = `node-${quality}`;
+    getNodeGeometry(quality: 'low' | 'medium' | 'high', context: 'ar' | 'desktop' = 'desktop'): BufferGeometry {
+        const cacheKey = `node-${quality}-${context}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
 
-        const segments = {
-            low: 8,
-            medium: 16,
-            high: 32
-        }[quality] || 16;
+        let geometry: BufferGeometry;
+        
+        if (context === 'ar') {
+            // AR (Meta Quest) - Optimized geometry
+            switch (quality) {
+                case 'high':
+                    geometry = new SphereGeometry(1, 16, 12); // Reduced from 32
+                    break;
+                case 'medium':
+                    geometry = new SphereGeometry(1, 12, 8);  // Further reduced
+                    break;
+                case 'low':
+                    geometry = new SphereGeometry(1, 8, 6);   // Minimal
+                    break;
+            }
+        } else {
+            // Desktop/VR - Full quality geometry
+            const segments = {
+                low: 16,
+                medium: 24,
+                high: 32
+            }[quality] || 24;
+            
+            geometry = new SphereGeometry(1, segments, segments);
+        }
 
-        const geometry = new SphereGeometry(1, segments, segments);
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }

@@ -1,5 +1,5 @@
 import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
-import { Color, Material, MeshBasicMaterial, LineBasicMaterial } from 'three';
+import { Color, Material, MeshBasicMaterial, MeshPhongMaterial, LineBasicMaterial } from 'three';
 
 export class MaterialFactory {
     private static instance: MaterialFactory;
@@ -45,18 +45,39 @@ export class MaterialFactory {
         return this.createHologramMaterial(settings);
     }
 
-    public getNodeMaterial(settings: any): Material {
-        const cacheKey = 'node-basic';
+    public getNodeMaterial(settings: any, context: 'ar' | 'desktop' = 'desktop'): Material {
+        const cacheKey = `node-${context}`;
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new MeshBasicMaterial({
-            color: settings.visualization?.nodes?.baseColor || 0x4287f5,
-            transparent: true,
-            opacity: settings.visualization?.nodes?.opacity || 0.9,
-            depthWrite: true
-        });
+        let material: Material;
+        
+        if (context === 'ar') {
+            // AR (Meta Quest) - Performance optimized
+            // AR (Meta Quest) - Performance optimized with minimal features
+            // AR (Meta Quest) - Performance optimized with minimal features
+            material = new MeshBasicMaterial({
+                color: settings.visualization?.nodes?.baseColor || 0x4287f5,
+                transparent: true,
+                opacity: settings.visualization?.nodes?.opacity || 0.9,
+                depthWrite: true,
+                side: 0, // FrontSide for better performance
+                depthTest: true
+            });
+        } else {
+            // Desktop/VR - Full features with better visual quality
+            material = new MeshPhongMaterial({
+                color: settings.visualization?.nodes?.baseColor || 0x4287f5,
+                transparent: true,
+                opacity: settings.visualization?.nodes?.opacity || 0.9,
+                depthWrite: true,
+                side: 2, // DoubleSide for better visuals
+                shininess: 30,
+                specular: 0x444444,
+                depthTest: true
+            });
+        }
 
         this.materialCache.set(cacheKey, material);
         return material;
