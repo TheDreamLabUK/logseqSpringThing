@@ -1598,6 +1598,13 @@ exec /app/webxr
                 "IPv4Address": "172.19.0.7/16",
                 "IPv6Address": ""
             },
+            "4b60b54000c9de3923652d6fe021d8ce3aed0d04c9b635130cbd9022bdca2e2d": {
+                "Name": "logseq-xr-webxr",
+                "EndpointID": "4ae4c3b46ca2c6034ca109da8ae532fe398ad34b52102962503ae2d357a0b87f",
+                "MacAddress": "02:42:ac:13:00:0a",
+                "IPv4Address": "172.19.0.10/16",
+                "IPv6Address": ""
+            },
             "723a289060840e6ef20b1797a80209915a869f44e76bb55d420853d452251b88": {
                 "Name": "ollama",
                 "EndpointID": "a20e6e686d132f43b55fc97529eb92d8d8defd613e5eb7dc44f254b63d18dbe1",
@@ -1612,11 +1619,11 @@ exec /app/webxr
                 "IPv4Address": "172.19.0.11/16",
                 "IPv6Address": ""
             },
-            "99bc8ed6f284258c7e111388e339f1ad0a3fd758e9e69a9f83c2d5bca895f36d": {
-                "Name": "logseq-xr-webxr",
-                "EndpointID": "850dbc74666610e9762b60594137d7064986102add08dc40a62bfca44c75c5c0",
-                "MacAddress": "02:42:ac:13:00:0a",
-                "IPv4Address": "172.19.0.10/16",
+            "a8b66965555b1f1be0f89fc671d90b3e1a2afe5dff27749641def3db5dc25edf": {
+                "Name": "cloudflared-tunnel",
+                "EndpointID": "2298e1a5ab7e03c7b30c5bba89aaac221809f94555cb6839d8b0844f3336ae90",
+                "MacAddress": "02:42:ac:13:00:06",
+                "IPv4Address": "172.19.0.6/16",
                 "IPv6Address": ""
             },
             "b0d4b7902a73135616df938ed13eaae3113736a73199c68351bb88961ed94f57": {
@@ -1645,13 +1652,6 @@ exec /app/webxr
                 "EndpointID": "44cee519c20433e6f98f813ce2d313f091996b2779ce3e3be8b6d4ac9c0888e5",
                 "MacAddress": "02:42:ac:13:00:09",
                 "IPv4Address": "172.19.0.9/16",
-                "IPv6Address": ""
-            },
-            "d4beef74510c832756a3eb76a3eb215e36aea06314b1ea09d4f59b5fbcfda56a": {
-                "Name": "cloudflared-tunnel",
-                "EndpointID": "1511b40ea0400efb9409c2c4b146fd1a613f298525b8b83eca336f90c8183bc4",
-                "MacAddress": "02:42:ac:13:00:06",
-                "IPv4Address": "172.19.0.6/16",
                 "IPv6Address": ""
             }
         },
@@ -2066,6 +2066,19 @@ async function init() {
         // Initialize main visualization and store globally
         const viz = new GraphVisualization(settings);
         (window as any).visualization = viz;
+
+        // Subscribe to visualization settings changes
+        settingsStore.subscribe('visualization', (_, newVisualizationSettings) => {
+            if (viz && newVisualizationSettings) {
+                // Create a new settings object with just the visualization changes
+                const updatedSettings: Settings = {
+                    ...settings,
+                    visualization: newVisualizationSettings as Settings['visualization']
+                };
+                viz.handleSettingsUpdate(updatedSettings);
+                logger.debug('Visualization settings updated:', newVisualizationSettings);
+            }
+        });
 
         // Log successful initialization
         logger.info('Application components initialized successfully', {
@@ -3250,6 +3263,128 @@ export class PerformanceMonitor {
   }
 }
 
+----
+core/physicsConstants.ts
+// Physics parameter ranges and defaults based on GPU-accelerated implementations
+export const PHYSICS_CONSTANTS = {
+    // Attraction force (cohesion between nodes)
+    ATTRACTION: {
+        MIN: 0.001,
+        MAX: 1.0,
+        DEFAULT: 0.015,  // Proven stable in Rust backend
+        RECOMMENDED_RANGE: {
+            MIN: 0.01,
+            MAX: 0.05
+        }
+    },
+
+    // Repulsion force (separation between nodes)
+    REPULSION: {
+        MIN: 1.0,
+        MAX: 10000.0,
+        DEFAULT: 1500.0,  // Proven stable in Rust backend
+        RECOMMENDED_RANGE: {
+            MIN: 1000.0,
+            MAX: 2000.0
+        }
+    },
+
+    // Spring force (edge elasticity)
+    SPRING: {
+        MIN: 0.001,
+        MAX: 1.0,
+        DEFAULT: 0.018,  // Proven stable in Rust backend
+        RECOMMENDED_RANGE: {
+            MIN: 0.01,
+            MAX: 0.05
+        }
+    },
+
+    // Damping (velocity decay)
+    DAMPING: {
+        MIN: 0.5,
+        MAX: 0.95,
+        DEFAULT: 0.88,  // Proven stable in Rust backend
+        RECOMMENDED_RANGE: {
+            MIN: 0.85,
+            MAX: 0.92
+        }
+    },
+
+    // Simulation iterations
+    ITERATIONS: {
+        MIN: 1,
+        MAX: 1000,
+        DEFAULT: 500,  // Proven stable in Rust backend
+        RECOMMENDED_RANGE: {
+            MIN: 200,
+            MAX: 600
+        }
+    },
+
+    // Maximum velocity
+    MAX_VELOCITY: {
+        MIN: 0.1,
+        MAX: 5.0,
+        DEFAULT: 2.5,  // Proven stable in Rust backend
+        RECOMMENDED_RANGE: {
+            MIN: 1.0,
+            MAX: 3.0
+        }
+    },
+
+    // Additional physics parameters
+    COLLISION_RADIUS: {
+        MIN: 0.1,
+        MAX: 1.0,
+        DEFAULT: 0.25,
+        RECOMMENDED_RANGE: {
+            MIN: 0.2,
+            MAX: 0.4
+        }
+    },
+
+    BOUNDS_SIZE: {
+        MIN: 5.0,
+        MAX: 50.0,
+        DEFAULT: 12.0,
+        RECOMMENDED_RANGE: {
+            MIN: 10.0,
+            MAX: 15.0
+        }
+    }
+};
+
+// Helper types for physics parameters
+export type PhysicsParameter = keyof typeof PHYSICS_CONSTANTS;
+export type PhysicsRange = {
+    MIN: number;
+    MAX: number;
+    DEFAULT: number;
+    RECOMMENDED_RANGE: {
+        MIN: number;
+        MAX: number;
+    };
+};
+
+// Helper functions for physics parameters
+export const isWithinPhysicsRange = (param: PhysicsParameter, value: number): boolean => {
+    const range = PHYSICS_CONSTANTS[param];
+    return value >= range.MIN && value <= range.MAX;
+};
+
+export const isWithinRecommendedRange = (param: PhysicsParameter, value: number): boolean => {
+    const range = PHYSICS_CONSTANTS[param].RECOMMENDED_RANGE;
+    return value >= range.MIN && value <= range.MAX;
+};
+
+export const getPhysicsRange = (param: PhysicsParameter): PhysicsRange => {
+    return PHYSICS_CONSTANTS[param];
+};
+
+export const getDefaultPhysicsValue = (param: PhysicsParameter): number => {
+    return PHYSICS_CONSTANTS[param].DEFAULT;
+};
 ----
 platform/platformManager.ts
 import { Platform, PlatformCapabilities } from '../core/types';
@@ -5814,8 +5949,8 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         enableInstancing: true,
         enableMetadataShape: true,
         enableMetadataVisualization: true,
-        baseSize: 1.0,  // Reduced for better proportions
-        sizeRange: [0.8, 2.0],  // More gentle scaling
+        baseSize: 1.0,  // Default size with range up to 10.0
+        sizeRange: [0.8, 5.0],  // Wider range for more size variation
         baseColor: toHexColor(0x4287f5),  // Softer blue
         opacity: 0.9,  // Slightly transparent
         colorRangeAge: [toHexColor(0x4287f5), toHexColor(0xf542a1)],  // Blue to pink
@@ -5891,15 +6026,15 @@ export const defaultVisualizationSettings: VisualizationSettings = {
     },
     physics: {
         enabled: true,
-        attractionStrength: 0.012,      // Slightly weaker attraction for less chaotic movement
-        repulsionStrength: 1200.0,      // Reduced repulsion for better clustering
-        springStrength: 0.015,          // Slightly weaker springs for more organic movement
-        damping: 0.92,                  // Higher damping for smoother motion
-        iterations: 600,                // More iterations for stability
-        maxVelocity: 2.0,              // Lower max velocity for smoother motion
-        collisionRadius: 0.3,           // Slightly larger collision radius
+        attractionStrength: 0.015,     // Range: 0.001-1.0, proven value from Initial phase
+        repulsionStrength: 1200.0,     // Range: 1.0-10000.0, proven value from settings
+        springStrength: 0.018,         // Range: 0.001-1.0, proven value from Initial phase
+        damping: 0.95,                 // Range: 0.5-0.95, proven value from Initial phase
+        iterations: 300,               // Range: 1-500, proven value from Initial phase
+        maxVelocity: 0.2,             // Range: 0.1-1.0, matches time_step
+        collisionRadius: 0.25,         // From Rust default
         enableBounds: true,
-        boundsSize: 15.0               // Larger bounds for more space
+        boundsSize: 100.0             // Range: 10-500, from SimulationParams
     }
 };
 
@@ -8419,28 +8554,29 @@ function validateVisualizationSettings(visualization: Settings['visualization'],
 
     // Validate physics settings
     if (visualization.physics?.enabled) {
-        validateNumericRange('visualization.physics.attractionStrength', visualization.physics.attractionStrength, 0.001, 0.05, errors);
-        validateNumericRange('visualization.physics.repulsionStrength', visualization.physics.repulsionStrength, 100, 3000, errors);
-        validateNumericRange('visualization.physics.springStrength', visualization.physics.springStrength, 0.001, 0.05, errors);
-        validateNumericRange('visualization.physics.damping', visualization.physics.damping, 0.5, 0.99, errors);
-        validateNumericRange('visualization.physics.iterations', visualization.physics.iterations, 200, 1000, errors);
-        validateNumericRange('visualization.physics.maxVelocity', visualization.physics.maxVelocity, 0.1, 5.0, errors);
+        // Align with force_calculation.wgsl SimulationParams ranges
+        validateNumericRange('visualization.physics.attractionStrength', visualization.physics.attractionStrength, 0.001, 1.0, errors);
+        validateNumericRange('visualization.physics.repulsionStrength', visualization.physics.repulsionStrength, 1.0, 10000.0, errors);
+        validateNumericRange('visualization.physics.springStrength', visualization.physics.springStrength, 0.001, 1.0, errors);
+        validateNumericRange('visualization.physics.damping', visualization.physics.damping, 0.5, 0.95, errors);
+        validateNumericRange('visualization.physics.iterations', visualization.physics.iterations, 1, 500, errors);
+        validateNumericRange('visualization.physics.maxVelocity', visualization.physics.maxVelocity, 0.1, 1.0, errors);
         validateNumericRange('visualization.physics.collisionRadius', visualization.physics.collisionRadius, 0.1, 1.0, errors);
-        validateNumericRange('visualization.physics.boundsSize', visualization.physics.boundsSize, 5.0, 50.0, errors);
+        validateNumericRange('visualization.physics.boundsSize', visualization.physics.boundsSize, 10.0, 500.0, errors);
     }
 
     // Validate node settings
     if (visualization.nodes) {
         validateQualityEnum('visualization.nodes.quality', visualization.nodes.quality, errors);
-        validateNumericRange('visualization.nodes.baseSize', visualization.nodes.baseSize, 0.5, 3.0, errors);
+        validateNumericRange('visualization.nodes.baseSize', visualization.nodes.baseSize, 0.5, 10.0, errors);
         validateNumericRange('visualization.nodes.opacity', visualization.nodes.opacity, 0.3, 1, errors);
         validateNumericRange('visualization.nodes.metalness', visualization.nodes.metalness, 0.2, 0.8, errors);
         validateNumericRange('visualization.nodes.roughness', visualization.nodes.roughness, 0.2, 0.8, errors);
         
         // Validate size range array
         if (visualization.nodes.sizeRange) {
-            validateNumericRange('visualization.nodes.sizeRange[0]', visualization.nodes.sizeRange[0], 0.5, 1.5, errors);
-            validateNumericRange('visualization.nodes.sizeRange[1]', visualization.nodes.sizeRange[1], 1.0, 3.0, errors);
+            validateNumericRange('visualization.nodes.sizeRange[0]', visualization.nodes.sizeRange[0], 0.5, 5.0, errors);
+            validateNumericRange('visualization.nodes.sizeRange[1]', visualization.nodes.sizeRange[1], 1.0, 10.0, errors);
             if (visualization.nodes.sizeRange[0] >= visualization.nodes.sizeRange[1]) {
                 errors.push({
                     path: 'visualization.nodes.sizeRange',

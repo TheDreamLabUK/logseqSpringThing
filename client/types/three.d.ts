@@ -166,6 +166,14 @@ declare module 'three' {
     specular: Color;
   }
 
+  export class MeshStandardMaterial extends Material {
+    constructor(parameters?: MeshStandardMaterialParameters);
+    metalness: number;
+    roughness: number;
+    map: Texture | null;
+    emissive: Color;
+  }
+
   export class SpriteMaterial extends Material {
     constructor(parameters?: SpriteMaterialParameters);
     map: Texture | null;
@@ -352,6 +360,13 @@ declare module 'three' {
     shininess?: number;
     specular?: ColorRepresentation;
   }
+  export interface MeshStandardMaterialParameters extends MaterialParameters {
+    metalness?: number;
+    roughness?: number;
+    map?: Texture | null;
+    emissive?: ColorRepresentation;
+  }
+
   export interface SpriteMaterialParameters extends MaterialParameters {
     sizeAttenuation?: boolean;
     rotation?: number;

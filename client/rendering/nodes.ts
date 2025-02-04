@@ -31,7 +31,7 @@ export class NodeRenderer {
         this.geometryFactory = GeometryFactory.getInstance();
         this.settingsObserver = SettingsObserver.getInstance();
 
-        this.material = this.materialFactory.getPhongNodeMaterial();
+        this.material = this.materialFactory.getPhongNodeMaterial(this.currentSettings);
         this.mesh = new THREE.Mesh(
             this.geometryFactory.getNodeGeometry(this.currentSettings.xr.quality),
             this.material
@@ -45,7 +45,8 @@ export class NodeRenderer {
             switch (setting) {
                 case 'baseColor':
                 case 'opacity':
-                    this.materialFactory.updateMaterial('node-phong', this.currentSettings);
+                case 'metalness':
+                case 'roughness':
                     break;
                 case 'baseSize':
                     this.mesh.scale.set(value, value, value);
@@ -67,6 +68,8 @@ export class NodeRenderer {
     private setupSettingsSubscriptions(): void {
         this.settingsObserver.subscribe('NodeRenderer', (settings) => {
             this.currentSettings = settings;
+            // Update material with new settings
+            this.materialFactory.updateMaterial('node-phong', settings);
             Object.keys(settings.visualization.nodes).forEach(setting => {
                 this.handleSettingChange(
                     setting as keyof Settings['visualization']['nodes'],

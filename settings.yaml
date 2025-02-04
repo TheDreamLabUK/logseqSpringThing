@@ -1,7 +1,7 @@
 visualization:
   nodes:
-    base_color: '#495d7e'
-    base_size: 8.0
+    base_color: '#000000'
+    base_size: 7.0
     metalness: 0.6
     opacity: 0.9
     roughness: 0.4
@@ -16,23 +16,23 @@ visualization:
   edges:
     arrow_size: 0.8
     base_width: 0.8
-    color: '#6e7c91'
+    color: '#0765f2'
     enable_arrows: true
     opacity: 0.4
     width_range:
     - 0.6
     - 1.6
   physics:
-    attraction_strength: 0.012
-    bounds_size: 5.0
-    collision_radius: 0.3
-    damping: 0.92
-    enable_bounds: false
+    attraction_strength: 0.015
+    bounds_size: 100.0
+    collision_radius: 0.25
+    damping: 0.95
+    enable_bounds: true
     enabled: true
-    iterations: 600
-    max_velocity: 2.0
+    iterations: 300
+    max_velocity: 0.2
     repulsion_strength: 1200.0
-    spring_strength: 0.015
+    spring_strength: 0.018
   rendering:
     ambient_light_intensity: 0.65
     background_color: '#1a1a2e'

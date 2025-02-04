@@ -18,8 +18,8 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         opacity: 0.9,  // Slightly transparent
         colorRangeAge: [toHexColor(0x4287f5), toHexColor(0xf542a1)],  // Blue to pink
         colorRangeLinks: [toHexColor(0x4287f5), toHexColor(0xa142f5)],  // Blue to purple
-        metalness: 0.6,  // Less metallic
-        roughness: 0.4,  // More diffuse
+        metalness: 0.3,  // Much less metallic for reduced reflections
+        roughness: 0.7,  // More diffuse for reduced specular highlights
         enableHologram: false
     },
     edges: {
@@ -51,8 +51,8 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         billboardMode: true
     },
     rendering: {
-        ambientLightIntensity: 0.65,  // Brighter ambient for better visibility
-        directionalLightIntensity: 1.2,  // Slightly reduced directional for less harsh shadows
+        ambientLightIntensity: 0.4,  // Reduced ambient for less overall brightness
+        directionalLightIntensity: 0.8,  // Reduced directional for less harsh lighting
         environmentIntensity: 0.8,  // Reduced environment intensity for better balance
         backgroundColor: toHexColor(0x1a1a2e),  // Slightly blue-tinted dark background
         enableAmbientOcclusion: true,
@@ -62,12 +62,12 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         shadowBias: 0.0001  // Fine-tuned shadow bias
     },
     bloom: {
-        enabled: true,
+        enabled: false,  // Disabled to reduce overall brightness
         strength: 1.2,        // Slightly reduced overall bloom
         radius: 0.6,         // Tighter bloom radius
         threshold: 0.4,      // Higher threshold for more selective bloom
         edgeBloomStrength: 0.4,  // Subtler edge glow
-        nodeBloomStrength: 1.6,  // Less intense node glow
+        nodeBloomStrength: 0.8,  // Much less intense node glow
         environmentBloomStrength: 0.8  // Reduced environment bloom
     },
     hologram: {
@@ -76,7 +76,7 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         ringRotationSpeed: 0.08,         // Slower, more graceful rotation
         globalRotationSpeed: 0.06,       // Slower global rotation
         ringColor: toHexColor(0x4287f5), // Match node base color
-        ringOpacity: 0.35,               // More subtle rings
+        ringOpacity: 0.2,                // Much more subtle rings
         enableBuckminster: false,
         buckminsterScale: 1.2,           // Slightly larger when enabled
         buckminsterOpacity: 0.3,         // More subtle buckminster
@@ -89,15 +89,15 @@ export const defaultVisualizationSettings: VisualizationSettings = {
     },
     physics: {
         enabled: true,
-        attractionStrength: 0.012,      // Slightly weaker attraction for less chaotic movement
-        repulsionStrength: 1200.0,      // Reduced repulsion for better clustering
-        springStrength: 0.015,          // Slightly weaker springs for more organic movement
-        damping: 0.92,                  // Higher damping for smoother motion
-        iterations: 600,                // More iterations for stability
-        maxVelocity: 2.0,              // Lower max velocity for smoother motion
-        collisionRadius: 0.3,           // Slightly larger collision radius
+        attractionStrength: 0.015,     // Range: 0.001-1.0, proven value from Initial phase
+        repulsionStrength: 1200.0,     // Range: 1.0-10000.0, proven value from settings
+        springStrength: 0.018,         // Range: 0.001-1.0, proven value from Initial phase
+        damping: 0.95,                 // Range: 0.5-0.95, proven value from Initial phase
+        iterations: 300,               // Range: 1-500, proven value from Initial phase
+        maxVelocity: 0.2,             // Range: 0.1-1.0, matches time_step
+        collisionRadius: 0.25,         // From Rust default
         enableBounds: true,
-        boundsSize: 15.0               // Larger bounds for more space
+        boundsSize: 100.0             // Range: 10-500, from SimulationParams
     }
 };
 

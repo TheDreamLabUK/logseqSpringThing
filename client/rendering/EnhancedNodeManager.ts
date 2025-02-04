@@ -57,7 +57,7 @@ export class EnhancedNodeManager {
     private dummy = new Object3D();
     private geometryFactory: GeometryFactory;
     private materialFactory: MaterialFactory;
-    private isInstanced: boolean = false;
+    private isInstanced: boolean;
     private isHologram: boolean = false;
     private hologramMaterial: HologramShaderMaterial | null = null;
     private metadataMaterial: Material | null = null;
@@ -86,8 +86,10 @@ export class EnhancedNodeManager {
 
         this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
+        this.isInstanced = settings.visualization.nodes.enableInstancing;
         this.nodeGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
         this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
+        this.isHologram = settings.visualization.nodes.enableHologram;
 
         if (this.settings.visualization.nodes.enableHologram) {
             this.hologramMaterial = this.materialFactory.getHologramMaterial(settings);
@@ -141,6 +143,9 @@ export class EnhancedNodeManager {
 
     public handleSettingsUpdate(settings: Settings): void {
         this.settings = settings;
+        
+        // Update node material
+        this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
         const newGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
         if (this.nodeGeometry !== newGeometry) {
             this.nodeGeometry = newGeometry;
@@ -176,6 +181,12 @@ export class EnhancedNodeManager {
     }
 
     private rebuildInstancedMesh() {
+        // Clean up old mesh if it exists
+        if (this.instancedMesh) {
+            this.instancedMesh.geometry.dispose();
+            this.instancedMesh.material.dispose();
+            this.scene.remove(this.instancedMesh);
+        }
         if (this.isInstanced) {
             this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 1000);
             this.instancedMesh.count = 0;

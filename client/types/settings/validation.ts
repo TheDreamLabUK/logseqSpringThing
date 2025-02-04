@@ -56,14 +56,15 @@ function validateVisualizationSettings(visualization: Settings['visualization'],
 
     // Validate physics settings
     if (visualization.physics?.enabled) {
-        validateNumericRange('visualization.physics.attractionStrength', visualization.physics.attractionStrength, 0.001, 0.05, errors);
-        validateNumericRange('visualization.physics.repulsionStrength', visualization.physics.repulsionStrength, 100, 3000, errors);
-        validateNumericRange('visualization.physics.springStrength', visualization.physics.springStrength, 0.001, 0.05, errors);
-        validateNumericRange('visualization.physics.damping', visualization.physics.damping, 0.5, 0.99, errors);
-        validateNumericRange('visualization.physics.iterations', visualization.physics.iterations, 200, 1000, errors);
-        validateNumericRange('visualization.physics.maxVelocity', visualization.physics.maxVelocity, 0.1, 5.0, errors);
+        // Align with force_calculation.wgsl SimulationParams ranges
+        validateNumericRange('visualization.physics.attractionStrength', visualization.physics.attractionStrength, 0.001, 1.0, errors);
+        validateNumericRange('visualization.physics.repulsionStrength', visualization.physics.repulsionStrength, 1.0, 10000.0, errors);
+        validateNumericRange('visualization.physics.springStrength', visualization.physics.springStrength, 0.001, 1.0, errors);
+        validateNumericRange('visualization.physics.damping', visualization.physics.damping, 0.5, 0.95, errors);
+        validateNumericRange('visualization.physics.iterations', visualization.physics.iterations, 1, 500, errors);
+        validateNumericRange('visualization.physics.maxVelocity', visualization.physics.maxVelocity, 0.1, 1.0, errors);
         validateNumericRange('visualization.physics.collisionRadius', visualization.physics.collisionRadius, 0.1, 1.0, errors);
-        validateNumericRange('visualization.physics.boundsSize', visualization.physics.boundsSize, 5.0, 50.0, errors);
+        validateNumericRange('visualization.physics.boundsSize', visualization.physics.boundsSize, 10.0, 500.0, errors);
     }
 
     // Validate node settings

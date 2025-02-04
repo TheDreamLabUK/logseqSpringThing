@@ -1,5 +1,5 @@
 import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
-import { Color, Material, MeshBasicMaterial, MeshPhongMaterial, LineBasicMaterial } from 'three';
+import { Color, Material, MeshStandardMaterial as ThreeMeshStandardMaterial, LineBasicMaterial } from 'three';
 
 export class MaterialFactory {
     private static instance: MaterialFactory;
@@ -51,22 +51,32 @@ export class MaterialFactory {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new MeshBasicMaterial({
-            color: settings.visualization?.node?.color || 0xffffff
+        const material = new ThreeMeshStandardMaterial({
+            color: settings.visualization?.nodes?.baseColor || 0x4287f5,
+            metalness: settings.visualization?.nodes?.metalness || 0.3,
+            roughness: settings.visualization?.nodes?.roughness || 0.7,
+            transparent: true,
+            opacity: settings.visualization?.nodes?.opacity || 0.9,
+            emissive: 0x000000
         });
 
         this.materialCache.set(cacheKey, material);
         return material;
     }
 
-    public getPhongNodeMaterial(): Material {
+    public getPhongNodeMaterial(settings: any): Material {
         const cacheKey = 'node-phong';
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new MeshPhongMaterial({
-            color: 0xffffff
+        const material = new ThreeMeshStandardMaterial({
+            color: settings.visualization?.nodes?.baseColor || 0x4287f5,
+            metalness: settings.visualization?.nodes?.metalness || 0.3,
+            roughness: settings.visualization?.nodes?.roughness || 0.7,
+            transparent: true,
+            opacity: settings.visualization?.nodes?.opacity || 0.9,
+            emissive: 0x000000
         });
 
         this.materialCache.set(cacheKey, material);
@@ -93,10 +103,12 @@ export class MaterialFactory {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new MeshBasicMaterial({
+        const material = new ThreeMeshStandardMaterial({
             color: 0xffffff,
             transparent: true,
-            opacity: 0.8
+            opacity: 0.8,
+            metalness: 0.3,
+            roughness: 0.7
         });
 
         this.materialCache.set(cacheKey, material);
@@ -109,9 +121,15 @@ export class MaterialFactory {
 
         switch (type) {
             case 'node-basic':
-            case 'node-phong':
-                (material as MeshBasicMaterial | MeshPhongMaterial).color = this.hexToRgb(settings.visualization?.node?.color || '#ffffff');
+            case 'node-phong': {
+                const nodeMaterial = material as ThreeMeshStandardMaterial;
+                nodeMaterial.color = this.hexToRgb(settings.visualization?.nodes?.baseColor || '#4287f5');
+                nodeMaterial.metalness = settings.visualization?.nodes?.metalness || 0.3;
+                nodeMaterial.roughness = settings.visualization?.nodes?.roughness || 0.7;
+                nodeMaterial.opacity = settings.visualization?.nodes?.opacity || 0.9;
+                nodeMaterial.needsUpdate = true;
                 break;
+            }
             case 'edge':
                 (material as LineBasicMaterial).color = this.hexToRgb(settings.visualization?.edge?.color || '#ffffff');
                 break;
