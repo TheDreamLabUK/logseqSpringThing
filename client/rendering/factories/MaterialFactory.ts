@@ -1,5 +1,5 @@
 import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
-import { Color, Material, MeshStandardMaterial as ThreeMeshStandardMaterial, LineBasicMaterial } from 'three';
+import { Color, Material, MeshBasicMaterial, LineBasicMaterial } from 'three';
 
 export class MaterialFactory {
     private static instance: MaterialFactory;
@@ -51,13 +51,11 @@ export class MaterialFactory {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new ThreeMeshStandardMaterial({
+        const material = new MeshBasicMaterial({
             color: settings.visualization?.nodes?.baseColor || 0x4287f5,
-            metalness: settings.visualization?.nodes?.metalness || 0.3,
-            roughness: settings.visualization?.nodes?.roughness || 0.7,
             transparent: true,
             opacity: settings.visualization?.nodes?.opacity || 0.9,
-            emissive: 0x000000
+            depthWrite: true
         });
 
         this.materialCache.set(cacheKey, material);
@@ -70,13 +68,47 @@ export class MaterialFactory {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new ThreeMeshStandardMaterial({
+        const material = new MeshBasicMaterial({
             color: settings.visualization?.nodes?.baseColor || 0x4287f5,
-            metalness: settings.visualization?.nodes?.metalness || 0.3,
-            roughness: settings.visualization?.nodes?.roughness || 0.7,
             transparent: true,
             opacity: settings.visualization?.nodes?.opacity || 0.9,
-            emissive: 0x000000
+            depthWrite: true
+        });
+
+        this.materialCache.set(cacheKey, material);
+        return material;
+    }
+
+    public getSceneSphereMaterial(type: string, settings: any): Material {
+        const cacheKey = `scene-sphere-${type}`;
+        if (this.materialCache.has(cacheKey)) {
+            return this.materialCache.get(cacheKey)!;
+        }
+
+        const material = new MeshBasicMaterial({
+            color: settings.visualization?.hologram?.color || 0x4287f5,
+            transparent: true,
+            opacity: 0.3,
+            depthWrite: false
+        });
+
+        (material as any).wireframe = true;
+
+        this.materialCache.set(cacheKey, material);
+        return material;
+    }
+
+    public getRingMaterial(settings: any): Material {
+        const cacheKey = 'ring';
+        if (this.materialCache.has(cacheKey)) {
+            return this.materialCache.get(cacheKey)!;
+        }
+
+        const material = new MeshBasicMaterial({
+            color: settings.visualization?.hologram?.color || 0x4287f5,
+            transparent: true,
+            opacity: 0.15,
+            depthWrite: false
         });
 
         this.materialCache.set(cacheKey, material);
@@ -103,12 +135,10 @@ export class MaterialFactory {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new ThreeMeshStandardMaterial({
+        const material = new MeshBasicMaterial({
             color: 0xffffff,
             transparent: true,
-            opacity: 0.8,
-            metalness: 0.3,
-            roughness: 0.7
+            opacity: 0.8
         });
 
         this.materialCache.set(cacheKey, material);
@@ -122,10 +152,8 @@ export class MaterialFactory {
         switch (type) {
             case 'node-basic':
             case 'node-phong': {
-                const nodeMaterial = material as ThreeMeshStandardMaterial;
+                const nodeMaterial = material as MeshBasicMaterial;
                 nodeMaterial.color = this.hexToRgb(settings.visualization?.nodes?.baseColor || '#4287f5');
-                nodeMaterial.metalness = settings.visualization?.nodes?.metalness || 0.3;
-                nodeMaterial.roughness = settings.visualization?.nodes?.roughness || 0.7;
                 nodeMaterial.opacity = settings.visualization?.nodes?.opacity || 0.9;
                 nodeMaterial.needsUpdate = true;
                 break;
@@ -137,6 +165,18 @@ export class MaterialFactory {
                 if (material instanceof HologramShaderMaterial) {
                     material.uniforms.color.value = this.hexToRgb(settings.visualization?.hologram?.color || '#ffffff');
                 }
+                break;
+            case 'scene-sphere-inner':
+            case 'scene-sphere-middle':
+            case 'scene-sphere-outer':
+                const sphereMaterial = material as MeshBasicMaterial;
+                sphereMaterial.color = this.hexToRgb(settings.visualization?.hologram?.color || '#4287f5');
+                sphereMaterial.needsUpdate = true;
+                break;
+            case 'ring':
+                const ringMaterial = material as MeshBasicMaterial;
+                ringMaterial.color = this.hexToRgb(settings.visualization?.hologram?.color || '#4287f5');
+                ringMaterial.needsUpdate = true;
                 break;
         }
     }

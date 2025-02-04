@@ -23,6 +23,7 @@ export class SceneManager {
   private camera: PerspectiveCamera;
   private renderer: WebGLRenderer;
   private controls: OrbitControls;
+  private sceneGrid: GridHelper | null = null;
   
   // Post-processing
   private composer: EffectComposer;
@@ -131,6 +132,7 @@ export class SceneManager {
       gridHelper.material.opacity = 0.1;
     }
     this.scene.add(gridHelper);
+    this.sceneGrid = gridHelper;
   }
 
   private handleResize(): void {
@@ -189,6 +191,11 @@ export class SceneManager {
     // Update controls only in non-XR mode
     if (!this.renderer.xr.enabled) {
       this.controls.update();
+      // Show scene grid in non-XR mode
+      if (this.sceneGrid) this.sceneGrid.visible = true;
+    } else {
+      // Hide scene grid in XR mode
+      if (this.sceneGrid) this.sceneGrid.visible = false;
     }
 
     // Determine if we should use post-processing

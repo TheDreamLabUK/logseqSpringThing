@@ -37,27 +37,28 @@ export class GeometryFactory {
         }
 
         const segments = {
-            low: { ring: 32, sphere: 8 },
-            medium: { ring: 64, sphere: 16 },
-            high: { ring: 128, sphere: 32 }
-        }[quality] || { ring: 64, sphere: 16 };
+            low: { ring: 64, sphere: 32 },
+            medium: { ring: 96, sphere: 48 },
+            high: { ring: 128, sphere: 64 }
+        }[quality] || { ring: 96, sphere: 48 };
 
         let geometry: BufferGeometry;
         switch (type) {
             case 'ring':
-                geometry = new SphereGeometry(1, segments.ring, segments.ring);
+                // Translucent rings at scene scale
+                geometry = new SphereGeometry(40, segments.ring, segments.ring);
                 break;
-            case 'buckminster':
-                geometry = new SphereGeometry(1, 20, 20);
+            case 'outerSphere':
+                geometry = new SphereGeometry(200, segments.sphere, segments.sphere);
                 break;
-            case 'geodesic':
-                geometry = new SphereGeometry(1, 16, 16);
+            case 'middleSphere':
+                geometry = new SphereGeometry(100, segments.sphere, segments.sphere);
                 break;
-            case 'triangleSphere':
-                geometry = new SphereGeometry(1, segments.sphere, segments.sphere);
+            case 'innerSphere':
+                geometry = new SphereGeometry(40, segments.sphere, segments.sphere);
                 break;
             default:
-                geometry = new SphereGeometry(1, segments.sphere, segments.sphere);
+                geometry = new SphereGeometry(40, segments.sphere, segments.sphere);
         }
 
         this.geometryCache.set(cacheKey, geometry);

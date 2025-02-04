@@ -1,18 +1,18 @@
 visualization:
   nodes:
     base_color: '#b12525'
-    base_size: 7.0
+    base_size: 1.0
     metalness: 0.6
     opacity: 0.9
     roughness: 0.4
     size_range:
     - 0.8
     - 2.0
-    quality: high
-    enable_instancing: true
-    enable_hologram: true
-    enable_metadata_shape: true
-    enable_metadata_visualization: true
+    quality: low
+    enable_instancing: false
+    enable_hologram: false
+    enable_metadata_shape: false
+    enable_metadata_visualization: false
   edges:
     arrow_size: 0.8
     base_width: 0.0
@@ -28,7 +28,7 @@ visualization:
     collision_radius: 0.25
     damping: 0.95
     enable_bounds: true
-    enabled: true
+    enabled: false
     iterations: 300
     max_velocity: 0.2
     repulsion_strength: 1200.0
@@ -43,7 +43,7 @@ visualization:
     environment_intensity: 0.8
   animations:
     enable_motion_blur: false
-    enable_node_animations: false
+    enable_node_animations: true
     motion_blur_strength: 0.35
     selection_wave_enabled: false
     pulse_enabled: false
@@ -52,17 +52,17 @@ visualization:
     wave_speed: 0.8
   labels:
     desktop_font_size: 5
-    enable_labels: true
+    enable_labels: false
     text_color: '#6087c3'
   bloom:
     edge_bloom_strength: 0.6
-    enabled: true
+    enabled: false
     environment_bloom_strength: 0.3
     node_bloom_strength: 0.5
     radius: 1.0
     strength: 0.4
   hologram:
-    ring_count: 1
+    ring_count: 0
     ring_color: '#455673'
     ring_opacity: 0.35
     ring_sizes:
@@ -135,7 +135,7 @@ xr:
   mode: immersive-vr
   room_scale: 0.1
   space_type: local-floor
-  quality: high
+  quality: low
   enable_hand_tracking: true
   hand_mesh_enabled: true
   hand_mesh_color: '#4287f5'
@@ -156,14 +156,14 @@ xr:
   movement_axes:
     horizontal: 2
     vertical: 3
-  enable_light_estimation: true
-  enable_plane_detection: true
-  enable_scene_understanding: true
+  enable_light_estimation: false
+  enable_plane_detection: false
+  enable_scene_understanding: false
   plane_color: '#4287f5'
   plane_opacity: 0.2
   plane_detection_distance: 3.0
-  show_plane_overlay: true
-  snap_to_floor: true
+  show_plane_overlay: false
+  snap_to_floor: false
   enable_passthrough_portal: false
   passthrough_opacity: 0.8
   passthrough_brightness: 1.1

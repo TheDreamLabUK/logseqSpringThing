@@ -1,16 +1,18 @@
 import * as THREE from 'three';
-import { HologramShaderMaterial } from '../rendering/materials/HologramShaderMaterial';
+import { GeometryFactory } from '../rendering/factories/GeometryFactory';
+import { MaterialFactory } from '../rendering/factories/MaterialFactory';
 
 export class HologramManager {
     private readonly hologramGroup: THREE.Group;
     private readonly settings: any;
     private isXRMode: boolean = false;
-
-    private readonly segments = {
-        low: { ring: 32, sphere: 16 },
-        medium: { ring: 64, sphere: 32 },
-        high: { ring: 128, sphere: 64 }
-    };
+    private readonly geometryFactory: GeometryFactory;
+    private readonly materialFactory: MaterialFactory;
+    
+    // Store scene objects
+    private rings: THREE.Mesh[] = [];
+    private spheres: THREE.Mesh[] = [];
+    private ringQuaternions: THREE.Quaternion[] = [];
 
     constructor(
         private readonly scene: THREE.Scene,
@@ -19,48 +21,59 @@ export class HologramManager {
         this.settings = settings;
         this.hologramGroup = new THREE.Group();
         this.scene.add(this.hologramGroup);
-        this.initializeGeometries();
+        
+        this.geometryFactory = GeometryFactory.getInstance();
+        this.materialFactory = MaterialFactory.getInstance();
+        
         this.createHolographicStructures();
     }
 
-    private initializeGeometries(): void {
-        const quality = this.isXRMode ? 'high' : (this.settings.quality || 'medium');
-        const segmentCount = this.segments[quality as keyof typeof this.segments] || this.segments.medium;
-        
-        // Create base geometries
-        const ringGeometry = new THREE.TorusGeometry(1, 0.02, segmentCount.ring, segmentCount.ring * 2);
-        const sphereGeometry = new THREE.SphereGeometry(1, segmentCount.sphere, segmentCount.sphere);
-        
-        // Create hologram material
-        const material = new HologramShaderMaterial(this.settings);
-        
-        // Add ring structures
-        for (let i = 0; i < 3; i++) {
-            const ring = new THREE.Mesh(ringGeometry, material.clone());
-            ring.scale.setScalar(1.5 + i * 0.5);
-            ring.rotation.x = Math.PI / 3 * i;
-            this.hologramGroup.add(ring);
-        }
-        
-        // Add sphere structure
-        const sphere = new THREE.Mesh(sphereGeometry, material.clone());
-        this.hologramGroup.add(sphere);
-    }
-
     private createHolographicStructures(): void {
-        // Clear existing structures
-        while (this.hologramGroup.children.length > 0) {
-            const child = this.hologramGroup.children[0];
-            if (child instanceof THREE.Mesh) {
-                child.geometry.dispose();
-                if (child.material instanceof THREE.Material) {
-                    child.material.dispose();
-                }
+        // Clean up existing objects
+        this.rings.forEach(ring => {
+            ring.geometry.dispose();
+            ring.material.dispose();
+            this.hologramGroup.remove(ring);
+        });
+        this.spheres.forEach(sphere => {
+            sphere.geometry.dispose();
+            sphere.material.dispose();
+            this.hologramGroup.remove(sphere);
+        });
+        this.rings = [];
+        this.spheres = [];
+
+        const quality = this.isXRMode ? 'high' : (this.settings.quality || 'medium');
+
+        // Create spheres
+        const sphereRadii = [40, 100, 200];
+        sphereRadii.forEach(radius => {
+            const geometry = this.geometryFactory.getHologramGeometry('innerSphere', quality);
+            const material = this.materialFactory.getSceneSphereMaterial('sphere', this.settings);
+            const sphere = new THREE.Mesh(geometry, material);
+            sphere.scale.setScalar(radius / 40); // Base geometry is radius 40
+            this.hologramGroup.add(sphere);
+            this.spheres.push(sphere);
+        });
+
+        // Create rings
+        sphereRadii.forEach(radius => {
+            const scale = radius / 40; // Base ring geometry is radius 40
+            for (let i = 0; i < 3; i++) {
+                const geometry = this.geometryFactory.getHologramGeometry('ring', quality);
+                const material = this.materialFactory.getRingMaterial(this.settings);
+                const ring = new THREE.Mesh(geometry, material);
+                
+                ring.scale.setScalar(scale);
+                const quaternion = new THREE.Quaternion();
+                quaternion.setFromEuler(new THREE.Euler(Math.PI / 3 * i, Math.PI / 4 * i, 0));
+                ring.quaternion.copy(quaternion);
+                this.ringQuaternions.push(quaternion);
+                
+                this.hologramGroup.add(ring);
+                this.rings.push(ring);
             }
-            this.hologramGroup.remove(child);
-        }
-        
-        this.initializeGeometries();
+        });
     }
 
     public setXRMode(enabled: boolean): void {
@@ -69,11 +82,13 @@ export class HologramManager {
     }
 
     public update(deltaTime: number): void {
-        this.hologramGroup.children.forEach(child => {
-            if (child instanceof THREE.Mesh && child.material instanceof HologramShaderMaterial) {
-                child.rotation.y += deltaTime * 0.1;
-                child.material.update(deltaTime);
-            }
+        // Update ring rotations using quaternions
+        const rotationQuat = new THREE.Quaternion();
+        rotationQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), deltaTime * 0.1);
+        
+        this.rings.forEach((ring, index) => {
+            this.ringQuaternions[index].multiply(rotationQuat);
+            ring.quaternion.copy(this.ringQuaternions[index]);
         });
     }
 
@@ -91,11 +106,15 @@ export class HologramManager {
         );
         position.applyMatrix4(indexTip.matrixWorld);
 
-        this.hologramGroup.children.forEach(child => {
-            if (child instanceof THREE.Mesh && child.material instanceof HologramShaderMaterial) {
-                const distance = position.distanceTo(child.position);
-                if (distance < 0.1) {
-                    child.material.handleInteraction(position);
+        [...this.rings, ...this.spheres].forEach(mesh => {
+            const distance = position.distanceTo(mesh.position);
+            if (distance < 0.1) {
+                if (mesh.material instanceof THREE.MeshBasicMaterial) {
+                    const originalOpacity = mesh.material.opacity;
+                    mesh.material.opacity = Math.min(originalOpacity * 2, 1);
+                    setTimeout(() => {
+                        mesh.material.opacity = originalOpacity;
+                    }, 200);
                 }
             }
         });
@@ -107,13 +126,13 @@ export class HologramManager {
     }
 
     public dispose(): void {
-        this.hologramGroup.children.forEach(child => {
-            if (child instanceof THREE.Mesh) {
-                child.geometry.dispose();
-                if (child.material instanceof THREE.Material) {
-                    child.material.dispose();
-                }
-            }
+        this.rings.forEach(ring => {
+            ring.geometry.dispose();
+            ring.material.dispose();
+        });
+        this.spheres.forEach(sphere => {
+            sphere.geometry.dispose();
+            sphere.material.dispose();
         });
         this.scene.remove(this.hologramGroup);
     }

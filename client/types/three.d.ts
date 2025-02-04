@@ -271,6 +271,16 @@ declare module 'three' {
     constructor(x?: number, y?: number, z?: number, w?: number);
     setFromAxisAngle(axis: Vector3, angle: number): this;
     identity(): this;
+    multiply(q: Quaternion): this;
+    setFromEuler(euler: Euler): this;
+  }
+
+  export class Euler {
+    constructor(x?: number, y?: number, z?: number, order?: string);
+    x: number;
+    y: number;
+    z: number;
+    order: string;
   }
 
   export class Color {

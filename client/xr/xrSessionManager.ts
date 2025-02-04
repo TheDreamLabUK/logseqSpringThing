@@ -21,6 +21,7 @@ import { createLogger } from '../core/utils';
 import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
+import { NodeManager } from '../rendering/nodes';
 import { ControlPanel } from '../ui/ControlPanel';
 import { SettingsStore } from '../state/SettingsStore';
 import { XRSettings } from '../types/settings/xr';
@@ -40,6 +41,7 @@ export class XRSessionManager {
     private static instance: XRSessionManager;
     private sceneManager: SceneManager;
     private settingsStore: SettingsStore;
+    private nodeManager: NodeManager;
     private session: XRSession | null = null;
     private referenceSpace: XRReferenceSpace | null = null;
     private isPresenting: boolean = false;
@@ -71,6 +73,7 @@ export class XRSessionManager {
     constructor(sceneManager: SceneManager) {
         this.sceneManager = sceneManager;
         this.settingsStore = SettingsStore.getInstance();
+        this.nodeManager = NodeManager.getInstance();
         
         // Initialize with current settings
         this.currentSettings = this.settingsStore.get('xr') as XRSettings;
@@ -308,6 +311,12 @@ export class XRSessionManager {
             // Apply AR scale if in AR mode
             if (platformManager.isQuest()) {
                 this.arGroup.scale.setScalar(this.currentSettings.roomScale);
+                
+                // Move node instances to arGroup for proper scaling
+                const nodeInstances = this.nodeManager.getAllNodeMeshes();
+                nodeInstances.forEach(mesh => {
+                    this.arGroup.add(mesh);
+                });
             }
 
             // Reset camera rig position
@@ -365,6 +374,12 @@ export class XRSessionManager {
             this.groundPlane.visible = false;
             this.hitTestMarker.visible = false;
             this.arLight.visible = false;
+            
+            // Move node instances back to main scene
+            const nodeInstances = this.nodeManager.getAllNodeMeshes();
+            nodeInstances.forEach(mesh => {
+                this.sceneManager.getScene().add(mesh);
+            });
         }
 
         // Reset camera and scene
