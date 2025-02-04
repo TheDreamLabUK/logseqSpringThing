@@ -1,5 +1,4 @@
 import { Settings, VisualizationSettings } from '../types/settings';
-import { LABEL_COLOR } from '../core/constants';
 
 // Helper function to convert number to hex color
 function toHexColor(num: number): string {
@@ -13,90 +12,92 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         enableInstancing: true,
         enableMetadataShape: true,
         enableMetadataVisualization: true,
-        baseSize: 1.5,
-        sizeRange: [1.0, 3.0],
-        baseColor: toHexColor(0x00ffff),
-        opacity: 1,
-        colorRangeAge: [toHexColor(0x00ffff), toHexColor(0xff00ff)],
-        colorRangeLinks: [toHexColor(0x00ffff), toHexColor(0xff00ff)],
-        metalness: 0.8,
-        roughness: 0.2,
+        baseSize: 1.0,  // Default size with range up to 10.0
+        sizeRange: [0.8, 5.0],  // Wider range for more size variation
+        baseColor: toHexColor(0x4287f5),  // Softer blue
+        opacity: 0.9,  // Slightly transparent
+        colorRangeAge: [toHexColor(0x4287f5), toHexColor(0xf542a1)],  // Blue to pink
+        colorRangeLinks: [toHexColor(0x4287f5), toHexColor(0xa142f5)],  // Blue to purple
+        metalness: 0.6,  // Less metallic
+        roughness: 0.4,  // More diffuse
         enableHologram: false
     },
     edges: {
-        color: toHexColor(0x888888),
-        opacity: 0.6,
-        arrowSize: 0,
-        baseWidth: 1,
-        enableArrows: false,
-        widthRange: [1, 2]
+        color: toHexColor(0x6e7c91),  // Softer gray-blue that complements node colors
+        opacity: 0.4,  // More subtle connections
+        arrowSize: 0.8,  // Small arrows when enabled
+        baseWidth: 0.8,  // Thinner base width
+        enableArrows: false,  // Default to no arrows
+        widthRange: [0.6, 1.6]  // More subtle width variation
     },
     animations: {
         enableNodeAnimations: true,
-        enableMotionBlur: false,
-        motionBlurStrength: 0.5,
+        enableMotionBlur: true,  // Enable for smoother transitions
+        motionBlurStrength: 0.35,  // Subtle motion blur
         selectionWaveEnabled: true,
         pulseEnabled: true,
-        pulseSpeed: 1.5,
-        pulseStrength: 1,
-        waveSpeed: 1
+        pulseSpeed: 1.2,  // Slightly slower, more gentle pulse
+        pulseStrength: 0.8,  // Less intense pulse
+        waveSpeed: 0.8  // Slower, more graceful wave
     },
     labels: {
         enableLabels: true,
-        desktopFontSize: 16,
-        textColor: toHexColor(LABEL_COLOR),
-        textOutlineColor: toHexColor(0x000000),
-        textOutlineWidth: 2,
-        textResolution: 256,
-        textPadding: 4,
+        desktopFontSize: 14,  // Slightly smaller for better integration
+        textColor: toHexColor(0xe1e5eb),  // Softer white for better contrast
+        textOutlineColor: toHexColor(0x1a1a1a),  // Darker outline for better readability
+        textOutlineWidth: 3,  // Thicker outline for better visibility
+        textResolution: 512,  // Higher resolution for sharper text
+        textPadding: 6,  // More padding for better spacing
         billboardMode: true
     },
     rendering: {
-        ambientLightIntensity: 0.5,
-        directionalLightIntensity: 1.5,
-        environmentIntensity: 1,
-        backgroundColor: toHexColor(0x121212),
+        ambientLightIntensity: 0.65,  // Brighter ambient for better visibility
+        directionalLightIntensity: 1.2,  // Slightly reduced directional for less harsh shadows
+        environmentIntensity: 0.8,  // Reduced environment intensity for better balance
+        backgroundColor: toHexColor(0x1a1a2e),  // Slightly blue-tinted dark background
         enableAmbientOcclusion: true,
         enableAntialiasing: true,
-        enableShadows: true
+        enableShadows: true,
+        shadowMapSize: 2048,  // Higher resolution shadows
+        shadowBias: 0.0001  // Fine-tuned shadow bias
     },
     bloom: {
         enabled: true,
-        strength: 1.5,
-        radius: 0.8,
-        threshold: 0.3,
-        edgeBloomStrength: 0.5,
-        nodeBloomStrength: 2,
-        environmentBloomStrength: 1
+        strength: 1.2,        // Slightly reduced overall bloom
+        radius: 0.6,         // Tighter bloom radius
+        threshold: 0.4,      // Higher threshold for more selective bloom
+        edgeBloomStrength: 0.4,  // Subtler edge glow
+        nodeBloomStrength: 1.6,  // Less intense node glow
+        environmentBloomStrength: 0.8  // Reduced environment bloom
     },
     hologram: {
-        ringCount: 3,
-        ringSizes: [1, 1.5, 2],
-        ringRotationSpeed: 0.1,
-        globalRotationSpeed: 0.1,
-        ringColor: toHexColor(0x00ffff),
-        ringOpacity: 0.5,
+        ringCount: 4,                    // One more ring for better effect
+        ringSizes: [0.8, 1.2, 1.6, 2],  // More gradual size progression
+        ringRotationSpeed: 0.08,         // Slower, more graceful rotation
+        globalRotationSpeed: 0.06,       // Slower global rotation
+        ringColor: toHexColor(0x4287f5), // Match node base color
+        ringOpacity: 0.35,               // More subtle rings
         enableBuckminster: false,
-        buckminsterScale: 1,
-        buckminsterOpacity: 0.5,
+        buckminsterScale: 1.2,           // Slightly larger when enabled
+        buckminsterOpacity: 0.3,         // More subtle buckminster
         enableGeodesic: false,
-        geodesicScale: 1,
-        geodesicOpacity: 0.5,
+        geodesicScale: 1.1,              // Slightly larger when enabled
+        geodesicOpacity: 0.3,            // More subtle geodesic
         enableTriangleSphere: false,
-        triangleSphereScale: 1,
-        triangleSphereOpacity: 0.5
+        triangleSphereScale: 1.1,        // Slightly larger when enabled
+        triangleSphereOpacity: 0.3       // More subtle triangle sphere
     },
     physics: {
         enabled: true,
-        attractionStrength: 0.015,
-        repulsionStrength: 1500.0,
-        springStrength: 0.018,
-        damping: 0.88,
-        iterations: 500,
-        maxVelocity: 2.5,
-        collisionRadius: 0.25,
+        attractionStrength: 0.012,      // Slightly weaker attraction for less chaotic movement
+        repulsionStrength: 1200.0,      // Reduced repulsion for better clustering
+        springStrength: 0.015,          // Slightly weaker springs for more organic movement
+        damping: 0.92,                  // Higher damping for smoother motion
+        iterations: 600,                // More iterations for stability
+        maxVelocity: 2.0,              // Lower max velocity for smoother motion
+        collisionRadius: 0.3,           // Slightly larger collision radius
         enableBounds: true,
-        boundsSize: 12.0
+        boundsSize: 15.0               // Larger bounds for more space
     }
 };
 
@@ -105,12 +106,12 @@ export const defaultSettings: Settings = {
     visualization: defaultVisualizationSettings,
     system: {
         websocket: {
-            reconnectAttempts: 5,
-            reconnectDelay: 5000,
-            binaryChunkSize: 1024,
+            reconnectAttempts: 3,         // Fewer attempts but more frequent
+            reconnectDelay: 3000,         // Shorter delay between attempts
+            binaryChunkSize: 2048,        // Larger chunks for better performance
             compressionEnabled: true,
-            compressionThreshold: 1024,
-            updateRate: 60
+            compressionThreshold: 512,     // Lower threshold to compress more data
+            updateRate: 90                 // Higher update rate for smoother animations
         },
         debug: {
             enabled: false,
@@ -118,8 +119,8 @@ export const defaultSettings: Settings = {
             enableWebsocketDebug: false,
             logBinaryHeaders: false,
             logFullJson: false,
-            logLevel: 'info',
-            logFormat: 'json'
+            logLevel: 'warn',             // Default to warnings only
+            logFormat: 'pretty'           // More readable logs by default
         }
     },
     xr: {
@@ -132,49 +133,49 @@ export const defaultSettings: Settings = {
         // Hand Tracking Settings
         enableHandTracking: true,
         handMeshEnabled: true,
-        handMeshColor: toHexColor(0xffffff),
-        handMeshOpacity: 0.5,
-        handPointSize: 5,
+        handMeshColor: toHexColor(0x4287f5),  // Match visualization theme
+        handMeshOpacity: 0.3,                 // More subtle hand visualization
+        handPointSize: 3,                     // Smaller, less intrusive points
         handRayEnabled: true,
-        handRayColor: toHexColor(0xffffff),
-        handRayWidth: 2,
-        gestureSmoothing: 0.5,
+        handRayColor: toHexColor(0x4287f5),   // Match visualization theme
+        handRayWidth: 1.5,                    // Thinner ray
+        gestureSmoothing: 0.7,                // Smoother gesture tracking
 
         // Interaction Settings
         enableHaptics: true,
-        hapticIntensity: 0.5,
-        dragThreshold: 0.1,
-        pinchThreshold: 0.5,
-        rotationThreshold: 0.1,
-        interactionRadius: 0.1,
-        movementSpeed: 0.05,
-        deadZone: 0.1,
+        hapticIntensity: 0.3,                 // Gentler haptics
+        dragThreshold: 0.08,                  // Lower threshold for easier dragging
+        pinchThreshold: 0.3,                  // Lower threshold for easier pinching
+        rotationThreshold: 0.08,              // Lower threshold for easier rotation
+        interactionRadius: 0.15,              // Larger interaction radius
+        movementSpeed: 0.08,                  // Faster movement
+        deadZone: 0.12,                       // Slightly larger deadzone
         movementAxes: {
-            horizontal: 2, // Right joystick X
-            vertical: 3   // Right joystick Y
+            horizontal: 2,                     // Right joystick X
+            vertical: 3                        // Right joystick Y
         },
 
         // Platform Settings
-        autoEnterAR: true,
-        hideControlPanel: true,
+        autoEnterAR: false,                   // Let user choose when to enter
+        hideControlPanel: false,              // Show control panel by default
         preferredMode: 'immersive-ar',
 
         // Scene Understanding
         enableLightEstimation: true,
         enablePlaneDetection: true,
         enableSceneUnderstanding: true,
-        planeColor: toHexColor(0x808080),
-        planeOpacity: 0.5,
+        planeColor: toHexColor(0x4287f5),     // Match visualization theme
+        planeOpacity: 0.2,                    // More subtle planes
         showPlaneOverlay: true,
         snapToFloor: true,
 
         // Passthrough Settings
         enablePassthroughPortal: false,
-        passthroughOpacity: 1.0,
-        passthroughBrightness: 1.0,
-        passthroughContrast: 1.0,
-        portalSize: 2.0,
-        portalEdgeColor: toHexColor(0xffffff),
-        portalEdgeWidth: 2.0
+        passthroughOpacity: 0.8,              // Slightly transparent
+        passthroughBrightness: 1.1,           // Slightly brighter
+        passthroughContrast: 1.2,             // Higher contrast
+        portalSize: 2.5,                      // Larger portal
+        portalEdgeColor: toHexColor(0x4287f5), // Match visualization theme
+        portalEdgeWidth: 0.5                  // 20% of portal size (2.5 * 0.2 = 0.5)
     }
 };

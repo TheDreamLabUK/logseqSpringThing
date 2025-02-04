@@ -45,6 +45,7 @@ export interface XRSettings {
     planeOpacity: number;
     showPlaneOverlay: boolean;
     snapToFloor: boolean;
+    planeDetectionDistance?: number;  // Maximum distance for plane detection
     
     // Passthrough
     enablePassthroughPortal: boolean;
@@ -115,6 +116,7 @@ export const defaultXRSettings: XRSettings = {
     planeOpacity: 0.5,
     showPlaneOverlay: true,
     snapToFloor: true,
+    planeDetectionDistance: 3.0,  // Default 3 meters detection range
     
     // Passthrough
     enablePassthroughPortal: false,

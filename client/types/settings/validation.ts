@@ -37,9 +37,9 @@ export function validateSettings(settings: Settings): ValidationResult {
 function validateVisualizationSettings(visualization: Settings['visualization'], errors: ValidationError[]): void {
     // Validate bloom settings
     if (visualization.bloom?.enabled) {
-        validateNumericRange('visualization.bloom.strength', visualization.bloom.strength, 0, 2, errors);
-        validateNumericRange('visualization.bloom.radius', visualization.bloom.radius, 0, 1, errors);
-        validateNumericRange('visualization.bloom.threshold', visualization.bloom.threshold, 0, 1, errors);
+        validateNumericRange('visualization.bloom.strength', visualization.bloom.strength, 0, 3, errors);
+        validateNumericRange('visualization.bloom.radius', visualization.bloom.radius, 0, 2, errors);
+        validateNumericRange('visualization.bloom.threshold', visualization.bloom.threshold, 0, 1.5, errors);
     }
 
     // Validate hologram settings
@@ -56,20 +56,35 @@ function validateVisualizationSettings(visualization: Settings['visualization'],
 
     // Validate physics settings
     if (visualization.physics?.enabled) {
-        validateNumericRange('visualization.physics.attractionStrength', visualization.physics.attractionStrength, 0, 1, errors);
-        validateNumericRange('visualization.physics.repulsionStrength', visualization.physics.repulsionStrength, 0, 5000, errors);
-        validateNumericRange('visualization.physics.springStrength', visualization.physics.springStrength, 0, 1, errors);
-        validateNumericRange('visualization.physics.damping', visualization.physics.damping, 0, 1, errors);
-        validateNumericRange('visualization.physics.iterations', visualization.physics.iterations, 100, 1000, errors);
+        validateNumericRange('visualization.physics.attractionStrength', visualization.physics.attractionStrength, 0.001, 0.05, errors);
+        validateNumericRange('visualization.physics.repulsionStrength', visualization.physics.repulsionStrength, 100, 3000, errors);
+        validateNumericRange('visualization.physics.springStrength', visualization.physics.springStrength, 0.001, 0.05, errors);
+        validateNumericRange('visualization.physics.damping', visualization.physics.damping, 0.5, 0.99, errors);
+        validateNumericRange('visualization.physics.iterations', visualization.physics.iterations, 200, 1000, errors);
+        validateNumericRange('visualization.physics.maxVelocity', visualization.physics.maxVelocity, 0.1, 5.0, errors);
+        validateNumericRange('visualization.physics.collisionRadius', visualization.physics.collisionRadius, 0.1, 1.0, errors);
+        validateNumericRange('visualization.physics.boundsSize', visualization.physics.boundsSize, 5.0, 50.0, errors);
     }
 
     // Validate node settings
     if (visualization.nodes) {
         validateQualityEnum('visualization.nodes.quality', visualization.nodes.quality, errors);
-        validateNumericRange('visualization.nodes.baseSize', visualization.nodes.baseSize, 0.1, 10, errors);
-        validateNumericRange('visualization.nodes.opacity', visualization.nodes.opacity, 0, 1, errors);
-        validateNumericRange('visualization.nodes.metalness', visualization.nodes.metalness, 0, 1, errors);
-        validateNumericRange('visualization.nodes.roughness', visualization.nodes.roughness, 0, 1, errors);
+        validateNumericRange('visualization.nodes.baseSize', visualization.nodes.baseSize, 0.5, 10.0, errors);
+        validateNumericRange('visualization.nodes.opacity', visualization.nodes.opacity, 0.3, 1, errors);
+        validateNumericRange('visualization.nodes.metalness', visualization.nodes.metalness, 0.2, 0.8, errors);
+        validateNumericRange('visualization.nodes.roughness', visualization.nodes.roughness, 0.2, 0.8, errors);
+        
+        // Validate size range array
+        if (visualization.nodes.sizeRange) {
+            validateNumericRange('visualization.nodes.sizeRange[0]', visualization.nodes.sizeRange[0], 0.5, 5.0, errors);
+            validateNumericRange('visualization.nodes.sizeRange[1]', visualization.nodes.sizeRange[1], 1.0, 10.0, errors);
+            if (visualization.nodes.sizeRange[0] >= visualization.nodes.sizeRange[1]) {
+                errors.push({
+                    path: 'visualization.nodes.sizeRange',
+                    message: 'Min size must be less than max size'
+                });
+            }
+        }
     }
 }
 
@@ -105,19 +120,19 @@ function validateXRSettings(xr: Settings['xr'], errors: ValidationError[]): void
     validateQualityEnum('xr.quality', xr.quality, errors);
 
     // Validate hand tracking settings
-    validateNumericRange('xr.handMeshOpacity', xr.handMeshOpacity, 0, 1, errors);
-    validateNumericRange('xr.handPointSize', xr.handPointSize, 0.1, 20, errors);
-    validateNumericRange('xr.handRayWidth', xr.handRayWidth, 0.1, 10, errors);
-    validateNumericRange('xr.gestureSmoothing', xr.gestureSmoothing, 0, 1, errors);
+    validateNumericRange('xr.handMeshOpacity', xr.handMeshOpacity, 0.1, 0.8, errors);
+    validateNumericRange('xr.handPointSize', xr.handPointSize, 1, 10, errors);
+    validateNumericRange('xr.handRayWidth', xr.handRayWidth, 0.5, 5, errors);
+    validateNumericRange('xr.gestureSmoothing', xr.gestureSmoothing, 0.3, 0.9, errors);
 
-    // Validate interaction settings
-    validateNumericRange('xr.hapticIntensity', xr.hapticIntensity, 0, 1, errors);
-    validateNumericRange('xr.dragThreshold', xr.dragThreshold, 0, 1, errors);
-    validateNumericRange('xr.pinchThreshold', xr.pinchThreshold, 0, 1, errors);
-    validateNumericRange('xr.rotationThreshold', xr.rotationThreshold, 0, 1, errors);
-    validateNumericRange('xr.interactionRadius', xr.interactionRadius, 0.1, 2, errors);
-    validateNumericRange('xr.movementSpeed', xr.movementSpeed, 0.01, 1, errors);
-    validateNumericRange('xr.deadZone', xr.deadZone, 0, 0.5, errors);
+    // Validate interaction settings with refined ranges
+    validateNumericRange('xr.hapticIntensity', xr.hapticIntensity, 0.1, 0.8, errors);
+    validateNumericRange('xr.dragThreshold', xr.dragThreshold, 0.05, 0.3, errors);
+    validateNumericRange('xr.pinchThreshold', xr.pinchThreshold, 0.1, 0.5, errors);
+    validateNumericRange('xr.rotationThreshold', xr.rotationThreshold, 0.05, 0.3, errors);
+    validateNumericRange('xr.interactionRadius', xr.interactionRadius, 0.1, 0.5, errors);
+    validateNumericRange('xr.movementSpeed', xr.movementSpeed, 0.05, 0.2, errors);
+    validateNumericRange('xr.deadZone', xr.deadZone, 0.05, 0.2, errors);
 
     // Validate movement axes
     if (xr.movementAxes) {
@@ -125,15 +140,24 @@ function validateXRSettings(xr: Settings['xr'], errors: ValidationError[]): void
         validateNumericRange('xr.movementAxes.vertical', xr.movementAxes.vertical, 0, 5, errors);
     }
 
-    // Validate scene understanding settings
-    validateNumericRange('xr.planeOpacity', xr.planeOpacity, 0, 1, errors);
+    // Validate scene understanding settings with refined ranges
+    validateNumericRange('xr.planeOpacity', xr.planeOpacity, 0.1, 0.5, errors);
+    validateNumericRange('xr.planeDetectionDistance', xr.planeDetectionDistance ?? 3.0, 1.0, 10.0, errors);
 
-    // Validate passthrough settings
-    validateNumericRange('xr.passthroughOpacity', xr.passthroughOpacity, 0, 1, errors);
-    validateNumericRange('xr.passthroughBrightness', xr.passthroughBrightness, 0, 2, errors);
-    validateNumericRange('xr.passthroughContrast', xr.passthroughContrast, 0, 2, errors);
-    validateNumericRange('xr.portalSize', xr.portalSize, 0.1, 10, errors);
-    validateNumericRange('xr.portalEdgeWidth', xr.portalEdgeWidth, 0.1, 5, errors);
+    // Validate passthrough settings with refined ranges
+    validateNumericRange('xr.passthroughOpacity', xr.passthroughOpacity, 0.5, 1.0, errors);
+    validateNumericRange('xr.passthroughBrightness', xr.passthroughBrightness, 0.8, 1.5, errors);
+    validateNumericRange('xr.passthroughContrast', xr.passthroughContrast, 0.8, 1.5, errors);
+    validateNumericRange('xr.portalSize', xr.portalSize, 1.0, 5.0, errors);
+    validateNumericRange('xr.portalEdgeWidth', xr.portalEdgeWidth, 0.5, 3.0, errors);
+
+    // Validate that portal edge width is proportional to portal size
+    if (xr.portalEdgeWidth && xr.portalSize && xr.portalEdgeWidth > xr.portalSize * 0.2) {
+        errors.push({
+            path: 'xr.portalEdgeWidth',
+            message: 'Portal edge width should not exceed 20% of portal size'
+        });
+    }
 }
 
 function validateNumericRange(path: string, value: number, min: number, max: number, errors: ValidationError[]): void {

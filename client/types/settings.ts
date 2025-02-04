@@ -109,6 +109,8 @@ export interface RenderingSettings {
     enableAmbientOcclusion: boolean;
     enableAntialiasing: boolean;
     enableShadows: boolean;
+    shadowMapSize: number;  // Size of shadow map texture
+    shadowBias: number;    // Shadow bias for preventing shadow acne
 }
 
 // Client-side WebSocket settings (non-sensitive)

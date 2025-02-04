@@ -1,85 +1,86 @@
 visualization:
   nodes:
-    base_color: '#00ffff'
-    base_size: 1.5
-    metalness: 0.8
-    opacity: 1.0
-    roughness: 0.2
+    base_color: '#495d7e'
+    base_size: 8.0
+    metalness: 0.6
+    opacity: 0.9
+    roughness: 0.4
     size_range:
-    - 1.0
-    - 3.0
+    - 0.8
+    - 2.0
     quality: high
     enable_instancing: true
-    enable_hologram: false
+    enable_hologram: true
     enable_metadata_shape: true
     enable_metadata_visualization: true
   edges:
-    arrow_size: 0.0
-    base_width: 1.0
-    color: '#888888'
-    enable_arrows: false
-    opacity: 0.6
+    arrow_size: 0.8
+    base_width: 0.8
+    color: '#6e7c91'
+    enable_arrows: true
+    opacity: 0.4
     width_range:
-    - 1.0
-    - 2.0
+    - 0.6
+    - 1.6
   physics:
-    attraction_strength: 0.015
-    bounds_size: 12.0
-    collision_radius: 0.25
-    damping: 0.88
-    enable_bounds: true
+    attraction_strength: 0.012
+    bounds_size: 5.0
+    collision_radius: 0.3
+    damping: 0.92
+    enable_bounds: false
     enabled: true
-    iterations: 500
-    max_velocity: 2.5
-    repulsion_strength: 1500.0
-    spring_strength: 0.018
+    iterations: 600
+    max_velocity: 2.0
+    repulsion_strength: 1200.0
+    spring_strength: 0.015
   rendering:
-    ambient_light_intensity: 0.5
-    background_color: '#121212'
-    directional_light_intensity: 1.5
-    enable_ambient_occlusion: true
-    enable_antialiasing: true
-    enable_shadows: true
-    environment_intensity: 1.0
+    ambient_light_intensity: 0.65
+    background_color: '#1a1a2e'
+    directional_light_intensity: 1.2
+    enable_ambient_occlusion: false
+    enable_antialiasing: false
+    enable_shadows: false
+    environment_intensity: 0.8
   animations:
     enable_motion_blur: false
-    enable_node_animations: true
-    motion_blur_strength: 0.5
-    selection_wave_enabled: true
-    pulse_enabled: true
-    pulse_speed: 1.5
-    pulse_strength: 1.0
-    wave_speed: 1.0
+    enable_node_animations: false
+    motion_blur_strength: 0.35
+    selection_wave_enabled: false
+    pulse_enabled: false
+    pulse_speed: 1.2
+    pulse_strength: 1.1
+    wave_speed: 0.8
   labels:
-    desktop_font_size: 16
+    desktop_font_size: 5
     enable_labels: true
-    text_color: '#ffffff'
+    text_color: '#6087c3'
   bloom:
-    edge_bloom_strength: 0.5
-    enabled: false
-    environment_bloom_strength: 1.0
-    node_bloom_strength: 2.0
-    radius: 0.8
-    strength: 1.5
+    edge_bloom_strength: 0.6
+    enabled: true
+    environment_bloom_strength: 0.3
+    node_bloom_strength: 0.5
+    radius: 1.0
+    strength: 0.4
   hologram:
-    ring_count: 3
-    ring_color: '#00ffff'
-    ring_opacity: 0.5
+    ring_count: 1
+    ring_color: '#455673'
+    ring_opacity: 0.35
     ring_sizes:
-    - 1.0
-    - 1.5
+    - 0.8
+    - 1.2
+    - 1.6
     - 2.0
-    ring_rotation_speed: 0.1
-    enable_buckminster: false
-    buckminster_scale: 1.0
-    buckminster_opacity: 0.5
+    ring_rotation_speed: 0.08
+    enable_buckminster: true
+    buckminster_scale: 1.2
+    buckminster_opacity: 0.3
     enable_geodesic: false
-    geodesic_scale: 1.0
-    geodesic_opacity: 0.5
+    geodesic_scale: 1.1
+    geodesic_opacity: 0.3
     enable_triangle_sphere: false
-    triangle_sphere_scale: 1.0
-    triangle_sphere_opacity: 0.5
-    global_rotation_speed: 0.1
+    triangle_sphere_scale: 1.1
+    triangle_sphere_opacity: 0.3
+    global_rotation_speed: 0.06
 system:
   network:
     bind_address: 0.0.0.0
@@ -100,18 +101,18 @@ system:
     metrics_port: 9090
     retry_delay: 5
   websocket:
-    binary_chunk_size: 1024
-    binary_update_rate: 30
+    binary_chunk_size: 2048
+    binary_update_rate: 60
     binary_message_version: 1
     compression_enabled: true
-    compression_threshold: 1024
-    heartbeat_interval: 15000
-    heartbeat_timeout: 60000
+    compression_threshold: 512
+    heartbeat_interval: 10000
+    heartbeat_timeout: 30000
     max_connections: 1000
     max_message_size: 100485760
-    reconnect_attempts: 5
-    reconnect_delay: 5000
-    update_rate: 60
+    reconnect_attempts: 3
+    reconnect_delay: 3000
+    update_rate: 90
   security:
     allowed_origins: []
     audit_log_path: /app/logs/audit.log
@@ -128,47 +129,48 @@ system:
     enable_websocket_debug: false
     log_binary_headers: false
     log_full_json: false
-    log_level: info
-    log_format: json
+    log_level: warn
+    log_format: pretty
 xr:
-  mode: immersive-ar
+  mode: immersive-vr
   room_scale: true
   space_type: local-floor
   quality: high
   enable_hand_tracking: true
   hand_mesh_enabled: true
-  hand_mesh_color: '#ffffff'
-  hand_mesh_opacity: 0.5
-  hand_point_size: 5.0
+  hand_mesh_color: '#4287f5'
+  hand_mesh_opacity: 0.3
+  hand_point_size: 3.0
   hand_ray_enabled: true
-  hand_ray_color: '#ffffff'
-  hand_ray_width: 2.0
-  gesture_smoothing: 0.5
+  hand_ray_color: '#4287f5'
+  hand_ray_width: 1.5
+  gesture_smoothing: 0.7
   enable_haptics: true
-  haptic_intensity: 0.5
-  drag_threshold: 0.1
-  pinch_threshold: 0.5
-  rotation_threshold: 0.1
-  interaction_radius: 0.1
-  movement_speed: 0.05
-  dead_zone: 0.1
+  haptic_intensity: 0.3
+  drag_threshold: 0.08
+  pinch_threshold: 0.3
+  rotation_threshold: 0.08
+  interaction_radius: 0.15
+  movement_speed: 0.08
+  dead_zone: 0.12
   movement_axes:
     horizontal: 2
     vertical: 3
   enable_light_estimation: true
   enable_plane_detection: true
   enable_scene_understanding: true
-  plane_color: '#808080'
-  plane_opacity: 0.5
+  plane_color: '#4287f5'
+  plane_opacity: 0.2
+  plane_detection_distance: 3.0
   show_plane_overlay: true
   snap_to_floor: true
   enable_passthrough_portal: false
-  passthrough_opacity: 1.0
-  passthrough_brightness: 1.0
-  passthrough_contrast: 1.0
-  portal_size: 2.0
-  portal_edge_color: '#ffffff'
-  portal_edge_width: 2.0
+  passthrough_opacity: 0.8
+  passthrough_brightness: 1.1
+  passthrough_contrast: 1.2
+  portal_size: 2.5
+  portal_edge_color: '#4287f5'
+  portal_edge_width: 0.5
 ragflow:
   api_key: ''
   api_base_url: ''

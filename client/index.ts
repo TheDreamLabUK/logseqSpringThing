@@ -188,6 +188,19 @@ async function init() {
         const viz = new GraphVisualization(settings);
         (window as any).visualization = viz;
 
+        // Subscribe to visualization settings changes
+        settingsStore.subscribe('visualization', (_, newVisualizationSettings) => {
+            if (viz && newVisualizationSettings) {
+                // Create a new settings object with just the visualization changes
+                const updatedSettings: Settings = {
+                    ...settings,
+                    visualization: newVisualizationSettings as Settings['visualization']
+                };
+                viz.handleSettingsUpdate(updatedSettings);
+                logger.debug('Visualization settings updated:', newVisualizationSettings);
+            }
+        });
+
         // Log successful initialization
         logger.info('Application components initialized successfully', {
             platformType: platformManager.getPlatform(),
