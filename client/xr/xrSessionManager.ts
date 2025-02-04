@@ -304,6 +304,11 @@ export class XRSessionManager {
             // Enable AR layer for camera
             const camera = this.sceneManager.getCamera();
             camera.layers.enable(1);
+            
+            // Apply AR scale if in AR mode
+            if (platformManager.isQuest()) {
+                this.arGroup.scale.setScalar(this.currentSettings.roomScale);
+            }
 
             // Reset camera rig position
             this.cameraRig.position.set(0, 0, 0);
@@ -609,7 +614,11 @@ export class XRSessionManager {
 
         // Update room scale if changed
         if (this.currentSettings.roomScale !== undefined) {
-            this.cameraRig.scale.setScalar(Number(this.currentSettings.roomScale));
+            if (platformManager.isQuest()) {
+                this.arGroup.scale.setScalar(Number(this.currentSettings.roomScale));
+            } else {
+                this.cameraRig.scale.setScalar(Number(this.currentSettings.roomScale));
+            }
         }
     }
 

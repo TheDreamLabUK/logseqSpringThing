@@ -1591,6 +1591,13 @@ exec /app/webxr
                 "IPv4Address": "172.19.0.2/16",
                 "IPv6Address": ""
             },
+            "35c0727bf922ce6807880c551aae87296c331fc3174a086a5546463d2757115b": {
+                "Name": "logseq-xr-webxr",
+                "EndpointID": "af247e9fd560e81394bc084cec0b20562d8685b35f44a88148a6e142591ebefb",
+                "MacAddress": "02:42:ac:13:00:0a",
+                "IPv4Address": "172.19.0.10/16",
+                "IPv6Address": ""
+            },
             "442f4636e2fae29893f5305d78a472a6e2720d89e00b0d3db78ef023f8fad915": {
                 "Name": "ragflow-server",
                 "EndpointID": "2b2b9cbef46eaf0d54c9da686f3019f7755188a6d4df3e147911c165f05d1bbc",
@@ -1598,11 +1605,11 @@ exec /app/webxr
                 "IPv4Address": "172.19.0.7/16",
                 "IPv6Address": ""
             },
-            "4b60b54000c9de3923652d6fe021d8ce3aed0d04c9b635130cbd9022bdca2e2d": {
-                "Name": "logseq-xr-webxr",
-                "EndpointID": "4ae4c3b46ca2c6034ca109da8ae532fe398ad34b52102962503ae2d357a0b87f",
-                "MacAddress": "02:42:ac:13:00:0a",
-                "IPv4Address": "172.19.0.10/16",
+            "5078d92f09d00c030157e9e7a6bf2284b3632422b9d90e942d18e7db10add8a0": {
+                "Name": "cloudflared-tunnel",
+                "EndpointID": "3f279c7beb6c5c9711fb23420f517a1022db2ec3553e23fcf10c60f4dff78d65",
+                "MacAddress": "02:42:ac:13:00:06",
+                "IPv4Address": "172.19.0.6/16",
                 "IPv6Address": ""
             },
             "723a289060840e6ef20b1797a80209915a869f44e76bb55d420853d452251b88": {
@@ -1617,13 +1624,6 @@ exec /app/webxr
                 "EndpointID": "04d1de1cb0a48645efdcc7b13106802ea53e4aefc78897a08f96dbb0f7d521a3",
                 "MacAddress": "02:42:ac:13:00:0b",
                 "IPv4Address": "172.19.0.11/16",
-                "IPv6Address": ""
-            },
-            "a8b66965555b1f1be0f89fc671d90b3e1a2afe5dff27749641def3db5dc25edf": {
-                "Name": "cloudflared-tunnel",
-                "EndpointID": "2298e1a5ab7e03c7b30c5bba89aaac221809f94555cb6839d8b0844f3336ae90",
-                "MacAddress": "02:42:ac:13:00:06",
-                "IPv4Address": "172.19.0.6/16",
                 "IPv6Address": ""
             },
             "b0d4b7902a73135616df938ed13eaae3113736a73199c68351bb88961ed94f57": {
@@ -3960,7 +3960,7 @@ export class EnhancedNodeManager {
     private dummy = new Object3D();
     private geometryFactory: GeometryFactory;
     private materialFactory: MaterialFactory;
-    private isInstanced: boolean = false;
+    private isInstanced: boolean;
     private isHologram: boolean = false;
     private hologramMaterial: HologramShaderMaterial | null = null;
     private metadataMaterial: Material | null = null;
@@ -3989,8 +3989,10 @@ export class EnhancedNodeManager {
 
         this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
+        this.isInstanced = settings.visualization.nodes.enableInstancing;
         this.nodeGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
         this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
+        this.isHologram = settings.visualization.nodes.enableHologram;
 
         if (this.settings.visualization.nodes.enableHologram) {
             this.hologramMaterial = this.materialFactory.getHologramMaterial(settings);
@@ -4044,6 +4046,9 @@ export class EnhancedNodeManager {
 
     public handleSettingsUpdate(settings: Settings): void {
         this.settings = settings;
+        
+        // Update node material
+        this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
         const newGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
         if (this.nodeGeometry !== newGeometry) {
             this.nodeGeometry = newGeometry;
@@ -4079,6 +4084,12 @@ export class EnhancedNodeManager {
     }
 
     private rebuildInstancedMesh() {
+        // Clean up old mesh if it exists
+        if (this.instancedMesh) {
+            this.instancedMesh.geometry.dispose();
+            this.instancedMesh.material.dispose();
+            this.scene.remove(this.instancedMesh);
+        }
         if (this.isInstanced) {
             this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 1000);
             this.instancedMesh.count = 0;
@@ -4703,7 +4714,7 @@ export class NodeRenderer {
         this.geometryFactory = GeometryFactory.getInstance();
         this.settingsObserver = SettingsObserver.getInstance();
 
-        this.material = this.materialFactory.getPhongNodeMaterial();
+        this.material = this.materialFactory.getPhongNodeMaterial(this.currentSettings);
         this.mesh = new THREE.Mesh(
             this.geometryFactory.getNodeGeometry(this.currentSettings.xr.quality),
             this.material
@@ -4717,7 +4728,8 @@ export class NodeRenderer {
             switch (setting) {
                 case 'baseColor':
                 case 'opacity':
-                    this.materialFactory.updateMaterial('node-phong', this.currentSettings);
+                case 'metalness':
+                case 'roughness':
                     break;
                 case 'baseSize':
                     this.mesh.scale.set(value, value, value);
@@ -4739,6 +4751,8 @@ export class NodeRenderer {
     private setupSettingsSubscriptions(): void {
         this.settingsObserver.subscribe('NodeRenderer', (settings) => {
             this.currentSettings = settings;
+            // Update material with new settings
+            this.materialFactory.updateMaterial('node-phong', settings);
             Object.keys(settings.visualization.nodes).forEach(setting => {
                 this.handleSettingChange(
                     setting as keyof Settings['visualization']['nodes'],
@@ -5674,7 +5688,7 @@ export class GeometryFactory {
 ----
 rendering/factories/MaterialFactory.ts
 import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
-import { Color, Material, MeshBasicMaterial, MeshPhongMaterial, LineBasicMaterial } from 'three';
+import { Color, Material, MeshStandardMaterial as ThreeMeshStandardMaterial, LineBasicMaterial } from 'three';
 
 export class MaterialFactory {
     private static instance: MaterialFactory;
@@ -5726,22 +5740,32 @@ export class MaterialFactory {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new MeshBasicMaterial({
-            color: settings.visualization?.node?.color || 0xffffff
+        const material = new ThreeMeshStandardMaterial({
+            color: settings.visualization?.nodes?.baseColor || 0x4287f5,
+            metalness: settings.visualization?.nodes?.metalness || 0.3,
+            roughness: settings.visualization?.nodes?.roughness || 0.7,
+            transparent: true,
+            opacity: settings.visualization?.nodes?.opacity || 0.9,
+            emissive: 0x000000
         });
 
         this.materialCache.set(cacheKey, material);
         return material;
     }
 
-    public getPhongNodeMaterial(): Material {
+    public getPhongNodeMaterial(settings: any): Material {
         const cacheKey = 'node-phong';
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new MeshPhongMaterial({
-            color: 0xffffff
+        const material = new ThreeMeshStandardMaterial({
+            color: settings.visualization?.nodes?.baseColor || 0x4287f5,
+            metalness: settings.visualization?.nodes?.metalness || 0.3,
+            roughness: settings.visualization?.nodes?.roughness || 0.7,
+            transparent: true,
+            opacity: settings.visualization?.nodes?.opacity || 0.9,
+            emissive: 0x000000
         });
 
         this.materialCache.set(cacheKey, material);
@@ -5768,10 +5792,12 @@ export class MaterialFactory {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new MeshBasicMaterial({
+        const material = new ThreeMeshStandardMaterial({
             color: 0xffffff,
             transparent: true,
-            opacity: 0.8
+            opacity: 0.8,
+            metalness: 0.3,
+            roughness: 0.7
         });
 
         this.materialCache.set(cacheKey, material);
@@ -5784,9 +5810,15 @@ export class MaterialFactory {
 
         switch (type) {
             case 'node-basic':
-            case 'node-phong':
-                (material as MeshBasicMaterial | MeshPhongMaterial).color = this.hexToRgb(settings.visualization?.node?.color || '#ffffff');
+            case 'node-phong': {
+                const nodeMaterial = material as ThreeMeshStandardMaterial;
+                nodeMaterial.color = this.hexToRgb(settings.visualization?.nodes?.baseColor || '#4287f5');
+                nodeMaterial.metalness = settings.visualization?.nodes?.metalness || 0.3;
+                nodeMaterial.roughness = settings.visualization?.nodes?.roughness || 0.7;
+                nodeMaterial.opacity = settings.visualization?.nodes?.opacity || 0.9;
+                nodeMaterial.needsUpdate = true;
                 break;
+            }
             case 'edge':
                 (material as LineBasicMaterial).color = this.hexToRgb(settings.visualization?.edge?.color || '#ffffff');
                 break;
@@ -5955,8 +5987,8 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         opacity: 0.9,  // Slightly transparent
         colorRangeAge: [toHexColor(0x4287f5), toHexColor(0xf542a1)],  // Blue to pink
         colorRangeLinks: [toHexColor(0x4287f5), toHexColor(0xa142f5)],  // Blue to purple
-        metalness: 0.6,  // Less metallic
-        roughness: 0.4,  // More diffuse
+        metalness: 0.3,  // Much less metallic for reduced reflections
+        roughness: 0.7,  // More diffuse for reduced specular highlights
         enableHologram: false
     },
     edges: {
@@ -5988,8 +6020,8 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         billboardMode: true
     },
     rendering: {
-        ambientLightIntensity: 0.65,  // Brighter ambient for better visibility
-        directionalLightIntensity: 1.2,  // Slightly reduced directional for less harsh shadows
+        ambientLightIntensity: 0.4,  // Reduced ambient for less overall brightness
+        directionalLightIntensity: 0.8,  // Reduced directional for less harsh lighting
         environmentIntensity: 0.8,  // Reduced environment intensity for better balance
         backgroundColor: toHexColor(0x1a1a2e),  // Slightly blue-tinted dark background
         enableAmbientOcclusion: true,
@@ -5999,12 +6031,12 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         shadowBias: 0.0001  // Fine-tuned shadow bias
     },
     bloom: {
-        enabled: true,
+        enabled: false,  // Disabled to reduce overall brightness
         strength: 1.2,        // Slightly reduced overall bloom
         radius: 0.6,         // Tighter bloom radius
         threshold: 0.4,      // Higher threshold for more selective bloom
         edgeBloomStrength: 0.4,  // Subtler edge glow
-        nodeBloomStrength: 1.6,  // Less intense node glow
+        nodeBloomStrength: 0.8,  // Much less intense node glow
         environmentBloomStrength: 0.8  // Reduced environment bloom
     },
     hologram: {
@@ -6013,7 +6045,7 @@ export const defaultVisualizationSettings: VisualizationSettings = {
         ringRotationSpeed: 0.08,         // Slower, more graceful rotation
         globalRotationSpeed: 0.06,       // Slower global rotation
         ringColor: toHexColor(0x4287f5), // Match node base color
-        ringOpacity: 0.35,               // More subtle rings
+        ringOpacity: 0.2,                // Much more subtle rings
         enableBuckminster: false,
         buckminsterScale: 1.2,           // Slightly larger when enabled
         buckminsterOpacity: 0.3,         // More subtle buckminster
@@ -7713,6 +7745,14 @@ declare module 'three' {
     specular: Color;
   }
 
+  export class MeshStandardMaterial extends Material {
+    constructor(parameters?: MeshStandardMaterialParameters);
+    metalness: number;
+    roughness: number;
+    map: Texture | null;
+    emissive: Color;
+  }
+
   export class SpriteMaterial extends Material {
     constructor(parameters?: SpriteMaterialParameters);
     map: Texture | null;
@@ -7899,6 +7939,13 @@ declare module 'three' {
     shininess?: number;
     specular?: ColorRepresentation;
   }
+  export interface MeshStandardMaterialParameters extends MaterialParameters {
+    metalness?: number;
+    roughness?: number;
+    map?: Texture | null;
+    emissive?: ColorRepresentation;
+  }
+
   export interface SpriteMaterialParameters extends MaterialParameters {
     sizeAttenuation?: boolean;
     rotation?: number;

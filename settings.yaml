@@ -1,6 +1,6 @@
 visualization:
   nodes:
-    base_color: '#000000'
+    base_color: '#b12525'
     base_size: 7.0
     metalness: 0.6
     opacity: 0.9
@@ -15,8 +15,8 @@ visualization:
     enable_metadata_visualization: true
   edges:
     arrow_size: 0.8
-    base_width: 0.8
-    color: '#0765f2'
+    base_width: 0.0
+    color: '#316ec9'
     enable_arrows: true
     opacity: 0.4
     width_range:
@@ -133,7 +133,7 @@ system:
     log_format: pretty
 xr:
   mode: immersive-vr
-  room_scale: true
+  room_scale: 0.1
   space_type: local-floor
   quality: high
   enable_hand_tracking: true

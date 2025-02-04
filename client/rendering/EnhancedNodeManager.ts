@@ -142,17 +142,37 @@ export class EnhancedNodeManager {
     }
 
     public handleSettingsUpdate(settings: Settings): void {
-        this.settings = settings;
-        
-        // Update node material
-        this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
+        // Always update materials first
+        const newMaterial = this.materialFactory.getNodeMaterial(settings);
+        if (this.nodeMaterial !== newMaterial) {
+            this.nodeMaterial = newMaterial;
+            // Update material for non-instanced nodes
+            if (!this.isInstanced) {
+                this.nodes.forEach(node => {
+                    node.material = this.nodeMaterial;
+                });
+            }
+        }
+
+        // Update geometry if needed
         const newGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
         if (this.nodeGeometry !== newGeometry) {
             this.nodeGeometry = newGeometry;
             if (this.instancedMesh) {
                 this.instancedMesh.geometry = this.nodeGeometry;
             }
+            if (!this.isInstanced) {
+                this.nodes.forEach(node => {
+                    node.geometry = this.nodeGeometry;
+                });
+            }
         }
+
+        this.settings = settings;
+        
+        // Update node material
+        this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
+
 
         this.materialFactory.updateMaterial('node-basic', settings);
         this.materialFactory.updateMaterial('node-phong', settings);
@@ -198,10 +218,19 @@ export class EnhancedNodeManager {
     }
 
     updateNodes(nodes: { id: string, data: NodeData }[]) {
-        const mesh = this.instancedMesh;
-        if (!mesh) return;
-        
-        mesh.count = nodes.length;
+        // Clear existing non-instanced nodes if they exist
+        if (!this.isInstanced) {
+            this.nodes.forEach(node => {
+                this.scene.remove(node);
+                if (node.geometry) node.geometry.dispose();
+                if (node.material) node.material.dispose();
+            });
+            this.nodes.clear();
+        }
+
+        if (this.isInstanced && this.instancedMesh) {
+            this.instancedMesh.count = nodes.length;
+        }
 
         nodes.forEach((node, index) => {
             const metadata = {
@@ -220,23 +249,34 @@ export class EnhancedNodeManager {
             const matrix = new Matrix4();
 
             if (this.settings.visualization.nodes.enableMetadataShape) {
+                // Handle metadata visualization case
                 const nodeMesh = this.metadataVisualizer.createNodeMesh(metadata);
                 nodeMesh.position.set(metadata.position.x, metadata.position.y, metadata.position.z);
                 this.scene.add(nodeMesh);
             } else {
                 const scale = this.calculateNodeScale(metadata.importance);
                 const position = new Vector3(metadata.position.x, metadata.position.y, metadata.position.z);
-                matrix.compose(position, this.quaternion, new Vector3(scale, scale, scale));
-                mesh.setMatrixAt(index, matrix);
-            }
 
-            const child = mesh.children[index];
-            if (child instanceof Mesh) {
-                this.nodes.set(node.id, child);
+                if (this.isInstanced && this.instancedMesh) {
+                    // Handle instanced rendering
+                    matrix.compose(position, this.quaternion, new Vector3(scale, scale, scale));
+                    this.instancedMesh.setMatrixAt(index, matrix);
+                } else {
+                    // Handle non-instanced rendering
+                    const nodeMesh = new Mesh(this.nodeGeometry, this.nodeMaterial);
+                    nodeMesh.position.copy(position);
+                    nodeMesh.scale.set(scale, scale, scale);
+                    nodeMesh.layers.enable(0);
+                    nodeMesh.layers.enable(1);
+                    this.scene.add(nodeMesh);
+                    this.nodes.set(node.id, nodeMesh);
+                }
             }
         });
 
-        mesh.instanceMatrix.needsUpdate = true;
+        if (this.isInstanced && this.instancedMesh) {
+            this.instancedMesh.instanceMatrix.needsUpdate = true;
+        }
     }
 
     private calculateCommitAge(timestamp: number): number {

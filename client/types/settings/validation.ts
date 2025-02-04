@@ -120,6 +120,9 @@ function validateXRSettings(xr: Settings['xr'], errors: ValidationError[]): void
     // Validate quality
     validateQualityEnum('xr.quality', xr.quality, errors);
 
+    // Validate room scale
+    validateNumericRange('xr.roomScale', xr.roomScale, 0.01, 1.0, errors);
+
     // Validate hand tracking settings
     validateNumericRange('xr.handMeshOpacity', xr.handMeshOpacity, 0.1, 0.8, errors);
     validateNumericRange('xr.handPointSize', xr.handPointSize, 1, 10, errors);

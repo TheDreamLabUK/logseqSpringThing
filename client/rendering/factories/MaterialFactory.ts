@@ -90,7 +90,7 @@ export class MaterialFactory {
         }
 
         const material = new LineBasicMaterial({
-            color: settings.visualization?.edge?.color || 0xffffff
+            color: settings.visualization?.edges?.color || 0x6e7c91
         });
 
         this.materialCache.set(cacheKey, material);
@@ -131,7 +131,7 @@ export class MaterialFactory {
                 break;
             }
             case 'edge':
-                (material as LineBasicMaterial).color = this.hexToRgb(settings.visualization?.edge?.color || '#ffffff');
+                (material as LineBasicMaterial).color = this.hexToRgb(settings.visualization?.edges?.color || '#6e7c91');
                 break;
             case 'hologram':
                 if (material instanceof HologramShaderMaterial) {

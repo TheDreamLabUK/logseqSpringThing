@@ -127,7 +127,7 @@ export const defaultSettings: Settings = {
         // Mode and Space Settings
         mode: 'immersive-ar' as const,
         quality: 'high',
-        roomScale: true,
+        roomScale: 0.1,  // Scale factor of 0.1 for AR to make graph room-sized
         spaceType: 'local-floor',
 
         // Hand Tracking Settings

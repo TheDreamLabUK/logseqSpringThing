@@ -86,7 +86,7 @@ export interface BaseSettings {
     };
     xr: {
         mode: 'immersive-ar' | 'immersive-vr';
-        roomScale: boolean;
+        roomScale: number;
         quality: 'low' | 'medium' | 'high';
         input: {
             handTracking: boolean;

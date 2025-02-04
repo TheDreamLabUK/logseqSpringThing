@@ -3,7 +3,7 @@ import { XRSessionMode } from '../xr';
 export interface XRSettings {
     // Session Settings
     mode: XRSessionMode;
-    roomScale: boolean;
+    roomScale: number;
     spaceType: 'viewer' | 'local' | 'local-floor' | 'bounded-floor' | 'unbounded';
     quality: 'low' | 'medium' | 'high';
     
@@ -74,7 +74,7 @@ export interface WebXRSettings extends XRSettings {
 export const defaultXRSettings: XRSettings = {
     // Session Settings
     mode: 'immersive-ar',
-    roomScale: true,
+    roomScale: 0.1,  // Scale factor of 0.1 for room-sized AR visualization
     spaceType: 'local-floor',
     quality: 'high',
     

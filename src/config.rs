@@ -207,7 +207,7 @@ pub struct DebugSettings {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct XRSettings {
     pub mode: String,
-    pub room_scale: bool,
+    pub room_scale: f32,
     pub space_type: String,
     pub quality: String,
     pub enable_hand_tracking: bool,
@@ -529,7 +529,7 @@ impl Default for Settings {
             },
             xr: XRSettings {
                 mode: "immersive-ar".to_string(),
-                room_scale: true,
+                room_scale: 0.1,
                 space_type: "local-floor".to_string(),
                 quality: "medium".to_string(),
                 enable_hand_tracking: true,
