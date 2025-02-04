@@ -2,6 +2,7 @@
  * XR session management and rendering
  */
 
+import * as THREE from 'three';
 import {
     Group,
     GridHelper,
@@ -21,10 +22,15 @@ import { createLogger } from '../core/utils';
 import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
+import { defaultSettings } from '../state/defaultSettings';
+import { VisualizationController } from '../rendering/VisualizationController';
 import { NodeManager } from '../rendering/nodes';
 import { ControlPanel } from '../ui/ControlPanel';
 import { SettingsStore } from '../state/SettingsStore';
 import { XRSettings } from '../types/settings/xr';
+import { XRHandWithHaptics, WorldObject3D, XRHandJoint } from '../types/xr';
+import { WebSocketService } from '../websocket/websocketService';
+import { Node } from '../core/types';
 
 const _logger = createLogger('XRSessionManager');
 
@@ -37,9 +43,11 @@ function hasHitTest(session: XRSession): session is XRSession & { requestHitTest
   return 'requestHitTestSource' in session;
 }
 
+
 export class XRSessionManager {
     private static instance: XRSessionManager;
     private sceneManager: SceneManager;
+    private visualizationController: VisualizationController;
     private settingsStore: SettingsStore;
     private nodeManager: NodeManager;
     private session: XRSession | null = null;
@@ -50,9 +58,12 @@ export class XRSessionManager {
 
     // XR specific objects
     private cameraRig: Group;
-    private arGroup: Group; // New group for AR elements
+    private arGroup: Group; // Group for AR elements
+    private arGraphGroup: Group; // Separate group for graph nodes in AR
     private controllers: Group[];
     private controllerGrips: Group[];
+    private lastPinchState: boolean = false;
+    private websocketService: WebSocketService;
     private controllerModelFactory: XRControllerModelFactory;
 
     // AR specific objects
@@ -74,7 +85,7 @@ export class XRSessionManager {
         this.sceneManager = sceneManager;
         this.settingsStore = SettingsStore.getInstance();
         this.nodeManager = NodeManager.getInstance();
-        
+        this.visualizationController = new VisualizationController(document.body, defaultSettings);
         // Initialize with current settings
         this.currentSettings = this.settingsStore.get('xr') as XRSettings;
         
@@ -84,9 +95,11 @@ export class XRSessionManager {
         // Initialize XR objects
         this.cameraRig = new Group();
         this.arGroup = new Group(); // Initialize AR group
+        this.arGraphGroup = new Group(); // Initialize AR graph group
         this.controllers = [new Group(), new Group()];
         this.controllerGrips = [new Group(), new Group()];
         this.controllerModelFactory = new XRControllerModelFactory();
+        this.websocketService = WebSocketService.getInstance();
 
         // Initialize AR objects
         this.gridHelper = this.createGridHelper();
@@ -166,6 +179,24 @@ export class XRSessionManager {
         this.arGroup.add(this.groundPlane);
         this.arGroup.add(this.hitTestMarker);
         this.arGroup.add(this.arLight);
+        this.arGroup.add(this.arGraphGroup);
+
+        // Set up websocket handler for node updates
+        this.websocketService.onBinaryMessage((nodes) => {
+            nodes.forEach(node => {
+                try {
+                    const position = new Vector3(
+                        node.position[0],
+                        node.position[1],
+                        node.position[2]
+                    );
+                    this.nodeManager.updateNodePosition(node.id.toString(), position);
+                } catch (error) {
+                    // Node might not exist yet
+                    _logger.debug(`Node ${node.id} not found for position update`);
+                }
+            });
+        });
 
         // Setup controllers
         this.controllers.forEach((_controller, index) => {
@@ -463,6 +494,86 @@ export class XRSessionManager {
                             this.cameraRig.position.add(moveDirection);
                         }
                     }
+                }
+
+                // Handle hand tracking input
+                if (inputSource.hand) {
+                    const xrHand = inputSource.hand;
+                    // Convert XRHand to XRHandWithHaptics
+                    const handWithHaptics: XRHandWithHaptics = new Group() as XRHandWithHaptics;
+                    handWithHaptics.hand = { joints: {} };
+                    handWithHaptics.pinchStrength = 0;
+                    handWithHaptics.gripStrength = 0;
+                    handWithHaptics.userData = {
+                        platform: platformManager.getPlatform()
+                    };
+
+                    // Process each joint
+                    xrHand.forEach((joint, jointName) => {
+                        const pose = frame.getPose(joint, this.referenceSpace!);
+                        if (pose) {
+                            const jointObject = new Group() as WorldObject3D;
+                            jointObject.matrix.fromArray(pose.transform.matrix);
+                            jointObject.matrix.decompose(
+                                jointObject.position,
+                                jointObject.quaternion,
+                                jointObject.scale
+                            );
+                            handWithHaptics.hand.joints[jointName as XRHandJoint] = jointObject;
+                        }
+                    });
+
+                    // Calculate pinch and grip strength based on joint distances
+                    const thumbTip = handWithHaptics.hand.joints['thumb-tip'];
+                    const indexTip = handWithHaptics.hand.joints['index-finger-tip'];
+                    if (thumbTip && indexTip) {
+                        const distance = thumbTip.position.distanceTo(indexTip.position);
+                        const pinchStrength = Math.max(0, 1 - distance / 0.05); // 5cm max distance
+                        handWithHaptics.pinchStrength = pinchStrength;
+
+                        // Detect pinch gesture
+                        const isPinching = pinchStrength > 0.9; // 90% threshold for pinch
+                        if (isPinching !== this.lastPinchState) {
+                            this.lastPinchState = isPinching;
+                            if (isPinching) {
+                                // Find closest node to index finger tip
+                                const nodes = this.nodeManager.getCurrentNodes();
+                                let closestNode: Node | null = null;
+                                let closestDistance = Infinity;
+
+                                for (const node of nodes) {
+                                    const nodePos = this.nodeManager.getNodePosition(node.id);
+                                    const distance = nodePos.distanceTo(indexTip.position);
+                                    if (distance < closestDistance && distance < 0.1) { // 10cm threshold
+                                        closestNode = node;
+                                        closestDistance = distance;
+                                    }
+                                }
+
+                                if (closestNode && closestNode.id) {
+                                    // Send node position update through websocket
+                                    this.websocketService.sendNodeUpdates([{
+                                        id: closestNode.id,
+                                        position: {
+                                            x: indexTip.position.x,
+                                            y: indexTip.position.y,
+                                            z: indexTip.position.z
+                                        },
+                                        velocity: {
+                                            x: 0,
+                                            y: 0,
+                                            z: 0
+                                        }
+                                    }]);
+
+                                    // Also update local node position
+                                    this.nodeManager.updateNodePosition(closestNode.id, indexTip.position);
+                                }
+                            }
+                        }
+                    }
+
+                    this.visualizationController.handleHandInput(handWithHaptics);
                 }
             }
         });

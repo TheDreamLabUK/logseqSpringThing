@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MetadataVisualizer } from '../rendering/MetadataVisualizer';
 import { HologramManager } from '../rendering/HologramManager';
 import { NodeMetadata, HologramSettings } from '../types/metadata';
-import { XRHand } from '../types/xr';
+import { XRHand, XRHandWithHaptics } from '../types/xr';
 import { Settings } from '../types/settings';
 
 export class VisualizationController {
@@ -90,12 +90,27 @@ export class VisualizationController {
         this.hologramManager.updateSettings(this.currentSettings);
     }
 
-    public handleHandInput(hand: XRHand): void {
-        if (this.isXRSession && hand.joints) {
+    public handleHandInput(hand: XRHand | XRHandWithHaptics): void {
+        if (!this.isXRSession) return;
+
+        let indexTipPosition: THREE.Vector3 | undefined;
+
+        if ('hand' in hand && hand.hand.joints) {
+            // XRHandWithHaptics case
+            const indexTip = hand.hand.joints['index-finger-tip'];
+            if (indexTip) {
+                indexTipPosition = indexTip.position;
+            }
+        } else if ('joints' in hand) {
+            // XRHand case
             const indexTip = hand.joints['index-finger-tip'];
             if (indexTip) {
-                this.hologramManager.handleInteraction(indexTip.position);
+                indexTipPosition = indexTip.position;
             }
+        }
+
+        if (indexTipPosition) {
+            this.hologramManager.handleInteraction(indexTipPosition);
         }
     }
 

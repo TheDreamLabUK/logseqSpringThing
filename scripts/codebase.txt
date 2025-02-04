@@ -1591,9 +1591,9 @@ exec /app/webxr
                 "IPv4Address": "172.19.0.2/16",
                 "IPv6Address": ""
             },
-            "35c0727bf922ce6807880c551aae87296c331fc3174a086a5546463d2757115b": {
-                "Name": "logseq-xr-webxr",
-                "EndpointID": "af247e9fd560e81394bc084cec0b20562d8685b35f44a88148a6e142591ebefb",
+            "15187ae6797c386df2730cb09aa06f9a09bf70d62e3510acf1bb2f86c3815875": {
+                "Name": "cloudflared-tunnel",
+                "EndpointID": "0c0fe6defbea9088a2d0c000e13a376fa0d3b88e6ad2c2eafb0376162befc29b",
                 "MacAddress": "02:42:ac:13:00:0a",
                 "IPv4Address": "172.19.0.10/16",
                 "IPv6Address": ""
@@ -1603,13 +1603,6 @@ exec /app/webxr
                 "EndpointID": "2b2b9cbef46eaf0d54c9da686f3019f7755188a6d4df3e147911c165f05d1bbc",
                 "MacAddress": "02:42:ac:13:00:07",
                 "IPv4Address": "172.19.0.7/16",
-                "IPv6Address": ""
-            },
-            "5078d92f09d00c030157e9e7a6bf2284b3632422b9d90e942d18e7db10add8a0": {
-                "Name": "cloudflared-tunnel",
-                "EndpointID": "3f279c7beb6c5c9711fb23420f517a1022db2ec3553e23fcf10c60f4dff78d65",
-                "MacAddress": "02:42:ac:13:00:06",
-                "IPv4Address": "172.19.0.6/16",
                 "IPv6Address": ""
             },
             "723a289060840e6ef20b1797a80209915a869f44e76bb55d420853d452251b88": {
@@ -1624,6 +1617,13 @@ exec /app/webxr
                 "EndpointID": "04d1de1cb0a48645efdcc7b13106802ea53e4aefc78897a08f96dbb0f7d521a3",
                 "MacAddress": "02:42:ac:13:00:0b",
                 "IPv4Address": "172.19.0.11/16",
+                "IPv6Address": ""
+            },
+            "9f5a04aa58e169776776d5dffa228573ef970fe48aac171ad69aeeae74eaffdd": {
+                "Name": "logseq-xr-webxr",
+                "EndpointID": "05087106fd9932e3ac32312204cb2440e56a085a56992216ea82e016556e204c",
+                "MacAddress": "02:42:ac:13:00:06",
+                "IPv4Address": "172.19.0.6/16",
                 "IPv6Address": ""
             },
             "b0d4b7902a73135616df938ed13eaae3113736a73199c68351bb88961ed94f57": {
@@ -3802,13 +3802,13 @@ import {
     InstancedMesh,
     Matrix4,
     Vector3,
-    Quaternion,
     BufferGeometry,
-    Material
+    Object3D,
+    Material,
+    BufferAttribute
 } from 'three';
 import { Settings } from '../types/settings';
 import { Edge } from '../core/types';
-import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
 
 export class EdgeManager {
@@ -3816,15 +3816,33 @@ export class EdgeManager {
     private edgeGeometry: BufferGeometry;
     private edgeMaterial: Material;
     private instancedMesh: InstancedMesh | null = null;
-    private geometryFactory: GeometryFactory;
     private materialFactory: MaterialFactory;
-    private static UP = new Vector3(0, 1, 0);
+
+    // Reusable objects for calculations
+    private readonly startPos = new Vector3();
+    private readonly endPos = new Vector3();
+    private readonly tempObject = new Object3D();
+    private readonly direction = new Vector3();
+    private readonly position = new Vector3();
+    private readonly matrix = new Matrix4();
+
+    // Batch size for matrix updates
+    private static readonly BATCH_SIZE = 1000;
+    private pendingUpdates: Set<number> = new Set();
+    private updateScheduled = false;
 
     constructor(scene: Scene, settings: Settings) {
         this.scene = scene;
-        this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
-        this.edgeGeometry = this.geometryFactory.getEdgeGeometry();
+        
+        // Create simple edge geometry (just a line segment)
+        this.edgeGeometry = new BufferGeometry();
+        const vertices = new Float32Array([
+            0, -0.5, 0,  // bottom
+            0, 0.5, 0    // top
+        ]);
+        this.edgeGeometry.setAttribute('position', new BufferAttribute(vertices, 3));
+        
         this.edgeMaterial = this.materialFactory.getEdgeMaterial(settings);
         this.setupInstancedMesh();
     }
@@ -3832,6 +3850,7 @@ export class EdgeManager {
     private setupInstancedMesh() {
         this.instancedMesh = new InstancedMesh(this.edgeGeometry, this.edgeMaterial, 1000);
         this.instancedMesh.count = 0;
+        this.instancedMesh.frustumCulled = true; // Enable frustum culling
         this.scene.add(this.instancedMesh);
     }
 
@@ -3839,55 +3858,89 @@ export class EdgeManager {
         this.materialFactory.updateMaterial('edge', settings);
     }
 
+    private scheduleBatchUpdate(): void {
+        if (this.updateScheduled) return;
+        this.updateScheduled = true;
+
+        requestAnimationFrame(() => {
+            this.processBatchUpdate();
+            this.updateScheduled = false;
+        });
+    }
+
+    private processBatchUpdate(): void {
+        if (!this.instancedMesh || this.pendingUpdates.size === 0) return;
+
+        let processed = 0;
+        this.pendingUpdates.forEach(index => {
+            if (processed >= EdgeManager.BATCH_SIZE) return;
+
+            const edge = this.currentEdges[index];
+            if (!edge?.sourcePosition || !edge?.targetPosition) return;
+
+            // Set positions
+            this.startPos.set(
+                edge.sourcePosition.x,
+                edge.sourcePosition.y,
+                edge.sourcePosition.z
+            );
+            this.endPos.set(
+                edge.targetPosition.x,
+                edge.targetPosition.y,
+                edge.targetPosition.z
+            );
+
+            // Calculate direction and length
+            this.direction.subVectors(this.endPos, this.startPos);
+            const length = this.direction.length();
+            
+            if (length === 0) return;
+
+            // Position at midpoint
+            this.position.addVectors(this.startPos, this.endPos).multiplyScalar(0.5);
+            
+            // Calculate direction
+            this.direction.subVectors(this.endPos, this.startPos).normalize();
+            
+            // Use Object3D to handle transformations
+            this.tempObject.position.copy(this.position);
+            this.tempObject.scale.set(0.1, length, 0.1);
+            this.tempObject.lookAt(this.endPos);
+            this.tempObject.updateMatrix();
+            
+            // Copy the transformation matrix
+            this.matrix.copy(this.tempObject.matrix);
+            
+            this.instancedMesh!.setMatrixAt(index, this.matrix);
+            
+            processed++;
+            this.pendingUpdates.delete(index);
+        });
+
+        if (processed > 0) {
+            this.instancedMesh.instanceMatrix.needsUpdate = true;
+        }
+
+        if (this.pendingUpdates.size > 0) {
+            this.scheduleBatchUpdate();
+        }
+    }
+
+    private currentEdges: Edge[] = [];
+
     updateEdges(edges: Edge[]) {
         const mesh = this.instancedMesh;
         if (!mesh) return;
         
         mesh.count = edges.length;
+        this.currentEdges = edges;
 
-        edges.forEach((edge, index) => {
-            if (!edge.sourcePosition || !edge.targetPosition) return;
-            
-            const startPos = new Vector3(
-                edge.sourcePosition.x,
-                edge.sourcePosition.y,
-                edge.sourcePosition.z
-            );
-            const endPos = new Vector3(
-                edge.targetPosition.x,
-                edge.targetPosition.y,
-                edge.targetPosition.z
-            );
-            
-            // Calculate edge direction and length
-            const direction = endPos.clone().sub(startPos);
-            const length = direction.length();
-            direction.normalize();
-            
-            // Position the edge at the midpoint between source and target
-            const position = startPos.clone().add(direction.clone().multiplyScalar(length * 0.5));
-            
-            // Create transformation components
-            const scale = new Vector3(1, length, 1);
-            
-            // Calculate rotation from UP vector to edge direction
-            const upDot = EdgeManager.UP.dot(direction);
-            const rotationAxis = new Vector3().crossVectors(EdgeManager.UP, direction).normalize();
-            const rotationAngle = Math.acos(upDot);
-            
-            // Create matrix from components
-            const matrix = new Matrix4().compose(
-                position,
-                Math.abs(Math.abs(upDot) - 1) > 0.001
-                    ? new Quaternion().setFromAxisAngle(rotationAxis, rotationAngle)
-                    : new Quaternion(),
-                scale
-            );
+        // Queue all edges for update
+        for (let i = 0; i < edges.length; i++) {
+            this.pendingUpdates.add(i);
+        }
 
-            mesh.setMatrixAt(index, matrix);
-        });
-
-        mesh.instanceMatrix.needsUpdate = true;
+        this.scheduleBatchUpdate();
     }
 
     dispose() {
@@ -3896,6 +3949,7 @@ export class EdgeManager {
             this.instancedMesh.material.dispose();
             this.scene.remove(this.instancedMesh);
         }
+        this.pendingUpdates.clear();
     }
 }
 
@@ -4045,17 +4099,37 @@ export class EnhancedNodeManager {
     }
 
     public handleSettingsUpdate(settings: Settings): void {
-        this.settings = settings;
-        
-        // Update node material
-        this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
+        // Always update materials first
+        const newMaterial = this.materialFactory.getNodeMaterial(settings);
+        if (this.nodeMaterial !== newMaterial) {
+            this.nodeMaterial = newMaterial;
+            // Update material for non-instanced nodes
+            if (!this.isInstanced) {
+                this.nodes.forEach(node => {
+                    node.material = this.nodeMaterial;
+                });
+            }
+        }
+
+        // Update geometry if needed
         const newGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
         if (this.nodeGeometry !== newGeometry) {
             this.nodeGeometry = newGeometry;
             if (this.instancedMesh) {
                 this.instancedMesh.geometry = this.nodeGeometry;
             }
+            if (!this.isInstanced) {
+                this.nodes.forEach(node => {
+                    node.geometry = this.nodeGeometry;
+                });
+            }
         }
+
+        this.settings = settings;
+        
+        // Update node material
+        this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
+
 
         this.materialFactory.updateMaterial('node-basic', settings);
         this.materialFactory.updateMaterial('node-phong', settings);
@@ -4101,10 +4175,19 @@ export class EnhancedNodeManager {
     }
 
     updateNodes(nodes: { id: string, data: NodeData }[]) {
-        const mesh = this.instancedMesh;
-        if (!mesh) return;
-        
-        mesh.count = nodes.length;
+        // Clear existing non-instanced nodes if they exist
+        if (!this.isInstanced) {
+            this.nodes.forEach(node => {
+                this.scene.remove(node);
+                if (node.geometry) node.geometry.dispose();
+                if (node.material) node.material.dispose();
+            });
+            this.nodes.clear();
+        }
+
+        if (this.isInstanced && this.instancedMesh) {
+            this.instancedMesh.count = nodes.length;
+        }
 
         nodes.forEach((node, index) => {
             const metadata = {
@@ -4123,23 +4206,34 @@ export class EnhancedNodeManager {
             const matrix = new Matrix4();
 
             if (this.settings.visualization.nodes.enableMetadataShape) {
+                // Handle metadata visualization case
                 const nodeMesh = this.metadataVisualizer.createNodeMesh(metadata);
                 nodeMesh.position.set(metadata.position.x, metadata.position.y, metadata.position.z);
                 this.scene.add(nodeMesh);
             } else {
                 const scale = this.calculateNodeScale(metadata.importance);
                 const position = new Vector3(metadata.position.x, metadata.position.y, metadata.position.z);
-                matrix.compose(position, this.quaternion, new Vector3(scale, scale, scale));
-                mesh.setMatrixAt(index, matrix);
-            }
 
-            const child = mesh.children[index];
-            if (child instanceof Mesh) {
-                this.nodes.set(node.id, child);
+                if (this.isInstanced && this.instancedMesh) {
+                    // Handle instanced rendering
+                    matrix.compose(position, this.quaternion, new Vector3(scale, scale, scale));
+                    this.instancedMesh.setMatrixAt(index, matrix);
+                } else {
+                    // Handle non-instanced rendering
+                    const nodeMesh = new Mesh(this.nodeGeometry, this.nodeMaterial);
+                    nodeMesh.position.copy(position);
+                    nodeMesh.scale.set(scale, scale, scale);
+                    nodeMesh.layers.enable(0);
+                    nodeMesh.layers.enable(1);
+                    this.scene.add(nodeMesh);
+                    this.nodes.set(node.id, nodeMesh);
+                }
             }
         });
 
-        mesh.instanceMatrix.needsUpdate = true;
+        if (this.isInstanced && this.instancedMesh) {
+            this.instancedMesh.instanceMatrix.needsUpdate = true;
+        }
     }
 
     private calculateCommitAge(timestamp: number): number {
@@ -4542,7 +4636,7 @@ import * as THREE from 'three';
 import { MetadataVisualizer } from '../rendering/MetadataVisualizer';
 import { HologramManager } from '../rendering/HologramManager';
 import { NodeMetadata, HologramSettings } from '../types/metadata';
-import { XRHand } from '../types/xr';
+import { XRHand, XRHandWithHaptics } from '../types/xr';
 import { Settings } from '../types/settings';
 
 export class VisualizationController {
@@ -4630,12 +4724,27 @@ export class VisualizationController {
         this.hologramManager.updateSettings(this.currentSettings);
     }
 
-    public handleHandInput(hand: XRHand): void {
-        if (this.isXRSession && hand.joints) {
+    public handleHandInput(hand: XRHand | XRHandWithHaptics): void {
+        if (!this.isXRSession) return;
+
+        let indexTipPosition: THREE.Vector3 | undefined;
+
+        if ('hand' in hand && hand.hand.joints) {
+            // XRHandWithHaptics case
+            const indexTip = hand.hand.joints['index-finger-tip'];
+            if (indexTip) {
+                indexTipPosition = indexTip.position;
+            }
+        } else if ('joints' in hand) {
+            // XRHand case
             const indexTip = hand.joints['index-finger-tip'];
             if (indexTip) {
-                this.hologramManager.handleInteraction(indexTip.position);
+                indexTipPosition = indexTip.position;
             }
+        }
+
+        if (indexTipPosition) {
+            this.hologramManager.handleInteraction(indexTipPosition);
         }
     }
 
@@ -4694,111 +4803,60 @@ const logger = createLogger('NodeManager');
 
 const FLOATS_PER_NODE = 6;  // x, y, z, vx, vy, vz
 
-// Reusable vectors and matrices
+// Reusable objects for matrix calculations
 const matrix = new THREE.Matrix4();
 const quaternion = new THREE.Quaternion();
 const position = new THREE.Vector3();
 const scale = new THREE.Vector3(1, 1, 1);
 
-export class NodeRenderer {
-    public readonly material: THREE.Material;
-    protected currentSettings: Settings;
-    public mesh: THREE.Mesh;
-    private readonly materialFactory: MaterialFactory;
-    private readonly geometryFactory: GeometryFactory;
-    private readonly settingsObserver: SettingsObserver;
-
-    constructor() {
-        this.currentSettings = settingsManager.getCurrentSettings();
-        this.materialFactory = MaterialFactory.getInstance();
-        this.geometryFactory = GeometryFactory.getInstance();
-        this.settingsObserver = SettingsObserver.getInstance();
-
-        this.material = this.materialFactory.getPhongNodeMaterial(this.currentSettings);
-        this.mesh = new THREE.Mesh(
-            this.geometryFactory.getNodeGeometry(this.currentSettings.xr.quality),
-            this.material
-        );
-
-        this.setupSettingsSubscriptions();
-    }
-
-    public handleSettingChange(setting: keyof Settings['visualization']['nodes'], value: any): void {
-        try {
-            switch (setting) {
-                case 'baseColor':
-                case 'opacity':
-                case 'metalness':
-                case 'roughness':
-                    break;
-                case 'baseSize':
-                    this.mesh.scale.set(value, value, value);
-                    break;
-                default:
-                    // Other settings handled elsewhere
-                    break;
-            }
-        } catch (error) {
-            logger.error(`Error applying node setting change for ${String(setting)}:`, error);
-        }
-    }
-
-    public handlePhysicsSettingChange(setting: keyof Settings['visualization']['physics'], value: any): void {
-        // Dummy implementation for now
-        logger.debug(`Physics setting change: ${String(setting)} = ${value}`);
-    }
-
-    private setupSettingsSubscriptions(): void {
-        this.settingsObserver.subscribe('NodeRenderer', (settings) => {
-            this.currentSettings = settings;
-            // Update material with new settings
-            this.materialFactory.updateMaterial('node-phong', settings);
-            Object.keys(settings.visualization.nodes).forEach(setting => {
-                this.handleSettingChange(
-                    setting as keyof Settings['visualization']['nodes'],
-                    settings.visualization.nodes[setting as keyof Settings['visualization']['nodes']]
-                );
-            });
-            Object.keys(settings.visualization.physics).forEach(setting => {
-                this.handlePhysicsSettingChange(
-                    setting as keyof Settings['visualization']['physics'],
-                    settings.visualization.physics[setting as keyof Settings['visualization']['physics']]
-                );
-            });
-        });
-    }
-}
+// Batch size for matrix updates
+const MATRIX_UPDATE_BATCH_SIZE = 1000;
 
 export class NodeManager {
     private static instance: NodeManager;
     private currentSettings: Settings;
     private nodeInstances: THREE.InstancedMesh;
     private edgeInstances: THREE.InstancedMesh;
-    private nodeRenderer: NodeRenderer;
     private currentNodes: Node[] = [];
     private nodeIndices: Map<string, number> = new Map();
     private readonly materialFactory: MaterialFactory;
     private readonly geometryFactory: GeometryFactory;
     private readonly settingsObserver: SettingsObserver;
+    
+    // Matrix update queue for batching
+    private pendingMatrixUpdates: Set<number> = new Set();
+    private matrixUpdateScheduled: boolean = false;
 
     private constructor() {
         this.currentSettings = settingsManager.getCurrentSettings();
         this.materialFactory = MaterialFactory.getInstance();
         this.geometryFactory = GeometryFactory.getInstance();
         this.settingsObserver = SettingsObserver.getInstance();
-        this.nodeRenderer = new NodeRenderer();
 
+        // Create node instances with basic material for better performance
         this.nodeInstances = new THREE.InstancedMesh(
             this.geometryFactory.getNodeGeometry(this.currentSettings.xr.quality),
-            this.nodeRenderer.material,
+            this.materialFactory.getNodeMaterial(this.currentSettings),
             10000
         );
 
+        // Set AR layer for node instances
+        this.nodeInstances.layers.enable(1);
+        this.nodeInstances.frustumCulled = true; // Enable frustum culling
+
+        // Create edge instances with simple cylinder geometry
+        const edgeGeometry = new THREE.CylinderGeometry(0.05, 0.05, 1, 4);
+        edgeGeometry.rotateX(Math.PI / 2); // Align with direction of travel
+        
         this.edgeInstances = new THREE.InstancedMesh(
-            this.geometryFactory.getHologramGeometry('ring', this.currentSettings.xr.quality),
-            this.materialFactory.getMetadataMaterial(),
+            edgeGeometry,
+            this.materialFactory.getEdgeMaterial(this.currentSettings),
             30000
         );
+
+        // Set AR layer for edge instances
+        this.edgeInstances.layers.enable(1);
+        this.edgeInstances.frustumCulled = true; // Enable frustum culling
 
         this.setupSettingsSubscriptions();
     }
@@ -4806,7 +4864,8 @@ export class NodeManager {
     private setupSettingsSubscriptions(): void {
         this.settingsObserver.subscribe('NodeManager', (settings) => {
             this.currentSettings = settings;
-            this.materialFactory.updateMaterial('metadata', settings);
+            this.materialFactory.updateMaterial('node-basic', settings);
+            this.materialFactory.updateMaterial('edge', settings);
         });
     }
 
@@ -4817,6 +4876,53 @@ export class NodeManager {
         return NodeManager.instance;
     }
 
+    private scheduleBatchUpdate(): void {
+        if (this.matrixUpdateScheduled) return;
+        this.matrixUpdateScheduled = true;
+
+        requestAnimationFrame(() => {
+            this.processBatchUpdate();
+            this.matrixUpdateScheduled = false;
+        });
+    }
+
+    private processBatchUpdate(): void {
+        if (!this.nodeInstances || this.pendingMatrixUpdates.size === 0) return;
+
+        let processed = 0;
+        this.pendingMatrixUpdates.forEach(index => {
+            if (processed >= MATRIX_UPDATE_BATCH_SIZE) {
+                return; // Process remaining updates in next batch
+            }
+
+            const node = this.currentNodes[index];
+            if (!node) return;
+
+            position.set(
+                node.data.position.x,
+                node.data.position.y + 1.5,
+                node.data.position.z
+            );
+
+            const baseSize = this.currentSettings.visualization.nodes.baseSize || 1;
+            scale.set(baseSize, baseSize, baseSize);
+
+            matrix.compose(position, quaternion, scale);
+            this.nodeInstances.setMatrixAt(index, matrix);
+
+            processed++;
+            this.pendingMatrixUpdates.delete(index);
+        });
+
+        if (processed > 0) {
+            this.nodeInstances.instanceMatrix.needsUpdate = true;
+        }
+
+        if (this.pendingMatrixUpdates.size > 0) {
+            this.scheduleBatchUpdate(); // Schedule next batch if needed
+        }
+    }
+
     public updatePositions(positions: Float32Array): void {
         if (!this.nodeInstances) return;
 
@@ -4825,38 +4931,20 @@ export class NodeManager {
         for (let i = 0; i < count; i++) {
             const baseIndex = i * FLOATS_PER_NODE;
             
-            // Get position values
             const x = positions[baseIndex];
             const y = positions[baseIndex + 1];
             const z = positions[baseIndex + 2];
             
-            // Skip invalid positions
             if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) ||
                 Math.abs(x) > 1000 || Math.abs(y) > 1000 || Math.abs(z) > 1000) {
                 logger.warn(`Skipping invalid position for node ${i}: (${x}, ${y}, ${z})`);
                 continue;
             }
-            
-            // Update position
-            position.set(x, y, z);
-            
-            // Set initial scale based on settings
-            const baseSize = this.currentSettings.visualization.nodes.baseSize || 1;
-            scale.set(baseSize, baseSize, baseSize);
-            
-            // Update instance matrix
-            matrix.compose(position, quaternion, scale);
-            this.nodeInstances.setMatrixAt(i, matrix);
+
+            this.pendingMatrixUpdates.add(i);
         }
-        
-        this.nodeInstances.instanceMatrix.needsUpdate = true;
-        
-        // Force a render update
-        if (this.currentSettings.visualization.animations.enableNodeAnimations) {
-            requestAnimationFrame(() => {
-                this.nodeInstances.instanceMatrix.needsUpdate = true;
-            });
-        }
+
+        this.scheduleBatchUpdate();
     }
 
     public getAllNodeMeshes(): THREE.InstancedMesh[] {
@@ -4888,10 +4976,8 @@ export class NodeManager {
                 y: newPosition.y,
                 z: newPosition.z
             };
-
-            matrix.compose(newPosition, quaternion, scale);
-            this.nodeInstances.setMatrixAt(index, matrix);
-            this.nodeInstances.instanceMatrix.needsUpdate = true;
+            this.pendingMatrixUpdates.add(index);
+            this.scheduleBatchUpdate();
         }
     }
 
@@ -4906,9 +4992,8 @@ export class NodeManager {
         nodes.forEach((node, index) => {
             const baseIndex = index * FLOATS_PER_NODE;
             positions[baseIndex] = node.data.position.x;
-            positions[baseIndex + 1] = node.data.position.y;
+            positions[baseIndex + 1] = node.data.position.y + 1.5;
             positions[baseIndex + 2] = node.data.position.z;
-            // Velocity components (if needed)
             positions[baseIndex + 3] = 0;
             positions[baseIndex + 4] = 0;
             positions[baseIndex + 5] = 0;
@@ -4928,6 +5013,7 @@ export class NodeManager {
             this.edgeInstances.geometry.dispose();
             this.edgeInstances.material.dispose();
         }
+        this.pendingMatrixUpdates.clear();
     }
 }
 
@@ -5247,6 +5333,7 @@ export class SceneManager {
   private camera: PerspectiveCamera;
   private renderer: WebGLRenderer;
   private controls: OrbitControls;
+  private sceneGrid: GridHelper | null = null;
   
   // Post-processing
   private composer: EffectComposer;
@@ -5355,6 +5442,7 @@ export class SceneManager {
       gridHelper.material.opacity = 0.1;
     }
     this.scene.add(gridHelper);
+    this.sceneGrid = gridHelper;
   }
 
   private handleResize(): void {
@@ -5413,6 +5501,11 @@ export class SceneManager {
     // Update controls only in non-XR mode
     if (!this.renderer.xr.enabled) {
       this.controls.update();
+      // Show scene grid in non-XR mode
+      if (this.sceneGrid) this.sceneGrid.visible = true;
+    } else {
+      // Hide scene grid in XR mode
+      if (this.sceneGrid) this.sceneGrid.visible = false;
     }
 
     // Determine if we should use post-processing
@@ -5639,27 +5732,28 @@ export class GeometryFactory {
         }
 
         const segments = {
-            low: { ring: 32, sphere: 8 },
-            medium: { ring: 64, sphere: 16 },
-            high: { ring: 128, sphere: 32 }
-        }[quality] || { ring: 64, sphere: 16 };
+            low: { ring: 64, sphere: 32 },
+            medium: { ring: 96, sphere: 48 },
+            high: { ring: 128, sphere: 64 }
+        }[quality] || { ring: 96, sphere: 48 };
 
         let geometry: BufferGeometry;
         switch (type) {
             case 'ring':
-                geometry = new SphereGeometry(1, segments.ring, segments.ring);
+                // Translucent rings at scene scale
+                geometry = new SphereGeometry(40, segments.ring, segments.ring);
                 break;
-            case 'buckminster':
-                geometry = new SphereGeometry(1, 20, 20);
+            case 'outerSphere':
+                geometry = new SphereGeometry(200, segments.sphere, segments.sphere);
                 break;
-            case 'geodesic':
-                geometry = new SphereGeometry(1, 16, 16);
+            case 'middleSphere':
+                geometry = new SphereGeometry(100, segments.sphere, segments.sphere);
                 break;
-            case 'triangleSphere':
-                geometry = new SphereGeometry(1, segments.sphere, segments.sphere);
+            case 'innerSphere':
+                geometry = new SphereGeometry(40, segments.sphere, segments.sphere);
                 break;
             default:
-                geometry = new SphereGeometry(1, segments.sphere, segments.sphere);
+                geometry = new SphereGeometry(40, segments.sphere, segments.sphere);
         }
 
         this.geometryCache.set(cacheKey, geometry);
@@ -5688,7 +5782,7 @@ export class GeometryFactory {
 ----
 rendering/factories/MaterialFactory.ts
 import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
-import { Color, Material, MeshStandardMaterial as ThreeMeshStandardMaterial, LineBasicMaterial } from 'three';
+import { Color, Material, MeshBasicMaterial, LineBasicMaterial } from 'three';
 
 export class MaterialFactory {
     private static instance: MaterialFactory;
@@ -5740,13 +5834,11 @@ export class MaterialFactory {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new ThreeMeshStandardMaterial({
+        const material = new MeshBasicMaterial({
             color: settings.visualization?.nodes?.baseColor || 0x4287f5,
-            metalness: settings.visualization?.nodes?.metalness || 0.3,
-            roughness: settings.visualization?.nodes?.roughness || 0.7,
             transparent: true,
             opacity: settings.visualization?.nodes?.opacity || 0.9,
-            emissive: 0x000000
+            depthWrite: true
         });
 
         this.materialCache.set(cacheKey, material);
@@ -5759,13 +5851,47 @@ export class MaterialFactory {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new ThreeMeshStandardMaterial({
+        const material = new MeshBasicMaterial({
             color: settings.visualization?.nodes?.baseColor || 0x4287f5,
-            metalness: settings.visualization?.nodes?.metalness || 0.3,
-            roughness: settings.visualization?.nodes?.roughness || 0.7,
             transparent: true,
             opacity: settings.visualization?.nodes?.opacity || 0.9,
-            emissive: 0x000000
+            depthWrite: true
+        });
+
+        this.materialCache.set(cacheKey, material);
+        return material;
+    }
+
+    public getSceneSphereMaterial(type: string, settings: any): Material {
+        const cacheKey = `scene-sphere-${type}`;
+        if (this.materialCache.has(cacheKey)) {
+            return this.materialCache.get(cacheKey)!;
+        }
+
+        const material = new MeshBasicMaterial({
+            color: settings.visualization?.hologram?.color || 0x4287f5,
+            transparent: true,
+            opacity: 0.3,
+            depthWrite: false
+        });
+
+        (material as any).wireframe = true;
+
+        this.materialCache.set(cacheKey, material);
+        return material;
+    }
+
+    public getRingMaterial(settings: any): Material {
+        const cacheKey = 'ring';
+        if (this.materialCache.has(cacheKey)) {
+            return this.materialCache.get(cacheKey)!;
+        }
+
+        const material = new MeshBasicMaterial({
+            color: settings.visualization?.hologram?.color || 0x4287f5,
+            transparent: true,
+            opacity: 0.15,
+            depthWrite: false
         });
 
         this.materialCache.set(cacheKey, material);
@@ -5779,7 +5905,7 @@ export class MaterialFactory {
         }
 
         const material = new LineBasicMaterial({
-            color: settings.visualization?.edge?.color || 0xffffff
+            color: settings.visualization?.edges?.color || 0x6e7c91
         });
 
         this.materialCache.set(cacheKey, material);
@@ -5792,12 +5918,10 @@ export class MaterialFactory {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new ThreeMeshStandardMaterial({
+        const material = new MeshBasicMaterial({
             color: 0xffffff,
             transparent: true,
-            opacity: 0.8,
-            metalness: 0.3,
-            roughness: 0.7
+            opacity: 0.8
         });
 
         this.materialCache.set(cacheKey, material);
@@ -5811,21 +5935,31 @@ export class MaterialFactory {
         switch (type) {
             case 'node-basic':
             case 'node-phong': {
-                const nodeMaterial = material as ThreeMeshStandardMaterial;
+                const nodeMaterial = material as MeshBasicMaterial;
                 nodeMaterial.color = this.hexToRgb(settings.visualization?.nodes?.baseColor || '#4287f5');
-                nodeMaterial.metalness = settings.visualization?.nodes?.metalness || 0.3;
-                nodeMaterial.roughness = settings.visualization?.nodes?.roughness || 0.7;
                 nodeMaterial.opacity = settings.visualization?.nodes?.opacity || 0.9;
                 nodeMaterial.needsUpdate = true;
                 break;
             }
             case 'edge':
-                (material as LineBasicMaterial).color = this.hexToRgb(settings.visualization?.edge?.color || '#ffffff');
+                (material as LineBasicMaterial).color = this.hexToRgb(settings.visualization?.edges?.color || '#6e7c91');
                 break;
             case 'hologram':
                 if (material instanceof HologramShaderMaterial) {
                     material.uniforms.color.value = this.hexToRgb(settings.visualization?.hologram?.color || '#ffffff');
                 }
+                break;
+            case 'scene-sphere-inner':
+            case 'scene-sphere-middle':
+            case 'scene-sphere-outer':
+                const sphereMaterial = material as MeshBasicMaterial;
+                sphereMaterial.color = this.hexToRgb(settings.visualization?.hologram?.color || '#4287f5');
+                sphereMaterial.needsUpdate = true;
+                break;
+            case 'ring':
+                const ringMaterial = material as MeshBasicMaterial;
+                ringMaterial.color = this.hexToRgb(settings.visualization?.hologram?.color || '#4287f5');
+                ringMaterial.needsUpdate = true;
                 break;
         }
     }
@@ -6096,7 +6230,7 @@ export const defaultSettings: Settings = {
         // Mode and Space Settings
         mode: 'immersive-ar' as const,
         quality: 'high',
-        roomScale: true,
+        roomScale: 0.1,  // Scale factor of 0.1 for AR to make graph room-sized
         spaceType: 'local-floor',
 
         // Hand Tracking Settings
@@ -7850,6 +7984,16 @@ declare module 'three' {
     constructor(x?: number, y?: number, z?: number, w?: number);
     setFromAxisAngle(axis: Vector3, angle: number): this;
     identity(): this;
+    multiply(q: Quaternion): this;
+    setFromEuler(euler: Euler): this;
+  }
+
+  export class Euler {
+    constructor(x?: number, y?: number, z?: number, order?: string);
+    x: number;
+    y: number;
+    z: number;
+    order: string;
   }
 
   export class Color {
@@ -8273,6 +8417,33 @@ export type XRSessionMode = 'inline' | 'immersive-vr' | 'immersive-ar';
 export type XRHandedness = 'none' | 'left' | 'right';
 export type XRHand = THREE.XRHand;
 
+export type XRHandJoint =
+    | 'wrist'
+    | 'thumb-metacarpal'
+    | 'thumb-phalanx-proximal'
+    | 'thumb-phalanx-distal'
+    | 'thumb-tip'
+    | 'index-finger-metacarpal'
+    | 'index-finger-phalanx-proximal'
+    | 'index-finger-phalanx-intermediate'
+    | 'index-finger-phalanx-distal'
+    | 'index-finger-tip'
+    | 'middle-finger-metacarpal'
+    | 'middle-finger-phalanx-proximal'
+    | 'middle-finger-phalanx-intermediate'
+    | 'middle-finger-phalanx-distal'
+    | 'middle-finger-tip'
+    | 'ring-finger-metacarpal'
+    | 'ring-finger-phalanx-proximal'
+    | 'ring-finger-phalanx-intermediate'
+    | 'ring-finger-phalanx-distal'
+    | 'ring-finger-tip'
+    | 'pinky-finger-metacarpal'
+    | 'pinky-finger-phalanx-proximal'
+    | 'pinky-finger-phalanx-intermediate'
+    | 'pinky-finger-phalanx-distal'
+    | 'pinky-finger-tip';
+
 export interface XRSessionConfig {
     mode: XRSessionMode;
     features: {
@@ -8665,6 +8836,9 @@ function validateXRSettings(xr: Settings['xr'], errors: ValidationError[]): void
     // Validate quality
     validateQualityEnum('xr.quality', xr.quality, errors);
 
+    // Validate room scale
+    validateNumericRange('xr.roomScale', xr.roomScale, 0.01, 1.0, errors);
+
     // Validate hand tracking settings
     validateNumericRange('xr.handMeshOpacity', xr.handMeshOpacity, 0.1, 0.8, errors);
     validateNumericRange('xr.handPointSize', xr.handPointSize, 1, 10, errors);
@@ -8793,7 +8967,7 @@ import { XRSessionMode } from '../xr';
 export interface XRSettings {
     // Session Settings
     mode: XRSessionMode;
-    roomScale: boolean;
+    roomScale: number;
     spaceType: 'viewer' | 'local' | 'local-floor' | 'bounded-floor' | 'unbounded';
     quality: 'low' | 'medium' | 'high';
     
@@ -8864,7 +9038,7 @@ export interface WebXRSettings extends XRSettings {
 export const defaultXRSettings: XRSettings = {
     // Session Settings
     mode: 'immersive-ar',
-    roomScale: true,
+    roomScale: 0.01,  // Updated: Scale factor of 0.01 for AR visualization (1/100th scaling)
     spaceType: 'local-floor',
     quality: 'high',
     
@@ -8888,7 +9062,7 @@ export const defaultXRSettings: XRSettings = {
     enableHaptics: true,
     hapticIntensity: 0.5,
     dragThreshold: 0.02,
-    pinchThreshold: 0.7,
+    pinchThreshold: 0.5,  // Updated: Reduced pinch threshold for improved responsiveness
     rotationThreshold: 0.1,
     interactionRadius: 0.5,
     movementSpeed: 0.05,
@@ -8897,7 +9071,7 @@ export const defaultXRSettings: XRSettings = {
         horizontal: 2, // Right joystick X
         vertical: 3   // Right joystick Y
     },
-
+    
     // Scene Understanding
     enableLightEstimation: true,
     enablePlaneDetection: true,
@@ -8906,7 +9080,7 @@ export const defaultXRSettings: XRSettings = {
     planeOpacity: 0.5,
     showPlaneOverlay: true,
     snapToFloor: true,
-    planeDetectionDistance: 3.0,  // Default 3 meters detection range
+    planeDetectionDistance: 3.0,
     
     // Passthrough
     enablePassthroughPortal: false,
@@ -9008,7 +9182,7 @@ export interface BaseSettings {
     };
     xr: {
         mode: 'immersive-ar' | 'immersive-vr';
-        roomScale: boolean;
+        roomScale: number;
         quality: 'low' | 'medium' | 'high';
         input: {
             handTracking: boolean;
@@ -9916,18 +10090,20 @@ export class EventEmitter<Events extends EventMap = EventMap> {
 ----
 visualization/HologramManager.ts
 import * as THREE from 'three';
-import { HologramShaderMaterial } from '../rendering/materials/HologramShaderMaterial';
+import { GeometryFactory } from '../rendering/factories/GeometryFactory';
+import { MaterialFactory } from '../rendering/factories/MaterialFactory';
 
 export class HologramManager {
     private readonly hologramGroup: THREE.Group;
     private readonly settings: any;
     private isXRMode: boolean = false;
-
-    private readonly segments = {
-        low: { ring: 32, sphere: 16 },
-        medium: { ring: 64, sphere: 32 },
-        high: { ring: 128, sphere: 64 }
-    };
+    private readonly geometryFactory: GeometryFactory;
+    private readonly materialFactory: MaterialFactory;
+    
+    // Store scene objects
+    private rings: THREE.Mesh[] = [];
+    private spheres: THREE.Mesh[] = [];
+    private ringQuaternions: THREE.Quaternion[] = [];
 
     constructor(
         private readonly scene: THREE.Scene,
@@ -9936,48 +10112,59 @@ export class HologramManager {
         this.settings = settings;
         this.hologramGroup = new THREE.Group();
         this.scene.add(this.hologramGroup);
-        this.initializeGeometries();
+        
+        this.geometryFactory = GeometryFactory.getInstance();
+        this.materialFactory = MaterialFactory.getInstance();
+        
         this.createHolographicStructures();
     }
 
-    private initializeGeometries(): void {
-        const quality = this.isXRMode ? 'high' : (this.settings.quality || 'medium');
-        const segmentCount = this.segments[quality as keyof typeof this.segments] || this.segments.medium;
-        
-        // Create base geometries
-        const ringGeometry = new THREE.TorusGeometry(1, 0.02, segmentCount.ring, segmentCount.ring * 2);
-        const sphereGeometry = new THREE.SphereGeometry(1, segmentCount.sphere, segmentCount.sphere);
-        
-        // Create hologram material
-        const material = new HologramShaderMaterial(this.settings);
-        
-        // Add ring structures
-        for (let i = 0; i < 3; i++) {
-            const ring = new THREE.Mesh(ringGeometry, material.clone());
-            ring.scale.setScalar(1.5 + i * 0.5);
-            ring.rotation.x = Math.PI / 3 * i;
-            this.hologramGroup.add(ring);
-        }
-        
-        // Add sphere structure
-        const sphere = new THREE.Mesh(sphereGeometry, material.clone());
-        this.hologramGroup.add(sphere);
-    }
-
     private createHolographicStructures(): void {
-        // Clear existing structures
-        while (this.hologramGroup.children.length > 0) {
-            const child = this.hologramGroup.children[0];
-            if (child instanceof THREE.Mesh) {
-                child.geometry.dispose();
-                if (child.material instanceof THREE.Material) {
-                    child.material.dispose();
-                }
+        // Clean up existing objects
+        this.rings.forEach(ring => {
+            ring.geometry.dispose();
+            ring.material.dispose();
+            this.hologramGroup.remove(ring);
+        });
+        this.spheres.forEach(sphere => {
+            sphere.geometry.dispose();
+            sphere.material.dispose();
+            this.hologramGroup.remove(sphere);
+        });
+        this.rings = [];
+        this.spheres = [];
+
+        const quality = this.isXRMode ? 'high' : (this.settings.quality || 'medium');
+
+        // Create spheres
+        const sphereRadii = [40, 100, 200];
+        sphereRadii.forEach(radius => {
+            const geometry = this.geometryFactory.getHologramGeometry('innerSphere', quality);
+            const material = this.materialFactory.getSceneSphereMaterial('sphere', this.settings);
+            const sphere = new THREE.Mesh(geometry, material);
+            sphere.scale.setScalar(radius / 40); // Base geometry is radius 40
+            this.hologramGroup.add(sphere);
+            this.spheres.push(sphere);
+        });
+
+        // Create rings
+        sphereRadii.forEach(radius => {
+            const scale = radius / 40; // Base ring geometry is radius 40
+            for (let i = 0; i < 3; i++) {
+                const geometry = this.geometryFactory.getHologramGeometry('ring', quality);
+                const material = this.materialFactory.getRingMaterial(this.settings);
+                const ring = new THREE.Mesh(geometry, material);
+                
+                ring.scale.setScalar(scale);
+                const quaternion = new THREE.Quaternion();
+                quaternion.setFromEuler(new THREE.Euler(Math.PI / 3 * i, Math.PI / 4 * i, 0));
+                ring.quaternion.copy(quaternion);
+                this.ringQuaternions.push(quaternion);
+                
+                this.hologramGroup.add(ring);
+                this.rings.push(ring);
             }
-            this.hologramGroup.remove(child);
-        }
-        
-        this.initializeGeometries();
+        });
     }
 
     public setXRMode(enabled: boolean): void {
@@ -9986,11 +10173,13 @@ export class HologramManager {
     }
 
     public update(deltaTime: number): void {
-        this.hologramGroup.children.forEach(child => {
-            if (child instanceof THREE.Mesh && child.material instanceof HologramShaderMaterial) {
-                child.rotation.y += deltaTime * 0.1;
-                child.material.update(deltaTime);
-            }
+        // Update ring rotations using quaternions
+        const rotationQuat = new THREE.Quaternion();
+        rotationQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), deltaTime * 0.1);
+        
+        this.rings.forEach((ring, index) => {
+            this.ringQuaternions[index].multiply(rotationQuat);
+            ring.quaternion.copy(this.ringQuaternions[index]);
         });
     }
 
@@ -10008,11 +10197,15 @@ export class HologramManager {
         );
         position.applyMatrix4(indexTip.matrixWorld);
 
-        this.hologramGroup.children.forEach(child => {
-            if (child instanceof THREE.Mesh && child.material instanceof HologramShaderMaterial) {
-                const distance = position.distanceTo(child.position);
-                if (distance < 0.1) {
-                    child.material.handleInteraction(position);
+        [...this.rings, ...this.spheres].forEach(mesh => {
+            const distance = position.distanceTo(mesh.position);
+            if (distance < 0.1) {
+                if (mesh.material instanceof THREE.MeshBasicMaterial) {
+                    const originalOpacity = mesh.material.opacity;
+                    mesh.material.opacity = Math.min(originalOpacity * 2, 1);
+                    setTimeout(() => {
+                        mesh.material.opacity = originalOpacity;
+                    }, 200);
                 }
             }
         });
@@ -10024,13 +10217,13 @@ export class HologramManager {
     }
 
     public dispose(): void {
-        this.hologramGroup.children.forEach(child => {
-            if (child instanceof THREE.Mesh) {
-                child.geometry.dispose();
-                if (child.material instanceof THREE.Material) {
-                    child.material.dispose();
-                }
-            }
+        this.rings.forEach(ring => {
+            ring.geometry.dispose();
+            ring.material.dispose();
+        });
+        this.spheres.forEach(sphere => {
+            sphere.geometry.dispose();
+            sphere.material.dispose();
         });
         this.scene.remove(this.hologramGroup);
     }
@@ -10888,6 +11081,7 @@ xr/xrSessionManager.ts
  * XR session management and rendering
  */
 
+import * as THREE from 'three';
 import {
     Group,
     GridHelper,
@@ -10907,9 +11101,13 @@ import { createLogger } from '../core/utils';
 import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
+import { defaultSettings } from '../state/defaultSettings';
+import { VisualizationController } from '../rendering/VisualizationController';
+import { NodeManager } from '../rendering/nodes';
 import { ControlPanel } from '../ui/ControlPanel';
 import { SettingsStore } from '../state/SettingsStore';
 import { XRSettings } from '../types/settings/xr';
+import { XRHandWithHaptics, WorldObject3D, XRHandJoint } from '../types/xr';
 
 const _logger = createLogger('XRSessionManager');
 
@@ -10922,10 +11120,13 @@ function hasHitTest(session: XRSession): session is XRSession & { requestHitTest
   return 'requestHitTestSource' in session;
 }
 
+
 export class XRSessionManager {
     private static instance: XRSessionManager;
     private sceneManager: SceneManager;
+    private visualizationController: VisualizationController;
     private settingsStore: SettingsStore;
+    private nodeManager: NodeManager;
     private session: XRSession | null = null;
     private referenceSpace: XRReferenceSpace | null = null;
     private isPresenting: boolean = false;
@@ -10957,7 +11158,8 @@ export class XRSessionManager {
     constructor(sceneManager: SceneManager) {
         this.sceneManager = sceneManager;
         this.settingsStore = SettingsStore.getInstance();
-        
+        this.nodeManager = NodeManager.getInstance();
+        this.visualizationController = new VisualizationController(document.body, defaultSettings);
         // Initialize with current settings
         this.currentSettings = this.settingsStore.get('xr') as XRSettings;
         
@@ -11190,6 +11392,17 @@ export class XRSessionManager {
             // Enable AR layer for camera
             const camera = this.sceneManager.getCamera();
             camera.layers.enable(1);
+            
+            // Apply AR scale if in AR mode
+            if (platformManager.isQuest()) {
+                this.arGroup.scale.setScalar(this.currentSettings.roomScale);
+                
+                // Move node instances to arGroup for proper scaling
+                const nodeInstances = this.nodeManager.getAllNodeMeshes();
+                nodeInstances.forEach(mesh => {
+                    this.arGroup.add(mesh);
+                });
+            }
 
             // Reset camera rig position
             this.cameraRig.position.set(0, 0, 0);
@@ -11246,6 +11459,12 @@ export class XRSessionManager {
             this.groundPlane.visible = false;
             this.hitTestMarker.visible = false;
             this.arLight.visible = false;
+            
+            // Move node instances back to main scene
+            const nodeInstances = this.nodeManager.getAllNodeMeshes();
+            nodeInstances.forEach(mesh => {
+                this.sceneManager.getScene().add(mesh);
+            });
         }
 
         // Reset camera and scene
@@ -11329,6 +11548,44 @@ export class XRSessionManager {
                             this.cameraRig.position.add(moveDirection);
                         }
                     }
+                }
+
+                // Handle hand tracking input
+                if (inputSource.hand) {
+                    const xrHand = inputSource.hand;
+                    // Convert XRHand to XRHandWithHaptics
+                    const handWithHaptics: XRHandWithHaptics = new Group() as XRHandWithHaptics;
+                    handWithHaptics.hand = { joints: {} };
+                    handWithHaptics.pinchStrength = 0;
+                    handWithHaptics.gripStrength = 0;
+                    handWithHaptics.userData = {
+                        platform: platformManager.getPlatform()
+                    };
+
+                    // Process each joint
+                    xrHand.forEach((joint, jointName) => {
+                        const pose = frame.getPose(joint, this.referenceSpace!);
+                        if (pose) {
+                            const jointObject = new Group() as WorldObject3D;
+                            jointObject.matrix.fromArray(pose.transform.matrix);
+                            jointObject.matrix.decompose(
+                                jointObject.position,
+                                jointObject.quaternion,
+                                jointObject.scale
+                            );
+                            handWithHaptics.hand.joints[jointName as XRHandJoint] = jointObject;
+                        }
+                    });
+
+                    // Calculate pinch and grip strength based on joint distances
+                    const thumbTip = handWithHaptics.hand.joints['thumb-tip'];
+                    const indexTip = handWithHaptics.hand.joints['index-finger-tip'];
+                    if (thumbTip && indexTip) {
+                        const distance = thumbTip.position.distanceTo(indexTip.position);
+                        handWithHaptics.pinchStrength = Math.max(0, 1 - distance / 0.05); // 5cm max distance
+                    }
+
+                    this.visualizationController.handleHandInput(handWithHaptics);
                 }
             }
         });
@@ -11495,7 +11752,11 @@ export class XRSessionManager {
 
         // Update room scale if changed
         if (this.currentSettings.roomScale !== undefined) {
-            this.cameraRig.scale.setScalar(Number(this.currentSettings.roomScale));
+            if (platformManager.isQuest()) {
+                this.arGroup.scale.setScalar(Number(this.currentSettings.roomScale));
+            } else {
+                this.cameraRig.scale.setScalar(Number(this.currentSettings.roomScale));
+            }
         }
     }
 

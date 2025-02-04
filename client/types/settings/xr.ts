@@ -74,7 +74,7 @@ export interface WebXRSettings extends XRSettings {
 export const defaultXRSettings: XRSettings = {
     // Session Settings
     mode: 'immersive-ar',
-    roomScale: 0.1,  // Scale factor of 0.1 for room-sized AR visualization
+    roomScale: 0.01,  // Updated: Scale factor of 0.01 for AR visualization (1/100th scaling)
     spaceType: 'local-floor',
     quality: 'high',
     
@@ -98,7 +98,7 @@ export const defaultXRSettings: XRSettings = {
     enableHaptics: true,
     hapticIntensity: 0.5,
     dragThreshold: 0.02,
-    pinchThreshold: 0.7,
+    pinchThreshold: 0.5,  // Updated: Reduced pinch threshold for improved responsiveness
     rotationThreshold: 0.1,
     interactionRadius: 0.5,
     movementSpeed: 0.05,
@@ -107,7 +107,7 @@ export const defaultXRSettings: XRSettings = {
         horizontal: 2, // Right joystick X
         vertical: 3   // Right joystick Y
     },
-
+    
     // Scene Understanding
     enableLightEstimation: true,
     enablePlaneDetection: true,
@@ -116,7 +116,7 @@ export const defaultXRSettings: XRSettings = {
     planeOpacity: 0.5,
     showPlaneOverlay: true,
     snapToFloor: true,
-    planeDetectionDistance: 3.0,  // Default 3 meters detection range
+    planeDetectionDistance: 3.0,
     
     // Passthrough
     enablePassthroughPortal: false,
