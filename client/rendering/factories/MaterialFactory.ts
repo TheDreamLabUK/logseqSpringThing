@@ -136,14 +136,19 @@ export class MaterialFactory {
         return material;
     }
 
-    public getEdgeMaterial(settings: any): Material {
-        const cacheKey = 'edge';
+    public getEdgeMaterial(settings: any, context: 'ar' | 'desktop' = 'desktop'): Material {
+        const cacheKey = `edge-${context}`;
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey)!;
         }
 
-        const material = new LineBasicMaterial({
-            color: settings.visualization?.edges?.color || 0x6e7c91
+        const material = new MeshBasicMaterial({
+            color: settings.visualization?.edges?.color || 0x6e7c91,
+            transparent: true,
+            opacity: context === 'ar' ? 0.8 : 0.9,
+            depthWrite: true,
+            side: context === 'ar' ? 0 : 2, // FrontSide for AR, DoubleSide for desktop
+            depthTest: true
         });
 
         this.materialCache.set(cacheKey, material);

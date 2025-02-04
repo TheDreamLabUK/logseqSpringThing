@@ -9,10 +9,10 @@ visualization:
     - 0.8
     - 2.0
     quality: low
-    enable_instancing: false
+    enable_instancing: true
     enable_hologram: false
-    enable_metadata_shape: false
-    enable_metadata_visualization: false
+    enable_metadata_shape: true
+    enable_metadata_visualization: true
   edges:
     arrow_size: 0.8
     base_width: 0.0
@@ -71,7 +71,7 @@ visualization:
     - 1.6
     - 2.0
     ring_rotation_speed: 0.08
-    enable_buckminster: true
+    enable_buckminster: false
     buckminster_scale: 1.2
     buckminster_opacity: 0.3
     enable_geodesic: false
@@ -132,8 +132,8 @@ system:
     log_level: warn
     log_format: pretty
 xr:
-  mode: immersive-vr
-  room_scale: 0.1
+  mode: immersive-ar
+  room_scale: 0.6
   space_type: local-floor
   quality: low
   enable_hand_tracking: true

@@ -84,15 +84,18 @@ export class GeometryFactory {
         return geometry;
     }
 
-    getEdgeGeometry(): BufferGeometry {
-        const cacheKey = 'edge';
+    getEdgeGeometry(context: 'ar' | 'desktop' = 'desktop'): BufferGeometry {
+        const cacheKey = `edge-${context}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
 
         // CylinderGeometry parameters:
         // radiusTop, radiusBottom, height, radialSegments
-        const geometry = new CylinderGeometry(0.05, 0.05, 1, 8);
+        const radialSegments = context === 'ar' ? 4 : 8; // Reduce segments in AR
+        const geometry = new CylinderGeometry(0.05, 0.05, 1, radialSegments);
+        geometry.rotateX(Math.PI / 2); // Align with direction of travel
+        
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }

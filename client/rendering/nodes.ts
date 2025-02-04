@@ -35,14 +35,17 @@ export class NodeManager {
     private pendingMatrixUpdates: Set<number> = new Set();
     private matrixUpdateScheduled: boolean = false;
 
+    private getRenderContext(): 'ar' | 'desktop' {
+        return this.currentSettings.xr.mode === 'immersive-ar' ? 'ar' : 'desktop';
+    }
+
     private constructor() {
         this.currentSettings = settingsManager.getCurrentSettings();
         this.materialFactory = MaterialFactory.getInstance();
         this.geometryFactory = GeometryFactory.getInstance();
         this.settingsObserver = SettingsObserver.getInstance();
 
-        // Determine context based on XR mode
-        const context = this.currentSettings.xr.mode === 'immersive-ar' ? 'ar' : 'desktop';
+        const context = this.getRenderContext();
 
         // Create node instances with context-aware geometry and material
         this.nodeInstances = new THREE.InstancedMesh(
@@ -55,13 +58,10 @@ export class NodeManager {
         this.nodeInstances.layers.enable(1);
         this.nodeInstances.frustumCulled = true; // Enable frustum culling
 
-        // Create edge instances with simple cylinder geometry
-        const edgeGeometry = new THREE.CylinderGeometry(0.05, 0.05, 1, 4);
-        edgeGeometry.rotateX(Math.PI / 2); // Align with direction of travel
-        
+        // Create edge instances with context-aware geometry and material
         this.edgeInstances = new THREE.InstancedMesh(
-            edgeGeometry,
-            this.materialFactory.getEdgeMaterial(this.currentSettings),
+            this.geometryFactory.getEdgeGeometry(context),
+            this.materialFactory.getEdgeMaterial(this.currentSettings, context),
             30000
         );
 
@@ -74,31 +74,44 @@ export class NodeManager {
 
     private setupSettingsSubscriptions(): void {
         this.settingsObserver.subscribe('NodeManager', (settings) => {
-            const prevContext = this.currentSettings.xr.mode === 'immersive-ar' ? 'ar' : 'desktop';
+            const prevContext = this.getRenderContext();
             this.currentSettings = settings;
-            const newContext = this.currentSettings.xr.mode === 'immersive-ar' ? 'ar' : 'desktop';
+            const newContext = this.getRenderContext();
 
             // Update materials and geometry if context changed
-            if (prevContext !== newContext && this.nodeInstances) {
-                // Update geometry with new context
-                const geometry = this.geometryFactory.getNodeGeometry(
-                    this.currentSettings.xr.quality,
-                    newContext
-                );
-                this.nodeInstances.geometry.dispose();
-                this.nodeInstances.geometry = geometry;
+            if (prevContext !== newContext) {
+                if (this.nodeInstances) {
+                    // Update node geometry and material
+                    const nodeGeometry = this.geometryFactory.getNodeGeometry(
+                        this.currentSettings.xr.quality,
+                        newContext
+                    );
+                    const nodeMaterial = this.materialFactory.getNodeMaterial(
+                        this.currentSettings,
+                        newContext
+                    );
+                    this.nodeInstances.geometry.dispose();
+                    this.nodeInstances.material.dispose();
+                    this.nodeInstances.geometry = nodeGeometry;
+                    this.nodeInstances.material = nodeMaterial;
+                }
 
-                // Update material with new context
-                const material = this.materialFactory.getNodeMaterial(
-                    this.currentSettings,
-                    newContext
-                );
-                this.nodeInstances.material.dispose();
-                this.nodeInstances.material = material;
+                if (this.edgeInstances) {
+                    // Update edge geometry and material
+                    const edgeGeometry = this.geometryFactory.getEdgeGeometry(newContext);
+                    const edgeMaterial = this.materialFactory.getEdgeMaterial(
+                        this.currentSettings,
+                        newContext
+                    );
+                    this.edgeInstances.geometry.dispose();
+                    this.edgeInstances.material.dispose();
+                    this.edgeInstances.geometry = edgeGeometry;
+                    this.edgeInstances.material = edgeMaterial;
+                }
             } else {
                 // Just update material properties if context hasn't changed
-                this.materialFactory.updateMaterial('node-basic', settings);
-                this.materialFactory.updateMaterial('edge', settings);
+                this.materialFactory.updateMaterial(`node-${newContext}`, settings);
+                this.materialFactory.updateMaterial(`edge-${newContext}`, settings);
             }
         });
     }
