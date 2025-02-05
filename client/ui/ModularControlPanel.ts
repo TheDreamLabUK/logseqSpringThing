@@ -57,7 +57,8 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         if (platformManager.isQuest()) {
             this.hide();
         } else {
-            this.show(); // Show by default on non-Quest platforms
+            // Show by default on non-Quest platforms
+            this.show();
         }
 
         this.initializeComponents();

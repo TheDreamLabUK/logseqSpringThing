@@ -17,7 +17,7 @@ import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
 import { NodeManager } from '../rendering/nodes';
-import { ControlPanel } from '../ui/ControlPanel';
+import { ModularControlPanel } from '../ui/ModularControlPanel';
 import { SettingsStore } from '../state/SettingsStore';
 import { XRSettings } from '../types/settings/xr';
 const logger = createLogger('XRSessionManager');
@@ -351,7 +351,7 @@ export class XRSessionManager {
             logger.info('XR session initialized');
 
             // Hide control panel in XR mode
-            const controlPanel = ControlPanel.getInstance();
+            const controlPanel = ModularControlPanel.getInstance();
             if (controlPanel) {
                 controlPanel.hide();
             }
@@ -438,7 +438,7 @@ export class XRSessionManager {
         logger.info('XR session ended');
 
         // Show control panel and notify session end (only once)
-        ControlPanel.getInstance()?.show();
+        ModularControlPanel.getInstance()?.show();
         this.xrSessionEndCallback?.();
     }
 
