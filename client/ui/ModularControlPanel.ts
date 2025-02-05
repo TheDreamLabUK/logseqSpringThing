@@ -26,6 +26,7 @@ export interface ModularControlPanelEvents {
 export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents> {
     private static instance: ModularControlPanel | null = null;
     private readonly container: HTMLDivElement;
+    private readonly toggleButton: HTMLButtonElement;
     private readonly settingsStore: SettingsStore;
     private readonly validationDisplay: ValidationErrorDisplay;
     private readonly unsubscribers: Array<() => void> = [];
@@ -37,6 +38,13 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         super();
         this.settingsStore = SettingsStore.getInstance();
         
+        // Create toggle button first
+        this.toggleButton = document.createElement('button');
+        this.toggleButton.className = 'panel-toggle-btn';
+        this.toggleButton.innerHTML = '⚙️';
+        this.toggleButton.onclick = () => this.toggle();
+        parentElement.appendChild(this.toggleButton);
+
         // Create main container
         this.container = document.createElement('div');
         this.container.id = 'modular-control-panel';
@@ -48,6 +56,8 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         // Check platform and settings before showing panel
         if (platformManager.isQuest()) {
             this.hide();
+        } else {
+            this.show(); // Show by default on non-Quest platforms
         }
 
         this.initializeComponents();
@@ -104,7 +114,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                         id: category,
                         title: formatSettingName(category),
                         isDetached: false,
-                        isCollapsed: true,
+                        isCollapsed: false,
                         isAdvanced: this.isAdvancedCategory(category)
                     };
                     
@@ -121,7 +131,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                         id: category,
                         title: formatSettingName(category),
                         isDetached: false,
-                        isCollapsed: true,
+                        isCollapsed: false,
                         isAdvanced: this.isAdvancedCategory(category)
                     };
                     
@@ -292,7 +302,6 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         const content = document.createElement('div');
         content.className = 'section-content';
         
-        // Filter out any empty paths before grouping
         const validPaths = paths.filter(path => {
             const value = this.settingsStore.get(path);
             return value !== undefined && value !== null;
@@ -301,7 +310,6 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         if (validPaths.length > 0) {
             const subcategories = this.groupBySubcategory(validPaths);
             
-            // Sort subcategories alphabetically
             const sortedSubcategories = Object.entries(subcategories).sort(([a], [b]) => {
                 if (a === 'general') return -1;
                 if (b === 'general') return 1;
@@ -362,14 +370,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
     private groupSettingsByCategory(paths: string[]): Record<string, string[]> {
         const groups: Record<string, string[]> = {};
         
-        // Filter out paths that represent nested objects (except arrays)
-        const settableProps = paths.filter(path => {
-            const value = this.settingsStore.get(path);
-            return typeof value !== 'object' || Array.isArray(value);
-        });
-        
-        // Group remaining paths by top-level category
-        settableProps.forEach(path => {
+        paths.forEach(path => {
             const [category] = path.split('.');
             if (!groups[category]) {
                 groups[category] = [];
@@ -377,7 +378,6 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             groups[category].push(path);
         });
         
-        // Sort paths within each category
         Object.keys(groups).forEach(key => {
             groups[key].sort((a, b) => {
                 const aName = a.split('.').pop() || '';
@@ -392,14 +392,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
     private groupBySubcategory(paths: string[]): Record<string, string[]> {
         const groups: Record<string, string[]> = {};
         
-        // Filter out paths that represent objects (except arrays)
-        const settableProps = paths.filter(path => {
-            const value = this.settingsStore.get(path);
-            return typeof value !== 'object' || Array.isArray(value);
-        });
-        
-        // Group remaining paths by subcategory
-        settableProps.forEach(path => {
+        paths.forEach(path => {
             const parts = path.split('.');
             if (parts.length > 2) {
                 const subcategory = parts[1];
@@ -408,17 +401,13 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                 }
                 groups[subcategory].push(path);
             } else if (parts.length === 2) {
-                const value = this.settingsStore.get(path);
-                if (typeof value !== 'object' || Array.isArray(value)) {
-                    if (!groups['general']) {
-                        groups['general'] = [];
-                    }
-                    groups['general'].push(path);
+                if (!groups['general']) {
+                    groups['general'] = [];
                 }
+                groups['general'].push(path);
             }
         });
         
-        // Sort paths within each group
         Object.keys(groups).forEach(key => {
             groups[key].sort((a, b) => {
                 const aName = a.split('.').pop() || '';
@@ -457,15 +446,15 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         container.appendChild(label);
 
         const currentValue = this.settingsStore.get(path);
-        const control = this.createInputElement(path, currentValue);
+        const control = await this.createInputElement(path, currentValue);
         container.appendChild(control);
 
         return container;
     }
 
-    private createInputElement(path: string, value: any): HTMLElement {
+    private async createInputElement(path: string, value: any): Promise<HTMLElement> {
         const type = typeof value;
-        let input: HTMLInputElement | HTMLSelectElement | HTMLDivElement;
+        let input: HTMLElement;
 
         switch (type) {
             case 'boolean': {
@@ -503,30 +492,32 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                         this.updateSetting(path, target.value);
                     };
                     input = colorInput;
-                } else if (Array.isArray(value) || value.includes(',')) {
-                    const textInput = document.createElement('input');
-                    textInput.type = 'text';
-                    textInput.value = value;
-                    textInput.onchange = (e) => {
-                        const target = e.target as HTMLInputElement;
-                        this.updateSetting(path, target.value);
-                    };
-                    input = textInput;
                 } else {
-                    const select = document.createElement('select');
                     const options = this.getOptionsForPath(path);
-                    options.forEach(opt => {
-                        const option = document.createElement('option');
-                        option.value = opt;
-                        option.textContent = formatSettingName(opt);
-                        option.selected = opt === value;
-                        select.appendChild(option);
-                    });
-                    select.onchange = (e) => {
-                        const target = e.target as HTMLSelectElement;
-                        this.updateSetting(path, target.value);
-                    };
-                    input = select;
+                    if (options.length > 0) {
+                        const select = document.createElement('select');
+                        options.forEach(opt => {
+                            const option = document.createElement('option');
+                            option.value = opt;
+                            option.textContent = formatSettingName(opt);
+                            option.selected = opt === value;
+                            select.appendChild(option);
+                        });
+                        select.onchange = (e) => {
+                            const target = e.target as HTMLSelectElement;
+                            this.updateSetting(path, target.value);
+                        };
+                        input = select;
+                    } else {
+                        const textInput = document.createElement('input');
+                        textInput.type = 'text';
+                        textInput.value = value;
+                        textInput.onchange = (e) => {
+                            const target = e.target as HTMLInputElement;
+                            this.updateSetting(path, target.value);
+                        };
+                        input = textInput;
+                    }
                 }
                 break;
             }
@@ -542,13 +533,41 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                     };
                     input = textInput;
                 } else {
-                    // Skip rendering object properties directly
-                    const div = document.createElement('div');
-                    div.className = 'object-container';
-                    input = div;
+                    const container = document.createElement('div');
+                    container.className = 'nested-object-subsection';
+                    
+                    const header = document.createElement('div');
+                    header.className = 'nested-header';
+                    header.textContent = formatSettingName(path.split('.').pop() || '');
+                    container.appendChild(header);
+                    
+                    const content = document.createElement('div');
+                    content.className = 'nested-content';
+                    
+                    for (const [key] of Object.entries(value)) {
+                        const nestedPath = `${path}.${key}`;
+                        const nestedValue = this.settingsStore.get(nestedPath);
+                        if (nestedValue !== undefined) {
+                            const control = document.createElement('div');
+                            control.className = 'setting-control';
+                            
+                            const label = document.createElement('label');
+                            label.textContent = formatSettingName(key);
+                            control.appendChild(label);
+                            
+                            const nestedInput = await this.createInputElement(nestedPath, nestedValue);
+                            control.appendChild(nestedInput);
+                            
+                            content.appendChild(control);
+                        }
+                    }
+                    
+                    container.appendChild(content);
+                    input = container;
                 }
                 break;
             }
+
             default: {
                 const div = document.createElement('div');
                 div.className = 'value-display';
@@ -624,6 +643,10 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         this.container.classList.remove('visible');
     }
 
+    public toggle(): void {
+        this.container.classList.toggle('visible');
+    }
+
     public isReady(): boolean {
         return this.isInitialized;
     }
@@ -642,6 +665,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             window.clearTimeout(this.updateTimeout);
         }
         this.container.remove();
+        this.toggleButton.remove();
         ModularControlPanel.instance = null;
     }
 }

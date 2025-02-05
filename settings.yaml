@@ -1,16 +1,16 @@
 visualization:
   nodes:
     base_color: '#901414'
-    base_size: 2.9
-    metalness: 0.38
-    opacity: 0.9
+    base_size: 2.5
+    metalness: 0.25
+    opacity: 0.23
     roughness: 0.49
     size_range:
     - 0.8
     - 2.0
     quality: medium
-    enable_instancing: false
-    enable_hologram: false
+    enable_instancing: true
+    enable_hologram: true
     enable_metadata_shape: true
     enable_metadata_visualization: true
   edges:

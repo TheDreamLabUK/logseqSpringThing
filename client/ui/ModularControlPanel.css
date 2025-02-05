@@ -5,11 +5,51 @@
     padding: 1rem;
 }
 
+#modular-control-panel {
+    position: fixed;
+    top: 0;
+    right: -400px;
+    width: 400px;
+    height: 100vh;
+    background: rgba(20, 20, 20, 0.95);
+    transition: right 0.3s ease;
+    overflow-y: auto;
+    z-index: 1000;
+}
+
+#modular-control-panel.visible {
+    right: 0;
+}
+
+.panel-toggle-btn {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    width: 40px;
+    height: 40px;
+    border-radius: 20px;
+    background: rgba(30, 30, 30, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 1.2rem;
+    cursor: pointer;
+    z-index: 1001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.panel-toggle-btn:hover {
+    background: rgba(40, 40, 40, 0.95);
+}
+
 .settings-section {
     background: rgba(30, 30, 30, 0.95);
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     overflow: hidden;
+    margin-bottom: 1rem;
 }
 
 .settings-section.detached {
@@ -61,6 +101,9 @@
 
 .settings-subsection {
     margin-bottom: 1.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    padding: 1rem;
 }
 
 .settings-subsection:last-child {
@@ -74,6 +117,8 @@
     color: #aaa;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 0.5rem;
 }
 
 .setting-control {
@@ -103,6 +148,7 @@
     color: #fff;
     padding: 0.25rem 0.5rem;
     min-width: 120px;
+    font-size: 0.9rem;
 }
 
 .setting-control input[type="color"] {
@@ -120,8 +166,32 @@
     cursor: pointer;
 }
 
-.object-container {
-    display: none;
+.nested-object-subsection {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+    width: 100%;
+}
+
+.nested-header {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #aaa;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.nested-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.nested-content .setting-control {
+    margin-bottom: 0;
+    padding-left: 0.5rem;
 }
 
 .empty-section-message {
