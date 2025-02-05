@@ -23,7 +23,9 @@ export const defaultSettings: Settings = {
             color: '#888888',
             enableArrows: false,
             opacity: 0.6,
-            widthRange: [1.0, 3.0]
+            widthRange: [1.0, 3.0],
+            quality: 'medium',
+            scaleFactor: 1.0
         },
         physics: {
             attractionStrength: 0.015,
@@ -46,7 +48,8 @@ export const defaultSettings: Settings = {
             enableShadows: false,
             environmentIntensity: 0.2,
             shadowMapSize: 2048,
-            shadowBias: 0.00001
+            shadowBias: 0.00001,
+            context: 'desktop'
         },
         animations: {
             enableMotionBlur: true,

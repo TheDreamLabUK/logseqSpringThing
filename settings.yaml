@@ -1,8 +1,8 @@
 visualization:
   nodes:
     base_color: '#901414'
-    base_size: 1.0
-    metalness: 0.6
+    base_size: 2.9
+    metalness: 0.38
     opacity: 0.9
     roughness: 0.49
     size_range:
@@ -10,15 +10,15 @@ visualization:
     - 2.0
     quality: medium
     enable_instancing: true
-    enable_hologram: false
-    enable_metadata_shape: false
-    enable_metadata_visualization: false
+    enable_hologram: true
+    enable_metadata_shape: true
+    enable_metadata_visualization: true
   edges:
     arrow_size: 0.8
     base_width: 0.0
     color: '#316ec9'
     enable_arrows: true
-    opacity: 0.4
+    opacity: 0.6
     width_range:
     - 0.6
     - 1.6
@@ -34,9 +34,9 @@ visualization:
     repulsion_strength: 1200.0
     spring_strength: 0.018
   rendering:
-    ambient_light_intensity: 0.65
+    ambient_light_intensity: 0.0
     background_color: '#1a1a2e'
-    directional_light_intensity: 1.2
+    directional_light_intensity: 0.0
     enable_ambient_occlusion: false
     enable_antialiasing: false
     enable_shadows: false

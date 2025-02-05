@@ -42,6 +42,8 @@ export interface EdgeSettings {
     baseWidth: number;
     enableArrows: boolean;
     widthRange: [number, number];
+    quality: 'low' | 'medium' | 'high';
+    scaleFactor: number;
 }
 
 export interface AnimationSettings {
@@ -117,6 +119,7 @@ export interface RenderingSettings {
     enableShadows: boolean;
     shadowMapSize: number;
     shadowBias: number;
+    context: 'ar' | 'desktop';
 }
 
 export interface WebSocketSettings {

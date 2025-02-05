@@ -84,16 +84,23 @@ export class GeometryFactory {
         return geometry;
     }
 
-    getEdgeGeometry(context: 'ar' | 'desktop' = 'desktop'): BufferGeometry {
-        const cacheKey = `edge-${context}`;
+    getEdgeGeometry(context: 'ar' | 'desktop' = 'desktop', quality?: 'low' | 'medium' | 'high'): BufferGeometry {
+        const cacheKey = `edge-${context}-${quality || 'medium'}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
 
         // Use CylinderGeometry for more reliable edge rendering
-        const radius = context === 'ar' ? 0.02 : 0.05;
-        const segments = context === 'ar' ? 6 : 8;
-        const geometry = new CylinderGeometry(radius, radius, 1, segments);
+        const baseRadius = context === 'ar' ? 0.5 : 1.0; // Increased base radius
+        
+        // Adjust segments based on quality
+        const segments = {
+            low: context === 'ar' ? 6 : 8,
+            medium: context === 'ar' ? 8 : 12,
+            high: context === 'ar' ? 10 : 16
+        }[quality || 'medium'];
+
+        const geometry = new CylinderGeometry(baseRadius, baseRadius, 1, segments);
         
         // Rotate 90 degrees to align with Z-axis
         geometry.rotateX(Math.PI / 2);

@@ -18,11 +18,16 @@ const logger = createLogger('EdgeManager');
 
 export class EdgeManager {
     private scene: Scene;
-    private edgeGeometry: BufferGeometry;
+    private edgeGeometry!: BufferGeometry;
     private edgeMaterial: Material;
     private instancedMesh: InstancedMesh | null = null;
     private materialFactory: MaterialFactory;
+    private geometryFactory: GeometryFactory;
     private settings: Settings;
+
+    // Quality settings
+    private currentQuality: 'low' | 'medium' | 'high' = 'medium';
+    private currentContext: 'ar' | 'desktop' = 'desktop';
 
     // Reusable objects for calculations
     private readonly startPos = new Vector3();
@@ -43,17 +48,65 @@ export class EdgeManager {
         this.settings = settings;
         this.scene = scene;
         this.materialFactory = MaterialFactory.getInstance();
+        this.geometryFactory = GeometryFactory.getInstance();
         
-        // Get edge geometry from factory
-        const geometryFactory = GeometryFactory.getInstance();
-        this.edgeGeometry = geometryFactory.getEdgeGeometry('desktop');
-        
+        // Initialize with settings
+        this.updateGeometryFromSettings(settings);
         this.edgeMaterial = this.materialFactory.getEdgeMaterial(settings);
         this.setupInstancedMesh();
     }
 
+    private updateGeometryFromSettings(settings: Settings): void {
+        // Get quality and context from settings
+        const quality = settings.visualization?.edges?.quality || 'medium';
+        const context = settings.visualization?.rendering?.context || 'desktop';
+
+        // Only update if quality or context has changed
+        if (quality !== this.currentQuality || context !== this.currentContext) {
+            this.currentQuality = quality;
+            this.currentContext = context;
+            
+            // Get new geometry with updated quality
+            this.edgeGeometry = this.geometryFactory.getEdgeGeometry(this.currentContext, this.currentQuality);
+            
+            // Update instanced mesh if it exists
+            if (this.instancedMesh) {
+                const oldMesh = this.instancedMesh;
+                this.setupInstancedMesh();
+                oldMesh.geometry.dispose();
+                this.scene.remove(oldMesh);
+                
+                // Reapply current edges with new geometry
+                if (this.currentEdges.length > 0) {
+                    this.updateEdges(this.currentEdges);
+                }
+            }
+        }
+    }
+
+    public handleSettingsUpdate(settings: Settings): void {
+        const oldSettings = this.settings;
+        this.settings = settings;
+        
+        // Check if we need to update geometry
+        if (settings.visualization?.edges?.quality !== oldSettings.visualization?.edges?.quality ||
+            settings.visualization?.rendering?.context !== oldSettings.visualization?.rendering?.context) {
+            this.updateGeometryFromSettings(settings);
+        }
+        
+        // Update material
+        this.materialFactory.updateMaterial('edge', settings);
+        
+        // Update all edges with new settings
+        if (this.currentEdges) {
+            this.updateEdges(this.currentEdges);
+        }
+    }
+
     private setupInstancedMesh() {
-        this.instancedMesh = new InstancedMesh(this.edgeGeometry, this.edgeMaterial, 1000);
+        // Use a larger initial capacity for better performance
+        const initialCapacity = Math.max(1000, this.currentEdges?.length || 0);
+        this.instancedMesh = new InstancedMesh(this.edgeGeometry, this.edgeMaterial, initialCapacity);
         this.instancedMesh.count = 0;
         this.instancedMesh.frustumCulled = true; // Enable frustum culling
         this.scene.add(this.instancedMesh);
@@ -70,15 +123,6 @@ export class EdgeManager {
         return true;
     }
 
-    public handleSettingsUpdate(settings: Settings): void {
-        this.settings = settings;
-        this.materialFactory.updateMaterial('edge', settings);
-        
-        // Update all edges with new settings
-        if (this.currentEdges) {
-            this.updateEdges(this.currentEdges);
-        }
-    }
 
     private scheduleBatchUpdate(): void {
         if (this.updateScheduled) return;
@@ -132,13 +176,18 @@ export class EdgeManager {
             this.tempObject.position.copy(this.position);
             this.tempObject.quaternion.copy(this.quaternion);
 
-            // Scale width based on settings
-            const baseWidth = this.settings.visualization?.edges?.baseWidth || 2.0;
-            const widthRange = this.settings.visualization?.edges?.widthRange || [1.0, 3.0];
-            const edgeWidth = baseWidth * 0.05; // Convert baseWidth to scene units
+            // Get edge width settings with proper defaults
+            const edgeSettings = this.settings.visualization?.edges || {};
+            const baseWidth = edgeSettings.baseWidth || 1.0;
+            const widthRange = edgeSettings.widthRange || [0.5, 2.0];
+            const scaleFactor = edgeSettings.scaleFactor || 1.0;
+            
+            // Calculate edge width based on settings
+            const edgeWidth = baseWidth * scaleFactor;
             const clampedWidth = Math.max(widthRange[0], Math.min(widthRange[1], edgeWidth));
             
-            // Apply scale last
+            // Apply scale with proper proportions
+            // Note: The cylinder's base radius is already 1.0 from GeometryFactory
             this.tempObject.scale.set(clampedWidth, length, clampedWidth);
             this.tempObject.updateMatrix();
             
