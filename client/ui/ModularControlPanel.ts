@@ -3,6 +3,7 @@ import { getAllSettingPaths, formatSettingName } from '../types/settings/utils';
 import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDisplay';
 import { createLogger } from '../core/logger';
 import { platformManager } from '../platform/platformManager';
+import { nostrAuth, NostrUser } from '../services/NostrAuthService';
 
 const logger = createLogger('ModularControlPanel');
 
@@ -43,6 +44,7 @@ export class ModularControlPanel {
 
         this.initializePanel();
         this.initializeDragAndDrop();
+        this.initializeNostrAuth();
     }
 
     private async initializePanel(): Promise<void> {
@@ -73,6 +75,96 @@ export class ModularControlPanel {
             logger.info('Modular control panel initialized');
         } catch (error) {
             logger.error('Failed to initialize modular control panel:', error);
+        }
+    }
+
+    private async initializeNostrAuth(): Promise<void> {
+        // Create auth section
+        const authSection = document.createElement('div');
+        authSection.className = 'settings-section auth-section';
+        
+        const header = document.createElement('div');
+        header.className = 'section-header';
+        header.innerHTML = '<h4>Authentication</h4>';
+        authSection.appendChild(header);
+
+        const content = document.createElement('div');
+        content.className = 'section-content';
+
+        // Create login button
+        const loginBtn = document.createElement('button');
+        loginBtn.className = 'nostr-login-btn';
+        loginBtn.onclick = async () => {
+            try {
+                // Check if window.nostr is available
+                if (!window.nostr) {
+                    throw new Error('No Nostr provider found. Please install a Nostr extension.');
+                }
+
+                // Request public key from extension
+                const pubkey = await window.nostr.getPublicKey();
+                if (!pubkey) {
+                    throw new Error('Failed to get public key from Nostr extension');
+                }
+
+                // Attempt login with pubkey
+                const result = await nostrAuth.login();
+                if (result.authenticated) {
+                    this.updateAuthUI(result.user);
+                } else {
+                    throw new Error(result.error || 'Authentication failed');
+                }
+            } catch (error) {
+                logger.error('Nostr login failed:', error);
+                // Show error in UI
+                const errorMsg = document.createElement('div');
+                errorMsg.className = 'auth-error';
+                errorMsg.textContent = error instanceof Error ? error.message : 'Login failed';
+                content.appendChild(errorMsg);
+                setTimeout(() => errorMsg.remove(), 3000);
+            }
+        };
+
+        // Create status display
+        const statusDisplay = document.createElement('div');
+        statusDisplay.className = 'auth-status';
+        
+        content.appendChild(loginBtn);
+        content.appendChild(statusDisplay);
+        authSection.appendChild(content);
+
+        // Add auth section to container
+        this.container.insertBefore(authSection, this.container.firstChild);
+
+        // Subscribe to auth state changes
+        this.unsubscribers.push(
+            nostrAuth.onAuthStateChanged(({ user }) => {
+                this.updateAuthUI(user);
+            })
+        );
+
+        // Initialize auth state
+        await nostrAuth.initialize();
+        this.updateAuthUI(nostrAuth.getCurrentUser());
+    }
+
+    private updateAuthUI(user: NostrUser | null | undefined): void {
+        const loginBtn = this.container.querySelector('.nostr-login-btn') as HTMLButtonElement;
+        const statusDisplay = this.container.querySelector('.auth-status') as HTMLDivElement;
+
+        if (user) {
+            loginBtn.textContent = 'Logout';
+            loginBtn.onclick = () => nostrAuth.logout();
+            statusDisplay.innerHTML = `
+                <div class="user-info">
+                    <div class="pubkey">${user.pubkey.substring(0, 8)}...</div>
+                    <div class="role">${user.isPowerUser ? 'Power User' : 'Basic User'}</div>
+                </div>
+            `;
+        } else {
+            loginBtn.textContent = 'Login with Nostr';
+            loginBtn.onclick = () => nostrAuth.login();
+            statusDisplay.innerHTML = '<div class="not-authenticated">Not authenticated</div>';
         }
     }
 

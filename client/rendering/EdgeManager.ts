@@ -5,12 +5,16 @@ import {
     Vector3,
     BufferGeometry,
     Object3D,
-    Material
+    Material,
+    Quaternion
 } from 'three';
 import { Settings } from '../types/settings';
 import { Edge } from '../core/types';
 import { MaterialFactory } from './factories/MaterialFactory';
 import { GeometryFactory } from './factories/GeometryFactory';
+import { createLogger } from '../core/logger';
+
+const logger = createLogger('EdgeManager');
 
 export class EdgeManager {
     private scene: Scene;
@@ -27,6 +31,8 @@ export class EdgeManager {
     private readonly direction = new Vector3();
     private readonly position = new Vector3();
     private readonly matrix = new Matrix4();
+    private readonly upVector = new Vector3(0, 1, 0);
+    private readonly quaternion = new Quaternion();
 
     // Batch size for matrix updates
     private static readonly BATCH_SIZE = 1000;
@@ -51,6 +57,17 @@ export class EdgeManager {
         this.instancedMesh.count = 0;
         this.instancedMesh.frustumCulled = true; // Enable frustum culling
         this.scene.add(this.instancedMesh);
+    }
+
+    private validateEdgePositions(start: Vector3, end: Vector3): boolean {
+        if (start.distanceTo(end) < 0.0001) {
+            logger.warn('Edge endpoints too close', {
+                start: `${start.x},${start.y},${start.z}`,
+                end: `${end.x},${end.y},${end.z}`
+            });
+            return false;
+        }
+        return true;
     }
 
     public handleSettingsUpdate(settings: Settings): void {
@@ -80,21 +97,6 @@ export class EdgeManager {
         this.pendingUpdates.forEach(index => {
             if (processed >= EdgeManager.BATCH_SIZE) return;
 
-            const currentEdge = this.currentEdges[index];
-            if (!currentEdge?.sourcePosition || !currentEdge?.targetPosition) return;
-
-            // Set positions
-            this.startPos.set(
-                currentEdge.sourcePosition.x,
-                currentEdge.sourcePosition.y,
-                currentEdge.sourcePosition.z
-            );
-            this.endPos.set(
-                currentEdge.targetPosition.x,
-                currentEdge.targetPosition.y,
-                currentEdge.targetPosition.z
-            );
-
             const edge = this.currentEdges[index];
             if (!edge?.sourcePosition || !edge?.targetPosition) return;
 
@@ -110,30 +112,34 @@ export class EdgeManager {
                 edge.targetPosition.z
             );
 
+            // Validate positions
+            if (!this.validateEdgePositions(this.startPos, this.endPos)) return;
+
             // Calculate direction and length
             this.direction.subVectors(this.endPos, this.startPos);
             const length = this.direction.length();
             
-            if (length === 0) return;
-
             // Position at midpoint
-            this.position.addVectors(this.startPos, this.endPos).multiplyScalar(0.5);
+            this.position.copy(this.startPos).add(this.direction.multiplyScalar(0.5));
             
-            // Calculate direction
+            // Calculate rotation
             this.direction.normalize();
+            const angle = Math.acos(this.direction.dot(this.upVector));
+            const axis = new Vector3().crossVectors(this.upVector, this.direction).normalize();
+            this.quaternion.setFromAxisAngle(axis, angle);
             
             // Use Object3D to handle transformations
             this.tempObject.position.copy(this.position);
+            this.tempObject.quaternion.copy(this.quaternion);
 
-            // Scale width based on settings and edge length
+            // Scale width based on settings
             const baseWidth = this.settings.visualization?.edges?.baseWidth || 2.0;
             const widthRange = this.settings.visualization?.edges?.widthRange || [1.0, 3.0];
-            const lengthFactor = Math.max(0.5, Math.min(1.5, length / 10)); // Scale width based on length
-            const edgeWidth = baseWidth * 0.05 * lengthFactor; // Convert baseWidth to scene units
+            const edgeWidth = baseWidth * 0.05; // Convert baseWidth to scene units
             const clampedWidth = Math.max(widthRange[0], Math.min(widthRange[1], edgeWidth));
             
+            // Apply scale last
             this.tempObject.scale.set(clampedWidth, length, clampedWidth);
-            this.tempObject.lookAt(this.endPos);
             this.tempObject.updateMatrix();
             
             // Copy the transformation matrix
