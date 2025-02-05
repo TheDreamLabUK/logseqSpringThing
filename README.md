@@ -51,7 +51,7 @@ graph TB
         ThreeJS[Three.js Renderer]
         ChatUI[Chat Interface]
         GraphUI[Graph Interface]
-        ControlPanel[Control Panel]
+        ControlPanel[Modular Control Panel (with Nostr Auth)]
         VRControls[VR Control System]
         WSService[WebSocket Service]
         DataManager[Graph Data Manager]

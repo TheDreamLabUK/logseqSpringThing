@@ -8,11 +8,11 @@ visualization:
     size_range:
     - 0.8
     - 2.0
-    quality: low
+    quality: medium
     enable_instancing: true
-    enable_hologram: true
-    enable_metadata_shape: true
-    enable_metadata_visualization: true
+    enable_hologram: false
+    enable_metadata_shape: false
+    enable_metadata_visualization: false
   edges:
     arrow_size: 0.8
     base_width: 0.0

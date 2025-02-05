@@ -13,6 +13,8 @@ classDiagram
         +chatManager: ChatManager
         +interface: Interface
         +ragflowService: RAGFlowService
+        +nostrAuthService: NostrAuthService
+        +settingsStore: SettingsStore
         +start()
         +initializeEventListeners()
         +toggleFullscreen()
@@ -46,9 +48,10 @@ classDiagram
         +controls: Controls
         +composer: Composer
         +gpu: GPUUtilities
-        +nodeMeshes: Map<string, Mesh>
-        +edgeMeshes: Map<string, Line>
-        +hologramGroup: Group
+        +nodeManager: EnhancedNodeManager
+        +edgeManager: EdgeManager
+        +hologramManager: HologramManager
+        +textRenderer: TextRenderer
         +initialize()
         +updateVisualization()
         +initThreeJS()
@@ -69,6 +72,8 @@ classDiagram
     App --> WebsocketService
     App --> GraphDataManager
     App --> WebXRVisualization
+    App --> NostrAuthService
+    App --> SettingsStore
     GraphDataManager --> WebsocketService
     WebXRVisualization --> GraphDataManager
 ```
@@ -94,6 +99,12 @@ classDiagram
         +convert_references_to_topic_counts(references: Map<String, ReferenceInfo>): Map<String, number>
         +initialize_local_storage(github_service: GitHubService, settings: Settings): Result<void, Error>
         +count_hyperlinks(content: string): number
+    }
+    class NostrService {
+        +settings: Settings
+        +validate_session(pubkey: str, token: str): bool
+        +get_user(pubkey: str): Option<NostrUser>
+        +update_user_api_keys(pubkey: str, api_keys: ApiKeys): Result<NostrUser>
     }
     class GitHubService {
         +fetch_file_metadata(): Result<Vec<GithubFileMetadata>, Error>
@@ -138,12 +149,52 @@ classDiagram
     class Interface {
         +chatManager: ChatManager
         +visualization: WebXRVisualization
+        +controlPanel: ModularControlPanel
         +handleUserInput(input: string)
         +displayChatMessage(message: string)
         +setupEventListeners()
         +renderUI()
         +updateNodeInfoPanel(node: object)
         +displayErrorMessage(message: string)
+    }
+    class ModularControlPanel {
+        +settingsStore: SettingsStore
+        +validationDisplay: ValidationErrorDisplay
+        +sections: Map<string, SectionConfig>
+        +initializePanel()
+        +initializeNostrAuth()
+        +updateAuthUI(user: NostrUser)
+        +createSection(config: SectionConfig, paths: string[])
+        +toggleDetached(sectionId: string)
+        +toggleCollapsed(sectionId: string)
+        +show()
+        +hide()
+        +dispose()
+    }
+    class NostrAuthService {
+        +currentUser: NostrUser
+        +eventEmitter: SettingsEventEmitter
+        +settingsPersistence: SettingsPersistenceService
+        +initialize()
+        +login(): Promise<AuthResult>
+        +logout()
+        +getCurrentUser(): NostrUser
+        +isAuthenticated(): boolean
+        +isPowerUser(): boolean
+        +hasFeatureAccess(feature: string): boolean
+        +checkAuthStatus(pubkey: string)
+        +onAuthStateChanged(callback: function)
+    }
+    class SettingsStore {
+        +settings: Settings
+        +observers: Set<Observer>
+        +initialize()
+        +get(path: string): any
+        +set(path: string, value: any)
+        +subscribe(observer: Observer)
+        +unsubscribe(observer: Observer)
+        +validate(settings: Settings)
+        +persist()
     }
     class RAGFlowService {
         +settings: Settings
@@ -155,7 +206,10 @@ classDiagram
 
     Interface --> ChatManager
     Interface --> WebXRVisualization
+    Interface --> ModularControlPanel
     ChatManager --> RAGFlowService
+    ModularControlPanel --> SettingsStore
+    ModularControlPanel --> NostrAuthService
 ```
 
 ## WebSocket Components
@@ -187,7 +241,10 @@ classDiagram
 - `WebsocketService` handles real-time communication between frontend and backend
 - `GraphDataManager` manages the graph data structure and coordinates with the visualization
 - `WebXRVisualization` handles the 3D rendering and XR interactions
-- Backend services are organized around specific responsibilities (files, graph, AI, etc.)
+- `ModularControlPanel` provides a flexible UI with dockable sections and Nostr authentication
+- `NostrAuthService` manages user authentication and feature access
+- `SettingsStore` provides centralized settings management
+- Backend services are organized around specific responsibilities (files, graph, AI, auth, etc.)
 - Frontend components handle user interaction and visualization updates
 
 ## Related Documentation

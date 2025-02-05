@@ -8,7 +8,7 @@
 
 ## Project Overview
 
-LogseqXR revolutionizes the way you interact with your Logseq knowledge base. It's not just a visualization tool; it's a complete platform that transforms your notes into a living, breathing 3D graph, explorable in immersive AR/VR environments. This project leverages the power of **WebXR**, **Perplexity AI**, and **RAGFlow** to create a dynamic and interactive experience, allowing you to literally step into your knowledge graph and gain new insights through AI-powered interactions.
+LogseqXR revolutionizes the way you interact with your Logseq knowledge base. It's not just a visualization tool; it's a complete platform that transforms your notes into a living, breathing 3D graph, explorable in immersive AR/VR environments. This project leverages the power of **WebXR**, **Perplexity AI**, **RAGFlow**, and **Nostr** to create a dynamic and interactive experience, allowing you to literally step into your knowledge graph and gain new insights through AI-powered interactions.
 
 **What does this mean for you?**
 
@@ -39,7 +39,22 @@ LogseqXR is packed with features designed to enhance your knowledge exploration 
 - **Fisheye Distortion for Focus + Context Visualization:**
   - **Focus on Details:** Apply a fisheye distortion effect to magnify specific areas of the graph while still maintaining an overview of the surrounding context. This allows you to focus on details without losing sight of the bigger picture.
 
-### **2. Voice Interaction System**
+### **2. Modular Control Panel with Nostr Authentication**
+
+- **Dockable Interface:**
+  - Flexible, modular control panel with dockable sections
+  - Customizable layout to suit your workflow
+  - Collapsible sections for better space management
+- **Nostr Authentication:**
+  - Secure authentication using Nostr protocol
+  - Role-based access control (Basic/Power User)
+  - Feature access management based on user roles
+- **Settings Management:**
+  - Real-time settings updates with instant visual feedback
+  - Settings persistence across sessions
+  - Advanced settings for power users
+
+### **3. Voice Interaction System**
 
 The system provides flexible voice interaction capabilities with two options:
 
@@ -65,7 +80,7 @@ Both systems support:
 - WebSocket streaming for low-latency responses
 - Seamless integration with the 3D visualization
 
-### **3. AI-Powered Knowledge Enhancement (In Development)**
+### **4. AI-Powered Knowledge Enhancement (In Development)**
 
 > **Note:** The Perplexity AI integration is currently under development. The following features describe the planned functionality that will be available in upcoming releases.
 
@@ -89,7 +104,7 @@ Both systems support:
   - Adds relevant citations and references
   - Updates technical information to reflect current state of the art
 
-### **4. Real-time Updates:**
+### **5. Real-time Updates:**
 
 - **WebSocket-Based Communication:** LogseqXR uses WebSockets for real-time, bi-directional communication between the client and server. This ensures that any changes made to the graph, either locally or remotely, are instantly reflected in the visualization.
 - **Optimized Binary Protocol:**
@@ -99,7 +114,7 @@ Both systems support:
 - **Automatic Graph Layout Recalculation:** When the graph structure changes (e.g., new nodes or edges are added), the force-directed layout algorithm automatically recalculates the optimal node positions to maintain a clear and organized visualization.
 - **Live Preview of Changes:** Any changes made to the underlying Logseq knowledge base are immediately reflected in the 3D visualization, providing a live preview of your evolving knowledge graph.
 
-### **5. GPU Acceleration:**
+### **6. GPU Acceleration:**
 
 - **WebGPU Compute Shaders for Layout Calculation:** LogseqXR leverages the power of the GPU (Graphics Processing Unit) to perform complex calculations for the force-directed layout algorithm. WebGPU compute shaders, written in WGSL (WebGPU Shading Language), enable parallel processing of node positions and velocities, resulting in significantly faster layout calculations compared to CPU-based approaches.
 - **Efficient Force-Directed Algorithms:** The force-directed layout algorithm is optimized for GPU execution, taking advantage of parallel processing to handle large graphs with thousands of nodes and edges.
