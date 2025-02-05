@@ -638,14 +638,17 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
 
     public show(): void {
         this.container.classList.add('visible');
+        this.toggleButton.classList.add('panel-open');
     }
 
     public hide(): void {
         this.container.classList.remove('visible');
+        this.toggleButton.classList.remove('panel-open');
     }
 
     public toggle(): void {
         this.container.classList.toggle('visible');
+        this.toggleButton.classList.toggle('panel-open');
     }
 
     public isReady(): boolean {

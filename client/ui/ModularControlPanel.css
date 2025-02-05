@@ -18,7 +18,8 @@
 .panel-toggle-btn {
     position: fixed;
     top: 20px;
-    right: 20px;
+    right: 20px; /* Position when panel is closed */
+    transition: right 0.3s ease; /* Match panel transition */
     width: 40px;
     height: 40px;
     border-radius: 50%;
@@ -35,6 +36,10 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     padding: 0;
     outline: none;
+}
+
+.panel-toggle-btn.panel-open {
+    right: 420px; /* Position when panel is open */
 }
 
 .panel-toggle-btn:hover {
