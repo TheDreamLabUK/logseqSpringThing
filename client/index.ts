@@ -12,6 +12,8 @@ import { XRInitializer } from './xr/xrInitializer';
 import { SceneManager } from './rendering/scene';
 import { graphDataManager } from './state/graphData';
 import { debugState } from './core/debugState';
+import { ModularControlPanel } from './ui/ModularControlPanel';
+import { defaultSettings } from './state/defaultSettings';
 import './ui'; // Import UI initialization
 
 const logger = createLogger('GraphVisualization');
@@ -97,7 +99,6 @@ export class GraphVisualization {
         debugLog('GraphVisualization initialization complete');
     }
 
-
     public handleSettingsUpdate(settings: Settings) {
         debugLog('Handling settings update');
         this.nodeManager.handleSettingsUpdate(settings);
@@ -126,36 +127,38 @@ export class GraphVisualization {
     }
 }
 
-// Import default settings
-import { defaultSettings } from './state/defaultSettings';
-
 // Initialize settings and logging
 async function init() {
-    // Initialize settings first
-    const settingsStore = SettingsStore.getInstance();
-    await settingsStore.initialize();
-    
-    // Configure logging based on settings
-    const debugEnabled = settingsStore.get('system.debug.enabled') as boolean;
-    const logFullJson = settingsStore.get('system.debug.log_full_json') as boolean;
-    LoggerConfig.setGlobalDebug(debugEnabled);
-    LoggerConfig.setFullJson(logFullJson);
-    
-    // Subscribe to debug setting changes
-    settingsStore.subscribe('system.debug.enabled', (_, value) => {
-        LoggerConfig.setGlobalDebug(value as boolean);
-    });
-    settingsStore.subscribe('system.debug.log_full_json', (_, value) => {
-        LoggerConfig.setFullJson(value as boolean);
-    });
-    
-    logger.log('Starting application...');
+    logger.info('Starting application initialization...');
     
     try {
-        // Initialize settings first and wait for completion
+        // Initialize ModularControlPanel first and wait for settings to be ready
+        const controlPanel = ModularControlPanel.getInstance();
+        
+        // Wait for settings to be ready
+        if (!controlPanel.isReady()) {
+            await new Promise<void>((resolve) => {
+                controlPanel.on('settings:ready', () => resolve());
+            });
+        }
+        
+        // Get settings store after it's been initialized by ModularControlPanel
         const settingsStore = SettingsStore.getInstance();
-        await settingsStore.initialize();
         const settings = settingsStore.get('') as Settings || defaultSettings;
+
+        // Configure logging based on settings
+        const debugEnabled = settingsStore.get('system.debug.enabled') as boolean;
+        const logFullJson = settingsStore.get('system.debug.log_full_json') as boolean;
+        LoggerConfig.setGlobalDebug(debugEnabled);
+        LoggerConfig.setFullJson(logFullJson);
+        
+        // Subscribe to debug setting changes
+        settingsStore.subscribe('system.debug.enabled', (_, value) => {
+            LoggerConfig.setGlobalDebug(value as boolean);
+        });
+        settingsStore.subscribe('system.debug.log_full_json', (_, value) => {
+            LoggerConfig.setFullJson(value as boolean);
+        });
 
         // Initialize platform detection with current settings
         await platformManager.initialize(settings);
@@ -168,22 +171,17 @@ async function init() {
             document.body.appendChild(xrButton);
         }
 
-        // Get canvas and scene manager first for XR setup
+        // Get canvas and scene manager for XR setup
         const canvas = document.getElementById('main-canvas') as HTMLCanvasElement;
         if (!canvas) {
             throw new Error('Could not find #main-canvas element');
         }
         const sceneManager = SceneManager.getInstance(canvas);
 
-        // Initialize XR components before UI
+        // Initialize XR components
         const xrSessionManager = XRSessionManager.getInstance(sceneManager);
-        // Keep XRInitializer instance to maintain event listeners, but store in window for cleanup
         (window as any).xrInitializer = XRInitializer.getInstance(xrSessionManager);
 
-        // Initialize UI with settings after XR setup
-        const { initializeUI } = await import('./ui');
-        await initializeUI();
-        
         // Initialize main visualization and store globally
         const viz = new GraphVisualization(settings);
         (window as any).visualization = viz;
@@ -191,7 +189,6 @@ async function init() {
         // Subscribe to visualization settings changes
         settingsStore.subscribe('visualization', (_, newVisualizationSettings) => {
             if (viz && newVisualizationSettings) {
-                // Create a new settings object with just the visualization changes
                 const updatedSettings: Settings = {
                     ...settings,
                     visualization: newVisualizationSettings as Settings['visualization']

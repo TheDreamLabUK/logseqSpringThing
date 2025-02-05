@@ -4,6 +4,7 @@ import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDi
 import { createLogger } from '../core/logger';
 import { platformManager } from '../platform/platformManager';
 import { nostrAuth, NostrUser } from '../services/NostrAuthService';
+import { EventEmitter } from '../utils/eventEmitter';
 
 const logger = createLogger('ModularControlPanel');
 
@@ -17,7 +18,12 @@ interface SectionConfig {
     isAdvanced: boolean;
 }
 
-export class ModularControlPanel {
+export interface ModularControlPanelEvents {
+    'settings:ready': null;
+    'settings:updated': { path: string; value: any };
+}
+
+export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents> {
     private static instance: ModularControlPanel | null = null;
     private readonly container: HTMLDivElement;
     private readonly settingsStore: SettingsStore;
@@ -25,8 +31,10 @@ export class ModularControlPanel {
     private readonly unsubscribers: Array<() => void> = [];
     private readonly sections: Map<string, SectionConfig> = new Map();
     private updateTimeout: number | null = null;
+    private isInitialized: boolean = false;
 
     private constructor(parentElement: HTMLElement) {
+        super();
         this.settingsStore = SettingsStore.getInstance();
         
         // Create main container
@@ -42,44 +50,96 @@ export class ModularControlPanel {
             this.hide();
         }
 
-        this.initializePanel();
-        this.initializeDragAndDrop();
-        this.initializeNostrAuth();
+        this.initializeComponents();
+    }
+
+    private async initializeComponents(): Promise<void> {
+        try {
+            // Initialize settings first
+            await this.initializeSettings();
+            
+            // Then initialize UI components
+            await this.initializePanel();
+            this.initializeDragAndDrop();
+            await this.initializeNostrAuth();
+            
+            // Mark as initialized and emit ready event
+            this.isInitialized = true;
+            this.emit('settings:ready', null);
+            
+            logger.info('ModularControlPanel fully initialized');
+        } catch (error) {
+            logger.error('Failed to initialize ModularControlPanel:', error);
+            throw error;
+        }
+    }
+
+    private async initializeSettings(): Promise<void> {
+        try {
+            await this.settingsStore.initialize();
+            logger.info('Settings initialized successfully');
+        } catch (error) {
+            logger.error('Failed to initialize settings:', error);
+            throw error;
+        }
     }
 
     private async initializePanel(): Promise<void> {
         try {
-            await this.settingsStore.initialize();
-            
             const settings = this.settingsStore.get('') as any;
             const paths = getAllSettingPaths(settings);
             
-            // Group settings by category
+            // Create main categories container
+            const categoriesContainer = document.createElement('div');
+            categoriesContainer.className = 'settings-categories';
+            
+            // Group settings by main category
+            const mainCategories = ['visualization', 'system', 'xr'];
             const groupedSettings = this.groupSettingsByCategory(paths);
             
-            // Create sections for each category
-            for (const [category, categoryPaths] of Object.entries(groupedSettings)) {
-                const sectionConfig: SectionConfig = {
-                    id: category,
-                    title: formatSettingName(category),
-                    isDetached: false,
-                    isCollapsed: false,
-                    isAdvanced: this.isAdvancedCategory(category)
-                };
-                
-                this.sections.set(category, sectionConfig);
-                const section = await this.createSection(sectionConfig, categoryPaths);
-                this.container.appendChild(section);
+            // Create sections for each main category first
+            for (const category of mainCategories) {
+                if (groupedSettings[category]) {
+                    const sectionConfig: SectionConfig = {
+                        id: category,
+                        title: formatSettingName(category),
+                        isDetached: false,
+                        isCollapsed: true,
+                        isAdvanced: this.isAdvancedCategory(category)
+                    };
+                    
+                    this.sections.set(category, sectionConfig);
+                    const section = await this.createSection(sectionConfig, groupedSettings[category]);
+                    categoriesContainer.appendChild(section);
+                }
             }
             
-            logger.info('Modular control panel initialized');
+            // Add remaining categories
+            for (const [category, categoryPaths] of Object.entries(groupedSettings)) {
+                if (!mainCategories.includes(category)) {
+                    const sectionConfig: SectionConfig = {
+                        id: category,
+                        title: formatSettingName(category),
+                        isDetached: false,
+                        isCollapsed: true,
+                        isAdvanced: this.isAdvancedCategory(category)
+                    };
+                    
+                    this.sections.set(category, sectionConfig);
+                    const section = await this.createSection(sectionConfig, categoryPaths);
+                    categoriesContainer.appendChild(section);
+                }
+            }
+            
+            this.container.appendChild(categoriesContainer);
+            logger.info('Panel UI initialized');
         } catch (error) {
-            logger.error('Failed to initialize modular control panel:', error);
+            logger.error('Failed to initialize panel:', error);
+            throw error;
         }
     }
 
     private async initializeNostrAuth(): Promise<void> {
-        // Create auth section
         const authSection = document.createElement('div');
         authSection.className = 'settings-section auth-section';
         
@@ -91,23 +151,19 @@ export class ModularControlPanel {
         const content = document.createElement('div');
         content.className = 'section-content';
 
-        // Create login button
         const loginBtn = document.createElement('button');
         loginBtn.className = 'nostr-login-btn';
         loginBtn.onclick = async () => {
             try {
-                // Check if window.nostr is available
                 if (!window.nostr) {
                     throw new Error('No Nostr provider found. Please install a Nostr extension.');
                 }
 
-                // Request public key from extension
                 const pubkey = await window.nostr.getPublicKey();
                 if (!pubkey) {
                     throw new Error('Failed to get public key from Nostr extension');
                 }
 
-                // Attempt login with pubkey
                 const result = await nostrAuth.login();
                 if (result.authenticated) {
                     this.updateAuthUI(result.user);
@@ -116,7 +172,6 @@ export class ModularControlPanel {
                 }
             } catch (error) {
                 logger.error('Nostr login failed:', error);
-                // Show error in UI
                 const errorMsg = document.createElement('div');
                 errorMsg.className = 'auth-error';
                 errorMsg.textContent = error instanceof Error ? error.message : 'Login failed';
@@ -125,7 +180,6 @@ export class ModularControlPanel {
             }
         };
 
-        // Create status display
         const statusDisplay = document.createElement('div');
         statusDisplay.className = 'auth-status';
         
@@ -133,17 +187,14 @@ export class ModularControlPanel {
         content.appendChild(statusDisplay);
         authSection.appendChild(content);
 
-        // Add auth section to container
         this.container.insertBefore(authSection, this.container.firstChild);
 
-        // Subscribe to auth state changes
         this.unsubscribers.push(
             nostrAuth.onAuthStateChanged(({ user }) => {
                 this.updateAuthUI(user);
             })
         );
 
-        // Initialize auth state
         await nostrAuth.initialize();
         this.updateAuthUI(nostrAuth.getCurrentUser());
     }
@@ -241,7 +292,6 @@ export class ModularControlPanel {
         const content = document.createElement('div');
         content.className = 'section-content';
         
-        // Group paths by subcategory
         const subcategories = this.groupBySubcategory(paths);
         
         for (const [subcategory, subPaths] of Object.entries(subcategories)) {
@@ -264,7 +314,6 @@ export class ModularControlPanel {
         const controls = document.createElement('div');
         controls.className = 'section-controls';
 
-        // Detach button
         const detachBtn = document.createElement('button');
         detachBtn.className = 'section-control detach';
         detachBtn.innerHTML = config.isDetached ? '📌' : '📎';
@@ -275,7 +324,6 @@ export class ModularControlPanel {
         };
         controls.appendChild(detachBtn);
 
-        // Collapse button
         const collapseBtn = document.createElement('button');
         collapseBtn.className = 'section-control collapse';
         collapseBtn.innerHTML = '▼';
@@ -343,10 +391,125 @@ export class ModularControlPanel {
     }
 
     private async createSettingControl(path: string): Promise<HTMLElement> {
-        // Implementation placeholder - using path parameter
-        const control = document.createElement('div');
-        control.dataset.settingPath = path;
-        return control;
+        const container = document.createElement('div');
+        container.className = 'setting-control';
+        container.dataset.settingPath = path;
+
+        const label = document.createElement('label');
+        label.textContent = formatSettingName(path.split('.').pop() || '');
+        container.appendChild(label);
+
+        const currentValue = this.settingsStore.get(path);
+        const control = this.createInputElement(path, currentValue);
+        container.appendChild(control);
+
+        return container;
+    }
+
+    private createInputElement(path: string, value: any): HTMLElement {
+        const type = typeof value;
+        let input: HTMLInputElement | HTMLSelectElement | HTMLDivElement;
+
+        switch (type) {
+            case 'boolean': {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = value;
+                checkbox.onchange = (e) => {
+                    const target = e.target as HTMLInputElement;
+                    this.updateSetting(path, target.checked);
+                };
+                input = checkbox;
+                break;
+            }
+
+            case 'number': {
+                const numberInput = document.createElement('input');
+                numberInput.type = 'number';
+                numberInput.value = value.toString();
+                numberInput.step = '0.01';
+                numberInput.onchange = (e) => {
+                    const target = e.target as HTMLInputElement;
+                    this.updateSetting(path, parseFloat(target.value));
+                };
+                input = numberInput;
+                break;
+            }
+
+            case 'string': {
+                if (path.toLowerCase().includes('color')) {
+                    const colorInput = document.createElement('input');
+                    colorInput.type = 'color';
+                    colorInput.value = value;
+                    colorInput.onchange = (e) => {
+                        const target = e.target as HTMLInputElement;
+                        this.updateSetting(path, target.value);
+                    };
+                    input = colorInput;
+                } else if (Array.isArray(value) || value.includes(',')) {
+                    const textInput = document.createElement('input');
+                    textInput.type = 'text';
+                    textInput.value = value;
+                    textInput.onchange = (e) => {
+                        const target = e.target as HTMLInputElement;
+                        this.updateSetting(path, target.value);
+                    };
+                    input = textInput;
+                } else {
+                    const select = document.createElement('select');
+                    const options = this.getOptionsForPath(path);
+                    options.forEach(opt => {
+                        const option = document.createElement('option');
+                        option.value = opt;
+                        option.textContent = formatSettingName(opt);
+                        option.selected = opt === value;
+                        select.appendChild(option);
+                    });
+                    select.onchange = (e) => {
+                        const target = e.target as HTMLSelectElement;
+                        this.updateSetting(path, target.value);
+                    };
+                    input = select;
+                }
+                break;
+            }
+
+            default: {
+                const div = document.createElement('div');
+                div.textContent = JSON.stringify(value);
+                input = div;
+            }
+        }
+
+        return input;
+    }
+
+    private getOptionsForPath(path: string): string[] {
+        const optionsMap: Record<string, string[]> = {
+            'visualization.nodes.quality': ['low', 'medium', 'high'],
+            'visualization.edges.quality': ['low', 'medium', 'high'],
+            'visualization.rendering.context': ['desktop', 'ar'],
+            'system.debug.logLevel': ['error', 'warn', 'info', 'debug', 'trace'],
+            'xr.mode': ['immersive-vr', 'immersive-ar'],
+            'xr.spaceType': ['local', 'local-floor', 'bounded-floor']
+        };
+
+        return optionsMap[path] || [];
+    }
+
+    private updateSetting(path: string, value: any): void {
+        if (this.updateTimeout !== null) {
+            window.clearTimeout(this.updateTimeout);
+        }
+
+        this.updateTimeout = window.setTimeout(async () => {
+            try {
+                await this.settingsStore.set(path, value);
+                this.emit('settings:updated', { path, value });
+            } catch (error) {
+                logger.error(`Failed to update setting ${path}:`, error);
+            }
+        }, 100);
     }
 
     private toggleDetached(sectionId: string): void {
@@ -377,19 +540,23 @@ export class ModularControlPanel {
         }
     }
 
-    public static getInstance(): ModularControlPanel {
-        if (!ModularControlPanel.instance) {
-            ModularControlPanel.instance = new ModularControlPanel(document.body);
-        }
-        return ModularControlPanel.instance;
-    }
-
     public show(): void {
         this.container.classList.add('visible');
     }
 
     public hide(): void {
         this.container.classList.remove('visible');
+    }
+
+    public isReady(): boolean {
+        return this.isInitialized;
+    }
+
+    public static getInstance(): ModularControlPanel {
+        if (!ModularControlPanel.instance) {
+            ModularControlPanel.instance = new ModularControlPanel(document.body);
+        }
+        return ModularControlPanel.instance;
     }
 
     public dispose(): void {

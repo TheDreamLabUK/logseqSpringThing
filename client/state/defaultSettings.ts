@@ -19,13 +19,13 @@ export const defaultSettings: Settings = {
         },
         edges: {
             arrowSize: 5.0,
-            baseWidth: 2.0,
+            baseWidth: 3.0,
             color: '#888888',
             enableArrows: false,
-            opacity: 0.6,
-            widthRange: [1.0, 3.0],
+            opacity: 0.8,
+            widthRange: [1.5, 4.0],
             quality: 'medium',
-            scaleFactor: 1.0
+            scaleFactor: 2.0
         },
         physics: {
             attractionStrength: 0.015,
