@@ -73,9 +73,10 @@ export class NodeManager {
     }
 
     private setupSettingsSubscriptions(): void {
-        this.settingsObserver.subscribe('NodeManager', (settings) => {
+        this.settingsObserver.subscribe('visualization', (_path: string, _value: any) => {
             const prevContext = this.getRenderContext();
-            this.currentSettings = settings;
+            // Get fresh settings to ensure we have the complete state
+            this.currentSettings = settingsManager.getCurrentSettings();
             const newContext = this.getRenderContext();
 
             // Update materials and geometry if context changed
@@ -110,9 +111,17 @@ export class NodeManager {
                 }
             } else {
                 // Just update material properties if context hasn't changed
-                this.materialFactory.updateMaterial(`node-${newContext}`, settings);
-                this.materialFactory.updateMaterial(`edge-${newContext}`, settings);
+                this.materialFactory.updateMaterial(`node-${newContext}`, this.currentSettings);
+                this.materialFactory.updateMaterial(`edge-${newContext}`, this.currentSettings);
             }
+        });
+
+        // Subscribe to XR settings changes
+        this.settingsObserver.subscribe('xr', (_path: string, _value: any) => {
+            this.currentSettings = settingsManager.getCurrentSettings();
+            const context = this.getRenderContext();
+            this.materialFactory.updateMaterial(`node-${context}`, this.currentSettings);
+            this.materialFactory.updateMaterial(`edge-${context}`, this.currentSettings);
         });
     }
 

@@ -1,171 +1,242 @@
-import { Settings } from '../settings';
-import { defaultSettings } from '../../state/defaultSettings';
+import { Settings, SettingsPath, SettingsValue } from './base';
 
-// Type for top-level settings categories
+// Settings categories
 export type SettingsCategory = keyof Settings;
 
-// Type for all possible paths in settings
-export type SettingsPath = string;
+// Re-export base types
+export type { SettingsPath, SettingsValue };
 
-// Type guard to check if a string is a valid settings category
-export function isSettingsCategory(key: string): key is SettingsCategory {
-    return key in defaultSettings;
-}
+/**
+ * Get all possible setting paths from a settings object
+ */
+export function getAllSettingPaths(settings: Partial<Settings>): string[] {
+    const paths: string[] = [];
 
-// Type guard to check if a path exists in settings
-export function isValidSettingPath(path: string): boolean {
-    if (!path) {
-        return false;
-    }
+    function traverse(obj: any, path: string = '') {
+        if (!obj || typeof obj !== 'object') return;
 
-    try {
-        const parts = path.split('.');
-        if (parts.length === 0) {
-            return false;
-        }
-
-        let current: any = defaultSettings;
-        for (const part of parts) {
-            if (!part || typeof part !== 'string' || !(part in current)) {
-                return false;
-            }
-            current = current[part];
-        }
-        
-        return true;
-    } catch (error: unknown) {
-        return false;
-    }
-}
-
-// Get value from settings using path
-export function getSettingValue(settings: Settings, path: string): any {
-    if (!settings || typeof settings !== 'object') {
-        throw new Error('Invalid settings object');
-    }
-    if (!path) {
-        throw new Error('Path cannot be empty');
-    }
-    
-    try {
-        return path.split('.').reduce((obj: any, key) => {
-            if (obj === null || obj === undefined) {
-                throw new Error(`Invalid path: ${path}`);
-            }
-            return obj[key];
-        }, settings);
-    } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        throw new Error(`Failed to get setting value at path ${path}: ${message}`);
-    }
-}
-
-// Set value in settings using path
-export function setSettingValue(settings: Settings, path: string, value: any): void {
-    if (!settings || typeof settings !== 'object') {
-        throw new Error('Invalid settings object');
-    }
-    if (!path) {
-        throw new Error('Path cannot be empty');
-    }
-    
-    try {
-        const parts = path.split('.');
-        const lastKey = parts.pop();
-        if (!lastKey) {
-            throw new Error('Invalid path format');
-        }
-        
-        const target = parts.reduce((obj: any, key) => {
-            if (!(key in obj)) {
-                obj[key] = {};
-            }
-            return obj[key];
-        }, settings);
-
-        if (!target || typeof target !== 'object') {
-            throw new Error(`Invalid path: ${path}`);
-        }
-
-        target[lastKey] = value;
-    } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        throw new Error(`Failed to set setting value at path ${path}: ${message}`);
-    }
-}
-
-// Get the parent category of a setting path
-export function getSettingCategory(path: string): SettingsCategory | undefined {
-    if (!path) {
-        return undefined;
-    }
-    const category = path.split('.')[0];
-    return isSettingsCategory(category) ? category : undefined;
-}
-
-// Get subcategory path (everything after the main category)
-export function getSettingSubPath(path: string): string | undefined {
-    if (!path) {
-        return undefined;
-    }
-    const parts = path.split('.');
-    return parts.length > 1 ? parts.slice(1).join('.') : undefined;
-}
-
-// Helper to check if a value is a nested settings object
-export function isSettingsObject(value: any): boolean {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-// Helper to get all paths in a settings object
-export function getAllSettingPaths(
-    obj: any,
-    parentPath: string = '',
-    paths: string[] = []
-): string[] {
-    if (!isSettingsObject(obj)) {
-        return paths;
-    }
-
-    for (const key in obj) {
-        const currentPath = parentPath ? `${parentPath}.${key}` : key;
-        if (isSettingsObject(obj[key])) {
-            getAllSettingPaths(obj[key], currentPath, paths);
-        } else {
+        Object.entries(obj).forEach(([key, value]) => {
+            const currentPath = path ? `${path}.${key}` : key;
             paths.push(currentPath);
-        }
+
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                traverse(value, currentPath);
+            }
+        });
     }
+
+    traverse(settings);
     return paths;
 }
 
-// Type helper for settings values
-export type SettingValue = string | number | boolean | string[] | number[];
-
-// Helper to get the appropriate input type for a setting
-export function getSettingInputType(value: SettingValue): string {
-    if (value === null || value === undefined) {
-        return 'text';
-    }
-    if (typeof value === 'boolean') return 'checkbox';
-    if (typeof value === 'number') return 'number';
-    if (typeof value === 'string' && value.startsWith('#')) return 'color';
-    if (Array.isArray(value)) return 'select';
-    return 'text';
-}
-
-// Helper to format setting names for display
-export function formatSettingName(setting: string): string {
-    if (!setting) return '';
-    return setting
-        .split(/(?=[A-Z])|_/)
+/**
+ * Format a setting path into a human-readable name
+ */
+export function formatSettingName(path: string): string {
+    return path
+        .split('.')
+        .pop()!
+        .split(/(?=[A-Z])|[-_]/)
         .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
         .join(' ');
 }
 
-// Helper to get step value for number inputs
-export function getStepValue(key: string): string {
-    if (!key) return '1';
-    return key.toLowerCase().match(/strength|opacity|intensity|threshold|scale/)
-        ? '0.1'
-        : '1';
+/**
+ * Get the appropriate step value for a numeric setting
+ */
+export function getStepValue(path: SettingsPath): string {
+    // Physics settings need finer control
+    if (path.includes('physics.attractionStrength') || 
+        path.includes('physics.repulsionStrength') ||
+        path.includes('physics.springStrength')) {
+        return '0.001';
+    }
+
+    // Opacity and other normalized values
+    if (path.includes('opacity') || 
+        path.includes('metalness') || 
+        path.includes('roughness')) {
+        return '0.01';
+    }
+
+    // Size related settings
+    if (path.includes('Size') || path.includes('scale')) {
+        return '0.1';
+    }
+
+    // Animation speeds
+    if (path.includes('speed') || path.includes('strength')) {
+        return '0.05';
+    }
+
+    // Default step value
+    return '1';
+}
+
+/**
+ * Get the appropriate min/max values for a numeric setting
+ */
+export function getValueRange(path: SettingsPath): [number, number] {
+    // Physics settings
+    if (path.includes('physics.attractionStrength') || 
+        path.includes('physics.repulsionStrength') ||
+        path.includes('physics.springStrength')) {
+        return [0, 2];
+    }
+
+    // Normalized values
+    if (path.includes('opacity') || 
+        path.includes('metalness') || 
+        path.includes('roughness')) {
+        return [0, 1];
+    }
+
+    // Size related settings
+    if (path.includes('Size') || path.includes('scale')) {
+        return [0.1, 10];
+    }
+
+    // Animation speeds
+    if (path.includes('speed')) {
+        return [0, 5];
+    }
+
+    // Strength values
+    if (path.includes('strength')) {
+        return [0, 2];
+    }
+
+    // Default range
+    return [0, 100];
+}
+
+/**
+ * Get the appropriate input type for a setting
+ */
+export function getInputType(path: SettingsPath, value: SettingsValue): string {
+    // Handle specific path cases
+    if (path.endsWith('.mode') || 
+        path.endsWith('.spaceType') || 
+        path.endsWith('.quality')) {
+        return 'select';
+    }
+
+    // Handle value type cases
+    if (typeof value === 'boolean') {
+        return 'toggle';
+    }
+
+    if (typeof value === 'number') {
+        return 'slider';
+    }
+
+    if (typeof value === 'string' && value.startsWith('#')) {
+        return 'color';
+    }
+
+    if (Array.isArray(value)) {
+        if (value.length === 2 && value.every(v => typeof v === 'number')) {
+            return 'range';
+        }
+        return 'array';
+    }
+
+    return 'text';
+}
+
+/**
+ * Get select options for a setting
+ */
+export function getSelectOptions(path: SettingsPath): string[] {
+    if (path.endsWith('.mode')) {
+        return ['immersive-ar', 'immersive-vr'];
+    }
+
+    if (path.endsWith('.spaceType')) {
+        return ['viewer', 'local', 'local-floor', 'bounded-floor', 'unbounded'];
+    }
+
+    if (path.endsWith('.quality')) {
+        return ['low', 'medium', 'high'];
+    }
+
+    return [];
+}
+
+/**
+ * Check if a setting should be considered advanced
+ */
+export function isAdvancedSetting(path: SettingsPath): boolean {
+    const advancedPatterns = [
+        /physics\./,
+        /rendering\.(?!quality|backgroundColour)/,
+        /system\./,
+        /debug\./,
+        /enableInstancing/,
+        /enableMetadata/,
+        /compression/,
+        /binary/
+    ];
+
+    return advancedPatterns.some(pattern => pattern.test(path));
+}
+
+/**
+ * Get a setting value by path
+ */
+export function getSettingValue(settings: Settings, path: SettingsPath): SettingsValue | undefined {
+    const parts = path.split('.');
+    let current: any = settings;
+
+    for (const part of parts) {
+        if (current === undefined || current === null) return undefined;
+        current = current[part];
+    }
+
+    return current;
+}
+
+/**
+ * Set a setting value by path
+ */
+export function setSettingValue(settings: Settings, path: SettingsPath, value: SettingsValue): void {
+    const parts = path.split('.');
+    let current: any = settings;
+
+    for (let i = 0; i < parts.length - 1; i++) {
+        const part = parts[i];
+        if (!(part in current)) {
+            current[part] = {};
+        }
+        current = current[part];
+    }
+
+    current[parts[parts.length - 1]] = value;
+}
+
+/**
+ * Check if a setting path is valid
+ */
+export function isValidSettingPath(settings: Settings, path: SettingsPath): boolean {
+    return getSettingValue(settings, path) !== undefined;
+}
+
+/**
+ * Format a setting value for display
+ */
+export function formatSettingValue(value: SettingsValue): string {
+    if (typeof value === 'number') {
+        // Use more decimal places for small values
+        return value < 1 ? value.toFixed(3) : value.toFixed(1);
+    }
+
+    if (typeof value === 'boolean') {
+        return value ? 'Enabled' : 'Disabled';
+    }
+
+    if (Array.isArray(value)) {
+        return value.join(', ');
+    }
+
+    return String(value);
 }

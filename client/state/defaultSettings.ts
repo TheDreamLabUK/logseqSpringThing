@@ -1,117 +1,108 @@
-import { Settings, VisualizationSettings } from '../types/settings';
+import { Settings } from '../types/settings/base';
 
-// Helper function to convert number to hex color
-function toHexColor(num: number): string {
-    return `#${num.toString(16).padStart(6, '0')}`;
-}
-
-// Export visualization defaults separately for reuse
-export const defaultVisualizationSettings: VisualizationSettings = {
-    nodes: {
-        quality: 'high',
-        enableInstancing: true,
-        enableMetadataShape: true,
-        enableMetadataVisualization: true,
-        baseSize: 1.0,  // Default size with range up to 10.0
-        sizeRange: [0.8, 5.0],  // Wider range for more size variation
-        baseColor: toHexColor(0x4287f5),  // Softer blue
-        opacity: 0.9,  // Slightly transparent
-        colorRangeAge: [toHexColor(0x4287f5), toHexColor(0xf542a1)],  // Blue to pink
-        colorRangeLinks: [toHexColor(0x4287f5), toHexColor(0xa142f5)],  // Blue to purple
-        metalness: 0.3,  // Much less metallic for reduced reflections
-        roughness: 0.7,  // More diffuse for reduced specular highlights
-        enableHologram: false
-    },
-    edges: {
-        color: toHexColor(0x6e7c91),  // Softer gray-blue that complements node colors
-        opacity: 0.4,  // More subtle connections
-        arrowSize: 0.8,  // Small arrows when enabled
-        baseWidth: 0.8,  // Thinner base width
-        enableArrows: false,  // Default to no arrows
-        widthRange: [0.6, 1.6]  // More subtle width variation
-    },
-    animations: {
-        enableNodeAnimations: true,
-        enableMotionBlur: true,  // Enable for smoother transitions
-        motionBlurStrength: 0.35,  // Subtle motion blur
-        selectionWaveEnabled: true,
-        pulseEnabled: true,
-        pulseSpeed: 1.2,  // Slightly slower, more gentle pulse
-        pulseStrength: 0.8,  // Less intense pulse
-        waveSpeed: 0.8  // Slower, more graceful wave
-    },
-    labels: {
-        enableLabels: true,
-        desktopFontSize: 14,  // Slightly smaller for better integration
-        textColor: toHexColor(0xe1e5eb),  // Softer white for better contrast
-        textOutlineColor: toHexColor(0x1a1a1a),  // Darker outline for better readability
-        textOutlineWidth: 3,  // Thicker outline for better visibility
-        textResolution: 512,  // Higher resolution for sharper text
-        textPadding: 6,  // More padding for better spacing
-        billboardMode: true
-    },
-    rendering: {
-        ambientLightIntensity: 0.4,  // Reduced ambient for less overall brightness
-        directionalLightIntensity: 0.8,  // Reduced directional for less harsh lighting
-        environmentIntensity: 0.8,  // Reduced environment intensity for better balance
-        backgroundColor: toHexColor(0x1a1a2e),  // Slightly blue-tinted dark background
-        enableAmbientOcclusion: true,
-        enableAntialiasing: true,
-        enableShadows: true,
-        shadowMapSize: 2048,  // Higher resolution shadows
-        shadowBias: 0.0001  // Fine-tuned shadow bias
-    },
-    bloom: {
-        enabled: false,  // Disabled to reduce overall brightness
-        strength: 1.2,        // Slightly reduced overall bloom
-        radius: 0.6,         // Tighter bloom radius
-        threshold: 0.4,      // Higher threshold for more selective bloom
-        edgeBloomStrength: 0.4,  // Subtler edge glow
-        nodeBloomStrength: 0.8,  // Much less intense node glow
-        environmentBloomStrength: 0.8  // Reduced environment bloom
-    },
-    hologram: {
-        ringCount: 4,                    // One more ring for better effect
-        ringSizes: [0.8, 1.2, 1.6, 2],  // More gradual size progression
-        ringRotationSpeed: 0.08,         // Slower, more graceful rotation
-        globalRotationSpeed: 0.06,       // Slower global rotation
-        ringColor: toHexColor(0x4287f5), // Match node base color
-        ringOpacity: 0.2,                // Much more subtle rings
-        enableBuckminster: false,
-        buckminsterScale: 1.2,           // Slightly larger when enabled
-        buckminsterOpacity: 0.3,         // More subtle buckminster
-        enableGeodesic: false,
-        geodesicScale: 1.1,              // Slightly larger when enabled
-        geodesicOpacity: 0.3,            // More subtle geodesic
-        enableTriangleSphere: false,
-        triangleSphereScale: 1.1,        // Slightly larger when enabled
-        triangleSphereOpacity: 0.3       // More subtle triangle sphere
-    },
-    physics: {
-        enabled: true,
-        attractionStrength: 0.015,     // Range: 0.001-1.0, proven value from Initial phase
-        repulsionStrength: 1200.0,     // Range: 1.0-10000.0, proven value from settings
-        springStrength: 0.018,         // Range: 0.001-1.0, proven value from Initial phase
-        damping: 0.95,                 // Range: 0.5-0.95, proven value from Initial phase
-        iterations: 300,               // Range: 1-500, proven value from Initial phase
-        maxVelocity: 0.2,             // Range: 0.1-1.0, matches time_step
-        collisionRadius: 0.25,         // From Rust default
-        enableBounds: true,
-        boundsSize: 100.0             // Range: 10-500, from SimulationParams
-    }
-};
-
-// Main settings object with all defaults
 export const defaultSettings: Settings = {
-    visualization: defaultVisualizationSettings,
+    visualization: {
+        nodes: {
+            baseColor: '#32aeae',
+            baseSize: 1.5,
+            metalness: 0.8,
+            opacity: 1.0,
+            roughness: 0.2,
+            sizeRange: [1.0, 3.0],
+            quality: 'high',
+            enableInstancing: false,
+            enableHologram: false,
+            enableMetadataShape: false,
+            enableMetadataVisualization: false,
+            colorRangeAge: ['#ff0000', '#00ff00'],
+            colorRangeLinks: ['#0000ff', '#ff00ff']
+        },
+        edges: {
+            arrowSize: 5.0,
+            baseWidth: 0.0,
+            color: '#888888',
+            enableArrows: false,
+            opacity: 0.3,
+            widthRange: [1.0, 2.0]
+        },
+        physics: {
+            attractionStrength: 0.015,
+            boundsSize: 100.0,
+            collisionRadius: 0.25,
+            damping: 0.5,
+            enableBounds: false,
+            enabled: true,
+            iterations: 100,
+            maxVelocity: 2.0,
+            repulsionStrength: 0.4,
+            springStrength: 0.6
+        },
+        rendering: {
+            ambientLightIntensity: 0.2,
+            backgroundColor: '#1a1a1a',
+            directionalLightIntensity: 0.2,
+            enableAmbientOcclusion: false,
+            enableAntialiasing: true,
+            enableShadows: false,
+            environmentIntensity: 0.2,
+            shadowMapSize: 2048,
+            shadowBias: 0.00001
+        },
+        animations: {
+            enableMotionBlur: true,
+            enableNodeAnimations: true,
+            motionBlurStrength: 1.0,
+            selectionWaveEnabled: false,
+            pulseEnabled: false,
+            pulseSpeed: 1.0,
+            pulseStrength: 0.5,
+            waveSpeed: 1.0
+        },
+        labels: {
+            desktopFontSize: 14,
+            enableLabels: true,
+            textColor: '#ffffff',
+            textOutlineColor: '#000000',
+            textOutlineWidth: 2,
+            textResolution: 32,
+            textPadding: 2,
+            billboardMode: true
+        },
+        bloom: {
+            edgeBloomStrength: 1.1,
+            enabled: true,
+            environmentBloomStrength: 1.0,
+            nodeBloomStrength: 2.0,
+            radius: 0.5,
+            strength: 0.6,
+            threshold: 0.5
+        },
+        hologram: {
+            ringCount: 3,
+            ringColor: '#00ffff',
+            ringOpacity: 0.8,
+            ringSizes: [0.8, 1.2, 1.6, 2.0],
+            ringRotationSpeed: 1.0,
+            enableBuckminster: true,
+            buckminsterScale: 0.6,
+            buckminsterOpacity: 0.6,
+            enableGeodesic: false,
+            geodesicScale: 0.4,
+            geodesicOpacity: 0.5,
+            enableTriangleSphere: true,
+            triangleSphereScale: 0.5,
+            triangleSphereOpacity: 0.5,
+            globalRotationSpeed: 1.0
+        }
+    },
     system: {
         websocket: {
-            reconnectAttempts: 3,         // Fewer attempts but more frequent
-            reconnectDelay: 3000,         // Shorter delay between attempts
-            binaryChunkSize: 2048,        // Larger chunks for better performance
+            binaryChunkSize: 32768,
             compressionEnabled: true,
-            compressionThreshold: 512,     // Lower threshold to compress more data
-            updateRate: 90                 // Higher update rate for smoother animations
+            compressionThreshold: 1024,
+            reconnectAttempts: 5,
+            reconnectDelay: 5000,
+            updateRate: 30
         },
         debug: {
             enabled: false,
@@ -119,63 +110,53 @@ export const defaultSettings: Settings = {
             enableWebsocketDebug: false,
             logBinaryHeaders: false,
             logFullJson: false,
-            logLevel: 'warn',             // Default to warnings only
-            logFormat: 'pretty'           // More readable logs by default
+            logLevel: 'info',
+            logFormat: 'json'
         }
     },
     xr: {
-        // Mode and Space Settings
-        mode: 'immersive-ar' as const,
-        quality: 'high',
-        roomScale: 0.1,  // Scale factor of 0.1 for AR to make graph room-sized
+        mode: 'immersive-vr',
+        roomScale: 0.01,
         spaceType: 'local-floor',
-
-        // Hand Tracking Settings
+        quality: 'high',
+        autoEnterAR: false,
+        hideControlPanel: true,
+        preferredMode: 'immersive-vr',
         enableHandTracking: true,
         handMeshEnabled: true,
-        handMeshColor: toHexColor(0x4287f5),  // Match visualization theme
-        handMeshOpacity: 0.3,                 // More subtle hand visualization
-        handPointSize: 3,                     // Smaller, less intrusive points
+        handMeshColor: '#4287f5',
+        handMeshOpacity: 0.3,
+        handPointSize: 3.0,
         handRayEnabled: true,
-        handRayColor: toHexColor(0x4287f5),   // Match visualization theme
-        handRayWidth: 1.5,                    // Thinner ray
-        gestureSmoothing: 0.7,                // Smoother gesture tracking
-
-        // Interaction Settings
+        handRayColor: '#4287f5',
+        handRayWidth: 1.5,
+        gestureSmoothing: 0.5,
         enableHaptics: true,
-        hapticIntensity: 0.3,                 // Gentler haptics
-        dragThreshold: 0.08,                  // Lower threshold for easier dragging
-        pinchThreshold: 0.3,                  // Lower threshold for easier pinching
-        rotationThreshold: 0.08,              // Lower threshold for easier rotation
-        interactionRadius: 0.15,              // Larger interaction radius
-        movementSpeed: 0.08,                  // Faster movement
-        deadZone: 0.12,                       // Slightly larger deadzone
+        hapticIntensity: 0.5,
+        dragThreshold: 0.02,
+        pinchThreshold: 0.5,
+        rotationThreshold: 0.1,
+        interactionRadius: 0.5,
+        movementSpeed: 0.05,
+        deadZone: 0.1,
         movementAxes: {
-            horizontal: 2,                     // Right joystick X
-            vertical: 3                        // Right joystick Y
+            horizontal: 2,
+            vertical: 3
         },
-
-        // Platform Settings
-        autoEnterAR: false,                   // Let user choose when to enter
-        hideControlPanel: false,              // Show control panel by default
-        preferredMode: 'immersive-ar',
-
-        // Scene Understanding
-        enableLightEstimation: true,
+        enableLightEstimation: false,
         enablePlaneDetection: true,
         enableSceneUnderstanding: true,
-        planeColor: toHexColor(0x4287f5),     // Match visualization theme
-        planeOpacity: 0.2,                    // More subtle planes
-        showPlaneOverlay: true,
-        snapToFloor: true,
-
-        // Passthrough Settings
+        planeColor: '#808080',
+        planeOpacity: 0.5,
+        showPlaneOverlay: false,
+        snapToFloor: false,
+        planeDetectionDistance: 3.0,
         enablePassthroughPortal: false,
-        passthroughOpacity: 0.8,              // Slightly transparent
-        passthroughBrightness: 1.1,           // Slightly brighter
-        passthroughContrast: 1.2,             // Higher contrast
-        portalSize: 2.5,                      // Larger portal
-        portalEdgeColor: toHexColor(0x4287f5), // Match visualization theme
-        portalEdgeWidth: 0.5                  // 20% of portal size (2.5 * 0.2 = 0.5)
+        passthroughOpacity: 0.8,
+        passthroughBrightness: 1.1,
+        passthroughContrast: 1.0,
+        portalSize: 2.0,
+        portalEdgeColor: '#ffffff',
+        portalEdgeWidth: 2.0
     }
 };

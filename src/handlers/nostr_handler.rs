@@ -1,6 +1,7 @@
 use crate::app_state::AppState;
 use crate::models::protected_settings::{NostrUser, ApiKeys};
 use crate::services::nostr_service::{NostrService, AuthEvent, NostrError};
+use crate::config::feature_access::FeatureAccess;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -10,12 +11,14 @@ pub struct AuthResponse {
     pub user: NostrUser,
     pub token: String,
     pub expires_at: i64,
+    pub features: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct VerifyResponse {
     pub valid: bool,
     pub is_power_user: bool,
+    pub features: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -40,12 +43,78 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/refresh", web::post().to(refresh))
             .route("/api-keys", web::post().to(update_api_keys))
             .route("/api-keys", web::get().to(get_api_keys))
+            .route("/power-user-status", web::get().to(check_power_user_status))
+            .route("/features", web::get().to(get_available_features))
+            .route("/features/{feature}", web::get().to(check_feature_access))
     );
+}
+
+async fn check_power_user_status(
+    req: HttpRequest,
+    feature_access: web::Data<FeatureAccess>,
+) -> Result<HttpResponse, Error> {
+    let pubkey = req.headers()
+        .get("X-Nostr-Pubkey")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+
+    if pubkey.is_empty() {
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "error": "Missing Nostr pubkey"
+        })));
+    }
+
+    Ok(HttpResponse::Ok().json(json!({
+        "is_power_user": feature_access.is_power_user(pubkey)
+    })))
+}
+
+async fn get_available_features(
+    req: HttpRequest,
+    feature_access: web::Data<FeatureAccess>,
+) -> Result<HttpResponse, Error> {
+    let pubkey = req.headers()
+        .get("X-Nostr-Pubkey")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+
+    if pubkey.is_empty() {
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "error": "Missing Nostr pubkey"
+        })));
+    }
+
+    let features = feature_access.get_available_features(pubkey);
+    Ok(HttpResponse::Ok().json(json!({
+        "features": features
+    })))
+}
+
+async fn check_feature_access(
+    req: HttpRequest,
+    feature_access: web::Data<FeatureAccess>,
+    feature: web::Path<String>,
+) -> Result<HttpResponse, Error> {
+    let pubkey = req.headers()
+        .get("X-Nostr-Pubkey")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+
+    if pubkey.is_empty() {
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "error": "Missing Nostr pubkey"
+        })));
+    }
+
+    Ok(HttpResponse::Ok().json(json!({
+        "has_access": feature_access.has_feature_access(pubkey, &feature)
+    })))
 }
 
 async fn login(
     event: web::Json<AuthEvent>,
     nostr_service: web::Data<NostrService>,
+    feature_access: web::Data<FeatureAccess>,
 ) -> Result<HttpResponse, Error> {
     match nostr_service.verify_auth_event(event.into_inner()).await {
         Ok(user) => {
@@ -55,10 +124,14 @@ async fn login(
                 .parse::<i64>()
                 .unwrap_or(3600);
 
+            // Get available features for the user
+            let features = feature_access.get_available_features(&user.pubkey);
+
             Ok(HttpResponse::Ok().json(AuthResponse {
                 user,
                 token,
                 expires_at,
+                features,
             }))
         }
         Err(NostrError::InvalidSignature) => {
@@ -98,6 +171,7 @@ async fn logout(
 async fn verify(
     req: web::Json<ValidateRequest>,
     nostr_service: web::Data<NostrService>,
+    feature_access: web::Data<FeatureAccess>,
 ) -> Result<HttpResponse, Error> {
     let is_valid = nostr_service.validate_session(&req.pubkey, &req.token).await;
     let is_power_user = if is_valid {
@@ -106,15 +180,24 @@ async fn verify(
         false
     };
 
+    // Get available features if session is valid
+    let features = if is_valid {
+        feature_access.get_available_features(&req.pubkey)
+    } else {
+        Vec::new()
+    };
+
     Ok(HttpResponse::Ok().json(VerifyResponse {
         valid: is_valid,
         is_power_user,
+        features,
     }))
 }
 
 async fn refresh(
     req: web::Json<ValidateRequest>,
     nostr_service: web::Data<NostrService>,
+    feature_access: web::Data<FeatureAccess>,
 ) -> Result<HttpResponse, Error> {
     // First validate the current session
     if !nostr_service.validate_session(&req.pubkey, &req.token).await {
@@ -130,13 +213,16 @@ async fn refresh(
                     .unwrap_or_else(|_| "3600".to_string())
                     .parse::<i64>()
                     .unwrap_or(3600);
+// Get available features for the refreshed session
+let features = feature_access.get_available_features(&req.pubkey);
 
-                Ok(HttpResponse::Ok().json(AuthResponse {
-                    user,
-                    token: new_token,
-                    expires_at,
-                }))
-            } else {
+Ok(HttpResponse::Ok().json(AuthResponse {
+    user,
+    token: new_token,
+    expires_at,
+    features,
+}))
+} else {
                 Ok(HttpResponse::InternalServerError().json(json!({
                     "error": "User not found after refresh"
                 })))

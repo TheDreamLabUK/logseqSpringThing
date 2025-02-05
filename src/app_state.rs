@@ -3,6 +3,7 @@ use tokio::sync::RwLock;
 use actix_web::web;
 
 use crate::config::Settings;
+use crate::config::feature_access::FeatureAccess;
 use crate::models::metadata::MetadataStore;
 use crate::models::protected_settings::{ProtectedSettings, ApiKeys, NostrUser};
 use crate::services::graph_service::GraphService;
@@ -24,6 +25,7 @@ pub struct AppState {
     pub perplexity_service: Option<Arc<PerplexityService>>,
     pub ragflow_service: Option<Arc<RAGFlowService>>,
     pub nostr_service: Option<web::Data<NostrService>>,
+    pub feature_access: web::Data<FeatureAccess>,
     pub ragflow_conversation_id: String,
     pub active_connections: Arc<AtomicUsize>,
 }
@@ -38,6 +40,8 @@ impl AppState {
         gpu_compute: Option<Arc<RwLock<GPUCompute>>>,
         ragflow_conversation_id: String,
     ) -> Self {
+        // Initialize FeatureAccess from environment variables
+        let feature_access = web::Data::new(FeatureAccess::from_env());
         Self {
             graph_service: GraphService::new(),
             gpu_compute,
@@ -49,6 +53,7 @@ impl AppState {
             perplexity_service,
             ragflow_service,
             nostr_service: None,
+            feature_access: web::Data::new(FeatureAccess::from_env()),
             ragflow_conversation_id,
             active_connections: Arc::new(AtomicUsize::new(0)),
         }
@@ -95,5 +100,22 @@ impl AppState {
 
     pub fn set_nostr_service(&mut self, service: NostrService) {
         self.nostr_service = Some(web::Data::new(service));
+    }
+
+    // Feature access helper methods
+    pub fn is_power_user(&self, pubkey: &str) -> bool {
+        self.feature_access.is_power_user(pubkey)
+    }
+
+    pub fn can_sync_settings(&self, pubkey: &str) -> bool {
+        self.feature_access.can_sync_settings(pubkey)
+    }
+
+    pub fn has_feature_access(&self, pubkey: &str, feature: &str) -> bool {
+        self.feature_access.has_feature_access(pubkey, feature)
+    }
+
+    pub fn get_available_features(&self, pubkey: &str) -> Vec<String> {
+        self.feature_access.get_available_features(pubkey)
     }
 }

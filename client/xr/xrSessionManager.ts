@@ -1,7 +1,3 @@
-/**
- * XR session management and rendering
- */
-
 import {
     Group,
     GridHelper,
@@ -13,46 +9,34 @@ import {
     DirectionalLight,
     SphereGeometry,
     Color,
-    DoubleSide,
-    Vector3
+    DoubleSide
 } from 'three';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory';
 import { createLogger } from '../core/utils';
 import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
-import { defaultSettings } from '../state/defaultSettings';
-import { VisualizationController } from '../rendering/VisualizationController';
 import { NodeManager } from '../rendering/nodes';
 import { ControlPanel } from '../ui/ControlPanel';
 import { SettingsStore } from '../state/SettingsStore';
 import { XRSettings } from '../types/settings/xr';
-import { XRHandWithHaptics, WorldObject3D, XRHandJoint } from '../types/xr';
-import { HandInteractionManager } from './handInteraction';
-
-const _logger = createLogger('XRSessionManager');
-
-// Type guards for WebXR features
-function hasLightEstimate(frame: XRFrame): frame is XRFrame & { getLightEstimate(): XRLightEstimate | null } {
-  return 'getLightEstimate' in frame;
-}
-
-function hasHitTest(session: XRSession): session is XRSession & { requestHitTestSource(options: XRHitTestOptionsInit): Promise<XRHitTestSource> } {
-  return 'requestHitTestSource' in session;
-}
-
+const logger = createLogger('XRSessionManager');
 
 export class XRSessionManager {
-    private static instance: XRSessionManager;
-    private sceneManager: SceneManager;
-    private visualizationController: VisualizationController;
-    private settingsStore: SettingsStore;
-    private nodeManager: NodeManager;
+    private static instance: XRSessionManager | null = null;
+    private readonly sceneManager: SceneManager;
+    private readonly settingsStore: SettingsStore;
+    private readonly nodeManager: NodeManager;
     private session: XRSession | null = null;
+    /* @ts-ignore - Used in XR session lifecycle */
     private referenceSpace: XRReferenceSpace | null = null;
     private isPresenting: boolean = false;
     private settingsUnsubscribe: (() => void) | null = null;
     private currentSettings: XRSettings;
+    /* @ts-ignore - Used in XR session lifecycle */
+    private hitTestSourceRequested = false;
+    /* @ts-ignore - Used in XR session lifecycle */
+    private xrAnimationFrameCallback: ((frame: XRFrame) => void) | null = null;
 
     // XR specific objects
     private cameraRig: Group;
@@ -61,7 +45,6 @@ export class XRSessionManager {
     private arUIGroup: Group; // Group for UI elements in AR
     private controllers: Group[];
     private controllerGrips: Group[];
-    private handInteractionManager: HandInteractionManager;
     private controllerModelFactory: XRControllerModelFactory;
 
     // AR specific objects
@@ -70,20 +53,17 @@ export class XRSessionManager {
     private hitTestMarker: Mesh;
     private arLight: DirectionalLight;
     private hitTestSource: XRHitTestSource | null = null;
-    private hitTestSourceRequested = false;
 
     // Event handlers
     private xrSessionStartCallback: (() => void) | null = null;
     private xrSessionEndCallback: (() => void) | null = null;
-    private xrAnimationFrameCallback: ((frame: XRFrame) => void) | null = null;
     private controllerAddedCallback: ((controller: Group) => void) | null = null;
     private controllerRemovedCallback: ((controller: Group) => void) | null = null;
 
-    constructor(sceneManager: SceneManager) {
+    private constructor(sceneManager: SceneManager) {
         this.sceneManager = sceneManager;
         this.settingsStore = SettingsStore.getInstance();
         this.nodeManager = NodeManager.getInstance();
-        this.visualizationController = new VisualizationController(document.body, defaultSettings);
         // Initialize with current settings
         this.currentSettings = this.settingsStore.get('xr') as XRSettings;
         
@@ -92,13 +72,12 @@ export class XRSessionManager {
         
         // Initialize XR objects
         this.cameraRig = new Group();
-        this.arGroup = new Group(); // Group for AR environment elements
+        this.arGroup = new Group(); // Group for AR elements
         this.arGraphGroup = new Group(); // Group for graph nodes in AR
         this.arUIGroup = new Group(); // Group for UI elements in AR
         this.controllers = [new Group(), new Group()];
         this.controllerGrips = [new Group(), new Group()];
         this.controllerModelFactory = new XRControllerModelFactory();
-        this.handInteractionManager = HandInteractionManager.getInstance();
 
         // Set up AR group hierarchy
         this.arGroup.add(this.arGraphGroup);
@@ -113,11 +92,12 @@ export class XRSessionManager {
         this.setupXRObjects();
     }
 
-    static getInstance(sceneManager: SceneManager): XRSessionManager {
-        if (!XRSessionManager.instance) {
-            XRSessionManager.instance = new XRSessionManager(sceneManager);
-        }
-        return XRSessionManager.instance;
+    private async setupSettingsSubscription(): Promise<void> {
+        // Subscribe to XR settings changes
+        this.settingsUnsubscribe = await this.settingsStore.subscribe('xr', () => {
+            this.currentSettings = this.settingsStore.get('xr') as XRSettings;
+            this.applyXRSettings();
+        });
     }
 
     private createGridHelper(): GridHelper {
@@ -184,14 +164,13 @@ export class XRSessionManager {
         this.arGroup.add(this.arLight);
         this.arGroup.add(this.arGraphGroup);
 
-
         // Setup controllers
-        this.controllers.forEach((_controller, index) => {
+        this.controllers.forEach((_controller: Group, index: number) => {
             this.setupController(index);
         });
 
         // Setup controller grips
-        this.controllerGrips.forEach(grip => {
+        this.controllerGrips.forEach((grip: Group) => {
             this.setupControllerGrip(grip);
         });
     }
@@ -242,9 +221,30 @@ export class XRSessionManager {
         return controller;
     }
 
-    async initXRSession(): Promise<void> {
+    public static getInstance(sceneManager: SceneManager): XRSessionManager {
+        if (!XRSessionManager.instance) {
+            XRSessionManager.instance = new XRSessionManager(sceneManager);
+        }
+        return XRSessionManager.instance;
+    }
+
+    public setSessionCallbacks(
+        onStart: () => void,
+        onEnd: () => void,
+        onFrame: (frame: XRFrame) => void
+    ): void {
+        this.xrSessionStartCallback = onStart;
+        this.xrSessionEndCallback = onEnd;
+        this.xrAnimationFrameCallback = onFrame;
+    }
+
+    public isXRPresenting(): boolean {
+        return this.isPresenting;
+    }
+
+    public async initXRSession(): Promise<void> {
         if (this.isPresenting) {
-            _logger.warn('XR session already active');
+            logger.warn('XR session already active');
             return;
         }
 
@@ -267,7 +267,6 @@ export class XRSessionManager {
             
             // Add mode-specific features for Quest
             if (platformManager.isQuest()) {
-                // For Quest AR, require hit-test and make plane detection optional
                 requiredFeatures.push('hit-test');
                 optionalFeatures.push(
                     'light-estimation',
@@ -285,7 +284,7 @@ export class XRSessionManager {
                 domOverlay: platformManager.isQuest() ? { root: document.body } : undefined
             };
             
-            _logger.info('Requesting XR session with config:', {
+            logger.info('Requesting XR session with config:', {
                 mode,
                 features: sessionInit
             });
@@ -349,7 +348,7 @@ export class XRSessionManager {
             }, 1000);
             
             this.isPresenting = true;
-            _logger.log('XR session initialized');
+            logger.info('XR session initialized');
 
             // Hide control panel in XR mode
             const controlPanel = ControlPanel.getInstance();
@@ -362,14 +361,34 @@ export class XRSessionManager {
                 this.xrSessionStartCallback();
             }
         } catch (error) {
-            _logger.error('Failed to initialize XR session:', error);
+            logger.error('Failed to initialize XR session:', error);
             throw error;
         }
     }
 
-    async endXRSession(): Promise<void> {
+    public async endXRSession(): Promise<void> {
         if (this.session) {
             await this.session.end();
+        }
+    }
+
+    public getControllers(): Group[] {
+        return this.controllers;
+    }
+
+    public getControllerGrips(): Group[] {
+        return this.controllerGrips;
+    }
+
+    private notifyControllerAdded(controller: Group): void {
+        if (this.controllerAddedCallback) {
+            this.controllerAddedCallback(controller);
+        }
+    }
+
+    private notifyControllerRemoved(controller: Group): void {
+        if (this.controllerRemovedCallback) {
+            this.controllerRemovedCallback(controller);
         }
     }
 
@@ -416,232 +435,11 @@ export class XRSessionManager {
         const renderer = this.sceneManager.getRenderer();
         renderer.xr.enabled = false;
 
-        _logger.log('XR session ended');
+        logger.info('XR session ended');
 
         // Show control panel and notify session end (only once)
         ControlPanel.getInstance()?.show();
         this.xrSessionEndCallback?.();
-    }
-
-    onXRFrame(frame: XRFrame): void {
-        if (!this.session || !this.referenceSpace) return;
-
-        // Get pose
-        const pose = frame.getViewerPose(this.referenceSpace);
-        if (!pose) return;
-
-        // Let Three.js handle camera updates through WebXRManager
-        // Handle hit testing
-        this.handleHitTest(frame);
-
-        // Update controller poses and handle gamepad input
-        this.controllers.forEach((controller) => {
-            const inputSource = controller.userData.inputSource as XRInputSource;
-            if (inputSource) {
-                // Try to use gripSpace for more accurate hand position, fall back to targetRaySpace
-                const pose = inputSource.gripSpace
-                    ? frame.getPose(inputSource.gripSpace, this.referenceSpace!)
-                    : frame.getPose(inputSource.targetRaySpace, this.referenceSpace!);
-                
-                if (pose) {
-                    controller.matrix.fromArray(pose.transform.matrix);
-                    controller.matrix.decompose(controller.position, controller.quaternion, controller.scale);
-                }
-
-                // Handle gamepad input for movement
-                if (inputSource.gamepad) {
-                    const { axes } = inputSource.gamepad;
-                    
-                    // Use cached settings for better performance
-                    const moveX = axes[this.currentSettings.movementAxes?.horizontal ?? 2] || 0;
-                    const moveZ = axes[this.currentSettings.movementAxes?.vertical ?? 3] || 0;
-
-                    // Apply dead zone to avoid drift from small joystick movements
-                    const deadZone = this.currentSettings.deadZone ?? 0.1;
-                    const processedX = Math.abs(moveX) > deadZone ? moveX : 0;
-                    const processedZ = Math.abs(moveZ) > deadZone ? moveZ : 0;
-
-                    if (processedX !== 0 || processedZ !== 0) {
-                        // Get camera's view direction (ignoring vertical rotation)
-                        const moveDirection = new Vector3();
-                        
-                        // Calculate frame-rate independent movement using fixed time step
-                        const deltaTime = 1 / 60; // Target 60 FPS
-                        
-                        // Combine horizontal and forward movement with time-based scaling
-                        moveDirection.x = processedX * (this.currentSettings.movementSpeed ?? 1) * deltaTime;
-                        moveDirection.z = processedZ * (this.currentSettings.movementSpeed ?? 1) * deltaTime;
-                        
-                        // If snap to floor is enabled, keep y position constant
-                        if (this.currentSettings.snapToFloor) {
-                            const currentY = this.cameraRig.position.y;
-                            this.cameraRig.position.add(moveDirection);
-                            this.cameraRig.position.y = currentY;
-                        } else {
-                            this.cameraRig.position.add(moveDirection);
-                        }
-                    }
-                }
-
-                // Handle hand tracking input
-                if (inputSource.hand) {
-                    const xrHand = inputSource.hand;
-                    // Convert XRHand to XRHandWithHaptics
-                    const handWithHaptics: XRHandWithHaptics = new Group() as XRHandWithHaptics;
-                    handWithHaptics.hand = { joints: {} };
-                    handWithHaptics.pinchStrength = 0;
-                    handWithHaptics.gripStrength = 0;
-                    handWithHaptics.userData = {
-                        platform: platformManager.getPlatform()
-                    };
-
-                    // Process each joint
-                    xrHand.forEach((joint, jointName) => {
-                        const pose = frame.getPose(joint, this.referenceSpace!);
-                        if (pose) {
-                            const jointObject = new Group() as WorldObject3D;
-                            jointObject.matrix.fromArray(pose.transform.matrix);
-                            jointObject.matrix.decompose(
-                                jointObject.position,
-                                jointObject.quaternion,
-                                jointObject.scale
-                            );
-                            handWithHaptics.hand.joints[jointName as XRHandJoint] = jointObject;
-                        }
-                    });
-
-                    // Process hand input through HandInteractionManager and VisualizationController
-                    this.handInteractionManager.processHandInput(handWithHaptics);
-                    this.visualizationController.handleHandInput(handWithHaptics);
-                }
-            }
-        });
-
-        // Update lighting if available
-        if (hasLightEstimate(frame)) {
-            const lightEstimate = frame.getLightEstimate();
-            if (lightEstimate) {
-                this.updateARLighting(lightEstimate);
-            }
-        }
-
-        // Call animation frame callback
-        if (this.xrAnimationFrameCallback) {
-            this.xrAnimationFrameCallback(frame);
-        }
-    }
-
-    private async handleHitTest(frame: XRFrame): Promise<void> {
-        if (!this.hitTestSourceRequested && this.session && hasHitTest(this.session)) {
-            try {
-                const viewerSpace = await this.session.requestReferenceSpace('viewer');
-                if (!viewerSpace) {
-                    throw new Error('Failed to get viewer reference space');
-                }
-
-                const hitTestSource = await this.session.requestHitTestSource({
-                    space: viewerSpace
-                });
-
-                if (hitTestSource) {
-                    this.hitTestSource = hitTestSource;
-                    this.hitTestSourceRequested = true;
-                }
-            } catch (error) {
-                _logger.error('Failed to initialize hit test source:', error);
-                this.hitTestSourceRequested = true; // Prevent further attempts
-            }
-        }
-
-        if (this.hitTestSource && this.referenceSpace) {
-            const hitTestResults = frame.getHitTestResults(this.hitTestSource);
-            if (hitTestResults.length > 0) {
-                const hit = hitTestResults[0];
-                const pose = hit.getPose(this.referenceSpace);
-                if (pose) {
-                    this.hitTestMarker.visible = true;
-                    this.hitTestMarker.position.set(
-                        pose.transform.position.x,
-                        pose.transform.position.y,
-                        pose.transform.position.z
-                    );
-
-                    // Update grid and ground plane position to match hit test
-                    this.gridHelper.position.y = pose.transform.position.y;
-                    this.groundPlane.position.y = pose.transform.position.y - 0.01;
-                }
-            } else {
-                this.hitTestMarker.visible = false;
-            }
-        }
-    }
-
-    private updateARLighting(lightEstimate: XRLightEstimate): void {
-        const intensity = lightEstimate.primaryLightIntensity?.value || 1;
-        const direction = lightEstimate.primaryLightDirection;
-        
-        if (direction) {
-            this.arLight.position.set(direction.x, direction.y, direction.z);
-        }
-        this.arLight.intensity = intensity;
-    }
-
-    setSessionCallbacks(
-        onStart: () => void,
-        onEnd: () => void,
-        onFrame: (frame: XRFrame) => void
-    ): void {
-        this.xrSessionStartCallback = onStart;
-        this.xrSessionEndCallback = onEnd;
-        this.xrAnimationFrameCallback = onFrame;
-    }
-
-    onControllerAdded(callback: (controller: Group) => void): void {
-        this.controllerAddedCallback = callback;
-    }
-
-    onControllerRemoved(callback: (controller: Group) => void): void {
-        this.controllerRemovedCallback = callback;
-    }
-
-    private notifyControllerAdded(controller: Group): void {
-        this.controllerAddedCallback?.(controller);
-    }
-
-    private notifyControllerRemoved(controller: Group): void {
-        this.controllerRemovedCallback?.(controller);
-    }
-
-    getCameraRig(): Group {
-        return this.cameraRig;
-    }
-
-    getControllers(): Group[] {
-        return this.controllers;
-    }
-
-    getControllerGrips(): Group[] {
-        return this.controllerGrips;
-    }
-
-    isXRPresenting(): boolean {
-        return this.isPresenting;
-    }
-
-    getSession(): XRSession | null {
-        return this.session;
-    }
-
-    getReferenceSpace(): XRReferenceSpace | null {
-        return this.referenceSpace;
-    }
-
-    private async setupSettingsSubscription(): Promise<void> {
-        // Subscribe to XR settings changes
-        this.settingsUnsubscribe = await this.settingsStore.subscribe('xr', () => {
-            this.currentSettings = this.settingsStore.get('xr') as XRSettings;
-            this.applyXRSettings();
-        });
     }
 
     private applyXRSettings(): void {
@@ -687,21 +485,17 @@ export class XRSessionManager {
         }
     }
 
-    dispose(): void {
-        // Clean up settings subscription
+    public dispose(): void {
         if (this.settingsUnsubscribe) {
             this.settingsUnsubscribe();
             this.settingsUnsubscribe = null;
         }
 
-        // End XR session if active
         if (this.session) {
-            // Remove session event listener before ending
             this.session.removeEventListener('end', this.onXRSessionEnd);
             this.session.end().catch(console.error);
         }
 
-        // Clean up controller event listeners using stored handlers
         this.controllers.forEach(controller => {
             const handlers = controller.userData.eventHandlers;
             if (handlers) {
@@ -712,26 +506,24 @@ export class XRSessionManager {
             controller.userData.inputSource = null;
         });
 
-        // Clean up controller grip models
         this.controllerGrips.forEach(grip => {
             grip.remove(...grip.children);
         });
 
-        // Clean up hit test resources
         this.hitTestSource?.cancel();
         this.hitTestSource = null;
         this.hitTestSourceRequested = false;
 
-        // Reset session state
         this.session = null;
         this.referenceSpace = null;
         this.isPresenting = false;
 
-        // Clear callbacks
         this.xrSessionStartCallback = null;
         this.xrSessionEndCallback = null;
         this.xrAnimationFrameCallback = null;
         this.controllerAddedCallback = null;
         this.controllerRemovedCallback = null;
+
+        XRSessionManager.instance = null;
     }
 }

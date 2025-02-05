@@ -12,7 +12,7 @@ import {
 import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
 import { Metadata } from '../types/metadata';
-import { Settings } from '../types/settings';
+import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 
 export class MetadataVisualizer {

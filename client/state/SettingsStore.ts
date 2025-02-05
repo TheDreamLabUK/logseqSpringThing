@@ -1,4 +1,4 @@
-import { Settings } from '../types/settings';
+import { Settings } from '../types/settings/base';
 import { createLogger } from '../core/logger';
 import { defaultSettings } from './defaultSettings';
 import { buildApiUrl } from '../core/api';
@@ -21,8 +21,8 @@ export class SettingsStore {
     private validationSubscribers: ValidationErrorCallback[] = [];
     private logger: Logger;
     private retryCount: number = 0;
-    private MAX_RETRIES: number = 3;
-    private RETRY_DELAY: number = 1000;
+    private readonly MAX_RETRIES: number = 3;
+    private readonly RETRY_DELAY: number = 1000;
     private settingsOrigin: 'server' | 'default' = 'default';
 
     private constructor() {
@@ -109,6 +109,29 @@ export class SettingsStore {
         return this.initialized;
     }
 
+    public get(path: string): unknown {
+        if (!this.initialized) {
+            logger.warn('Attempting to access settings before initialization');
+            return undefined;
+        }
+        
+        if (!path) {
+            return this.settings;
+        }
+        
+        try {
+            return path.split('.').reduce((obj: any, key) => {
+                if (obj === null || obj === undefined) {
+                    throw new Error(`Invalid path: ${path}`);
+                }
+                return obj[key];
+            }, this.settings);
+        } catch (error) {
+            logger.error(`Error accessing setting at path ${path}:`, error);
+            return undefined;
+        }
+    }
+
     public subscribeToValidationErrors(callback: ValidationErrorCallback): () => void {
         this.validationSubscribers.push(callback);
         return () => {
@@ -151,29 +174,6 @@ export class SettingsStore {
                 }
             }
         };
-    }
-
-    public get(path: string): unknown {
-        if (!this.initialized) {
-            logger.warn('Attempting to access settings before initialization');
-            return undefined;
-        }
-        
-        if (!path) {
-            return this.settings;
-        }
-        
-        try {
-            return path.split('.').reduce((obj: any, key) => {
-                if (obj === null || obj === undefined) {
-                    throw new Error(`Invalid path: ${path}`);
-                }
-                return obj[key];
-            }, this.settings);
-        } catch (error) {
-            logger.error(`Error accessing setting at path ${path}:`, error);
-            return undefined;
-        }
     }
 
     public async set(path: string, value: unknown): Promise<void> {

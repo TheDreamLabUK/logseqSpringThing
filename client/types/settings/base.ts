@@ -1,155 +1,145 @@
-// Base types for settings
-export interface BaseSettings {
+// Base settings interfaces
+import { XRSettings } from './xr';
+
+export interface Settings {
     visualization: {
-        animations: {
-            enableMotionBlur: boolean;
-            enableNodeAnimations: boolean;
-            motionBlurStrength: number;
-            selectionWaveEnabled: boolean;
-            pulseEnabled: boolean;
-            rippleEnabled: boolean;
-            edgeAnimationEnabled: boolean;
-            flowParticlesEnabled: boolean;
-        };
-        bloom: {
-            enabled: boolean;
-            strength: number;
-            radius: number;
-            edgeBloomStrength: number;
-            nodeBloomStrength: number;
-            environmentBloomStrength: number;
-        };
-        edges: {
-            arrowSize: number;
-            baseWidth: number;
-            color: string;
-            enableArrows: boolean;
-            opacity: number;
-            widthRange: [number, number];
-        };
-        hologram: {
-            ringCount: number;
-            ringColor: string;
-            ringOpacity: number;
-            ringSizes: [number, number, number];
-            ringRotationSpeed: number;
-            enableBuckminster: boolean;
-            buckminsterScale: number;
-            buckminsterOpacity: number;
-            enableGeodesic: boolean;
-            geodesicScale: number;
-            geodesicOpacity: number;
-            enableTriangleSphere: boolean;
-            triangleSphereScale: number;
-            triangleSphereOpacity: number;
-            globalRotationSpeed: number;
-        };
-        labels: {
-            enableLabels: boolean;
-            textColor: string;
-            fontSize: number;
-            fontFamily: string;
-            strokeWidth: number;
-            strokeColor: string;
-            backgroundColor: string;
-            backgroundOpacity: number;
-            maxLength: number;
-            minDistance: number;
-            maxDistance: number;
-        };
-        nodes: {
-            baseSize: number;
-            sizeRange: [number, number];
-            color: string;
-            opacity: number;
-            outlineWidth: number;
-            outlineColor: string;
-            enableGlow: boolean;
-            glowStrength: number;
-            glowColor: string;
-            enablePulse: boolean;
-            pulseSpeed: number;
-            pulseStrength: number;
-        };
-        physics: {
-            enabled: boolean;
-            gravity: number;
-            springLength: number;
-            springStrength: number;
-            damping: number;
-            repulsion: number;
-            timeStep: number;
-            maxVelocity: number;
-            minVelocity: number;
-            maxIterations: number;
-        };
-    };
-    xr: {
-        mode: 'immersive-ar' | 'immersive-vr';
-        roomScale: number;
-        quality: 'low' | 'medium' | 'high';
-        input: {
-            handTracking: boolean;
-            controllerModel: string;
-            hapticFeedback: boolean;
-            gestureThreshold: number;
-            pinchThreshold: number;
-            grabThreshold: number;
-        };
-        visuals: {
-            shadowQuality: 'none' | 'low' | 'medium' | 'high';
-            antiAliasing: boolean;
-            foveatedRendering: boolean;
-            foveationLevel: number;
-            resolution: number;
-        };
-        environment: {
-            skybox: boolean;
-            skyboxColor: string;
-            groundPlane: boolean;
-            groundColor: string;
-            fog: boolean;
-            fogColor: string;
-            fogDensity: number;
-        };
-        passthrough: {
-            enabled: boolean;
-            opacity: number;
-            brightness: number;
-            contrast: number;
-            saturation: number;
-            blendMode: 'alpha-blend' | 'additive' | 'multiply';
-        };
+        nodes: NodeSettings;
+        edges: EdgeSettings;
+        physics: PhysicsSettings;
+        rendering: RenderingSettings;
+        animations: AnimationSettings;
+        labels: LabelSettings;
+        bloom: BloomSettings;
+        hologram: HologramSettings;
     };
     system: {
-        debug: {
-            enabled: boolean;
-            enableDataDebug: boolean;  // Added required field
-            enableWebsocketDebug: boolean;  // Added to match server
-            logBinaryHeaders: boolean;  // Added to match server
-            logLevel: 'error' | 'warn' | 'info' | 'debug' | 'trace';
-            logFormat: string;  // Added to match server
-            logFullJson: boolean;
-            showStats?: boolean;  // Made optional since not in server
-            showFPS?: boolean;  // Made optional since not in server
-            showMemory?: boolean;  // Made optional since not in server
-        };
-        network: {
-            websocketUrl: string;
-            reconnectInterval: number;
-            maxReconnectAttempts: number;
-            heartbeatInterval: number;
-            compressionEnabled: boolean;
-            batchUpdates: boolean;
-            batchInterval: number;
-        };
-        security: {
-            enableEncryption: boolean;
-            encryptionAlgorithm: string;
-            encryptionKeySize: number;
-            enableAuthentication: boolean;
-            authenticationMethod: string;
-            tokenExpiration: number;
-        };
+        websocket: WebSocketSettings;
+        debug: DebugSettings;
     };
+    xr: XRSettings;
 }
+
+export interface NodeSettings {
+    quality: 'low' | 'medium' | 'high';
+    enableInstancing: boolean;
+    enableHologram: boolean;
+    enableMetadataShape: boolean;
+    enableMetadataVisualization: boolean;
+    baseSize: number;
+    sizeRange: [number, number];
+    baseColor: string;
+    opacity: number;
+    colorRangeAge: [string, string];
+    colorRangeLinks: [string, string];
+    metalness: number;
+    roughness: number;
+}
+
+export interface EdgeSettings {
+    color: string;
+    opacity: number;
+    arrowSize: number;
+    baseWidth: number;
+    enableArrows: boolean;
+    widthRange: [number, number];
+}
+
+export interface AnimationSettings {
+    enableNodeAnimations: boolean;
+    enableMotionBlur: boolean;
+    motionBlurStrength: number;
+    selectionWaveEnabled: boolean;
+    pulseEnabled: boolean;
+    pulseSpeed: number;
+    pulseStrength: number;
+    waveSpeed: number;
+}
+
+export interface LabelSettings {
+    enableLabels: boolean;
+    desktopFontSize: number;
+    textColor: string;
+    textOutlineColor: string;
+    textOutlineWidth: number;
+    textResolution: number;
+    textPadding: number;
+    billboardMode: boolean;
+}
+
+export interface BloomSettings {
+    enabled: boolean;
+    strength: number;
+    radius: number;
+    threshold: number;
+    edgeBloomStrength: number;
+    nodeBloomStrength: number;
+    environmentBloomStrength: number;
+}
+
+export interface HologramSettings {
+    ringCount: number;
+    ringSizes: number[];
+    ringRotationSpeed: number;
+    globalRotationSpeed: number;
+    ringColor: string;
+    ringOpacity: number;
+    enableBuckminster: boolean;
+    buckminsterScale: number;
+    buckminsterOpacity: number;
+    enableGeodesic: boolean;
+    geodesicScale: number;
+    geodesicOpacity: number;
+    enableTriangleSphere: boolean;
+    triangleSphereScale: number;
+    triangleSphereOpacity: number;
+}
+
+export interface PhysicsSettings {
+    enabled: boolean;
+    attractionStrength: number;
+    repulsionStrength: number;
+    springStrength: number;
+    damping: number;
+    iterations: number;
+    maxVelocity: number;
+    collisionRadius: number;
+    enableBounds: boolean;
+    boundsSize: number;
+}
+
+export interface RenderingSettings {
+    ambientLightIntensity: number;
+    directionalLightIntensity: number;
+    environmentIntensity: number;
+    backgroundColor: string;
+    enableAmbientOcclusion: boolean;
+    enableAntialiasing: boolean;
+    enableShadows: boolean;
+    shadowMapSize: number;
+    shadowBias: number;
+}
+
+export interface WebSocketSettings {
+    reconnectAttempts: number;
+    reconnectDelay: number;
+    binaryChunkSize: number;
+    compressionEnabled: boolean;
+    compressionThreshold: number;
+    updateRate: number;
+}
+
+export interface DebugSettings {
+    enabled: boolean;
+    enableDataDebug: boolean;
+    enableWebsocketDebug: boolean;
+    logBinaryHeaders: boolean;
+    logFullJson: boolean;
+    logLevel: 'error' | 'warn' | 'info' | 'debug' | 'trace';
+    logFormat: string;
+}
+
+// Helper type for settings paths
+export type SettingsPath = string;
+
+// Helper type for settings values
+export type SettingsValue = string | number | boolean | number[] | object;

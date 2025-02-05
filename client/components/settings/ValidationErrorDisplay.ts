@@ -78,7 +78,7 @@ export class ValidationErrorDisplay {
 
     private subscribeToValidationErrors(): void {
         const settingsStore = SettingsStore.getInstance();
-        this.unsubscribe = settingsStore.subscribeToValidationErrors(errors => {
+        this.unsubscribe = settingsStore.subscribeToValidationErrors((errors: ValidationError[]) => {
             if (errors.length > 0) {
                 this.showErrors(errors);
             } else {

@@ -1,272 +1,205 @@
-# Technical Implementation Details for Nostr Integration
+# Modular Control Panel with Nostr Authentication
 
-## 1. Client-Side Authentication Layer
+## Implementation Status
 
-### 1.1 NostrAuthService
+### Completed Components
+
+1. **Core Settings Architecture**
+   - Base settings types and interfaces
+   - Settings validation system
+   - Settings store with local persistence
+   - Real-time settings observer
+   - Settings event emitter for cross-component communication
+
+2. **UI Components**
+   - Modular control panel with detachable sections
+   - Real-time preview system
+   - Advanced/Basic settings categorization
+   - Drag-and-drop section management
+   - Layout persistence
+
+3. **Visualization Integration**
+   - Real-time 3D visualization updates
+   - Settings preview system
+   - Performance-optimized update batching
+
+### Authentication and Settings Inheritance
+
+#### Unauthenticated Users
+- Use browser's localStorage for settings persistence
+- Settings are stored locally and not synced
+- Default to basic settings visibility
+- Limited to local visualization features
+- Settings format:
 ```typescript
-// client/services/NostrAuthService.ts
-export class NostrAuthService {
-  private static instance: NostrAuthService;
-  private currentUser: NostrUser | null = null;
-  private authState: AuthState = {
-    isAuthenticated: false,
-    isPowerUser: false,
-    sessionToken: null,
-    expiresAt: null
-  };
-
-  // Singleton pattern
-  static getInstance(): NostrAuthService {
-    if (!NostrAuthService.instance) {
-      NostrAuthService.instance = new NostrAuthService();
-    }
-    return NostrAuthService.instance;
-  }
-
-  async login(authEvent: AuthEvent): Promise<void> {
-    const response = await fetch('/auth/nostr', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(authEvent)
-    });
-    
-    if (response.ok) {
-      const { user, token, expires_at } = await response.json();
-      this.setAuthState(user, token, expires_at);
-      this.startSessionRefreshTimer();
-    }
-  }
-
-  private setAuthState(user: NostrUser, token: string, expiresAt: number): void {
-    this.currentUser = user;
-    this.authState = {
-      isAuthenticated: true,
-      isPowerUser: user.is_power_user,
-      sessionToken: token,
-      expiresAt
-    };
-    localStorage.setItem('nostr_auth', JSON.stringify(this.authState));
-  }
-
-  private startSessionRefreshTimer(): void {
-    // Refresh 5 minutes before expiration
-    const refreshTime = (this.authState.expiresAt! - Date.now()) - (5 * 60 * 1000);
-    setTimeout(() => this.refreshSession(), refreshTime);
-  }
+interface LocalSettings {
+    settings: Settings;
+    timestamp: number;
+    version: string;
 }
 ```
 
-### 1.2 Settings Persistence Service
+#### Authenticated Users (Nostr)
+- Inherit settings from server's settings.yaml
+- Settings are synced across all authenticated users
+- Access to advanced settings based on role
+- Settings format:
+```typescript
+interface ServerSettings {
+    settings: Settings;
+    timestamp: number;
+    version: string;
+    pubkey: string;
+    role: 'user' | 'power_user';
+}
+```
+
+#### Power Users
+- Full access to all settings
+- Can modify server's settings.yaml
+- Access to advanced API features:
+  - Perplexity API for AI assistance
+  - RagFlow for document processing
+  - GitHub integration for PR management
+  - OpenAI voice synthesis
+- Settings modifications are persisted to settings.yaml
+
+## Settings Inheritance Flow
+
+1. **Initial Load**
+   ```mermaid
+   graph TD
+       A[Start] --> B{Authenticated?}
+       B -->|No| C[Load Local Settings]
+       B -->|Yes| D[Load Server Settings]
+       D --> E{Is Power User?}
+       E -->|No| F[Apply Read-Only]
+       E -->|Yes| G[Enable Full Access]
+   ```
+
+2. **Settings Sync**
+   ```mermaid
+   graph TD
+       A[Setting Changed] --> B{Authenticated?}
+       B -->|No| C[Save Locally]
+       B -->|Yes| D{Is Power User?}
+       D -->|No| E[Preview Only]
+       D -->|Yes| F[Update Server]
+       F --> G[Sync to All Users]
+   ```
+
+## Remaining Tasks
+
+1. **Authentication Integration**
+   - [ ] Implement Nostr login component
+   - [ ] Add role-based access control
+   - [ ] Set up settings sync middleware
+
+2. **Server-Side Implementation**
+   - [ ] Create settings sync endpoint
+   - [ ] Implement settings.yaml persistence
+   - [ ] Add validation for power user operations
+
+3. **API Feature Integration**
+   - [ ] Add Perplexity API wrapper
+   - [ ] Implement RagFlow service
+   - [ ] Set up GitHub PR integration
+   - [ ] Add OpenAI voice synthesis
+
+4. **UI Enhancements**
+   - [ ] Add role indicators
+   - [ ] Implement power user controls
+   - [ ] Add API feature panels
+   - [ ] Create settings conflict resolution UI
+
+## Technical Details
+
+### Settings Storage
+
+#### Local Storage (Unauthenticated)
 ```typescript
 // client/services/SettingsPersistenceService.ts
 export class SettingsPersistenceService {
-  private static instance: SettingsPersistenceService;
-  private nostrAuth: NostrAuthService;
-
-  constructor() {
-    this.nostrAuth = NostrAuthService.getInstance();
-  }
-
-  async saveSettings(settings: LayoutConfig): Promise<void> {
-    // Always save locally
-    localStorage.setItem('panel_settings', JSON.stringify(settings));
-
-    // If authenticated, sync to server
-    if (this.nostrAuth.isAuthenticated()) {
-      await this.syncToServer(settings);
-    }
-  }
-
-  private async syncToServer(settings: LayoutConfig): Promise<void> {
-    const response = await fetch('/api/settings/sync', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.nostrAuth.getSessionToken()}`
-      },
-      body: JSON.stringify(settings)
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to sync settings to server');
-    }
-  }
+    private readonly LOCAL_STORAGE_KEY = 'logseq_spring_settings';
+    // ... implementation
 }
 ```
 
-## 2. Enhanced Control Panel Components
-
-### 2.1 AuthenticatedControlPanel
-```typescript
-// client/components/AuthenticatedControlPanel.ts
-export class AuthenticatedControlPanel extends ControlPanel {
-  private nostrAuth: NostrAuthService;
-  private settingsPersistence: SettingsPersistenceService;
-
-  constructor() {
-    super();
-    this.nostrAuth = NostrAuthService.getInstance();
-    this.settingsPersistence = new SettingsPersistenceService();
-    this.initializeAuthUI();
-  }
-
-  private initializeAuthUI(): void {
-    const authSection = document.createElement('div');
-    authSection.className = 'auth-section';
-    
-    if (this.nostrAuth.isAuthenticated()) {
-      this.renderAuthenticatedUI(authSection);
-    } else {
-      this.renderLoginUI(authSection);
-    }
-
-    this.container.insertBefore(authSection, this.container.firstChild);
-  }
-
-  protected override async saveSettings(): Promise<void> {
-    const settings = this.gatherCurrentSettings();
-    await this.settingsPersistence.saveSettings(settings);
-  }
+#### Server Storage (Authenticated)
+```rust
+// src/models/protected_settings.rs
+pub struct ProtectedSettings {
+    pub settings: Settings,
+    pub users: HashMap<String, NostrUser>,
+    // ... implementation
 }
 ```
 
-### 2.2 PowerUserFeatures
+### Authentication Flow
+
 ```typescript
-// client/components/PowerUserFeatures.ts
-export class PowerUserFeatures {
-  private apiKeyManager: HTMLElement;
-  private perplexitySection: HTMLElement;
-
-  constructor(container: HTMLElement) {
-    this.initializeAPIKeyManager(container);
-    this.initializePerplexitySection(container);
-  }
-
-  private async initializeAPIKeyManager(container: HTMLElement): Promise<void> {
-    this.apiKeyManager = document.createElement('div');
-    this.apiKeyManager.className = 'api-key-manager';
+// Authentication check middleware
+async function checkAuth(req: Request): Promise<AuthResult> {
+    const pubkey = req.headers['X-Nostr-Pubkey'];
+    if (!pubkey) return { authenticated: false };
     
-    const keys = await this.fetchCurrentAPIKeys();
-    this.renderAPIKeyInputs(keys);
-    
-    container.appendChild(this.apiKeyManager);
-  }
-
-  private async fetchCurrentAPIKeys(): Promise<ApiKeys> {
-    const response = await fetch('/auth/nostr/api-keys', {
-      headers: {
-        'Authorization': `Bearer ${NostrAuthService.getInstance().getSessionToken()}`
-      }
-    });
-    return response.json();
-  }
-}
-```
-
-## 3. Settings Synchronization
-
-### 3.1 Sync Manager
-```typescript
-// client/services/SettingsSyncManager.ts
-export class SettingsSyncManager {
-  private static readonly SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
-  private syncTimer: number | null = null;
-
-  startAutoSync(): void {
-    if (this.syncTimer) return;
-    
-    this.syncTimer = window.setInterval(() => {
-      this.performSync();
-    }, SettingsSyncManager.SYNC_INTERVAL);
-  }
-
-  private async performSync(): Promise<void> {
-    const localSettings = this.loadLocalSettings();
-    const serverSettings = await this.fetchServerSettings();
-    
-    const mergedSettings = this.mergeSettings(localSettings, serverSettings);
-    await this.saveSettings(mergedSettings);
-  }
-
-  private mergeSettings(local: LayoutConfig, server: LayoutConfig): LayoutConfig {
-    // Prefer server settings for authenticated users, but keep local-only changes
+    const user = await nostrService.getUser(pubkey);
     return {
-      ...local,
-      ...server,
-      sections: this.mergeSections(local.sections, server.sections)
+        authenticated: true,
+        isPowerUser: user.isPowerUser,
+        pubkey
     };
-  }
 }
-```
 
-## 4. Security Implementation
-
-### 4.1 Token Management
-```typescript
-// client/services/TokenManager.ts
-export class TokenManager {
-  private static readonly TOKEN_KEY = 'nostr_session_token';
-  private static readonly EXPIRY_KEY = 'nostr_token_expiry';
-
-  static storeToken(token: string, expiresAt: number): void {
-    // Use secure storage methods when available
-    if (window.crypto && window.crypto.subtle) {
-      this.securelyStoreToken(token, expiresAt);
+// Settings sync middleware
+async function syncSettings(req: Request): Promise<void> {
+    const auth = await checkAuth(req);
+    if (!auth.authenticated) return;
+    
+    if (auth.isPowerUser) {
+        // Allow modifications to server settings
+        await updateServerSettings(req.body);
     } else {
-      // Fallback to localStorage with encryption
-      this.encryptAndStore(token, expiresAt);
+        // Read-only access to server settings
+        throw new Error('Unauthorized to modify settings');
     }
-  }
-
-  private static async securelyStoreToken(token: string, expiresAt: number): Promise<void> {
-    const encoder = new TextEncoder();
-    const tokenData = encoder.encode(token);
-    
-    const key = await window.crypto.subtle.generateKey(
-      { name: "AES-GCM", length: 256 },
-      true,
-      ["encrypt", "decrypt"]
-    );
-
-    const encryptedToken = await window.crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: window.crypto.getRandomValues(new Uint8Array(12)) },
-      key,
-      tokenData
-    );
-
-    localStorage.setItem(this.TOKEN_KEY, btoa(String.fromCharCode(...new Uint8Array(encryptedToken))));
-    localStorage.setItem(this.EXPIRY_KEY, expiresAt.toString());
-  }
 }
 ```
 
-## 5. Migration Strategy
+### API Feature Access
 
-### 5.1 Settings Migration
 ```typescript
-// client/services/SettingsMigration.ts
-export class SettingsMigration {
-  static async migrateToNostr(): Promise<void> {
-    // 1. Gather existing settings
-    const existingSettings = this.gatherExistingSettings();
+// Feature access control
+async function checkFeatureAccess(
+    pubkey: string,
+    feature: 'perplexity' | 'ragflow' | 'github' | 'openai'
+): Promise<boolean> {
+    const user = await nostrService.getUser(pubkey);
+    if (!user.isPowerUser) return false;
     
-    // 2. Create new settings structure
-    const newSettings = this.createNostrCompatibleSettings(existingSettings);
-    
-    // 3. Backup existing settings
-    this.backupSettings(existingSettings);
-    
-    // 4. Apply new settings
-    await this.applyNewSettings(newSettings);
-  }
-
-  private static gatherExistingSettings(): any {
-    return {
-      local: JSON.parse(localStorage.getItem('panel_settings') || '{}'),
-      sessionStorage: JSON.parse(sessionStorage.getItem('temp_settings') || '{}')
-    };
-  }
+    // Check specific feature access
+    return user.features.includes(feature);
 }
 ```
 
-This technical implementation provides a robust foundation for integrating Nostr authentication with the modular control panel, ensuring secure and efficient handling of user settings and API access.
+## Security Considerations
+
+1. **Authentication**
+   - Nostr public key verification
+   - Session token management
+   - Role-based access control
+
+2. **Settings Sync**
+   - Validate all settings changes
+   - Prevent unauthorized modifications
+   - Handle concurrent updates
+
+3. **API Access**
+   - Rate limiting
+   - API key rotation
+   - Usage monitoring
+
+4. **Data Protection**
+   - Encrypt sensitive settings
+   - Sanitize user inputs
+   - Validate all API responses

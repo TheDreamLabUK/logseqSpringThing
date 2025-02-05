@@ -5,6 +5,8 @@ use serde_json::Value;
 use serde_yaml;
 use std::path::PathBuf;
 
+pub mod feature_access;
+
 // XR movement axes configuration
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MovementAxes {
@@ -233,7 +235,7 @@ pub struct XRSettings {
     pub enable_scene_understanding: bool,
     pub plane_color: String,
     pub plane_opacity: f32,
-    pub plane_detection_distance: f32,  // Added field
+    pub plane_detection_distance: f32,
     pub show_plane_overlay: bool,
     pub snap_to_floor: bool,
     pub enable_passthrough_portal: bool,
@@ -558,7 +560,7 @@ impl Default for Settings {
                 enable_scene_understanding: true,
                 plane_color: "#808080".to_string(),
                 plane_opacity: 0.5,
-                plane_detection_distance: 3.0,  // Default 3 meters detection range
+                plane_detection_distance: 3.0,
                 show_plane_overlay: true,
                 snap_to_floor: true,
                 enable_passthrough_portal: false,
@@ -596,4 +598,9 @@ impl Default for Settings {
             },
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    mod feature_access_test;
 }

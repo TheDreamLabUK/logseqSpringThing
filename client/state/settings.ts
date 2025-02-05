@@ -5,7 +5,7 @@ import { defaultSettings } from './defaultSettings';
 import {
     SettingsCategory,
     SettingsPath,
-    SettingValue,
+    SettingsValue,
     getSettingValue,
     setSettingValue,
     isValidSettingPath
@@ -47,8 +47,8 @@ export class SettingsManager {
         return this.settings;
     }
 
-    public async updateSetting(path: SettingsPath, value: SettingValue): Promise<void> {
-        if (!isValidSettingPath(path)) {
+    public async updateSetting(path: SettingsPath, value: SettingsValue): Promise<void> {
+        if (!isValidSettingPath(this.settings, path)) {
             throw new Error(`Invalid settings path: ${path}`);
         }
 
@@ -66,17 +66,17 @@ export class SettingsManager {
         }
     }
 
-    public get(path: SettingsPath): SettingValue {
-        if (!isValidSettingPath(path)) {
+    public get(path: SettingsPath): SettingsValue {
+        if (!isValidSettingPath(this.settings, path)) {
             throw new Error(`Invalid settings path: ${path}`);
         }
         
         try {
-            return getSettingValue(this.settings, path);
+            return getSettingValue(this.settings, path)!;
         } catch (error) {
             logger.error(`Error getting setting at path ${path}:`, error);
             // Return default value for this path if available
-            return getSettingValue(defaultSettings, path);
+            return getSettingValue(defaultSettings, path)!;
         }
     }
 
@@ -105,12 +105,12 @@ export class SettingsManager {
         };
     }
 
-    public onSettingChange(path: SettingsPath, callback: (value: SettingValue) => void): () => void {
+    public onSettingChange(path: SettingsPath, callback: (value: SettingsValue) => void): () => void {
         const store = SettingsStore.getInstance();
         let unsubscriber: (() => void) | undefined;
         
         store.subscribe(path, (_, value) => {
-            callback(value as SettingValue);
+            callback(value as SettingsValue);
         }).then(unsub => {
             unsubscriber = unsub;
         });
@@ -122,11 +122,11 @@ export class SettingsManager {
         };
     }
 
-    public async batchUpdate(updates: Array<{ path: SettingsPath; value: SettingValue }>): Promise<void> {
+    public async batchUpdate(updates: Array<{ path: SettingsPath; value: SettingsValue }>): Promise<void> {
         try {
             // Validate all paths first
             for (const { path } of updates) {
-                if (!isValidSettingPath(path)) {
+                if (!isValidSettingPath(this.settings, path)) {
                     throw new Error(`Invalid settings path: ${path}`);
                 }
             }
