@@ -1,7 +1,11 @@
+import { Scene } from 'three';
 import { createLogger } from '../core/logger';
 import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 import { XRHandWithHaptics } from '../types/xr';
+import { EdgeManager } from './EdgeManager';
+import { graphDataManager } from '../state/graphData';
+import { GraphData } from '../core/types';
 
 const logger = createLogger('VisualizationController');
 
@@ -10,10 +14,29 @@ type VisualizationCategory = 'visualization' | 'physics' | 'rendering';
 export class VisualizationController {
     private static instance: VisualizationController | null = null;
     private currentSettings: Settings;
+    private edgeManager: EdgeManager | null = null;
 
     private constructor() {
         // Initialize with complete default settings
         this.currentSettings = { ...defaultSettings };
+        
+        // Subscribe to graph data updates
+        graphDataManager.subscribe((data: GraphData) => {
+            if (this.edgeManager) {
+                this.edgeManager.updateEdges(data.edges);
+            }
+        });
+    }
+
+    public initializeScene(scene: Scene): void {
+        // Initialize edge manager with scene and settings
+        this.edgeManager = new EdgeManager(scene, this.currentSettings);
+        
+        // Initialize with current graph data
+        const currentData = graphDataManager.getGraphData();
+        if (currentData.edges.length > 0) {
+            this.edgeManager.updateEdges(currentData.edges);
+        }
     }
 
     public static getInstance(): VisualizationController {
@@ -172,8 +195,12 @@ export class VisualizationController {
     }
 
     private updateEdgeAppearance(): void {
-        // Update edge materials, geometries, etc.
-        logger.debug('Updating edge appearance');
+        if (this.edgeManager) {
+            this.edgeManager.handleSettingsUpdate(this.currentSettings);
+            logger.debug('Edge appearance updated');
+        } else {
+            logger.warn('EdgeManager not initialized');
+        }
     }
 
     private updatePhysicsSimulation(): void {
@@ -186,8 +213,21 @@ export class VisualizationController {
         logger.debug('Updating rendering quality');
     }
 
+    public updateEdges(edges: any[]): void {
+        if (this.edgeManager) {
+            this.edgeManager.updateEdges(edges);
+            logger.debug('Edges updated', { count: edges.length });
+        } else {
+            logger.warn('EdgeManager not initialized');
+        }
+    }
+
     public dispose(): void {
         // Cleanup visualization resources
+        if (this.edgeManager) {
+            this.edgeManager.dispose();
+            this.edgeManager = null;
+        }
         this.currentSettings = { ...defaultSettings };
         VisualizationController.instance = null;
     }

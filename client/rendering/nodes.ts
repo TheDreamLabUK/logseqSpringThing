@@ -24,7 +24,6 @@ export class NodeManager {
     private static instance: NodeManager;
     private currentSettings: Settings;
     private nodeInstances: THREE.InstancedMesh;
-    private edgeInstances: THREE.InstancedMesh;
     private currentNodes: Node[] = [];
     private nodeIndices: Map<string, number> = new Map();
     private readonly materialFactory: MaterialFactory;
@@ -58,16 +57,7 @@ export class NodeManager {
         this.nodeInstances.layers.enable(1);
         this.nodeInstances.frustumCulled = true; // Enable frustum culling
 
-        // Create edge instances with context-aware geometry and material
-        this.edgeInstances = new THREE.InstancedMesh(
-            this.geometryFactory.getEdgeGeometry(context),
-            this.materialFactory.getEdgeMaterial(this.currentSettings, context),
-            30000
-        );
-
-        // Set AR layer for edge instances
-        this.edgeInstances.layers.enable(1);
-        this.edgeInstances.frustumCulled = true; // Enable frustum culling
+        // Edge handling has been moved to EdgeManager
 
         this.setupSettingsSubscriptions();
     }
@@ -97,18 +87,7 @@ export class NodeManager {
                     this.nodeInstances.material = nodeMaterial;
                 }
 
-                if (this.edgeInstances) {
-                    // Update edge geometry and material
-                    const edgeGeometry = this.geometryFactory.getEdgeGeometry(newContext);
-                    const edgeMaterial = this.materialFactory.getEdgeMaterial(
-                        this.currentSettings,
-                        newContext
-                    );
-                    this.edgeInstances.geometry.dispose();
-                    this.edgeInstances.material.dispose();
-                    this.edgeInstances.geometry = edgeGeometry;
-                    this.edgeInstances.material = edgeMaterial;
-                }
+                // Edge handling has been moved to EdgeManager
             } else {
                 // Just update material properties if context hasn't changed
                 this.materialFactory.updateMaterial(`node-${newContext}`, this.currentSettings);
@@ -265,10 +244,7 @@ export class NodeManager {
             this.nodeInstances.geometry.dispose();
             this.nodeInstances.material.dispose();
         }
-        if (this.edgeInstances) {
-            this.edgeInstances.geometry.dispose();
-            this.edgeInstances.material.dispose();
-        }
+        // Edge cleanup has been moved to EdgeManager
         this.pendingMatrixUpdates.clear();
     }
 }

@@ -1,4 +1,4 @@
-import { BufferGeometry, SphereGeometry, CylinderGeometry } from 'three';
+import { BufferGeometry, SphereGeometry, BufferAttribute } from 'three';
 
 export class GeometryFactory {
     private static instance: GeometryFactory;
@@ -90,11 +90,19 @@ export class GeometryFactory {
             return this.geometryCache.get(cacheKey)!;
         }
 
-        // CylinderGeometry parameters:
-        // radiusTop, radiusBottom, height, radialSegments
-        const radialSegments = context === 'ar' ? 4 : 8; // Reduce segments in AR
-        const geometry = new CylinderGeometry(0.05, 0.05, 1, radialSegments);
-        geometry.rotateX(Math.PI / 2); // Align with direction of travel
+        // Create a thin rectangular geometry for edges
+        const geometry = new BufferGeometry();
+        // Width will be controlled by scale in EdgeManager
+        const width = 1.0; // Base width that will be scaled
+        const vertices = new Float32Array([
+            -width/2, -0.5, 0,  // bottom left
+             width/2, -0.5, 0,  // bottom right
+             width/2,  0.5, 0,  // top right
+            -width/2, -0.5, 0,  // bottom left
+             width/2,  0.5, 0,  // top right
+            -width/2,  0.5, 0   // top left
+        ]);
+        geometry.setAttribute('position', new BufferAttribute(vertices, 3));
         
         this.geometryCache.set(cacheKey, geometry);
         return geometry;

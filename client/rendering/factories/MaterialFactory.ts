@@ -147,8 +147,8 @@ export class MaterialFactory {
             transparent: true,
             opacity: context === 'ar' ? 0.8 : 0.9,
             depthWrite: true,
-            side: context === 'ar' ? 0 : 2, // FrontSide for AR, DoubleSide for desktop
-            depthTest: true
+            depthTest: true,
+            side: 2  // DoubleSide for better visibility
         });
 
         this.materialCache.set(cacheKey, material);

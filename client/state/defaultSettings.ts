@@ -19,11 +19,11 @@ export const defaultSettings: Settings = {
         },
         edges: {
             arrowSize: 5.0,
-            baseWidth: 0.0,
+            baseWidth: 2.0,
             color: '#888888',
             enableArrows: false,
-            opacity: 0.3,
-            widthRange: [1.0, 2.0]
+            opacity: 0.6,
+            widthRange: [1.0, 3.0]
         },
         physics: {
             attractionStrength: 0.015,

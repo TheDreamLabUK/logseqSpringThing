@@ -5,12 +5,12 @@ import {
     Vector3,
     BufferGeometry,
     Object3D,
-    Material,
-    BufferAttribute
+    Material
 } from 'three';
 import { Settings } from '../types/settings';
 import { Edge } from '../core/types';
 import { MaterialFactory } from './factories/MaterialFactory';
+import { GeometryFactory } from './factories/GeometryFactory';
 
 export class EdgeManager {
     private scene: Scene;
@@ -18,6 +18,7 @@ export class EdgeManager {
     private edgeMaterial: Material;
     private instancedMesh: InstancedMesh | null = null;
     private materialFactory: MaterialFactory;
+    private settings: Settings;
 
     // Reusable objects for calculations
     private readonly startPos = new Vector3();
@@ -33,16 +34,13 @@ export class EdgeManager {
     private updateScheduled = false;
 
     constructor(scene: Scene, settings: Settings) {
+        this.settings = settings;
         this.scene = scene;
         this.materialFactory = MaterialFactory.getInstance();
         
-        // Create simple edge geometry (just a line segment)
-        this.edgeGeometry = new BufferGeometry();
-        const vertices = new Float32Array([
-            0, -0.5, 0,  // bottom
-            0, 0.5, 0    // top
-        ]);
-        this.edgeGeometry.setAttribute('position', new BufferAttribute(vertices, 3));
+        // Get edge geometry from factory
+        const geometryFactory = GeometryFactory.getInstance();
+        this.edgeGeometry = geometryFactory.getEdgeGeometry('desktop');
         
         this.edgeMaterial = this.materialFactory.getEdgeMaterial(settings);
         this.setupInstancedMesh();
@@ -56,7 +54,13 @@ export class EdgeManager {
     }
 
     public handleSettingsUpdate(settings: Settings): void {
+        this.settings = settings;
         this.materialFactory.updateMaterial('edge', settings);
+        
+        // Update all edges with new settings
+        if (this.currentEdges) {
+            this.updateEdges(this.currentEdges);
+        }
     }
 
     private scheduleBatchUpdate(): void {
@@ -75,6 +79,21 @@ export class EdgeManager {
         let processed = 0;
         this.pendingUpdates.forEach(index => {
             if (processed >= EdgeManager.BATCH_SIZE) return;
+
+            const currentEdge = this.currentEdges[index];
+            if (!currentEdge?.sourcePosition || !currentEdge?.targetPosition) return;
+
+            // Set positions
+            this.startPos.set(
+                currentEdge.sourcePosition.x,
+                currentEdge.sourcePosition.y,
+                currentEdge.sourcePosition.z
+            );
+            this.endPos.set(
+                currentEdge.targetPosition.x,
+                currentEdge.targetPosition.y,
+                currentEdge.targetPosition.z
+            );
 
             const edge = this.currentEdges[index];
             if (!edge?.sourcePosition || !edge?.targetPosition) return;
@@ -101,11 +120,19 @@ export class EdgeManager {
             this.position.addVectors(this.startPos, this.endPos).multiplyScalar(0.5);
             
             // Calculate direction
-            this.direction.subVectors(this.endPos, this.startPos).normalize();
+            this.direction.normalize();
             
             // Use Object3D to handle transformations
             this.tempObject.position.copy(this.position);
-            this.tempObject.scale.set(0.1, length, 0.1);
+
+            // Scale width based on settings and edge length
+            const baseWidth = this.settings.visualization?.edges?.baseWidth || 2.0;
+            const widthRange = this.settings.visualization?.edges?.widthRange || [1.0, 3.0];
+            const lengthFactor = Math.max(0.5, Math.min(1.5, length / 10)); // Scale width based on length
+            const edgeWidth = baseWidth * 0.05 * lengthFactor; // Convert baseWidth to scene units
+            const clampedWidth = Math.max(widthRange[0], Math.min(widthRange[1], edgeWidth));
+            
+            this.tempObject.scale.set(clampedWidth, length, clampedWidth);
             this.tempObject.lookAt(this.endPos);
             this.tempObject.updateMatrix();
             
