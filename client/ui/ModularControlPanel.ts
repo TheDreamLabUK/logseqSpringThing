@@ -292,11 +292,33 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         const content = document.createElement('div');
         content.className = 'section-content';
         
-        const subcategories = this.groupBySubcategory(paths);
+        // Filter out any empty paths before grouping
+        const validPaths = paths.filter(path => {
+            const value = this.settingsStore.get(path);
+            return value !== undefined && value !== null;
+        });
         
-        for (const [subcategory, subPaths] of Object.entries(subcategories)) {
-            const subsection = await this.createSubsection(subcategory, subPaths);
-            content.appendChild(subsection);
+        if (validPaths.length > 0) {
+            const subcategories = this.groupBySubcategory(validPaths);
+            
+            // Sort subcategories alphabetically
+            const sortedSubcategories = Object.entries(subcategories).sort(([a], [b]) => {
+                if (a === 'general') return -1;
+                if (b === 'general') return 1;
+                return a.localeCompare(b);
+            });
+            
+            for (const [subcategory, subPaths] of sortedSubcategories) {
+                if (subPaths.length > 0) {
+                    const subsection = await this.createSubsection(subcategory, subPaths);
+                    content.appendChild(subsection);
+                }
+            }
+        } else {
+            const emptyMessage = document.createElement('div');
+            emptyMessage.className = 'empty-section-message';
+            emptyMessage.textContent = 'No configurable settings in this section';
+            content.appendChild(emptyMessage);
         }
         
         section.appendChild(content);
@@ -340,12 +362,28 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
     private groupSettingsByCategory(paths: string[]): Record<string, string[]> {
         const groups: Record<string, string[]> = {};
         
-        paths.forEach(path => {
+        // Filter out paths that represent nested objects (except arrays)
+        const settableProps = paths.filter(path => {
+            const value = this.settingsStore.get(path);
+            return typeof value !== 'object' || Array.isArray(value);
+        });
+        
+        // Group remaining paths by top-level category
+        settableProps.forEach(path => {
             const [category] = path.split('.');
             if (!groups[category]) {
                 groups[category] = [];
             }
             groups[category].push(path);
+        });
+        
+        // Sort paths within each category
+        Object.keys(groups).forEach(key => {
+            groups[key].sort((a, b) => {
+                const aName = a.split('.').pop() || '';
+                const bName = b.split('.').pop() || '';
+                return aName.localeCompare(bName);
+            });
         });
         
         return groups;
@@ -354,7 +392,14 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
     private groupBySubcategory(paths: string[]): Record<string, string[]> {
         const groups: Record<string, string[]> = {};
         
-        paths.forEach(path => {
+        // Filter out paths that represent objects (except arrays)
+        const settableProps = paths.filter(path => {
+            const value = this.settingsStore.get(path);
+            return typeof value !== 'object' || Array.isArray(value);
+        });
+        
+        // Group remaining paths by subcategory
+        settableProps.forEach(path => {
             const parts = path.split('.');
             if (parts.length > 2) {
                 const subcategory = parts[1];
@@ -362,12 +407,24 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                     groups[subcategory] = [];
                 }
                 groups[subcategory].push(path);
-            } else {
-                if (!groups['general']) {
-                    groups['general'] = [];
+            } else if (parts.length === 2) {
+                const value = this.settingsStore.get(path);
+                if (typeof value !== 'object' || Array.isArray(value)) {
+                    if (!groups['general']) {
+                        groups['general'] = [];
+                    }
+                    groups['general'].push(path);
                 }
-                groups['general'].push(path);
             }
+        });
+        
+        // Sort paths within each group
+        Object.keys(groups).forEach(key => {
+            groups[key].sort((a, b) => {
+                const aName = a.split('.').pop() || '';
+                const bName = b.split('.').pop() || '';
+                return aName.localeCompare(bName);
+            });
         });
         
         return groups;
@@ -474,9 +531,28 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                 break;
             }
 
+            case 'object': {
+                if (Array.isArray(value)) {
+                    const textInput = document.createElement('input');
+                    textInput.type = 'text';
+                    textInput.value = value.join(',');
+                    textInput.onchange = (e) => {
+                        const target = e.target as HTMLInputElement;
+                        this.updateSetting(path, target.value.split(',').map(v => v.trim()));
+                    };
+                    input = textInput;
+                } else {
+                    // Skip rendering object properties directly
+                    const div = document.createElement('div');
+                    div.className = 'object-container';
+                    input = div;
+                }
+                break;
+            }
             default: {
                 const div = document.createElement('div');
-                div.textContent = JSON.stringify(value);
+                div.className = 'value-display';
+                div.textContent = value?.toString() || '';
                 input = div;
             }
         }

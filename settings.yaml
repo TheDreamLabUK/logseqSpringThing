@@ -9,15 +9,15 @@ visualization:
     - 0.8
     - 2.0
     quality: medium
-    enable_instancing: true
-    enable_hologram: true
+    enable_instancing: false
+    enable_hologram: false
     enable_metadata_shape: true
     enable_metadata_visualization: true
   edges:
-    arrow_size: 0.8
-    base_width: 0.0
+    arrow_size: 7.6
+    base_width: 1.0
     color: '#316ec9'
-    enable_arrows: true
+    enable_arrows: false
     opacity: 0.6
     width_range:
     - 0.6
@@ -56,7 +56,7 @@ visualization:
     text_color: '#6087c3'
   bloom:
     edge_bloom_strength: 0.6
-    enabled: false
+    enabled: true
     environment_bloom_strength: 0.3
     node_bloom_strength: 0.5
     radius: 1.0
