@@ -1,0 +1,2125 @@
+diff --git a/client/state/SettingsStore.ts b/client/state/SettingsStore.ts
+index 36cd4b5c..1f9c53e9 100644
+--- a/client/state/SettingsStore.ts
++++ b/client/state/SettingsStore.ts
+@@ -233,22 +233,8 @@ export class SettingsStore {
+     }
+ 
+     private prepareSettingsForSync(settings: Settings): any {
+-        // Create a deep copy while preserving arrays
+-        const deepCopy = (obj: any): any => {
+-            if (Array.isArray(obj)) {
+-                return [...obj];
+-            }
+-            if (obj && typeof obj === 'object') {
+-                const copy: any = {};
+-                Object.keys(obj).forEach(key => {
+-                    copy[key] = deepCopy(obj[key]);
+-                });
+-                return copy;
+-            }
+-            return obj;
+-        };
+-
+-        const preparedSettings = deepCopy(settings);
++        // Create a copy of settings
++        const preparedSettings = JSON.parse(JSON.stringify(settings));
+ 
+         // Ensure required sections exist
+         if (!preparedSettings.system) preparedSettings.system = {};
+diff --git a/client/types/settings/base.ts b/client/types/settings/base.ts
+index 7377c82f..44a29eff 100644
+--- a/client/types/settings/base.ts
++++ b/client/types/settings/base.ts
+@@ -1,64 +1,5 @@
+-// Setting metadata interface
+-export interface SettingMetadata {
+-    visible: boolean;
+-    advanced: boolean;
+-    description?: string;
+-}
+-
+-// Helper type to add metadata to a setting
+-export type WithMetadata<T> = {
+-    value: T;
+-    metadata: SettingMetadata;
+-};
+-
+-// Setting metadata interface
+-export interface SettingMetadata {
+-    visible: boolean;
+-    advanced: boolean;
+-    description?: string;
+-}
+-
+-// Helper type to add metadata to a setting
+-export type WithMetadata<T> = {
+-    value: T;
+-    metadata: SettingMetadata;
+-};
+-
+-// Helper type for settings sections
+-export type SettingsSection<T> = {
+-    [K in keyof T]: WithMetadata<T[K]>;
+-};
+-
+-// Base settings interfaces without metadata
+-interface BaseVisualizationSettings {
+-    animations: {
+-        enableMotionBlur: boolean;
+-        enableNodeAnimations: boolean;
+-        motionBlurStrength: number;
+-        selectionWaveEnabled: boolean;
+-        pulseEnabled: boolean;
+-        rippleEnabled: boolean;
+-        edgeAnimationEnabled: boolean;
+-        flowParticlesEnabled: boolean;
+-    };
+-    // ... rest of visualization settings
+-}
+-
+-// Base settings with metadata
++// Base types for settings
+ export interface BaseSettings {
+-    visualization: SettingsSection<BaseVisualizationSettings>;
+-    // Helper function to create a setting with metadata
+-    static createSetting<T>(value: T, visible: boolean = true, advanced: boolean = false, description?: string): WithMetadata<T> {
+-        return {
+-            value,
+-            metadata: {
+-                visible,
+-                advanced,
+-                description
+-            }
+-        };
+-    }
+-
+     visualization: {
+         animations: {
+             enableMotionBlur: boolean;
+diff --git a/client/types/settings/metadata.ts b/client/types/settings/metadata.ts
+deleted file mode 100644
+index b182ea6f..00000000
+--- a/client/types/settings/metadata.ts
++++ /dev/null
+@@ -1,113 +0,0 @@
+-import { BaseSettings } from './base';
+-
+-// Metadata for a single setting
+-export interface SettingMetadata {
+-    visible: boolean;
+-    advanced: boolean;
+-    description?: string;
+-}
+-
+-// Type to represent metadata for all settings
+-export type SettingsMetadata = {
+-    [K in keyof BaseSettings]: {
+-        [P in keyof BaseSettings[K]]: {
+-            [S in keyof BaseSettings[K][P]]: SettingMetadata;
+-        };
+-    };
+-};
+-
+-// Helper function to check if a setting should be visible
+-export function isSettingVisible(
+-    path: string,
+-    metadata: SettingsMetadata
+-): boolean {
+-    const parts = path.split('.');
+-    try {
+-        let current: any = metadata;
+-        for (const part of parts) {
+-            current = current[part];
+-        }
+-        return current?.visible ?? true;
+-    } catch {
+-        return true; // Default to visible if metadata not found
+-    }
+-}
+-
+-// Default metadata for all settings
+-export const defaultSettingsMetadata: SettingsMetadata = {
+-    visualization: {
+-        nodes: {
+-            baseColor: { visible: true, advanced: false, description: "Base color for nodes" },
+-            baseSize: { visible: true, advanced: false, description: "Base size for nodes" },
+-            metalness: { visible: true, advanced: true, description: "Material metalness property" },
+-            opacity: { visible: true, advanced: false, description: "Node opacity" },
+-            roughness: { visible: true, advanced: true, description: "Material roughness property" },
+-            sizeRange: { visible: true, advanced: true, description: "Min and max node size range" },
+-            quality: { visible: true, advanced: false, description: "Node geometry quality" },
+-            enableInstancing: { visible: false, advanced: true, description: "Enable GPU instancing" },
+-            enableHologram: { visible: true, advanced: false, description: "Enable hologram effect" },
+-            enableMetadataShape: { visible: false, advanced: true, description: "Show metadata as shapes" },
+-            enableMetadataVisualization: { visible: false, advanced: true, description: "Enable metadata visualization" }
+-        },
+-        edges: {
+-            arrowSize: { visible: true, advanced: false, description: "Size of edge arrows" },
+-            baseWidth: { visible: true, advanced: false, description: "Base width of edges" },
+-            color: { visible: true, advanced: false, description: "Edge color" },
+-            enableArrows: { visible: true, advanced: false, description: "Show arrows on edges" },
+-            opacity: { visible: true, advanced: false, description: "Edge opacity" },
+-            widthRange: { visible: true, advanced: true, description: "Min and max edge width" }
+-        },
+-        physics: {
+-            attractionStrength: { visible: true, advanced: true, description: "Node attraction force" },
+-            boundsSize: { visible: true, advanced: true, description: "Physics bounds size" },
+-            collisionRadius: { visible: true, advanced: true, description: "Node collision radius" },
+-            damping: { visible: true, advanced: true, description: "Motion damping" },
+-            enableBounds: { visible: true, advanced: true, description: "Enable physics bounds" },
+-            enabled: { visible: true, advanced: false, description: "Enable physics simulation" },
+-            iterations: { visible: true, advanced: true, description: "Physics iterations per frame" },
+-            maxVelocity: { visible: true, advanced: true, description: "Maximum node velocity" },
+-            repulsionStrength: { visible: true, advanced: true, description: "Node repulsion force" },
+-            springStrength: { visible: true, advanced: true, description: "Edge spring force" }
+-        },
+-        rendering: {
+-            ambientLightIntensity: { visible: true, advanced: true, description: "Ambient light intensity" },
+-            backgroundColour: { visible: true, advanced: false, description: "Scene background color" },
+-            directionalLightIntensity: { visible: true, advanced: true, description: "Directional light intensity" },
+-            enableAmbientOcclusion: { visible: true, advanced: true, description: "Enable ambient occlusion" },
+-            enableAntialiasing: { visible: true, advanced: false, description: "Enable antialiasing" },
+-            enableShadows: { visible: true, advanced: true, description: "Enable shadows" },
+-            environmentIntensity: { visible: true, advanced: true, description: "Environment light intensity" }
+-        }
+-    },
+-    system: {
+-        network: {
+-            bindAddress: { visible: false, advanced: true, description: "Server bind address" },
+-            domain: { visible: false, advanced: true, description: "Server domain" },
+-            enableHttp2: { visible: false, advanced: true, description: "Enable HTTP/2" },
+-            enableRateLimiting: { visible: false, advanced: true, description: "Enable rate limiting" },
+-            enableTls: { visible: false, advanced: true, description: "Enable TLS" },
+-            maxRequestSize: { visible: false, advanced: true, description: "Maximum request size" },
+-            minTlsVersion: { visible: false, advanced: true, description: "Minimum TLS version" },
+-            port: { visible: false, advanced: true, description: "Server port" }
+-        },
+-        websocket: {
+-            binaryChunkSize: { visible: false, advanced: true, description: "Binary chunk size" },
+-            binaryUpdateRate: { visible: false, advanced: true, description: "Binary update rate" },
+-            compressionEnabled: { visible: false, advanced: true, description: "Enable compression" },
+-            compressionThreshold: { visible: false, advanced: true, description: "Compression threshold" },
+-            heartbeatInterval: { visible: false, advanced: true, description: "Heartbeat interval" },
+-            maxConnections: { visible: false, advanced: true, description: "Maximum connections" },
+-            reconnectAttempts: { visible: true, advanced: false, description: "Reconnection attempts" },
+-            reconnectDelay: { visible: true, advanced: false, description: "Reconnection delay" }
+-        },
+-        debug: {
+-            enabled: { visible: true, advanced: true, description: "Enable debug mode" },
+-            enableDataDebug: { visible: false, advanced: true, description: "Enable data debugging" },
+-            enableWebsocketDebug: { visible: false, advanced: true, description: "Enable WebSocket debugging" },
+-            logBinaryHeaders: { visible: false, advanced: true, description: "Log binary headers" },
+-            logFullJson: { visible: false, advanced: true, description: "Log full JSON" },
+-            logLevel: { visible: true, advanced: true, description: "Log level" },
+-            logFormat: { visible: false, advanced: true, description: "Log format" }
+-        }
+-    }
+-};
+\ No newline at end of file
+diff --git a/client/types/settings/settingsWithMetadata.ts b/client/types/settings/settingsWithMetadata.ts
+deleted file mode 100644
+index 2c4cdb8b..00000000
+--- a/client/types/settings/settingsWithMetadata.ts
++++ /dev/null
+@@ -1,211 +0,0 @@
+-import { BaseSettings } from './base';
+-
+-// Metadata for a single setting
+-export interface SettingMetadata {
+-    visible: boolean;
+-    advanced: boolean;
+-    description?: string;
+-}
+-
+-// Helper type to add metadata to a setting
+-export type WithMetadata<T> = {
+-    value: T;
+-    metadata: SettingMetadata;
+-};
+-
+-// Helper type for settings sections
+-export type SettingsSection<T> = {
+-    [K in keyof T]: WithMetadata<T[K]>;
+-};
+-
+-// Settings with metadata
+-export interface SettingsWithMetadata {
+-    visualization: {
+-        nodes: {
+-            baseColor: WithMetadata<string>;
+-            baseSize: WithMetadata<number>;
+-            metalness: WithMetadata<number>;
+-            opacity: WithMetadata<number>;
+-            roughness: WithMetadata<number>;
+-            sizeRange: WithMetadata<[number, number]>;
+-            quality: WithMetadata<string>;
+-            enableInstancing: WithMetadata<boolean>;
+-            enableHologram: WithMetadata<boolean>;
+-            enableMetadataShape: WithMetadata<boolean>;
+-            enableMetadataVisualization: WithMetadata<boolean>;
+-        };
+-        edges: {
+-            arrowSize: WithMetadata<number>;
+-            baseWidth: WithMetadata<number>;
+-            color: WithMetadata<string>;
+-            enableArrows: WithMetadata<boolean>;
+-            opacity: WithMetadata<number>;
+-            widthRange: WithMetadata<[number, number]>;
+-        };
+-        physics: {
+-            attractionStrength: WithMetadata<number>;
+-            boundsSize: WithMetadata<number>;
+-            collisionRadius: WithMetadata<number>;
+-            damping: WithMetadata<number>;
+-            enableBounds: WithMetadata<boolean>;
+-            enabled: WithMetadata<boolean>;
+-            iterations: WithMetadata<number>;
+-            maxVelocity: WithMetadata<number>;
+-            repulsionStrength: WithMetadata<number>;
+-            springStrength: WithMetadata<number>;
+-        };
+-        rendering: {
+-            ambientLightIntensity: WithMetadata<number>;
+-            backgroundColour: WithMetadata<string>;
+-            directionalLightIntensity: WithMetadata<number>;
+-            enableAmbientOcclusion: WithMetadata<boolean>;
+-            enableAntialiasing: WithMetadata<boolean>;
+-            enableShadows: WithMetadata<boolean>;
+-            environmentIntensity: WithMetadata<number>;
+-        };
+-    };
+-    system: {
+-        network: {
+-            bindAddress: WithMetadata<string>;
+-            domain: WithMetadata<string>;
+-            enableHttp2: WithMetadata<boolean>;
+-            enableRateLimiting: WithMetadata<boolean>;
+-            enableTls: WithMetadata<boolean>;
+-            maxRequestSize: WithMetadata<number>;
+-            minTlsVersion: WithMetadata<string>;
+-            port: WithMetadata<number>;
+-        };
+-        websocket: {
+-            binaryChunkSize: WithMetadata<number>;
+-            binaryUpdateRate: WithMetadata<number>;
+-            compressionEnabled: WithMetadata<boolean>;
+-            compressionThreshold: WithMetadata<number>;
+-            heartbeatInterval: WithMetadata<number>;
+-            maxConnections: WithMetadata<number>;
+-            reconnectAttempts: WithMetadata<number>;
+-            reconnectDelay: WithMetadata<number>;
+-        };
+-        debug: {
+-            enabled: WithMetadata<boolean>;
+-            enableDataDebug: WithMetadata<boolean>;
+-            enableWebsocketDebug: WithMetadata<boolean>;
+-            logBinaryHeaders: WithMetadata<boolean>;
+-            logFullJson: WithMetadata<boolean>;
+-            logLevel: WithMetadata<string>;
+-            logFormat: WithMetadata<string>;
+-        };
+-    };
+-}
+-
+-// Helper function to check if a setting should be visible
+-export function isSettingVisible(
+-    path: string,
+-    settings: SettingsWithMetadata
+-): boolean {
+-    const parts = path.split('.');
+-    try {
+-        let current: any = settings;
+-        for (const part of parts) {
+-            current = current[part];
+-        }
+-        return current?.metadata?.visible ?? true;
+-    } catch {
+-        return true; // Default to visible if metadata not found
+-    }
+-}
+-
+-// Helper function to create a setting with metadata
+-export function createSetting<T>(
+-    value: T,
+-    visible: boolean = true,
+-    advanced: boolean = false,
+-    description?: string
+-): WithMetadata<T> {
+-    return {
+-        value,
+-        metadata: {
+-            visible,
+-            advanced,
+-            description
+-        }
+-    };
+-}
+-
+-// Default metadata for settings
+-export const defaultSettingsMetadata: Partial<SettingsWithMetadata> = {
+-    visualization: {
+-        nodes: {
+-            baseColor: createSetting('#32aeae', true, false, "Base color for nodes"),
+-            baseSize: createSetting(1.5, true, false, "Base size for nodes"),
+-            metalness: createSetting(0.8, true, true, "Material metalness property"),
+-            opacity: createSetting(1.0, true, false, "Node opacity"),
+-            roughness: createSetting(0.2, true, true, "Material roughness property"),
+-            sizeRange: createSetting([1.0, 3.0], true, true, "Min and max node size range"),
+-            quality: createSetting('high', true, false, "Node geometry quality"),
+-            enableInstancing: createSetting(false, false, true, "Enable GPU instancing"),
+-            enableHologram: createSetting(false, true, false, "Enable hologram effect"),
+-            enableMetadataShape: createSetting(false, false, true, "Show metadata as shapes"),
+-            enableMetadataVisualization: createSetting(false, false, true, "Enable metadata visualization")
+-        },
+-        edges: {
+-            arrowSize: createSetting(5.0, true, false, "Size of edge arrows"),
+-            baseWidth: createSetting(0.0, true, false, "Base width of edges"),
+-            color: createSetting('#888888', true, false, "Edge color"),
+-            enableArrows: createSetting(false, true, false, "Show arrows on edges"),
+-            opacity: createSetting(0.3, true, false, "Edge opacity"),
+-            widthRange: createSetting([1.0, 2.0], true, true, "Min and max edge width")
+-        },
+-        physics: {
+-            attractionStrength: createSetting(0.8, true, true, "Node attraction force"),
+-            boundsSize: createSetting(5.0, true, true, "Physics bounds size"),
+-            collisionRadius: createSetting(1.0, true, true, "Node collision radius"),
+-            damping: createSetting(0.0, true, true, "Motion damping"),
+-            enableBounds: createSetting(false, true, true, "Enable physics bounds"),
+-            enabled: createSetting(false, true, false, "Enable physics simulation"),
+-            iterations: createSetting(0, true, true, "Physics iterations per frame"),
+-            maxVelocity: createSetting(0.0, true, true, "Maximum node velocity"),
+-            repulsionStrength: createSetting(0.4, true, true, "Node repulsion force"),
+-            springStrength: createSetting(0.6, true, true, "Edge spring force")
+-        },
+-        rendering: {
+-            ambientLightIntensity: createSetting(0.2, true, true, "Ambient light intensity"),
+-            backgroundColour: createSetting('#cca3a3', true, false, "Scene background color"),
+-            directionalLightIntensity: createSetting(0.2, true, true, "Directional light intensity"),
+-            enableAmbientOcclusion: createSetting(false, true, true, "Enable ambient occlusion"),
+-            enableAntialiasing: createSetting(false, true, false, "Enable antialiasing"),
+-            enableShadows: createSetting(false, true, true, "Enable shadows"),
+-            environmentIntensity: createSetting(0.2, true, true, "Environment light intensity")
+-        }
+-    },
+-    system: {
+-        network: {
+-            bindAddress: createSetting('0.0.0.0', false, true, "Server bind address"),
+-            domain: createSetting('localhost', false, true, "Server domain"),
+-            enableHttp2: createSetting(false, false, true, "Enable HTTP/2"),
+-            enableRateLimiting: createSetting(true, false, true, "Enable rate limiting"),
+-            enableTls: createSetting(false, false, true, "Enable TLS"),
+-            maxRequestSize: createSetting(10485760, false, true, "Maximum request size"),
+-            minTlsVersion: createSetting('', false, true, "Minimum TLS version"),
+-            port: createSetting(3001, false, true, "Server port")
+-        },
+-        websocket: {
+-            binaryChunkSize: createSetting(1024, false, true, "Binary chunk size"),
+-            binaryUpdateRate: createSetting(30, false, true, "Binary update rate"),
+-            compressionEnabled: createSetting(true, false, true, "Enable compression"),
+-            compressionThreshold: createSetting(1024, false, true, "Compression threshold"),
+-            heartbeatInterval: createSetting(15000, false, true, "Heartbeat interval"),
+-            maxConnections: createSetting(1000, false, true, "Maximum connections"),
+-            reconnectAttempts: createSetting(5, true, false, "Reconnection attempts"),
+-            reconnectDelay: createSetting(5000, true, false, "Reconnection delay")
+-        },
+-        debug: {
+-            enabled: createSetting(true, true, true, "Enable debug mode"),
+-            enableDataDebug: createSetting(true, false, true, "Enable data debugging"),
+-            enableWebsocketDebug: createSetting(true, false, true, "Enable WebSocket debugging"),
+-            logBinaryHeaders: createSetting(true, false, true, "Log binary headers"),
+-            logFullJson: createSetting(true, false, true, "Log full JSON"),
+-            logLevel: createSetting('info', true, true, "Log level"),
+-            logFormat: createSetting('json', false, true, "Log format")
+-        }
+-    }
+-};
+\ No newline at end of file
+diff --git a/client/ui/ControlPanel.css b/client/ui/ControlPanel.css
+index 8da7e1ae..3102e4fd 100644
+--- a/client/ui/ControlPanel.css
++++ b/client/ui/ControlPanel.css
+@@ -13,46 +13,7 @@
+     border-left: 1px solid rgba(255, 255, 255, 0.1);
+     box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3);
+     padding: 15px;
+-    transition: all 0.3s ease;
+-}
+-
+-/* Docked state */
+-#control-panel.docked {
+-    right: 0;
+-    width: 300px;
+-}
+-
+-/* Undocked state */
+-#control-panel.undocked {
+-    right: 10px;
+-    top: 10px;
+-    width: 400px;
+-    height: calc(100vh - 20px);
+-    border-radius: 8px;
+-    resize: both;
+-    overflow: auto;
+-}
+-
+-/* Dock toggle button */
+-.dock-toggle {
+-    position: absolute;
+-    top: 10px;
+-    right: 10px;
+-    width: 24px;
+-    height: 24px;
+-    background: rgba(255, 255, 255, 0.1);
+-    border: none;
+-    border-radius: 4px;
+-    color: white;
+-    cursor: pointer;
+-    display: flex;
+-    align-items: center;
+-    justify-content: center;
+-    transition: background-color 0.2s;
+-}
+-
+-.dock-toggle:hover {
+-    background: rgba(255, 255, 255, 0.2);
++    transition: right 0.3s ease;
+ }
+ 
+ #control-panel.visible {
+@@ -152,72 +113,7 @@
+     margin: 12px 0;
+     padding: 8px;
+     border-radius: 4px;
+-    transition: all 0.2s ease;
+-}
+-
+-/* Advanced Settings */
+-.advanced-setting {
+-    position: relative;
+-    padding-left: 24px;
+-    opacity: 0.8;
+-    border-left: 2px solid rgba(255, 255, 255, 0.1);
+-}
+-
+-.advanced-setting:hover {
+-    opacity: 1;
+-}
+-
+-.advanced-icon {
+-    position: absolute;
+-    left: 4px;
+-    top: 50%;
+-    transform: translateY(-50%);
+-    font-size: 14px;
+-    color: #666;
+-}
+-
+-/* Subsection Styles */
+-.settings-subsection {
+-    margin: 10px 0;
+-    border-radius: 6px;
+-    background: rgba(255, 255, 255, 0.02);
+-    transition: all 0.3s ease;
+-}
+-
+-.settings-subsection.collapsed .subsection-content {
+-    max-height: 0;
+-    padding: 0;
+-    opacity: 0;
+-}
+-
+-.settings-subsection .subsection-content {
+-    max-height: 1000px;
+-    opacity: 1;
+-    padding: 10px;
+-    transition: all 0.3s ease;
+-    overflow: hidden;
+-}
+-
+-/* Tooltip for descriptions */
+-[title] {
+-    position: relative;
+-    cursor: help;
+-}
+-
+-[title]:hover::before {
+-    content: attr(title);
+-    position: absolute;
+-    bottom: 100%;
+-    left: 50%;
+-    transform: translateX(-50%);
+-    padding: 4px 8px;
+-    background: rgba(0, 0, 0, 0.8);
+-    color: white;
+-    font-size: 12px;
+-    border-radius: 4px;
+-    white-space: nowrap;
+-    z-index: 1000;
+-    pointer-events: none;
++    transition: background-color 0.2s;
+ }
+ 
+ .setting-control:hover {
+@@ -368,30 +264,6 @@ input[type="color"]::-webkit-color-swatch {
+     border-radius: 4px;
+ }
+ 
+-/* Array Input */
+-.array-input {
+-    display: flex;
+-    flex-direction: column;
+-    gap: 4px;
+-    width: 100%;
+-}
+-
+-.array-input input {
+-    width: 100%;
+-    padding: 8px 12px;
+-    background: rgba(255, 255, 255, 0.05);
+-    border: 1px solid rgba(255, 255, 255, 0.1);
+-    color: white;
+-    border-radius: 4px;
+-}
+-
+-.array-input .helper-text {
+-    font-size: 12px;
+-    color: #7f8c8d;
+-    margin-top: 2px;
+-    padding-left: 4px;
+-}
+-
+ /* Scrollbar styles */
+ #control-panel::-webkit-scrollbar {
+     width: 8px;
+diff --git a/client/ui/ControlPanel.ts b/client/ui/ControlPanel.ts
+index 5a372159..85ec2ff7 100644
+--- a/client/ui/ControlPanel.ts
++++ b/client/ui/ControlPanel.ts
+@@ -3,7 +3,6 @@ import { getAllSettingPaths, formatSettingName, getStepValue } from '../types/se
+ import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDisplay';
+ import { createLogger } from '../core/logger';
+ import { platformManager } from '../platform/platformManager';
+-import { defaultSettingsMetadata, isSettingVisible } from '../types/settings/settingsWithMetadata';
+ 
+ const logger = createLogger('ControlPanel');
+ 
+@@ -14,15 +13,12 @@ export class ControlPanel {
+     private validationDisplay: ValidationErrorDisplay;
+     private unsubscribers: (() => void)[] = [];
+ 
+-    private isDocked: boolean = true;
+-
+     private constructor(parentElement: HTMLElement) {
+         this.settingsStore = SettingsStore.getInstance();
+         
+         // Create main container
+         this.container = document.createElement('div');
+         this.container.id = 'control-panel';
+-        this.container.classList.add('docked');
+         parentElement.appendChild(this.container);
+ 
+         // Create toggle tab
+@@ -31,14 +27,6 @@ export class ControlPanel {
+         toggleTab.addEventListener('click', () => this.togglePanel());
+         parentElement.appendChild(toggleTab);
+ 
+-        // Create dock toggle button
+-        const dockToggle = document.createElement('button');
+-        dockToggle.className = 'dock-toggle';
+-        dockToggle.innerHTML = '📌';
+-        dockToggle.title = 'Toggle dock state';
+-        dockToggle.addEventListener('click', () => this.toggleDock());
+-        this.container.appendChild(dockToggle);
+-
+         // Initialize validation error display
+         this.validationDisplay = new ValidationErrorDisplay(this.container);
+ 
+@@ -48,37 +36,6 @@ export class ControlPanel {
+         }
+ 
+         this.initializePanel();
+-
+-        // Add drag functionality for undocked state
+-        this.container.addEventListener('mousedown', (e) => {
+-            if (!this.isDocked && e.target === this.container) {
+-                this.startDragging(e);
+-            }
+-        });
+-    }
+-
+-    private toggleDock(): void {
+-        this.isDocked = !this.isDocked;
+-        this.container.classList.toggle('docked', this.isDocked);
+-        this.container.classList.toggle('undocked', !this.isDocked);
+-    }
+-
+-    private startDragging(e: MouseEvent): void {
+-        const initialX = e.clientX - this.container.offsetLeft;
+-        const initialY = e.clientY - this.container.offsetTop;
+-
+-        const moveHandler = (e: MouseEvent) => {
+-            this.container.style.left = `${e.clientX - initialX}px`;
+-            this.container.style.top = `${e.clientY - initialY}px`;
+-        };
+-
+-        const upHandler = () => {
+-            document.removeEventListener('mousemove', moveHandler);
+-            document.removeEventListener('mouseup', upHandler);
+-        };
+-
+-        document.addEventListener('mousemove', moveHandler);
+-        document.addEventListener('mouseup', upHandler);
+     }
+ 
+     private togglePanel() {
+@@ -199,42 +156,17 @@ export class ControlPanel {
+         const header = document.createElement('h3');
+         header.textContent = formatSettingName(subcategory);
+         header.className = 'settings-subsection-header';
+-        
+-        // Add collapse/expand functionality
+-        header.addEventListener('click', () => {
+-            subsection.classList.toggle('collapsed');
+-        });
+-        
+         subsection.appendChild(header);
+         
+-        const content = document.createElement('div');
+-        content.className = 'subsection-content';
+-        
+-        // Create controls for visible settings
+         for (const path of paths) {
+             const control = await this.createSettingControl(path);
+-            if (control) { // Only add if control is visible
+-                content.appendChild(control);
+-            }
++            subsection.appendChild(control);
+         }
+         
+-        // Only add content if there are visible settings
+-        if (content.children.length > 0) {
+-            subsection.appendChild(content);
+-            return subsection;
+-        } else {
+-            return document.createElement('div'); // Return empty div if no visible settings
+-        }
++        return subsection;
+     }
+ 
+-    private async createSettingControl(path: string): Promise<HTMLElement | null> {
+-        // Check if setting should be visible
+-        const metadata = defaultSettingsMetadata as any;
+-        const isVisible = isSettingVisible(path, metadata);
+-        if (!isVisible) {
+-            return null;
+-        }
+-
++    private async createSettingControl(path: string): Promise<HTMLElement> {
+         const container = document.createElement('div');
+         container.className = 'setting-control';
+         
+@@ -249,23 +181,6 @@ export class ControlPanel {
+         const valueDisplay = document.createElement('span');
+         valueDisplay.className = 'setting-value';
+         labelContainer.appendChild(valueDisplay);
+-
+-        // Add description tooltip if available
+-        const description = this.getSettingDescription(path, metadata);
+-        if (description) {
+-            labelContainer.title = description;
+-        }
+-
+-        // Add advanced setting indicator if applicable
+-        const isAdvanced = this.isAdvancedSetting(path, metadata);
+-        if (isAdvanced) {
+-            container.classList.add('advanced-setting');
+-            const advancedIcon = document.createElement('span');
+-            advancedIcon.className = 'advanced-icon';
+-            advancedIcon.textContent = '⚙️';
+-            advancedIcon.title = 'Advanced Setting';
+-            labelContainer.insertBefore(advancedIcon, label);
+-        }
+         
+         container.appendChild(labelContainer);
+         
+@@ -281,32 +196,6 @@ export class ControlPanel {
+         return container;
+     }
+ 
+-    private getSettingDescription(path: string, metadata: any): string | undefined {
+-        try {
+-            const parts = path.split('.');
+-            let current = metadata;
+-            for (const part of parts) {
+-                current = current[part];
+-            }
+-            return current?.metadata?.description;
+-        } catch {
+-            return undefined;
+-        }
+-    }
+-
+-    private isAdvancedSetting(path: string, metadata: any): boolean {
+-        try {
+-            const parts = path.split('.');
+-            let current = metadata;
+-            for (const part of parts) {
+-                current = current[part];
+-            }
+-            return current?.metadata?.advanced ?? false;
+-        } catch {
+-            return false;
+-        }
+-    }
+-
+     private createInputElement(path: string, value: any, valueDisplay: HTMLElement): HTMLElement {
+         const inputType = this.getInputTypeForSetting(path, value);
+         let input: HTMLElement;
+@@ -318,27 +207,12 @@ export class ControlPanel {
+             case 'slider':
+                 input = this.createSlider(path, value as number, valueDisplay);
+                 break;
+-            case 'opacity-slider':
+-                input = this.createOpacitySlider(path, value as number, valueDisplay);
+-                break;
+-            case 'size-slider':
+-                input = this.createSizeSlider(path, value as number, valueDisplay);
+-                break;
+             case 'select':
+                 input = this.createSelect(path, value);
+                 break;
+             case 'color':
+                 input = this.createColorPicker(path, value as string);
+                 break;
+-            case 'edge-width-range':
+-                input = this.createEdgeWidthRange(path, value as number[]);
+-                break;
+-            case 'size-range':
+-                input = this.createSizeRange(path, value as number[]);
+-                break;
+-            case 'number-array':
+-                input = this.createNumberArrayInput(path, value as number[]);
+-                break;
+             default:
+                 input = this.createTextInput(path, value);
+         }
+@@ -347,223 +221,27 @@ export class ControlPanel {
+     }
+ 
+     private getInputTypeForSetting(path: string, value: any): string {
+-        // Quality settings should be dropdowns
+-        if (path.endsWith('.quality')) {
+-            return 'select';
+-        }
+-
+-        // XR specific dropdowns
+-        if (path.endsWith('.mode') || path.endsWith('.spaceType')) {
++        // XR mode and space type should be dropdowns
++        if (path.endsWith('.mode') || path.endsWith('.spaceType') || path.endsWith('.quality')) {
+             return 'select';
+         }
+-
+-        // Handle array types with specific constraints
+-        if (Array.isArray(value)) {
+-            if (path.endsWith('.widthRange')) {
+-                return 'edge-width-range';
+-            }
+-            if (path.endsWith('.sizeRange')) {
+-                return 'size-range';
+-            }
+-            return 'number-array';
+-        }
+-
+-        // Opacity values should be fine-tuned sliders
+-        if (path.includes('opacity') && typeof value === 'number') {
+-            return 'opacity-slider';
+-        }
+-
+-        // Size values should have appropriate ranges
+-        if (path.includes('Size') && typeof value === 'number') {
+-            return 'size-slider';
+-        }
+-
++        
+         // Most numeric values should be sliders
+         if (typeof value === 'number') {
+             return 'slider';
+         }
+-
++        
+         // Boolean values should be toggles
+         if (typeof value === 'boolean') {
+             return 'toggle';
+         }
+-
++        
+         // Color values should use color picker
+         if (typeof value === 'string' && value.startsWith('#')) {
+             return 'color';
+         }
+-
+-        return 'text';
+-    }
+-
+-    private createEdgeWidthRange(path: string, value: number[]): HTMLElement {
+-        const container = document.createElement('div');
+-        container.className = 'array-input';
+-
+-        const input = document.createElement('input');
+-        input.type = 'text';
+-        input.value = value.join(',');
+-
+-        const helper = document.createElement('div');
+-        helper.className = 'helper-text';
+-        helper.textContent = 'Min and max edge width (0.01-0.2)';
+-
+-        input.addEventListener('change', async () => {
+-            try {
+-                const [min, max] = input.value.split(',').map(str => parseFloat(str.trim()));
+-                if (isNaN(min) || isNaN(max)) {
+-                    throw new Error('Invalid number format');
+-                }
+-                if (min < 0.01 || max > 0.2 || min >= max) {
+-                    throw new Error('Invalid range (min: 0.01, max: 0.2)');
+-                }
+-                await this.settingsStore.set(path, [min, max]);
+-            } catch (error) {
+-                logger.error(`Failed to update ${path}:`, error);
+-                input.value = value.join(',');
+-            }
+-        });
+-
+-        container.appendChild(helper);
+-        container.appendChild(input);
+-        return container;
+-    }
+-
+-    private createSizeRange(path: string, value: number[]): HTMLElement {
+-        const container = document.createElement('div');
+-        container.className = 'array-input';
+-
+-        const input = document.createElement('input');
+-        input.type = 'text';
+-        input.value = value.join(',');
+-
+-        const helper = document.createElement('div');
+-        helper.className = 'helper-text';
+-        helper.textContent = 'Min and max size (0.1-5.0)';
+-
+-        input.addEventListener('change', async () => {
+-            try {
+-                const [min, max] = input.value.split(',').map(str => parseFloat(str.trim()));
+-                if (isNaN(min) || isNaN(max)) {
+-                    throw new Error('Invalid number format');
+-                }
+-                if (min < 0.1 || max > 5.0 || min >= max) {
+-                    throw new Error('Invalid range (min: 0.1, max: 5.0)');
+-                }
+-                await this.settingsStore.set(path, [min, max]);
+-            } catch (error) {
+-                logger.error(`Failed to update ${path}:`, error);
+-                input.value = value.join(',');
+-            }
+-        });
+-
+-        container.appendChild(helper);
+-        container.appendChild(input);
+-        return container;
+-    }
+-
+-    private createOpacitySlider(path: string, value: number, valueDisplay: HTMLElement): HTMLElement {
+-        const container = document.createElement('div');
+-        container.className = 'slider-container';
+-
+-        const input = document.createElement('input');
+-        input.type = 'range';
+-        input.min = '0';
+-        input.max = '1';
+-        input.step = '0.01';
+-        input.value = String(value);
+-
+-        valueDisplay.textContent = value.toFixed(2);
+-
+-        input.addEventListener('input', () => {
+-            valueDisplay.textContent = Number(input.value).toFixed(2);
+-        });
+-
+-        input.addEventListener('change', async () => {
+-            try {
+-                await this.settingsStore.set(path, Number(input.value));
+-            } catch (error) {
+-                logger.error(`Failed to update ${path}:`, error);
+-                input.value = String(value);
+-                valueDisplay.textContent = value.toFixed(2);
+-            }
+-        });
+-
+-        container.appendChild(input);
+-        return container;
+-    }
+-
+-    private createSizeSlider(path: string, value: number, valueDisplay: HTMLElement): HTMLElement {
+-        const container = document.createElement('div');
+-        container.className = 'slider-container';
+-
+-        const input = document.createElement('input');
+-        input.type = 'range';
+-        input.min = '0.1';
+-        input.max = '5.0';
+-        input.step = '0.1';
+-        input.value = String(value);
+-
+-        valueDisplay.textContent = value.toFixed(1);
+-
+-        input.addEventListener('input', () => {
+-            valueDisplay.textContent = Number(input.value).toFixed(1);
+-        });
+-
+-        input.addEventListener('change', async () => {
+-            try {
+-                await this.settingsStore.set(path, Number(input.value));
+-            } catch (error) {
+-                logger.error(`Failed to update ${path}:`, error);
+-                input.value = String(value);
+-                valueDisplay.textContent = value.toFixed(1);
+-            }
+-        });
+-
+-        container.appendChild(input);
+-        return container;
+-    }
+-
+-    private createNumberArrayInput(path: string, value: number[]): HTMLElement {
+-        const container = document.createElement('div');
+-        container.className = 'array-input';
+         
+-        const input = document.createElement('input');
+-        input.type = 'text';
+-        input.value = value.join(',');
+-        
+-        input.addEventListener('change', async () => {
+-            try {
+-                // Parse the comma-separated string into an array of numbers
+-                const newValue = input.value.split(',').map(str => parseFloat(str.trim()));
+-                
+-                // Validate that all values are numbers
+-                if (newValue.some(isNaN)) {
+-                    throw new Error('Invalid number format');
+-                }
+-                
+-                // For width ranges, enforce exactly 2 values
+-                if (path.endsWith('.widthRange') && newValue.length !== 2) {
+-                    throw new Error('Width range must have exactly 2 values');
+-                }
+-                
+-                await this.settingsStore.set(path, newValue);
+-            } catch (error) {
+-                logger.error(`Failed to update ${path}:`, error);
+-                input.value = value.join(',');
+-            }
+-        });
+-        
+-        // Add helper text for width ranges
+-        if (path.endsWith('.widthRange')) {
+-            const helper = document.createElement('div');
+-            helper.className = 'helper-text';
+-            helper.textContent = 'Enter two numbers separated by comma (min,max)';
+-            container.appendChild(helper);
+-        }
+-        
+-        container.appendChild(input);
+-        return container;
++        return 'text';
+     }
+ 
+     private createToggleSwitch(path: string, value: boolean): HTMLElement {
+@@ -597,73 +275,24 @@ export class ControlPanel {
+         
+         const input = document.createElement('input');
+         input.type = 'range';
++        input.min = '0';
++        input.max = '1';
++        input.step = getStepValue(path);
++        input.value = String(value);
+         
+-        // Set appropriate ranges and steps based on the setting type
+-        if (path.includes('attractionStrength')) {
+-            input.min = '0';
+-            input.max = '0.1';
+-            input.step = '0.001';
+-            valueDisplay.textContent = value.toFixed(3);
+-        } else if (path.includes('repulsionStrength')) {
+-            input.min = '0';
+-            input.max = '5000';
+-            input.step = '100';
+-            valueDisplay.textContent = value.toFixed(0);
+-        } else if (path.includes('springStrength')) {
+-            input.min = '0';
+-            input.max = '0.1';
+-            input.step = '0.001';
+-            valueDisplay.textContent = value.toFixed(3);
+-        } else if (path.includes('damping')) {
+-            input.min = '0';
+-            input.max = '1';
+-            input.step = '0.01';
+-            valueDisplay.textContent = value.toFixed(2);
+-        } else if (path.includes('iterations')) {
+-            input.min = '100';
+-            input.max = '1000';
+-            input.step = '50';
+-            valueDisplay.textContent = value.toFixed(0);
+-        } else if (path.includes('maxVelocity')) {
+-            input.min = '0';
+-            input.max = '10';
+-            input.step = '0.1';
+-            valueDisplay.textContent = value.toFixed(1);
+-        } else if (path.includes('arrowSize')) {
+-            input.min = '0';
+-            input.max = '1';
+-            input.step = '0.05';
+-            valueDisplay.textContent = value.toFixed(2);
+-        } else if (path.includes('baseWidth')) {
+-            input.min = '0';
+-            input.max = '0.2';
+-            input.step = '0.01';
+-            valueDisplay.textContent = value.toFixed(2);
+-        } else if (path.includes('intensity')) {
+-            input.min = '0';
++        // Set appropriate ranges based on the setting
++        if (path.includes('Strength')) {
+             input.max = '2';
+-            input.step = '0.1';
+-            valueDisplay.textContent = value.toFixed(1);
+-        } else {
+-            // Default range for other numeric values
+-            input.min = '0';
++        } else if (path.includes('Size')) {
++            input.max = '10';
++        } else if (path.includes('Opacity')) {
+             input.max = '1';
+-            input.step = '0.1';
+-            valueDisplay.textContent = value.toFixed(1);
+         }
+         
+-        input.value = String(value);
++        valueDisplay.textContent = value.toFixed(2);
+         
+         input.addEventListener('input', () => {
+-            if (path.includes('attractionStrength') || path.includes('springStrength')) {
+-                valueDisplay.textContent = Number(input.value).toFixed(3);
+-            } else if (path.includes('repulsionStrength') || path.includes('iterations')) {
+-                valueDisplay.textContent = Number(input.value).toFixed(0);
+-            } else if (path.includes('maxVelocity') || path.includes('intensity')) {
+-                valueDisplay.textContent = Number(input.value).toFixed(1);
+-            } else {
+-                valueDisplay.textContent = Number(input.value).toFixed(2);
+-            }
++            valueDisplay.textContent = Number(input.value).toFixed(2);
+         });
+         
+         input.addEventListener('change', async () => {
+@@ -672,46 +301,10 @@ export class ControlPanel {
+             } catch (error) {
+                 logger.error(`Failed to update ${path}:`, error);
+                 input.value = String(value);
+-                if (path.includes('attractionStrength') || path.includes('springStrength')) {
+-                    valueDisplay.textContent = value.toFixed(3);
+-                } else if (path.includes('repulsionStrength') || path.includes('iterations')) {
+-                    valueDisplay.textContent = value.toFixed(0);
+-                } else if (path.includes('maxVelocity') || path.includes('intensity')) {
+-                    valueDisplay.textContent = value.toFixed(1);
+-                } else {
+-                    valueDisplay.textContent = value.toFixed(2);
+-                }
++                valueDisplay.textContent = value.toFixed(2);
+             }
+         });
+         
+-        // Add helper text based on the setting
+-        const helper = document.createElement('div');
+-        helper.className = 'helper-text';
+-        
+-        if (path.includes('attractionStrength')) {
+-            helper.textContent = 'Controls how strongly nodes attract each other';
+-        } else if (path.includes('repulsionStrength')) {
+-            helper.textContent = 'Controls how strongly nodes repel each other';
+-        } else if (path.includes('springStrength')) {
+-            helper.textContent = 'Controls edge spring force strength';
+-        } else if (path.includes('damping')) {
+-            helper.textContent = 'Controls motion damping (0 = no damping, 1 = full damping)';
+-        } else if (path.includes('iterations')) {
+-            helper.textContent = 'Number of physics simulation iterations per frame';
+-        } else if (path.includes('maxVelocity')) {
+-            helper.textContent = 'Maximum node velocity';
+-        } else if (path.includes('arrowSize')) {
+-            helper.textContent = 'Size of edge arrow heads';
+-        } else if (path.includes('baseWidth')) {
+-            helper.textContent = 'Base width of edges';
+-        } else if (path.includes('intensity')) {
+-            helper.textContent = 'Light intensity (0 = off, 2 = very bright)';
+-        }
+-        
+-        if (helper.textContent) {
+-            container.appendChild(helper);
+-        }
+-        
+         container.appendChild(input);
+         return container;
+     }
+@@ -730,11 +323,6 @@ export class ControlPanel {
+                 opt.textContent = formatSettingName(option);
+                 select.appendChild(opt);
+             });
+-            
+-            const helper = document.createElement('div');
+-            helper.className = 'helper-text';
+-            helper.textContent = 'Choose between AR or VR mode';
+-            container.appendChild(helper);
+         } else if (path.endsWith('.spaceType')) {
+             ['viewer', 'local', 'local-floor', 'bounded-floor', 'unbounded'].forEach(option => {
+                 const opt = document.createElement('option');
+@@ -742,45 +330,13 @@ export class ControlPanel {
+                 opt.textContent = formatSettingName(option);
+                 select.appendChild(opt);
+             });
+-            
+-            const helper = document.createElement('div');
+-            helper.className = 'helper-text';
+-            helper.textContent = 'Select the XR reference space type';
+-            container.appendChild(helper);
+         } else if (path.endsWith('.quality')) {
+-            const options = path.includes('nodes') ?
+-                [
+-                    { value: 'low', label: 'Low (8 segments)', segments: 8 },
+-                    { value: 'medium', label: 'Medium (16 segments)', segments: 16 },
+-                    { value: 'high', label: 'High (32 segments)', segments: 32 }
+-                ] :
+-                path.includes('hologram') ?
+-                [
+-                    { value: 'low', label: 'Low (32 ring segments)', segments: 32 },
+-                    { value: 'medium', label: 'Medium (64 ring segments)', segments: 64 },
+-                    { value: 'high', label: 'High (128 ring segments)', segments: 128 }
+-                ] :
+-                [
+-                    { value: 'low', label: 'Low Quality' },
+-                    { value: 'medium', label: 'Medium Quality' },
+-                    { value: 'high', label: 'High Quality' }
+-                ];
+-
+-            options.forEach(option => {
++            ['low', 'medium', 'high'].forEach(option => {
+                 const opt = document.createElement('option');
+-                opt.value = option.value;
+-                opt.textContent = option.label;
++                opt.value = option;
++                opt.textContent = formatSettingName(option);
+                 select.appendChild(opt);
+             });
+-
+-            const helper = document.createElement('div');
+-            helper.className = 'helper-text';
+-            helper.textContent = path.includes('nodes') ?
+-                'Controls geometry detail level (sphere segments)' :
+-                path.includes('hologram') ?
+-                'Controls hologram ring detail level' :
+-                'Quality setting';
+-            container.appendChild(helper);
+         }
+         
+         select.value = value;
+@@ -846,12 +402,7 @@ export class ControlPanel {
+                     valueDisplay.textContent = Number(value).toFixed(2);
+                 }
+             } else {
+-                // Handle array values
+-                if (Array.isArray(value)) {
+-                    input.value = value.join(',');
+-                } else {
+-                    input.value = String(value);
+-                }
++                input.value = String(value);
+             }
+         } else if (input instanceof HTMLSelectElement) {
+             input.value = String(value);
+diff --git a/settings.yaml b/settings.yaml
+index a1774192..167e5c04 100644
+--- a/settings.yaml
++++ b/settings.yaml
+@@ -1,68 +1,5 @@
+ visualization:
+   nodes:
+-<<<<<<< HEAD
+-    base_color:
+-      value: '#32aeae'
+-      visible: true
+-      advanced: false
+-      description: "Base color for nodes"
+-    base_size:
+-      value: 1.5
+-      visible: true
+-      advanced: false
+-      description: "Base size for nodes"
+-    metalness:
+-      value: 0.8
+-      visible: true
+-      advanced: true
+-      description: "Material metalness property"
+-    opacity:
+-      value: 1.0
+-      visible: true
+-      advanced: false
+-      description: "Node opacity"
+-    roughness:
+-      value: 0.2
+-      visible: true
+-      advanced: true
+-      description: "Material roughness property"
+-    size_range:
+-      value: [1.0, 3.0]
+-      visible: true
+-      advanced: true
+-      description: "Min and max node size range"
+-    quality:
+-      value: "high"
+-      visible: true
+-      advanced: false
+-      description: "Node geometry quality"
+-    enable_instancing:
+-      value: false
+-      visible: false
+-      advanced: true
+-      description: "Enable GPU instancing"
+-    enable_hologram:
+-      value: false
+-      visible: true
+-      advanced: false
+-      description: "Enable hologram effect"
+-    enable_metadata_shape:
+-      value: false
+-      visible: false
+-      advanced: true
+-      description: "Show metadata as shapes"
+-    enable_metadata_visualization:
+-      value: false
+-      visible: false
+-      advanced: true
+-      description: "Enable metadata visualization"
+-  edges:
+-    arrow_size: 5.0
+-    base_width: 0.0
+-    color: '#888888'
+-    enable_arrows: false
+-    opacity: 0.3
+-=======
+     base_color: '#b12525'
+     base_size: 1.0
+     metalness: 0.6
+@@ -82,55 +19,10 @@ visualization:
+     color: '#316ec9'
+     enable_arrows: true
+     opacity: 0.4
+->>>>>>> AR-working
+     width_range:
+     - 0.6
+     - 1.6
+   physics:
+-<<<<<<< HEAD
+-    attraction_strength: 0.8
+-    bounds_size: 5.0
+-    collision_radius: 1.0
+-    damping: 0.0
+-    enable_bounds: false
+-    enabled: false
+-    iterations: 0
+-    max_velocity: 0.0
+-    repulsion_strength: 0.4
+-    spring_strength: 0.6
+-  rendering:
+-    ambient_light_intensity: 0.2
+-    background_color: '#cca3a3'
+-    directional_light_intensity: 0.2
+-    enable_ambient_occlusion: false
+-    enable_antialiasing: false
+-    enable_shadows: false
+-    environment_intensity: 0.2
+-  animations:
+-    enable_motion_blur: true
+-    enable_node_animations: true
+-    motion_blur_strength: 1.0
+-    selection_wave_enabled: false
+-    pulse_enabled: false
+-    pulse_speed: 1.5
+-    pulse_strength: 1.4
+-    wave_speed: 0.0
+-  labels:
+-    desktop_font_size: 7
+-    enable_labels: true
+-    text_color: '#c84646'
+-  bloom:
+-    edge_bloom_strength: 1.1
+-    enabled: true
+-    environment_bloom_strength: 1.0
+-    node_bloom_strength: 2.0
+-    radius: 0.0
+-    strength: 0.6
+-  hologram:
+-    ring_count: 0
+-    ring_color: '#00ffff'
+-    ring_opacity: 0.8
+-=======
+     attraction_strength: 0.015
+     bounds_size: 100.0
+     collision_radius: 0.25
+@@ -173,25 +65,11 @@ visualization:
+     ring_count: 0
+     ring_color: '#455673'
+     ring_opacity: 0.35
+->>>>>>> AR-working
+     ring_sizes:
+     - 0.8
+     - 1.2
+     - 1.6
+     - 2.0
+-<<<<<<< HEAD
+-    ring_rotation_speed: 1.0
+-    enable_buckminster: true
+-    buckminster_scale: 0.6
+-    buckminster_opacity: 0.6
+-    enable_geodesic: false
+-    geodesic_scale: 0.4
+-    geodesic_opacity: 0.5
+-    enable_triangle_sphere: true
+-    triangle_sphere_scale: 0.5
+-    triangle_sphere_opacity: 0.5
+-    global_rotation_speed: 1.0
+-=======
+     ring_rotation_speed: 0.08
+     enable_buckminster: false
+     buckminster_scale: 1.2
+@@ -203,7 +81,6 @@ visualization:
+     triangle_sphere_scale: 1.1
+     triangle_sphere_opacity: 0.3
+     global_rotation_speed: 0.06
+->>>>>>> AR-working
+ system:
+   network:
+     bind_address: 0.0.0.0
+@@ -247,25 +124,6 @@ system:
+     enable_request_validation: true
+     session_timeout: 3600
+   debug:
+-<<<<<<< HEAD
+-    enabled: true
+-    enable_data_debug: true
+-    enable_websocket_debug: true
+-    log_binary_headers: true
+-    log_full_json: true
+-    log_level: info
+-    log_format: json
+-xr:
+-  mode: immersive-vr
+-  room_scale: false
+-  space_type: local-floor
+-  quality: medium
+-  enable_hand_tracking: true
+-  hand_mesh_enabled: true
+-  hand_mesh_color: '#783636'
+-  hand_mesh_opacity: 0.5
+-  hand_point_size: 5.0
+-=======
+     enabled: false
+     enable_data_debug: false
+     enable_websocket_debug: false
+@@ -283,7 +141,6 @@ xr:
+   hand_mesh_color: '#4287f5'
+   hand_mesh_opacity: 0.3
+   hand_point_size: 3.0
+->>>>>>> AR-working
+   hand_ray_enabled: true
+   hand_ray_color: '#4287f5'
+   hand_ray_width: 1.5
+@@ -297,17 +154,6 @@ xr:
+   movement_speed: 0.08
+   dead_zone: 0.12
+   movement_axes:
+-<<<<<<< HEAD
+-    horizontal: 0
+-    vertical: 0
+-  enable_light_estimation: true
+-  enable_plane_detection: true
+-  enable_scene_understanding: true
+-  plane_color: '#808080'
+-  plane_opacity: 0.5
+-  show_plane_overlay: true
+-  snap_to_floor: true
+-=======
+     horizontal: 2
+     vertical: 3
+   enable_light_estimation: false
+@@ -318,7 +164,6 @@ xr:
+   plane_detection_distance: 3.0
+   show_plane_overlay: false
+   snap_to_floor: false
+->>>>>>> AR-working
+   enable_passthrough_portal: false
+   passthrough_opacity: 0.8
+   passthrough_brightness: 1.1
+diff --git a/src/config.rs b/src/config.rs
+index fa18ea8c..91a98098 100644
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -45,322 +45,21 @@ pub struct Settings {
+     pub openai: OpenAISettings,
+ }
+ 
+-#[derive(Debug, Serialize, Deserialize, Clone)]
+-pub struct SettingMetadata {
+-    pub visible: bool,
+-    pub advanced: bool,
+-    #[serde(skip_serializing_if = "Option::is_none")]
+-    pub description: Option<String>,
+-}
+-
+-#[derive(Debug, Serialize, Deserialize, Clone)]
+-pub struct SettingValue<T> {
+-    pub value: T,
+-    pub visible: bool,
+-    pub advanced: bool,
+-    #[serde(skip_serializing_if = "Option::is_none")]
+-    pub description: Option<String>,
+-}
+-
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+ pub struct NodeSettings {
+-    #[serde(default = "default_node_base_color")]
+-    pub base_color: SettingValue<String>,
+-
+-    #[serde(default = "default_node_base_size")]
+-    pub base_size: SettingValue<f32>,
+-
+-    #[serde(default = "default_node_metalness")]
+-    pub metalness: SettingValue<f32>,
+-
+-    #[serde(default = "default_node_opacity")]
+-    pub opacity: SettingValue<f32>,
+-
+-    #[serde(default = "default_node_roughness")]
+-    pub roughness: SettingValue<f32>,
+-
+-    #[serde(default = "default_node_size_range")]
+-    pub size_range: SettingValue<Vec<f32>>,
+-
+-    #[serde(default = "default_node_quality")]
+-    pub quality: SettingValue<String>,
+-
+-    #[serde(default = "default_node_enable_instancing")]
+-    pub enable_instancing: SettingValue<bool>,
+-
+-    #[serde(default = "default_node_enable_hologram")]
+-    pub enable_hologram: SettingValue<bool>,
+-
+-    #[serde(default = "default_node_enable_metadata_shape")]
+-    pub enable_metadata_shape: SettingValue<bool>,
+-
+-    #[serde(default = "default_node_enable_metadata_visualization")]
+-    pub enable_metadata_visualization: SettingValue<bool>,
+-}
+-
+-// Default implementations
+-fn default_node_base_color() -> SettingValue<String> {
+-    SettingValue {
+-        value: "#32aeae".to_string(),
+-        visible: true,
+-        advanced: false,
+-        description: Some("Base color for nodes".to_string()),
+-    }
+-}
+-
+-fn default_node_base_size() -> SettingValue<f32> {
+-    SettingValue {
+-        value: 1.5,
+-        visible: true,
+-        advanced: false,
+-        description: Some("Base size for nodes".to_string()),
+-    }
+-}
+-
+-fn default_node_metalness() -> SettingValue<f32> {
+-    SettingValue {
+-        value: 0.8,
+-        visible: true,
+-        advanced: true,
+-        description: Some("Material metalness property".to_string()),
+-    }
+-}
+-
+-fn default_node_opacity() -> SettingValue<f32> {
+-    SettingValue {
+-        value: 1.0,
+-        visible: true,
+-        advanced: false,
+-        description: Some("Node opacity".to_string()),
+-    }
+-}
+-
+-fn default_node_roughness() -> SettingValue<f32> {
+-    SettingValue {
+-        value: 0.2,
+-        visible: true,
+-        advanced: true,
+-        description: Some("Material roughness property".to_string()),
+-    }
+-}
+-
+-fn default_node_size_range() -> SettingValue<Vec<f32>> {
+-    SettingValue {
+-        value: vec![1.0, 3.0],
+-        visible: true,
+-        advanced: true,
+-        description: Some("Min and max node size range".to_string()),
+-    }
+-}
+-
+-fn default_node_quality() -> SettingValue<String> {
+-    SettingValue {
+-        value: "high".to_string(),
+-        visible: true,
+-        advanced: false,
+-        description: Some("Node geometry quality".to_string()),
+-    }
+-}
+-
+-fn default_node_enable_instancing() -> SettingValue<bool> {
+-    SettingValue {
+-        value: false,
+-        visible: false,
+-        advanced: true,
+-        description: Some("Enable GPU instancing".to_string()),
+-    }
+-}
+-
+-fn default_node_enable_hologram() -> SettingValue<bool> {
+-    SettingValue {
+-        value: false,
+-        visible: true,
+-        advanced: false,
+-        description: Some("Enable hologram effect".to_string()),
+-    }
+-}
+-
+-fn default_node_enable_metadata_shape() -> SettingValue<bool> {
+-    SettingValue {
+-        value: false,
+-        visible: false,
+-        advanced: true,
+-        description: Some("Show metadata as shapes".to_string()),
+-    }
+-}
+-
+-fn default_node_enable_metadata_visualization() -> SettingValue<bool> {
+-    SettingValue {
+-        value: false,
+-        visible: false,
+-        advanced: true,
+-        description: Some("Enable metadata visualization".to_string()),
+-    }
+-}
+-
+-impl NodeSettings {
+-    pub fn get_value<T: Clone>(&self, field: &str) -> Option<T> {
+-        match field {
+-            "base_color" => Some(self.base_color.value.clone() as T),
+-            "base_size" => Some(self.base_size.value.clone() as T),
+-            "metalness" => Some(self.metalness.value.clone() as T),
+-            "opacity" => Some(self.opacity.value.clone() as T),
+-            "roughness" => Some(self.roughness.value.clone() as T),
+-            "size_range" => Some(self.size_range.value.clone() as T),
+-            "quality" => Some(self.quality.value.clone() as T),
+-            "enable_instancing" => Some(self.enable_instancing.value.clone() as T),
+-            "enable_hologram" => Some(self.enable_hologram.value.clone() as T),
+-            "enable_metadata_shape" => Some(self.enable_metadata_shape.value.clone() as T),
+-            "enable_metadata_visualization" => Some(self.enable_metadata_visualization.value.clone() as T),
+-            _ => None,
+-        }
+-    }
+-
+-    pub fn is_visible(&self, field: &str) -> bool {
+-        match field {
+-            "base_color" => self.base_color.visible,
+-            "base_size" => self.base_size.visible,
+-            "metalness" => self.metalness.visible,
+-            "opacity" => self.opacity.visible,
+-            "roughness" => self.roughness.visible,
+-            "size_range" => self.size_range.visible,
+-            "quality" => self.quality.visible,
+-            "enable_instancing" => self.enable_instancing.visible,
+-            "enable_hologram" => self.enable_hologram.visible,
+-            "enable_metadata_shape" => self.enable_metadata_shape.visible,
+-            "enable_metadata_visualization" => self.enable_metadata_visualization.visible,
+-            _ => false,
+-        }
+-    }
+-
+-    pub fn is_advanced(&self, field: &str) -> bool {
+-        match field {
+-            "base_color" => self.base_color.advanced,
+-            "base_size" => self.base_size.advanced,
+-            "metalness" => self.metalness.advanced,
+-            "opacity" => self.opacity.advanced,
+-            "roughness" => self.roughness.advanced,
+-            "size_range" => self.size_range.advanced,
+-            "quality" => self.quality.advanced,
+-            "enable_instancing" => self.enable_instancing.advanced,
+-            "enable_hologram" => self.enable_hologram.advanced,
+-            "enable_metadata_shape" => self.enable_metadata_shape.advanced,
+-            "enable_metadata_visualization" => self.enable_metadata_visualization.advanced,
+-            _ => false,
+-        }
+-    }
+-}
+-
+-    #[serde(default = "default_node_quality_metadata")]
+-    pub quality_metadata: SettingMetadata,
++    pub base_color: String,
++    pub base_size: f32,
++    pub metalness: f32,
++    pub opacity: f32,
++    pub roughness: f32,
++    pub size_range: Vec<f32>,
+     pub quality: String,
+-
+-    #[serde(default = "default_node_enable_instancing_metadata")]
+-    pub enable_instancing_metadata: SettingMetadata,
+     pub enable_instancing: bool,
+-
+-    #[serde(default = "default_node_enable_hologram_metadata")]
+-    pub enable_hologram_metadata: SettingMetadata,
+     pub enable_hologram: bool,
+-
+-    #[serde(default = "default_node_enable_metadata_shape_metadata")]
+-    pub enable_metadata_shape_metadata: SettingMetadata,
+     pub enable_metadata_shape: bool,
+-
+-    #[serde(default = "default_node_enable_metadata_visualization_metadata")]
+-    pub enable_metadata_visualization_metadata: SettingMetadata,
+     pub enable_metadata_visualization: bool,
+ }
+ 
+-// Default metadata functions
+-fn default_node_base_color_metadata() -> SettingMetadata {
+-    SettingMetadata {
+-        visible: true,
+-        advanced: false,
+-        description: Some("Base color for nodes".to_string()),
+-    }
+-}
+-
+-fn default_node_base_size_metadata() -> SettingMetadata {
+-    SettingMetadata {
+-        visible: true,
+-        advanced: false,
+-        description: Some("Base size for nodes".to_string()),
+-    }
+-}
+-
+-fn default_node_metalness_metadata() -> SettingMetadata {
+-    SettingMetadata {
+-        visible: true,
+-        advanced: true,
+-        description: Some("Material metalness property".to_string()),
+-    }
+-}
+-
+-fn default_node_opacity_metadata() -> SettingMetadata {
+-    SettingMetadata {
+-        visible: true,
+-        advanced: false,
+-        description: Some("Node opacity".to_string()),
+-    }
+-}
+-
+-fn default_node_roughness_metadata() -> SettingMetadata {
+-    SettingMetadata {
+-        visible: true,
+-        advanced: true,
+-        description: Some("Material roughness property".to_string()),
+-    }
+-}
+-
+-fn default_node_size_range_metadata() -> SettingMetadata {
+-    SettingMetadata {
+-        visible: true,
+-        advanced: true,
+-        description: Some("Min and max node size range".to_string()),
+-    }
+-}
+-
+-fn default_node_quality_metadata() -> SettingMetadata {
+-    SettingMetadata {
+-        visible: true,
+-        advanced: false,
+-        description: Some("Node geometry quality (affects performance)".to_string()),
+-    }
+-}
+-
+-fn default_node_enable_instancing_metadata() -> SettingMetadata {
+-    SettingMetadata {
+-        visible: false,
+-        advanced: true,
+-        description: Some("Enable GPU instancing for better performance".to_string()),
+-    }
+-}
+-
+-fn default_node_enable_hologram_metadata() -> SettingMetadata {
+-    SettingMetadata {
+-        visible: true,
+-        advanced: false,
+-        description: Some("Enable hologram effect on nodes".to_string()),
+-    }
+-}
+-
+-fn default_node_enable_metadata_shape_metadata() -> SettingMetadata {
+-    SettingMetadata {
+-        visible: false,
+-        advanced: true,
+-        description: Some("Show metadata as node shapes".to_string()),
+-    }
+-}
+-
+-fn default_node_enable_metadata_visualization_metadata() -> SettingMetadata {
+-    SettingMetadata {
+-        visible: false,
+-        advanced: true,
+-        description: Some("Enable metadata visualization".to_string()),
+-    }
+-}
+-
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+ pub struct EdgeSettings {
+     pub arrow_size: f32,
+diff --git a/src/models/ui_settings.rs b/src/models/ui_settings.rs
+index af672f96..893cb4ac 100644
+--- a/src/models/ui_settings.rs
++++ b/src/models/ui_settings.rs
+@@ -1,248 +1,15 @@
+ use serde::{Deserialize, Serialize};
+ use crate::config::{
+     DebugSettings, Settings, VisualizationSettings, XRSettings,
+-    SettingValue,
+ };
+ 
+-// Helper struct to extract just the value from SettingValue
+-#[derive(Debug, Clone, Serialize, Deserialize)]
+-pub struct UIVisualizationSettings {
+-    pub nodes: UINodeSettings,
+-    pub edges: UIEdgeSettings,
+-    pub physics: UIPhysicsSettings,
+-    pub rendering: UIRenderingSettings,
+-    pub animations: UIAnimationSettings,
+-    pub labels: UILabelSettings,
+-    pub bloom: UIBloomSettings,
+-    pub hologram: UIHologramSettings,
+-}
+-
+-#[derive(Debug, Clone, Serialize, Deserialize)]
+-pub struct UINodeSettings {
+-    pub base_color: String,
+-    pub base_size: f32,
+-    pub metalness: f32,
+-    pub opacity: f32,
+-    pub roughness: f32,
+-    pub size_range: Vec<f32>,
+-    pub quality: String,
+-    pub enable_instancing: bool,
+-    pub enable_hologram: bool,
+-    pub enable_metadata_shape: bool,
+-    pub enable_metadata_visualization: bool,
+-}
+-
+-// Implement conversion from SettingValue to regular value
+-impl From<&SettingValue<String>> for String {
+-    fn from(sv: &SettingValue<String>) -> Self {
+-        sv.value.clone()
+-    }
+-}
+-
+-impl From<&SettingValue<f32>> for f32 {
+-    fn from(sv: &SettingValue<f32>) -> Self {
+-        sv.value
+-    }
+-}
+-
+-impl From<&SettingValue<bool>> for bool {
+-    fn from(sv: &SettingValue<bool>) -> Self {
+-        sv.value
+-    }
+-}
+-
+-impl From<&SettingValue<Vec<f32>>> for Vec<f32> {
+-    fn from(sv: &SettingValue<Vec<f32>>) -> Self {
+-        sv.value.clone()
+-    }
+-}
+-
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct UISettings {
+-    pub visualization: UIVisualizationSettings,
++    pub visualization: VisualizationSettings,
+     pub system: UISystemSettings,
+     pub xr: XRSettings,
+ }
+ 
+-impl From<&Settings> for UISettings {
+-    fn from(settings: &Settings) -> Self {
+-        Self {
+-            visualization: UIVisualizationSettings::from(&settings.visualization),
+-            system: UISystemSettings {
+-                websocket: WebSocketClientSettings {
+-                    reconnect_attempts: settings.system.websocket.reconnect_attempts,
+-                    reconnect_delay: settings.system.websocket.reconnect_delay,
+-                    binary_chunk_size: settings.system.websocket.binary_chunk_size,
+-                    compression_enabled: settings.system.websocket.compression_enabled,
+-                    compression_threshold: settings.system.websocket.compression_threshold,
+-                    update_rate: settings.system.websocket.update_rate,
+-                },
+-                debug: settings.system.debug.clone(),
+-            },
+-            xr: settings.xr.clone(),
+-        }
+-    }
+-}
+-
+-impl From<&VisualizationSettings> for UIVisualizationSettings {
+-    fn from(settings: &VisualizationSettings) -> Self {
+-        Self {
+-            nodes: UINodeSettings::from(&settings.nodes),
+-            edges: UIEdgeSettings::from(&settings.edges),
+-            physics: UIPhysicsSettings::from(&settings.physics),
+-            rendering: UIRenderingSettings::from(&settings.rendering),
+-            animations: settings.animations.clone(),
+-            labels: settings.labels.clone(),
+-            bloom: settings.bloom.clone(),
+-            hologram: settings.hologram.clone(),
+-        }
+-    }
+-}
+-
+-impl From<&NodeSettings> for UINodeSettings {
+-    fn from(settings: &NodeSettings) -> Self {
+-        Self {
+-            base_color: (&settings.base_color).into(),
+-            base_size: (&settings.base_size).into(),
+-            metalness: (&settings.metalness).into(),
+-            opacity: (&settings.opacity).into(),
+-            roughness: (&settings.roughness).into(),
+-            size_range: (&settings.size_range).into(),
+-            quality: (&settings.quality).into(),
+-            enable_instancing: (&settings.enable_instancing).into(),
+-            enable_hologram: (&settings.enable_hologram).into(),
+-            enable_metadata_shape: (&settings.enable_metadata_shape).into(),
+-            enable_metadata_visualization: (&settings.enable_metadata_visualization).into(),
+-        }
+-    }
+-}
+-
+-impl From<&EdgeSettings> for UIEdgeSettings {
+-    fn from(settings: &EdgeSettings) -> Self {
+-        Self {
+-            arrow_size: (&settings.arrow_size).into(),
+-            base_width: (&settings.base_width).into(),
+-            color: (&settings.color).into(),
+-            enable_arrows: (&settings.enable_arrows).into(),
+-            opacity: (&settings.opacity).into(),
+-            width_range: (&settings.width_range).into(),
+-        }
+-    }
+-}
+-
+-impl From<&PhysicsSettings> for UIPhysicsSettings {
+-    fn from(settings: &PhysicsSettings) -> Self {
+-        Self {
+-            attraction_strength: (&settings.attraction_strength).into(),
+-            bounds_size: (&settings.bounds_size).into(),
+-            collision_radius: (&settings.collision_radius).into(),
+-            damping: (&settings.damping).into(),
+-            enable_bounds: (&settings.enable_bounds).into(),
+-            enabled: (&settings.enabled).into(),
+-            iterations: (&settings.iterations).into(),
+-            max_velocity: (&settings.max_velocity).into(),
+-            repulsion_strength: (&settings.repulsion_strength).into(),
+-            spring_strength: (&settings.spring_strength).into(),
+-        }
+-    }
+-}
+-
+-impl From<&RenderingSettings> for UIRenderingSettings {
+-    fn from(settings: &RenderingSettings) -> Self {
+-        Self {
+-            ambient_light_intensity: (&settings.ambient_light_intensity).into(),
+-            background_color: (&settings.background_color).into(),
+-            directional_light_intensity: (&settings.directional_light_intensity).into(),
+-            enable_ambient_occlusion: (&settings.enable_ambient_occlusion).into(),
+-            enable_antialiasing: (&settings.enable_antialiasing).into(),
+-            enable_shadows: (&settings.enable_shadows).into(),
+-            environment_intensity: (&settings.environment_intensity).into(),
+-        }
+-    }
+-}
+-#[derive(Debug, Clone, Serialize, Deserialize)]
+-pub struct UIEdgeSettings {
+-    pub arrow_size: f32,
+-    pub base_width: f32,
+-    pub color: String,
+-    pub enable_arrows: bool,
+-    pub opacity: f32,
+-    pub width_range: Vec<f32>,
+-}
+-
+-#[derive(Debug, Clone, Serialize, Deserialize)]
+-pub struct UIPhysicsSettings {
+-    pub attraction_strength: f32,
+-    pub bounds_size: f32,
+-    pub collision_radius: f32,
+-    pub damping: f32,
+-    pub enable_bounds: bool,
+-    pub enabled: bool,
+-    pub iterations: u32,
+-    pub max_velocity: f32,
+-    pub repulsion_strength: f32,
+-    pub spring_strength: f32,
+-}
+-
+-#[derive(Debug, Clone, Serialize, Deserialize)]
+-pub struct UIRenderingSettings {
+-    pub ambient_light_intensity: f32,
+-    pub background_color: String,
+-    pub directional_light_intensity: f32,
+-    pub enable_ambient_occlusion: bool,
+-    pub enable_antialiasing: bool,
+-    pub enable_shadows: bool,
+-    pub environment_intensity: f32,
+-}
+-
+-#[derive(Debug, Clone, Serialize, Deserialize)]
+-pub struct UIAnimationSettings {
+-    pub enable_motion_blur: bool,
+-    pub enable_node_animations: bool,
+-    pub motion_blur_strength: f32,
+-    pub selection_wave_enabled: bool,
+-    pub pulse_enabled: bool,
+-    pub pulse_speed: f32,
+-    pub pulse_strength: f32,
+-    pub wave_speed: f32,
+-}
+-
+-#[derive(Debug, Clone, Serialize, Deserialize)]
+-pub struct UILabelSettings {
+-    pub desktop_font_size: u32,
+-    pub enable_labels: bool,
+-    pub text_color: String,
+-}
+-
+-#[derive(Debug, Clone, Serialize, Deserialize)]
+-pub struct UIBloomSettings {
+-    pub edge_bloom_strength: f32,
+-    pub enabled: bool,
+-    pub environment_bloom_strength: f32,
+-    pub node_bloom_strength: f32,
+-    pub radius: f32,
+-    pub strength: f32,
+-}
+-
+-#[derive(Debug, Clone, Serialize, Deserialize)]
+-pub struct UIHologramSettings {
+-    pub ring_count: u32,
+-    pub ring_color: String,
+-    pub ring_opacity: f32,
+-    pub ring_sizes: Vec<f32>,
+-    pub ring_rotation_speed: f32,
+-    pub enable_buckminster: bool,
+-    pub buckminster_scale: f32,
+-    pub buckminster_opacity: f32,
+-    pub enable_geodesic: bool,
+-    pub geodesic_scale: f32,
+-    pub geodesic_opacity: f32,
+-    pub enable_triangle_sphere: bool,
+-    pub triangle_sphere_scale: f32,
+-    pub triangle_sphere_opacity: f32,
+-    pub global_rotation_speed: f32,
+-}
+-
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct UISystemSettings {
+     pub websocket: WebSocketClientSettings,
+@@ -281,59 +48,7 @@ impl From<&Settings> for UISettings {
+ 
+ impl UISettings {
+     pub fn merge_into_settings(&self, settings: &mut Settings) {
+-        // Update node settings while preserving metadata
+-        let nodes = &mut settings.visualization.nodes;
+-        nodes.base_color.value = self.visualization.nodes.base_color.clone();
+-        nodes.base_size.value = self.visualization.nodes.base_size;
+-        nodes.metalness.value = self.visualization.nodes.metalness;
+-        nodes.opacity.value = self.visualization.nodes.opacity;
+-        nodes.roughness.value = self.visualization.nodes.roughness;
+-        nodes.size_range.value = self.visualization.nodes.size_range.clone();
+-        nodes.quality.value = self.visualization.nodes.quality.clone();
+-        nodes.enable_instancing.value = self.visualization.nodes.enable_instancing;
+-        nodes.enable_hologram.value = self.visualization.nodes.enable_hologram;
+-        nodes.enable_metadata_shape.value = self.visualization.nodes.enable_metadata_shape;
+-        nodes.enable_metadata_visualization.value = self.visualization.nodes.enable_metadata_visualization;
+-
+-        // Update edge settings while preserving metadata
+-        let edges = &mut settings.visualization.edges;
+-        edges.arrow_size.value = self.visualization.edges.arrow_size;
+-        edges.base_width.value = self.visualization.edges.base_width;
+-        edges.color.value = self.visualization.edges.color.clone();
+-        edges.enable_arrows.value = self.visualization.edges.enable_arrows;
+-        edges.opacity.value = self.visualization.edges.opacity;
+-        edges.width_range.value = self.visualization.edges.width_range.clone();
+-
+-        // Update physics settings while preserving metadata
+-        let physics = &mut settings.visualization.physics;
+-        physics.attraction_strength.value = self.visualization.physics.attraction_strength;
+-        physics.bounds_size.value = self.visualization.physics.bounds_size;
+-        physics.collision_radius.value = self.visualization.physics.collision_radius;
+-        physics.damping.value = self.visualization.physics.damping;
+-        physics.enable_bounds.value = self.visualization.physics.enable_bounds;
+-        physics.enabled.value = self.visualization.physics.enabled;
+-        physics.iterations.value = self.visualization.physics.iterations;
+-        physics.max_velocity.value = self.visualization.physics.max_velocity;
+-        physics.repulsion_strength.value = self.visualization.physics.repulsion_strength;
+-        physics.spring_strength.value = self.visualization.physics.spring_strength;
+-
+-        // Update rendering settings while preserving metadata
+-        let rendering = &mut settings.visualization.rendering;
+-        rendering.ambient_light_intensity.value = self.visualization.rendering.ambient_light_intensity;
+-        rendering.background_color.value = self.visualization.rendering.background_color.clone();
+-        rendering.directional_light_intensity.value = self.visualization.rendering.directional_light_intensity;
+-        rendering.enable_ambient_occlusion.value = self.visualization.rendering.enable_ambient_occlusion;
+-        rendering.enable_antialiasing.value = self.visualization.rendering.enable_antialiasing;
+-        rendering.enable_shadows.value = self.visualization.rendering.enable_shadows;
+-        rendering.environment_intensity.value = self.visualization.rendering.environment_intensity;
+-
+-        // Update other visualization settings
+-        settings.visualization.animations = self.visualization.animations.clone();
+-        settings.visualization.labels = self.visualization.labels.clone();
+-        settings.visualization.bloom = self.visualization.bloom.clone();
+-        settings.visualization.hologram = self.visualization.hologram.clone();
+-
+-        // Update system settings
++        settings.visualization = self.visualization.clone();
+         settings.system.websocket.reconnect_attempts = self.system.websocket.reconnect_attempts;
+         settings.system.websocket.reconnect_delay = self.system.websocket.reconnect_delay;
+         settings.system.websocket.binary_chunk_size = self.system.websocket.binary_chunk_size;
+@@ -341,8 +56,6 @@ impl UISettings {
+         settings.system.websocket.compression_threshold = self.system.websocket.compression_threshold;
+         settings.system.websocket.update_rate = self.system.websocket.update_rate;
+         settings.system.debug = self.system.debug.clone();
+-
+-        // Update XR settings
+         settings.xr = self.xr.clone();
+     }
+ }
+\ No newline at end of file
