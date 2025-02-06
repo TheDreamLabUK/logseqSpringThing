@@ -125,108 +125,11 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                 }
             }
             
-            // Add remaining categories
-            for (const [category, categoryPaths] of Object.entries(groupedSettings)) {
-                if (!mainCategories.includes(category)) {
-                    const sectionConfig: SectionConfig = {
-                        id: category,
-                        title: formatSettingName(category),
-                        isDetached: false,
-                        isCollapsed: false,
-                        isAdvanced: this.isAdvancedCategory(category)
-                    };
-                    
-                    this.sections.set(category, sectionConfig);
-                    const section = await this.createSection(sectionConfig, categoryPaths);
-                    categoriesContainer.appendChild(section);
-                }
-            }
-            
             this.container.appendChild(categoriesContainer);
             logger.info('Panel UI initialized');
         } catch (error) {
             logger.error('Failed to initialize panel:', error);
             throw error;
-        }
-    }
-
-    private async initializeNostrAuth(): Promise<void> {
-        const authSection = document.createElement('div');
-        authSection.className = 'settings-section auth-section';
-        
-        const header = document.createElement('div');
-        header.className = 'section-header';
-        header.innerHTML = '<h4>Authentication</h4>';
-        authSection.appendChild(header);
-
-        const content = document.createElement('div');
-        content.className = 'section-content';
-
-        const loginBtn = document.createElement('button');
-        loginBtn.className = 'nostr-login-btn';
-        loginBtn.onclick = async () => {
-            try {
-                if (!window.nostr) {
-                    throw new Error('No Nostr provider found. Please install a Nostr extension.');
-                }
-
-                const pubkey = await window.nostr.getPublicKey();
-                if (!pubkey) {
-                    throw new Error('Failed to get public key from Nostr extension');
-                }
-
-                const result = await nostrAuth.login();
-                if (result.authenticated) {
-                    this.updateAuthUI(result.user);
-                } else {
-                    throw new Error(result.error || 'Authentication failed');
-                }
-            } catch (error) {
-                logger.error('Nostr login failed:', error);
-                const errorMsg = document.createElement('div');
-                errorMsg.className = 'auth-error';
-                errorMsg.textContent = error instanceof Error ? error.message : 'Login failed';
-                content.appendChild(errorMsg);
-                setTimeout(() => errorMsg.remove(), 3000);
-            }
-        };
-
-        const statusDisplay = document.createElement('div');
-        statusDisplay.className = 'auth-status';
-        
-        content.appendChild(loginBtn);
-        content.appendChild(statusDisplay);
-        authSection.appendChild(content);
-
-        this.container.insertBefore(authSection, this.container.firstChild);
-
-        this.unsubscribers.push(
-            nostrAuth.onAuthStateChanged(({ user }) => {
-                this.updateAuthUI(user);
-            })
-        );
-
-        await nostrAuth.initialize();
-        this.updateAuthUI(nostrAuth.getCurrentUser());
-    }
-
-    private updateAuthUI(user: NostrUser | null | undefined): void {
-        const loginBtn = this.container.querySelector('.nostr-login-btn') as HTMLButtonElement;
-        const statusDisplay = this.container.querySelector('.auth-status') as HTMLDivElement;
-
-        if (user) {
-            loginBtn.textContent = 'Logout';
-            loginBtn.onclick = () => nostrAuth.logout();
-            statusDisplay.innerHTML = `
-                <div class="user-info">
-                    <div class="pubkey">${user.pubkey.substring(0, 8)}...</div>
-                    <div class="role">${user.isPowerUser ? 'Power User' : 'Basic User'}</div>
-                </div>
-            `;
-        } else {
-            loginBtn.textContent = 'Login with Nostr';
-            loginBtn.onclick = () => nostrAuth.login();
-            statusDisplay.innerHTML = '<div class="not-authenticated">Not authenticated</div>';
         }
     }
 
@@ -279,9 +182,185 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         document.addEventListener('mouseup', upHandler);
     }
 
+    private async initializeNostrAuth(): Promise<void> {
+        const authSection = document.createElement('div');
+        authSection.className = 'settings-section auth-section';
+        
+        const header = document.createElement('div');
+        header.className = 'section-header';
+        header.innerHTML = '<h4>Authentication</h4>';
+        authSection.appendChild(header);
+
+        const content = document.createElement('div');
+        content.className = 'section-content';
+
+        const loginBtn = document.createElement('button');
+        loginBtn.className = 'nostr-login-btn';
+        loginBtn.onclick = async () => {
+            try {
+                // Show loading state
+                loginBtn.disabled = true;
+                loginBtn.textContent = 'Connecting...';
+                
+                const result = await nostrAuth.login();
+                if (result.authenticated) {
+                    this.updateAuthUI(result.user);
+                } else {
+                    throw new Error(result.error || 'Authentication failed');
+                }
+            } catch (error) {
+                logger.error('Nostr login failed:', error);
+                const errorMsg = document.createElement('div');
+                errorMsg.className = 'auth-error';
+                
+                // Provide more user-friendly error messages
+                let errorText = 'Login failed';
+                if (error instanceof Error) {
+                    if (error.message.includes('Alby extension not found')) {
+                        errorText = 'Please install Alby extension to use Nostr login';
+                    } else if (error.message.includes('Failed to get public key')) {
+                        errorText = 'Please allow access to your Nostr public key';
+                    } else {
+                        errorText = error.message;
+                    }
+                }
+                
+                errorMsg.textContent = errorText;
+                content.appendChild(errorMsg);
+                setTimeout(() => errorMsg.remove(), 5000);
+            } finally {
+                // Reset button state
+                loginBtn.disabled = false;
+                this.updateAuthUI(nostrAuth.getCurrentUser());
+            }
+        };
+
+        const statusDisplay = document.createElement('div');
+        statusDisplay.className = 'auth-status';
+        
+        content.appendChild(loginBtn);
+        content.appendChild(statusDisplay);
+        authSection.appendChild(content);
+
+        this.container.insertBefore(authSection, this.container.firstChild);
+
+        // Add some basic styles for the auth section
+        const style = document.createElement('style');
+        style.textContent = `
+            .auth-section {
+                margin-bottom: 1rem;
+                padding: 1rem;
+                background: rgba(0, 0, 0, 0.1);
+                border-radius: 4px;
+            }
+            .nostr-login-btn {
+                padding: 8px 16px;
+                background: #4a90e2;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+                transition: background 0.2s;
+            }
+            .nostr-login-btn:hover {
+                background: #357abd;
+            }
+            .nostr-login-btn:disabled {
+                background: #ccc;
+                cursor: wait;
+            }
+            .auth-error {
+                color: #d32f2f;
+                margin-top: 8px;
+                padding: 8px;
+                background: rgba(211, 47, 47, 0.1);
+                border-radius: 4px;
+                font-size: 14px;
+            }
+            .user-info {
+                margin-top: 8px;
+                font-size: 14px;
+            }
+            .user-info .pubkey {
+                font-family: monospace;
+                background: rgba(0, 0, 0, 0.1);
+                padding: 2px 4px;
+                border-radius: 2px;
+            }
+            .user-info .role {
+                color: #4a90e2;
+                font-weight: bold;
+                margin-top: 4px;
+            }
+            .not-authenticated {
+                color: #666;
+                font-style: italic;
+                margin-top: 8px;
+            }
+        `;
+        document.head.appendChild(style);
+
+        this.unsubscribers.push(
+            nostrAuth.onAuthStateChanged(({ user }) => {
+                this.updateAuthUI(user);
+            })
+        );
+
+        await nostrAuth.initialize();
+        this.updateAuthUI(nostrAuth.getCurrentUser());
+    }
+
+    private updateAuthUI(user: NostrUser | null | undefined): void {
+        const loginBtn = this.container.querySelector('.nostr-login-btn') as HTMLButtonElement;
+        const statusDisplay = this.container.querySelector('.auth-status') as HTMLDivElement;
+
+        if (!loginBtn || !statusDisplay) return;
+
+        if (user) {
+            loginBtn.textContent = 'Logout';
+            loginBtn.onclick = async () => {
+                try {
+                    loginBtn.disabled = true;
+                    loginBtn.textContent = 'Logging out...';
+                    await nostrAuth.logout();
+                } catch (error) {
+                    logger.error('Logout failed:', error);
+                } finally {
+                    loginBtn.disabled = false;
+                }
+            };
+            statusDisplay.innerHTML = `
+                <div class="user-info">
+                    <div class="pubkey">${user.pubkey.substring(0, 8)}...</div>
+                    <div class="role">${user.isPowerUser ? 'Power User' : 'Basic User'}</div>
+                </div>
+            `;
+        } else {
+            loginBtn.textContent = 'Login with Nostr';
+            loginBtn.onclick = () => nostrAuth.login();
+            statusDisplay.innerHTML = '<div class="not-authenticated">Not authenticated</div>';
+        }
+        loginBtn.disabled = false;
+    }
+
     private isAdvancedCategory(category: string): boolean {
         const advancedCategories = ['physics', 'rendering', 'debug', 'network'];
         return advancedCategories.includes(category.toLowerCase());
+    }
+
+    private groupSettingsByCategory(paths: string[]): Record<string, string[]> {
+        const groups: Record<string, string[]> = {};
+        
+        paths.forEach(path => {
+            const [category] = path.split('.');
+            if (!groups[category]) {
+                groups[category] = [];
+            }
+            groups[category].push(path);
+        });
+        
+        return groups;
     }
 
     private async createSection(config: SectionConfig, paths: string[]): Promise<HTMLElement> {
@@ -297,44 +376,6 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             }
         }
 
-        const header = this.createSectionHeader(config);
-        section.appendChild(header);
-
-        const content = document.createElement('div');
-        content.className = 'section-content';
-        
-        const validPaths = paths.filter(path => {
-            const value = this.settingsStore.get(path);
-            return value !== undefined && value !== null;
-        });
-        
-        if (validPaths.length > 0) {
-            const subcategories = this.groupBySubcategory(validPaths);
-            
-            const sortedSubcategories = Object.entries(subcategories).sort(([a], [b]) => {
-                if (a === 'general') return -1;
-                if (b === 'general') return 1;
-                return a.localeCompare(b);
-            });
-            
-            for (const [subcategory, subPaths] of sortedSubcategories) {
-                if (subPaths.length > 0) {
-                    const subsection = await this.createSubsection(subcategory, subPaths);
-                    content.appendChild(subsection);
-                }
-            }
-        } else {
-            const emptyMessage = document.createElement('div');
-            emptyMessage.className = 'empty-section-message';
-            emptyMessage.textContent = 'No configurable settings in this section';
-            content.appendChild(emptyMessage);
-        }
-        
-        section.appendChild(content);
-        return section;
-    }
-
-    private createSectionHeader(config: SectionConfig): HTMLElement {
         const header = document.createElement('div');
         header.className = 'section-header';
         
@@ -357,7 +398,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
 
         const collapseBtn = document.createElement('button');
         collapseBtn.className = 'section-control collapse';
-        collapseBtn.innerHTML = '▼';
+        collapseBtn.innerHTML = config.isCollapsed ? '▼' : '▲';
         collapseBtn.onclick = (e) => {
             e.stopPropagation();
             this.toggleCollapsed(config.id);
@@ -365,29 +406,37 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         controls.appendChild(collapseBtn);
 
         header.appendChild(controls);
-        return header;
-    }
+        section.appendChild(header);
 
-    private groupSettingsByCategory(paths: string[]): Record<string, string[]> {
-        const groups: Record<string, string[]> = {};
-        
-        paths.forEach(path => {
-            const [category] = path.split('.');
-            if (!groups[category]) {
-                groups[category] = [];
+        const content = document.createElement('div');
+        content.className = 'section-content';
+        if (config.isCollapsed) {
+            content.style.display = 'none';
+        }
+
+        const validPaths = paths.filter(path => {
+            const value = this.settingsStore.get(path);
+            return value !== undefined && value !== null;
+        });
+
+        if (validPaths.length > 0) {
+            const subcategories = this.groupBySubcategory(validPaths);
+            
+            for (const [subcategory, subPaths] of Object.entries(subcategories)) {
+                if (subPaths.length > 0) {
+                    const subsection = await this.createSubsection(subcategory, subPaths);
+                    content.appendChild(subsection);
+                }
             }
-            groups[category].push(path);
-        });
-        
-        Object.keys(groups).forEach(key => {
-            groups[key].sort((a, b) => {
-                const aName = a.split('.').pop() || '';
-                const bName = b.split('.').pop() || '';
-                return aName.localeCompare(bName);
-            });
-        });
-        
-        return groups;
+        } else {
+            const emptyMessage = document.createElement('div');
+            emptyMessage.className = 'empty-section-message';
+            emptyMessage.textContent = 'No configurable settings in this section';
+            content.appendChild(emptyMessage);
+        }
+
+        section.appendChild(content);
+        return section;
     }
 
     private groupBySubcategory(paths: string[]): Record<string, string[]> {
@@ -407,14 +456,6 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                 }
                 groups['general'].push(path);
             }
-        });
-        
-        Object.keys(groups).forEach(key => {
-            groups[key].sort((a, b) => {
-                const aName = a.split('.').pop() || '';
-                const bName = b.split('.').pop() || '';
-                return aName.localeCompare(bName);
-            });
         });
         
         return groups;
@@ -494,77 +535,14 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                     };
                     input = colorInput;
                 } else {
-                    const options = this.getOptionsForPath(path);
-                    if (options.length > 0) {
-                        const select = document.createElement('select');
-                        options.forEach(opt => {
-                            const option = document.createElement('option');
-                            option.value = opt;
-                            option.textContent = formatSettingName(opt);
-                            option.selected = opt === value;
-                            select.appendChild(option);
-                        });
-                        select.onchange = (e) => {
-                            const target = e.target as HTMLSelectElement;
-                            this.updateSetting(path, target.value);
-                        };
-                        input = select;
-                    } else {
-                        const textInput = document.createElement('input');
-                        textInput.type = 'text';
-                        textInput.value = value;
-                        textInput.onchange = (e) => {
-                            const target = e.target as HTMLInputElement;
-                            this.updateSetting(path, target.value);
-                        };
-                        input = textInput;
-                    }
-                }
-                break;
-            }
-
-            case 'object': {
-                if (Array.isArray(value)) {
                     const textInput = document.createElement('input');
                     textInput.type = 'text';
-                    textInput.value = value.join(',');
+                    textInput.value = value;
                     textInput.onchange = (e) => {
                         const target = e.target as HTMLInputElement;
-                        this.updateSetting(path, target.value.split(',').map(v => v.trim()));
+                        this.updateSetting(path, target.value);
                     };
                     input = textInput;
-                } else {
-                    const container = document.createElement('div');
-                    container.className = 'nested-object-subsection';
-                    
-                    const header = document.createElement('div');
-                    header.className = 'nested-header';
-                    header.textContent = formatSettingName(path.split('.').pop() || '');
-                    container.appendChild(header);
-                    
-                    const content = document.createElement('div');
-                    content.className = 'nested-content';
-                    
-                    for (const [key] of Object.entries(value)) {
-                        const nestedPath = `${path}.${key}`;
-                        const nestedValue = this.settingsStore.get(nestedPath);
-                        if (nestedValue !== undefined) {
-                            const control = document.createElement('div');
-                            control.className = 'setting-control';
-                            
-                            const label = document.createElement('label');
-                            label.textContent = formatSettingName(key);
-                            control.appendChild(label);
-                            
-                            const nestedInput = await this.createInputElement(nestedPath, nestedValue);
-                            control.appendChild(nestedInput);
-                            
-                            content.appendChild(control);
-                        }
-                    }
-                    
-                    container.appendChild(content);
-                    input = container;
                 }
                 break;
             }
@@ -578,19 +556,6 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         }
 
         return input;
-    }
-
-    private getOptionsForPath(path: string): string[] {
-        const optionsMap: Record<string, string[]> = {
-            'visualization.nodes.quality': ['low', 'medium', 'high'],
-            'visualization.edges.quality': ['low', 'medium', 'high'],
-            'visualization.rendering.context': ['desktop', 'ar'],
-            'system.debug.logLevel': ['error', 'warn', 'info', 'debug', 'trace'],
-            'xr.mode': ['immersive-vr', 'immersive-ar'],
-            'xr.spaceType': ['local', 'local-floor', 'bounded-floor']
-        };
-
-        return optionsMap[path] || [];
     }
 
     private updateSetting(path: string, value: any): void {
@@ -632,7 +597,15 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         config.isCollapsed = !config.isCollapsed;
         const section = this.container.querySelector(`[data-section-id="${sectionId}"]`);
         if (section) {
-            section.classList.toggle('collapsed');
+            const content = section.querySelector('.section-content');
+            if (content) {
+                content.classList.toggle('collapsed');
+                (content as HTMLElement).style.display = config.isCollapsed ? 'none' : '';
+            }
+            const collapseBtn = section.querySelector('.collapse') as HTMLElement;
+            if (collapseBtn) {
+                collapseBtn.innerHTML = config.isCollapsed ? '▼' : '▲';
+            }
         }
     }
 

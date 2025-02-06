@@ -84,7 +84,7 @@ visualization:
 system:
   network:
     bind_address: 0.0.0.0
-    domain: localhost
+    domain: "visionflow.info"
     enable_http2: false
     enable_rate_limiting: true
     enable_tls: false
@@ -100,6 +100,7 @@ system:
     max_retries: 3
     metrics_port: 9090
     retry_delay: 5
+    allowed_origins: ["https://www.visionflow.info", "https://visionflow.info"]
   websocket:
     binary_chunk_size: 2048
     binary_update_rate: 60
@@ -114,7 +115,7 @@ system:
     reconnect_delay: 3000
     update_rate: 90
   security:
-    allowed_origins: []
+    allowed_origins: ["https://www.visionflow.info", "https://visionflow.info"]
     audit_log_path: /app/logs/audit.log
     cookie_httponly: true
     cookie_samesite: Strict

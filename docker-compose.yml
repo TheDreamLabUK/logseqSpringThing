@@ -41,7 +41,6 @@ services:
       - ./data/markdown:/app/data/markdown
       - ./data/metadata:/app/data/metadata  # Added metadata volume mount
       - ./data/piper:/app/data/piper
-      - ./client:/app/client
       - type: bind
         source: ${PWD}/settings.yaml
         target: /app/settings.yaml

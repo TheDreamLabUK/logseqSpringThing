@@ -189,7 +189,7 @@ async fn main() -> std::io::Result<()> {
                     .service(web::scope("/health").configure(health_handler::config))
                     .service(web::scope("/pages").configure(pages_handler::config))
             )
-            .service(Files::new("/", "/app/client").index_file("index.html"))
+            .service(Files::new("/", "/app/data/public/dist").index_file("index.html"))
     })
     .bind(&bind_address)?
     .run()

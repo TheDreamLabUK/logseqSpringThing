@@ -4,6 +4,15 @@ import { createLogger } from '../core/logger';
 
 const logger = createLogger('NostrAuthService');
 
+declare global {
+    interface Window {
+        nostr?: {
+            getPublicKey(): Promise<string>;
+            signEvent(event: any): Promise<any>;
+        };
+    }
+}
+
 /**
  * Represents a Nostr user with their access rights
  */
@@ -57,40 +66,87 @@ export class NostrAuthService {
     }
 
     /**
-     * Attempt to authenticate with a Nostr pubkey
+     * Check if Alby extension is available
+     */
+    private checkAlbyAvailability(): boolean {
+        return typeof window !== 'undefined' && 'nostr' in window;
+    }
+
+    /**
+     * Create a Nostr event for authentication
+     */
+    private async createAuthEvent(pubkey: string): Promise<any> {
+        const createdAt = Math.floor(Date.now() / 1000);
+        const tags = [
+            ['domain', window.location.hostname],
+            ['challenge', Date.now().toString()]
+        ];
+
+        const event = {
+            kind: 27235,
+            created_at: createdAt,
+            tags,
+            content: `Authenticate with ${window.location.hostname} at ${new Date().toISOString()}`,
+            pubkey
+        };
+
+        // Sign the event using the Alby extension
+        const signedEvent = await window.nostr?.signEvent(event);
+        if (!signedEvent) {
+            throw new Error('Failed to sign authentication event');
+        }
+
+        return signedEvent;
+    }
+
+    /**
+     * Attempt to authenticate with Nostr using Alby
      */
     public async login(): Promise<AuthResult> {
         try {
-            // TODO: Implement actual Nostr authentication
-            // For now, we'll simulate with a mock pubkey
-            const mockPubkey = 'npub1...'; // This will be replaced with actual Nostr auth
-            
-            const response = await fetch('/api/auth/login', {
+            // Check if Alby is available
+            if (!this.checkAlbyAvailability()) {
+                throw new Error('Alby extension not found. Please install Alby to use Nostr login.');
+            }
+
+            // Get public key from Alby
+            const pubkey = await window.nostr?.getPublicKey();
+            if (!pubkey) {
+                throw new Error('Failed to get public key from Alby');
+            }
+
+            // Create and sign the authentication event
+            const signedEvent = await this.createAuthEvent(pubkey);
+
+            // Send authentication request to server
+            const response = await fetch('/api/auth/nostr', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Nostr-Pubkey': mockPubkey
-                }
+                },
+                body: JSON.stringify(signedEvent)
             });
 
             if (!response.ok) {
-                throw new Error('Authentication failed');
+                const errorText = await response.text();
+                throw new Error(`Authentication failed: ${errorText}`);
             }
 
-            const userData = await response.json();
+            const authData = await response.json();
             this.currentUser = {
-                pubkey: mockPubkey,
-                isPowerUser: userData.isPowerUser,
-                features: userData.features
+                pubkey: authData.user.pubkey,
+                isPowerUser: authData.user.is_power_user,
+                features: authData.features
             };
 
-            localStorage.setItem('nostr_pubkey', mockPubkey);
-            this.settingsPersistence.setCurrentPubkey(mockPubkey);
+            localStorage.setItem('nostr_pubkey', pubkey);
+            localStorage.setItem('nostr_token', authData.token);
+            this.settingsPersistence.setCurrentPubkey(pubkey);
             
             this.eventEmitter.emit(SettingsEventType.AUTH_STATE_CHANGED, {
                 authState: {
                     isAuthenticated: true,
-                    pubkey: mockPubkey
+                    pubkey
                 }
             });
 
@@ -112,8 +168,27 @@ export class NostrAuthService {
      */
     public async logout(): Promise<void> {
         const currentPubkey = this.currentUser?.pubkey;
+        const token = localStorage.getItem('nostr_token');
         
+        if (currentPubkey && token) {
+            try {
+                await fetch('/api/auth/nostr', {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        pubkey: currentPubkey,
+                        token
+                    })
+                });
+            } catch (error) {
+                logger.error('Logout request failed:', error);
+            }
+        }
+
         localStorage.removeItem('nostr_pubkey');
+        localStorage.removeItem('nostr_token');
         this.currentUser = null;
         this.settingsPersistence.setCurrentPubkey(null);
         
@@ -161,22 +236,37 @@ export class NostrAuthService {
      * Check authentication status with the server
      */
     private async checkAuthStatus(pubkey: string): Promise<void> {
+        const token = localStorage.getItem('nostr_token');
+        if (!token) {
+            await this.logout();
+            return;
+        }
+
         try {
-            const response = await fetch('/api/auth/status', {
+            const response = await fetch('/api/auth/nostr/verify', {
+                method: 'POST',
                 headers: {
-                    'X-Nostr-Pubkey': pubkey
-                }
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    pubkey,
+                    token
+                })
             });
 
             if (!response.ok) {
                 throw new Error('Authentication check failed');
             }
 
-            const userData = await response.json();
+            const verifyData = await response.json();
+            if (!verifyData.valid) {
+                throw new Error('Invalid session');
+            }
+
             this.currentUser = {
                 pubkey,
-                isPowerUser: userData.isPowerUser,
-                features: userData.features
+                isPowerUser: verifyData.is_power_user,
+                features: verifyData.features
             };
 
             this.settingsPersistence.setCurrentPubkey(pubkey);
