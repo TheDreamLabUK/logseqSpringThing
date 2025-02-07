@@ -1,37 +1,45 @@
 import type { Settings, LabelSettings } from '../types/settings';
 import { settingsManager } from '../state/settings';
 import { createLogger } from '../core/logger';
-import * as THREE from 'three';
-
+import {
+    Scene,
+    Camera,
+    Group,
+    Sprite,
+    SpriteMaterial,
+    Vector3,
+    Matrix4,
+    Texture
+} from 'three';
 const logger = createLogger('TextRenderer');
 
 interface LabelState {
     text: string;
-    position: THREE.Vector3;
+    position: Vector3;
     visible: boolean;
-    boundingBox?: THREE.Object3D;
+    sprite?: Sprite;
+    texture?: Texture;
 }
 
 export class TextRenderer {
-    private labels: Map<string, THREE.Group>;
-    private camera: THREE.Camera;
+    private camera: Camera;
     private labelStates: Map<string, LabelState>;
     private unsubscribers: Array<() => void> = [];
-    private projMatrix: THREE.Matrix4;
-    private viewMatrix: THREE.Matrix4;
+    private projMatrix: Matrix4;
+    private viewMatrix: Matrix4;
     private currentSettings: Settings;
     private settings: LabelSettings;
-    private group: THREE.Group;
+    private group: Group;
 
-    constructor(camera: THREE.Camera) {
+    constructor(camera: Camera, scene: Scene) {
         this.camera = camera;
-        this.labels = new Map();
         this.labelStates = new Map();
-        this.projMatrix = new THREE.Matrix4();
-        this.viewMatrix = new THREE.Matrix4();
+        this.projMatrix = new Matrix4();
+        this.viewMatrix = new Matrix4();
         this.currentSettings = settingsManager.getCurrentSettings();
         this.settings = this.currentSettings.visualization.labels;
-        this.group = new THREE.Group();
+        this.group = new Group();
+        scene.add(this.group); // Add the group to the scene
         this.setupSettingsSubscriptions();
     }
 
@@ -67,167 +75,142 @@ export class TextRenderer {
     }
 
     private updateFontSize(fontSize: number): void {
-        if (!this.labels) return;
-        
-        this.labels.forEach((group) => {
-            group.children.forEach((child) => {
-                if (child instanceof THREE.Mesh && child.userData.text) {
-                    const material = child.material as THREE.MeshBasicMaterial;
-                    material.dispose();
-                    
-                    // Create new text geometry with updated font size
-                    const geometry = this.createTextGeometry(child.userData.text, {
-                        fontSize,
-                        position: child.position.clone()
-                    });
-                    
-                    // Replace old geometry
-                    child.geometry.dispose();
-                    child.geometry = geometry;
-                }
-            });
+        this.labelStates.forEach((state) => {
+            if (state.sprite) {
+                // Remove old sprite
+                this.group.remove(state.sprite);
+                state.sprite.material.dispose();
+                state.sprite.material.map?.dispose();
+                state.texture?.dispose();
+
+                // Create new sprite with updated font size
+                state.sprite = this.createTextSprite(state.text, fontSize);
+                state.sprite.position.copy(state.position);
+                this.group.add(state.sprite);
+            }
         });
     }
 
-    private createTextGeometry(text: string, { fontSize, position }: { fontSize: number; position: THREE.Vector3 }): THREE.BufferGeometry {
-        // Create a simple plane geometry as a placeholder
-        // In a real implementation, this would create actual text geometry based on the font and text
-        const width = fontSize * text.length * 0.5;
-        const height = fontSize;
-        
-        // Create vertices for a simple plane
-        const vertices = new Float32Array([
-            -width/2 + position.x, -height/2 + position.y, position.z,  // bottom left
-            width/2 + position.x, -height/2 + position.y, position.z,   // bottom right
-            width/2 + position.x, height/2 + position.y, position.z,    // top right
-            -width/2 + position.x, height/2 + position.y, position.z    // top left
-        ]);
+    private createTextSprite(text: string, fontSize: number): Sprite {
+        // Create a canvas to render the text
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Could not get 2D context');
 
-        // Create UVs
-        const uvs = new Float32Array([
-            0, 0,  // bottom left
-            1, 0,  // bottom right
-            1, 1,  // top right
-            0, 1   // top left
-        ]);
+        // Set canvas size
+        const padding = 10;
+        context.font = `${fontSize}px Arial`;
+        const textMetrics = context.measureText(text);
+        canvas.width = textMetrics.width + padding * 2;
+        canvas.height = fontSize + padding * 2;
 
-        // Create indices
-        const indices = new Uint16Array([
-            0, 1, 2,  // first triangle
-            0, 2, 3   // second triangle
-        ]);
+        // Draw background (optional, for better visibility)
+        context.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        context.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Create normals (facing forward in this case)
-        const normals = new Float32Array([
-            0, 0, 1,
-            0, 0, 1,
-            0, 0, 1,
-            0, 0, 1
-        ]);
+        // Draw text
+        context.font = `${fontSize}px Arial`;
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillStyle = this.settings.textColor;
+        context.strokeStyle = 'rgba(0, 0, 0, 0.5)';  // Add outline for better visibility
+        context.fillText(text, canvas.width / 2, canvas.height / 2);
 
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-        geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-        geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-        geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+        // Create sprite material
+        const texture = new Texture(canvas);
+        texture.needsUpdate = true;
+        const material = new SpriteMaterial({
+            map: texture,
+            transparent: true,
+            depthTest: false // Ensure text is always visible
+        });
 
-        return geometry;
+        // Create sprite
+        const sprite = new Sprite(material);
+        sprite.scale.set(canvas.width / fontSize, canvas.height / fontSize, 1);
+
+        return sprite;
     }
 
     private updateTextColor(newColor: string): void {
-        if (!this.labels) return;
-        
-        this.labels.forEach((group) => {
-            group.children.forEach((child) => {
-                if (child instanceof THREE.Mesh) {
-                    const material = child.material as THREE.MeshBasicMaterial;
-                    material.color.set(newColor);
-                    material.dispose();
-                    material.color.set(newColor);
-                }
-            });
+        this.settings.textColor = newColor;
+        this.labelStates.forEach((state) => {
+            if (state.sprite) {
+                // Remove old sprite
+                this.group.remove(state.sprite);
+                state.sprite.material.dispose();
+                state.sprite.material.map?.dispose();
+                state.texture?.dispose();
+
+                // Create new sprite with updated color
+                state.sprite = this.createTextSprite(state.text, this.settings.desktopFontSize);
+                state.sprite.position.copy(state.position);
+                this.group.add(state.sprite);
+            }
         });
     }
 
     private updateLabelVisibility(visible: boolean): void {
-        // Update visibility for all labels
-        this.labels.forEach((labelGroup) => {
-            labelGroup.visible = visible;
-        });
+        this.group.visible = visible;
     }
 
-    public updateLabel(id: string, text: string, position: THREE.Vector3): void {
+    public updateLabel(id: string, text: string, position: Vector3): void {
         try {
-            let labelGroup = this.labels.get(id);
-            if (!labelGroup) {
-                labelGroup = new THREE.Group();
-                this.labels.set(id, labelGroup);
-                this.group.add(labelGroup);
+            let state = this.labelStates.get(id);
+            if (!state) {
+                state = {
+                    text,
+                    position: position.clone(),
+                    visible: true
+                };
+                this.labelStates.set(id, state);
+            } else {
+                state.text = text;
+                state.position.copy(position);
             }
 
-            const state: LabelState = {
-                text,
-                position: position.clone(),
-                visible: true
-            };
-            this.labelStates.set(id, state);
+            // Remove old sprite if it exists
+            if (state.sprite) {
+                this.group.remove(state.sprite);
+                state.sprite.material.dispose();
+                state.sprite.material.map?.dispose();
+                state.texture?.dispose();
+            }
 
-            // Update style and position
-            this.updateLabelStyle(labelGroup, state);
+            // Create new sprite
+            state.sprite = this.createTextSprite(text, this.settings.desktopFontSize);
+            state.sprite.position.copy(position);
+            this.group.add(state.sprite);
         } catch (error) {
             logger.error('Error updating label:', error);
         }
     }
 
-    private updateLabelStyle(labelGroup: THREE.Group, state: LabelState): void {
-        try {
-            // Update position
-            labelGroup.position.copy(state.position);
-
-            // Update text content and style
-            // Implementation depends on how you're rendering text
-            // (e.g., using HTML elements, sprites, or geometry)
-
-            // Update visibility
-            labelGroup.visible = this.settings.enableLabels && state.visible;
-
-            // Update bounding box for culling
-            state.boundingBox = labelGroup;
-        } catch (error) {
-            logger.error('Error updating label style:', error);
-        }
-    }
-
     public removeLabel(id: string): void {
         try {
-            const labelGroup = this.labels.get(id);
-            if (labelGroup) {
-                this.group.remove(labelGroup);
-                // Clean up THREE.js objects
-                this.clearLabels();
-                this.labels.delete(id);
-                this.labelStates.delete(id);
+            const state = this.labelStates.get(id);
+            if (state?.sprite) {
+                this.group.remove(state.sprite);
+                state.sprite.material.dispose();
+                state.sprite.material.map?.dispose();
+                state.texture?.dispose();
             }
+            this.labelStates.delete(id);
         } catch (error) {
             logger.error('Error removing label:', error);
         }
     }
 
     private clearLabels(): void {
-        if (!this.labels) return;
-        
-        this.labels.forEach((group) => {
-            while (group.children.length > 0) {
-                const child = group.children[0];
-                group.remove(child);
-                if (child instanceof THREE.Mesh) {
-                    child.geometry.dispose();
-                    if (child.material instanceof THREE.Material) {
-                        child.material.dispose();
-                    }
-                }
+        this.labelStates.forEach((state) => {
+            if (state.sprite) {
+                this.group.remove(state.sprite);
+                state.sprite.material.dispose();
+                state.sprite.material.map?.dispose();
+                state.texture?.dispose();
             }
         });
+        this.labelStates.clear();
     }
 
     public update(): void {
@@ -236,14 +219,21 @@ export class TextRenderer {
             this.camera.updateMatrixWorld();
             this.projMatrix.copy(this.camera.projectionMatrix);
             this.viewMatrix.copy(this.camera.matrixWorldInverse);
+            
+            if (!this.settings.enableLabels) {
+                this.group.visible = false;
+                return;
+            }
+            
+            this.group.visible = true;
 
             // Update label positions and visibility
-            this.labelStates.forEach((state, id) => {
-                const labelGroup = this.labels.get(id);
-                if (!labelGroup) return;
-
-                // Update label position and style
-                this.updateLabelStyle(labelGroup, state);
+            this.labelStates.forEach((state) => {
+                if (state.sprite) {
+                    state.sprite.position.copy(state.position);
+                    // Make sprite face camera
+                    state.sprite.quaternion.copy(this.camera.quaternion);
+                }
             });
         } catch (error) {
             logger.error('Error updating labels:', error);
@@ -252,16 +242,9 @@ export class TextRenderer {
 
     public dispose(): void {
         try {
-            // Clean up THREE.js objects
             this.clearLabels();
-            this.labels.clear();
-            this.labelStates.clear();
-
-            // Clean up subscribers
             this.unsubscribers.forEach(unsubscribe => unsubscribe());
             this.unsubscribers = [];
-
-            // Clean up group
             if (this.group.parent) {
                 this.group.parent.remove(this.group);
             }
@@ -275,9 +258,5 @@ export class TextRenderer {
         this.updateLabelVisibility(settings.enableLabels);
         this.updateFontSize(settings.desktopFontSize);
         this.updateTextColor(settings.textColor);
-    }
-
-    public getGroup(): THREE.Group {
-        return this.group;
     }
 }
