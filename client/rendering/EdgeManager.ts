@@ -66,17 +66,19 @@ export class EdgeManager {
             this.currentQuality = quality;
             this.currentContext = context;
             
+            logger.debug(`Updating geometry for quality: ${quality}, context: ${context}`);
             // Get new geometry with updated quality
             this.edgeGeometry = this.geometryFactory.getEdgeGeometry(this.currentContext, this.currentQuality);
             
-            // Update instanced mesh if it exists
+            // Dispose of old mesh before creating new one
             if (this.instancedMesh) {
                 const oldMesh = this.instancedMesh;
-                this.setupInstancedMesh();
-                oldMesh.geometry.dispose();
                 this.scene.remove(oldMesh);
+                oldMesh.geometry.dispose();
+                this.setupInstancedMesh();
                 
-                // Reapply current edges with new geometry
+                logger.debug('Mesh recreated with new geometry');
+                // Reapply edges with new geometry
                 if (this.currentEdges.length > 0) {
                     this.updateEdges(this.currentEdges);
                 }
@@ -105,43 +107,42 @@ export class EdgeManager {
 
     private setupInstancedMesh() {
         // Use a larger initial capacity for better performance
-        const initialCapacity = Math.max(1000, this.currentEdges?.length || 0);
+        const initialCapacity = 1000; // Fixed initial capacity
         this.instancedMesh = new InstancedMesh(this.edgeGeometry, this.edgeMaterial, initialCapacity);
         this.instancedMesh.count = 0;
         this.instancedMesh.frustumCulled = true; // Enable frustum culling
         this.scene.add(this.instancedMesh);
+        logger.debug(`InstancedMesh created with capacity: ${initialCapacity}`);
+        // Set buffer usage to dynamic (35044 is THREE.DynamicDrawUsage)
+        (this.instancedMesh.instanceMatrix as any).usage = 35044;
     }
 
     private validateEdgePositions(start: Vector3, end: Vector3): boolean {
         if (start.distanceTo(end) < 0.0001) {
-            logger.warn('Edge endpoints too close', {
-                start: `${start.x},${start.y},${start.z}`,
-                end: `${end.x},${end.y},${end.z}`
-            });
             return false;
         }
         return true;
     }
 
 
-    private scheduleBatchUpdate(): void {
+    private scheduleBatchUpdate(edges: Edge[]): void {
         if (this.updateScheduled) return;
         this.updateScheduled = true;
 
         requestAnimationFrame(() => {
-            this.processBatchUpdate();
+            this.processBatchUpdate(edges);
             this.updateScheduled = false;
         });
     }
 
-    private processBatchUpdate(): void {
+    private processBatchUpdate(edges: Edge[]): void {
         if (!this.instancedMesh || this.pendingUpdates.size === 0) return;
 
         let processed = 0;
         this.pendingUpdates.forEach(index => {
             if (processed >= EdgeManager.BATCH_SIZE) return;
 
-            const edge = this.currentEdges[index];
+            const edge = edges[index];
             if (!edge?.sourcePosition || !edge?.targetPosition) return;
 
             // Set positions
@@ -202,10 +203,11 @@ export class EdgeManager {
 
         if (processed > 0) {
             this.instancedMesh.instanceMatrix.needsUpdate = true;
+            logger.debug(`Processed ${processed} edge updates`);
         }
 
         if (this.pendingUpdates.size > 0) {
-            this.scheduleBatchUpdate();
+            this.scheduleBatchUpdate(edges);
         }
     }
 
@@ -214,16 +216,20 @@ export class EdgeManager {
     updateEdges(edges: Edge[]) {
         const mesh = this.instancedMesh;
         if (!mesh) return;
+        // Clear any pending updates before starting new ones
+        this.pendingUpdates.clear();
+
+        logger.debug(`Updating ${edges.length} edges`);
         
         mesh.count = edges.length;
         this.currentEdges = edges;
 
-        // Queue all edges for update
+        // Queue new edges for update
         for (let i = 0; i < edges.length; i++) {
             this.pendingUpdates.add(i);
         }
 
-        this.scheduleBatchUpdate();
+        this.scheduleBatchUpdate(edges);
     }
 
     dispose() {
@@ -232,6 +238,7 @@ export class EdgeManager {
             this.instancedMesh.material.dispose();
             this.scene.remove(this.instancedMesh);
         }
+        logger.debug('EdgeManager disposed');
         this.pendingUpdates.clear();
     }
 }

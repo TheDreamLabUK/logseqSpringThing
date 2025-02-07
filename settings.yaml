@@ -15,13 +15,13 @@ visualization:
     enable_metadata_visualization: true
   edges:
     arrow_size: 7.6
-    base_width: 1.0
+    base_width: 2.5
     color: '#316ec9'
     enable_arrows: false
-    opacity: 0.6
+    opacity: 0.8
     width_range:
-    - 0.6
-    - 1.6
+    - 1.5
+    - 3.0
   physics:
     attraction_strength: 0.015
     bounds_size: 100.0
@@ -34,9 +34,9 @@ visualization:
     repulsion_strength: 1200.0
     spring_strength: 0.018
   rendering:
-    ambient_light_intensity: 0.0
+    ambient_light_intensity: 0.6
     background_color: '#1a1a2e'
-    directional_light_intensity: 0.0
+    directional_light_intensity: 0.8
     enable_ambient_occlusion: false
     enable_antialiasing: false
     enable_shadows: false
@@ -55,12 +55,12 @@ visualization:
     enable_labels: true
     text_color: '#6087c3'
   bloom:
-    edge_bloom_strength: 0.6
+    edge_bloom_strength: 1.1
     enabled: true
-    environment_bloom_strength: 0.3
-    node_bloom_strength: 0.5
+    environment_bloom_strength: 0.8
+    node_bloom_strength: 1.0
     radius: 1.0
-    strength: 0.4
+    strength: 0.6
   hologram:
     ring_count: 0
     ring_color: '#455673'
