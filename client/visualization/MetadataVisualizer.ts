@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { NodeMetadata } from '../types/metadata';
+import { Settings } from '../types/settings';
 
 type GeometryWithBoundingBox = THREE.BufferGeometry & {
     boundingBox: THREE.Box3 | null;
@@ -15,9 +16,10 @@ export class MetadataVisualizer {
     private font: Font | null;
     private fontPath: string;
     private labelGroup: THREE.Group;
-    private settings: any;
+    private settings: Settings;
+    private fontLoadAttempts: number = 0;
 
-    constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera, settings: any) {
+    constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera, settings: Settings) {
         this.scene = scene;
         this.camera = camera;
         this.fontLoader = new FontLoader();
@@ -37,11 +39,35 @@ export class MetadataVisualizer {
 
     private async loadFont(): Promise<void> {
         try {
-            this.font = await new Promise((resolve, reject) => {
-                this.fontLoader.load(this.fontPath, resolve, undefined, reject);
-            });
+            await this.attemptFontLoad();
         } catch (error) {
-            console.error('Failed to load font:', error);
+            console.error('Initial font load failed:', error);
+            await this.retryFontLoad();
+        }
+    }
+
+    private async attemptFontLoad(): Promise<void> {
+        this.font = await new Promise((resolve, reject) => {
+            this.fontLoader.load(
+                this.fontPath,
+                resolve,
+                undefined,
+                reject
+            );
+        });
+    }
+
+    private async retryFontLoad(maxAttempts: number = 3): Promise<void> {
+        while (this.fontLoadAttempts < maxAttempts && !this.font) {
+            this.fontLoadAttempts++;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            try {
+                await this.attemptFontLoad();
+                console.log('Font loaded successfully after retry');
+                break;
+            } catch (error) {
+                console.error(`Font load attempt ${this.fontLoadAttempts} failed:`, error);
+            }
         }
     }
 
@@ -53,12 +79,18 @@ export class MetadataVisualizer {
 
         const textGeometry = new TextGeometry(text, {
             font: this.font,
-            size: this.settings.labelSize || 0.1,
-            height: this.settings.labelHeight || 0.01
+            size: this.settings.visualization.labels.desktopFontSize / 100 || 0.14,
+            height: 0.01 // Fixed thin height for better readability
         });
 
-        const material = new THREE.MeshBasicMaterial({
-            color: this.settings.labelColor || 0xffffff
+        const material = new THREE.MeshStandardMaterial({
+            color: this.settings.visualization.labels.textColor || '#ffffff',
+            metalness: 0.1,
+            roughness: 0.6,
+            emissive: this.settings.visualization.labels.textColor || '#ffffff',
+            transparent: true,
+            opacity: 1.0,
+            side: THREE.DoubleSide
         });
 
         // Create mesh with the text geometry and center it
@@ -83,16 +115,22 @@ export class MetadataVisualizer {
 
         const textGeometry = new TextGeometry(text, {
             font: this.font,
-            size: 1,
+            size: this.settings.visualization.labels.desktopFontSize / 100 || 0.14,
             height: 0.1, // Keep text thin for readability
             curveSegments: 4,
             bevelEnabled: false
         });
 
-        const material = new THREE.MeshBasicMaterial({
-            color: 0xffffff,
+        const material = new THREE.MeshStandardMaterial({
+            color: this.settings.visualization.labels.textColor || '#ffffff',
+            metalness: 0.1,
+            roughness: 0.6,
+            emissive: this.settings.visualization.labels.textColor || '#ffffff',
             transparent: true,
-            opacity: 0.8
+            opacity: 1.0,
+            side: THREE.DoubleSide,
+            depthWrite: true,
+            depthTest: true
         });
 
         // Create mesh with the text geometry and center it
@@ -147,7 +185,7 @@ export class MetadataVisualizer {
         const nameMesh = await this.createTextMesh(metadata.name);
         if (nameMesh) {
             nameMesh.position.y = 1.2;
-            nameMesh.scale.setScalar(0.1); // Small scale for readability
+            nameMesh.scale.setScalar(0.5); // Increased scale for better visibility
             group.add(nameMesh);
         }
 
@@ -155,7 +193,7 @@ export class MetadataVisualizer {
         const ageMesh = await this.createTextMesh(`${Math.round(metadata.commitAge)} days`);
         if (ageMesh) {
             ageMesh.position.y = 0.8;
-            ageMesh.scale.setScalar(0.1); // Small scale for readability
+            ageMesh.scale.setScalar(0.5); // Increased scale for better visibility
             group.add(ageMesh);
         }
 
@@ -163,12 +201,12 @@ export class MetadataVisualizer {
         const linksMesh = await this.createTextMesh(`${metadata.hyperlinkCount} links`);
         if (linksMesh) {
             linksMesh.position.y = 0.4;
-            linksMesh.scale.setScalar(0.1); // Small scale for readability
+            linksMesh.scale.setScalar(0.5); // Increased scale for better visibility
             group.add(linksMesh);
         }
 
         // Billboard behavior
-        if (this.settings.labels?.billboard_mode === 'camera') {
+        if (this.settings.visualization.labels.billboardMode) {
             group.onBeforeRender = () => {
                 group.quaternion.copy(this.camera.quaternion);
             };
