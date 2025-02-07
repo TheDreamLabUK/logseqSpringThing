@@ -9,6 +9,16 @@ type GeometryWithBoundingBox = THREE.BufferGeometry & {
     computeBoundingBox: () => void;
 };
 
+export interface MetadataLabelGroup extends THREE.Group {
+    name: string;
+    visible: boolean;
+    userData: {
+        isMetadata: boolean;
+    };
+}
+
+export type MetadataLabelCallback = (group: MetadataLabelGroup) => void;
+
 export class MetadataVisualizer {
     private scene: THREE.Scene;
     private camera: THREE.PerspectiveCamera;
@@ -19,7 +29,7 @@ export class MetadataVisualizer {
     private settings: Settings;
     private fontLoadAttempts: number = 0;
 
-    constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera, settings: Settings) {
+    constructor(camera: THREE.PerspectiveCamera, scene: THREE.Scene, settings: Settings) {
         this.scene = scene;
         this.camera = camera;
         this.fontLoader = new FontLoader();
@@ -79,7 +89,7 @@ export class MetadataVisualizer {
 
         const textGeometry = new TextGeometry(text, {
             font: this.font,
-            size: this.settings.visualization.labels.desktopFontSize / 100 || 0.14,
+            size: this.settings.visualization.labels.desktopFontSize / 10 || 0.5,
             height: 0.01 // Fixed thin height for better readability
         });
 
@@ -115,7 +125,7 @@ export class MetadataVisualizer {
 
         const textGeometry = new TextGeometry(text, {
             font: this.font,
-            size: this.settings.visualization.labels.desktopFontSize / 100 || 0.14,
+            size: this.settings.visualization.labels.desktopFontSize / 10 || 0.5,
             height: 0.1, // Keep text thin for readability
             curveSegments: 4,
             bevelEnabled: false
@@ -146,7 +156,7 @@ export class MetadataVisualizer {
         return mesh;
     }
 
-    public createNodeVisual(metadata: NodeMetadata): THREE.Mesh {
+    public createNodeVisual = (metadata: NodeMetadata): THREE.Mesh => {
         const geometry = this.getGeometryFromAge(metadata.commitAge);
         const material = this.createMaterialFromHyperlinks(metadata.hyperlinkCount);
         const mesh = new THREE.Mesh(geometry, material);
@@ -160,7 +170,7 @@ export class MetadataVisualizer {
         return mesh;
     }
 
-    private getGeometryFromAge(age: number): THREE.BufferGeometry {
+    private getGeometryFromAge = (age: number): THREE.BufferGeometry => {
         if (age < 7) return this.geometries.SPHERE;
         if (age < 30) return this.geometries.ICOSAHEDRON;
         return this.geometries.OCTAHEDRON;
@@ -178,14 +188,18 @@ export class MetadataVisualizer {
         });
     }
 
-    public async createMetadataLabel(metadata: NodeMetadata): Promise<THREE.Group> {
-        const group = new THREE.Group();
+    public createMetadataLabel = async (metadata: NodeMetadata): Promise<MetadataLabelGroup> => {
+        const group = Object.assign(new THREE.Group(), {
+            name: 'metadata-label',
+            visible: true,
+            userData: { isMetadata: true }
+        }) as MetadataLabelGroup;
 
         // Create text for name
         const nameMesh = await this.createTextMesh(metadata.name);
         if (nameMesh) {
             nameMesh.position.y = 1.2;
-            nameMesh.scale.setScalar(0.5); // Increased scale for better visibility
+            nameMesh.scale.setScalar(1.0); // Increased scale for better visibility
             group.add(nameMesh);
         }
 
@@ -193,7 +207,7 @@ export class MetadataVisualizer {
         const ageMesh = await this.createTextMesh(`${Math.round(metadata.commitAge)} days`);
         if (ageMesh) {
             ageMesh.position.y = 0.8;
-            ageMesh.scale.setScalar(0.5); // Increased scale for better visibility
+            ageMesh.scale.setScalar(1.0); // Increased scale for better visibility
             group.add(ageMesh);
         }
 
@@ -201,7 +215,7 @@ export class MetadataVisualizer {
         const linksMesh = await this.createTextMesh(`${metadata.hyperlinkCount} links`);
         if (linksMesh) {
             linksMesh.position.y = 0.4;
-            linksMesh.scale.setScalar(0.5); // Increased scale for better visibility
+            linksMesh.scale.setScalar(1.0); // Increased scale for better visibility
             group.add(linksMesh);
         }
 

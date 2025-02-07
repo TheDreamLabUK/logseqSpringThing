@@ -74,13 +74,14 @@ export class EdgeManager {
             // Get edge width settings from settings
             const edgeSettings = this.settings.visualization?.edges || {};
             const baseWidth = edgeSettings.baseWidth || 1.0;
+            const scaleFactor = edgeSettings.scaleFactor || 1.0;
             const widthRange = edgeSettings.widthRange || [0.5, 2.0];
             
             // Calculate edge width and clamp to range
             const edgeWidth = Math.max(widthRange[0], Math.min(widthRange[1], baseWidth));
             
             // Create scale with width and length
-            const scale = new Vector3(edgeWidth, length, edgeWidth);
+            const scale = new Vector3(edgeWidth * scaleFactor, length * scaleFactor, edgeWidth * scaleFactor);
             
             // Calculate rotation from UP vector to edge direction
             const upDot = EdgeManager.UP.dot(direction);
