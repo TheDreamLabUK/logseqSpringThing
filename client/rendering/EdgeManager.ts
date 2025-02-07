@@ -77,7 +77,7 @@ export class EdgeManager {
             const widthRange = edgeSettings.widthRange || [0.5, 2.0];
             
             // Calculate edge width and clamp to range
-            const edgeWidth = Math.max(widthRange[0], Math.min(widthRange[1], baseWidth)) * 0.1; // Scale down by 0.1
+            const edgeWidth = Math.max(widthRange[0], Math.min(widthRange[1], baseWidth));
             
             // Create scale with width and length
             const scale = new Vector3(edgeWidth, length, edgeWidth);

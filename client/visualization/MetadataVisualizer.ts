@@ -35,9 +35,6 @@ export class MetadataVisualizer {
         OCTAHEDRON: new THREE.OctahedronGeometry(1)
     };
 
-    private readonly labelScale = 0.1;
-    private readonly labelHeight = 0.1;
-
     private async loadFont(): Promise<void> {
         try {
             this.font = await new Promise((resolve, reject) => {
@@ -87,7 +84,7 @@ export class MetadataVisualizer {
         const textGeometry = new TextGeometry(text, {
             font: this.font,
             size: 1,
-            height: this.labelHeight,
+            height: 0.1, // Keep text thin for readability
             curveSegments: 4,
             bevelEnabled: false
         });
@@ -102,7 +99,6 @@ export class MetadataVisualizer {
         const geometry = textGeometry as unknown as GeometryWithBoundingBox;
         geometry.computeBoundingBox();
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.scale.set(this.labelScale, this.labelScale, this.labelScale);
 
         if (geometry.boundingBox) {
             const width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
@@ -116,9 +112,6 @@ export class MetadataVisualizer {
         const geometry = this.getGeometryFromAge(metadata.commitAge);
         const material = this.createMaterialFromHyperlinks(metadata.hyperlinkCount);
         const mesh = new THREE.Mesh(geometry, material);
-
-        const scale = this.calculateScale(metadata.importance);
-        mesh.scale.set(scale, scale, scale);
 
         mesh.position.set(
             metadata.position.x,
@@ -147,11 +140,6 @@ export class MetadataVisualizer {
         });
     }
 
-    private calculateScale(importance: number): number {
-        const [min, max] = this.settings.nodes.sizeRange;
-        return min + (max - min) * Math.min(importance, 1);
-    }
-
     public async createMetadataLabel(metadata: NodeMetadata): Promise<THREE.Group> {
         const group = new THREE.Group();
 
@@ -159,6 +147,7 @@ export class MetadataVisualizer {
         const nameMesh = await this.createTextMesh(metadata.name);
         if (nameMesh) {
             nameMesh.position.y = 1.2;
+            nameMesh.scale.setScalar(0.1); // Small scale for readability
             group.add(nameMesh);
         }
 
@@ -166,6 +155,7 @@ export class MetadataVisualizer {
         const ageMesh = await this.createTextMesh(`${Math.round(metadata.commitAge)} days`);
         if (ageMesh) {
             ageMesh.position.y = 0.8;
+            ageMesh.scale.setScalar(0.1); // Small scale for readability
             group.add(ageMesh);
         }
 
@@ -173,6 +163,7 @@ export class MetadataVisualizer {
         const linksMesh = await this.createTextMesh(`${metadata.hyperlinkCount} links`);
         if (linksMesh) {
             linksMesh.position.y = 0.4;
+            linksMesh.scale.setScalar(0.1); // Small scale for readability
             group.add(linksMesh);
         }
 
