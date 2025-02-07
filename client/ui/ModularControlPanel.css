@@ -1,19 +1,4 @@
-#modular-control-panel {
-    position: fixed;
-    top: 0;
-    right: -400px;
-    width: 400px;
-    height: 100vh;
-    background: rgba(20, 20, 20, 0.95);
-    transition: right 0.3s ease;
-    overflow-y: auto;
-    z-index: 1000;
-    padding: 1rem;
-}
-
-#modular-control-panel.visible {
-    right: 0;
-}
+/* Panel styles are now in index.html */
 
 .panel-toggle-btn {
     position: fixed;

@@ -132,6 +132,9 @@ async function init() {
     logger.info('Starting application initialization...');
     
     try {
+        // Initialize platform detection first
+        await platformManager.initialize(defaultSettings);
+        
         // Initialize ModularControlPanel first and wait for settings to be ready
         const controlPanel = ModularControlPanel.getInstance();
         
@@ -159,9 +162,6 @@ async function init() {
         settingsStore.subscribe('system.debug.log_full_json', (_, value) => {
             LoggerConfig.setFullJson(value as boolean);
         });
-
-        // Initialize platform detection with current settings
-        await platformManager.initialize(settings);
 
         // Create XR button if it doesn't exist
         if (!document.getElementById('xr-button')) {

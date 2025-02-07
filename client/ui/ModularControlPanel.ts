@@ -46,20 +46,26 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         parentElement.appendChild(this.toggleButton);
 
         // Create main container
-        this.container = document.createElement('div');
-        this.container.id = 'modular-control-panel';
-        parentElement.appendChild(this.container);
+        const existingContainer = document.getElementById('control-panel');
+        if (!existingContainer) {
+            throw new Error('Could not find #control-panel element');
+        }
+        this.container = existingContainer as HTMLDivElement;
+        this.container.innerHTML = ''; // Clear existing content
 
         // Initialize validation error display
         this.validationDisplay = new ValidationErrorDisplay(this.container);
 
-        // Check platform and settings before showing panel
-        if (platformManager.isQuest()) {
-            this.hide();
-        } else {
-            // Show by default on non-Quest platforms
-            this.show();
-        }
+        // Set initial visibility based on platform
+        this.updateVisibilityForPlatform();
+
+        // Listen for platform changes
+        platformManager.on('platformchange', () => {
+            this.updateVisibilityForPlatform();
+        });
+        platformManager.on('xrmodechange', (isXRMode: boolean) => {
+            isXRMode ? this.hide() : this.updateVisibilityForPlatform();
+        });
 
         this.initializeComponents();
     }
@@ -610,17 +616,17 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
     }
 
     public show(): void {
-        this.container.classList.add('visible');
+        this.container.classList.remove('hidden');
         this.toggleButton.classList.add('panel-open');
     }
 
     public hide(): void {
-        this.container.classList.remove('visible');
+        this.container.classList.add('hidden');
         this.toggleButton.classList.remove('panel-open');
     }
 
     public toggle(): void {
-        this.container.classList.toggle('visible');
+        this.container.classList.toggle('hidden');
         this.toggleButton.classList.toggle('panel-open');
     }
 
@@ -644,5 +650,14 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         this.container.remove();
         this.toggleButton.remove();
         ModularControlPanel.instance = null;
+    }
+
+    private updateVisibilityForPlatform(): void {
+        // Hide on Quest or when in XR mode
+        if (platformManager.isQuest() || platformManager.isXRMode) {
+            this.hide();
+        } else {
+            this.show();
+        }
     }
 }

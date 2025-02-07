@@ -11,25 +11,50 @@ activate_venv() {
 
 # Export Docker and deployment configuration
 export_docker_config() {
-    echo -e "\n--- README.md ---\n" >> codebase.txt
+    # Add project metadata
+    echo -e "# Project Codebase\n" >> codebase.txt
+    echo -e "Generated: $(date)\n" >> codebase.txt
+    echo -e "## Project Structure\n" >> codebase.txt
+    echo -e "- Server: Rust (src directory)\n- Client: TypeScript (client directory)\n" >> codebase.txt
+
+    echo -e "\n## README.md\n" >> codebase.txt
     cat ../README.md >> codebase.txt
 
-    echo -e "\n\n=== Docker Configuration ===\n" >> codebase.txt
+    echo -e "\n\n## Docker Configuration\n" >> codebase.txt
     
-    echo -e "\n--- docker-compose.yml ---\n" >> codebase.txt
-    cat ../docker-compose.yml >> codebase.txt
-    
-    echo -e "\n--- Dockerfile ---\n" >> codebase.txt
-    cat ../Dockerfile >> codebase.txt
-    
-    echo -e "\n--- nginx.conf ---\n" >> codebase.txt
-    cat ../nginx.conf >> codebase.txt
-    
-    echo -e "\n--- scripts/launch-docker.sh ---\n" >> codebase.txt
-    cat ../scripts/launch-docker.sh >> codebase.txt
-    
-    echo -e "\n--- scripts/start.sh ---\n" >> codebase.txt
-    cat ../scripts/start.sh >> codebase.txt
+    # Add each file with proper headers
+    for file in "../docker-compose.yml" "../Dockerfile" "../nginx.conf" "../settings.yaml" "../.dockerignore"; do
+        if [ -f "$file" ]; then
+            echo -e "\n### $(basename $file)\n" >> codebase.txt
+            cat "$file" >> codebase.txt
+        else
+            echo -e "\n### $(basename $file) - MISSING\n" >> codebase.txt
+        fi
+    done
+
+    # Add package management and config files
+    echo -e "\n\n## Configuration Files\n" >> codebase.txt
+    for file in "../Cargo.toml" "../client/package.json" "../vite.config.ts" "../.env.template" \
+                "../tsconfig.json" "../.eslintrc" "../.gitignore" \
+                "../client/tsconfig.json" "../scripts/launch-docker.sh" "../scripts/start.sh"; do
+        if [ -f "$file" ]; then
+            echo -e "\n### $(basename $file)\n" >> codebase.txt
+            cat "$file" >> codebase.txt
+        else
+            echo -e "\n### $(basename $file) - MISSING\n" >> codebase.txt
+        fi
+    done
+
+    # Export docker directory if it exists
+    if [ -d "../docker" ]; then
+        echo -e "\n\n## Docker Directory Contents\n" >> codebase.txt
+        for file in ../docker/*; do
+            if [ -f "$file" ]; then
+                echo -e "\n### docker/$(basename $file)\n" >> codebase.txt
+                cat "$file" >> codebase.txt
+            fi
+        done
+    fi
 }
 
 # Export Docker network information
@@ -42,18 +67,35 @@ export_network_info() {
 # Export both directories and combine them
 export_and_combine() {
     # Export server (src) code
-    #python "$EXPORT_REPO/export-repository-to-file.py" "../src"
-    #mv output.txt server.txt
+    python "$EXPORT_REPO/export-repository-to-file.py" "../src"
+    mv output.txt server.txt
 
     # Export client code
     python "$EXPORT_REPO/export-repository-to-file.py" "../client"
     mv output.txt client.txt
 
-    # Combine files and cleanup
-    # cat server.txt >> codebase.txt
+    # Combine files with clear separation
+    echo -e "\n\n## Server Code (Rust)\n" >> codebase.txt
+    cat server.txt >> codebase.txt
+    
+    echo -e "\n\n## Client Code (TypeScript)\n" >> codebase.txt
     cat client.txt >> codebase.txt
+    
     rm server.txt
     rm client.txt
+}
+
+# Add project structure information
+export_project_structure() {
+    echo -e "\n## Project Structure Tree\n" >> codebase.txt
+    echo -e "\`\`\`" >> codebase.txt
+    # Show root level files
+    echo "Root files:" >> codebase.txt
+    ls -p ../ | grep -v / >> codebase.txt
+    echo -e "\nDirectories:" >> codebase.txt
+    # Show client and src directories structure
+    tree -I 'node_modules|target|dist|.git|venv' ../client ../src >> codebase.txt
+    echo -e "\`\`\`\n" >> codebase.txt
 }
 
 # Main execution
@@ -71,6 +113,7 @@ fi
 activate_venv
 
 # Add Docker configuration and network info
+export_project_structure
 export_docker_config
 export_network_info
 
