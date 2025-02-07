@@ -19,10 +19,12 @@ export class EdgeManager {
     private instancedMesh: InstancedMesh | null = null;
     private geometryFactory: GeometryFactory;
     private materialFactory: MaterialFactory;
+    private settings: Settings;
     private static UP = new Vector3(0, 1, 0);
 
     constructor(scene: Scene, settings: Settings) {
         this.scene = scene;
+        this.settings = settings;
         this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
         this.edgeGeometry = this.geometryFactory.getEdgeGeometry();
@@ -37,6 +39,7 @@ export class EdgeManager {
     }
 
     public handleSettingsUpdate(settings: Settings): void {
+        this.settings = settings;
         this.materialFactory.updateMaterial('edge', settings);
     }
 
@@ -45,6 +48,7 @@ export class EdgeManager {
         if (!mesh) return;
         
         mesh.count = edges.length;
+
         edges.forEach((edge, index) => {
             if (!edge.sourcePosition || !edge.targetPosition) return;
             
@@ -67,8 +71,16 @@ export class EdgeManager {
             // Position the edge at the midpoint between source and target
             const position = startPos.clone().add(direction.clone().multiplyScalar(length * 0.5));
             
-            // Create transformation components
-            const scale = new Vector3(1, length, 1);
+            // Get edge width settings from settings
+            const edgeSettings = this.settings.visualization?.edges || {};
+            const baseWidth = edgeSettings.baseWidth || 1.0;
+            const widthRange = edgeSettings.widthRange || [0.5, 2.0];
+            
+            // Calculate edge width and clamp to range
+            const edgeWidth = Math.max(widthRange[0], Math.min(widthRange[1], baseWidth)) * 0.1; // Scale down by 0.1
+            
+            // Create scale with width and length
+            const scale = new Vector3(edgeWidth, length, edgeWidth);
             
             // Calculate rotation from UP vector to edge direction
             const upDot = EdgeManager.UP.dot(direction);

@@ -91,7 +91,7 @@ export class GeometryFactory {
         }
 
         // Use CylinderGeometry for more reliable edge rendering
-        const baseRadius = context === 'ar' ? 0.5 : 1.0; // Increased base radius
+        const baseRadius = context === 'ar' ? 0.1 : 0.15; // Reduced base radius for better scaling
         
         // Adjust segments based on quality
         const segments = {
