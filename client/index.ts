@@ -1,7 +1,7 @@
 import { Settings } from './types/settings';
 import { EnhancedNodeManager } from './rendering/EnhancedNodeManager';
 import { EdgeManager } from './rendering/EdgeManager';
-import { HologramManager } from './rendering/HologramManager';
+import { HologramManager } from './visualization/HologramManager';
 import { TextRenderer } from './rendering/textRenderer';
 import { WebSocketService } from './websocket/websocketService';
 import { SettingsStore } from './state/SettingsStore';
@@ -86,12 +86,11 @@ export class GraphVisualization {
         
         // Initialize managers with SceneManager's scene and renderer
         const scene = this.sceneManager.getScene();
-        const renderer = this.sceneManager.getRenderer();
         const camera = this.sceneManager.getCamera();
         
         this.nodeManager = new EnhancedNodeManager(scene, settings);
         this.edgeManager = new EdgeManager(scene, settings);
-        this.hologramManager = new HologramManager(scene, renderer, settings);
+        this.hologramManager = new HologramManager(scene, settings);
         this.textRenderer = new TextRenderer(camera, scene);
         
         // Apply initial settings to all components

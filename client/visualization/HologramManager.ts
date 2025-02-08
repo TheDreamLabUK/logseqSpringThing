@@ -21,6 +21,7 @@ export class HologramManager {
         this.settings = settings;
         this.hologramGroup = new THREE.Group();
         this.scene.add(this.hologramGroup);
+        this.hologramGroup.layers.set(this.isXRMode ? 1 : 0);
         
         this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
@@ -49,9 +50,11 @@ export class HologramManager {
         const sphereRadii = [40, 100, 200];
         sphereRadii.forEach(radius => {
             const geometry = this.geometryFactory.getHologramGeometry('innerSphere', quality);
-            const material = this.materialFactory.getSceneSphereMaterial('sphere', this.settings);
+            const material = this.materialFactory.getSceneSphereMaterial(this.settings);
             const sphere = new THREE.Mesh(geometry, material);
             sphere.scale.setScalar(radius / 40); // Base geometry is radius 40
+            sphere.layers.set(this.isXRMode ? 1 : 0);
+            ((sphere.material as THREE.Material) as any).wireframe = true;
             this.hologramGroup.add(sphere);
             this.spheres.push(sphere);
         });
@@ -65,6 +68,7 @@ export class HologramManager {
                 const ring = new THREE.Mesh(geometry, material);
                 
                 ring.scale.setScalar(scale);
+                ring.layers.set(this.isXRMode ? 1 : 0);
                 const quaternion = new THREE.Quaternion();
                 quaternion.setFromEuler(new THREE.Euler(Math.PI / 3 * i, Math.PI / 4 * i, 0));
                 ring.quaternion.copy(quaternion);
@@ -75,11 +79,15 @@ export class HologramManager {
             }
         });
     }
-
     public setXRMode(enabled: boolean): void {
         this.isXRMode = enabled;
+        this.hologramGroup.layers.set(enabled ? 1 : 0);
+        [...this.rings, ...this.spheres].forEach(mesh => {
+            mesh.layers.set(enabled ? 1 : 0);
+        });
         this.createHolographicStructures();
     }
+
 
     public update(deltaTime: number): void {
         // Update ring rotations using quaternions

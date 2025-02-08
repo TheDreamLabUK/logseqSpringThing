@@ -11,7 +11,6 @@ import {
 } from 'three';
 import { Edge } from '../core/types';
 import { Settings } from '../types/settings';
-import { platformManager } from '../platform/platformManager';
 
 export class EdgeManager {
     private scene: Scene;

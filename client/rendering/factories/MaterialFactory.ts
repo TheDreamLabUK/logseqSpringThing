@@ -100,12 +100,7 @@ export class MaterialFactory {
         return material;
     }
 
-    public getSceneSphereMaterial(type: string, settings: any): Material {
-        const cacheKey = `scene-sphere-${type}`;
-        if (this.materialCache.has(cacheKey)) {
-            return this.materialCache.get(cacheKey)!;
-        }
-
+    public getSceneSphereMaterial(settings: any): Material {
         const material = new MeshBasicMaterial({
             color: settings.visualization?.hologram?.color || 0x4287f5,
             transparent: true,
@@ -115,7 +110,6 @@ export class MaterialFactory {
 
         (material as any).wireframe = true;
 
-        this.materialCache.set(cacheKey, material);
         return material;
     }
 
@@ -197,6 +191,7 @@ export class MaterialFactory {
             case 'scene-sphere-outer':
                 const sphereMaterial = material as MeshBasicMaterial;
                 sphereMaterial.color = this.hexToRgb(settings.visualization?.hologram?.color || '#4287f5');
+                (sphereMaterial as any).wireframe = true;
                 sphereMaterial.needsUpdate = true;
                 break;
             case 'ring':
