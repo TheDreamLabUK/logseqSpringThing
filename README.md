@@ -25,6 +25,8 @@
 - [WebGPU Pipeline](docs/technical/webgpu.md)
 - [Performance Optimizations](docs/technical/performance.md)
 - [Class Diagrams](docs/technical/class-diagrams.md)
+- [Authentication & Settings](docs/technical/auth-settings.md)
+- [Modular Control Panel](docs/technical/control-panel.md)
 
 ### Development
 - [Setup Guide](docs/development/setup.md)
@@ -509,7 +511,26 @@ sequenceDiagram
 
     deactivate Server
 
-```
+### AR Features Implementation Status
+
+#### Hand Tracking (Meta Quest 3)
+- Implementation in `client/xr/xrSessionManager.ts`
+- Currently addressing:
+  - Performance optimization for AR passthrough mode
+  - Virtual desktop cleanup during AR activation
+  - Type compatibility between `XRHand` and custom `XRHandWithHaptics`
+  - Joint position extraction methods
+
+##### Current Challenges
+- Type mismatches between standard `XRHand` and custom `XRHandWithHaptics`
+- Joint position extraction from `XRJointSpace`
+- Performance optimization in AR passthrough mode
+
+##### Next Steps
+- Implement adapter for `XRHand` to `XRHandWithHaptics` conversion
+- Refactor VisualizationController for native XRHand compatibility
+- Optimize AR mode transitions
+- Enhance Meta Quest 3 performance
 
 ## License
 
@@ -522,3 +543,115 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - Perplexity AI and RAGFlow: For their AI services enhancing content processing and interaction.
 - Three.js: For the robust 3D rendering capabilities utilized in the frontend.
 - Actix: For the high-performance web framework powering the backend server.
+
+### Authentication and Settings Inheritance
+
+#### Unauthenticated Users
+- Use browser's localStorage for settings persistence
+- Settings are stored locally and not synced
+- Default to basic settings visibility
+- Limited to local visualization features
+
+#### Authenticated Users (Nostr)
+- Inherit settings from server's settings.yaml
+- Settings are synced across all authenticated users
+- Access to advanced settings based on role
+
+#### Power Users
+- Full access to all settings
+- Can modify server's settings.yaml
+- Access to advanced API features:
+  - Perplexity API for AI assistance
+  - RagFlow for document processing
+  - GitHub integration for PR management
+  - OpenAI voice synthesis
+- Settings modifications are persisted to settings.yaml
+
+### Settings Inheritance Flow
+
+```mermaid
+graph TD
+    A[Start] --> B{Authenticated?}
+    B -->|No| C[Load Local Settings]
+    B -->|Yes| D[Load Server Settings]
+    D --> E{Is Power User?}
+    E -->|No| F[Apply Read-Only]
+    E -->|Yes| G[Enable Full Access]
+```
+
+### Settings Sync Flow
+
+```mermaid
+graph TD
+    A[Setting Changed] --> B{Authenticated?}
+    B -->|No| C[Save Locally]
+    B -->|Yes| D{Is Power User?}
+    D -->|No| E[Preview Only]
+    D -->|Yes| F[Update Server]
+    F --> G[Sync to All Users]
+```
+
+### Modular Control Panel Architecture
+
+The control panel is built with a modular architecture that supports:
+- Detachable sections
+- Real-time preview integration
+- Drag and drop functionality
+- Dynamic tooltips
+- Performance optimizations
+
+#### Component Structure
+
+```typescript
+interface ModularControlPanelProps {
+  sections: ControlSection[];
+  layout: LayoutConfig;
+  onLayoutChange: (newLayout: LayoutConfig) => void;
+}
+
+interface ControlSection {
+  id: string;
+  title: string;
+  settings: Setting[];
+  isDetached: boolean;
+  position?: { x: number, y: number };
+  size?: { width: number, height: number };
+}
+
+interface Setting {
+  id: string;
+  type: 'slider' | 'toggle' | 'color' | 'select';
+  value: any;
+  metadata: SettingMetadata;
+}
+```
+
+#### Layout Management
+
+```typescript
+interface LayoutConfig {
+  sections: {
+    [sectionId: string]: {
+      position: { x: number, y: number };
+      size: { width: number, height: number };
+      isDetached: boolean;
+      isCollapsed: boolean;
+    };
+  };
+  userPreferences: {
+    showAdvanced: boolean;
+    activeFilters: string[];
+    customOrder: string[];
+  };
+}
+```
+
+#### Performance Optimizations
+
+- ResizeObserver for efficient size tracking
+- Virtual scrolling for large setting lists
+- Debounced real-time preview updates
+- CSS transforms for smooth animations
+- Lazy loading for visual aids
+- Efficient memory management with WeakMap
+- Real-time preview integration with ~60fps target
