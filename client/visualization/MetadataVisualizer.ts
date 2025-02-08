@@ -1,4 +1,13 @@
 import * as THREE from 'three';
+import {
+    Mesh,
+    Group,
+    MeshStandardMaterial,
+    MeshBasicMaterial,
+    Vector3,
+    DoubleSide,
+    BufferGeometry
+} from 'three';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { NodeMetadata } from '../types/metadata';
@@ -18,6 +27,16 @@ export interface MetadataLabelGroup extends THREE.Group {
 }
 
 export type MetadataLabelCallback = (group: MetadataLabelGroup) => void;
+
+interface ExtendedTextGeometry extends TextGeometry {
+    computeBoundingBox: () => void;
+    boundingBox: {
+        max: { x: number };
+        min: { x: number };
+    } | null;
+}
+
+type BillboardMode = 'camera' | 'vertical';
 
 export class MetadataVisualizer {
     private scene: THREE.Scene;
@@ -117,7 +136,7 @@ export class MetadataVisualizer {
         this.labelGroup.add(mesh);
     }
 
-    public async createTextMesh(text: string): Promise<THREE.Mesh | null> {
+    public async createTextMesh(text: string): Promise<Mesh | Group | null> {
         if (!this.font) {
             console.warn('Font not loaded yet');
             return null;
@@ -126,30 +145,67 @@ export class MetadataVisualizer {
         const textGeometry = new TextGeometry(text, {
             font: this.font,
             size: this.settings.visualization.labels.desktopFontSize / 10 || 0.5,
-            height: 0.1, // Keep text thin for readability
-            curveSegments: 4,
+            depth: 0.1, // Using depth instead of height
+            curveSegments: this.settings.visualization.labels.textResolution || 4,
             bevelEnabled: false
-        });
+        }) as ExtendedTextGeometry;
 
-        const material = new THREE.MeshStandardMaterial({
+        // Compute bounding box right after creation
+        textGeometry.computeBoundingBox();
+
+        const material = new MeshStandardMaterial({
             color: this.settings.visualization.labels.textColor || '#ffffff',
             metalness: 0.1,
             roughness: 0.6,
             emissive: this.settings.visualization.labels.textColor || '#ffffff',
             transparent: true,
             opacity: 1.0,
-            side: THREE.DoubleSide,
+            side: DoubleSide,
             depthWrite: true,
             depthTest: true
         });
 
-        // Create mesh with the text geometry and center it
-        const geometry = textGeometry as unknown as GeometryWithBoundingBox;
-        geometry.computeBoundingBox();
-        const mesh = new THREE.Mesh(geometry, material);
+        // Add outline for better visibility
+        if (this.settings.visualization.labels.textOutlineWidth > 0) {
+            const outlineMaterial = new MeshBasicMaterial({
+                color: this.settings.visualization.labels.textOutlineColor || '#000000',
+                side: DoubleSide
+            });
+            
+            const outlineWidth = this.settings.visualization.labels.textOutlineWidth;
+            // Create a new geometry for the outline to avoid sharing
+            const outlineGeometry = new TextGeometry(text, {
+                font: this.font,
+                size: this.settings.visualization.labels.desktopFontSize / 10 || 0.5,
+                depth: 0.1,
+                curveSegments: this.settings.visualization.labels.textResolution || 4,
+                bevelEnabled: false
+            }) as ExtendedTextGeometry;
+            outlineGeometry.computeBoundingBox();
+            
+            const outlineMesh = new Mesh(outlineGeometry as unknown as BufferGeometry, outlineMaterial);
+            outlineMesh.scale.multiplyScalar(1 + outlineWidth);
+            
+            const group = new Group();
+            group.add(outlineMesh);
+            group.add(new Mesh(textGeometry as unknown as BufferGeometry, material));
+            
+            // Center the group
+            const bbox = textGeometry.boundingBox;
+            if (bbox) {
+                const width = bbox.max.x - bbox.min.x;
+                group.position.x -= width / 2;
+            }
+            
+            return group;
+        }
 
-        if (geometry.boundingBox) {
-            const width = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+        // Create mesh with the text geometry and center it
+        const bbox = textGeometry.boundingBox;
+        const mesh = new Mesh(textGeometry as unknown as BufferGeometry, material);
+
+        if (bbox) {
+            const width = bbox.max.x - bbox.min.x;
             mesh.position.x -= width / 2;
         }
 
@@ -189,7 +245,7 @@ export class MetadataVisualizer {
     }
 
     public createMetadataLabel = async (metadata: NodeMetadata): Promise<MetadataLabelGroup> => {
-        const group = Object.assign(new THREE.Group(), {
+        const group = Object.assign(new Group(), {
             name: 'metadata-label',
             visible: true,
             userData: { isMetadata: true }
@@ -199,7 +255,7 @@ export class MetadataVisualizer {
         const nameMesh = await this.createTextMesh(metadata.name);
         if (nameMesh) {
             nameMesh.position.y = 1.2;
-            nameMesh.scale.setScalar(1.0); // Increased scale for better visibility
+            nameMesh.scale.setScalar(0.8); // Slightly smaller for better performance
             group.add(nameMesh);
         }
 
@@ -207,7 +263,7 @@ export class MetadataVisualizer {
         const ageMesh = await this.createTextMesh(`${Math.round(metadata.commitAge)} days`);
         if (ageMesh) {
             ageMesh.position.y = 0.8;
-            ageMesh.scale.setScalar(1.0); // Increased scale for better visibility
+            ageMesh.scale.setScalar(0.7);
             group.add(ageMesh);
         }
 
@@ -215,21 +271,28 @@ export class MetadataVisualizer {
         const linksMesh = await this.createTextMesh(`${metadata.hyperlinkCount} links`);
         if (linksMesh) {
             linksMesh.position.y = 0.4;
-            linksMesh.scale.setScalar(1.0); // Increased scale for better visibility
+            linksMesh.scale.setScalar(0.7);
             group.add(linksMesh);
         }
 
-        // Billboard behavior
-        if (this.settings.visualization.labels.billboardMode) {
+        // Optimize billboard behavior for Quest 3
+        const tempVec = new Vector3();
+        
+        const billboardMode = typeof this.settings.visualization.labels.billboardMode === 'string' 
+            ? this.settings.visualization.labels.billboardMode as BillboardMode 
+            : 'camera';
+
+        if (billboardMode === 'camera') {
+            // Full billboard - always face camera
             group.onBeforeRender = () => {
                 group.quaternion.copy(this.camera.quaternion);
             };
-        } else {
-            // Vertical billboard - only rotate around Y
+        } else if (billboardMode === 'vertical') {
+            // Vertical billboard - only rotate around Y axis for better performance
             group.onBeforeRender = () => {
-                const cameraPos = this.camera.position.clone();
-                cameraPos.y = group.position.y;
-                group.lookAt(cameraPos);
+                tempVec.copy(this.camera.position).sub(group.position);
+                tempVec.y = 0; // Lock Y-axis rotation
+                group.lookAt(tempVec.add(group.position));
             };
         }
 
