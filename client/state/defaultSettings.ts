@@ -66,10 +66,10 @@ export const defaultSettings: Settings = {
             enableLabels: true,
             textColor: '#ffffff',
             textOutlineColor: '#000000',
-            textOutlineWidth: 2,
+            textOutlineWidth: 0.1,
             textResolution: 32,
             textPadding: 2,
-            billboardMode: true
+            billboardMode: 'camera'
         },
         bloom: {
             edgeBloomStrength: 1.1,

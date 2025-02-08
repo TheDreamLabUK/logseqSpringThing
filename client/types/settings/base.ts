@@ -65,7 +65,7 @@ export interface LabelSettings {
     textOutlineWidth: number;
     textResolution: number;
     textPadding: number;
-    billboardMode: boolean;
+    billboardMode: 'camera' | 'vertical';
 }
 
 export interface BloomSettings {

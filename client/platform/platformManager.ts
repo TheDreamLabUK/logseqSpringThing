@@ -74,19 +74,19 @@ export class PlatformManager extends BrowserEventEmitter {
     this.detectPlatform();
     await this.detectCapabilities();
     
-    // Reset XR mode to false initially
-    this._isXRMode = false;
-    
-    // Only enable XR mode if the platform supports it
-    if (this.capabilities.xrSupported) {
-      // Auto-enable XR mode for Quest devices unless explicitly disabled
-      if (this.isQuest()) {
-        this._isXRMode = settings.xr?.mode !== 'inline';
+    // Auto-enable XR mode for Quest devices unless explicitly disabled in settings
+    if (this.isQuest()) {
+      this._isXRMode = settings.xr?.mode !== 'inline';
+      if (this._isXRMode) {
+        this.capabilities.xrSupported = await this.checkXRSupport('immersive-ar');
       }
-      // For other platforms, initialize based on settings
-      else if (settings.xr?.mode && settings.xr.mode !== 'inline') {
-        this._isXRMode = true;
-      }
+    }
+    // For other platforms, initialize based on settings
+    else if (settings.xr?.mode) {
+      this._isXRMode = true;
+      this.capabilities.xrSupported = await this.checkXRSupport(
+        settings.xr?.mode as XRSessionMode
+      );
     }
     
     this.initialized = true;

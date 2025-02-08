@@ -50,6 +50,10 @@ export class SceneManager {
     );
     this.camera.position.set(0, 10, 50); // Position for better overview
     this.camera.lookAt(0, 0, 0);
+    
+    // Enable both layers for desktop mode by default
+    this.camera.layers.enable(0); // Desktop layer
+    this.camera.layers.enable(1); // XR layer
 
     // Create renderer with WebXR support
     this.renderer = new WebGLRenderer({

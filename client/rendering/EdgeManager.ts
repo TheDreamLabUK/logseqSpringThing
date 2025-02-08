@@ -23,7 +23,11 @@ export class EdgeManager {
         this.scene = scene;
         this.settings = settings;
         this.edgeGroup = new Group();
-        this.edgeGroup.layers.set(platformManager.isXRMode ? 1 : 0);
+        
+        // Enable both layers by default for desktop mode
+        this.edgeGroup.layers.enable(0);
+        this.edgeGroup.layers.enable(1);
+        
         scene.add(this.edgeGroup);
     }
 
@@ -92,7 +96,9 @@ export class EdgeManager {
             });
 
             const line = new Mesh(geometry, material);
-            line.layers.set(platformManager.isXRMode ? 1 : 0);
+            // Enable both layers for the edge
+            line.layers.enable(0);
+            line.layers.enable(1);
             
             this.edgeGroup.add(line);
             this.edges.set(edge.id, line);
@@ -111,10 +117,23 @@ export class EdgeManager {
     }
 
     public setXRMode(enabled: boolean): void {
-        this.edgeGroup.traverse((child: Object3D) => {
-            child.layers.set(enabled ? 1 : 0);
-        });
-        this.edgeGroup.layers.set(enabled ? 1 : 0);
+        if (enabled) {
+            // In XR mode, only show on layer 1
+            this.edgeGroup.layers.disable(0);
+            this.edgeGroup.layers.enable(1);
+            this.edgeGroup.traverse((child: Object3D) => {
+                child.layers.disable(0);
+                child.layers.enable(1);
+            });
+        } else {
+            // In desktop mode, show on both layers
+            this.edgeGroup.layers.enable(0);
+            this.edgeGroup.layers.enable(1);
+            this.edgeGroup.traverse((child: Object3D) => {
+                child.layers.enable(0);
+                child.layers.enable(1);
+            });
+        }
     }
 
     public dispose(): void {

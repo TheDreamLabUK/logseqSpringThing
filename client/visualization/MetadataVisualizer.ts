@@ -6,7 +6,8 @@ import {
     MeshBasicMaterial,
     Vector3,
     DoubleSide,
-    BufferGeometry
+    BufferGeometry,
+    Object3D
 } from 'three';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js';
@@ -19,9 +20,8 @@ type GeometryWithBoundingBox = THREE.BufferGeometry & {
     computeBoundingBox: () => void;
 };
 
-export interface MetadataLabelGroup extends THREE.Group {
+interface MetadataLabelGroup extends Group {
     name: string;
-    visible: boolean;
     userData: {
         isMetadata: boolean;
     };
@@ -36,8 +36,6 @@ interface ExtendedTextGeometry extends TextGeometry {
         min: { x: number };
     } | null;
 }
-
-type BillboardMode = 'camera' | 'vertical';
 
 export class MetadataVisualizer {
     private scene: THREE.Scene;
@@ -56,10 +54,22 @@ export class MetadataVisualizer {
         this.font = null;
         this.fontPath = '/fonts/helvetiker_regular.typeface.json';
         this.labelGroup = new THREE.Group();
-        this.labelGroup.layers.set(platformManager.isXRMode ? 1 : 0);
+        
+        // Enable both layers by default for desktop mode
+        this.labelGroup.layers.enable(0);
+        this.labelGroup.layers.enable(1);
+        
         this.settings = settings;
         this.scene.add(this.labelGroup);
         this.loadFont();
+        
+        // Set initial layer mode
+        this.setXRMode(platformManager.isXRMode);
+        
+        // Listen for XR mode changes
+        platformManager.on('xrmodechange', (enabled: boolean) => {
+            this.setXRMode(enabled);
+        });
     }
 
     private readonly geometries = {
@@ -246,18 +256,16 @@ export class MetadataVisualizer {
         });
     }
 
-    public createMetadataLabel = async (metadata: NodeMetadata): Promise<MetadataLabelGroup> => {
-        const group = Object.assign(new Group(), {
-            name: 'metadata-label',
-            visible: true,
-            userData: { isMetadata: true }
-        }) as MetadataLabelGroup;
+    public async createMetadataLabel(metadata: NodeMetadata): Promise<MetadataLabelGroup> {
+        const group = new Group() as MetadataLabelGroup;
+        group.name = 'metadata-label';
+        group.userData = { isMetadata: true };
 
         // Create text for name
         const nameMesh = await this.createTextMesh(metadata.name);
         if (nameMesh) {
             nameMesh.position.y = 1.2;
-            nameMesh.scale.setScalar(0.8); // Slightly smaller for better performance
+            nameMesh.scale.setScalar(0.8);
             group.add(nameMesh);
         }
 
@@ -277,28 +285,72 @@ export class MetadataVisualizer {
             group.add(linksMesh);
         }
 
-        // Optimize billboard behavior for Quest 3
+        // Set up billboarding
         const tempVec = new Vector3();
-        
-        const billboardMode = typeof this.settings.visualization.labels.billboardMode === 'string' 
-            ? this.settings.visualization.labels.billboardMode as BillboardMode 
-            : 'camera';
+        const billboardMode = this.settings.visualization.labels.billboardMode;
 
-        if (billboardMode === 'camera') {
-            // Full billboard - always face camera
-            group.onBeforeRender = () => {
+        const updateBillboard = () => {
+            if (billboardMode === 'camera') {
+                // Full billboard - always face camera
                 group.quaternion.copy(this.camera.quaternion);
-            };
-        } else if (billboardMode === 'vertical') {
-            // Vertical billboard - only rotate around Y axis for better performance
-            group.onBeforeRender = () => {
+            } else {
+                // Vertical billboard - only rotate around Y axis
                 tempVec.copy(this.camera.position).sub(group.position);
-                tempVec.y = 0; // Lock Y-axis rotation
+                tempVec.y = 0;
                 group.lookAt(tempVec.add(group.position));
-            };
-        }
+            }
+        };
+
+        // Add to render loop
+        const onBeforeRender = () => {
+            updateBillboard();
+        };
+        group.onBeforeRender = onBeforeRender;
+
+        // Set initial layer
+        this.setGroupLayer(group, platformManager.isXRMode);
 
         return group;
+    }
+
+    private setGroupLayer(group: Object3D, enabled: boolean): void {
+        if (enabled) {
+            // In XR mode, only show on layer 1
+            group.traverse(child => {
+                child.layers.disable(0);
+                child.layers.enable(1);
+            });
+            group.layers.disable(0);
+            group.layers.enable(1);
+        } else {
+            // In desktop mode, show on both layers
+            group.traverse(child => {
+                child.layers.enable(0);
+                child.layers.enable(1);
+            });
+            group.layers.enable(0);
+            group.layers.enable(1);
+        }
+    }
+
+    public setXRMode(enabled: boolean): void {
+        if (enabled) {
+            // In XR mode, only show on layer 1
+            this.labelGroup.traverse(child => {
+                child.layers.disable(0);
+                child.layers.enable(1);
+            });
+            this.labelGroup.layers.disable(0);
+            this.labelGroup.layers.enable(1);
+        } else {
+            // In desktop mode, show on both layers
+            this.labelGroup.traverse(child => {
+                child.layers.enable(0);
+                child.layers.enable(1);
+            });
+            this.labelGroup.layers.enable(0);
+            this.labelGroup.layers.enable(1);
+        }
     }
 
     public dispose(): void {
@@ -314,12 +366,5 @@ export class MetadataVisualizer {
                 }
             }
         });
-    }
-
-    public setXRMode(enabled: boolean): void {
-        this.labelGroup.traverse(child => {
-            child.layers.set(enabled ? 1 : 0);
-        });
-        this.labelGroup.layers.set(enabled ? 1 : 0);
     }
 }
