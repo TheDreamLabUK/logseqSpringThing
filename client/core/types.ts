@@ -11,6 +11,8 @@ export interface NodeMetadata {
   lastModified?: number;
   links?: string[];
   references?: string[];
+  fileSize?: number;
+  hyperlinkCount?: number;
 }
 
 export interface NodeData {
@@ -29,6 +31,8 @@ export interface Node {
       lastModified?: number;
       links?: string[];
       references?: string[];
+      fileSize?: number;
+      hyperlinkCount?: number;
     };
   };
   color?: string;
@@ -417,8 +421,15 @@ export function transformNodeData(node: any): Node {
     id: node.id,
     data: {
       position: node.data.position,
-      velocity: node.data.velocity || { x: 0, y: 0, z: 0 }, // Add default velocity
-      metadata: node.data.metadata
+      velocity: node.data.velocity || { x: 0, y: 0, z: 0 },
+      metadata: {
+        name: node.data.metadata?.name || node.id,
+        lastModified: parseInt(node.data.metadata?.lastModified) || Date.now(),
+        links: node.data.metadata?.links || [],
+        references: node.data.metadata?.references || [],
+        fileSize: parseInt(node.data.metadata?.fileSize) || 0,
+        hyperlinkCount: parseInt(node.data.metadata?.hyperlinkCount) || 0
+      }
     },
     color: node.color
   };

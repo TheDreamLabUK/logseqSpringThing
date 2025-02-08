@@ -53,7 +53,13 @@ export class GraphVisualization {
         this.websocketService = WebSocketService.getInstance();
         this.websocketService.onBinaryMessage((nodes) => {
             debugLog('Received binary node update', { nodeCount: nodes.length });
-            this.nodeManager.updateNodePositions(nodes);
+            this.nodeManager.updateNodePositions(nodes.map(node => ({
+                id: node.id.toString(),
+                data: {
+                    position: node.position,
+                    velocity: node.velocity
+                }
+            })));
         });
         this.websocketService.onConnectionStatusChange((connected) => {
             logger.info(`WebSocket connection status changed: ${connected}`);

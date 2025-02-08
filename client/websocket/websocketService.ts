@@ -23,16 +23,6 @@ enum ConnectionState {
     FAILED = 'failed'
 }
 
-// Interface matching server's binary protocol format (28 bytes per node):
-// - id: 4 bytes (u32)
-// - position: 12 bytes (3 × f32)
-// - velocity: 12 bytes (3 × f32)
-interface NodeData {
-    id: number;
-    position: [number, number, number];
-    velocity: [number, number, number];
-}
-
 // Interface for node updates from user interaction
 interface NodeUpdate {
     id: string;          // Node ID (converted to u32 for binary protocol)
@@ -48,7 +38,17 @@ interface NodeUpdate {
     };
 }
 
-type BinaryMessageCallback = (nodes: NodeData[]) => void;
+// Interface matching server's binary protocol format (28 bytes per node):
+// - id: 4 bytes (u32)
+// - position: 12 bytes (3 × f32)
+// - velocity: 12 bytes (3 × f32)
+interface BinaryNodeData {
+    id: number;
+    position: [number, number, number];
+    velocity: [number, number, number];
+}
+
+type BinaryMessageCallback = (nodes: BinaryNodeData[]) => void;
 
 export class WebSocketService {
     private static instance: WebSocketService | null = null;
@@ -225,7 +225,7 @@ export class WebSocketService {
                 throw new Error(`Invalid buffer size: ${decompressedBuffer.byteLength} bytes (expected ${expectedSize})`);
             }
 
-            const nodes: NodeData[] = [];
+            const nodes: BinaryNodeData[] = [];
             
             for (let i = 0; i < nodeCount; i++) {
                 const id = dataView.getUint32(offset, true);

@@ -19,11 +19,6 @@ import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
 import { HologramShaderMaterial } from './materials/HologramShaderMaterial';
 
-interface NodePosition {
-    position: [number, number, number];
-    velocity: [number, number, number];
-}
-
 export class EnhancedNodeManager {
     private scene: Scene;
     private settings: Settings;
@@ -31,10 +26,6 @@ export class EnhancedNodeManager {
     private nodeGeometry: BufferGeometry;
     private nodeMaterial: Material;
     private instancedMesh: InstancedMesh | null = null;
-    private tempMatrix = new Matrix4();
-    private tempVector = new Vector3();
-    private tempQuaternion = new Quaternion();
-    private dummy = new Object3D();
     private geometryFactory: GeometryFactory;
     private materialFactory: MaterialFactory;
     private isInstanced: boolean;
@@ -318,5 +309,34 @@ export class EnhancedNodeManager {
             this.scene.remove(node);
         });
         this.nodes.clear();
+    }
+
+    public updateNodePositions(nodes: { id: string, data: { position: [number, number, number], velocity: [number, number, number] } }[]): void {
+        nodes.forEach((node, index) => {
+            const existingNode = this.nodes.get(node.id);
+            if (existingNode) {
+                existingNode.position.set(
+                    node.data.position[0],
+                    node.data.position[1],
+                    node.data.position[2]
+                );
+            } else if (this.isInstanced && this.instancedMesh) {
+                const matrix = new Matrix4();
+                matrix.compose(
+                    new Vector3(
+                        node.data.position[0],
+                        node.data.position[1],
+                        node.data.position[2]
+                    ),
+                    this.quaternion,
+                    new Vector3(1, 1, 1)
+                );
+                this.instancedMesh.setMatrixAt(index, matrix);
+            }
+        });
+
+        if (this.isInstanced && this.instancedMesh) {
+            this.instancedMesh.instanceMatrix.needsUpdate = true;
+        }
     }
 }
