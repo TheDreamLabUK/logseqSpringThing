@@ -1,3 +1,4 @@
+import { Settings } from '../types/settings';
 import { SettingsStore } from '../state/SettingsStore';
 import { getAllSettingPaths, formatSettingName } from '../types/settings/utils';
 import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDisplay';
@@ -103,7 +104,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
 
     private async initializePanel(): Promise<void> {
         try {
-            const settings = this.settingsStore.get('') as any;
+            const settings = this.settingsStore.get('') as Settings;
             const paths = getAllSettingPaths(settings);
             
             // Create main categories container

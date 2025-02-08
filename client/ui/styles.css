@@ -1,0 +1,57 @@
+.control-panel {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 300px;
+    max-height: calc(100vh - 40px);
+    background: rgba(28, 28, 38, 0.95);
+    color: #fff;
+    border-radius: 8px;
+    padding: 15px;
+    overflow-y: auto;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    z-index: 1000;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.control-section {
+    margin-bottom: 20px;
+}
+
+.control-section h2 {
+    font-size: 1.2em;
+    margin: 0 0 15px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: #4287f5;
+}
+
+.control-subsection {
+    margin: 15px 0;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+}
+
+.control-subsection h3 {
+    font-size: 1em;
+    margin: 0 0 10px 0;
+    color: #6087c3;
+}
+
+.settings-content {
+    font-family: 'Fira Code', monospace;
+    font-size: 0.85em;
+    margin: 0;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #a0a0a0;
+}
+
+.settings-content:hover {
+    background: rgba(0, 0, 0, 0.3);
+} 

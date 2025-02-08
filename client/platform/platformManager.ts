@@ -2,6 +2,7 @@ import { Platform, PlatformCapabilities } from '../core/types';
 import { createLogger } from '../core/utils';
 import { Settings } from '../types/settings';
 import { XRSessionMode } from '../types/xr';
+import { SceneManager } from '../rendering/scene';
 
 const logger = createLogger('PlatformManager');
 
@@ -39,6 +40,7 @@ export class PlatformManager extends BrowserEventEmitter {
   private capabilities: PlatformCapabilities;
   private initialized: boolean = false;
   private _isXRMode: boolean = false;
+  private sceneManager: SceneManager | null = null;
 
   private constructor() {
     super();
@@ -60,6 +62,10 @@ export class PlatformManager extends BrowserEventEmitter {
     return PlatformManager.instance;
   }
 
+  public setSceneManager(sceneManager: SceneManager): void {
+    this.sceneManager = sceneManager;
+  }
+
   async initialize(settings: Settings): Promise<void> {
     if (this.initialized) {
       return;
@@ -68,19 +74,19 @@ export class PlatformManager extends BrowserEventEmitter {
     this.detectPlatform();
     await this.detectCapabilities();
     
-    // Auto-enable XR mode for Quest devices unless explicitly disabled in settings
-    if (this.isQuest()) {
-      this._isXRMode = settings.xr?.mode !== 'inline';
-      if (this._isXRMode) {
-        this.capabilities.xrSupported = await this.checkXRSupport('immersive-ar');
+    // Reset XR mode to false initially
+    this._isXRMode = false;
+    
+    // Only enable XR mode if the platform supports it
+    if (this.capabilities.xrSupported) {
+      // Auto-enable XR mode for Quest devices unless explicitly disabled
+      if (this.isQuest()) {
+        this._isXRMode = settings.xr?.mode !== 'inline';
       }
-    }
-    // For other platforms, initialize based on settings
-    else if (settings.xr?.mode) {
-      this._isXRMode = true;
-      this.capabilities.xrSupported = await this.checkXRSupport(
-        settings.xr?.mode as XRSessionMode
-      );
+      // For other platforms, initialize based on settings
+      else if (settings.xr?.mode && settings.xr.mode !== 'inline') {
+        this._isXRMode = true;
+      }
     }
     
     this.initialized = true;
@@ -269,6 +275,17 @@ export class PlatformManager extends BrowserEventEmitter {
 
   setXRMode(enabled: boolean): void {
     this._isXRMode = enabled;
+    // Update camera layers
+    const camera = this.sceneManager?.getCamera();
+    if (camera) {
+      if (enabled) {
+        camera.layers.enable(1);  // Enable XR layer
+        camera.layers.disable(0); // Disable desktop layer
+      } else {
+        camera.layers.enable(0);  // Enable desktop layer
+        camera.layers.disable(1); // Disable XR layer
+      }
+    }
     this.emit('xrmodechange', enabled);
   }
 }

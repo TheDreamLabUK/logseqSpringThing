@@ -12,6 +12,7 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { NodeMetadata } from '../types/metadata';
 import { Settings } from '../types/settings';
+import { platformManager } from '../platform/platformManager';
 
 type GeometryWithBoundingBox = THREE.BufferGeometry & {
     boundingBox: THREE.Box3 | null;
@@ -55,6 +56,7 @@ export class MetadataVisualizer {
         this.font = null;
         this.fontPath = '/fonts/helvetiker_regular.typeface.json';
         this.labelGroup = new THREE.Group();
+        this.labelGroup.layers.set(platformManager.isXRMode ? 1 : 0);
         this.settings = settings;
         this.scene.add(this.labelGroup);
         this.loadFont();
@@ -312,5 +314,12 @@ export class MetadataVisualizer {
                 }
             }
         });
+    }
+
+    public setXRMode(enabled: boolean): void {
+        this.labelGroup.traverse(child => {
+            child.layers.set(enabled ? 1 : 0);
+        });
+        this.labelGroup.layers.set(enabled ? 1 : 0);
     }
 }

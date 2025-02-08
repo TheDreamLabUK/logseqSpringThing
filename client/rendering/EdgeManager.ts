@@ -1,113 +1,131 @@
 import {
-    Scene,
-    InstancedMesh,
-    Matrix4,
-    Vector3,
-    Quaternion,
     BufferGeometry,
+    BufferAttribute,
+    Vector3,
+    Scene,
+    Group,
+    Object3D,
     Material,
+    Mesh,
+    MeshBasicMaterial
 } from 'three';
-import { Settings } from '../types/settings';
 import { Edge } from '../core/types';
-import { GeometryFactory } from './factories/GeometryFactory';
-import { MaterialFactory } from './factories/MaterialFactory';
+import { Settings } from '../types/settings';
+import { platformManager } from '../platform/platformManager';
 
 export class EdgeManager {
     private scene: Scene;
-    private edgeGeometry: BufferGeometry;
-    private edgeMaterial: Material;
-    private instancedMesh: InstancedMesh | null = null;
-    private geometryFactory: GeometryFactory;
-    private materialFactory: MaterialFactory;
+    private edges: Map<string, Mesh> = new Map();
+    private edgeGroup: Group;
     private settings: Settings;
-    private static UP = new Vector3(0, 1, 0);
 
     constructor(scene: Scene, settings: Settings) {
         this.scene = scene;
         this.settings = settings;
-        this.geometryFactory = GeometryFactory.getInstance();
-        this.materialFactory = MaterialFactory.getInstance();
-        this.edgeGeometry = this.geometryFactory.getEdgeGeometry();
-        this.edgeMaterial = this.materialFactory.getEdgeMaterial(settings);
-        this.setupInstancedMesh();
+        this.edgeGroup = new Group();
+        this.edgeGroup.layers.set(platformManager.isXRMode ? 1 : 0);
+        scene.add(this.edgeGroup);
     }
 
-    private setupInstancedMesh() {
-        this.instancedMesh = new InstancedMesh(this.edgeGeometry, this.edgeMaterial, 1000);
-        this.instancedMesh.count = 0;
-        this.scene.add(this.instancedMesh);
-    }
-
-    public handleSettingsUpdate(settings: Settings): void {
-        this.settings = settings;
-        this.materialFactory.updateMaterial('edge', settings);
-    }
-
-    updateEdges(edges: Edge[]) {
-        const mesh = this.instancedMesh;
-        if (!mesh) return;
+    private createEdgeGeometry(source: Vector3, target: Vector3): BufferGeometry {
+        const geometry = new BufferGeometry();
         
-        mesh.count = edges.length;
+        // Calculate direction and create vertices directly in world space
+        const direction = new Vector3().subVectors(target, source);
+        const width = this.settings.visualization.edges.baseWidth * 0.1;
+        
+        // Calculate perpendicular vector for width
+        const up = new Vector3(0, 1, 0);
+        const right = new Vector3().crossVectors(direction, up).normalize().multiplyScalar(width);
+        
+        // Create vertices in world space
+        const vertices = new Float32Array([
+            source.x - right.x, source.y - right.y, source.z - right.z,
+            source.x + right.x, source.y + right.y, source.z + right.z,
+            target.x + right.x, target.y + right.y, target.z + right.z,
+            target.x - right.x, target.y - right.y, target.z - right.z
+        ]);
+        
+        const indices = new Uint16Array([
+            0, 1, 2,
+            0, 2, 3
+        ]);
+        
+        geometry.setAttribute('position', new BufferAttribute(vertices, 3));
+        geometry.setIndex(new BufferAttribute(indices, 1));
+        
+        return geometry;
+    }
 
-        edges.forEach((edge, index) => {
+    public updateEdges(edges: Edge[]): void {
+        // Clear existing edges
+        this.edges.forEach(edge => {
+            this.edgeGroup.remove(edge);
+            edge.geometry.dispose();
+            if (edge.material instanceof Material) {
+                edge.material.dispose();
+            }
+        });
+        this.edges.clear();
+
+        // Create new edges
+        edges.forEach(edge => {
             if (!edge.sourcePosition || !edge.targetPosition) return;
-            
-            const startPos = new Vector3(
+
+            const source = new Vector3(
                 edge.sourcePosition.x,
                 edge.sourcePosition.y,
                 edge.sourcePosition.z
             );
-            const endPos = new Vector3(
+            const target = new Vector3(
                 edge.targetPosition.x,
                 edge.targetPosition.y,
                 edge.targetPosition.z
             );
-            
-            // Calculate edge direction and length
-            const direction = endPos.clone().sub(startPos);
-            const length = direction.length();
-            direction.normalize();
-            
-            // Position the edge at the midpoint between source and target
-            const position = startPos.clone().add(direction.clone().multiplyScalar(length * 0.5));
-            
-            // Get edge width settings from settings
-            const edgeSettings = this.settings.visualization?.edges || {};
-            const baseWidth = edgeSettings.baseWidth || 1.0;
-            const scaleFactor = edgeSettings.scaleFactor || 1.0;
-            const widthRange = edgeSettings.widthRange || [0.5, 2.0];
-            
-            // Calculate edge width and clamp to range
-            const edgeWidth = Math.max(widthRange[0], Math.min(widthRange[1], baseWidth));
-            
-            // Create scale with width and length
-            const scale = new Vector3(edgeWidth * scaleFactor, length * scaleFactor, edgeWidth * scaleFactor);
-            
-            // Calculate rotation from UP vector to edge direction
-            const upDot = EdgeManager.UP.dot(direction);
-            const rotationAxis = new Vector3().crossVectors(EdgeManager.UP, direction).normalize();
-            const rotationAngle = Math.acos(upDot);
-            
-            // Create matrix from components
-            const matrix = new Matrix4().compose(
-                position,
-                Math.abs(Math.abs(upDot) - 1) > 0.001
-                    ? new Quaternion().setFromAxisAngle(rotationAxis, rotationAngle)
-                    : new Quaternion(),
-                scale
-            );
 
-            mesh.setMatrixAt(index, matrix);
+            const geometry = this.createEdgeGeometry(source, target);
+            
+            const material = new MeshBasicMaterial({
+                color: this.settings.visualization.edges.color,
+                transparent: true,
+                opacity: this.settings.visualization.edges.opacity
+            });
+
+            const line = new Mesh(geometry, material);
+            line.layers.set(platformManager.isXRMode ? 1 : 0);
+            
+            this.edgeGroup.add(line);
+            this.edges.set(edge.id, line);
         });
-
-        mesh.instanceMatrix.needsUpdate = true;
     }
 
-    dispose() {
-        if (this.instancedMesh) {
-            this.instancedMesh.geometry.dispose();
-            this.instancedMesh.material.dispose();
-            this.scene.remove(this.instancedMesh);
-        }
+    public handleSettingsUpdate(settings: Settings): void {
+        this.settings = settings;
+        this.edges.forEach(edge => {
+            if (edge.material instanceof MeshBasicMaterial) {
+                edge.material.color.set(settings.visualization.edges.color);
+                edge.material.opacity = settings.visualization.edges.opacity;
+                edge.material.needsUpdate = true;
+            }
+        });
+    }
+
+    public setXRMode(enabled: boolean): void {
+        this.edgeGroup.traverse((child: Object3D) => {
+            child.layers.set(enabled ? 1 : 0);
+        });
+        this.edgeGroup.layers.set(enabled ? 1 : 0);
+    }
+
+    public dispose(): void {
+        this.edges.forEach(edge => {
+            edge.geometry.dispose();
+            if (edge.material instanceof Material) {
+                edge.material.dispose();
+            }
+            this.edgeGroup.remove(edge);
+        });
+        this.edges.clear();
+        this.scene.remove(this.edgeGroup);
     }
 }

@@ -18,6 +18,7 @@ import { XRHandWithHaptics } from '../types/xr';
 import { GeometryFactory } from './factories/GeometryFactory';
 import { MaterialFactory } from './factories/MaterialFactory';
 import { HologramShaderMaterial } from './materials/HologramShaderMaterial';
+import { platformManager } from '../platform/platformManager';
 
 export class EnhancedNodeManager {
     private scene: Scene;
@@ -77,8 +78,7 @@ export class EnhancedNodeManager {
         if (this.isInstanced) {
             this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 1000);
             this.instancedMesh.count = 0;
-            this.instancedMesh.layers.enable(0);
-            this.instancedMesh.layers.enable(1);
+            this.instancedMesh.layers.set(platformManager.isXRMode ? 1 : 0);
             this.scene.add(this.instancedMesh);
         }
     }
@@ -257,8 +257,7 @@ export class EnhancedNodeManager {
         if (this.isInstanced) {
             this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 1000);
             this.instancedMesh.count = 0;
-            this.instancedMesh.layers.enable(0);
-            this.instancedMesh.layers.enable(1);
+            this.instancedMesh.layers.set(platformManager.isXRMode ? 1 : 0);
             this.scene.add(this.instancedMesh);
         }
     }
@@ -338,5 +337,17 @@ export class EnhancedNodeManager {
         if (this.isInstanced && this.instancedMesh) {
             this.instancedMesh.instanceMatrix.needsUpdate = true;
         }
+    }
+
+    public setXRMode(enabled: boolean): void {
+        if (this.instancedMesh) {
+            this.instancedMesh.layers.set(enabled ? 1 : 0);
+        }
+        this.nodes.forEach(node => {
+            node.layers.set(enabled ? 1 : 0);
+            node.traverse(child => {
+                child.layers.set(enabled ? 1 : 0);
+            });
+        });
     }
 }
