@@ -277,6 +277,21 @@ check_ragflow_network() {
     return 0
 }
 
+check_kokoros() {
+    log "${YELLOW}Checking Kokoros TTS service...${NC}"
+    if ! docker ps --format '{{.Names}}' | grep -q "^kokoros$"; then
+        log "${YELLOW}Kokoros container not running, starting it...${NC}"
+        if ! docker run -d -p 4001:4001 --network docker_ragflow --name kokoros kokoros openai; then
+            log "${RED}Failed to start Kokoros container${NC}"
+            return 1
+        fi
+        log "${GREEN}Kokoros container started successfully${NC}"
+    else
+        log "${GREEN}Kokoros container is already running${NC}"
+    fi
+    return 0
+}
+
 check_application_readiness() {
     local max_attempts=60
     local attempt=1
@@ -417,7 +432,12 @@ check_ragflow_network || {
     log "${YELLOW}RAGFlow network check failed - continuing for debugging${NC}"
 }
 
-# 9. Environment & GitHub token check (non-fatal)
+# 9. Kokoros TTS check (non-fatal)
+check_kokoros || {
+    log "${YELLOW}Kokoros check failed - continuing for debugging${NC}"
+}
+
+# 10. Environment & GitHub token check (non-fatal)
 if ! check_environment; then
     log "${YELLOW}Environment check failed - continuing for debugging${NC}"
 fi
