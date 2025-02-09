@@ -16,11 +16,6 @@ chmod 666 /app/settings.yaml
 log "settings.yaml permissions verified"
 
 # Set up runtime environment
-log "Setting up runtime environment..."
-mkdir -p /app/data/metadata /app/data/markdown
-chmod -R 777 /app/data
-log "Runtime environment configured successfully"
-
 # Start nginx
 log "Starting nginx..."
 nginx -t && nginx

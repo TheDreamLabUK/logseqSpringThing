@@ -75,23 +75,7 @@ RUN GIT_HASH=$(git rev-parse HEAD || echo "development") \
     (sleep 2 && GIT_HASH=$(git rev-parse HEAD || echo "development") cargo build --release --jobs $(nproc)) || \
     (sleep 5 && GIT_HASH=$(git rev-parse HEAD || echo "development") cargo build --release --jobs 1)
 
-# Stage 3: Python Dependencies
-FROM python:3.10.12-slim AS python-builder
-
-WORKDIR /app
-
-# Create virtual environment and install dependencies
-RUN python -m venv /app/venv
-ENV PATH="/app/venv/bin:$PATH"
-
-# Install Python packages
-RUN pip install --upgrade pip==23.3.1 wheel==0.41.3 && \
-    pip install \
-    piper-phonemize==1.1.0 \
-    piper-tts==1.2.0 \
-    onnxruntime-gpu==1.16.3
-
-# Stage 4: Final Runtime Image
+# Stage 3: Final Runtime Image
 FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -112,8 +96,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     libegl1-mesa \
     libasound2 \
-    python3.10-minimal \
-    python3.10-venv \
     ca-certificates \
     mesa-utils \
     libgl1-mesa-dri \
@@ -189,25 +171,18 @@ RUN mkdir -p /app/data/public/dist \
 RUN mkdir -p /app/data/markdown /app/data/metadata && \
     chmod -R 777 /app/data
 
-# Copy Python virtual environment
-COPY --from=python-builder /app/venv /app/venv
-RUN chown -R webxr:webxr /app/venv
-
 # Copy built artifacts
 COPY --from=rust-deps-builder /usr/src/app/target/release/webxr /app/
 COPY src/utils/compute_forces.ptx /app/compute_forces.ptx
 COPY --from=frontend-builder /app/data/public/dist /app/data/public/dist
 
-# Copy configuration and scripts
-COPY src/generate_audio.py /app/src/
+# Copy start script
 COPY scripts/start.sh /app/start.sh
 
 # Set proper permissions for copied files
 RUN chown -R webxr:webxr /app && \
     chmod 755 /app/start.sh && \
     chmod -R g+w /app
-
-# Ensure settings.yaml is present and set permissions
 RUN touch /app/settings.yaml && \
     chown webxr:webxr /app/settings.yaml && \
     chmod 666 /app/settings.yaml

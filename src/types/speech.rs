@@ -63,8 +63,7 @@ impl From<base64::DecodeError> for SpeechError {
 
 #[derive(Debug, Clone)]
 pub enum TTSProvider {
-    OpenAI,
-    Sonata,
+    OpenAI,  // OpenAI is now the only supported provider
 }
 
 #[derive(Debug)]

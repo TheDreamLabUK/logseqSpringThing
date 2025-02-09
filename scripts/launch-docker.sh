@@ -27,7 +27,6 @@ NC='\033[0m'  # No color
 ###############################################################################
 MARKDOWN_DIR="$PROJECT_ROOT/data/markdown"
 METADATA_DIR="$PROJECT_ROOT/data/metadata"
-PUBLIC_DIR="$PROJECT_ROOT/data/public"
 METADATA_FILE="$METADATA_DIR/metadata.json"
 
 ###############################################################################
@@ -426,16 +425,6 @@ check_typescript || {
     log "${YELLOW}TypeScript check failed - continuing for debugging${NC}"
 }
 check_rust_security || true
-
-# 8. RAGFlow network check (non-fatal)
-check_ragflow_network || {
-    log "${YELLOW}RAGFlow network check failed - continuing for debugging${NC}"
-}
-
-# 9. Kokoros TTS check (non-fatal)
-check_kokoros || {
-    log "${YELLOW}Kokoros check failed - continuing for debugging${NC}"
-}
 
 # 10. Environment & GitHub token check (non-fatal)
 if ! check_environment; then
