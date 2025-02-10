@@ -25,13 +25,13 @@ export class GeometryFactory {
             // AR (Meta Quest) - Optimized geometry
             switch (quality) {
                 case 'high':
-                    geometry = new SphereGeometry(1, 16, 12); // Reduced from 32
+                    geometry = new SphereGeometry(1, 8, 6);
                     break;
                 case 'medium':
-                    geometry = new SphereGeometry(1, 12, 8);  // Further reduced
+                    geometry = new SphereGeometry(1, 6, 4);
                     break;
                 case 'low':
-                    geometry = new SphereGeometry(1, 8, 6);   // Minimal
+                    geometry = new SphereGeometry(1, 4, 3);
                     break;
             }
         } else {
@@ -39,8 +39,8 @@ export class GeometryFactory {
             const segments = {
                 low: 16,
                 medium: 24,
-                high: 32
-            }[quality] || 24;
+                high: 24
+            }[quality] || 16;
             
             geometry = new SphereGeometry(1, segments, segments);
         }
@@ -56,9 +56,9 @@ export class GeometryFactory {
         }
 
         const segments = {
-            low: { ring: 64, sphere: 32 },
-            medium: { ring: 96, sphere: 48 },
-            high: { ring: 128, sphere: 64 }
+            low: { ring: 32, sphere: 16 },
+            medium: { ring: 48, sphere: 24 },
+            high: { ring: 64, sphere: 32 }
         }[quality] || { ring: 96, sphere: 48 };
 
         let geometry: BufferGeometry;
@@ -95,9 +95,9 @@ export class GeometryFactory {
         
         // Adjust segments based on quality
         const segments = {
-            low: context === 'ar' ? 6 : 8,
-            medium: context === 'ar' ? 8 : 12,
-            high: context === 'ar' ? 10 : 16
+            low: context === 'ar' ? 4 : 6,
+            medium: context === 'ar' ? 6 : 8,
+            high: context === 'ar' ? 8 : 10
         }[quality || 'medium'];
 
         const geometry = new CylinderGeometry(baseRadius, baseRadius, 1, segments);

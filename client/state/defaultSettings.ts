@@ -74,11 +74,11 @@ export const defaultSettings: Settings = {
         bloom: {
             edgeBloomStrength: 1.1,
             enabled: true,
-            environmentBloomStrength: 1.0,
-            nodeBloomStrength: 2.0,
-            radius: 0.5,
-            strength: 0.6,
-            threshold: 0.5
+            environmentBloomStrength: 2.0,
+            nodeBloomStrength: 3.0,
+            radius: 0.8,
+            strength: 1.2,
+            threshold: 0.3
         },
         hologram: {
             ringCount: 3,
