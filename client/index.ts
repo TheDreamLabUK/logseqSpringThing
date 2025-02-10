@@ -87,10 +87,11 @@ export class GraphVisualization {
         // Initialize managers with SceneManager's scene and renderer
         const scene = this.sceneManager.getScene();
         const camera = this.sceneManager.getCamera();
+        const renderer = this.sceneManager.getRenderer();
         
         this.nodeManager = new EnhancedNodeManager(scene, settings);
         this.edgeManager = new EdgeManager(scene, settings);
-        this.hologramManager = new HologramManager(scene, settings);
+        this.hologramManager = new HologramManager(scene, renderer, settings);
         this.textRenderer = new TextRenderer(camera, scene);
         
         // Apply initial settings to all components

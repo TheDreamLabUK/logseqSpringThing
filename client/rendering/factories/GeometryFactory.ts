@@ -19,8 +19,8 @@ export class GeometryFactory {
         return GeometryFactory.instance;
     }
 
-    getNodeGeometry(quality: 'low' | 'medium' | 'high', context: 'ar' | 'desktop' = 'desktop'): BufferGeometry {
-        const cacheKey = `node-${quality}-${context}`;
+    getNodeGeometry(quality: 'low' | 'medium' | 'high', context: 'ar' | 'desktop' = 'desktop', size: number = 1000): BufferGeometry {
+        const cacheKey = `node-${quality}-${context}-${size}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
@@ -41,12 +41,13 @@ export class GeometryFactory {
             default:
                 segmentCount = 16;
         }
-        geometry = new SphereGeometry(1, segmentCount, segmentCount);
+        geometry = new SphereGeometry(size, segmentCount, segmentCount);
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }
-    getHologramGeometry(type: string, quality: string, edgeOnly: boolean = false): BufferGeometry {
-        const cacheKey = `hologram-${type}-${quality}${edgeOnly ? '-edge' : ''}`;
+
+    getHologramGeometry(type: string, quality: string, size: number = 1000): BufferGeometry {
+        const cacheKey = `hologram-${type}-${quality}-${size}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
@@ -60,19 +61,19 @@ export class GeometryFactory {
         let geometry: BufferGeometry;
         switch (type) {
             case 'ring':
-                geometry = new TorusGeometry(1, 0.05, segments.ring, segments.ring * 2);
+                geometry = new TorusGeometry(size, size * 0.05, segments.ring, segments.ring * 2);
                 break;
             case 'buckminster':
-                geometry = new IcosahedronGeometry(1, 2); // Icosahedron for Buckminster Fullerene
+                geometry = new IcosahedronGeometry(size, 2); // Icosahedron for Buckminster Fullerene
                 break;
             case 'geodesic':
-                geometry = new IcosahedronGeometry(1, 5); // Higher detail Icosahedron
+                geometry = new IcosahedronGeometry(size, 5); // Higher detail Icosahedron
                 break;
             case 'triangleSphere':
-                geometry = new SphereGeometry(1, 32, 16); // Sphere with triangular faces
+                geometry = new SphereGeometry(size, segments.sphere, segments.sphere / 2); // Sphere with triangular faces
                 break;
             default:
-                geometry = new SphereGeometry(1, segments.sphere, segments.sphere);
+                geometry = new SphereGeometry(size, segments.sphere, segments.sphere / 2);
         }
 
         this.geometryCache.set(cacheKey, geometry);

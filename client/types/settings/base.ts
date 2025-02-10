@@ -80,19 +80,19 @@ export interface BloomSettings {
 
 export interface HologramSettings {
     ringCount: number;
-    ringSizes: number[];
+    sphereSizes: number[];  // Actual sizes in world units
     ringRotationSpeed: number;
     globalRotationSpeed: number;
     ringColor: string;
     ringOpacity: number;
     enableBuckminster: boolean;
-    buckminsterScale: number;
+    buckminsterSize: number;  // Actual size in world units
     buckminsterOpacity: number;
     enableGeodesic: boolean;
-    geodesicScale: number;
+    geodesicSize: number;  // Actual size in world units
     geodesicOpacity: number;
     enableTriangleSphere: boolean;
-    triangleSphereScale: number;
+    triangleSphereSize: number;  // Actual size in world units
     triangleSphereOpacity: number;
 }
 

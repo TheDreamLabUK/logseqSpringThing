@@ -82,19 +82,19 @@ export const defaultSettings: Settings = {
         },
         hologram: {
             ringCount: 3,
-            ringColor: '#00ffff',
-            ringOpacity: 0.8,
-            ringSizes: [0.8, 1.2, 1.6, 2.0],
+            sphereSizes: [800, 1600, 2400],  // Actual sizes in world units
             ringRotationSpeed: 1.0,
+            ringColor: '#00ffff',
+            ringOpacity: 0.6,
             enableBuckminster: true,
-            buckminsterScale: 0.6,
+            buckminsterSize: 1200,  // Actual size in world units
             buckminsterOpacity: 0.6,
             enableGeodesic: false,
-            geodesicScale: 0.4,
+            geodesicSize: 1000,  // Actual size in world units
             geodesicOpacity: 0.5,
             enableTriangleSphere: true,
-            triangleSphereScale: 0.5,
-            triangleSphereOpacity: 0.5,
+            triangleSphereSize: 1400,  // Actual size in world units
+            triangleSphereOpacity: 0.4,
             globalRotationSpeed: 1.0
         }
     },
