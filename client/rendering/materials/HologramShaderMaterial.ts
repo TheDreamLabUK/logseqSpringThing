@@ -14,13 +14,14 @@ export interface HologramUniforms {
 export class HologramShaderMaterial extends THREE.ShaderMaterial {
     declare uniforms: HologramUniforms;
 
-    constructor(settings?: any) {
+    constructor(settings?: any, context: 'ar' | 'desktop' = 'desktop') {
+        const isAR = context === 'ar';
         super({
             uniforms: {
                 time: { value: 0 },
                 opacity: { value: settings?.visualization?.hologram?.opacity ?? 1.0 },
                 color: { value: new THREE.Color(settings?.visualization?.hologram?.color ?? 0x00ff00) },
-                pulseIntensity: { value: 0.2 },
+                pulseIntensity: { value: isAR ? 0.1 : 0.2 }, // Reduced pulse intensity for AR
                 interactionPoint: { value: new THREE.Vector3() },
                 interactionStrength: { value: 0.0 },
                 isEdgeOnly: { value: false }
@@ -46,16 +47,20 @@ export class HologramShaderMaterial extends THREE.ShaderMaterial {
                 varying vec3 vPosition;
 
                 void main() {
-                    float pulse = sin(time * 2.0) * 0.5 + 0.5;
-                    float dist = length(vPosition - interactionPoint);
-                    float interaction = interactionStrength * (1.0 - smoothstep(0.0, 2.0, dist));
+                    // Simplified pulse calculation
+                    float pulse = sin(time) * 0.5 + 0.5;
+                    
+                    // Only calculate interaction if strength is significant
+                    float interaction = 0.0;
+                    if (interactionStrength > 0.01) {
+                        float dist = length(vPosition - interactionPoint);
+                        interaction = interactionStrength * (1.0 - smoothstep(0.0, 2.0, dist));
+                    }
                     
                     float alpha;
                     if (isEdgeOnly) {
-                        // Edge-only mode: stronger glow effect
-                        alpha = opacity * (0.8 + pulse * pulseIntensity * 1.5 + interaction);
-                        // Add edge enhancement
-                        vec3 edgeColor = color + vec3(0.2) * pulse; // Slightly brighter edges
+                        alpha = opacity * (0.8 + pulse * pulseIntensity + interaction);
+                        vec3 edgeColor = color + vec3(0.1) * pulse; // Reduced edge brightness
                         gl_FragColor = vec4(edgeColor, clamp(alpha, 0.0, 1.0));
                     } else {
                         alpha = opacity * (0.5 + pulse * pulseIntensity + interaction);
@@ -64,24 +69,41 @@ export class HologramShaderMaterial extends THREE.ShaderMaterial {
                 }
             `,
             transparent: true,
-            side: THREE.DoubleSide,
-            blending: THREE.AdditiveBlending
+            side: isAR ? 0 : 2, // THREE.FrontSide = 0, THREE.DoubleSide = 2
+            blending: THREE.AdditiveBlending,
+            wireframe: true,
+            wireframeLinewidth: 1
         });
+
+        // Set update frequency based on context
+        this.updateFrequency = isAR ? 2 : 1; // Update every other frame in AR
+        this.frameCount = 0;
     }
 
+    private updateFrequency: number;
+    private frameCount: number;
+
     update(deltaTime: number): void {
-        this.uniforms.time.value += deltaTime;
-        this.uniforms.interactionStrength.value *= 0.95; // Decay interaction effect
+        this.frameCount++;
+        if (this.frameCount % this.updateFrequency === 0) {
+            this.uniforms.time.value += deltaTime;
+            if (this.uniforms.interactionStrength.value > 0.01) {
+                this.uniforms.interactionStrength.value *= 0.95; // Decay interaction effect
+            }
+        }
     }
 
     handleInteraction(position: THREE.Vector3): void {
-        this.uniforms.interactionPoint.value.copy(position);
-        this.uniforms.interactionStrength.value = 1.0;
+        if (this.frameCount % this.updateFrequency === 0) {
+            this.uniforms.interactionPoint.value.copy(position);
+            this.uniforms.interactionStrength.value = 1.0;
+        }
     }
 
     setEdgeOnly(enabled: boolean): void {
         this.uniforms.isEdgeOnly.value = enabled;
-        this.uniforms.pulseIntensity.value = enabled ? 0.3 : 0.2; // Stronger pulse for edges
+        // Increase pulse intensity for better visibility in wireframe mode
+        this.uniforms.pulseIntensity.value = enabled ? (this.side === 0 ? 0.15 : 0.3) : (this.side === 0 ? 0.1 : 0.2);
     }
 
     clone(): this {

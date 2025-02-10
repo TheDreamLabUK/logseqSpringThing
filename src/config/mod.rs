@@ -50,7 +50,6 @@ pub struct Settings {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NodeSettings {
     pub base_color: String,
-    pub base_size: f32,
     pub metalness: f32,
     pub opacity: f32,
     pub roughness: f32,
@@ -131,16 +130,16 @@ pub struct HologramSettings {
     pub ring_count: u32,
     pub ring_color: String,
     pub ring_opacity: f32,
-    pub ring_sizes: Vec<f32>,
+    pub sphere_sizes: Vec<f32>,  // Native world units
     pub ring_rotation_speed: f32,
     pub enable_buckminster: bool,
-    pub buckminster_scale: f32,
+    pub buckminster_size: f32,  // Native world units
     pub buckminster_opacity: f32,
     pub enable_geodesic: bool,
-    pub geodesic_scale: f32,
+    pub geodesic_size: f32,  // Native world units
     pub geodesic_opacity: f32,
     pub enable_triangle_sphere: bool,
-    pub triangle_sphere_scale: f32,
+    pub triangle_sphere_size: f32,  // Native world units
     pub triangle_sphere_opacity: f32,
     pub global_rotation_speed: f32,
 }
@@ -393,11 +392,10 @@ impl Default for Settings {
             visualization: VisualizationSettings {
                 nodes: NodeSettings {
                     base_color: "#c3ab6f".to_string(),
-                    base_size: 0.5,
                     metalness: 0.3,
                     opacity: 0.4,
                     roughness: 0.35,
-                    size_range: vec![0.5, 1.0],
+                    size_range: vec![40.0, 120.0],  // Native world units
                     quality: "medium".to_string(),
                     enable_instancing: false,
                     enable_hologram: false,
@@ -460,16 +458,16 @@ impl Default for Settings {
                     ring_count: 3,
                     ring_color: "#00ff00".to_string(),
                     ring_opacity: 0.5,
-                    ring_sizes: vec![1.0, 1.2, 1.5],
+                    sphere_sizes: vec![40.0, 80.0, 120.0],  // Native world units
                     ring_rotation_speed: 0.001,
                     enable_buckminster: false,
-                    buckminster_scale: 1.0,
+                    buckminster_size: 120.0,  // Native world units
                     buckminster_opacity: 0.3,
                     enable_geodesic: false,
-                    geodesic_scale: 1.0,
+                    geodesic_size: 100.0,  // Native world units
                     geodesic_opacity: 0.3,
                     enable_triangle_sphere: false,
-                    triangle_sphere_scale: 1.0,
+                    triangle_sphere_size: 140.0,  // Native world units
                     triangle_sphere_opacity: 0.3,
                     global_rotation_speed: 0.0005,
                 },

@@ -35,7 +35,14 @@ export class EnhancedNodeManager {
     private metadataMaterial: Material | null = null;
     private metadataVisualizer: MetadataVisualizer;
     private quaternion = new Quaternion();
+    private reusableMatrix = new Matrix4();
+    private reusablePosition = new Vector3();
+    private reusableScale = new Vector3();
     private camera: PerspectiveCamera;
+    private updateFrameCount = 0;
+    private readonly AR_UPDATE_FREQUENCY = 2; // Update every other frame in AR
+    private readonly METADATA_DISTANCE_THRESHOLD = 50; // Distance threshold for metadata visibility
+    private readonly ANIMATION_DISTANCE_THRESHOLD = 30; // Distance threshold for animations
 
     constructor(scene: Scene, settings: Settings) {
         this.scene = scene;
@@ -58,7 +65,7 @@ export class EnhancedNodeManager {
 
         this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
-        this.isInstanced = settings.visualization.nodes.enableInstancing;
+        this.isInstanced = settings.visualization.nodes.enableInstancing && !platformManager.isXRMode;
         this.nodeGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
         this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
         this.isHologram = settings.visualization.nodes.enableHologram;
@@ -76,7 +83,7 @@ export class EnhancedNodeManager {
 
     private setupInstancedMesh() {
         if (this.isInstanced) {
-            this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 1000);
+            this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 2000); // Increased buffer
             this.instancedMesh.count = 0;
             this.instancedMesh.layers.set(platformManager.isXRMode ? 1 : 0);
             this.scene.add(this.instancedMesh);
@@ -127,6 +134,11 @@ export class EnhancedNodeManager {
 
         // Handle metadata visualization
         if (settings.visualization.nodes.enableMetadataVisualization) {
+            const cameraPosition = this.camera.position;
+            const shouldShowMetadata = (position: Vector3) => {
+                return position.distanceTo(cameraPosition) < this.METADATA_DISTANCE_THRESHOLD;
+            };
+
             this.nodes.forEach((node) => {
                 // Remove existing metadata
                 node.children.slice().forEach((child: Object3D) => {
@@ -137,9 +149,11 @@ export class EnhancedNodeManager {
 
                 // Add new metadata visualization
                 const metadata = node.userData as NodeMetadata;
-                if (metadata) {
+                if (metadata && shouldShowMetadata(node.position)) {
                     this.metadataVisualizer.createMetadataLabel(metadata).then((group) => {
-                        node.add(group);
+                        if (shouldShowMetadata(node.position)) {
+                            node.add(group);
+                        }
                     });
                 }
             });
@@ -204,8 +218,9 @@ export class EnhancedNodeManager {
                 const position = new Vector3(metadata.position.x, metadata.position.y, metadata.position.z);
 
                 if (this.isInstanced && this.instancedMesh) {
-                    const matrix = new Matrix4();
-                    matrix.compose(position, this.quaternion, new Vector3(scale, scale, scale));
+                    this.reusablePosition.copy(position);
+                    this.reusableScale.set(scale, scale, scale);
+                    const matrix = this.reusableMatrix.compose(this.reusablePosition, this.quaternion, this.reusableScale);
                     this.instancedMesh.setMatrixAt(index, matrix);
                 } else {
                     nodeMesh = new Mesh(this.nodeGeometry, this.nodeMaterial);
@@ -215,9 +230,11 @@ export class EnhancedNodeManager {
                     nodeMesh.layers.enable(1);
                     nodeMesh.userData = metadata;
 
-                    if (this.settings.visualization.nodes.enableMetadataVisualization) {
+                    if (this.settings.visualization.nodes.enableMetadataVisualization && 
+                        position.distanceTo(this.camera.position) < this.METADATA_DISTANCE_THRESHOLD) {
                         this.metadataVisualizer.createMetadataLabel(metadata).then((group) => {
-                            nodeMesh.add(group);
+                            if (position.distanceTo(this.camera.position) < this.METADATA_DISTANCE_THRESHOLD)
+                                nodeMesh.add(group);
                         });
                     }
 
@@ -263,16 +280,25 @@ export class EnhancedNodeManager {
     }
 
     update(deltaTime: number) {
+        this.updateFrameCount++;
+        const isARMode = platformManager.isXRMode;
+
+        // Skip updates based on context
+        if (isARMode && this.updateFrameCount % this.AR_UPDATE_FREQUENCY !== 0) {
+            return;
+        }
+
         if (this.isHologram && this.hologramMaterial) {
             this.hologramMaterial.update(deltaTime);
         }
 
         if (this.settings.visualization.animations.enableNodeAnimations) {
+            const cameraPosition = this.camera.position;
             if (this.instancedMesh) {
                 this.instancedMesh.instanceMatrix.needsUpdate = true;
             }
             this.scene.traverse((child: Object3D) => {
-                if (child instanceof Mesh && (child.material as any).type === 'LineBasicMaterial') {
+                if (child instanceof Mesh && (child.material as any).type === 'LineBasicMaterial' && child.position.distanceTo(cameraPosition) < this.ANIMATION_DISTANCE_THRESHOLD) {
                     child.rotateY(0.001 * deltaTime);
                 }
             });
@@ -280,12 +306,11 @@ export class EnhancedNodeManager {
     }
 
     handleHandInteraction(hand: XRHandWithHaptics) {
-        const position = new Vector3();
         const indexTip = hand.hand.joints['index-finger-tip'] as Object3D | undefined;
         if (indexTip) {
-            position.setFromMatrixPosition(indexTip.matrixWorld);
             if (this.isHologram && this.hologramMaterial) {
-                this.hologramMaterial.handleInteraction(position);
+                this.reusablePosition.setFromMatrixPosition(indexTip.matrixWorld);
+                this.hologramMaterial.handleInteraction(this.reusablePosition);
             }
         }
     }
@@ -320,17 +345,17 @@ export class EnhancedNodeManager {
                     node.data.position[2]
                 );
             } else if (this.isInstanced && this.instancedMesh) {
-                const matrix = new Matrix4();
-                matrix.compose(
-                    new Vector3(
-                        node.data.position[0],
-                        node.data.position[1],
-                        node.data.position[2]
-                    ),
-                    this.quaternion,
-                    new Vector3(1, 1, 1)
+                this.reusablePosition.set(
+                    node.data.position[0],
+                    node.data.position[1],
+                    node.data.position[2]
                 );
-                this.instancedMesh.setMatrixAt(index, matrix);
+                this.reusableMatrix.compose(
+                    this.reusablePosition,
+                    this.quaternion,
+                    this.reusableScale.set(1, 1, 1)
+                );
+                this.instancedMesh.setMatrixAt(index, this.reusableMatrix);
             }
         });
 

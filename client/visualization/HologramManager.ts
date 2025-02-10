@@ -40,16 +40,17 @@ export class HologramManager {
         const quality = this.isXRMode ? 'high' : this.settings.xr.quality;
         const material = this.materialFactory.getHologramMaterial(this.settings);
 
-        // Create rings using actual sizes
+        // Create rings using native world units (40, 80, 120)
         const sphereSizes = this.settings.visualization.hologram.sphereSizes;
         for (let i = 0; i < this.settings.visualization.hologram.ringCount; i++) {
-            const size = sphereSizes[i] || 800; // Default to 800 if size not specified
+            const size = sphereSizes[i] || 40 * (i + 1); // Default to 40, 80, 120 pattern if not specified
             const ring = new Mesh(
                 this.geometryFactory.getHologramGeometry('ring', quality, size),
                 material.clone()
             );
-            ring.rotateX(Math.PI / 2 * i);
-            ring.rotateY(Math.PI / 4 * i);
+            // Position rings at different angles to make them more visible
+            ring.rotateX(Math.PI / 3 * i);  // Changed from PI/2 to PI/3
+            ring.rotateY(Math.PI / 6 * i);  // Changed from PI/4 to PI/6
             ring.userData.rotationSpeed = this.settings.visualization.hologram.ringRotationSpeed * (i + 1);
             (ring.material as HologramShaderMaterial).setEdgeOnly(true);
             this.group.add(ring);

@@ -25,7 +25,6 @@ export interface NodeSettings {
     enableHologram: boolean;
     enableMetadataShape: boolean;
     enableMetadataVisualization: boolean;
-    baseSize: number;
     sizeRange: [number, number];
     baseColor: string;
     opacity: number;
@@ -42,8 +41,7 @@ export interface EdgeSettings {
     baseWidth: number;
     enableArrows: boolean;
     widthRange: [number, number];
-    quality: 'low' | 'medium' | 'high';
-    scaleFactor: number;
+    quality: 'low' | 'medium' | 'high'
 }
 
 export interface AnimationSettings {
@@ -80,19 +78,19 @@ export interface BloomSettings {
 
 export interface HologramSettings {
     ringCount: number;
-    sphereSizes: number[];  // Actual sizes in world units
+    sphereSizes: number[];  // Native world units (e.g. [40, 80, 120])
     ringRotationSpeed: number;
     globalRotationSpeed: number;
     ringColor: string;
     ringOpacity: number;
     enableBuckminster: boolean;
-    buckminsterSize: number;  // Actual size in world units
+    buckminsterSize: number;  // Native world units (e.g. 120)
     buckminsterOpacity: number;
     enableGeodesic: boolean;
-    geodesicSize: number;  // Actual size in world units
+    geodesicSize: number;  // Native world units (e.g. 100)
     geodesicOpacity: number;
     enableTriangleSphere: boolean;
-    triangleSphereSize: number;  // Actual size in world units
+    triangleSphereSize: number;  // Native world units (e.g. 140)
     triangleSphereOpacity: number;
 }
 

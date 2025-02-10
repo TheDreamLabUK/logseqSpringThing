@@ -1,6 +1,5 @@
 import { 
     BufferGeometry, 
-    SphereGeometry, 
     CylinderGeometry, 
     IcosahedronGeometry,
     TorusGeometry
@@ -19,43 +18,44 @@ export class GeometryFactory {
         return GeometryFactory.instance;
     }
 
-    getNodeGeometry(quality: 'low' | 'medium' | 'high', context: 'ar' | 'desktop' = 'desktop', size: number = 1000): BufferGeometry {
+    getNodeGeometry(quality: 'low' | 'medium' | 'high', context: 'ar' | 'desktop' = 'desktop', size: number = 40): BufferGeometry {
         const cacheKey = `node-${quality}-${context}-${size}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
 
         let geometry: BufferGeometry;
-        let segmentCount: number;
+        let detail: number;
         
         switch (quality) {
             case 'low':
-               segmentCount = context === 'ar' ? 4 : 8;
+               detail = context === 'ar' ? 0 : 1;
                  break;
             case 'medium':
-                segmentCount = context === 'ar' ? 8 : 16;
+                detail = context === 'ar' ? 1 : 2;
                 break;
             case 'high':
-                segmentCount = context === 'ar' ? 16 : 24;
+                detail = context === 'ar' ? 1 : 2;
                 break;
             default:
-                segmentCount = 16;
+                detail = context === 'ar' ? 1 : 2;
         }
-        geometry = new SphereGeometry(size, segmentCount, segmentCount);
+        // Use IcosahedronGeometry for better performance while maintaining visual quality
+        geometry = new IcosahedronGeometry(size, detail);
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }
 
-    getHologramGeometry(type: string, quality: string, size: number = 1000): BufferGeometry {
+    getHologramGeometry(type: string, quality: string, size: number = 40): BufferGeometry {
         const cacheKey = `hologram-${type}-${quality}-${size}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
         }
 
         const segments = {
-            low: { ring: 32, sphere: 16 },
-            medium: { ring: 48, sphere: 24 },
-            high: { ring: 64, sphere: 32 }
+            low: { ring: 16, sphere: 12 },
+            medium: { ring: 24, sphere: 16 },
+            high: { ring: 32, sphere: 24 }
         }[quality] || { ring: 96, sphere: 48 };
 
         let geometry: BufferGeometry;
@@ -64,16 +64,16 @@ export class GeometryFactory {
                 geometry = new TorusGeometry(size, size * 0.05, segments.ring, segments.ring * 2);
                 break;
             case 'buckminster':
-                geometry = new IcosahedronGeometry(size, 2); // Icosahedron for Buckminster Fullerene
+                geometry = new IcosahedronGeometry(size * 1.2, 1); // One subdivision for buckminster
                 break;
             case 'geodesic':
-                geometry = new IcosahedronGeometry(size, 5); // Higher detail Icosahedron
+                geometry = new IcosahedronGeometry(size * 1.5, 2); // Two subdivisions for geodesic
                 break;
             case 'triangleSphere':
-                geometry = new SphereGeometry(size, segments.sphere, segments.sphere / 2); // Sphere with triangular faces
+                geometry = new IcosahedronGeometry(size * 0.8, 1); // One subdivision for triangle sphere
                 break;
             default:
-                geometry = new SphereGeometry(size, segments.sphere, segments.sphere / 2);
+                geometry = new IcosahedronGeometry(size, 1); // Base size
         }
 
         this.geometryCache.set(cacheKey, geometry);
@@ -87,15 +87,14 @@ export class GeometryFactory {
         }
 
         // Use CylinderGeometry for more reliable edge rendering
-        const baseRadius = context === 'ar' ? 0.1 : 0.15; // Reduced base radius for better scaling
+        const baseRadius = context === 'ar' ? 0.5 : 1.0; // Native units for edge thickness
         
         // Adjust segments based on quality
         const segments = {
-            low: context === 'ar' ? 4 : 6,
-            medium: context === 'ar' ? 6 : 8,
-            high: context === 'ar' ? 8 : 10
+            low: context === 'ar' ? 4 : 5,
+            medium: context === 'ar' ? 5 : 6,
+            high: context === 'ar' ? 6 : 8
         }[quality || 'medium'];
-
         const geometry = new CylinderGeometry(baseRadius, baseRadius, 1, segments);
         
         // Rotate 90 degrees to align with Z-axis

@@ -4,11 +4,10 @@ export const defaultSettings: Settings = {
     visualization: {
         nodes: {
             baseColor: '#32aeae',
-            baseSize: 1.5,
             metalness: 0.8,
             opacity: 1.0,
             roughness: 0.2,
-            sizeRange: [1.0, 3.0],
+            sizeRange: [40, 120], // Native units for node sizes
             quality: 'high',
             enableInstancing: false,
             enableHologram: false,
@@ -24,8 +23,7 @@ export const defaultSettings: Settings = {
             enableArrows: false,
             opacity: 0.8,
             widthRange: [1.5, 4.0],
-            quality: 'medium',
-            scaleFactor: 2.0
+            quality: 'medium'
         },
         physics: {
             attractionStrength: 0.015,
@@ -82,18 +80,18 @@ export const defaultSettings: Settings = {
         },
         hologram: {
             ringCount: 3,
-            sphereSizes: [800, 1600, 2400],  // Actual sizes in world units
+            sphereSizes: [40, 80, 120],  // Native world units
             ringRotationSpeed: 1.0,
             ringColor: '#00ffff',
             ringOpacity: 0.6,
             enableBuckminster: true,
-            buckminsterSize: 1200,  // Actual size in world units
+            buckminsterSize: 120,  // Native world units
             buckminsterOpacity: 0.6,
             enableGeodesic: false,
-            geodesicSize: 1000,  // Actual size in world units
+            geodesicSize: 100,  // Native world units
             geodesicOpacity: 0.5,
             enableTriangleSphere: true,
-            triangleSphereSize: 1400,  // Actual size in world units
+            triangleSphereSize: 140,  // Native world units
             triangleSphereOpacity: 0.4,
             globalRotationSpeed: 1.0
         }

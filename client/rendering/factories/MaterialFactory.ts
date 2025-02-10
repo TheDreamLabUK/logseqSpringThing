@@ -24,7 +24,7 @@ export class MaterialFactory {
         return new Color(`#${result[1]}${result[2]}${result[3]}`);
     }
 
-    public createHologramMaterial(settings: any): HologramShaderMaterial {
+    public createHologramMaterial(settings: any, context: 'ar' | 'desktop' = 'desktop'): HologramShaderMaterial {
         const cacheKey = 'hologram';
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey) as HologramShaderMaterial;
@@ -36,13 +36,20 @@ export class MaterialFactory {
             const materialColor = this.hexToRgb(settings.visualization.hologram.ringColor);
             material.uniforms.color.value = materialColor;
         }
+        
+        // Optimize for Quest
+        if (context === 'ar') {
+            material.transparent = true;
+            material.depthWrite = true; // Improve depth sorting
+            material.opacity = (settings.visualization?.hologram?.opacity || 0.6) * 0.8; // Reduce opacity for better performance
+        }
 
         this.materialCache.set(cacheKey, material);
         return material;
     }
 
-    public getHologramMaterial(settings: any): HologramShaderMaterial {
-        return this.createHologramMaterial(settings);
+    public getHologramMaterial(settings: any, context: 'ar' | 'desktop' = 'desktop'): HologramShaderMaterial {
+        return this.createHologramMaterial(settings, context);
     }
 
     public getSceneSphereMaterial(settings: any): Material {
@@ -54,20 +61,22 @@ export class MaterialFactory {
             wireframe: true,
             color: settings.visualization?.hologram?.ringColor || 0xffffff,
             transparent: true,
+            depthWrite: true,
             opacity: settings.visualization?.hologram?.opacity || 0.8
         });
         this.materialCache.set(cacheKey, material);
         return material;
     }
 
-    public getRingMaterial(settings: any): Material {
-        const cacheKey = 'ring';
+    public getRingMaterial(settings: any, context: 'ar' | 'desktop' = 'desktop'): Material {
+        const cacheKey = `ring-${context}`;
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey)!;
         }
-        const material = this.getHologramMaterial(settings);
+        const material = this.getHologramMaterial(settings, context);
         material.transparent = true;
-        material.opacity = settings.visualization?.hologram?.opacity || 0.6;
+        material.depthWrite = true;
+        material.opacity = context === 'ar' ? (settings.visualization?.hologram?.opacity || 0.6) * 0.8 : (settings.visualization?.hologram?.opacity || 0.6);
         this.materialCache.set(cacheKey, material);
         return material;
     }
@@ -78,12 +87,14 @@ export class MaterialFactory {
             return this.materialCache.get(cacheKey)!;
         }
 
+        const opacity = context === 'ar' ? (settings.visualization?.nodes?.opacity || 0.9) * 0.8 : (settings.visualization?.nodes?.opacity || 0.9);
+
         const material = new MeshBasicMaterial({
             color: settings.visualization?.nodes?.baseColor || 0x4287f5,
             transparent: true,
-            opacity: settings.visualization?.nodes?.opacity || 0.9,
+            opacity,
             wireframe: true,
-            depthTest: true
+            depthWrite: true // Improve depth sorting
         });
         
         this.materialCache.set(cacheKey, material);
@@ -99,7 +110,8 @@ export class MaterialFactory {
         const material = new MeshBasicMaterial({
             color: 0xffffff,
             transparent: true,
-            opacity: 0.8
+            depthWrite: true,
+            opacity: 0.7 // Slightly reduced opacity for better performance
         });
 
         this.materialCache.set(cacheKey, material);
@@ -115,7 +127,7 @@ export class MaterialFactory {
             case 'node-phong': {
                 const nodeMaterial = material as LineBasicMaterial;
                 nodeMaterial.color = this.hexToRgb(settings.visualization?.nodes?.baseColor || '#4287f5');
-                nodeMaterial.opacity = settings.visualization?.nodes?.opacity || 0.9;
+                nodeMaterial.opacity = type.includes('ar') ? (settings.visualization?.nodes?.opacity || 0.9) * 0.8 : (settings.visualization?.nodes?.opacity || 0.9);
                 nodeMaterial.needsUpdate = true;
                 break;
             }

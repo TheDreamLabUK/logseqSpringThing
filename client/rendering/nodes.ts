@@ -139,8 +139,9 @@ export class NodeManager {
                 node.data.position.z
             );
 
-            const baseSize = this.currentSettings.visualization.nodes.baseSize || 1;
-            scale.set(baseSize, baseSize, baseSize);
+            // Use minimum size from sizeRange as base size
+            const baseSize = this.currentSettings.visualization.nodes.sizeRange[0] || 40;
+            scale.set(baseSize/40, baseSize/40, baseSize/40); // Normalize to reasonable scale
 
             matrix.compose(position, quaternion, scale);
             this.nodeInstances.setMatrixAt(index, matrix);
