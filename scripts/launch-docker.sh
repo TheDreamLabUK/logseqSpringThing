@@ -465,6 +465,11 @@ fi
 GIT_HASH=$(git rev-parse HEAD 2>/dev/null || echo "development")
 export GIT_HASH
 
+# Build client code before building container
+log "${YELLOW}Building client code...${NC}"
+pnpm build || { log "${RED}Client build failed${NC}"; exit 1; }
+log "${GREEN}Client build successful${NC}"
+
 # Build with GIT_HASH environment variable
 GIT_HASH=$GIT_HASH $DOCKER_COMPOSE build --pull --no-cache
 $DOCKER_COMPOSE up -d

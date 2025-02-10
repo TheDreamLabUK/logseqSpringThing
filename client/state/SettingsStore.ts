@@ -73,10 +73,14 @@ export class SettingsStore {
                         logger.info('Using server settings with defaults as fallback');
                     } else {
                         const errorText = await response.text();
+                        logger.error('Response text:', await response.text());
                         throw new Error(`Failed to fetch server settings: ${response.statusText}. Details: ${errorText}`);
                     }
                 } catch (error) {
                     // If server settings fail, fall back to defaults
+                    if (error instanceof Error) {
+                        logger.error('Full error:', error);
+                    }
                     logger.warn('Error loading server settings, falling back to defaults:', error);
                     this.settings = { ...defaultSettings };
                     this.settingsOrigin = 'default';
