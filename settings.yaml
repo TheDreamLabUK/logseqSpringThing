@@ -71,10 +71,10 @@ visualization:
     - 1.7
     ring_rotation_speed: 0.05
     enable_buckminster: false
-    buckminster_scale: 1.0
+    buckminster_scale: 7.01
     buckminster_opacity: 0.05
     enable_geodesic: false
-    geodesic_scale: 0.9
+    geodesic_scale: 9.0
     geodesic_opacity: 0.05
     enable_triangle_sphere: false
     triangle_sphere_scale: 0.8

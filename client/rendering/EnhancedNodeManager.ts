@@ -129,8 +129,8 @@ export class EnhancedNodeManager {
         if (settings.visualization.nodes.enableMetadataVisualization) {
             this.nodes.forEach((node) => {
                 // Remove existing metadata
-                node.children.slice().forEach(child => {
-                    if (child instanceof Object3D && child.userData.isMetadata) {
+                node.children.slice().forEach((child: Object3D) => {
+                    if (child instanceof Object3D && (child.userData as any).isMetadata) {
                         node.remove(child);
                     }
                 });
@@ -146,8 +146,8 @@ export class EnhancedNodeManager {
         } else {
             // Remove all metadata visualizations
             this.nodes.forEach(node => {
-                node.children.slice().forEach(child => {
-                    if (child instanceof Object3D && child.userData.isMetadata) {
+                node.children.slice().forEach((child: Object3D) => {
+                    if (child instanceof Object3D && (child.userData as any).isMetadata) {
                         node.remove(child);
                     }
                 });
@@ -271,8 +271,8 @@ export class EnhancedNodeManager {
             if (this.instancedMesh) {
                 this.instancedMesh.instanceMatrix.needsUpdate = true;
             }
-            this.scene.traverse(child => {
-                if (child instanceof Mesh) {
+            this.scene.traverse((child: Object3D) => {
+                if (child instanceof Mesh && (child.material as any).type === 'LineBasicMaterial') {
                     child.rotateY(0.001 * deltaTime);
                 }
             });
@@ -345,7 +345,7 @@ export class EnhancedNodeManager {
         }
         this.nodes.forEach(node => {
             node.layers.set(enabled ? 1 : 0);
-            node.traverse(child => {
+            node.traverse((child: Object3D) => {
                 child.layers.set(enabled ? 1 : 0);
             });
         });

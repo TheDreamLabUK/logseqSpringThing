@@ -365,7 +365,10 @@ declare module 'three' {
     map?: Texture;
   }
 
-  export interface MeshBasicMaterialParameters extends MaterialParameters {}
+  export interface MeshBasicMaterialParameters extends MaterialParameters {
+    wireframe?: boolean;
+  }
+
   export interface MeshPhongMaterialParameters extends MaterialParameters {
     shininess?: number;
     specular?: ColorRepresentation;

@@ -1,5 +1,5 @@
 import { HologramShaderMaterial } from '../materials/HologramShaderMaterial';
-import { Color, Material, MeshBasicMaterial, MeshPhongMaterial, LineBasicMaterial } from 'three';
+import { Color, Material, MeshBasicMaterial, LineBasicMaterial } from 'three';
 
 export class MaterialFactory {
     private static instance: MaterialFactory;
@@ -32,8 +32,8 @@ export class MaterialFactory {
 
         const material = new HologramShaderMaterial(settings);
         
-        if (settings.visualization?.hologram?.color) {
-            const materialColor = this.hexToRgb(settings.visualization.hologram.color);
+        if (settings.visualization?.hologram?.ringColor) {
+            const materialColor = this.hexToRgb(settings.visualization.hologram.ringColor);
             material.uniforms.color.value = materialColor;
         }
 
@@ -45,71 +45,18 @@ export class MaterialFactory {
         return this.createHologramMaterial(settings);
     }
 
-    public getNodeMaterial(settings: any, context: 'ar' | 'desktop' = 'desktop'): Material {
-        const cacheKey = `node-${context}`;
-        if (this.materialCache.has(cacheKey)) {
-            return this.materialCache.get(cacheKey)!;
-        }
-
-        let material: Material;
-        
-        if (context === 'ar') {
-            // AR (Meta Quest) - Performance optimized
-            // AR (Meta Quest) - Performance optimized with minimal features
-            // AR (Meta Quest) - Performance optimized with minimal features
-            material = new MeshBasicMaterial({
-                color: settings.visualization?.nodes?.baseColor || 0x4287f5,
-                transparent: true,
-                opacity: settings.visualization?.nodes?.opacity || 0.9,
-                depthWrite: true,
-                side: 0, // FrontSide for better performance
-                depthTest: true
-            });
-        } else {
-            // Desktop/VR - Full features with better visual quality
-            material = new MeshPhongMaterial({
-                color: settings.visualization?.nodes?.baseColor || 0x4287f5,
-                transparent: true,
-                opacity: settings.visualization?.nodes?.opacity || 0.9,
-                depthWrite: true,
-                side: 2, // DoubleSide for better visuals
-                shininess: 30,
-                specular: 0x444444,
-                depthTest: true
-            });
-        }
-
-        this.materialCache.set(cacheKey, material);
-        return material;
-    }
-
-    public getPhongNodeMaterial(settings: any): Material {
-        const cacheKey = 'node-phong';
-        if (this.materialCache.has(cacheKey)) {
-            return this.materialCache.get(cacheKey)!;
-        }
-
-        const material = new MeshBasicMaterial({
-            color: settings.visualization?.nodes?.baseColor || 0x4287f5,
-            transparent: true,
-            opacity: settings.visualization?.nodes?.opacity || 0.9,
-            depthWrite: true
-        });
-
-        this.materialCache.set(cacheKey, material);
-        return material;
-    }
-
     public getSceneSphereMaterial(settings: any): Material {
+        const cacheKey = 'scene-sphere';
+        if (this.materialCache.has(cacheKey)) {
+            return this.materialCache.get(cacheKey)!;
+        }
         const material = new MeshBasicMaterial({
-            color: settings.visualization?.hologram?.color || 0x4287f5,
+            wireframe: true,
+            color: settings.visualization?.hologram?.ringColor || 0xffffff,
             transparent: true,
-            opacity: 0.3,
-            depthWrite: false
+            opacity: settings.visualization?.hologram?.opacity || 0.8
         });
-
-        (material as any).wireframe = true;
-
+        this.materialCache.set(cacheKey, material);
         return material;
     }
 
@@ -118,33 +65,27 @@ export class MaterialFactory {
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey)!;
         }
-
-        const material = new MeshBasicMaterial({
-            color: settings.visualization?.hologram?.color || 0x4287f5,
-            transparent: true,
-            opacity: 0.15,
-            depthWrite: false
-        });
-
+        const material = this.getHologramMaterial(settings);
+        material.transparent = true;
+        material.opacity = settings.visualization?.hologram?.opacity || 0.6;
         this.materialCache.set(cacheKey, material);
         return material;
     }
 
-    public getEdgeMaterial(settings: any, context: 'ar' | 'desktop' = 'desktop'): Material {
-        const cacheKey = `edge-${context}`;
+    public getNodeMaterial(settings: any, context: 'ar' | 'desktop' = 'desktop'): Material {
+        const cacheKey = `node-${context}`;
         if (this.materialCache.has(cacheKey)) {
             return this.materialCache.get(cacheKey)!;
         }
 
         const material = new MeshBasicMaterial({
-            color: settings.visualization?.edges?.color || 0x6e7c91,
+            color: settings.visualization?.nodes?.baseColor || 0x4287f5,
             transparent: true,
-            opacity: context === 'ar' ? 0.8 : 0.9,
-            depthWrite: true,
-            depthTest: true,
-            side: 2  // DoubleSide for better visibility
+            opacity: settings.visualization?.nodes?.opacity || 0.9,
+            wireframe: true,
+            depthTest: true
         });
-
+        
         this.materialCache.set(cacheKey, material);
         return material;
     }
@@ -172,7 +113,7 @@ export class MaterialFactory {
         switch (type) {
             case 'node-basic':
             case 'node-phong': {
-                const nodeMaterial = material as MeshBasicMaterial;
+                const nodeMaterial = material as LineBasicMaterial;
                 nodeMaterial.color = this.hexToRgb(settings.visualization?.nodes?.baseColor || '#4287f5');
                 nodeMaterial.opacity = settings.visualization?.nodes?.opacity || 0.9;
                 nodeMaterial.needsUpdate = true;
@@ -183,21 +124,8 @@ export class MaterialFactory {
                 break;
             case 'hologram':
                 if (material instanceof HologramShaderMaterial) {
-                    material.uniforms.color.value = this.hexToRgb(settings.visualization?.hologram?.color || '#ffffff');
+                    material.uniforms.color.value = this.hexToRgb(settings.visualization?.hologram?.ringColor || '#ffffff');
                 }
-                break;
-            case 'scene-sphere-inner':
-            case 'scene-sphere-middle':
-            case 'scene-sphere-outer':
-                const sphereMaterial = material as MeshBasicMaterial;
-                sphereMaterial.color = this.hexToRgb(settings.visualization?.hologram?.color || '#4287f5');
-                (sphereMaterial as any).wireframe = true;
-                sphereMaterial.needsUpdate = true;
-                break;
-            case 'ring':
-                const ringMaterial = material as MeshBasicMaterial;
-                ringMaterial.color = this.hexToRgb(settings.visualization?.hologram?.color || '#4287f5');
-                ringMaterial.needsUpdate = true;
                 break;
         }
     }

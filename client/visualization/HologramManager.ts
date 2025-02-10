@@ -54,7 +54,6 @@ export class HologramManager {
             const sphere = new THREE.Mesh(geometry, material);
             sphere.scale.setScalar(radius / 40); // Base geometry is radius 40
             sphere.layers.set(this.isXRMode ? 1 : 0);
-            ((sphere.material as THREE.Material) as any).wireframe = true;
             this.hologramGroup.add(sphere);
             this.spheres.push(sphere);
         });
