@@ -1,10 +1,11 @@
-import { Scene } from 'three';
+import { Scene, Camera } from 'three';
 import { createLogger } from '../core/logger';
 import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 import { XRHandWithHaptics } from '../types/xr';
 import { EdgeManager } from './EdgeManager';
 import { graphDataManager } from '../state/graphData';
+import { TextRenderer } from './textRenderer';
 import { GraphData } from '../core/types';
 
 const logger = createLogger('VisualizationController');
@@ -16,6 +17,7 @@ export class VisualizationController {
     private static instance: VisualizationController | null = null;
     private currentSettings: Settings;
     private edgeManager: EdgeManager | null = null;
+    private textRenderer: TextRenderer | null = null;
     private isInitialized: boolean = false;
     private pendingUpdates: Map<string, PendingUpdate> = new Map();
     private pendingEdgeUpdates: GraphData['edges'] | null = null;
@@ -36,11 +38,12 @@ export class VisualizationController {
         });
     }
 
-    public initializeScene(scene: Scene): void {
+    public initializeScene(scene: Scene, camera: Camera): void {
         logger.info('Initializing visualization scene');
         
         // Initialize edge manager with scene and settings
         this.edgeManager = new EdgeManager(scene, this.currentSettings);
+        this.textRenderer = new TextRenderer(camera, scene);
         this.isInitialized = true;
         
         // Apply any pending updates
@@ -240,6 +243,10 @@ export class VisualizationController {
         if (!this.isInitialized) return;
         this.updateNodeAppearance();
         this.updateEdgeAppearance();
+        // Update text labels
+        if (this.textRenderer) {
+            this.textRenderer.update();
+        }
     }
 
     private updateNodeAppearance(): void {
@@ -286,11 +293,18 @@ export class VisualizationController {
         }
     }
 
+    public update(): void {
+        if (this.isInitialized && this.textRenderer) {
+            this.textRenderer.update();
+        }
+    }
+
     public dispose(): void {
         if (this.edgeManager) {
             this.edgeManager.dispose();
             this.edgeManager = null;
         }
+        this.textRenderer?.dispose();
         this.currentSettings = { ...defaultSettings };
         this.isInitialized = false;
         this.pendingUpdates.clear();

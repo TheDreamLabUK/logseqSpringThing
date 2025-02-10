@@ -42,7 +42,7 @@ export class HologramManager {
 
         for (let i = 0; i < this.settings.visualization.hologram.ringCount; i++) {
             const ring = new Mesh(
-                this.geometryFactory.getHologramGeometry('ring', quality),
+                this.geometryFactory.getHologramGeometry('ring', quality, true), // Use edge-only mode
                 material.clone()
             );
             const scale = this.settings.visualization.hologram.ringSizes[i] || 20;
@@ -50,39 +50,43 @@ export class HologramManager {
             ring.rotateX(Math.PI / 2 * i);
             ring.rotateY(Math.PI / 4 * i);
             ring.userData.rotationSpeed = this.settings.visualization.hologram.ringRotationSpeed * (i + 1);
+            (ring.material as HologramShaderMaterial).setEdgeOnly(true);
             this.group.add(ring);
         }
 
         if (this.settings.visualization.hologram.enableBuckminster) {
             const mesh = new Mesh(
-                this.geometryFactory.getHologramGeometry('buckminster', quality),
+                this.geometryFactory.getHologramGeometry('buckminster', quality, true),
                 material.clone()
             );
             const scale = this.settings.visualization.hologram.buckminsterScale;
             mesh.scale.set(scale, scale, scale);
             (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.buckminsterOpacity;
+            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
             this.group.add(mesh);
         }
 
         if (this.settings.visualization.hologram.enableGeodesic) {
             const mesh = new Mesh(
-                this.geometryFactory.getHologramGeometry('geodesic', quality),
+                this.geometryFactory.getHologramGeometry('geodesic', quality, true),
                 material.clone()
             );
             const scale = this.settings.visualization.hologram.geodesicScale;
             mesh.scale.set(scale, scale, scale);
             (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.geodesicOpacity;
+            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
             this.group.add(mesh);
         }
 
         if (this.settings.visualization.hologram.enableTriangleSphere) {
             const mesh = new Mesh(
-                this.geometryFactory.getHologramGeometry('triangleSphere', quality),
+                this.geometryFactory.getHologramGeometry('triangleSphere', quality, true),
                 material.clone()
             );
             const scale = this.settings.visualization.hologram.triangleSphereScale;
             mesh.scale.set(scale, scale, scale);
             (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.triangleSphereOpacity;
+            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
             this.group.add(mesh);
         }
     }

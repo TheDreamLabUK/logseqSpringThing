@@ -50,6 +50,7 @@ export interface Edge {
   id: string;
   sourcePosition?: Position;
   targetPosition?: Position;
+  type?: 'default' | 'hologram';
 }
 
 export interface PaginatedGraphData extends GraphData {

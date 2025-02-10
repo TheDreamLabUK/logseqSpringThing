@@ -1,4 +1,9 @@
-import { BufferGeometry, SphereGeometry, CylinderGeometry } from 'three';
+import { 
+    BufferGeometry, 
+    SphereGeometry, 
+    CylinderGeometry, 
+    BufferAttribute
+} from 'three';
 
 export class GeometryFactory {
     private static instance: GeometryFactory;
@@ -20,6 +25,7 @@ export class GeometryFactory {
         }
 
         let geometry: BufferGeometry;
+        let segmentCount: number;
         
         if (context === 'ar') {
             // AR (Meta Quest) - Optimized geometry
@@ -34,22 +40,22 @@ export class GeometryFactory {
                     geometry = new SphereGeometry(1, 4, 3);
                     break;
             }
+            segmentCount = quality === 'high' ? 8 : quality === 'medium' ? 6 : 4;
         } else {
             // Desktop/VR - Full quality geometry
-            const segments = {
+            segmentCount = {
                 low: 16,
                 medium: 24,
                 high: 24
             }[quality] || 16;
             
-            geometry = new SphereGeometry(1, segments, segments);
+            geometry = new SphereGeometry(1, segmentCount, segmentCount);
         }
 
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }
-
-    getHologramGeometry(type: string, quality: string): BufferGeometry {
+    getHologramGeometry(type: string, quality: string, edgeOnly: boolean = false): BufferGeometry {
         const cacheKey = `hologram-${type}-${quality}`;
         if (this.geometryCache.has(cacheKey)) {
             return this.geometryCache.get(cacheKey)!;
@@ -78,6 +84,37 @@ export class GeometryFactory {
                 break;
             default:
                 geometry = new SphereGeometry(40, segments.sphere, segments.sphere);
+        }
+
+        if (edgeOnly) {
+            // Create a simplified edge-only version using thin cylinders
+            const edgeGeometry = new BufferGeometry();
+            const vertices = [];
+            const radius = type === 'ring' ? 40 : 200;
+            const segmentCount = segments.ring;
+
+            // Create a circle of vertices
+            for (let i = 0; i < segmentCount; i++) {
+                const angle1 = (i / segmentCount) * Math.PI * 2;
+                const angle2 = ((i + 1) / segmentCount) * Math.PI * 2;
+
+                const x1 = Math.cos(angle1) * radius;
+                const y1 = Math.sin(angle1) * radius;
+                const x2 = Math.cos(angle2) * radius;
+                const y2 = Math.sin(angle2) * radius;
+
+                // Add edge vertices
+                vertices.push(x1, y1, 0, x2, y2, 0);
+            }
+
+            geometry.dispose();
+            edgeGeometry.setAttribute('position', 
+                new BufferAttribute(new Float32Array(vertices), 3)
+            );
+            
+            // Cache with edge-only suffix
+            this.geometryCache.set(cacheKey + '-edge', edgeGeometry);
+            return edgeGeometry;
         }
 
         this.geometryCache.set(cacheKey, geometry);

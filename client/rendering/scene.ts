@@ -9,6 +9,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
 import { createLogger } from '../core/utils';
 import { Settings } from '../types/settings';
+import { VisualizationController } from './VisualizationController';
 
 const logger = createLogger('SceneManager');
 
@@ -32,6 +33,7 @@ export class SceneManager {
   // Animation
   private animationFrameId: number | null = null;
   private isRunning: boolean = false;
+  private visualizationController: VisualizationController | null = null;
 
   private constructor(canvas: HTMLCanvasElement) {
     logger.log('Initializing SceneManager');
@@ -103,6 +105,10 @@ export class SceneManager {
 
     // Setup event listeners
     window.addEventListener('resize', this.handleResize.bind(this));
+
+    // Initialize visualization controller
+    this.visualizationController = VisualizationController.getInstance();
+    this.visualizationController.initializeScene(this.scene, this.camera);
 
     logger.log('SceneManager initialization complete');
   }
@@ -201,6 +207,9 @@ export class SceneManager {
       // Hide scene grid in XR mode
       if (this.sceneGrid) this.sceneGrid.visible = false;
     }
+
+    // Update visualization controller
+    this.visualizationController?.update();
 
     // Determine if we should use post-processing
     const usePostProcessing = !this.renderer.xr.enabled &&
