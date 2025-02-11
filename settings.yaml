@@ -8,7 +8,7 @@ visualization:
     - 40.0
     - 120.0
     quality: high
-    enable_instancing: false
+    enable_instancing: true
     enable_hologram: false
     enable_metadata_shape: true
     enable_metadata_visualization: true
@@ -125,11 +125,11 @@ system:
     session_timeout: 3600
   debug:
     enabled: false
-    enable_data_debug: false
+    enable_data_debug: true
     enable_websocket_debug: false
     log_binary_headers: false
-    log_full_json: false
-    log_level: info
+    log_full_json: true
+    log_level: debug
     log_format: json
 xr:
   mode: inline

@@ -152,16 +152,69 @@
 .setting-control input[type="color"] {
     width: 40px;
     height: 24px;
-    padding: 0;
-    border: none;
+    padding: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 4px;
     cursor: pointer;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.array-input {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    min-width: 120px;
+}
+
+.array-input .array-item {
+    width: 60px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: #fff;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.array-input .array-item[type="number"] {
+    -moz-appearance: textfield;
+}
+
+.array-input .array-item[type="number"]::-webkit-outer-spin-button,
+.array-input .array-item[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
 .setting-control input[type="checkbox"] {
     width: 16px;
     height: 16px;
     cursor: pointer;
+}
+
+.value-display {
+    color: #ddd;
+    font-family: monospace;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    min-width: 120px;
+    text-align: right;
+    white-space: pre;
+    overflow-x: auto;
+}
+
+.value-display.subcategory-value {
+    text-align: left;
+    margin: 0.5rem 0 1rem;
+    padding: 0.75rem;
+    background: rgba(0, 0, 0, 0.15);
+    border-left: 3px solid #4287f5;
+    font-size: 0.85rem;
+    min-width: unset;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .nested-object-subsection {
@@ -266,16 +319,6 @@
 .not-authenticated {
     color: #666;
     font-style: italic;
-}
-
-.value-display {
-    color: #ddd;
-    font-family: monospace;
-    background: rgba(0, 0, 0, 0.2);
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    min-width: 120px;
-    text-align: right;
 }
 
 .control-panel {

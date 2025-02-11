@@ -471,15 +471,22 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
     private async createSubsection(subcategory: string, paths: string[]): Promise<HTMLElement> {
         const subsection = document.createElement('div');
         subsection.className = 'settings-subsection';
-        
-        const header = document.createElement('h3');
+
+const header = document.createElement('h3');
         header.textContent = formatSettingName(subcategory);
         header.className = 'settings-subsection-header';
         subsection.appendChild(header);
         
+        // Sort paths to ensure consistent ordering
+        paths.sort();
+
+        // Create controls for each property
         for (const path of paths) {
-            const control = await this.createSettingControl(path);
-            subsection.appendChild(control);
+            const value = this.settingsStore.get(path);
+            if (value !== undefined && value !== null) {
+                const control = await this.createSettingControl(path);
+                subsection.appendChild(control);
+            }
         }
         
         return subsection;
@@ -504,6 +511,46 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
     private async createInputElement(path: string, value: any): Promise<HTMLElement> {
         const type = typeof value;
         let input: HTMLElement;
+        
+        const getNumericStep = (path: string): string => {
+            if (path.includes('size') || path.includes('iterations')) return '1';
+            if (path.includes('opacity') || path.includes('strength')) return '0.1';
+            if (path.includes('intensity')) return '0.1';
+            return '0.01';
+        };
+
+        // Handle arrays specially
+        if (Array.isArray(value)) {
+            const div = document.createElement('div');
+            div.className = 'array-input';
+
+            // Create inputs for each array element
+            value.forEach((item, index) => {
+                const itemInput = document.createElement('input');
+                itemInput.type = typeof item === 'number' ? 'number' : 'text';
+                if (itemInput.type === 'number') {
+                    itemInput.step = getNumericStep(path);
+                    itemInput.min = '0';
+                }
+                itemInput.value = item.toString();
+                itemInput.className = 'array-item';
+                itemInput.onchange = (e) => {
+                    const target = e.target as HTMLInputElement;
+                    const newValue = [...value];
+                    if (typeof item === 'number') {
+                        const parsed = parseFloat(target.value);
+                        newValue[index] = isNaN(parsed) ? item : Math.max(0, parsed);
+                    } else {
+                        newValue[index] = target.value;
+                    }
+                    this.updateSetting(path, newValue);
+                };
+                div.appendChild(itemInput);
+            });
+
+            input = div;
+            return input;
+        }
 
         switch (type) {
             case 'boolean': {
@@ -521,8 +568,9 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             case 'number': {
                 const numberInput = document.createElement('input');
                 numberInput.type = 'number';
+                numberInput.step = getNumericStep(path);
+                numberInput.min = '0';
                 numberInput.value = value.toString();
-                numberInput.step = '0.01';
                 numberInput.onchange = (e) => {
                     const target = e.target as HTMLInputElement;
                     this.updateSetting(path, parseFloat(target.value));
@@ -535,6 +583,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                 if (path.toLowerCase().includes('color')) {
                     const colorInput = document.createElement('input');
                     colorInput.type = 'color';
+                    colorInput.className = 'color-input';
                     colorInput.value = value;
                     colorInput.onchange = (e) => {
                         const target = e.target as HTMLInputElement;
@@ -555,10 +604,22 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             }
 
             default: {
-                const div = document.createElement('div');
-                div.className = 'value-display';
-                div.textContent = value?.toString() || '';
-                input = div;
+                if (value === null || value === undefined) {
+                    const div = document.createElement('div');
+                    div.className = 'value-display';
+                    div.textContent = String(value);
+                    input = div;
+                } else {
+                    // For any other type, create a text input
+                    const textInput = document.createElement('input');
+                    textInput.type = 'text';
+                    textInput.value = String(value);
+                    textInput.onchange = (e) => {
+                        const target = e.target as HTMLInputElement;
+                        this.updateSetting(path, target.value);
+                    };
+                    input = textInput;
+                }
             }
         }
 
@@ -572,10 +633,47 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
 
         this.updateTimeout = window.setTimeout(async () => {
             try {
-                await this.settingsStore.set(path, value);
-                this.emit('settings:updated', { path, value });
+                // Get the current value to compare types
+                const currentValue = this.settingsStore.get(path);
+                
+                // Ensure we maintain the correct type
+                let processedValue = value;
+                if (Array.isArray(currentValue)) {
+                    // Ensure array values maintain their original types
+                    processedValue = value.map((v: any, i: number) => {
+                        const originalValue = currentValue[i];
+                        if (typeof originalValue === 'number') {
+                            const parsed = parseFloat(v);
+                            return isNaN(parsed) ? originalValue : parsed;
+                        }
+                        return v;
+                    });
+                } else if (typeof currentValue === 'number') {
+                    const parsed = parseFloat(value);
+                    processedValue = isNaN(parsed) ? currentValue : parsed;
+                }
+
+                await this.settingsStore.set(path, processedValue);
+                this.emit('settings:updated', { path, value: processedValue });
             } catch (error) {
                 logger.error(`Failed to update setting ${path}:`, error);
+                
+                // Revert the input to the current value
+                const control = this.container.querySelector(`[data-setting-path="${path}"]`);
+                if (control) {
+                    const input = control.querySelector('input, select') as HTMLInputElement;
+                    if (input) {
+                        const currentValue = this.settingsStore.get(path);
+                        if (Array.isArray(currentValue)) {
+                            const inputs = control.querySelectorAll('.array-item') as NodeListOf<HTMLInputElement>;
+                            inputs.forEach((input, i) => {
+                                input.value = currentValue[i].toString();
+                            });
+                        } else {
+                            input.value = currentValue?.toString() || '';
+                        }
+                    }
+                }
             }
         }, 100);
     }
