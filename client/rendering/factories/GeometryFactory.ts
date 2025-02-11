@@ -41,7 +41,8 @@ export class GeometryFactory {
                 detail = context === 'ar' ? 1 : 2;
         }
         // Use IcosahedronGeometry for better performance while maintaining visual quality
-        geometry = new IcosahedronGeometry(size, detail);
+        // Convert from native units (40-120) to scene scale (0.4-1.2)
+        geometry = new IcosahedronGeometry(size / 100, detail);
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }

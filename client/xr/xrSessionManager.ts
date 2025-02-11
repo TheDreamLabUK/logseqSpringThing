@@ -16,9 +16,10 @@ import { createLogger } from '../core/utils';
 import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
-import { NodeManager } from '../rendering/nodes';
+import { EnhancedNodeManager } from '../rendering/EnhancedNodeManager';
 import { ModularControlPanel } from '../ui/ModularControlPanel';
 import { SettingsStore } from '../state/SettingsStore';
+import { Settings } from '../types/settings/base';
 import { XRSettings } from '../types/settings/xr';
 const logger = createLogger('XRSessionManager');
 
@@ -26,7 +27,7 @@ export class XRSessionManager {
     private static instance: XRSessionManager | null = null;
     private readonly sceneManager: SceneManager;
     private readonly settingsStore: SettingsStore;
-    private readonly nodeManager: NodeManager;
+    private readonly nodeManager: EnhancedNodeManager;
     private session: XRSession | null = null;
     /* @ts-ignore - Used in XR session lifecycle */
     private referenceSpace: XRReferenceSpace | null = null;
@@ -63,7 +64,8 @@ export class XRSessionManager {
     private constructor(sceneManager: SceneManager) {
         this.sceneManager = sceneManager;
         this.settingsStore = SettingsStore.getInstance();
-        this.nodeManager = NodeManager.getInstance();
+        const settings = this.settingsStore.get('') as Settings;
+        this.nodeManager = new EnhancedNodeManager(sceneManager.getScene(), settings);
         // Initialize with current settings
         this.currentSettings = this.settingsStore.get('xr') as XRSettings;
         
@@ -330,8 +332,8 @@ export class XRSessionManager {
                 this.arGroup.scale.setScalar(this.currentSettings.roomScale);
                 
                 // Move node instances to arGroup for proper scaling
-                const nodeInstances = this.nodeManager.getAllNodeMeshes();
-                nodeInstances.forEach(mesh => {
+                const nodeInstances = Array.from(this.nodeManager.getNodes().values());
+                nodeInstances.forEach((mesh: Mesh) => {
                     this.arGroup.add(mesh);
                 });
             }
@@ -413,8 +415,8 @@ export class XRSessionManager {
             this.arLight.visible = false;
             
             // Move node instances back to main scene
-            const nodeInstances = this.nodeManager.getAllNodeMeshes();
-            nodeInstances.forEach(mesh => {
+            const nodeInstances = Array.from(this.nodeManager.getNodes().values());
+            nodeInstances.forEach((mesh: Mesh) => {
                 this.sceneManager.getScene().add(mesh);
             });
         }
