@@ -170,21 +170,23 @@ export class EnhancedNodeManager {
     }
 
     updateNodes(nodes: { id: string, data: NodeData }[]) {
-        // Clear existing nodes
-        if (!this.isInstanced) {
-            this.nodes.forEach(node => {
-                this.scene.remove(node);
-                if (node.geometry) node.geometry.dispose();
-                if (node.material) node.material.dispose();
-            });
-            this.nodes.clear();
-        }
-
         if (this.isInstanced && this.instancedMesh) {
             this.instancedMesh.count = nodes.length;
         }
 
         nodes.forEach((node, index) => {
+            // Check if node already exists
+            const existingNode = this.nodes.get(node.id);
+            if (existingNode && !this.isInstanced) {
+                // Update existing node position
+                existingNode.position.set(
+                    node.data.position.x,
+                    node.data.position.y,
+                    node.data.position.z
+                );
+                return;
+            }
+
             const metadata: NodeMetadata = {
                 id: node.id,
                 name: node.data.metadata?.name || '',

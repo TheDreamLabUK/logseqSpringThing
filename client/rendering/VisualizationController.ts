@@ -4,6 +4,7 @@ import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 import { XRHandWithHaptics } from '../types/xr';
 import { EdgeManager } from './EdgeManager';
+import { EnhancedNodeManager } from './EnhancedNodeManager';
 import { graphDataManager } from '../state/graphData';
 import { TextRenderer } from './textRenderer';
 import { GraphData } from '../core/types';
@@ -17,10 +18,12 @@ export class VisualizationController {
     private static instance: VisualizationController | null = null;
     private currentSettings: Settings;
     private edgeManager: EdgeManager | null = null;
+    private nodeManager: EnhancedNodeManager | null = null;
     private textRenderer: TextRenderer | null = null;
     private isInitialized: boolean = false;
     private pendingUpdates: Map<string, PendingUpdate> = new Map();
     private pendingEdgeUpdates: GraphData['edges'] | null = null;
+    private pendingNodeUpdates: GraphData['nodes'] | null = null;
 
     private constructor() {
         // Initialize with complete default settings
@@ -28,12 +31,18 @@ export class VisualizationController {
         
         // Subscribe to graph data updates
         graphDataManager.subscribe((data: GraphData) => {
-            if (this.isInitialized && this.edgeManager) {
-                this.edgeManager.updateEdges(data.edges);
+            if (this.isInitialized) {
+                if (this.nodeManager) {
+                    this.nodeManager.updateNodes(data.nodes);
+                }
+                if (this.edgeManager) {
+                    this.edgeManager.updateEdges(data.edges);
+                }
             } else {
-                // Queue edge updates until initialized
+                // Queue updates until initialized
+                this.pendingNodeUpdates = data.nodes;
                 this.pendingEdgeUpdates = data.edges;
-                logger.debug('Queuing edge updates until initialization');
+                logger.debug('Queuing updates until initialization');
             }
         });
     }
@@ -41,8 +50,9 @@ export class VisualizationController {
     public initializeScene(scene: Scene, camera: Camera): void {
         logger.info('Initializing visualization scene');
         
-        // Initialize edge manager with scene and settings
+        // Initialize managers with scene and settings
         this.edgeManager = new EdgeManager(scene, this.currentSettings);
+        this.nodeManager = new EnhancedNodeManager(scene, this.currentSettings);
         this.textRenderer = new TextRenderer(camera, scene);
         this.isInitialized = true;
         
@@ -51,10 +61,20 @@ export class VisualizationController {
         
         // Initialize with current graph data
         const currentData = graphDataManager.getGraphData();
-        if (this.pendingEdgeUpdates) {
+        
+        // Handle pending node updates
+        if (this.pendingNodeUpdates && this.nodeManager) {
+            this.nodeManager.updateNodes(this.pendingNodeUpdates);
+            this.pendingNodeUpdates = null;
+        } else if (currentData.nodes.length > 0 && this.nodeManager) {
+            this.nodeManager.updateNodes(currentData.nodes);
+        }
+        
+        // Handle pending edge updates
+        if (this.pendingEdgeUpdates && this.edgeManager) {
             this.edgeManager.updateEdges(this.pendingEdgeUpdates);
             this.pendingEdgeUpdates = null;
-        } else if (currentData.edges.length > 0) {
+        } else if (currentData.edges.length > 0 && this.edgeManager) {
             this.edgeManager.updateEdges(currentData.edges);
         }
         
@@ -62,7 +82,7 @@ export class VisualizationController {
     }
 
     private applyPendingUpdates(): void {
-        if (!this.isInitialized || !this.edgeManager) {
+        if (!this.isInitialized) {
             logger.debug('Cannot apply pending updates - not initialized');
             return;
         }
@@ -252,6 +272,9 @@ export class VisualizationController {
     private updateNodeAppearance(): void {
         if (!this.isInitialized) return;
         logger.debug('Updating node appearance');
+        if (this.nodeManager) {
+            this.nodeManager.handleSettingsUpdate(this.currentSettings);
+        }
     }
 
     private updateEdgeAppearance(): void {
@@ -278,28 +301,31 @@ export class VisualizationController {
         logger.debug('Updating rendering quality');
     }
 
-    public updateEdges(edges: any[]): void {
-        if (!this.isInitialized) {
-            this.pendingEdgeUpdates = edges;
-            logger.debug('Queuing edge updates', { count: edges.length });
-            return;
-        }
-
-        if (this.edgeManager) {
-            this.edgeManager.updateEdges(edges);
-            logger.debug('Edges updated', { count: edges.length });
-        } else {
-            logger.warn('EdgeManager not initialized');
+    public updateNodePositions(nodes: any[]): void {
+        if (this.nodeManager) {
+            this.nodeManager.updateNodePositions(nodes);
         }
     }
 
     public update(): void {
-        if (this.isInitialized && this.textRenderer) {
-            this.textRenderer.update();
+        if (this.isInitialized) {
+            // Update node animations and state
+            if (this.nodeManager) {
+                this.nodeManager.update(1/60); // Standard 60fps delta time
+            }
+            
+            // Update text labels
+            if (this.textRenderer) {
+                this.textRenderer.update();
+            }
         }
     }
 
     public dispose(): void {
+        if (this.nodeManager) {
+            this.nodeManager.dispose();
+            this.nodeManager = null;
+        }
         if (this.edgeManager) {
             this.edgeManager.dispose();
             this.edgeManager = null;
@@ -309,6 +335,7 @@ export class VisualizationController {
         this.isInitialized = false;
         this.pendingUpdates.clear();
         this.pendingEdgeUpdates = null;
+        this.pendingNodeUpdates = null;
         VisualizationController.instance = null;
     }
 }
