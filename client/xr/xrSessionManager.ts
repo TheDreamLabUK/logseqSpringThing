@@ -16,6 +16,7 @@ import { createLogger } from '../core/utils';
 import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
+import { debugState } from '../core/debugState';
 import { EnhancedNodeManager } from '../rendering/EnhancedNodeManager';
 import { ModularControlPanel } from '../ui/ModularControlPanel';
 import { SettingsStore } from '../state/SettingsStore';
@@ -103,7 +104,7 @@ export class XRSessionManager {
     }
 
     private createGridHelper(): GridHelper {
-        const grid = new GridHelper(10, 10, 0x808080, 0x808080);
+        const grid = new GridHelper(0.5, 5, 0x808080, 0x808080); // 0.5 meter grid with 5x5 divisions
         grid.material.transparent = true;
         grid.material.opacity = 0.5;
         grid.position.y = -0.01; // Slightly below ground to avoid z-fighting
@@ -114,7 +115,7 @@ export class XRSessionManager {
     }
 
     private createGroundPlane(): Mesh {
-        const geometry = new PlaneGeometry(10, 10);
+        const geometry = new PlaneGeometry(0.5, 0.5); // 0.5x0.5 meter plane
         const material = new MeshPhongMaterial({
             color: 0x999999,
             transparent: true,
@@ -156,6 +157,14 @@ export class XRSessionManager {
 
     private setupXRObjects(): void {
         const scene = this.sceneManager.getScene();
+        
+        // Reset and verify initial scales
+        this.cameraRig.scale.setScalar(1);
+        this.arGroup.scale.setScalar(1);
+        this.arGraphGroup.scale.setScalar(1);
+        if (debugState.isEnabled() && platformManager.isQuest()) {
+            logger.info('Initial scales:', { cameraRig: this.cameraRig.scale.x, arGroup: this.arGroup.scale.x, arGraphGroup: this.arGraphGroup.scale.x });
+        }
         
         // Add camera rig to scene
         scene.add(this.cameraRig);
@@ -250,7 +259,9 @@ export class XRSessionManager {
 
     public async initXRSession(): Promise<void> {
         if (this.isPresenting) {
-            logger.warn('XR session already active');
+            if (debugState.isEnabled()) {
+                logger.warn('XR session already active');
+            }
             return;
         }
 
@@ -290,10 +301,12 @@ export class XRSessionManager {
                 domOverlay: platformManager.isQuest() ? { root: document.body } : undefined
             };
             
-            logger.info('Requesting XR session with config:', {
-                mode,
-                features: sessionInit
-            });
+            if (debugState.isEnabled()) {
+                logger.info('Requesting XR session with config:', {
+                    mode,
+                    features: sessionInit
+                });
+            }
             
             const session = await navigator.xr.requestSession(mode, sessionInit);
 
@@ -334,8 +347,19 @@ export class XRSessionManager {
             // Apply AR scale if in AR mode
             if (platformManager.isQuest()) {
                 // Use direct room scale for better AR sizing
-                // Apply a base scale of 0.1 for AR to make objects more manageable
-                const arScale = this.currentSettings.roomScale * 0.1;
+                // Apply a base scale of 0.001 for AR to make objects more manageable
+                const arScale = this.currentSettings.roomScale * 0.001;
+                if (debugState.isEnabled()) {
+                    logger.info('Setting initial AR scale:', { 
+                        arScale, 
+                        roomScale: this.currentSettings.roomScale,
+                        cameraRigScale: this.cameraRig.scale.x,
+                        arGroupScale: this.arGroup.scale.x,
+                        arGraphGroupScale: this.arGraphGroup.scale.x,
+                        currentGroupScale: this.arGroup.scale.x
+                    });
+                }
+
                 this.arGroup.scale.setScalar(arScale);
                 
                 // Move node instances to arGroup for proper scaling
@@ -366,7 +390,9 @@ export class XRSessionManager {
             }, 1000);
             
             this.isPresenting = true;
-            logger.info('XR session initialized');
+            if (debugState.isEnabled()) {
+                logger.info('XR session initialized');
+            }
 
             // Hide control panel in XR mode
             const controlPanel = ModularControlPanel.getInstance();
@@ -379,7 +405,9 @@ export class XRSessionManager {
                 this.xrSessionStartCallback();
             }
         } catch (error) {
-            logger.error('Failed to initialize XR session:', error);
+            if (debugState.isEnabled()) {
+                logger.error('Failed to initialize XR session:', error);
+            }
             throw error;
         }
     }
@@ -453,7 +481,9 @@ export class XRSessionManager {
         const renderer = this.sceneManager.getRenderer();
         renderer.xr.enabled = false;
 
-        logger.info('XR session ended');
+        if (debugState.isEnabled()) {
+            logger.info('XR session ended');
+        }
 
         // Show control panel and notify session end (only once)
         ModularControlPanel.getInstance()?.show();
@@ -496,8 +526,18 @@ export class XRSessionManager {
         // Update room scale if changed
         if (this.currentSettings.roomScale !== undefined) {
             if (platformManager.isQuest()) {
-                // Apply a base scale of 0.1 for AR to make objects more manageable
-                const arScale = Number(this.currentSettings.roomScale) * 0.1;
+                // Apply a base scale of 0.001 for AR to make objects more manageable
+                const arScale = Number(this.currentSettings.roomScale) * 0.001;
+                if (debugState.isEnabled()) {
+                    logger.info('Updating AR scale:', { 
+                        arScale, 
+                        roomScale: this.currentSettings.roomScale,
+                        cameraRigScale: this.cameraRig.scale.x,
+                        arGroupScale: this.arGroup.scale.x,
+                        arGraphGroupScale: this.arGraphGroup.scale.x,
+                        currentGroupScale: this.arGroup.scale.x
+                    });
+                }
                 this.arGroup.scale.setScalar(arScale);
             } else {
                 this.cameraRig.scale.setScalar(Number(this.currentSettings.roomScale));

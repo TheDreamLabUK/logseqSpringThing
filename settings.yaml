@@ -74,7 +74,7 @@ visualization:
     - 40.0
     - 80.0
     - 120.0
-    ring_rotation_speed: 1.0
+    ring_rotation_speed: 10.0
     enable_buckminster: true
     buckminster_size: 40.0
     buckminster_opacity: 0.05
