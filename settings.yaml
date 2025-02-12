@@ -1,6 +1,6 @@
 visualization:
   nodes:
-    base_color: '#d0168c'
+    base_color: '#df90c2'
     metalness: 0.2
     opacity: 1.0
     roughness: 0.7
@@ -8,10 +8,10 @@ visualization:
     - 200.0
     - 700.0
     quality: high
-    enable_instancing: false
-    enable_hologram: false
-    enable_metadata_shape: false
-    enable_metadata_visualization: false
+    enable_instancing: true
+    enable_hologram: true
+    enable_metadata_shape: true
+    enable_metadata_visualization: true
   edges:
     arrow_size: 2.0
     base_width: 2.0

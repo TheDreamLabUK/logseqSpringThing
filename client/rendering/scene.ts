@@ -23,6 +23,8 @@ export class SceneManager {
   private scene: Scene;
   private camera: PerspectiveCamera;
   private renderer: WebGLRenderer;
+  private canvas: HTMLCanvasElement;
+  private currentRenderingSettings: Settings['visualization']['rendering'] | null = null;
   private controls: OrbitControls;
   private sceneGrid: GridHelper | null = null;
   
@@ -37,6 +39,7 @@ export class SceneManager {
 
   private constructor(canvas: HTMLCanvasElement) {
     logger.log('Initializing SceneManager');
+    this.canvas = canvas;
     
     // Create scene
     this.scene = new Scene();
@@ -331,6 +334,7 @@ export class SceneManager {
     }
 
     const { rendering, bloom } = settings.visualization;
+    this.currentRenderingSettings = rendering;
 
     // Update bloom settings
     if (bloom) {
@@ -391,6 +395,7 @@ export class SceneManager {
       // Note: Some settings can only be changed at renderer creation
       if (rendering.enableAntialiasing) {
         logger.warn('Antialiasing setting change requires renderer recreation');
+        this.recreateRenderer();
       }
       if (rendering.enableShadows) {
         logger.warn('Shadow settings change requires renderer recreation');
@@ -398,5 +403,33 @@ export class SceneManager {
     }
 
     logger.debug('Scene settings updated:', rendering);
+  }
+
+  private recreateRenderer(): void {
+    logger.log('Recreating renderer with updated settings');
+    
+    // Store current XR state
+    const wasXREnabled = this.renderer.xr.enabled;
+    
+    // Dispose of current renderer
+    this.renderer.dispose();
+    
+    // Create new renderer with updated settings
+    this.renderer = new WebGLRenderer({
+      canvas: this.canvas,
+      antialias: this.currentRenderingSettings?.enableAntialiasing || true,
+      alpha: true,
+      powerPreference: 'high-performance',
+      xr: {
+        enabled: wasXREnabled
+      }
+    });
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    
+    // Recreate composer with new renderer
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.composer.addPass(this.bloomPass);
   }
 }

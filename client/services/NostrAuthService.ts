@@ -61,7 +61,16 @@ export class NostrAuthService {
     public async initialize(): Promise<void> {
         const storedPubkey = localStorage.getItem('nostr_pubkey');
         if (storedPubkey) {
+            // Wait for checkAuthStatus to complete
             await this.checkAuthStatus(storedPubkey);
+            
+            // Emit auth state change after initialization
+            this.eventEmitter.emit(SettingsEventType.AUTH_STATE_CHANGED, {
+                authState: {
+                    isAuthenticated: this.currentUser !== null,
+                    pubkey: this.currentUser?.pubkey
+                }
+            });
         }
     }
 
@@ -263,6 +272,7 @@ export class NostrAuthService {
                 throw new Error('Invalid session');
             }
 
+            // Set currentUser before emitting event
             this.currentUser = {
                 pubkey,
                 isPowerUser: verifyData.is_power_user,
@@ -270,13 +280,6 @@ export class NostrAuthService {
             };
 
             this.settingsPersistence.setCurrentPubkey(pubkey);
-            
-            this.eventEmitter.emit(SettingsEventType.AUTH_STATE_CHANGED, {
-                authState: {
-                    isAuthenticated: true,
-                    pubkey
-                }
-            });
         } catch (error) {
             logger.error('Auth check failed:', error);
             await this.logout();

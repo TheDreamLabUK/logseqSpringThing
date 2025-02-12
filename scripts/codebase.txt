@@ -51,7 +51,6 @@ Directories:
 │   ├── materials
 │   │   └── HologramShaderMaterial.ts
 │   ├── MetadataVisualizer.ts
-│   ├── nodes.ts
 │   ├── renderManager.ts
 │   ├── scene.ts
 │   ├── textRenderer.ts
@@ -184,7 +183,7 @@ Directories:
 
 # Project Codebase
 
-Generated: Tue 11 Feb 10:06:43 GMT 2025
+Generated: Wed 12 Feb 17:30:14 GMT 2025
 
 ## Project Structure
 
@@ -1326,83 +1325,89 @@ http {
 
 visualization:
   nodes:
-    base_color: '#4287f5'
+    base_color: '#df90c2'
     metalness: 0.2
-    opacity: 0.6
-    roughness: 0.8
+    opacity: 1.0
+    roughness: 0.7
     size_range:
-    - 40.0
-    - 120.0
+    - 200.0
+    - 700.0
     quality: high
-    enable_instancing: false
-    enable_hologram: false
+    enable_instancing: true
+    enable_hologram: true
     enable_metadata_shape: true
     enable_metadata_visualization: true
   edges:
-    arrow_size: 5.0
+    arrow_size: 2.0
     base_width: 2.0
-    color: '#6087c3'
+    color: '#0c2140'
     enable_arrows: true
-    opacity: 0.9
+    opacity: 0.5
     width_range:
-    - 1.0
+    - 2.0
     - 3.0
+    quality: high
   physics:
     attraction_strength: 0.02
-    bounds_size: 200.0
-    collision_radius: 0.5
-    damping: 0.8
+    bounds_size: 0.33
+    collision_radius: 1.0
+    damping: 1.0
     enable_bounds: true
     enabled: true
-    iterations: 200
-    max_velocity: 0.5
-    repulsion_strength: 800.0
-    spring_strength: 0.025
+    iterations: 100
+    max_velocity: 0.4
+    repulsion_strength: 700.0
+    spring_strength: 0.02
   rendering:
-    ambient_light_intensity: 0.4
+    ambient_light_intensity: 0.41
     background_color: '#1a1a2e'
-    directional_light_intensity: 0.6
+    directional_light_intensity: 0.7
     enable_ambient_occlusion: false
     enable_antialiasing: true
     enable_shadows: false
-    environment_intensity: 0.3
+    environment_intensity: 0.7
   animations:
     enable_motion_blur: false
     enable_node_animations: false
     motion_blur_strength: 0.2
-    selection_wave_enabled: false
+    selection_wave_enabled: true
     pulse_enabled: false
     pulse_speed: 0.8
     pulse_strength: 0.6
     wave_speed: 0.5
   labels:
-    desktop_font_size: 14
-    enable_labels: true
+    desktop_font_size: 10
+    enable_labels: false
     text_color: '#ffffff'
+    text_outline_color: '#000000'
+    text_outline_width: 0.1
+    text_resolution: 32
+    text_padding: 2
+    billboard_mode: camera
   bloom:
-    edge_bloom_strength: 0.8
+    edge_bloom_strength: 2.0
     enabled: true
     environment_bloom_strength: 0.4
-    node_bloom_strength: 1.2
+    node_bloom_strength: 2.5
     radius: 0.8
-    strength: 0.7
+    strength: 1.5
   hologram:
-    ring_count: 2
+    ring_count: 1
     ring_color: '#c2a200'
-    ring_opacity: 0.01
+    ring_opacity: 0.001
     sphere_sizes:
     - 40.0
     - 80.0
     - 120.0
     ring_rotation_speed: 1.0
     enable_buckminster: true
-    buckminster_size: 80.0
+    buckminster_size: 40.0
     buckminster_opacity: 0.05
     enable_geodesic: true
-    geodesic_size: 60.0
+    geodesic_size: 80.0
     geodesic_opacity: 0.05
     enable_triangle_sphere: true
-    triangle_sphere_size: 20.0
+    triangle_sphere_size: 120.0
     triangle_sphere_opacity: 0.1
     global_rotation_speed: 0.03
 system:
@@ -1455,7 +1460,7 @@ system:
     enable_websocket_debug: false
     log_binary_headers: false
     log_full_json: false
-    log_level: info
+    log_level: debug
     log_format: json
 xr:
   mode: inline
@@ -2202,7 +2207,7 @@ verify_client_structure() {
         "$PROJECT_ROOT/client/core/logger.ts"
         "$PROJECT_ROOT/client/websocket/websocketService.ts"
         "$PROJECT_ROOT/client/rendering/scene.ts"
-        "$PROJECT_ROOT/client/rendering/nodes.ts"
+        "$PROJECT_ROOT/client/rendering/EnhancedNodeManager.ts"
         "$PROJECT_ROOT/client/rendering/textRenderer.ts"
         "$PROJECT_ROOT/client/state/settings.ts"
         "$PROJECT_ROOT/client/state/graphData.ts"
@@ -2562,6 +2567,13 @@ exec /app/webxr
                 "IPv4Address": "172.19.0.8/16",
                 "IPv6Address": ""
             },
+            "8982c6554859ce9e9229d9c0c7383a33845d85fb0735487dc998aed51b819a11": {
+                "Name": "cloudflared-tunnel",
+                "EndpointID": "04f1f567edc94fcec397f5bcedbffb35eeb25815309a42aa73963acf58cba616",
+                "MacAddress": "02:42:ac:13:00:0a",
+                "IPv4Address": "172.19.0.10/16",
+                "IPv6Address": ""
+            },
             "8b7cea10b14ce843b477c50ab0f47c3c606494e101acaaf074d75481d9c65f80": {
                 "Name": "ragflow-redis",
                 "EndpointID": "cafc82a072427660b2c728e66765dab0ab1847d0c837e9f9f65dd23a0d7018f7",
@@ -2583,11 +2595,11 @@ exec /app/webxr
                 "IPv4Address": "172.19.0.4/16",
                 "IPv6Address": ""
             },
-            "c150bc31c26902fead10ad5fefedcb895bd99ab7bd76b1e2bd52189f9e9e17ad": {
-                "Name": "cloudflared-tunnel",
-                "EndpointID": "c3486fa067992ea0afb673ccd05c2c5457710f115aa9c69b68941ed632fccc36",
-                "MacAddress": "02:42:ac:13:00:0a",
-                "IPv4Address": "172.19.0.10/16",
+            "b1feebdce4941fa14305922beda5ad10f8dce4203a9f2737ebff48118bfd1a92": {
+                "Name": "logseq-xr-webxr",
+                "EndpointID": "1a013be4985528a6ca3c63e53a5d782b2e37231be01e2c0739992105d22abb42",
+                "MacAddress": "02:42:ac:13:00:0c",
+                "IPv4Address": "172.19.0.12/16",
                 "IPv6Address": ""
             },
             "c5b92a96025baeae548518eaafe88ef76e70e6d90e5951a8750d01c56b6c8d4a": {
@@ -2595,13 +2607,6 @@ exec /app/webxr
                 "EndpointID": "44cee519c20433e6f98f813ce2d313f091996b2779ce3e3be8b6d4ac9c0888e5",
                 "MacAddress": "02:42:ac:13:00:09",
                 "IPv4Address": "172.19.0.9/16",
-                "IPv6Address": ""
-            },
-            "d47107f83bed3e1c58dd9cc3dcd68664cf31c8409e5b8054a3e2bb9a31e1397c": {
-                "Name": "logseq-xr-webxr",
-                "EndpointID": "f9ccb13f1924dff2e339a310f6ba5c0bee270e2f36bfd38391c8bc87dabf8ff6",
-                "MacAddress": "02:42:ac:13:00:0c",
-                "IPv4Address": "172.19.0.12/16",
                 "IPv6Address": ""
             }
         },
@@ -3029,16 +3034,32 @@ async function init() {
         const viz = new GraphVisualization(settings);
         (window as any).visualization = viz;
 
-        // Subscribe to visualization settings changes
-        settingsStore.subscribe('visualization', (_, newVisualizationSettings) => {
-            if (viz && newVisualizationSettings) {
-                const updatedSettings: Settings = {
-                    ...settings,
-                    visualization: newVisualizationSettings as Settings['visualization']
-                };
-                viz.handleSettingsUpdate(updatedSettings);
-                logger.debug('Visualization settings updated:', newVisualizationSettings);
-            }
+        // Subscribe to all relevant visualization paths
+        const visualizationPaths = [
+            'visualization.nodes',
+            'visualization.edges',
+            'visualization.physics',
+            'visualization.rendering',
+            'visualization.animations',
+            'visualization.labels',
+            'visualization.bloom',
+            'visualization.hologram'
+        ];
+
+        // Subscribe to each path and update both visualization and scene
+        visualizationPaths.forEach(path => {
+            settingsStore.subscribe(path, () => {
+                if (viz) {
+                    const currentSettings = settingsStore.get('') as Settings;
+                    viz.handleSettingsUpdate(currentSettings);
+                    sceneManager.handleSettingsUpdate(currentSettings);
+                    logger.debug(`Visualization and scene updated from ${path} change:`, {
+                        path,
+                        bloom: currentSettings.visualization.bloom,
+                        rendering: currentSettings.visualization.rendering
+                    });
+                }
+            });
         });
 
         // Log successful initialization
@@ -3887,7 +3908,16 @@ export class NostrAuthService {
     public async initialize(): Promise<void> {
         const storedPubkey = localStorage.getItem('nostr_pubkey');
         if (storedPubkey) {
+            // Wait for checkAuthStatus to complete
             await this.checkAuthStatus(storedPubkey);
+            
+            // Emit auth state change after initialization
+            this.eventEmitter.emit(SettingsEventType.AUTH_STATE_CHANGED, {
+                authState: {
+                    isAuthenticated: this.currentUser !== null,
+                    pubkey: this.currentUser?.pubkey
+                }
+            });
         }
     }
 
@@ -4089,6 +4119,7 @@ export class NostrAuthService {
                 throw new Error('Invalid session');
             }
 
+            // Set currentUser before emitting event
             this.currentUser = {
                 pubkey,
                 isPowerUser: verifyData.is_power_user,
@@ -4096,13 +4127,6 @@ export class NostrAuthService {
             };
 
             this.settingsPersistence.setCurrentPubkey(pubkey);
-            
-            this.eventEmitter.emit(SettingsEventType.AUTH_STATE_CHANGED, {
-                authState: {
-                    isAuthenticated: true,
-                    pubkey
-                }
-            });
         } catch (error) {
             logger.error('Auth check failed:', error);
             await this.logout();
@@ -6776,15 +6800,450 @@ export class EdgeManager {
 }
 
 ----
+rendering/scene.ts
+/**
+ * Three.js scene management with simplified setup
+ */
+
+import { Scene, PerspectiveCamera, WebGLRenderer, Color, AmbientLight, DirectionalLight, GridHelper, Vector2, Material, Mesh, Object3D } from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
+import { createLogger } from '../core/utils';
+import { Settings } from '../types/settings';
+import { VisualizationController } from './VisualizationController';
+
+const logger = createLogger('SceneManager');
+
+// Constants
+const BACKGROUND_COLOR = 0x212121;  // Material Design Grey 900
+
+export class SceneManager {
+  private static instance: SceneManager;
+  
+  // Three.js core components
+  private scene: Scene;
+  private camera: PerspectiveCamera;
+  private renderer: WebGLRenderer;
+  private canvas: HTMLCanvasElement;
+  private currentRenderingSettings: Settings['visualization']['rendering'] | null = null;
+  private controls: OrbitControls;
+  private sceneGrid: GridHelper | null = null;
+  
+  // Post-processing
+  private composer: EffectComposer;
+  private bloomPass: UnrealBloomPass;
+  
+  // Animation
+  private animationFrameId: number | null = null;
+  private isRunning: boolean = false;
+  private visualizationController: VisualizationController | null = null;
+
+  private constructor(canvas: HTMLCanvasElement) {
+    logger.log('Initializing SceneManager');
+    this.canvas = canvas;
+    
+    // Create scene
+    this.scene = new Scene();
+    this.scene.background = new Color(BACKGROUND_COLOR);
+    // Removed fog to ensure graph visibility
+
+    // Create camera with wider view
+    this.camera = new PerspectiveCamera(
+      60, // Reduced FOV for less distortion
+      window.innerWidth / window.innerHeight,
+      0.1,
+      2000
+    );
+    this.camera.position.set(0, 10, 50); // Position for better overview
+    this.camera.lookAt(0, 0, 0);
+    
+    // Enable both layers for desktop mode by default
+    this.camera.layers.enable(0); // Desktop layer
+    this.camera.layers.enable(1); // XR layer
+
+    // Create renderer with WebXR support
+    this.renderer = new WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+      powerPreference: 'high-performance',
+      xr: {
+        enabled: true
+      }
+    });
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // Create controls
+    this.controls = new OrbitControls(this.camera, canvas);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.1;
+    this.controls.screenSpacePanning = true;
+    this.controls.minDistance = 1;
+    this.controls.maxDistance = 1000;
+    this.controls.enableRotate = true;
+    this.controls.enableZoom = true;
+    this.controls.enablePan = true;
+    this.controls.rotateSpeed = 1.0;
+    this.controls.zoomSpeed = 1.2;
+    this.controls.panSpeed = 0.8;
+
+    // Setup post-processing
+    this.composer = new EffectComposer(this.renderer);
+    const renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(renderPass);
+
+    // Initialize bloom with default state
+    this.bloomPass = new UnrealBloomPass(
+      new Vector2(window.innerWidth, window.innerHeight),
+      1.5,  // Default strength
+      0.4,  // Default radius
+      0.85  // Default threshold
+    );
+    
+    // Initialize custom bloom properties
+    (this.bloomPass as any).edgeStrength = 3.0;
+    (this.bloomPass as any).nodeStrength = 2.0;
+    (this.bloomPass as any).environmentStrength = 1.0;
+    
+    this.composer.addPass(this.bloomPass);
+
+    // Setup basic lighting
+    this.setupLighting();
+
+    // Setup event listeners
+    window.addEventListener('resize', this.handleResize.bind(this));
+
+    // Initialize visualization controller
+    this.visualizationController = VisualizationController.getInstance();
+    this.visualizationController.initializeScene(this.scene, this.camera);
+
+    logger.log('SceneManager initialization complete');
+  }
+
+  static getInstance(canvas: HTMLCanvasElement): SceneManager {
+    if (!SceneManager.instance) {
+      SceneManager.instance = new SceneManager(canvas);
+    }
+    return SceneManager.instance;
+  }
+
+  static cleanup(): void {
+    if (SceneManager.instance) {
+      SceneManager.instance.dispose();
+      SceneManager.instance = null as any;
+    }
+  }
+
+  private setupLighting(): void {
+    const ambientLight = new AmbientLight(0xffffff, 0.6);
+    this.scene.add(ambientLight);
+
+    const directionalLight = new DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(1, 1, 1).normalize();
+    this.scene.add(directionalLight);
+
+    // Add smaller grid helper
+    const gridHelper = new GridHelper(50, 50); // Reduced grid size
+    if (gridHelper.material instanceof Material) {
+      gridHelper.material.transparent = true;
+      gridHelper.material.opacity = 0.1;
+    }
+    this.scene.add(gridHelper);
+    this.sceneGrid = gridHelper;
+  }
+
+  private handleResize(): void {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+
+    this.renderer.setSize(width, height);
+    this.composer.setSize(width, height);
+    
+    // Update bloom resolution
+    if (this.bloomPass) {
+      this.bloomPass.resolution.set(width, height);
+    }
+  }
+
+  start(): void {
+    if (this.isRunning) return;
+    this.isRunning = true;
+    this.animate();
+    logger.log('Scene rendering started');
+  }
+
+  // Alias for start() to maintain compatibility with new client code
+  startRendering(): void {
+    this.start();
+  }
+
+  stop(): void {
+    this.isRunning = false;
+    
+    // Clean up animation loops
+    if (this.renderer.xr.enabled) {
+      this.renderer.setAnimationLoop(null);
+    }
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
+    
+    logger.log('Scene rendering stopped');
+  }
+
+  private animate = (): void => {
+    if (!this.isRunning) return;
+
+    // Set up animation loop
+    if (this.renderer.xr.enabled) {
+      // For XR, use the built-in animation loop
+      this.renderer.setAnimationLoop(this.render);
+    } else {
+      // For non-XR, use requestAnimationFrame
+      this.animationFrameId = requestAnimationFrame(this.animate);
+      this.render();
+    }
+  }
+
+  private render = (): void => {
+    // Update controls only in non-XR mode
+    if (!this.renderer.xr.enabled) {
+      this.controls.update();
+      // Show scene grid in non-XR mode
+      if (this.sceneGrid) this.sceneGrid.visible = true;
+    } else {
+      // Hide scene grid in XR mode
+      if (this.sceneGrid) this.sceneGrid.visible = false;
+    }
+
+    // Update visualization controller
+    this.visualizationController?.update();
+
+    // Use post-processing in non-XR mode when bloom is enabled
+    if (!this.renderer.xr.enabled && this.bloomPass.enabled) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
+  }
+
+  // Public getters
+  getScene(): Scene {
+    return this.scene;
+  }
+
+  getCamera(): PerspectiveCamera {
+    return this.camera;
+  }
+
+  getRenderer(): WebGLRenderer {
+    return this.renderer;
+  }
+
+  getControls(): OrbitControls {
+    return this.controls;
+  }
+
+  // Scene management methods
+  add(object: Object3D): void {
+    this.scene.add(object);
+  }
+
+  remove(object: Object3D): void {
+    this.scene.remove(object);
+  }
+
+  dispose(): void {
+    this.stop();
+    
+    // Remove event listeners
+    const boundResize = this.handleResize.bind(this);
+    window.removeEventListener('resize', boundResize);
+
+    // Dispose of post-processing
+    if (this.composer) {
+      // Dispose of render targets
+      this.composer.renderTarget1.dispose();
+      this.composer.renderTarget2.dispose();
+      
+      // Clear passes
+      this.composer.passes.length = 0;
+    }
+
+    // Dispose of bloom pass resources
+    if (this.bloomPass) {
+      // Dispose of any textures or materials used by the bloom pass
+      if ((this.bloomPass as any).renderTargetsHorizontal) {
+        (this.bloomPass as any).renderTargetsHorizontal.forEach((target: any) => {
+          if (target && target.dispose) target.dispose();
+        });
+      }
+      if ((this.bloomPass as any).renderTargetsVertical) {
+        (this.bloomPass as any).renderTargetsVertical.forEach((target: any) => {
+          if (target && target.dispose) target.dispose();
+        });
+      }
+      if ((this.bloomPass as any).materialHorizontal) {
+        (this.bloomPass as any).materialHorizontal.dispose();
+      }
+      if ((this.bloomPass as any).materialVertical) {
+        (this.bloomPass as any).materialVertical.dispose();
+      }
+    }
+
+    // Dispose of controls
+    if (this.controls) {
+      this.controls.dispose();
+    }
+
+    // Dispose of renderer and materials
+    if (this.renderer) {
+      this.renderer.dispose();
+      this.renderer.domElement.remove();
+      (this.renderer.domElement as any).width = 0;
+      (this.renderer.domElement as any).height = 0;
+    }
+
+    // Dispose of scene objects
+    if (this.scene) {
+      this.scene.traverse((object) => {
+        if (object instanceof Mesh) {
+          if (object.geometry) object.geometry.dispose();
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              object.material.forEach(material => material.dispose());
+            } else {
+              object.material.dispose();
+            }
+          }
+        }
+      });
+    }
+
+    logger.log('Scene manager disposed');
+  }
+
+  public handleSettingsUpdate(settings: Settings): void {
+    if (!settings.visualization?.rendering) {
+      logger.warn('Received settings update without visualization.rendering section');
+      return;
+    }
+
+    const { rendering, bloom } = settings.visualization;
+    this.currentRenderingSettings = rendering;
+
+    // Update bloom settings
+    if (bloom) {
+      // Always update enabled state first
+      this.bloomPass.enabled = bloom.enabled;
+      
+      if (bloom.enabled) {
+        // When enabled, set all parameters
+        this.bloomPass.strength = bloom.strength || 1.5;
+        this.bloomPass.radius = bloom.radius || 0.4;
+        this.bloomPass.threshold = 0.3; // Lower threshold when enabled for better effect
+        
+        // Set custom strength parameters
+        (this.bloomPass as any).edgeStrength = bloom.edgeBloomStrength || 3.0;
+        (this.bloomPass as any).nodeStrength = bloom.nodeBloomStrength || 2.0;
+        (this.bloomPass as any).environmentStrength = bloom.environmentBloomStrength || 1.0;
+      } else {
+        // When disabled, zero out all parameters
+        this.bloomPass.strength = 0;
+        this.bloomPass.radius = 0;
+        this.bloomPass.threshold = 1.0;
+        (this.bloomPass as any).edgeStrength = 0;
+        (this.bloomPass as any).nodeStrength = 0;
+        (this.bloomPass as any).environmentStrength = 0;
+      }
+      
+      logger.debug('Bloom settings updated:', {
+        enabled: this.bloomPass.enabled,
+        strength: this.bloomPass.strength,
+        radius: this.bloomPass.radius,
+        threshold: this.bloomPass.threshold,
+        edgeStrength: (this.bloomPass as any).edgeStrength,
+        nodeStrength: (this.bloomPass as any).nodeStrength,
+        environmentStrength: (this.bloomPass as any).environmentStrength
+      });
+    }
+
+    // Update background color
+    if (rendering.backgroundColor) {
+      this.scene.background = new Color(rendering.backgroundColor);
+    }
+
+    // Update lighting
+    const lights = this.scene.children.filter(child => 
+      child instanceof AmbientLight || child instanceof DirectionalLight
+    );
+    
+    lights.forEach(light => {
+      if (light instanceof AmbientLight) {
+        light.intensity = rendering.ambientLightIntensity;
+      } else if (light instanceof DirectionalLight) {
+        light.intensity = rendering.directionalLightIntensity;
+      }
+    });
+
+    // Update renderer settings
+    if (this.renderer) {
+      // Note: Some settings can only be changed at renderer creation
+      if (rendering.enableAntialiasing) {
+        logger.warn('Antialiasing setting change requires renderer recreation');
+        this.recreateRenderer();
+      }
+      if (rendering.enableShadows) {
+        logger.warn('Shadow settings change requires renderer recreation');
+      }
+    }
+
+    logger.debug('Scene settings updated:', rendering);
+  }
+
+  private recreateRenderer(): void {
+    logger.log('Recreating renderer with updated settings');
+    
+    // Store current XR state
+    const wasXREnabled = this.renderer.xr.enabled;
+    
+    // Dispose of current renderer
+    this.renderer.dispose();
+    
+    // Create new renderer with updated settings
+    this.renderer = new WebGLRenderer({
+      canvas: this.canvas,
+      antialias: this.currentRenderingSettings?.enableAntialiasing || true,
+      alpha: true,
+      powerPreference: 'high-performance',
+      xr: {
+        enabled: wasXREnabled
+      }
+    });
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    
+    // Recreate composer with new renderer
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.composer.addPass(this.bloomPass);
+  }
+}
+
+----
 rendering/EnhancedNodeManager.ts
 import {
     Scene,
-    InstancedMesh,
-    Matrix4,
     Vector3,
     Mesh,
     Object3D,
-    Quaternion,
     BufferGeometry,
     Material,
     PerspectiveCamera
@@ -6805,29 +7264,22 @@ export class EnhancedNodeManager {
     private nodes: Map<string, Mesh> = new Map();
     private nodeGeometry: BufferGeometry;
     private nodeMaterial: Material;
-    private instancedMesh: InstancedMesh | null = null;
     private geometryFactory: GeometryFactory;
     private materialFactory: MaterialFactory;
-    private isInstanced: boolean;
     private isHologram: boolean = false;
     private hologramMaterial: HologramShaderMaterial | null = null;
     private metadataMaterial: Material | null = null;
     private metadataVisualizer: MetadataVisualizer;
-    private quaternion = new Quaternion();
-    private reusableMatrix = new Matrix4();
-    private reusablePosition = new Vector3();
-    private reusableScale = new Vector3();
     private camera: PerspectiveCamera;
     private updateFrameCount = 0;
-    private readonly AR_UPDATE_FREQUENCY = 2; // Update every other frame in AR
-    private readonly METADATA_DISTANCE_THRESHOLD = 50; // Distance threshold for metadata visibility
-    private readonly ANIMATION_DISTANCE_THRESHOLD = 30; // Distance threshold for animations
+    private readonly AR_UPDATE_FREQUENCY = 2;
+    private readonly METADATA_DISTANCE_THRESHOLD = 50;
+    private readonly ANIMATION_DISTANCE_THRESHOLD = 30;
 
     constructor(scene: Scene, settings: Settings) {
         this.scene = scene;
         this.settings = settings;
 
-        // Find the camera in the scene
         let camera: PerspectiveCamera | null = null;
         scene.traverse((object) => {
             if (object instanceof PerspectiveCamera) {
@@ -6844,8 +7296,15 @@ export class EnhancedNodeManager {
 
         this.geometryFactory = GeometryFactory.getInstance();
         this.materialFactory = MaterialFactory.getInstance();
-        this.isInstanced = settings.visualization.nodes.enableInstancing && !platformManager.isXRMode;
-        this.nodeGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
+        
+        // Create geometry with the base size from settings
+        const baseSize = this.settings.visualization.nodes.sizeRange[0];
+        this.nodeGeometry = this.geometryFactory.getNodeGeometry(
+            settings.visualization.nodes.quality,
+            platformManager.isXRMode ? 'ar' : 'desktop',
+            baseSize
+        );
+        
         this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
         this.isHologram = settings.visualization.nodes.enableHologram;
 
@@ -6854,19 +7313,7 @@ export class EnhancedNodeManager {
         }
 
         this.metadataMaterial = this.materialFactory.getMetadataMaterial();
-
-        // Initialize MetadataVisualizer with camera and scene
         this.metadataVisualizer = new MetadataVisualizer(this.camera, this.scene, settings);
-        this.setupInstancedMesh();
-    }
-
-    private setupInstancedMesh() {
-        if (this.isInstanced) {
-            this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 2000); // Increased buffer
-            this.instancedMesh.count = 0;
-            this.instancedMesh.layers.set(platformManager.isXRMode ? 1 : 0);
-            this.scene.add(this.instancedMesh);
-        }
     }
 
     public handleSettingsUpdate(settings: Settings): void {
@@ -6874,24 +7321,23 @@ export class EnhancedNodeManager {
         
         // Update materials
         this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
-        if (!this.isInstanced) {
-            this.nodes.forEach(node => {
-                node.material = this.nodeMaterial;
-            });
-        }
+        this.nodes.forEach(node => {
+            node.material = this.nodeMaterial;
+        });
 
         // Update geometry if needed
-        const newGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
+        const baseSize = settings.visualization.nodes.sizeRange[0];
+        const newGeometry = this.geometryFactory.getNodeGeometry(
+            settings.visualization.nodes.quality,
+            platformManager.isXRMode ? 'ar' : 'desktop',
+            baseSize
+        );
+        
         if (this.nodeGeometry !== newGeometry) {
             this.nodeGeometry = newGeometry;
-            if (this.instancedMesh) {
-                this.instancedMesh.geometry = this.nodeGeometry;
-            }
-            if (!this.isInstanced) {
-                this.nodes.forEach(node => {
-                    node.geometry = this.nodeGeometry;
-                });
-            }
+            this.nodes.forEach(node => {
+                node.geometry = this.nodeGeometry;
+            });
         }
 
         // Update material settings
@@ -6902,14 +7348,8 @@ export class EnhancedNodeManager {
             this.materialFactory.updateMaterial('hologram', settings);
         }
 
-        const newIsInstanced = settings.visualization.nodes.enableInstancing;
         const newIsHologram = settings.visualization.nodes.enableHologram;
-
-        if (newIsInstanced !== this.isInstanced || newIsHologram !== this.isHologram) {
-            this.isInstanced = newIsInstanced;
-            this.isHologram = newIsHologram;
-            this.rebuildInstancedMesh();
-        }
+        this.isHologram = newIsHologram;
 
         // Handle metadata visualization
         if (settings.visualization.nodes.enableMetadataVisualization) {
@@ -6949,21 +7389,17 @@ export class EnhancedNodeManager {
     }
 
     updateNodes(nodes: { id: string, data: NodeData }[]) {
-        // Clear existing nodes
-        if (!this.isInstanced) {
-            this.nodes.forEach(node => {
-                this.scene.remove(node);
-                if (node.geometry) node.geometry.dispose();
-                if (node.material) node.material.dispose();
-            });
-            this.nodes.clear();
-        }
+        nodes.forEach((node) => {
+            const existingNode = this.nodes.get(node.id);
+            if (existingNode) {
+                existingNode.position.set(
+                    node.data.position.x,
+                    node.data.position.y,
+                    node.data.position.z
+                );
+                return;
+            }
 
-        if (this.isInstanced && this.instancedMesh) {
-            this.instancedMesh.count = nodes.length;
-        }
-
-        nodes.forEach((node, index) => {
             const metadata: NodeMetadata = {
                 id: node.id,
                 name: node.data.metadata?.name || '',
@@ -6989,43 +7425,27 @@ export class EnhancedNodeManager {
                         nodeMesh.add(group);
                     });
                 }
-
-                this.scene.add(nodeMesh);
-                this.nodes.set(node.id, nodeMesh);
             } else {
-                const scale = this.calculateNodeScale(metadata.importance);
                 const position = new Vector3(metadata.position.x, metadata.position.y, metadata.position.z);
+                nodeMesh = new Mesh(this.nodeGeometry, this.nodeMaterial);
+                nodeMesh.position.copy(position);
+                nodeMesh.layers.enable(0);
+                nodeMesh.layers.enable(1);
+                nodeMesh.userData = metadata;
 
-                if (this.isInstanced && this.instancedMesh) {
-                    this.reusablePosition.copy(position);
-                    this.reusableScale.set(scale, scale, scale);
-                    const matrix = this.reusableMatrix.compose(this.reusablePosition, this.quaternion, this.reusableScale);
-                    this.instancedMesh.setMatrixAt(index, matrix);
-                } else {
-                    nodeMesh = new Mesh(this.nodeGeometry, this.nodeMaterial);
-                    nodeMesh.position.copy(position);
-                    nodeMesh.scale.set(scale, scale, scale);
-                    nodeMesh.layers.enable(0);
-                    nodeMesh.layers.enable(1);
-                    nodeMesh.userData = metadata;
-
-                    if (this.settings.visualization.nodes.enableMetadataVisualization && 
-                        position.distanceTo(this.camera.position) < this.METADATA_DISTANCE_THRESHOLD) {
-                        this.metadataVisualizer.createMetadataLabel(metadata).then((group) => {
-                            if (position.distanceTo(this.camera.position) < this.METADATA_DISTANCE_THRESHOLD)
-                                nodeMesh.add(group);
-                        });
-                    }
-
-                    this.scene.add(nodeMesh);
-                    this.nodes.set(node.id, nodeMesh);
+                if (this.settings.visualization.nodes.enableMetadataVisualization && 
+                    position.distanceTo(this.camera.position) < this.METADATA_DISTANCE_THRESHOLD) {
+                    this.metadataVisualizer.createMetadataLabel(metadata).then((group) => {
+                        if (position.distanceTo(this.camera.position) < this.METADATA_DISTANCE_THRESHOLD) {
+                            nodeMesh.add(group);
+                        }
+                    });
                 }
             }
-        });
 
-        if (this.isInstanced && this.instancedMesh) {
-            this.instancedMesh.instanceMatrix.needsUpdate = true;
-        }
+            this.scene.add(nodeMesh);
+            this.nodes.set(node.id, nodeMesh);
+        });
     }
 
     private calculateCommitAge(timestamp: number): number {
@@ -7039,30 +7459,10 @@ export class EnhancedNodeManager {
         return Math.min(linkFactor + referenceFactor, 1);
     }
 
-    private calculateNodeScale(importance: number): number {
-        const [min, max] = this.settings.visualization.nodes.sizeRange;
-        return min + (max - min) * importance;
-    }
-
-    private rebuildInstancedMesh() {
-        if (this.instancedMesh) {
-            this.instancedMesh.geometry.dispose();
-            this.instancedMesh.material.dispose();
-            this.scene.remove(this.instancedMesh);
-        }
-        if (this.isInstanced) {
-            this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 1000);
-            this.instancedMesh.count = 0;
-            this.instancedMesh.layers.set(platformManager.isXRMode ? 1 : 0);
-            this.scene.add(this.instancedMesh);
-        }
-    }
-
     update(deltaTime: number) {
         this.updateFrameCount++;
         const isARMode = platformManager.isXRMode;
 
-        // Skip updates based on context
         if (isARMode && this.updateFrameCount % this.AR_UPDATE_FREQUENCY !== 0) {
             return;
         }
@@ -7073,11 +7473,10 @@ export class EnhancedNodeManager {
 
         if (this.settings.visualization.animations.enableNodeAnimations) {
             const cameraPosition = this.camera.position;
-            if (this.instancedMesh) {
-                this.instancedMesh.instanceMatrix.needsUpdate = true;
-            }
             this.scene.traverse((child: Object3D) => {
-                if (child instanceof Mesh && (child.material as any).type === 'LineBasicMaterial' && child.position.distanceTo(cameraPosition) < this.ANIMATION_DISTANCE_THRESHOLD) {
+                if (child instanceof Mesh && 
+                    (child.material as any).type === 'LineBasicMaterial' && 
+                    child.position.distanceTo(cameraPosition) < this.ANIMATION_DISTANCE_THRESHOLD) {
                     child.rotateY(0.001 * deltaTime);
                 }
             });
@@ -7087,19 +7486,14 @@ export class EnhancedNodeManager {
     handleHandInteraction(hand: XRHandWithHaptics) {
         const indexTip = hand.hand.joints['index-finger-tip'] as Object3D | undefined;
         if (indexTip) {
-            if (this.isHologram && this.hologramMaterial) {
-                this.reusablePosition.setFromMatrixPosition(indexTip.matrixWorld);
-                this.hologramMaterial.handleInteraction(this.reusablePosition);
+            if (this.isHologram && this.hologramMaterial && indexTip.matrixWorld) {
+                const position = new Vector3().setFromMatrixPosition(indexTip.matrixWorld);
+                this.hologramMaterial.handleInteraction(position);
             }
         }
     }
 
     dispose() {
-        if (this.instancedMesh) {
-            this.instancedMesh.geometry.dispose();
-            this.instancedMesh.material.dispose();
-            this.scene.remove(this.instancedMesh);
-        }
         if (this.isHologram && this.hologramMaterial) {
             this.hologramMaterial.dispose();
         }
@@ -7115,7 +7509,7 @@ export class EnhancedNodeManager {
     }
 
     public updateNodePositions(nodes: { id: string, data: { position: [number, number, number], velocity: [number, number, number] } }[]): void {
-        nodes.forEach((node, index) => {
+        nodes.forEach((node) => {
             const existingNode = this.nodes.get(node.id);
             if (existingNode) {
                 existingNode.position.set(
@@ -7123,36 +7517,21 @@ export class EnhancedNodeManager {
                     node.data.position[1],
                     node.data.position[2]
                 );
-            } else if (this.isInstanced && this.instancedMesh) {
-                this.reusablePosition.set(
-                    node.data.position[0],
-                    node.data.position[1],
-                    node.data.position[2]
-                );
-                this.reusableMatrix.compose(
-                    this.reusablePosition,
-                    this.quaternion,
-                    this.reusableScale.set(1, 1, 1)
-                );
-                this.instancedMesh.setMatrixAt(index, this.reusableMatrix);
             }
         });
-
-        if (this.isInstanced && this.instancedMesh) {
-            this.instancedMesh.instanceMatrix.needsUpdate = true;
-        }
     }
 
     public setXRMode(enabled: boolean): void {
-        if (this.instancedMesh) {
-            this.instancedMesh.layers.set(enabled ? 1 : 0);
-        }
         this.nodes.forEach(node => {
             node.layers.set(enabled ? 1 : 0);
             node.traverse((child: Object3D) => {
                 child.layers.set(enabled ? 1 : 0);
             });
         });
+    }
+
+    public getNodes(): Map<string, Mesh> {
+        return this.nodes;
     }
 }
 
@@ -7164,6 +7543,7 @@ import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 import { XRHandWithHaptics } from '../types/xr';
 import { EdgeManager } from './EdgeManager';
+import { EnhancedNodeManager } from './EnhancedNodeManager';
 import { graphDataManager } from '../state/graphData';
 import { TextRenderer } from './textRenderer';
 import { GraphData } from '../core/types';
@@ -7177,10 +7557,12 @@ export class VisualizationController {
     private static instance: VisualizationController | null = null;
     private currentSettings: Settings;
     private edgeManager: EdgeManager | null = null;
+    private nodeManager: EnhancedNodeManager | null = null;
     private textRenderer: TextRenderer | null = null;
     private isInitialized: boolean = false;
     private pendingUpdates: Map<string, PendingUpdate> = new Map();
     private pendingEdgeUpdates: GraphData['edges'] | null = null;
+    private pendingNodeUpdates: GraphData['nodes'] | null = null;
 
     private constructor() {
         // Initialize with complete default settings
@@ -7188,12 +7570,18 @@ export class VisualizationController {
         
         // Subscribe to graph data updates
         graphDataManager.subscribe((data: GraphData) => {
-            if (this.isInitialized && this.edgeManager) {
-                this.edgeManager.updateEdges(data.edges);
+            if (this.isInitialized) {
+                if (this.nodeManager) {
+                    this.nodeManager.updateNodes(data.nodes);
+                }
+                if (this.edgeManager) {
+                    this.edgeManager.updateEdges(data.edges);
+                }
             } else {
-                // Queue edge updates until initialized
+                // Queue updates until initialized
+                this.pendingNodeUpdates = data.nodes;
                 this.pendingEdgeUpdates = data.edges;
-                logger.debug('Queuing edge updates until initialization');
+                logger.debug('Queuing updates until initialization');
             }
         });
     }
@@ -7201,8 +7589,9 @@ export class VisualizationController {
     public initializeScene(scene: Scene, camera: Camera): void {
         logger.info('Initializing visualization scene');
         
-        // Initialize edge manager with scene and settings
+        // Initialize managers with scene and settings
         this.edgeManager = new EdgeManager(scene, this.currentSettings);
+        this.nodeManager = new EnhancedNodeManager(scene, this.currentSettings);
         this.textRenderer = new TextRenderer(camera, scene);
         this.isInitialized = true;
         
@@ -7211,10 +7600,20 @@ export class VisualizationController {
         
         // Initialize with current graph data
         const currentData = graphDataManager.getGraphData();
-        if (this.pendingEdgeUpdates) {
+        
+        // Handle pending node updates
+        if (this.pendingNodeUpdates && this.nodeManager) {
+            this.nodeManager.updateNodes(this.pendingNodeUpdates);
+            this.pendingNodeUpdates = null;
+        } else if (currentData.nodes.length > 0 && this.nodeManager) {
+            this.nodeManager.updateNodes(currentData.nodes);
+        }
+        
+        // Handle pending edge updates
+        if (this.pendingEdgeUpdates && this.edgeManager) {
             this.edgeManager.updateEdges(this.pendingEdgeUpdates);
             this.pendingEdgeUpdates = null;
-        } else if (currentData.edges.length > 0) {
+        } else if (currentData.edges.length > 0 && this.edgeManager) {
             this.edgeManager.updateEdges(currentData.edges);
         }
         
@@ -7222,7 +7621,7 @@ export class VisualizationController {
     }
 
     private applyPendingUpdates(): void {
-        if (!this.isInitialized || !this.edgeManager) {
+        if (!this.isInitialized) {
             logger.debug('Cannot apply pending updates - not initialized');
             return;
         }
@@ -7412,6 +7811,9 @@ export class VisualizationController {
     private updateNodeAppearance(): void {
         if (!this.isInitialized) return;
         logger.debug('Updating node appearance');
+        if (this.nodeManager) {
+            this.nodeManager.handleSettingsUpdate(this.currentSettings);
+        }
     }
 
     private updateEdgeAppearance(): void {
@@ -7438,28 +7840,31 @@ export class VisualizationController {
         logger.debug('Updating rendering quality');
     }
 
-    public updateEdges(edges: any[]): void {
-        if (!this.isInitialized) {
-            this.pendingEdgeUpdates = edges;
-            logger.debug('Queuing edge updates', { count: edges.length });
-            return;
-        }
-
-        if (this.edgeManager) {
-            this.edgeManager.updateEdges(edges);
-            logger.debug('Edges updated', { count: edges.length });
-        } else {
-            logger.warn('EdgeManager not initialized');
+    public updateNodePositions(nodes: any[]): void {
+        if (this.nodeManager) {
+            this.nodeManager.updateNodePositions(nodes);
         }
     }
 
     public update(): void {
-        if (this.isInitialized && this.textRenderer) {
-            this.textRenderer.update();
+        if (this.isInitialized) {
+            // Update node animations and state
+            if (this.nodeManager) {
+                this.nodeManager.update(1/60); // Standard 60fps delta time
+            }
+            
+            // Update text labels
+            if (this.textRenderer) {
+                this.textRenderer.update();
+            }
         }
     }
 
     public dispose(): void {
+        if (this.nodeManager) {
+            this.nodeManager.dispose();
+            this.nodeManager = null;
+        }
         if (this.edgeManager) {
             this.edgeManager.dispose();
             this.edgeManager = null;
@@ -7469,660 +7874,9 @@ export class VisualizationController {
         this.isInitialized = false;
         this.pendingUpdates.clear();
         this.pendingEdgeUpdates = null;
+        this.pendingNodeUpdates = null;
         VisualizationController.instance = null;
     }
-}
-
-----
-rendering/nodes.ts
-import * as THREE from 'three';
-import { Node } from '../core/types';
-import { createLogger } from '../core/logger';
-import { settingsManager } from '../state/settings';
-import type { Settings } from '../types/settings';
-import { GeometryFactory } from './factories/GeometryFactory';
-import { MaterialFactory } from './factories/MaterialFactory';
-import { SettingsObserver } from '../state/SettingsObserver';
-
-const logger = createLogger('NodeManager');
-
-const FLOATS_PER_NODE = 6;  // x, y, z, vx, vy, vz
-
-// Reusable objects for matrix calculations
-const matrix = new THREE.Matrix4();
-const quaternion = new THREE.Quaternion();
-const position = new THREE.Vector3();
-const scale = new THREE.Vector3(1, 1, 1);
-
-// Batch size for matrix updates
-const MATRIX_UPDATE_BATCH_SIZE = 1000;
-
-export class NodeManager {
-    private static instance: NodeManager;
-    private currentSettings: Settings;
-    private nodeInstances: THREE.InstancedMesh;
-    private currentNodes: Node[] = [];
-    private nodeIndices: Map<string, number> = new Map();
-    private readonly materialFactory: MaterialFactory;
-    private readonly geometryFactory: GeometryFactory;
-    private readonly settingsObserver: SettingsObserver;
-    
-    // Matrix update queue for batching
-    private pendingMatrixUpdates: Set<number> = new Set();
-    private matrixUpdateScheduled: boolean = false;
-
-    private getRenderContext(): 'ar' | 'desktop' {
-        return this.currentSettings.xr.mode === 'immersive-ar' ? 'ar' : 'desktop';
-    }
-
-    private constructor() {
-        this.currentSettings = settingsManager.getCurrentSettings();
-        this.materialFactory = MaterialFactory.getInstance();
-        this.geometryFactory = GeometryFactory.getInstance();
-        this.settingsObserver = SettingsObserver.getInstance();
-
-        const context = this.getRenderContext();
-
-        // Create node instances with context-aware geometry and material
-        this.nodeInstances = new THREE.InstancedMesh(
-            this.geometryFactory.getNodeGeometry(this.currentSettings.xr.quality, context),
-            this.materialFactory.getNodeMaterial(this.currentSettings, context),
-            10000
-        );
-
-        // Set AR layer for node instances
-        this.nodeInstances.layers.enable(1);
-        this.nodeInstances.frustumCulled = true; // Enable frustum culling
-
-        // Edge handling has been moved to EdgeManager
-
-        this.setupSettingsSubscriptions();
-    }
-
-    private setupSettingsSubscriptions(): void {
-        this.settingsObserver.subscribe('visualization', (_path: string, _value: any) => {
-            const prevContext = this.getRenderContext();
-            // Get fresh settings to ensure we have the complete state
-            this.currentSettings = settingsManager.getCurrentSettings();
-            const newContext = this.getRenderContext();
-
-            // Update materials and geometry if context changed
-            if (prevContext !== newContext) {
-                if (this.nodeInstances) {
-                    // Update node geometry and material
-                    const nodeGeometry = this.geometryFactory.getNodeGeometry(
-                        this.currentSettings.xr.quality,
-                        newContext
-                    );
-                    const nodeMaterial = this.materialFactory.getNodeMaterial(
-                        this.currentSettings,
-                        newContext
-                    );
-                    this.nodeInstances.geometry.dispose();
-                    this.nodeInstances.material.dispose();
-                    this.nodeInstances.geometry = nodeGeometry;
-                    this.nodeInstances.material = nodeMaterial;
-                }
-
-                // Edge handling has been moved to EdgeManager
-            } else {
-                // Just update material properties if context hasn't changed
-                this.materialFactory.updateMaterial(`node-${newContext}`, this.currentSettings);
-                this.materialFactory.updateMaterial(`edge-${newContext}`, this.currentSettings);
-            }
-        });
-
-        // Subscribe to XR settings changes
-        this.settingsObserver.subscribe('xr', (_path: string, _value: any) => {
-            this.currentSettings = settingsManager.getCurrentSettings();
-            const context = this.getRenderContext();
-            this.materialFactory.updateMaterial(`node-${context}`, this.currentSettings);
-            this.materialFactory.updateMaterial(`edge-${context}`, this.currentSettings);
-        });
-    }
-
-    public static getInstance(): NodeManager {
-        if (!NodeManager.instance) {
-            NodeManager.instance = new NodeManager();
-        }
-        return NodeManager.instance;
-    }
-
-    private scheduleBatchUpdate(): void {
-        if (this.matrixUpdateScheduled) return;
-        this.matrixUpdateScheduled = true;
-
-        requestAnimationFrame(() => {
-            this.processBatchUpdate();
-            this.matrixUpdateScheduled = false;
-        });
-    }
-
-    private processBatchUpdate(): void {
-        if (!this.nodeInstances || this.pendingMatrixUpdates.size === 0) return;
-
-        let processed = 0;
-        this.pendingMatrixUpdates.forEach(index => {
-            if (processed >= MATRIX_UPDATE_BATCH_SIZE) {
-                return; // Process remaining updates in next batch
-            }
-
-            const node = this.currentNodes[index];
-            if (!node) return;
-
-            position.set(
-                node.data.position.x,
-                node.data.position.y + 1.5,
-                node.data.position.z
-            );
-
-            // Use minimum size from sizeRange as base size
-            const baseSize = this.currentSettings.visualization.nodes.sizeRange[0] || 40;
-            scale.set(baseSize/40, baseSize/40, baseSize/40); // Normalize to reasonable scale
-
-            matrix.compose(position, quaternion, scale);
-            this.nodeInstances.setMatrixAt(index, matrix);
-
-            processed++;
-            this.pendingMatrixUpdates.delete(index);
-        });
-
-        if (processed > 0) {
-            this.nodeInstances.instanceMatrix.needsUpdate = true;
-        }
-
-        if (this.pendingMatrixUpdates.size > 0) {
-            this.scheduleBatchUpdate(); // Schedule next batch if needed
-        }
-    }
-
-    public updatePositions(positions: Float32Array): void {
-        if (!this.nodeInstances) return;
-
-        const count = Math.min(positions.length / FLOATS_PER_NODE, this.nodeInstances.count);
-        
-        for (let i = 0; i < count; i++) {
-            const baseIndex = i * FLOATS_PER_NODE;
-            
-            const x = positions[baseIndex];
-            const y = positions[baseIndex + 1];
-            const z = positions[baseIndex + 2];
-            
-            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) ||
-                Math.abs(x) > 1000 || Math.abs(y) > 1000 || Math.abs(z) > 1000) {
-                logger.warn(`Skipping invalid position for node ${i}: (${x}, ${y}, ${z})`);
-                continue;
-            }
-
-            this.pendingMatrixUpdates.add(i);
-        }
-
-        this.scheduleBatchUpdate();
-    }
-
-    public getAllNodeMeshes(): THREE.InstancedMesh[] {
-        return [this.nodeInstances];
-    }
-
-    public getNodePosition(nodeId: string): THREE.Vector3 {
-        const node = this.currentNodes.find(n => n.id === nodeId);
-        if (!node) {
-            throw new Error(`Node ${nodeId} not found`);
-        }
-        return new THREE.Vector3(
-            node.data.position.x,
-            node.data.position.y,
-            node.data.position.z
-        );
-    }
-
-    public updateNodePosition(nodeId: string, newPosition: THREE.Vector3): void {
-        const index = this.nodeIndices.get(nodeId);
-        if (index === undefined) {
-            throw new Error(`Node ${nodeId} not found`);
-        }
-
-        const node = this.currentNodes[index];
-        if (node) {
-            node.data.position = {
-                x: newPosition.x,
-                y: newPosition.y,
-                z: newPosition.z
-            };
-            this.pendingMatrixUpdates.add(index);
-            this.scheduleBatchUpdate();
-        }
-    }
-
-    public getCurrentNodes(): Node[] {
-        return [...this.currentNodes];
-    }
-
-    public updateNodes(nodes: Node[]): void {
-        this.currentNodes = nodes;
-        const positions = new Float32Array(nodes.length * FLOATS_PER_NODE);
-        
-        nodes.forEach((node, index) => {
-            const baseIndex = index * FLOATS_PER_NODE;
-            positions[baseIndex] = node.data.position.x;
-            positions[baseIndex + 1] = node.data.position.y + 1.5;
-            positions[baseIndex + 2] = node.data.position.z;
-            positions[baseIndex + 3] = 0;
-            positions[baseIndex + 4] = 0;
-            positions[baseIndex + 5] = 0;
-            
-            this.nodeIndices.set(node.id, index);
-        });
-        
-        this.updatePositions(positions);
-    }
-
-    public dispose(): void {
-        if (this.nodeInstances) {
-            this.nodeInstances.geometry.dispose();
-            this.nodeInstances.material.dispose();
-        }
-        // Edge cleanup has been moved to EdgeManager
-        this.pendingMatrixUpdates.clear();
-    }
-}
-
-----
-rendering/scene.ts
-/**
- * Three.js scene management with simplified setup
- */
-
-import { Scene, PerspectiveCamera, WebGLRenderer, Color, AmbientLight, DirectionalLight, GridHelper, Vector2, Material, Mesh, Object3D } from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
-import { createLogger } from '../core/utils';
-import { Settings } from '../types/settings';
-import { VisualizationController } from './VisualizationController';
-
-const logger = createLogger('SceneManager');
-
-// Constants
-const BACKGROUND_COLOR = 0x212121;  // Material Design Grey 900
-
-export class SceneManager {
-  private static instance: SceneManager;
-  
-  // Three.js core components
-  private scene: Scene;
-  private camera: PerspectiveCamera;
-  private renderer: WebGLRenderer;
-  private controls: OrbitControls;
-  private sceneGrid: GridHelper | null = null;
-  
-  // Post-processing
-  private composer: EffectComposer;
-  private bloomPass: UnrealBloomPass;
-  
-  // Animation
-  private animationFrameId: number | null = null;
-  private isRunning: boolean = false;
-  private visualizationController: VisualizationController | null = null;
-
-  private constructor(canvas: HTMLCanvasElement) {
-    logger.log('Initializing SceneManager');
-    
-    // Create scene
-    this.scene = new Scene();
-    this.scene.background = new Color(BACKGROUND_COLOR);
-    // Removed fog to ensure graph visibility
-
-    // Create camera with wider view
-    this.camera = new PerspectiveCamera(
-      60, // Reduced FOV for less distortion
-      window.innerWidth / window.innerHeight,
-      0.1,
-      2000
-    );
-    this.camera.position.set(0, 10, 50); // Position for better overview
-    this.camera.lookAt(0, 0, 0);
-    
-    // Enable both layers for desktop mode by default
-    this.camera.layers.enable(0); // Desktop layer
-    this.camera.layers.enable(1); // XR layer
-
-    // Create renderer with WebXR support
-    this.renderer = new WebGLRenderer({
-      canvas,
-      antialias: true,
-      alpha: true,
-      powerPreference: 'high-performance',
-      xr: {
-        enabled: true
-      }
-    });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-    // Create controls
-    this.controls = new OrbitControls(this.camera, canvas);
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.1;
-    this.controls.screenSpacePanning = true;
-    this.controls.minDistance = 1;
-    this.controls.maxDistance = 1000;
-    this.controls.enableRotate = true;
-    this.controls.enableZoom = true;
-    this.controls.enablePan = true;
-    this.controls.rotateSpeed = 1.0;
-    this.controls.zoomSpeed = 1.2;
-    this.controls.panSpeed = 0.8;
-
-    // Setup post-processing
-    this.composer = new EffectComposer(this.renderer);
-    const renderPass = new RenderPass(this.scene, this.camera);
-    this.composer.addPass(renderPass);
-
-    // Initialize bloom with disabled state
-    this.bloomPass = new UnrealBloomPass(
-      new Vector2(window.innerWidth, window.innerHeight),
-      0.0,  // Strength
-      0.0,  // Radius
-      1.0   // High threshold to effectively disable bloom
-    );
-    this.bloomPass.enabled = false;  // Explicitly disable bloom
-    this.bloomPass.threshold = 1.0;  // Set high threshold to further ensure no bloom
-    this.composer.addPass(this.bloomPass);
-
-    // Setup basic lighting
-    this.setupLighting();
-
-    // Setup event listeners
-    window.addEventListener('resize', this.handleResize.bind(this));
-
-    // Initialize visualization controller
-    this.visualizationController = VisualizationController.getInstance();
-    this.visualizationController.initializeScene(this.scene, this.camera);
-
-    logger.log('SceneManager initialization complete');
-  }
-
-  static getInstance(canvas: HTMLCanvasElement): SceneManager {
-    if (!SceneManager.instance) {
-      SceneManager.instance = new SceneManager(canvas);
-    }
-    return SceneManager.instance;
-  }
-
-  static cleanup(): void {
-    if (SceneManager.instance) {
-      SceneManager.instance.dispose();
-      SceneManager.instance = null as any;
-    }
-  }
-
-  private setupLighting(): void {
-    const ambientLight = new AmbientLight(0xffffff, 0.6);
-    this.scene.add(ambientLight);
-
-    const directionalLight = new DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(1, 1, 1).normalize();
-    this.scene.add(directionalLight);
-
-    // Add smaller grid helper
-    const gridHelper = new GridHelper(50, 50); // Reduced grid size
-    if (gridHelper.material instanceof Material) {
-      gridHelper.material.transparent = true;
-      gridHelper.material.opacity = 0.1;
-    }
-    this.scene.add(gridHelper);
-    this.sceneGrid = gridHelper;
-  }
-
-  private handleResize(): void {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-
-    this.camera.aspect = width / height;
-    this.camera.updateProjectionMatrix();
-
-    this.renderer.setSize(width, height);
-    this.composer.setSize(width, height);
-  }
-
-  start(): void {
-    if (this.isRunning) return;
-    this.isRunning = true;
-    this.animate();
-    logger.log('Scene rendering started');
-  }
-
-  // Alias for start() to maintain compatibility with new client code
-  startRendering(): void {
-    this.start();
-  }
-
-  stop(): void {
-    this.isRunning = false;
-    
-    // Clean up animation loops
-    if (this.renderer.xr.enabled) {
-      this.renderer.setAnimationLoop(null);
-    }
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
-    }
-    
-    logger.log('Scene rendering stopped');
-  }
-
-  private animate = (): void => {
-    if (!this.isRunning) return;
-
-    // Set up animation loop
-    if (this.renderer.xr.enabled) {
-      // For XR, use the built-in animation loop
-      this.renderer.setAnimationLoop(this.render);
-    } else {
-      // For non-XR, use requestAnimationFrame
-      this.animationFrameId = requestAnimationFrame(this.animate);
-      this.render();
-    }
-  }
-
-  private render = (): void => {
-    // Update controls only in non-XR mode
-    if (!this.renderer.xr.enabled) {
-      this.controls.update();
-      // Show scene grid in non-XR mode
-      if (this.sceneGrid) this.sceneGrid.visible = true;
-    } else {
-      // Hide scene grid in XR mode
-      if (this.sceneGrid) this.sceneGrid.visible = false;
-    }
-
-    // Update visualization controller
-    this.visualizationController?.update();
-
-    // Determine if we should use post-processing
-    const usePostProcessing = !this.renderer.xr.enabled &&
-                            this.bloomPass.enabled &&
-                            (this.bloomPass.strength > 0 ||
-                             this.bloomPass.radius > 0 ||
-                             (this.bloomPass as any).edgeStrength > 0 ||
-                             (this.bloomPass as any).nodeStrength > 0 ||
-                             (this.bloomPass as any).environmentStrength > 0);
-
-    // Render scene
-    if (usePostProcessing) {
-      this.composer.render();
-    } else {
-      this.renderer.render(this.scene, this.camera);
-    }
-  }
-
-  // Public getters
-  getScene(): Scene {
-    return this.scene;
-  }
-
-  getCamera(): PerspectiveCamera {
-    return this.camera;
-  }
-
-  getRenderer(): WebGLRenderer {
-    return this.renderer;
-  }
-
-  getControls(): OrbitControls {
-    return this.controls;
-  }
-
-  // Scene management methods
-  add(object: Object3D): void {
-    this.scene.add(object);
-  }
-
-  remove(object: Object3D): void {
-    this.scene.remove(object);
-  }
-
-  dispose(): void {
-    this.stop();
-    
-    // Remove event listeners
-    const boundResize = this.handleResize.bind(this);
-    window.removeEventListener('resize', boundResize);
-
-    // Dispose of post-processing
-    if (this.composer) {
-      // Dispose of render targets
-      this.composer.renderTarget1.dispose();
-      this.composer.renderTarget2.dispose();
-      
-      // Clear passes
-      this.composer.passes.length = 0;
-    }
-
-    // Dispose of bloom pass resources
-    if (this.bloomPass) {
-      // Dispose of any textures or materials used by the bloom pass
-      if ((this.bloomPass as any).renderTargetsHorizontal) {
-        (this.bloomPass as any).renderTargetsHorizontal.forEach((target: any) => {
-          if (target && target.dispose) target.dispose();
-        });
-      }
-      if ((this.bloomPass as any).renderTargetsVertical) {
-        (this.bloomPass as any).renderTargetsVertical.forEach((target: any) => {
-          if (target && target.dispose) target.dispose();
-        });
-      }
-      if ((this.bloomPass as any).materialHorizontal) {
-        (this.bloomPass as any).materialHorizontal.dispose();
-      }
-      if ((this.bloomPass as any).materialVertical) {
-        (this.bloomPass as any).materialVertical.dispose();
-      }
-    }
-
-    // Dispose of controls
-    if (this.controls) {
-      this.controls.dispose();
-    }
-
-    // Dispose of renderer and materials
-    if (this.renderer) {
-      this.renderer.dispose();
-      this.renderer.domElement.remove();
-      (this.renderer.domElement as any).width = 0;
-      (this.renderer.domElement as any).height = 0;
-    }
-
-    // Dispose of scene objects
-    if (this.scene) {
-      this.scene.traverse((object) => {
-        if (object instanceof Mesh) {
-          if (object.geometry) object.geometry.dispose();
-          if (object.material) {
-            if (Array.isArray(object.material)) {
-              object.material.forEach(material => material.dispose());
-            } else {
-              object.material.dispose();
-            }
-          }
-        }
-      });
-    }
-
-    logger.log('Scene manager disposed');
-  }
-
-  public handleSettingsUpdate(settings: Settings): void {
-    if (!settings.visualization?.rendering) {
-      logger.warn('Received settings update without visualization.rendering section');
-      return;
-    }
-
-    const { rendering, bloom } = settings.visualization;
-
-    // Update bloom settings
-    if (bloom) {
-      if (!bloom.enabled) {
-        // When disabled, set all bloom parameters to zero/disabled state
-        this.bloomPass.enabled = false;
-        this.bloomPass.strength = 0;
-        this.bloomPass.radius = 0;
-        this.bloomPass.threshold = 1.0;
-        (this.bloomPass as any).edgeStrength = 0;
-        (this.bloomPass as any).nodeStrength = 0;
-        (this.bloomPass as any).environmentStrength = 0;
-      } else {
-        // Only enable and set parameters if explicitly enabled
-        this.bloomPass.enabled = true;
-        this.bloomPass.strength = bloom.strength || 0;
-        this.bloomPass.radius = bloom.radius || 0;
-        this.bloomPass.threshold = 0.3; // Standard threshold when enabled
-        (this.bloomPass as any).edgeStrength = bloom.edgeBloomStrength || 0;
-        (this.bloomPass as any).nodeStrength = bloom.nodeBloomStrength || 0;
-        (this.bloomPass as any).environmentStrength = bloom.environmentBloomStrength || 0;
-      }
-      logger.debug('Bloom settings updated:', {
-        enabled: this.bloomPass.enabled,
-        strength: this.bloomPass.strength,
-        radius: this.bloomPass.radius,
-        threshold: this.bloomPass.threshold
-      });
-    }
-
-    // Update background color
-    if (rendering.backgroundColor) {
-      this.scene.background = new Color(rendering.backgroundColor);
-    }
-
-    // Update lighting
-    const lights = this.scene.children.filter(child => 
-      child instanceof AmbientLight || child instanceof DirectionalLight
-    );
-    
-    lights.forEach(light => {
-      if (light instanceof AmbientLight) {
-        light.intensity = rendering.ambientLightIntensity;
-      } else if (light instanceof DirectionalLight) {
-        light.intensity = rendering.directionalLightIntensity;
-      }
-    });
-
-    // Update renderer settings
-    if (this.renderer) {
-      // Note: Some settings can only be changed at renderer creation
-      if (rendering.enableAntialiasing) {
-        logger.warn('Antialiasing setting change requires renderer recreation');
-      }
-      if (rendering.enableShadows) {
-        logger.warn('Shadow settings change requires renderer recreation');
-      }
-    }
-
-    logger.debug('Scene settings updated:', rendering);
-  }
 }
 
 ----
@@ -8170,7 +7924,8 @@ export class GeometryFactory {
                 detail = context === 'ar' ? 1 : 2;
         }
         // Use IcosahedronGeometry for better performance while maintaining visual quality
-        geometry = new IcosahedronGeometry(size, detail);
+        // Convert from native units (40-120) to scene scale (0.4-1.2)
+        geometry = new IcosahedronGeometry(size / 100, detail);
         this.geometryCache.set(cacheKey, geometry);
         return geometry;
     }
@@ -8684,6 +8439,790 @@ export class SettingsObserver {
 }
 
 ----
+state/settings.ts
+import { Settings } from '../types/settings';
+import { createLogger } from '../core/logger';
+import { SettingsStore } from './SettingsStore';
+import { defaultSettings } from './defaultSettings';
+import {
+    SettingsCategory,
+    SettingsPath,
+    SettingsValue,
+    getSettingValue,
+    setSettingValue,
+    isValidSettingPath
+} from '../types/settings/utils';
+
+const logger = createLogger('SettingsManager');
+
+export class SettingsManager {
+    private store: SettingsStore;
+    private initialized: boolean = false;
+    private settings: Settings = { ...defaultSettings };
+
+    constructor() {
+        this.store = SettingsStore.getInstance();
+    }
+
+    private useDefaultSettings(): void {
+        // Reset to default settings
+        this.settings = { ...defaultSettings };
+        this.initialized = true;
+    }
+
+    public async initialize(): Promise<void> {
+        if (this.initialized) return;
+
+        try {
+            await this.store.initialize();
+            this.settings = this.store.get('') as Settings;
+            this.initialized = true;
+            logger.info('Settings initialized from server');
+        } catch (error) {
+            logger.error('Failed to initialize settings from server:', error);
+            this.useDefaultSettings();
+        }
+    }
+
+    public getCurrentSettings(): Settings {
+        // Always return settings, which will be defaults if initialization failed
+        return this.settings;
+    }
+
+    public async updateSetting(path: SettingsPath, value: SettingsValue): Promise<void> {
+        if (!isValidSettingPath(this.settings, path)) {
+            throw new Error(`Invalid settings path: ${path}`);
+        }
+
+        try {
+            setSettingValue(this.settings, path, value);
+            if (this.initialized) {
+                await this.store.set(path, value);
+            } else {
+                logger.warn(`Setting ${path} updated in memory only - store not initialized`);
+            }
+            logger.debug(`Updated setting ${path} to ${value}`);
+        } catch (error) {
+            logger.error(`Failed to update setting ${path}:`, error);
+            throw error;
+        }
+    }
+
+    public get(path: SettingsPath): SettingsValue {
+        if (!isValidSettingPath(this.settings, path)) {
+            throw new Error(`Invalid settings path: ${path}`);
+        }
+        
+        try {
+            return getSettingValue(this.settings, path)!;
+        } catch (error) {
+            logger.error(`Error getting setting at path ${path}:`, error);
+            // Return default value for this path if available
+            return getSettingValue(defaultSettings, path)!;
+        }
+    }
+
+    public getCategory(category: SettingsCategory): Settings[typeof category] {
+        if (!(category in this.settings)) {
+            logger.warn(`Category ${category} not found, using defaults`);
+            return defaultSettings[category];
+        }
+        return this.settings[category];
+    }
+
+    public subscribe(path: string, callback: (value: unknown) => void): () => void {
+        const store = SettingsStore.getInstance();
+        let unsubscriber: (() => void) | undefined;
+        
+        store.subscribe(path, (_, value) => {
+            callback(value);
+        }).then(unsub => {
+            unsubscriber = unsub;
+        });
+
+        return () => {
+            if (unsubscriber) {
+                unsubscriber();
+            }
+        };
+    }
+
+    public onSettingChange(path: SettingsPath, callback: (value: SettingsValue) => void): () => void {
+        const store = SettingsStore.getInstance();
+        let unsubscriber: (() => void) | undefined;
+        
+        store.subscribe(path, (_, value) => {
+            callback(value as SettingsValue);
+        }).then(unsub => {
+            unsubscriber = unsub;
+        });
+
+        return () => {
+            if (unsubscriber) {
+                unsubscriber();
+            }
+        };
+    }
+
+    public async batchUpdate(updates: Array<{ path: SettingsPath; value: SettingsValue }>): Promise<void> {
+        try {
+            // Validate all paths first
+            for (const { path } of updates) {
+                if (!isValidSettingPath(this.settings, path)) {
+                    throw new Error(`Invalid settings path: ${path}`);
+                }
+            }
+
+            // Apply updates to local settings first
+            for (const { path, value } of updates) {
+                setSettingValue(this.settings, path, value);
+            }
+
+            // Then sync with store if initialized
+            if (this.initialized) {
+                await Promise.all(
+                    updates.map(({ path, value }) => this.store.set(path, value))
+                );
+            } else {
+                logger.warn('Settings updated in memory only - store not initialized');
+            }
+        } catch (error) {
+            logger.error('Failed to apply batch updates:', error);
+            throw error;
+        }
+    }
+
+    public dispose(): void {
+        this.store.dispose();
+        this.initialized = false;
+    }
+}
+
+// Export singleton instance
+export const settingsManager = new SettingsManager();
+
+----
+state/SettingsStore.ts
+import { Settings } from '../types/settings/base';
+import { createLogger } from '../core/logger';
+import { defaultSettings } from './defaultSettings';
+import { buildApiUrl } from '../core/api';
+import { API_ENDPOINTS } from '../core/constants';
+import { Logger } from '../core/logger';
+import { validateSettings, validateSettingValue, ValidationError } from '../types/settings/validation';
+import { convertObjectKeysToSnakeCase, convertObjectKeysToCamelCase } from '../core/utils';
+
+const logger = createLogger('SettingsStore');
+
+export type SettingsChangeCallback = (path: string, value: unknown) => void;
+export type ValidationErrorCallback = (errors: ValidationError[]) => void;
+
+export class SettingsStore {
+    private static instance: SettingsStore | null = null;
+    private settings: Settings;
+    private initialized: boolean = false;
+    private initializationPromise: Promise<void> | null = null;
+    private subscribers: Map<string, SettingsChangeCallback[]> = new Map();
+    private validationSubscribers: ValidationErrorCallback[] = [];
+    private logger: Logger;
+    private retryCount: number = 0;
+    private readonly MAX_RETRIES: number = 3;
+    private readonly RETRY_DELAY: number = 1000;
+    private settingsOrigin: 'server' | 'default' = 'default';
+
+    private constructor() {
+        this.settings = { ...defaultSettings };
+        this.subscribers = new Map();
+        this.logger = createLogger('SettingsStore');
+    }
+
+    public static getInstance(): SettingsStore {
+        if (!SettingsStore.instance) {
+            SettingsStore.instance = new SettingsStore();
+        }
+        return SettingsStore.instance;
+    }
+
+    public async initialize(): Promise<void> {
+        if (this.initialized) {
+            return Promise.resolve();
+        }
+        if (this.initializationPromise) {
+            return this.initializationPromise;
+        }
+
+        this.initializationPromise = (async () => {
+            try {
+                // Try to fetch settings from server first
+                try {
+                    logger.info('Fetching settings from:', buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT));
+                    const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT));
+                    logger.info('Server response status:', response.status);
+                    
+                    if (response.ok) {
+                        const serverSettings = await response.json();
+                        logger.info('Received server settings:', serverSettings);
+                        
+                        // Convert snake_case to camelCase
+                        const camelCaseSettings = convertObjectKeysToCamelCase(serverSettings);
+                        
+                        // Validate server settings
+                        const serverValidation = validateSettings(camelCaseSettings);
+                        if (!serverValidation.isValid) {
+                            throw new Error(`Invalid server settings: ${JSON.stringify(serverValidation.errors)}`);
+                        }
+                        
+                        // Use server settings as base, filling in any missing fields with defaults
+                        this.settings = this.deepMerge({ ...defaultSettings }, camelCaseSettings);
+                        this.settingsOrigin = 'server';
+                        logger.info('Using server settings with defaults as fallback');
+                    } else {
+                        const errorText = await response.text();
+                        logger.error('Response text:', await response.text());
+                        throw new Error(`Failed to fetch server settings: ${response.statusText}. Details: ${errorText}`);
+                    }
+                } catch (error) {
+                    // If server settings fail, fall back to defaults
+                    if (error instanceof Error) {
+                        logger.error('Full error:', error);
+                    }
+                    logger.warn('Error loading server settings, falling back to defaults:', error);
+                    this.settings = { ...defaultSettings };
+                    this.settingsOrigin = 'default';
+                    
+                    // Validate default settings
+                    const validationResult = validateSettings(this.settings);
+                    if (!validationResult.isValid) {
+                        this.logger.error('Default settings validation failed:', validationResult.errors);
+                        this.notifyValidationErrors(validationResult.errors);
+                    }
+                    
+                    logger.info('Using default settings:', this.settings);
+                }
+
+                this.initialized = true;
+                logger.info('SettingsStore initialized with origin:', this.settingsOrigin);
+            } catch (error) {
+                logger.error('Critical initialization failure:', error);
+                // Last resort: use defaults without validation
+                this.settings = { ...defaultSettings };
+                this.settingsOrigin = 'default';
+                this.initialized = true;
+            }
+        })();
+
+        return this.initializationPromise;
+    }
+
+    public isInitialized(): boolean {
+        return this.initialized;
+    }
+
+    public get(path: string): unknown {
+        if (!this.initialized) {
+            logger.warn('Attempting to access settings before initialization');
+            return undefined;
+        }
+        
+        if (!path) {
+            return this.settings;
+        }
+        
+        try {
+            return path.split('.').reduce((obj: any, key) => {
+                if (obj === null || obj === undefined) {
+                    throw new Error(`Invalid path: ${path}`);
+                }
+                return obj[key];
+            }, this.settings);
+        } catch (error) {
+            logger.error(`Error accessing setting at path ${path}:`, error);
+            return undefined;
+        }
+    }
+
+    public subscribeToValidationErrors(callback: ValidationErrorCallback): () => void {
+        this.validationSubscribers.push(callback);
+        return () => {
+            const index = this.validationSubscribers.indexOf(callback);
+            if (index > -1) {
+                this.validationSubscribers.splice(index, 1);
+            }
+        };
+    }
+
+    public async subscribe(path: string, callback: SettingsChangeCallback): Promise<() => void> {
+        if (!this.initialized) {
+            await this.initialize();
+        }
+
+        if (!this.subscribers.has(path)) {
+            this.subscribers.set(path, []);
+        }
+        
+        const subscribers = this.subscribers.get(path);
+        if (subscribers) {
+            subscribers.push(callback);
+        }
+
+        // Immediately call callback with current value
+        const value = this.get(path);
+        if (value !== undefined) {
+            callback(path, value);
+        }
+
+        return () => {
+            const pathSubscribers = this.subscribers.get(path);
+            if (pathSubscribers) {
+                const index = pathSubscribers.indexOf(callback);
+                if (index > -1) {
+                    pathSubscribers.splice(index, 1);
+                }
+                if (pathSubscribers.length === 0) {
+                    this.subscribers.delete(path);
+                }
+            }
+        };
+    }
+
+    public async set(path: string, value: unknown): Promise<void> {
+        try {
+            // Validate the specific setting change
+            const validationErrors = validateSettingValue(path, value, this.settings);
+            if (validationErrors.length > 0) {
+                this.notifyValidationErrors(validationErrors);
+                throw new Error(`Validation failed: ${JSON.stringify(validationErrors)}`);
+            }
+            
+            // Create a copy of settings for rollback
+            const previousSettings = JSON.parse(JSON.stringify(this.settings));
+            const previousOrigin = this.settingsOrigin;
+            
+            // Update local state
+            this.updateSettingValue(path, value);
+            // Mark as modified from default since this is a user action
+            this.settingsOrigin = 'default';
+            
+            // Validate entire settings object after update
+            const fullValidation = validateSettings(this.settings);
+            if (!fullValidation.isValid) {
+                // Rollback and notify of validation errors
+                this.settings = previousSettings;
+                this.settingsOrigin = previousOrigin;
+                this.notifyValidationErrors(fullValidation.errors);
+                throw new Error(`Full validation failed: ${JSON.stringify(fullValidation.errors)}`);
+            }
+            
+            // Sync with server (not an initial sync)
+            try {
+                await this.syncWithServer(false);
+            } catch (error) {
+                // Rollback on server sync failure
+                this.settings = previousSettings;
+                this.settingsOrigin = previousOrigin;
+                this.notifySubscribers(path, this.get(path));
+                throw error;
+            }
+            
+            // Notify subscribers of successful update
+            this.notifySubscribers(path, value);
+            
+            this.logger.debug(`Setting updated successfully: ${path}`, {
+                value,
+                origin: this.settingsOrigin
+            });
+        } catch (error) {
+            this.logger.error(`Failed to update setting: ${path}`, error);
+            throw error;
+        }
+    }
+
+    public isFromServer(): boolean {
+        return this.settingsOrigin === 'server';
+    }
+
+    private prepareSettingsForSync(settings: Settings): any {
+        // Create a copy of settings
+        const preparedSettings = JSON.parse(JSON.stringify(settings));
+
+        // Ensure required sections exist
+        if (!preparedSettings.system) preparedSettings.system = {};
+        if (!preparedSettings.system.debug) preparedSettings.system.debug = {};
+        if (!preparedSettings.xr) preparedSettings.xr = {};
+
+        // Always include all required debug fields
+        preparedSettings.system.debug = {
+            enabled: preparedSettings.system.debug.enabled ?? false,
+            enableDataDebug: preparedSettings.system.debug.enableDataDebug ?? false,
+            enableWebsocketDebug: preparedSettings.system.debug.enableWebsocketDebug ?? false,
+            logBinaryHeaders: preparedSettings.system.debug.logBinaryHeaders ?? false,
+            logFullJson: preparedSettings.system.debug.logFullJson ?? false,
+            logLevel: preparedSettings.system.debug.logLevel ?? 'info',
+            logFormat: preparedSettings.system.debug.logFormat ?? 'json'
+        };
+
+        // Always include required XR fields
+        const defaultXR = defaultSettings.xr;
+        preparedSettings.xr = {
+            ...preparedSettings.xr,
+            gestureSmoothing: preparedSettings.xr.gestureSmoothing ?? defaultXR.gestureSmoothing,
+            mode: preparedSettings.xr.mode ?? defaultXR.mode,
+            roomScale: preparedSettings.xr.roomScale ?? defaultXR.roomScale,
+            spaceType: preparedSettings.xr.spaceType ?? defaultXR.spaceType,
+            quality: preparedSettings.xr.quality ?? defaultXR.quality,
+            enableHandTracking: preparedSettings.xr.enableHandTracking ?? defaultXR.enableHandTracking,
+            handMeshEnabled: preparedSettings.xr.handMeshEnabled ?? defaultXR.handMeshEnabled,
+            handMeshColor: preparedSettings.xr.handMeshColor ?? defaultXR.handMeshColor,
+            handMeshOpacity: preparedSettings.xr.handMeshOpacity ?? defaultXR.handMeshOpacity,
+            handPointSize: preparedSettings.xr.handPointSize ?? defaultXR.handPointSize,
+            handRayEnabled: preparedSettings.xr.handRayEnabled ?? defaultXR.handRayEnabled,
+            handRayColor: preparedSettings.xr.handRayColor ?? defaultXR.handRayColor,
+            handRayWidth: preparedSettings.xr.handRayWidth ?? defaultXR.handRayWidth,
+            movementAxes: preparedSettings.xr.movementAxes ?? defaultXR.movementAxes
+        };
+
+        // Convert to snake_case for server
+        return convertObjectKeysToSnakeCase(preparedSettings);
+    }
+
+    private async syncWithServer(isInitialSync: boolean = false): Promise<void> {
+        // Don't sync to server during initialization if we got settings from server
+        if (isInitialSync && this.settingsOrigin === 'server') {
+            this.logger.debug('Skipping initial sync as settings came from server');
+            return;
+        }
+
+        try {
+            // Prepare settings for server sync
+            const serverSettings = this.prepareSettingsForSync(this.settings);
+            
+            this.logger.debug('Sending settings to server:', {
+                origin: this.settingsOrigin,
+                isInitialSync,
+                debug: serverSettings.system?.debug
+            });
+            
+            const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(serverSettings)
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                this.logger.error('Server sync failed:', {
+                    status: response.status,
+                    error: errorText,
+                    sentSettings: serverSettings.system?.debug
+                });
+                throw new Error(`Server returned ${response.status}: ${errorText}`);
+            }
+            
+            // Convert server response back to camelCase
+            const responseData = await response.json();
+            const camelCaseSettings = convertObjectKeysToCamelCase(responseData);
+            
+            this.logger.debug('Received settings from server:', {
+                debug: camelCaseSettings.system?.debug
+            });
+            
+            // Validate server response
+            const validationResult = validateSettings(camelCaseSettings);
+            if (!validationResult.isValid) {
+                this.logger.error('Settings validation failed:', {
+                    errors: validationResult.errors,
+                    receivedSettings: camelCaseSettings.system?.debug
+                });
+                throw new Error(`Invalid server response: ${JSON.stringify(validationResult.errors)}`);
+            }
+            
+            this.settings = this.deepMerge(this.settings, camelCaseSettings);
+            this.logger.debug('Settings synced successfully:', {
+                finalDebug: this.settings.system?.debug
+            });
+        } catch (error) {
+            this.logger.error('Failed to sync settings with server:', error);
+            if (this.retryCount < this.MAX_RETRIES) {
+                this.retryCount++;
+                this.logger.info(`Retrying sync (attempt ${this.retryCount}/${this.MAX_RETRIES})...`);
+                await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
+                return this.syncWithServer();
+            }
+            throw error;
+        }
+    }
+
+    private notifyValidationErrors(errors: ValidationError[]): void {
+        this.validationSubscribers.forEach(callback => {
+            try {
+                callback(errors);
+            } catch (error) {
+                this.logger.error('Error in validation subscriber:', error);
+            }
+        });
+    }
+
+    private notifySubscribers(path: string, value: unknown): void {
+        const subscribers = this.subscribers.get(path);
+        if (subscribers) {
+            subscribers.forEach(callback => {
+                try {
+                    callback(path, value);
+                } catch (error) {
+                    this.logger.error(`Error in settings subscriber for ${path}:`, error);
+                }
+            });
+        }
+    }
+
+    private deepMerge(target: any, source: any): any {
+        const result = { ...target };
+        
+        // Handle arrays
+        if (Array.isArray(source)) {
+            return [...source];
+        }
+        
+        if (source && typeof source === 'object') {
+            Object.keys(source).forEach(key => {
+                if (source[key] instanceof Object && !Array.isArray(source[key])) {
+                    result[key] = this.deepMerge(result[key] || {}, source[key]);
+                } else {
+                    result[key] = source[key];
+                }
+            });
+        }
+        
+        return result;
+    }
+
+   private updateSettingValue(path: string, value: unknown): void {
+        if (!path) {
+            throw new Error('Setting path cannot be empty');
+        }
+
+        const parts = path.split('.');
+        const section = parts[0];
+        const lastKey = parts.pop()!;
+
+        // Create a new settings object with the updated value
+        this.settings = this.deepUpdate(this.settings, parts, lastKey, value);
+
+        // If this is an XR setting, ensure all required fields are present
+        if (section === 'xr') {
+            const currentXR = this.settings.xr;
+            const defaultXR = defaultSettings.xr;
+
+            // Ensure all required XR fields are present with defaults
+            this.settings.xr = {
+                ...currentXR,
+                mode: currentXR.mode ?? defaultXR.mode,
+                roomScale: currentXR.roomScale ?? defaultXR.roomScale,
+                spaceType: currentXR.spaceType ?? defaultXR.spaceType,
+                quality: currentXR.quality ?? defaultXR.quality,
+                gestureSmoothing: currentXR.gestureSmoothing ?? defaultXR.gestureSmoothing,
+                enableHandTracking: currentXR.enableHandTracking ?? defaultXR.enableHandTracking,
+                handMeshEnabled: currentXR.handMeshEnabled ?? defaultXR.handMeshEnabled,
+                handMeshColor: currentXR.handMeshColor ?? defaultXR.handMeshColor,
+                handMeshOpacity: currentXR.handMeshOpacity ?? defaultXR.handMeshOpacity,
+                handPointSize: currentXR.handPointSize ?? defaultXR.handPointSize,
+                handRayEnabled: currentXR.handRayEnabled ?? defaultXR.handRayEnabled,
+                handRayColor: currentXR.handRayColor ?? defaultXR.handRayColor,
+                handRayWidth: currentXR.handRayWidth ?? defaultXR.handRayWidth,
+                movementAxes: currentXR.movementAxes ?? defaultXR.movementAxes
+            };
+        }
+    }
+
+    private deepUpdate(obj: any, path: string[], lastKey: string, value: unknown): any {
+        if (path.length === 0) {
+            return { ...obj, [lastKey]: value };
+        }
+
+        const key = path.shift()!;
+        return {
+            ...obj,
+            [key]: this.deepUpdate(obj[key] || {}, path, lastKey, value)
+        };
+    }
+
+    public dispose(): void {
+        this.subscribers.clear();
+        this.validationSubscribers = [];
+        this.settings = { ...defaultSettings };
+        SettingsStore.instance = null;
+    }
+}
+
+----
+state/defaultSettings.ts
+import { Settings } from '../types/settings/base';
+
+export const defaultSettings: Settings = {
+    visualization: {
+        nodes: {
+            baseColor: '#32aeae',
+            metalness: 0.8,
+            opacity: 1.0,
+            roughness: 0.2,
+            sizeRange: [40, 120], // Native units for node sizes
+            quality: 'high',
+            enableInstancing: false,
+            enableHologram: false,
+            enableMetadataShape: false,
+            enableMetadataVisualization: false,
+            colorRangeAge: ['#ff0000', '#00ff00'],
+            colorRangeLinks: ['#0000ff', '#ff00ff']
+        },
+        edges: {
+            arrowSize: 5.0,
+            baseWidth: 3.0,
+            color: '#888888',
+            enableArrows: false,
+            opacity: 0.8,
+            widthRange: [1.5, 4.0],
+            quality: 'medium'
+        },
+        physics: {
+            attractionStrength: 0.015,
+            boundsSize: 100.0,
+            collisionRadius: 0.25,
+            damping: 0.5,
+            enableBounds: false,
+            enabled: true,
+            iterations: 100,
+            maxVelocity: 2.0,
+            repulsionStrength: 0.4,
+            springStrength: 0.6
+        },
+        rendering: {
+            ambientLightIntensity: 0.2,
+            backgroundColor: '#1a1a1a',
+            directionalLightIntensity: 0.2,
+            enableAmbientOcclusion: false,
+            enableAntialiasing: true,
+            enableShadows: false,
+            environmentIntensity: 0.2,
+            shadowMapSize: 2048,
+            shadowBias: 0.00001,
+            context: 'desktop'
+        },
+        animations: {
+            enableMotionBlur: true,
+            enableNodeAnimations: true,
+            motionBlurStrength: 1.0,
+            selectionWaveEnabled: false,
+            pulseEnabled: false,
+            pulseSpeed: 1.0,
+            pulseStrength: 0.5,
+            waveSpeed: 1.0
+        },
+        labels: {
+            desktopFontSize: 14,
+            enableLabels: true,
+            textColor: '#ffffff',
+            textOutlineColor: '#000000',
+            textOutlineWidth: 0.1,
+            textResolution: 32,
+            textPadding: 2,
+            billboardMode: 'camera'
+        },
+        bloom: {
+            edgeBloomStrength: 1.1,
+            enabled: true,
+            environmentBloomStrength: 2.0,
+            nodeBloomStrength: 3.0,
+            radius: 0.8,
+            strength: 1.2,
+            threshold: 0.3
+        },
+        hologram: {
+            ringCount: 3,
+            sphereSizes: [40, 80, 120],  // Native world units
+            ringRotationSpeed: 1.0,
+            ringColor: '#00ffff',
+            ringOpacity: 0.6,
+            enableBuckminster: true,
+            buckminsterSize: 120,  // Native world units
+            buckminsterOpacity: 0.6,
+            enableGeodesic: false,
+            geodesicSize: 100,  // Native world units
+            geodesicOpacity: 0.5,
+            enableTriangleSphere: true,
+            triangleSphereSize: 140,  // Native world units
+            triangleSphereOpacity: 0.4,
+            globalRotationSpeed: 1.0
+        }
+    },
+    system: {
+        websocket: {
+            binaryChunkSize: 32768,
+            compressionEnabled: true,
+            compressionThreshold: 1024,
+            reconnectAttempts: 5,
+            reconnectDelay: 5000,
+            updateRate: 30
+        },
+        debug: {
+            enabled: false,
+            enableDataDebug: false,
+            enableWebsocketDebug: false,
+            logBinaryHeaders: false,
+            logFullJson: false,
+            logLevel: 'info',
+            logFormat: 'json'
+        }
+    },
+    xr: {
+        mode: 'immersive-vr',
+        roomScale: 0.01,
+        spaceType: 'local-floor',
+        quality: 'high',
+        autoEnterAR: false,
+        hideControlPanel: true,
+        preferredMode: 'immersive-vr',
+        enableHandTracking: true,
+        handMeshEnabled: true,
+        handMeshColor: '#4287f5',
+        handMeshOpacity: 0.3,
+        handPointSize: 3.0,
+        handRayEnabled: true,
+        handRayColor: '#4287f5',
+        handRayWidth: 1.5,
+        gestureSmoothing: 0.5,
+        enableHaptics: true,
+        hapticIntensity: 0.5,
+        dragThreshold: 0.02,
+        pinchThreshold: 0.5,
+        rotationThreshold: 0.1,
+        interactionRadius: 0.5,
+        movementSpeed: 0.05,
+        deadZone: 0.1,
+        movementAxes: {
+            horizontal: 2,
+            vertical: 3
+        },
+        enableLightEstimation: false,
+        enablePlaneDetection: true,
+        enableSceneUnderstanding: true,
+        planeColor: '#808080',
+        planeOpacity: 0.5,
+        showPlaneOverlay: false,
+        snapToFloor: false,
+        planeDetectionDistance: 3.0,
+        enablePassthroughPortal: false,
+        passthroughOpacity: 0.8,
+        passthroughBrightness: 1.1,
+        passthroughContrast: 1.0,
+        portalSize: 2.0,
+        portalEdgeColor: '#ffffff',
+        portalEdgeWidth: 2.0
+    }
+};
+
+----
 state/graphData.ts
 import { transformGraphData, Node, Edge, GraphData } from '../core/types';
 import { createLogger } from '../core/utils';
@@ -9140,788 +9679,6 @@ declare global {
     ws: WebSocket;
   }
 }
-
-----
-state/settings.ts
-import { Settings } from '../types/settings';
-import { createLogger } from '../core/logger';
-import { SettingsStore } from './SettingsStore';
-import { defaultSettings } from './defaultSettings';
-import {
-    SettingsCategory,
-    SettingsPath,
-    SettingsValue,
-    getSettingValue,
-    setSettingValue,
-    isValidSettingPath
-} from '../types/settings/utils';
-
-const logger = createLogger('SettingsManager');
-
-export class SettingsManager {
-    private store: SettingsStore;
-    private initialized: boolean = false;
-    private settings: Settings = { ...defaultSettings };
-
-    constructor() {
-        this.store = SettingsStore.getInstance();
-    }
-
-    private useDefaultSettings(): void {
-        // Reset to default settings
-        this.settings = { ...defaultSettings };
-        this.initialized = true;
-    }
-
-    public async initialize(): Promise<void> {
-        if (this.initialized) return;
-
-        try {
-            await this.store.initialize();
-            this.settings = this.store.get('') as Settings;
-            this.initialized = true;
-            logger.info('Settings initialized from server');
-        } catch (error) {
-            logger.error('Failed to initialize settings from server:', error);
-            this.useDefaultSettings();
-        }
-    }
-
-    public getCurrentSettings(): Settings {
-        // Always return settings, which will be defaults if initialization failed
-        return this.settings;
-    }
-
-    public async updateSetting(path: SettingsPath, value: SettingsValue): Promise<void> {
-        if (!isValidSettingPath(this.settings, path)) {
-            throw new Error(`Invalid settings path: ${path}`);
-        }
-
-        try {
-            setSettingValue(this.settings, path, value);
-            if (this.initialized) {
-                await this.store.set(path, value);
-            } else {
-                logger.warn(`Setting ${path} updated in memory only - store not initialized`);
-            }
-            logger.debug(`Updated setting ${path} to ${value}`);
-        } catch (error) {
-            logger.error(`Failed to update setting ${path}:`, error);
-            throw error;
-        }
-    }
-
-    public get(path: SettingsPath): SettingsValue {
-        if (!isValidSettingPath(this.settings, path)) {
-            throw new Error(`Invalid settings path: ${path}`);
-        }
-        
-        try {
-            return getSettingValue(this.settings, path)!;
-        } catch (error) {
-            logger.error(`Error getting setting at path ${path}:`, error);
-            // Return default value for this path if available
-            return getSettingValue(defaultSettings, path)!;
-        }
-    }
-
-    public getCategory(category: SettingsCategory): Settings[typeof category] {
-        if (!(category in this.settings)) {
-            logger.warn(`Category ${category} not found, using defaults`);
-            return defaultSettings[category];
-        }
-        return this.settings[category];
-    }
-
-    public subscribe(path: string, callback: (value: unknown) => void): () => void {
-        const store = SettingsStore.getInstance();
-        let unsubscriber: (() => void) | undefined;
-        
-        store.subscribe(path, (_, value) => {
-            callback(value);
-        }).then(unsub => {
-            unsubscriber = unsub;
-        });
-
-        return () => {
-            if (unsubscriber) {
-                unsubscriber();
-            }
-        };
-    }
-
-    public onSettingChange(path: SettingsPath, callback: (value: SettingsValue) => void): () => void {
-        const store = SettingsStore.getInstance();
-        let unsubscriber: (() => void) | undefined;
-        
-        store.subscribe(path, (_, value) => {
-            callback(value as SettingsValue);
-        }).then(unsub => {
-            unsubscriber = unsub;
-        });
-
-        return () => {
-            if (unsubscriber) {
-                unsubscriber();
-            }
-        };
-    }
-
-    public async batchUpdate(updates: Array<{ path: SettingsPath; value: SettingsValue }>): Promise<void> {
-        try {
-            // Validate all paths first
-            for (const { path } of updates) {
-                if (!isValidSettingPath(this.settings, path)) {
-                    throw new Error(`Invalid settings path: ${path}`);
-                }
-            }
-
-            // Apply updates to local settings first
-            for (const { path, value } of updates) {
-                setSettingValue(this.settings, path, value);
-            }
-
-            // Then sync with store if initialized
-            if (this.initialized) {
-                await Promise.all(
-                    updates.map(({ path, value }) => this.store.set(path, value))
-                );
-            } else {
-                logger.warn('Settings updated in memory only - store not initialized');
-            }
-        } catch (error) {
-            logger.error('Failed to apply batch updates:', error);
-            throw error;
-        }
-    }
-
-    public dispose(): void {
-        this.store.dispose();
-        this.initialized = false;
-    }
-}
-
-// Export singleton instance
-export const settingsManager = new SettingsManager();
-
-----
-state/SettingsStore.ts
-import { Settings } from '../types/settings/base';
-import { createLogger } from '../core/logger';
-import { defaultSettings } from './defaultSettings';
-import { buildApiUrl } from '../core/api';
-import { API_ENDPOINTS } from '../core/constants';
-import { Logger } from '../core/logger';
-import { validateSettings, validateSettingValue, ValidationError } from '../types/settings/validation';
-import { convertObjectKeysToSnakeCase, convertObjectKeysToCamelCase } from '../core/utils';
-
-const logger = createLogger('SettingsStore');
-
-export type SettingsChangeCallback = (path: string, value: unknown) => void;
-export type ValidationErrorCallback = (errors: ValidationError[]) => void;
-
-export class SettingsStore {
-    private static instance: SettingsStore | null = null;
-    private settings: Settings;
-    private initialized: boolean = false;
-    private initializationPromise: Promise<void> | null = null;
-    private subscribers: Map<string, SettingsChangeCallback[]> = new Map();
-    private validationSubscribers: ValidationErrorCallback[] = [];
-    private logger: Logger;
-    private retryCount: number = 0;
-    private readonly MAX_RETRIES: number = 3;
-    private readonly RETRY_DELAY: number = 1000;
-    private settingsOrigin: 'server' | 'default' = 'default';
-
-    private constructor() {
-        this.settings = { ...defaultSettings };
-        this.subscribers = new Map();
-        this.logger = createLogger('SettingsStore');
-    }
-
-    public static getInstance(): SettingsStore {
-        if (!SettingsStore.instance) {
-            SettingsStore.instance = new SettingsStore();
-        }
-        return SettingsStore.instance;
-    }
-
-    public async initialize(): Promise<void> {
-        if (this.initialized) {
-            return Promise.resolve();
-        }
-        if (this.initializationPromise) {
-            return this.initializationPromise;
-        }
-
-        this.initializationPromise = (async () => {
-            try {
-                // Try to fetch settings from server first
-                try {
-                    logger.info('Fetching settings from:', buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT));
-                    const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT));
-                    logger.info('Server response status:', response.status);
-                    
-                    if (response.ok) {
-                        const serverSettings = await response.json();
-                        logger.info('Received server settings:', serverSettings);
-                        
-                        // Convert snake_case to camelCase
-                        const camelCaseSettings = convertObjectKeysToCamelCase(serverSettings);
-                        
-                        // Validate server settings
-                        const serverValidation = validateSettings(camelCaseSettings);
-                        if (!serverValidation.isValid) {
-                            throw new Error(`Invalid server settings: ${JSON.stringify(serverValidation.errors)}`);
-                        }
-                        
-                        // Use server settings as base, filling in any missing fields with defaults
-                        this.settings = this.deepMerge({ ...defaultSettings }, camelCaseSettings);
-                        this.settingsOrigin = 'server';
-                        logger.info('Using server settings with defaults as fallback');
-                    } else {
-                        const errorText = await response.text();
-                        logger.error('Response text:', await response.text());
-                        throw new Error(`Failed to fetch server settings: ${response.statusText}. Details: ${errorText}`);
-                    }
-                } catch (error) {
-                    // If server settings fail, fall back to defaults
-                    if (error instanceof Error) {
-                        logger.error('Full error:', error);
-                    }
-                    logger.warn('Error loading server settings, falling back to defaults:', error);
-                    this.settings = { ...defaultSettings };
-                    this.settingsOrigin = 'default';
-                    
-                    // Validate default settings
-                    const validationResult = validateSettings(this.settings);
-                    if (!validationResult.isValid) {
-                        this.logger.error('Default settings validation failed:', validationResult.errors);
-                        this.notifyValidationErrors(validationResult.errors);
-                    }
-                    
-                    logger.info('Using default settings:', this.settings);
-                }
-
-                this.initialized = true;
-                logger.info('SettingsStore initialized with origin:', this.settingsOrigin);
-            } catch (error) {
-                logger.error('Critical initialization failure:', error);
-                // Last resort: use defaults without validation
-                this.settings = { ...defaultSettings };
-                this.settingsOrigin = 'default';
-                this.initialized = true;
-            }
-        })();
-
-        return this.initializationPromise;
-    }
-
-    public isInitialized(): boolean {
-        return this.initialized;
-    }
-
-    public get(path: string): unknown {
-        if (!this.initialized) {
-            logger.warn('Attempting to access settings before initialization');
-            return undefined;
-        }
-        
-        if (!path) {
-            return this.settings;
-        }
-        
-        try {
-            return path.split('.').reduce((obj: any, key) => {
-                if (obj === null || obj === undefined) {
-                    throw new Error(`Invalid path: ${path}`);
-                }
-                return obj[key];
-            }, this.settings);
-        } catch (error) {
-            logger.error(`Error accessing setting at path ${path}:`, error);
-            return undefined;
-        }
-    }
-
-    public subscribeToValidationErrors(callback: ValidationErrorCallback): () => void {
-        this.validationSubscribers.push(callback);
-        return () => {
-            const index = this.validationSubscribers.indexOf(callback);
-            if (index > -1) {
-                this.validationSubscribers.splice(index, 1);
-            }
-        };
-    }
-
-    public async subscribe(path: string, callback: SettingsChangeCallback): Promise<() => void> {
-        if (!this.initialized) {
-            await this.initialize();
-        }
-
-        if (!this.subscribers.has(path)) {
-            this.subscribers.set(path, []);
-        }
-        
-        const subscribers = this.subscribers.get(path);
-        if (subscribers) {
-            subscribers.push(callback);
-        }
-
-        // Immediately call callback with current value
-        const value = this.get(path);
-        if (value !== undefined) {
-            callback(path, value);
-        }
-
-        return () => {
-            const pathSubscribers = this.subscribers.get(path);
-            if (pathSubscribers) {
-                const index = pathSubscribers.indexOf(callback);
-                if (index > -1) {
-                    pathSubscribers.splice(index, 1);
-                }
-                if (pathSubscribers.length === 0) {
-                    this.subscribers.delete(path);
-                }
-            }
-        };
-    }
-
-    public async set(path: string, value: unknown): Promise<void> {
-        try {
-            // Validate the specific setting change
-            const validationErrors = validateSettingValue(path, value, this.settings);
-            if (validationErrors.length > 0) {
-                this.notifyValidationErrors(validationErrors);
-                throw new Error(`Validation failed: ${JSON.stringify(validationErrors)}`);
-            }
-            
-            // Create a copy of settings for rollback
-            const previousSettings = JSON.parse(JSON.stringify(this.settings));
-            const previousOrigin = this.settingsOrigin;
-            
-            // Update local state
-            this.updateSettingValue(path, value);
-            // Mark as modified from default since this is a user action
-            this.settingsOrigin = 'default';
-            
-            // Validate entire settings object after update
-            const fullValidation = validateSettings(this.settings);
-            if (!fullValidation.isValid) {
-                // Rollback and notify of validation errors
-                this.settings = previousSettings;
-                this.settingsOrigin = previousOrigin;
-                this.notifyValidationErrors(fullValidation.errors);
-                throw new Error(`Full validation failed: ${JSON.stringify(fullValidation.errors)}`);
-            }
-            
-            // Sync with server (not an initial sync)
-            try {
-                await this.syncWithServer(false);
-            } catch (error) {
-                // Rollback on server sync failure
-                this.settings = previousSettings;
-                this.settingsOrigin = previousOrigin;
-                this.notifySubscribers(path, this.get(path));
-                throw error;
-            }
-            
-            // Notify subscribers of successful update
-            this.notifySubscribers(path, value);
-            
-            this.logger.debug(`Setting updated successfully: ${path}`, {
-                value,
-                origin: this.settingsOrigin
-            });
-        } catch (error) {
-            this.logger.error(`Failed to update setting: ${path}`, error);
-            throw error;
-        }
-    }
-
-    public isFromServer(): boolean {
-        return this.settingsOrigin === 'server';
-    }
-
-    private prepareSettingsForSync(settings: Settings): any {
-        // Create a copy of settings
-        const preparedSettings = JSON.parse(JSON.stringify(settings));
-
-        // Ensure required sections exist
-        if (!preparedSettings.system) preparedSettings.system = {};
-        if (!preparedSettings.system.debug) preparedSettings.system.debug = {};
-        if (!preparedSettings.xr) preparedSettings.xr = {};
-
-        // Always include all required debug fields
-        preparedSettings.system.debug = {
-            enabled: preparedSettings.system.debug.enabled ?? false,
-            enableDataDebug: preparedSettings.system.debug.enableDataDebug ?? false,
-            enableWebsocketDebug: preparedSettings.system.debug.enableWebsocketDebug ?? false,
-            logBinaryHeaders: preparedSettings.system.debug.logBinaryHeaders ?? false,
-            logFullJson: preparedSettings.system.debug.logFullJson ?? false,
-            logLevel: preparedSettings.system.debug.logLevel ?? 'info',
-            logFormat: preparedSettings.system.debug.logFormat ?? 'json'
-        };
-
-        // Always include required XR fields
-        const defaultXR = defaultSettings.xr;
-        preparedSettings.xr = {
-            ...preparedSettings.xr,
-            gestureSmoothing: preparedSettings.xr.gestureSmoothing ?? defaultXR.gestureSmoothing,
-            mode: preparedSettings.xr.mode ?? defaultXR.mode,
-            roomScale: preparedSettings.xr.roomScale ?? defaultXR.roomScale,
-            quality: preparedSettings.xr.quality ?? defaultXR.quality,
-            spaceType: preparedSettings.xr.spaceType ?? defaultXR.spaceType,
-            enableHandTracking: preparedSettings.xr.enableHandTracking ?? defaultXR.enableHandTracking,
-            handMeshEnabled: preparedSettings.xr.handMeshEnabled ?? defaultXR.handMeshEnabled,
-            handMeshColor: preparedSettings.xr.handMeshColor ?? defaultXR.handMeshColor,
-            handMeshOpacity: preparedSettings.xr.handMeshOpacity ?? defaultXR.handMeshOpacity,
-            handPointSize: preparedSettings.xr.handPointSize ?? defaultXR.handPointSize,
-            handRayEnabled: preparedSettings.xr.handRayEnabled ?? defaultXR.handRayEnabled,
-            handRayColor: preparedSettings.xr.handRayColor ?? defaultXR.handRayColor,
-            handRayWidth: preparedSettings.xr.handRayWidth ?? defaultXR.handRayWidth,
-            movementAxes: preparedSettings.xr.movementAxes ?? defaultXR.movementAxes
-        };
-
-        // Convert to snake_case for server
-        return convertObjectKeysToSnakeCase(preparedSettings);
-    }
-
-    private async syncWithServer(isInitialSync: boolean = false): Promise<void> {
-        // Don't sync to server during initialization if we got settings from server
-        if (isInitialSync && this.settingsOrigin === 'server') {
-            this.logger.debug('Skipping initial sync as settings came from server');
-            return;
-        }
-
-        try {
-            // Prepare settings for server sync
-            const serverSettings = this.prepareSettingsForSync(this.settings);
-            
-            this.logger.debug('Sending settings to server:', {
-                origin: this.settingsOrigin,
-                isInitialSync,
-                debug: serverSettings.system?.debug
-            });
-            
-            const response = await fetch(buildApiUrl(API_ENDPOINTS.SETTINGS_ROOT), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(serverSettings)
-            });
-            
-            if (!response.ok) {
-                const errorText = await response.text();
-                this.logger.error('Server sync failed:', {
-                    status: response.status,
-                    error: errorText,
-                    sentSettings: serverSettings.system?.debug
-                });
-                throw new Error(`Server returned ${response.status}: ${errorText}`);
-            }
-            
-            // Convert server response back to camelCase
-            const responseData = await response.json();
-            const camelCaseSettings = convertObjectKeysToCamelCase(responseData);
-            
-            this.logger.debug('Received settings from server:', {
-                debug: camelCaseSettings.system?.debug
-            });
-            
-            // Validate server response
-            const validationResult = validateSettings(camelCaseSettings);
-            if (!validationResult.isValid) {
-                this.logger.error('Settings validation failed:', {
-                    errors: validationResult.errors,
-                    receivedSettings: camelCaseSettings.system?.debug
-                });
-                throw new Error(`Invalid server response: ${JSON.stringify(validationResult.errors)}`);
-            }
-            
-            this.settings = this.deepMerge(this.settings, camelCaseSettings);
-            this.logger.debug('Settings synced successfully:', {
-                finalDebug: this.settings.system?.debug
-            });
-        } catch (error) {
-            this.logger.error('Failed to sync settings with server:', error);
-            if (this.retryCount < this.MAX_RETRIES) {
-                this.retryCount++;
-                this.logger.info(`Retrying sync (attempt ${this.retryCount}/${this.MAX_RETRIES})...`);
-                await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY));
-                return this.syncWithServer();
-            }
-            throw error;
-        }
-    }
-
-    private notifyValidationErrors(errors: ValidationError[]): void {
-        this.validationSubscribers.forEach(callback => {
-            try {
-                callback(errors);
-            } catch (error) {
-                this.logger.error('Error in validation subscriber:', error);
-            }
-        });
-    }
-
-    private notifySubscribers(path: string, value: unknown): void {
-        const subscribers = this.subscribers.get(path);
-        if (subscribers) {
-            subscribers.forEach(callback => {
-                try {
-                    callback(path, value);
-                } catch (error) {
-                    this.logger.error(`Error in settings subscriber for ${path}:`, error);
-                }
-            });
-        }
-    }
-
-    private deepMerge(target: any, source: any): any {
-        const result = { ...target };
-        
-        // Handle arrays
-        if (Array.isArray(source)) {
-            return [...source];
-        }
-        
-        if (source && typeof source === 'object') {
-            Object.keys(source).forEach(key => {
-                if (source[key] instanceof Object && !Array.isArray(source[key])) {
-                    result[key] = this.deepMerge(result[key] || {}, source[key]);
-                } else {
-                    result[key] = source[key];
-                }
-            });
-        }
-        
-        return result;
-    }
-
-    private updateSettingValue(path: string, value: unknown): void {
-        if (!path) {
-            throw new Error('Setting path cannot be empty');
-        }
-        
-        const parts = path.split('.');
-        const section = parts[0];
-        const lastKey = parts.pop()!;
-        const target = parts.reduce((obj: any, key) => {
-            if (!(key in obj)) {
-                obj[key] = {};
-            }
-            return obj[key];
-        }, this.settings);
-
-        if (!target || typeof target !== 'object') {
-            throw new Error(`Invalid settings path: ${path}`);
-        }
-
-        // Update the specific value
-        target[lastKey] = value;
-
-        // If this is an XR setting, ensure all required fields are present
-        if (section === 'xr') {
-            const currentXR = this.settings.xr;
-            const defaultXR = defaultSettings.xr;
-            
-            // Ensure all required XR fields are present with defaults
-            this.settings.xr = {
-                ...currentXR,
-                mode: currentXR.mode ?? defaultXR.mode,
-                roomScale: currentXR.roomScale ?? defaultXR.roomScale,
-                spaceType: currentXR.spaceType ?? defaultXR.spaceType,
-                quality: currentXR.quality ?? defaultXR.quality,
-                gestureSmoothing: currentXR.gestureSmoothing ?? defaultXR.gestureSmoothing,
-                enableHandTracking: currentXR.enableHandTracking ?? defaultXR.enableHandTracking,
-                handMeshEnabled: currentXR.handMeshEnabled ?? defaultXR.handMeshEnabled,
-                handMeshColor: currentXR.handMeshColor ?? defaultXR.handMeshColor,
-                handMeshOpacity: currentXR.handMeshOpacity ?? defaultXR.handMeshOpacity,
-                handPointSize: currentXR.handPointSize ?? defaultXR.handPointSize,
-                handRayEnabled: currentXR.handRayEnabled ?? defaultXR.handRayEnabled,
-                handRayColor: currentXR.handRayColor ?? defaultXR.handRayColor,
-                handRayWidth: currentXR.handRayWidth ?? defaultXR.handRayWidth,
-                movementAxes: currentXR.movementAxes ?? defaultXR.movementAxes
-            };
-        }
-    }
-
-    public dispose(): void {
-        this.subscribers.clear();
-        this.validationSubscribers = [];
-        this.settings = { ...defaultSettings };
-        SettingsStore.instance = null;
-    }
-}
-
-----
-state/defaultSettings.ts
-import { Settings } from '../types/settings/base';
-
-export const defaultSettings: Settings = {
-    visualization: {
-        nodes: {
-            baseColor: '#32aeae',
-            metalness: 0.8,
-            opacity: 1.0,
-            roughness: 0.2,
-            sizeRange: [40, 120], // Native units for node sizes
-            quality: 'high',
-            enableInstancing: false,
-            enableHologram: false,
-            enableMetadataShape: false,
-            enableMetadataVisualization: false,
-            colorRangeAge: ['#ff0000', '#00ff00'],
-            colorRangeLinks: ['#0000ff', '#ff00ff']
-        },
-        edges: {
-            arrowSize: 5.0,
-            baseWidth: 3.0,
-            color: '#888888',
-            enableArrows: false,
-            opacity: 0.8,
-            widthRange: [1.5, 4.0],
-            quality: 'medium'
-        },
-        physics: {
-            attractionStrength: 0.015,
-            boundsSize: 100.0,
-            collisionRadius: 0.25,
-            damping: 0.5,
-            enableBounds: false,
-            enabled: true,
-            iterations: 100,
-            maxVelocity: 2.0,
-            repulsionStrength: 0.4,
-            springStrength: 0.6
-        },
-        rendering: {
-            ambientLightIntensity: 0.2,
-            backgroundColor: '#1a1a1a',
-            directionalLightIntensity: 0.2,
-            enableAmbientOcclusion: false,
-            enableAntialiasing: true,
-            enableShadows: false,
-            environmentIntensity: 0.2,
-            shadowMapSize: 2048,
-            shadowBias: 0.00001,
-            context: 'desktop'
-        },
-        animations: {
-            enableMotionBlur: true,
-            enableNodeAnimations: true,
-            motionBlurStrength: 1.0,
-            selectionWaveEnabled: false,
-            pulseEnabled: false,
-            pulseSpeed: 1.0,
-            pulseStrength: 0.5,
-            waveSpeed: 1.0
-        },
-        labels: {
-            desktopFontSize: 14,
-            enableLabels: true,
-            textColor: '#ffffff',
-            textOutlineColor: '#000000',
-            textOutlineWidth: 0.1,
-            textResolution: 32,
-            textPadding: 2,
-            billboardMode: 'camera'
-        },
-        bloom: {
-            edgeBloomStrength: 1.1,
-            enabled: true,
-            environmentBloomStrength: 2.0,
-            nodeBloomStrength: 3.0,
-            radius: 0.8,
-            strength: 1.2,
-            threshold: 0.3
-        },
-        hologram: {
-            ringCount: 3,
-            sphereSizes: [40, 80, 120],  // Native world units
-            ringRotationSpeed: 1.0,
-            ringColor: '#00ffff',
-            ringOpacity: 0.6,
-            enableBuckminster: true,
-            buckminsterSize: 120,  // Native world units
-            buckminsterOpacity: 0.6,
-            enableGeodesic: false,
-            geodesicSize: 100,  // Native world units
-            geodesicOpacity: 0.5,
-            enableTriangleSphere: true,
-            triangleSphereSize: 140,  // Native world units
-            triangleSphereOpacity: 0.4,
-            globalRotationSpeed: 1.0
-        }
-    },
-    system: {
-        websocket: {
-            binaryChunkSize: 32768,
-            compressionEnabled: true,
-            compressionThreshold: 1024,
-            reconnectAttempts: 5,
-            reconnectDelay: 5000,
-            updateRate: 30
-        },
-        debug: {
-            enabled: false,
-            enableDataDebug: false,
-            enableWebsocketDebug: false,
-            logBinaryHeaders: false,
-            logFullJson: false,
-            logLevel: 'info',
-            logFormat: 'json'
-        }
-    },
-    xr: {
-        mode: 'immersive-vr',
-        roomScale: 0.01,
-        spaceType: 'local-floor',
-        quality: 'high',
-        autoEnterAR: false,
-        hideControlPanel: true,
-        preferredMode: 'immersive-vr',
-        enableHandTracking: true,
-        handMeshEnabled: true,
-        handMeshColor: '#4287f5',
-        handMeshOpacity: 0.3,
-        handPointSize: 3.0,
-        handRayEnabled: true,
-        handRayColor: '#4287f5',
-        handRayWidth: 1.5,
-        gestureSmoothing: 0.5,
-        enableHaptics: true,
-        hapticIntensity: 0.5,
-        dragThreshold: 0.02,
-        pinchThreshold: 0.5,
-        rotationThreshold: 0.1,
-        interactionRadius: 0.5,
-        movementSpeed: 0.05,
-        deadZone: 0.1,
-        movementAxes: {
-            horizontal: 2,
-            vertical: 3
-        },
-        enableLightEstimation: false,
-        enablePlaneDetection: true,
-        enableSceneUnderstanding: true,
-        planeColor: '#808080',
-        planeOpacity: 0.5,
-        showPlaneOverlay: false,
-        snapToFloor: false,
-        planeDetectionDistance: 3.0,
-        enablePassthroughPortal: false,
-        passthroughOpacity: 0.8,
-        passthroughBrightness: 1.1,
-        passthroughContrast: 1.0,
-        portalSize: 2.0,
-        portalEdgeColor: '#ffffff',
-        portalEdgeWidth: 2.0
-    }
-};
 
 ----
 types/env.d.ts
@@ -11744,6 +11501,431 @@ if (document.readyState === 'loading') {
 export { ModularControlPanel };
 
 ----
+ui/ModularControlPanel.css
+/* Panel styles are now in index.html */
+
+.panel-toggle-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px; /* Position when panel is closed */
+    transition: right 0.3s ease; /* Match panel transition */
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(30, 30, 30, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    z-index: 1001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    padding: 0;
+    outline: none;
+}
+
+.panel-toggle-btn.panel-open {
+    right: 420px; /* Position when panel is open */
+}
+
+.panel-toggle-btn:hover {
+    background: rgba(40, 40, 40, 0.95);
+    transform: scale(1.05);
+}
+
+.panel-toggle-btn:active {
+    transform: scale(0.95);
+}
+
+.settings-categories {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.settings-section {
+    background: rgba(30, 30, 30, 0.95);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.settings-section.detached {
+    position: fixed;
+    min-width: 300px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: rgba(40, 40, 40, 0.95);
+    cursor: pointer;
+    user-select: none;
+}
+
+.section-header h4 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 500;
+    color: #fff;
+}
+
+.section-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.section-control {
+    background: none;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    padding: 0.25rem;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.section-control:hover {
+    opacity: 1;
+}
+
+.section-content {
+    padding: 1rem;
+}
+
+.settings-subsection {
+    margin-bottom: 1.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    padding: 1rem;
+}
+
+.settings-subsection:last-child {
+    margin-bottom: 0;
+}
+
+.settings-subsection-header {
+    margin: 0 0 1rem 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 0.5rem;
+}
+
+.setting-control {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    gap: 1rem;
+}
+
+.setting-control:last-child {
+    margin-bottom: 0;
+}
+
+.setting-control label {
+    flex: 1;
+    font-size: 0.9rem;
+    color: #ddd;
+}
+
+.setting-control input[type="text"],
+.setting-control input[type="number"],
+.setting-control select {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: #fff;
+    padding: 0.25rem 0.5rem;
+    min-width: 120px;
+    font-size: 0.9rem;
+}
+
+.setting-control input[type="color"] {
+    width: 40px;
+    height: 24px;
+    padding: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    cursor: pointer;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.array-input {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    min-width: 120px;
+}
+
+.array-input .array-item {
+    width: 60px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: #fff;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.array-input .array-item[type="number"] {
+    -moz-appearance: textfield;
+}
+
+.array-input .array-item[type="number"]::-webkit-outer-spin-button,
+.array-input .array-item[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.setting-control input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.value-display {
+    color: #ddd;
+    font-family: monospace;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    min-width: 120px;
+    text-align: right;
+    white-space: pre;
+    overflow-x: auto;
+}
+
+.value-display.subcategory-value {
+    text-align: left;
+    margin: 0.5rem 0 1rem;
+    padding: 0.75rem;
+    background: rgba(0, 0, 0, 0.15);
+    border-left: 3px solid #4287f5;
+    font-size: 0.85rem;
+    min-width: unset;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.nested-object-subsection {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+    width: 100%;
+}
+
+.nested-header {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #aaa;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.nested-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.nested-content .setting-control {
+    margin-bottom: 0;
+    padding-left: 0.5rem;
+}
+
+.empty-section-message {
+    color: #666;
+    font-style: italic;
+    text-align: center;
+    padding: 1rem;
+}
+
+.settings-section.collapsed .section-content {
+    display: none;
+}
+
+.settings-section.collapsed .section-control.collapse {
+    transform: rotate(-90deg);
+}
+
+.auth-section {
+    margin-bottom: 1rem;
+}
+
+.auth-section .section-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.nostr-login-btn {
+    background: #2d7af7;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.nostr-login-btn:hover {
+    background: #1e6be6;
+}
+
+.auth-status {
+    font-size: 0.9rem;
+    color: #aaa;
+}
+
+.user-info {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.pubkey {
+    font-family: monospace;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+
+.role {
+    color: #2d7af7;
+    font-weight: 500;
+}
+
+.auth-error {
+    color: #ff4444;
+    font-size: 0.9rem;
+    padding: 0.5rem;
+    background: rgba(255, 68, 68, 0.1);
+    border-radius: 4px;
+}
+
+.not-authenticated {
+    color: #666;
+    font-style: italic;
+}
+
+.control-panel {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 300px;
+    max-height: calc(100vh - 40px);
+    background: rgba(28, 28, 38, 0.95);
+    color: #fff;
+    border-radius: 8px;
+    padding: 15px;
+    overflow-y: auto;
+    font-family: system-ui, -apple-system, sans-serif;
+    z-index: 1000;
+}
+
+.control-section {
+    margin-bottom: 20px;
+}
+
+.control-section h2 {
+    font-size: 1.2em;
+    margin: 0 0 15px 0;
+    color: #4287f5;
+}
+
+.control-subsection {
+    margin: 10px 0;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+}
+
+.settings-content {
+    font-family: monospace;
+    font-size: 0.85em;
+    margin: 0;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    white-space: pre-wrap;
+}
+----
+ui/styles.css
+.control-panel {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 300px;
+    max-height: calc(100vh - 40px);
+    background: rgba(28, 28, 38, 0.95);
+    color: #fff;
+    border-radius: 8px;
+    padding: 15px;
+    overflow-y: auto;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    z-index: 1000;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.control-section {
+    margin-bottom: 20px;
+}
+
+.control-section h2 {
+    font-size: 1.2em;
+    margin: 0 0 15px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: #4287f5;
+}
+
+.control-subsection {
+    margin: 15px 0;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+}
+
+.control-subsection h3 {
+    font-size: 1em;
+    margin: 0 0 10px 0;
+    color: #6087c3;
+}
+
+.settings-content {
+    font-family: 'Fira Code', monospace;
+    font-size: 0.85em;
+    margin: 0;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #a0a0a0;
+}
+
+.settings-content:hover {
+    background: rgba(0, 0, 0, 0.3);
+} 
+----
 ui/ModularControlPanel.ts
 import { Settings } from '../types/settings';
 import { SettingsStore } from '../state/SettingsStore';
@@ -11751,7 +11933,7 @@ import { getAllSettingPaths, formatSettingName } from '../types/settings/utils';
 import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDisplay';
 import { createLogger } from '../core/logger';
 import { platformManager } from '../platform/platformManager';
-import { nostrAuth, NostrUser } from '../services/NostrAuthService';
+import { nostrAuth } from '../services/NostrAuthService';
 import { EventEmitter } from '../utils/eventEmitter';
 
 const logger = createLogger('ModularControlPanel');
@@ -11950,47 +12132,11 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
 
         const loginBtn = document.createElement('button');
         loginBtn.className = 'nostr-login-btn';
-        loginBtn.onclick = async () => {
-            try {
-                // Show loading state
-                loginBtn.disabled = true;
-                loginBtn.textContent = 'Connecting...';
-                
-                const result = await nostrAuth.login();
-                if (result.authenticated) {
-                    this.updateAuthUI(result.user);
-                } else {
-                    throw new Error(result.error || 'Authentication failed');
-                }
-            } catch (error) {
-                logger.error('Nostr login failed:', error);
-                const errorMsg = document.createElement('div');
-                errorMsg.className = 'auth-error';
-                
-                // Provide more user-friendly error messages
-                let errorText = 'Login failed';
-                if (error instanceof Error) {
-                    if (error.message.includes('Alby extension not found')) {
-                        errorText = 'Please install Alby extension to use Nostr login';
-                    } else if (error.message.includes('Failed to get public key')) {
-                        errorText = 'Please allow access to your Nostr public key';
-                    } else {
-                        errorText = error.message;
-                    }
-                }
-                
-                errorMsg.textContent = errorText;
-                content.appendChild(errorMsg);
-                setTimeout(() => errorMsg.remove(), 5000);
-            } finally {
-                // Reset button state
-                loginBtn.disabled = false;
-                this.updateAuthUI(nostrAuth.getCurrentUser());
-            }
-        };
-
+        loginBtn.textContent = 'Login with Nostr';  // Set initial text
+        
         const statusDisplay = document.createElement('div');
         statusDisplay.className = 'auth-status';
+        statusDisplay.innerHTML = '<div class="not-authenticated">Not authenticated</div>';  // Set initial state
         
         content.appendChild(loginBtn);
         content.appendChild(statusDisplay);
@@ -11998,7 +12144,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
 
         this.container.insertBefore(authSection, this.container.firstChild);
 
-        // Add some basic styles for the auth section
+        // Add styles
         const style = document.createElement('style');
         style.textContent = `
             .auth-section {
@@ -12055,48 +12201,74 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         `;
         document.head.appendChild(style);
 
+        // Set up login button click handler
+        loginBtn.onclick = async () => {
+            try {
+                loginBtn.disabled = true;
+                loginBtn.textContent = 'Connecting...';
+                
+                const result = await nostrAuth.login();
+                if (!result.authenticated) {
+                    throw new Error(result.error || 'Authentication failed');
+                }
+            } catch (error) {
+                logger.error('Nostr login failed:', error);
+                const errorMsg = document.createElement('div');
+                errorMsg.className = 'auth-error';
+                
+                let errorText = 'Login failed';
+                if (error instanceof Error) {
+                    if (error.message.includes('Alby extension not found')) {
+                        errorText = 'Please install Alby extension to use Nostr login';
+                    } else if (error.message.includes('Failed to get public key')) {
+                        errorText = 'Please allow access to your Nostr public key';
+                    } else {
+                        errorText = error.message;
+                    }
+                }
+                
+                errorMsg.textContent = errorText;
+                content.appendChild(errorMsg);
+                setTimeout(() => errorMsg.remove(), 5000);
+            } finally {
+                loginBtn.disabled = false;
+            }
+        };
+
+        // Subscribe to auth state changes
         this.unsubscribers.push(
-            nostrAuth.onAuthStateChanged(({ user }) => {
-                this.updateAuthUI(user);
+            nostrAuth.onAuthStateChanged(({ authenticated, user }) => {
+                if (authenticated && user) {
+                    loginBtn.textContent = 'Logout';
+                    loginBtn.onclick = async () => {
+                        try {
+                            loginBtn.disabled = true;
+                            loginBtn.textContent = 'Logging out...';
+                            await nostrAuth.logout();
+                        } catch (error) {
+                            logger.error('Logout failed:', error);
+                        }
+                    };
+                    statusDisplay.innerHTML = `
+                        <div class="user-info">
+                            <div class="pubkey">${user.pubkey.substring(0, 8)}...</div>
+                            <div class="role">${user.isPowerUser ? 'Power User' : 'Basic User'}</div>
+                        </div>
+                    `;
+                } else {
+                    loginBtn.textContent = 'Login with Nostr';
+                    loginBtn.onclick = () => nostrAuth.login();
+                    statusDisplay.innerHTML = '<div class="not-authenticated">Not authenticated</div>';
+                }
+                loginBtn.disabled = false;
             })
         );
 
+        // Initialize Nostr auth and wait for it to complete
         await nostrAuth.initialize();
-        this.updateAuthUI(nostrAuth.getCurrentUser());
     }
 
-    private updateAuthUI(user: NostrUser | null | undefined): void {
-        const loginBtn = this.container.querySelector('.nostr-login-btn') as HTMLButtonElement;
-        const statusDisplay = this.container.querySelector('.auth-status') as HTMLDivElement;
 
-        if (!loginBtn || !statusDisplay) return;
-
-        if (user) {
-            loginBtn.textContent = 'Logout';
-            loginBtn.onclick = async () => {
-                try {
-                    loginBtn.disabled = true;
-                    loginBtn.textContent = 'Logging out...';
-                    await nostrAuth.logout();
-                } catch (error) {
-                    logger.error('Logout failed:', error);
-                } finally {
-                    loginBtn.disabled = false;
-                }
-            };
-            statusDisplay.innerHTML = `
-                <div class="user-info">
-                    <div class="pubkey">${user.pubkey.substring(0, 8)}...</div>
-                    <div class="role">${user.isPowerUser ? 'Power User' : 'Basic User'}</div>
-                </div>
-            `;
-        } else {
-            loginBtn.textContent = 'Login with Nostr';
-            loginBtn.onclick = () => nostrAuth.login();
-            statusDisplay.innerHTML = '<div class="not-authenticated">Not authenticated</div>';
-        }
-        loginBtn.disabled = false;
-    }
 
     private isAdvancedCategory(category: string): boolean {
         const advancedCategories = ['physics', 'rendering', 'debug', 'network'];
@@ -12218,15 +12390,22 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
     private async createSubsection(subcategory: string, paths: string[]): Promise<HTMLElement> {
         const subsection = document.createElement('div');
         subsection.className = 'settings-subsection';
-        
+
         const header = document.createElement('h3');
         header.textContent = formatSettingName(subcategory);
         header.className = 'settings-subsection-header';
         subsection.appendChild(header);
         
+        // Sort paths to ensure consistent ordering
+        paths.sort();
+
+        // Create controls for each property
         for (const path of paths) {
-            const control = await this.createSettingControl(path);
-            subsection.appendChild(control);
+            const value = this.settingsStore.get(path);
+            if (value !== undefined && value !== null) {
+                const control = await this.createSettingControl(path);
+                subsection.appendChild(control);
+            }
         }
         
         return subsection;
@@ -12251,6 +12430,46 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
     private async createInputElement(path: string, value: any): Promise<HTMLElement> {
         const type = typeof value;
         let input: HTMLElement;
+        
+        const getNumericStep = (path: string): string => {
+            if (path.includes('size') || path.includes('iterations')) return '1';
+            if (path.includes('opacity') || path.includes('strength')) return '0.1';
+            if (path.includes('intensity')) return '0.1';
+            return '0.01';
+        };
+
+        // Handle arrays specially
+        if (Array.isArray(value)) {
+            const div = document.createElement('div');
+            div.className = 'array-input';
+
+            // Create inputs for each array element
+            value.forEach((item, index) => {
+                const itemInput = document.createElement('input');
+                itemInput.type = typeof item === 'number' ? 'number' : 'text';
+                if (itemInput.type === 'number') {
+                    itemInput.step = getNumericStep(path);
+                    itemInput.min = '0';
+                }
+                itemInput.value = item.toString();
+                itemInput.className = 'array-item';
+                itemInput.onchange = (e) => {
+                    const target = e.target as HTMLInputElement;
+                    const newValue = [...value];
+                    if (typeof item === 'number') {
+                        const parsed = parseFloat(target.value);
+                        newValue[index] = isNaN(parsed) ? item : Math.max(0, parsed);
+                    } else {
+                        newValue[index] = target.value;
+                    }
+                    this.updateSetting(path, newValue);
+                };
+                div.appendChild(itemInput);
+            });
+
+            input = div;
+            return input;
+        }
 
         switch (type) {
             case 'boolean': {
@@ -12268,8 +12487,9 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             case 'number': {
                 const numberInput = document.createElement('input');
                 numberInput.type = 'number';
+                numberInput.step = getNumericStep(path);
+                numberInput.min = '0';
                 numberInput.value = value.toString();
-                numberInput.step = '0.01';
                 numberInput.onchange = (e) => {
                     const target = e.target as HTMLInputElement;
                     this.updateSetting(path, parseFloat(target.value));
@@ -12282,6 +12502,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                 if (path.toLowerCase().includes('color')) {
                     const colorInput = document.createElement('input');
                     colorInput.type = 'color';
+                    colorInput.className = 'color-input';
                     colorInput.value = value;
                     colorInput.onchange = (e) => {
                         const target = e.target as HTMLInputElement;
@@ -12302,10 +12523,22 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             }
 
             default: {
-                const div = document.createElement('div');
-                div.className = 'value-display';
-                div.textContent = value?.toString() || '';
-                input = div;
+                if (value === null || value === undefined) {
+                    const div = document.createElement('div');
+                    div.className = 'value-display';
+                    div.textContent = String(value);
+                    input = div;
+                } else {
+                    // For any other type, create a text input
+                    const textInput = document.createElement('input');
+                    textInput.type = 'text';
+                    textInput.value = String(value);
+                    textInput.onchange = (e) => {
+                        const target = e.target as HTMLInputElement;
+                        this.updateSetting(path, target.value);
+                    };
+                    input = textInput;
+                }
             }
         }
 
@@ -12313,18 +12546,50 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
     }
 
     private updateSetting(path: string, value: any): void {
-        if (this.updateTimeout !== null) {
-            window.clearTimeout(this.updateTimeout);
-        }
-
-        this.updateTimeout = window.setTimeout(async () => {
-            try {
-                await this.settingsStore.set(path, value);
-                this.emit('settings:updated', { path, value });
-            } catch (error) {
-                logger.error(`Failed to update setting ${path}:`, error);
+        // Remove the setTimeout
+        try {
+            // Get the current value to compare types
+            const currentValue = this.settingsStore.get(path);
+            
+            // Ensure we maintain the correct type
+            let processedValue = value;
+            if (Array.isArray(currentValue)) {
+                // Ensure array values maintain their original types
+                processedValue = value.map((v: any, i: number) => {
+                    const originalValue = currentValue[i];
+                    if (typeof originalValue === 'number') {
+                        const parsed = parseFloat(v);
+                        return isNaN(parsed) ? originalValue : parsed;
+                    }
+                    return v;
+                });
+            } else if (typeof currentValue === 'number') {
+                const parsed = parseFloat(value);
+                processedValue = isNaN(parsed) ? currentValue : parsed;
             }
-        }, 100);
+
+            this.settingsStore.set(path, processedValue);
+            this.emit('settings:updated', { path, value: processedValue });
+        } catch (error) {
+            logger.error(`Failed to update setting ${path}:`, error);
+            
+            // Revert the input to the current value
+            const control = this.container.querySelector(`[data-setting-path="${path}"]`);
+            if (control) {
+                const input = control.querySelector('input, select') as HTMLInputElement;
+                if (input) {
+                    const currentValue = this.settingsStore.get(path);
+                    if (Array.isArray(currentValue)) {
+                        const inputs = control.querySelectorAll('.array-item') as NodeListOf<HTMLInputElement>;
+                        inputs.forEach((input, i) => {
+                            input.value = currentValue[i].toString();
+                        });
+                    } else {
+                        input.value = currentValue?.toString() || '';
+                    }
+                }
+            }
+        }
     }
 
     private toggleDetached(sectionId: string): void {
@@ -12410,388 +12675,6 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
     }
 }
 ----
-ui/ModularControlPanel.css
-/* Panel styles are now in index.html */
-
-.panel-toggle-btn {
-    position: fixed;
-    top: 20px;
-    right: 20px; /* Position when panel is closed */
-    transition: right 0.3s ease; /* Match panel transition */
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: rgba(30, 30, 30, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #fff;
-    font-size: 20px;
-    cursor: pointer;
-    z-index: 1001;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    padding: 0;
-    outline: none;
-}
-
-.panel-toggle-btn.panel-open {
-    right: 420px; /* Position when panel is open */
-}
-
-.panel-toggle-btn:hover {
-    background: rgba(40, 40, 40, 0.95);
-    transform: scale(1.05);
-}
-
-.panel-toggle-btn:active {
-    transform: scale(0.95);
-}
-
-.settings-categories {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.settings-section {
-    background: rgba(30, 30, 30, 0.95);
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    overflow: hidden;
-    margin-bottom: 1rem;
-}
-
-.settings-section.detached {
-    position: fixed;
-    min-width: 300px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    z-index: 1000;
-}
-
-.section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem 1rem;
-    background: rgba(40, 40, 40, 0.95);
-    cursor: pointer;
-    user-select: none;
-}
-
-.section-header h4 {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 500;
-    color: #fff;
-}
-
-.section-controls {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.section-control {
-    background: none;
-    border: none;
-    color: #fff;
-    cursor: pointer;
-    padding: 0.25rem;
-    opacity: 0.7;
-    transition: opacity 0.2s;
-}
-
-.section-control:hover {
-    opacity: 1;
-}
-
-.section-content {
-    padding: 1rem;
-}
-
-.settings-subsection {
-    margin-bottom: 1.5rem;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 6px;
-    padding: 1rem;
-}
-
-.settings-subsection:last-child {
-    margin-bottom: 0;
-}
-
-.settings-subsection-header {
-    margin: 0 0 1rem 0;
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: #aaa;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    padding-bottom: 0.5rem;
-}
-
-.setting-control {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.75rem;
-    gap: 1rem;
-}
-
-.setting-control:last-child {
-    margin-bottom: 0;
-}
-
-.setting-control label {
-    flex: 1;
-    font-size: 0.9rem;
-    color: #ddd;
-}
-
-.setting-control input[type="text"],
-.setting-control input[type="number"],
-.setting-control select {
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    color: #fff;
-    padding: 0.25rem 0.5rem;
-    min-width: 120px;
-    font-size: 0.9rem;
-}
-
-.setting-control input[type="color"] {
-    width: 40px;
-    height: 24px;
-    padding: 0;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.setting-control input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-}
-
-.nested-object-subsection {
-    background: rgba(0, 0, 0, 0.15);
-    border-radius: 4px;
-    padding: 0.75rem;
-    margin-top: 0.5rem;
-    width: 100%;
-}
-
-.nested-header {
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: #aaa;
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.nested-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
-
-.nested-content .setting-control {
-    margin-bottom: 0;
-    padding-left: 0.5rem;
-}
-
-.empty-section-message {
-    color: #666;
-    font-style: italic;
-    text-align: center;
-    padding: 1rem;
-}
-
-.settings-section.collapsed .section-content {
-    display: none;
-}
-
-.settings-section.collapsed .section-control.collapse {
-    transform: rotate(-90deg);
-}
-
-.auth-section {
-    margin-bottom: 1rem;
-}
-
-.auth-section .section-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.nostr-login-btn {
-    background: #2d7af7;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: background-color 0.2s;
-}
-
-.nostr-login-btn:hover {
-    background: #1e6be6;
-}
-
-.auth-status {
-    font-size: 0.9rem;
-    color: #aaa;
-}
-
-.user-info {
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-}
-
-.pubkey {
-    font-family: monospace;
-    background: rgba(0, 0, 0, 0.2);
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-}
-
-.role {
-    color: #2d7af7;
-    font-weight: 500;
-}
-
-.auth-error {
-    color: #ff4444;
-    font-size: 0.9rem;
-    padding: 0.5rem;
-    background: rgba(255, 68, 68, 0.1);
-    border-radius: 4px;
-}
-
-.not-authenticated {
-    color: #666;
-    font-style: italic;
-}
-
-.value-display {
-    color: #ddd;
-    font-family: monospace;
-    background: rgba(0, 0, 0, 0.2);
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    min-width: 120px;
-    text-align: right;
-}
-
-.control-panel {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    width: 300px;
-    max-height: calc(100vh - 40px);
-    background: rgba(28, 28, 38, 0.95);
-    color: #fff;
-    border-radius: 8px;
-    padding: 15px;
-    overflow-y: auto;
-    font-family: system-ui, -apple-system, sans-serif;
-    z-index: 1000;
-}
-
-.control-section {
-    margin-bottom: 20px;
-}
-
-.control-section h2 {
-    font-size: 1.2em;
-    margin: 0 0 15px 0;
-    color: #4287f5;
-}
-
-.control-subsection {
-    margin: 10px 0;
-    padding: 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 6px;
-}
-
-.settings-content {
-    font-family: monospace;
-    font-size: 0.85em;
-    margin: 0;
-    padding: 10px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-    white-space: pre-wrap;
-}
-----
-ui/styles.css
-.control-panel {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    width: 300px;
-    max-height: calc(100vh - 40px);
-    background: rgba(28, 28, 38, 0.95);
-    color: #fff;
-    border-radius: 8px;
-    padding: 15px;
-    overflow-y: auto;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    z-index: 1000;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.control-section {
-    margin-bottom: 20px;
-}
-
-.control-section h2 {
-    font-size: 1.2em;
-    margin: 0 0 15px 0;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    color: #4287f5;
-}
-
-.control-subsection {
-    margin: 15px 0;
-    padding: 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 6px;
-}
-
-.control-subsection h3 {
-    font-size: 1em;
-    margin: 0 0 10px 0;
-    color: #6087c3;
-}
-
-.settings-content {
-    font-family: 'Fira Code', monospace;
-    font-size: 0.85em;
-    margin: 0;
-    padding: 10px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: #a0a0a0;
-}
-
-.settings-content:hover {
-    background: rgba(0, 0, 0, 0.3);
-} 
-----
 utils/eventEmitter.ts
 type EventCallback<T = any> = (data: T) => void;
 type EventMap = Record<string, any>;
@@ -12822,6 +12705,154 @@ export class EventEmitter<Events extends EventMap = EventMap> {
         }
     }
 } 
+----
+visualization/HologramManager.ts
+import {
+    Scene,
+    Group,
+    Mesh,
+    Vector3,
+    WebGLRenderer
+} from 'three';
+import { Settings } from '../types/settings';
+import { GeometryFactory } from '../rendering/factories/GeometryFactory';
+import { MaterialFactory } from '../rendering/factories/MaterialFactory';
+import { HologramShaderMaterial } from '../rendering/materials/HologramShaderMaterial';
+
+export class HologramManager {
+    private readonly group = new Group();
+    private isXRMode = false;
+    private readonly geometryFactory: GeometryFactory;
+    private readonly materialFactory: MaterialFactory;
+
+    constructor(
+        private readonly scene: Scene,
+        _renderer: WebGLRenderer,  // Used by subclasses
+        private settings: Settings
+    ) {
+        this.geometryFactory = GeometryFactory.getInstance();
+        this.materialFactory = MaterialFactory.getInstance();
+        this.createHolograms();
+        this.scene.add(this.group);
+    }
+
+    private createHolograms() {
+        while (this.group.children.length > 0) {
+            const child = this.group.children[0];
+            this.group.remove(child);
+            if (child instanceof Mesh) {
+                child.geometry.dispose();
+                child.material.dispose();
+            }
+        }
+
+        const quality = this.isXRMode ? 'high' : this.settings.xr.quality;
+        const material = this.materialFactory.getHologramMaterial(this.settings);
+
+        // Create rings using native world units (40, 80, 120)
+        const sphereSizes = this.settings.visualization.hologram.sphereSizes;
+        for (let i = 0; i < this.settings.visualization.hologram.ringCount; i++) {
+            const size = sphereSizes[i] || 40 * (i + 1); // Default to 40, 80, 120 pattern if not specified
+            const ring = new Mesh(
+                this.geometryFactory.getHologramGeometry('ring', quality, size),
+                material.clone()
+            );
+            // Position rings at different angles to make them more visible
+            ring.rotateX(Math.PI / 3 * i);  // Changed from PI/2 to PI/3
+            ring.rotateY(Math.PI / 6 * i);  // Changed from PI/4 to PI/6
+            ring.userData.rotationSpeed = this.settings.visualization.hologram.ringRotationSpeed * (i + 1);
+            (ring.material as HologramShaderMaterial).setEdgeOnly(true);
+            this.group.add(ring);
+        }
+
+        if (this.settings.visualization.hologram.enableBuckminster) {
+            const size = this.settings.visualization.hologram.buckminsterSize;
+            const mesh = new Mesh(
+                this.geometryFactory.getHologramGeometry('buckminster', quality, size),
+                material.clone()
+            );
+            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.buckminsterOpacity;
+            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
+            this.group.add(mesh);
+        }
+
+        if (this.settings.visualization.hologram.enableGeodesic) {
+            const size = this.settings.visualization.hologram.geodesicSize;
+            const mesh = new Mesh(
+                this.geometryFactory.getHologramGeometry('geodesic', quality, size),
+                material.clone()
+            );
+            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.geodesicOpacity;
+            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
+            this.group.add(mesh);
+        }
+
+        if (this.settings.visualization.hologram.enableTriangleSphere) {
+            const size = this.settings.visualization.hologram.triangleSphereSize;
+            const mesh = new Mesh(
+                this.geometryFactory.getHologramGeometry('triangleSphere', quality, size),
+                material.clone()
+            );
+            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.triangleSphereOpacity;
+            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
+            this.group.add(mesh);
+        }
+    }
+
+    setXRMode(enabled: boolean) {
+        this.isXRMode = enabled;
+        this.group.traverse(child => {
+            if (child instanceof Mesh && child.material instanceof HologramShaderMaterial) {
+                child.material.defines = { USE_AR: '' };
+                child.material.needsUpdate = true;
+            }
+        });
+        this.createHolograms();
+    }
+
+    handleInteraction(position: Vector3) {
+        this.group.traverse(child => {
+            if (child instanceof Mesh && child.material instanceof HologramShaderMaterial) {
+                const distance = position.distanceTo(child.position);
+                if (distance < 0.5 && child.material.uniforms) {
+                    child.material.uniforms.pulseIntensity.value = 0.4;
+                    setTimeout(() => {
+                        if (child.material instanceof HologramShaderMaterial && child.material.uniforms) {
+                            child.material.uniforms.pulseIntensity.value = 0.2;
+                        }
+                    }, 500);
+                }
+            }
+        });
+    }
+
+    update(deltaTime: number) {
+        this.group.traverse(child => {
+            if (child instanceof Mesh) {
+                child.rotateY((child.userData.rotationSpeed || this.settings.visualization.hologram.globalRotationSpeed) * deltaTime);
+                if (child.material instanceof HologramShaderMaterial && child.material.uniforms) {
+                    child.material.uniforms.time.value += deltaTime;
+                }
+            }
+        });
+    }
+
+    updateSettings(newSettings: Settings) {
+        this.settings = newSettings;
+        this.materialFactory.updateMaterial('hologram', this.settings);
+        this.createHolograms();
+    }
+
+    getGroup() {
+        return this.group;
+    }
+
+    dispose() {
+        // Geometries and materials are managed by the factories
+        this.scene.remove(this.group);
+    }
+}
+
 ----
 visualization/MetadataVisualizer.ts
 import * as THREE from 'three';
@@ -13192,154 +13223,6 @@ export class MetadataVisualizer {
                 }
             }
         });
-    }
-}
-
-----
-visualization/HologramManager.ts
-import {
-    Scene,
-    Group,
-    Mesh,
-    Vector3,
-    WebGLRenderer
-} from 'three';
-import { Settings } from '../types/settings';
-import { GeometryFactory } from '../rendering/factories/GeometryFactory';
-import { MaterialFactory } from '../rendering/factories/MaterialFactory';
-import { HologramShaderMaterial } from '../rendering/materials/HologramShaderMaterial';
-
-export class HologramManager {
-    private readonly group = new Group();
-    private isXRMode = false;
-    private readonly geometryFactory: GeometryFactory;
-    private readonly materialFactory: MaterialFactory;
-
-    constructor(
-        private readonly scene: Scene,
-        _renderer: WebGLRenderer,  // Used by subclasses
-        private settings: Settings
-    ) {
-        this.geometryFactory = GeometryFactory.getInstance();
-        this.materialFactory = MaterialFactory.getInstance();
-        this.createHolograms();
-        this.scene.add(this.group);
-    }
-
-    private createHolograms() {
-        while (this.group.children.length > 0) {
-            const child = this.group.children[0];
-            this.group.remove(child);
-            if (child instanceof Mesh) {
-                child.geometry.dispose();
-                child.material.dispose();
-            }
-        }
-
-        const quality = this.isXRMode ? 'high' : this.settings.xr.quality;
-        const material = this.materialFactory.getHologramMaterial(this.settings);
-
-        // Create rings using native world units (40, 80, 120)
-        const sphereSizes = this.settings.visualization.hologram.sphereSizes;
-        for (let i = 0; i < this.settings.visualization.hologram.ringCount; i++) {
-            const size = sphereSizes[i] || 40 * (i + 1); // Default to 40, 80, 120 pattern if not specified
-            const ring = new Mesh(
-                this.geometryFactory.getHologramGeometry('ring', quality, size),
-                material.clone()
-            );
-            // Position rings at different angles to make them more visible
-            ring.rotateX(Math.PI / 3 * i);  // Changed from PI/2 to PI/3
-            ring.rotateY(Math.PI / 6 * i);  // Changed from PI/4 to PI/6
-            ring.userData.rotationSpeed = this.settings.visualization.hologram.ringRotationSpeed * (i + 1);
-            (ring.material as HologramShaderMaterial).setEdgeOnly(true);
-            this.group.add(ring);
-        }
-
-        if (this.settings.visualization.hologram.enableBuckminster) {
-            const size = this.settings.visualization.hologram.buckminsterSize;
-            const mesh = new Mesh(
-                this.geometryFactory.getHologramGeometry('buckminster', quality, size),
-                material.clone()
-            );
-            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.buckminsterOpacity;
-            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
-            this.group.add(mesh);
-        }
-
-        if (this.settings.visualization.hologram.enableGeodesic) {
-            const size = this.settings.visualization.hologram.geodesicSize;
-            const mesh = new Mesh(
-                this.geometryFactory.getHologramGeometry('geodesic', quality, size),
-                material.clone()
-            );
-            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.geodesicOpacity;
-            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
-            this.group.add(mesh);
-        }
-
-        if (this.settings.visualization.hologram.enableTriangleSphere) {
-            const size = this.settings.visualization.hologram.triangleSphereSize;
-            const mesh = new Mesh(
-                this.geometryFactory.getHologramGeometry('triangleSphere', quality, size),
-                material.clone()
-            );
-            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.triangleSphereOpacity;
-            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
-            this.group.add(mesh);
-        }
-    }
-
-    setXRMode(enabled: boolean) {
-        this.isXRMode = enabled;
-        this.group.traverse(child => {
-            if (child instanceof Mesh && child.material instanceof HologramShaderMaterial) {
-                child.material.defines = { USE_AR: '' };
-                child.material.needsUpdate = true;
-            }
-        });
-        this.createHolograms();
-    }
-
-    handleInteraction(position: Vector3) {
-        this.group.traverse(child => {
-            if (child instanceof Mesh && child.material instanceof HologramShaderMaterial) {
-                const distance = position.distanceTo(child.position);
-                if (distance < 0.5 && child.material.uniforms) {
-                    child.material.uniforms.pulseIntensity.value = 0.4;
-                    setTimeout(() => {
-                        if (child.material instanceof HologramShaderMaterial && child.material.uniforms) {
-                            child.material.uniforms.pulseIntensity.value = 0.2;
-                        }
-                    }, 500);
-                }
-            }
-        });
-    }
-
-    update(deltaTime: number) {
-        this.group.traverse(child => {
-            if (child instanceof Mesh) {
-                child.rotateY((child.userData.rotationSpeed || this.settings.visualization.hologram.globalRotationSpeed) * deltaTime);
-                if (child.material instanceof HologramShaderMaterial && child.material.uniforms) {
-                    child.material.uniforms.time.value += deltaTime;
-                }
-            }
-        });
-    }
-
-    updateSettings(newSettings: Settings) {
-        this.settings = newSettings;
-        this.materialFactory.updateMaterial('hologram', this.settings);
-        this.createHolograms();
-    }
-
-    getGroup() {
-        return this.group;
-    }
-
-    dispose() {
-        // Geometries and materials are managed by the factories
-        this.scene.remove(this.group);
     }
 }
 
@@ -13849,7 +13732,6 @@ export class XRInitializer {
 ----
 xr/xrInteraction.ts
 import { XRSessionManager } from './xrSessionManager';
-import { NodeManager } from '../rendering/nodes';
 import { SettingsStore } from '../state/SettingsStore';
 import { createLogger } from '../core/logger';
 import { WebSocketService } from '../websocket/websocketService';
@@ -13868,7 +13750,7 @@ export class XRInteraction {
     private websocketService: WebSocketService;
 
     private xrManager: XRSessionManager;
-    private constructor(xrManager: XRSessionManager, _: NodeManager) {
+    private constructor(xrManager: XRSessionManager) {
         this.xrManager = xrManager;
         this.settingsStore = SettingsStore.getInstance();
         this.websocketService = WebSocketService.getInstance();
@@ -13899,9 +13781,9 @@ export class XRInteraction {
         }
     }
 
-    public static getInstance(xrManager: XRSessionManager, nodeManager: NodeManager): XRInteraction {
+    public static getInstance(xrManager: XRSessionManager): XRInteraction {
         if (!XRInteraction.instance) {
-            XRInteraction.instance = new XRInteraction(xrManager, nodeManager);
+            XRInteraction.instance = new XRInteraction(xrManager);
         }
         return XRInteraction.instance;
     }
@@ -14006,10 +13888,10 @@ export interface XRHandState {
 
 ----
 xr/handInteraction.ts
-import { Vector3 } from 'three';
+import { Vector3, Mesh } from 'three';
 import { XRHandWithHaptics } from '../types/xr';
 import { WebSocketService } from '../websocket/websocketService';
-import { NodeManager } from '../rendering/nodes';
+import { EnhancedNodeManager } from '../rendering/EnhancedNodeManager';
 import { createLogger } from '../core/logger';
 import { Node } from '../core/types';
 
@@ -14019,11 +13901,11 @@ export class HandInteractionManager {
     private static instance: HandInteractionManager;
     private lastPinchState: boolean = false;
     private websocketService: WebSocketService;
-    private nodeManager: NodeManager;
+    private nodeManager?: EnhancedNodeManager;
 
     private constructor() {
         this.websocketService = WebSocketService.getInstance();
-        this.nodeManager = NodeManager.getInstance();
+        // Note: nodeManager will be set via setNodeManager
     }
 
     public static getInstance(): HandInteractionManager {
@@ -14033,7 +13915,13 @@ export class HandInteractionManager {
         return HandInteractionManager.instance;
     }
 
+    public setNodeManager(nodeManager: EnhancedNodeManager): void {
+        this.nodeManager = nodeManager;
+    }
+
     public processHandInput(hand: XRHandWithHaptics): void {
+        if (!this.nodeManager) return;
+
         const thumbTip = hand.hand.joints['thumb-tip'];
         const indexTip = hand.hand.joints['index-finger-tip'];
 
@@ -14054,19 +13942,24 @@ export class HandInteractionManager {
     }
 
     private handlePinchGesture(position: Vector3): void {
+        if (!this.nodeManager) return;
+
         // Find closest node to index finger tip
-        const nodes = this.nodeManager.getCurrentNodes();
-        let closestNode: Node | null = null;
+        const nodes = Array.from(this.nodeManager.getNodes().values());
+        let closestNodeMesh: Mesh | null = null;
         let closestDistance = Infinity;
 
-        for (const node of nodes) {
-            const nodePos = this.nodeManager.getNodePosition(node.id);
+        for (const nodeMesh of nodes) {
+            const nodePos = nodeMesh.position;
             const distance = nodePos.distanceTo(position);
             if (distance < closestDistance && distance < 0.1) { // 10cm threshold
-                closestNode = node;
+                closestNodeMesh = nodeMesh;
                 closestDistance = distance;
             }
         }
+
+        const closestNode = closestNodeMesh?.userData as Node | undefined;
+        if (!closestNode) return;
 
         if (closestNode && closestNode.id) {
             _logger.debug(`Pinch gesture detected on node ${closestNode.id}`);
@@ -14087,7 +13980,7 @@ export class HandInteractionManager {
             }]);
 
             // Also update local node position
-            this.nodeManager.updateNodePosition(closestNode.id, position);
+            this.nodeManager.updateNodePositions([{ id: closestNode.id, data: { position: [position.x, position.y, position.z], velocity: [0, 0, 0] } }]);
         }
     }
 
@@ -14115,9 +14008,10 @@ import { createLogger } from '../core/utils';
 import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
-import { NodeManager } from '../rendering/nodes';
+import { EnhancedNodeManager } from '../rendering/EnhancedNodeManager';
 import { ModularControlPanel } from '../ui/ModularControlPanel';
 import { SettingsStore } from '../state/SettingsStore';
+import { Settings } from '../types/settings/base';
 import { XRSettings } from '../types/settings/xr';
 const logger = createLogger('XRSessionManager');
 
@@ -14125,7 +14019,7 @@ export class XRSessionManager {
     private static instance: XRSessionManager | null = null;
     private readonly sceneManager: SceneManager;
     private readonly settingsStore: SettingsStore;
-    private readonly nodeManager: NodeManager;
+    private readonly nodeManager: EnhancedNodeManager;
     private session: XRSession | null = null;
     /* @ts-ignore - Used in XR session lifecycle */
     private referenceSpace: XRReferenceSpace | null = null;
@@ -14162,7 +14056,8 @@ export class XRSessionManager {
     private constructor(sceneManager: SceneManager) {
         this.sceneManager = sceneManager;
         this.settingsStore = SettingsStore.getInstance();
-        this.nodeManager = NodeManager.getInstance();
+        const settings = this.settingsStore.get('') as Settings;
+        this.nodeManager = new EnhancedNodeManager(sceneManager.getScene(), settings);
         // Initialize with current settings
         this.currentSettings = this.settingsStore.get('xr') as XRSettings;
         
@@ -14429,8 +14324,8 @@ export class XRSessionManager {
                 this.arGroup.scale.setScalar(this.currentSettings.roomScale);
                 
                 // Move node instances to arGroup for proper scaling
-                const nodeInstances = this.nodeManager.getAllNodeMeshes();
-                nodeInstances.forEach(mesh => {
+                const nodeInstances = Array.from(this.nodeManager.getNodes().values());
+                nodeInstances.forEach((mesh: Mesh) => {
                     this.arGroup.add(mesh);
                 });
             }
@@ -14512,8 +14407,8 @@ export class XRSessionManager {
             this.arLight.visible = false;
             
             // Move node instances back to main scene
-            const nodeInstances = this.nodeManager.getAllNodeMeshes();
-            nodeInstances.forEach(mesh => {
+            const nodeInstances = Array.from(this.nodeManager.getNodes().values());
+            nodeInstances.forEach((mesh: Mesh) => {
                 this.sceneManager.getScene().add(mesh);
             });
         }
