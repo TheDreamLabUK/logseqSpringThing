@@ -8,10 +8,10 @@ visualization:
     - 200.0
     - 700.0
     quality: high
-    enable_instancing: true
-    enable_hologram: true
-    enable_metadata_shape: true
-    enable_metadata_visualization: true
+    enable_instancing: false
+    enable_hologram: false
+    enable_metadata_shape: false
+    enable_metadata_visualization: false
   edges:
     arrow_size: 2.0
     base_width: 2.0

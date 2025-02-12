@@ -472,7 +472,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         const subsection = document.createElement('div');
         subsection.className = 'settings-subsection';
 
-const header = document.createElement('h3');
+        const header = document.createElement('h3');
         header.textContent = formatSettingName(subcategory);
         header.className = 'settings-subsection-header';
         subsection.appendChild(header);
@@ -627,55 +627,50 @@ const header = document.createElement('h3');
     }
 
     private updateSetting(path: string, value: any): void {
-        if (this.updateTimeout !== null) {
-            window.clearTimeout(this.updateTimeout);
-        }
+        // Remove the setTimeout
+        try {
+            // Get the current value to compare types
+            const currentValue = this.settingsStore.get(path);
+            
+            // Ensure we maintain the correct type
+            let processedValue = value;
+            if (Array.isArray(currentValue)) {
+                // Ensure array values maintain their original types
+                processedValue = value.map((v: any, i: number) => {
+                    const originalValue = currentValue[i];
+                    if (typeof originalValue === 'number') {
+                        const parsed = parseFloat(v);
+                        return isNaN(parsed) ? originalValue : parsed;
+                    }
+                    return v;
+                });
+            } else if (typeof currentValue === 'number') {
+                const parsed = parseFloat(value);
+                processedValue = isNaN(parsed) ? currentValue : parsed;
+            }
 
-        this.updateTimeout = window.setTimeout(async () => {
-            try {
-                // Get the current value to compare types
-                const currentValue = this.settingsStore.get(path);
-                
-                // Ensure we maintain the correct type
-                let processedValue = value;
-                if (Array.isArray(currentValue)) {
-                    // Ensure array values maintain their original types
-                    processedValue = value.map((v: any, i: number) => {
-                        const originalValue = currentValue[i];
-                        if (typeof originalValue === 'number') {
-                            const parsed = parseFloat(v);
-                            return isNaN(parsed) ? originalValue : parsed;
-                        }
-                        return v;
-                    });
-                } else if (typeof currentValue === 'number') {
-                    const parsed = parseFloat(value);
-                    processedValue = isNaN(parsed) ? currentValue : parsed;
-                }
-
-                await this.settingsStore.set(path, processedValue);
-                this.emit('settings:updated', { path, value: processedValue });
-            } catch (error) {
-                logger.error(`Failed to update setting ${path}:`, error);
-                
-                // Revert the input to the current value
-                const control = this.container.querySelector(`[data-setting-path="${path}"]`);
-                if (control) {
-                    const input = control.querySelector('input, select') as HTMLInputElement;
-                    if (input) {
-                        const currentValue = this.settingsStore.get(path);
-                        if (Array.isArray(currentValue)) {
-                            const inputs = control.querySelectorAll('.array-item') as NodeListOf<HTMLInputElement>;
-                            inputs.forEach((input, i) => {
-                                input.value = currentValue[i].toString();
-                            });
-                        } else {
-                            input.value = currentValue?.toString() || '';
-                        }
+            this.settingsStore.set(path, processedValue);
+            this.emit('settings:updated', { path, value: processedValue });
+        } catch (error) {
+            logger.error(`Failed to update setting ${path}:`, error);
+            
+            // Revert the input to the current value
+            const control = this.container.querySelector(`[data-setting-path="${path}"]`);
+            if (control) {
+                const input = control.querySelector('input, select') as HTMLInputElement;
+                if (input) {
+                    const currentValue = this.settingsStore.get(path);
+                    if (Array.isArray(currentValue)) {
+                        const inputs = control.querySelectorAll('.array-item') as NodeListOf<HTMLInputElement>;
+                        inputs.forEach((input, i) => {
+                            input.value = currentValue[i].toString();
+                        });
+                    } else {
+                        input.value = currentValue?.toString() || '';
                     }
                 }
             }
-        }, 100);
+        }
     }
 
     private toggleDetached(sectionId: string): void {
