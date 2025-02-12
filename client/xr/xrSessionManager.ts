@@ -108,7 +108,8 @@ export class XRSessionManager {
         grid.material.opacity = 0.5;
         grid.position.y = -0.01; // Slightly below ground to avoid z-fighting
         grid.visible = false; // Start hidden until AR session begins
-        grid.layers.set(1); // Set to AR layer
+        grid.layers.enable(0); // Enable default layer
+        grid.layers.enable(1); // Enable AR layer
         return grid;
     }
 
@@ -124,7 +125,8 @@ export class XRSessionManager {
         plane.rotateX(-Math.PI / 2);
         plane.position.y = -0.02; // Below grid
         plane.visible = false; // Start hidden until AR session begins
-        plane.layers.set(1); // Set to AR layer
+        plane.layers.enable(0); // Enable default layer
+        plane.layers.enable(1); // Enable AR layer
         return plane;
     }
 
@@ -139,14 +141,16 @@ export class XRSessionManager {
         const marker = new Mesh(geometry, material);
         marker.rotateX(-Math.PI / 2);
         marker.visible = false;
-        marker.layers.set(1); // Set to AR layer
+        marker.layers.enable(0); // Enable default layer
+        marker.layers.enable(1); // Enable AR layer
         return marker;
     }
 
     private createARLight(): DirectionalLight {
         const light = new DirectionalLight(0xffffff, 1);
         light.position.set(1, 1, 1);
-        light.layers.set(1); // Set to AR layer
+        light.layers.enable(0); // Enable default layer
+        light.layers.enable(1); // Enable AR layer
         return light;
     }
 
@@ -329,13 +333,23 @@ export class XRSessionManager {
             
             // Apply AR scale if in AR mode
             if (platformManager.isQuest()) {
-                // Apply additional 0.01 scale factor for Meta Quest AR mode
-                const arScale = this.currentSettings.roomScale * 0.01;
+                // Use direct room scale for better AR sizing
+                // Apply a base scale of 0.1 for AR to make objects more manageable
+                const arScale = this.currentSettings.roomScale * 0.1;
                 this.arGroup.scale.setScalar(arScale);
                 
                 // Move node instances to arGroup for proper scaling
                 const nodeInstances = Array.from(this.nodeManager.getNodes().values());
                 nodeInstances.forEach((mesh: Mesh) => {
+                    // Enable both layers for the mesh and its children
+                    mesh.layers.enable(0);
+                    mesh.layers.enable(1);
+                    mesh.traverse((child: any) => {
+                        if (child.layers) {
+                            child.layers.enable(0);
+                            child.layers.enable(1);
+                        }
+                    });
                     this.arGroup.add(mesh);
                 });
             }
@@ -482,8 +496,8 @@ export class XRSessionManager {
         // Update room scale if changed
         if (this.currentSettings.roomScale !== undefined) {
             if (platformManager.isQuest()) {
-                // Apply additional 0.01 scale factor for Meta Quest AR mode
-                const arScale = Number(this.currentSettings.roomScale) * 0.01;
+                // Apply a base scale of 0.1 for AR to make objects more manageable
+                const arScale = Number(this.currentSettings.roomScale) * 0.1;
                 this.arGroup.scale.setScalar(arScale);
             } else {
                 this.cameraRig.scale.setScalar(Number(this.currentSettings.roomScale));

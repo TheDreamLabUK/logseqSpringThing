@@ -8,10 +8,10 @@ visualization:
     - 200.0
     - 700.0
     quality: high
-    enable_instancing: false
-    enable_hologram: false
-    enable_metadata_shape: false
-    enable_metadata_visualization: false
+    enable_instancing: true
+    enable_hologram: true
+    enable_metadata_shape: true
+    enable_metadata_visualization: true
   edges:
     arrow_size: 2.0
     base_width: 2.0
@@ -37,7 +37,7 @@ visualization:
     ambient_light_intensity: 0.41
     background_color: '#1a1a2e'
     directional_light_intensity: 0.7
-    enable_ambient_occlusion: false
+    enable_ambient_occlusion: true
     enable_antialiasing: true
     enable_shadows: false
     environment_intensity: 0.7
@@ -52,7 +52,7 @@ visualization:
     wave_speed: 0.5
   labels:
     desktop_font_size: 10
-    enable_labels: false
+    enable_labels: true
     text_color: '#ffffff'
     text_outline_color: '#000000'
     text_outline_width: 0.1
@@ -75,13 +75,13 @@ visualization:
     - 80.0
     - 120.0
     ring_rotation_speed: 1.0
-    enable_buckminster: false
+    enable_buckminster: true
     buckminster_size: 40.0
     buckminster_opacity: 0.05
-    enable_geodesic: false
+    enable_geodesic: true
     geodesic_size: 80.0
     geodesic_opacity: 0.05
-    enable_triangle_sphere: false
+    enable_triangle_sphere: true
     triangle_sphere_size: 120.0
     triangle_sphere_opacity: 0.1
     global_rotation_speed: 0.03
