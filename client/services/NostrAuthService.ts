@@ -1,6 +1,8 @@
 import { SettingsEventEmitter, SettingsEventType } from './SettingsEventEmitter';
 import { SettingsPersistenceService } from './SettingsPersistenceService';
 import { createLogger } from '../core/logger';
+import { buildApiUrl } from '../core/api';
+import { API_ENDPOINTS } from '../core/constants';
 
 const logger = createLogger('NostrAuthService');
 
@@ -128,7 +130,7 @@ export class NostrAuthService {
             const signedEvent = await this.createAuthEvent(pubkey);
 
             // Send authentication request to server
-            const response = await fetch('/api/auth/nostr', {
+            const response = await fetch(buildApiUrl(API_ENDPOINTS.AUTH_NOSTR), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -181,7 +183,7 @@ export class NostrAuthService {
         
         if (currentPubkey && token) {
             try {
-                await fetch('/api/auth/nostr', {
+                await fetch(buildApiUrl(API_ENDPOINTS.AUTH_NOSTR), {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json',
@@ -252,7 +254,7 @@ export class NostrAuthService {
         }
 
         try {
-            const response = await fetch('/api/auth/nostr/verify', {
+            const response = await fetch(buildApiUrl(API_ENDPOINTS.AUTH_NOSTR_VERIFY), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

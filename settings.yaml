@@ -8,15 +8,15 @@ visualization:
     - 200.0
     - 700.0
     quality: high
-    enable_instancing: true
-    enable_hologram: true
-    enable_metadata_shape: true
-    enable_metadata_visualization: true
+    enable_instancing: false
+    enable_hologram: false
+    enable_metadata_shape: false
+    enable_metadata_visualization: false
   edges:
     arrow_size: 2.0
     base_width: 2.0
     color: '#0c2140'
-    enable_arrows: true
+    enable_arrows: false
     opacity: 0.5
     width_range:
     - 2.0
@@ -42,11 +42,11 @@ visualization:
     enable_shadows: false
     environment_intensity: 0.7
   animations:
-    enable_motion_blur: false
-    enable_node_animations: false
+    enable_motion_blur: true
+    enable_node_animations: true
     motion_blur_strength: 0.2
     selection_wave_enabled: true
-    pulse_enabled: false
+    pulse_enabled: true
     pulse_speed: 0.8
     pulse_strength: 0.6
     wave_speed: 0.5
@@ -75,13 +75,13 @@ visualization:
     - 80.0
     - 120.0
     ring_rotation_speed: 1.0
-    enable_buckminster: true
+    enable_buckminster: false
     buckminster_size: 40.0
     buckminster_opacity: 0.05
-    enable_geodesic: true
+    enable_geodesic: false
     geodesic_size: 80.0
     geodesic_opacity: 0.05
-    enable_triangle_sphere: true
+    enable_triangle_sphere: false
     triangle_sphere_size: 120.0
     triangle_sphere_opacity: 0.1
     global_rotation_speed: 0.03

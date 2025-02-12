@@ -3,7 +3,7 @@ import { createLogger } from '../core/logger';
 import { defaultSettings } from './defaultSettings';
 import { buildApiUrl } from '../core/api';
 import { API_ENDPOINTS } from '../core/constants';
-import { Logger } from '../core/logger';
+import { Logger, LoggerConfig } from '../core/logger';
 import { validateSettings, validateSettingValue, ValidationError } from '../types/settings/validation';
 import { convertObjectKeysToSnakeCase, convertObjectKeysToCamelCase } from '../core/utils';
 
@@ -70,6 +70,12 @@ export class SettingsStore {
                         // Use server settings as base, filling in any missing fields with defaults
                         this.settings = this.deepMerge({ ...defaultSettings }, camelCaseSettings);
                         this.settingsOrigin = 'server';
+                        
+                        // Initialize logger configuration from settings
+                        if (this.settings.system?.debug) {
+                            LoggerConfig.setGlobalDebug(this.settings.system.debug.enabled);
+                            LoggerConfig.setFullJson(this.settings.system.debug.logFullJson);
+                        }
                         logger.info('Using server settings with defaults as fallback');
                     } else {
                         const errorText = await response.text();
@@ -83,6 +89,12 @@ export class SettingsStore {
                     }
                     logger.warn('Error loading server settings, falling back to defaults:', error);
                     this.settings = { ...defaultSettings };
+                    
+                    // Initialize logger with default settings
+                    if (this.settings.system?.debug) {
+                        LoggerConfig.setGlobalDebug(this.settings.system.debug.enabled);
+                        LoggerConfig.setFullJson(this.settings.system.debug.logFullJson);
+                    }
                     this.settingsOrigin = 'default';
                     
                     // Validate default settings
@@ -183,6 +195,14 @@ export class SettingsStore {
     public async set(path: string, value: unknown): Promise<void> {
         try {
             // Validate the specific setting change
+            // Update logger config if debug settings change
+            if (path.startsWith('system.debug')) {
+                if (path === 'system.debug.enabled') {
+                    LoggerConfig.setGlobalDebug(value as boolean);
+                } else if (path === 'system.debug.logFullJson') {
+                    LoggerConfig.setFullJson(value as boolean);
+                }
+            }
             const validationErrors = validateSettingValue(path, value, this.settings);
             if (validationErrors.length > 0) {
                 this.notifyValidationErrors(validationErrors);
