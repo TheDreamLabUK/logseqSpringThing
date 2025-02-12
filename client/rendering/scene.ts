@@ -89,15 +89,19 @@ export class SceneManager {
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
 
-    // Initialize bloom with disabled state
+    // Initialize bloom with default state
     this.bloomPass = new UnrealBloomPass(
       new Vector2(window.innerWidth, window.innerHeight),
-      0.0,  // Strength
-      0.0,  // Radius
-      1.0   // High threshold to effectively disable bloom
+      1.5,  // Default strength
+      0.4,  // Default radius
+      0.85  // Default threshold
     );
-    this.bloomPass.enabled = false;  // Explicitly disable bloom
-    this.bloomPass.threshold = 1.0;  // Set high threshold to further ensure no bloom
+    
+    // Initialize custom bloom properties
+    (this.bloomPass as any).edgeStrength = 3.0;
+    (this.bloomPass as any).nodeStrength = 2.0;
+    (this.bloomPass as any).environmentStrength = 1.0;
+    
     this.composer.addPass(this.bloomPass);
 
     // Setup basic lighting
@@ -154,6 +158,11 @@ export class SceneManager {
 
     this.renderer.setSize(width, height);
     this.composer.setSize(width, height);
+    
+    // Update bloom resolution
+    if (this.bloomPass) {
+      this.bloomPass.resolution.set(width, height);
+    }
   }
 
   start(): void {
@@ -211,17 +220,8 @@ export class SceneManager {
     // Update visualization controller
     this.visualizationController?.update();
 
-    // Determine if we should use post-processing
-    const usePostProcessing = !this.renderer.xr.enabled &&
-                            this.bloomPass.enabled &&
-                            (this.bloomPass.strength > 0 ||
-                             this.bloomPass.radius > 0 ||
-                             (this.bloomPass as any).edgeStrength > 0 ||
-                             (this.bloomPass as any).nodeStrength > 0 ||
-                             (this.bloomPass as any).environmentStrength > 0);
-
-    // Render scene
-    if (usePostProcessing) {
+    // Use post-processing in non-XR mode when bloom is enabled
+    if (!this.renderer.xr.enabled && this.bloomPass.enabled) {
       this.composer.render();
     } else {
       this.renderer.render(this.scene, this.camera);
@@ -334,30 +334,37 @@ export class SceneManager {
 
     // Update bloom settings
     if (bloom) {
-      if (!bloom.enabled) {
-        // When disabled, set all bloom parameters to zero/disabled state
-        this.bloomPass.enabled = false;
+      // Always update enabled state first
+      this.bloomPass.enabled = bloom.enabled;
+      
+      if (bloom.enabled) {
+        // When enabled, set all parameters
+        this.bloomPass.strength = bloom.strength || 1.5;
+        this.bloomPass.radius = bloom.radius || 0.4;
+        this.bloomPass.threshold = 0.3; // Lower threshold when enabled for better effect
+        
+        // Set custom strength parameters
+        (this.bloomPass as any).edgeStrength = bloom.edgeBloomStrength || 3.0;
+        (this.bloomPass as any).nodeStrength = bloom.nodeBloomStrength || 2.0;
+        (this.bloomPass as any).environmentStrength = bloom.environmentBloomStrength || 1.0;
+      } else {
+        // When disabled, zero out all parameters
         this.bloomPass.strength = 0;
         this.bloomPass.radius = 0;
         this.bloomPass.threshold = 1.0;
         (this.bloomPass as any).edgeStrength = 0;
         (this.bloomPass as any).nodeStrength = 0;
         (this.bloomPass as any).environmentStrength = 0;
-      } else {
-        // Only enable and set parameters if explicitly enabled
-        this.bloomPass.enabled = true;
-        this.bloomPass.strength = bloom.strength || 0;
-        this.bloomPass.radius = bloom.radius || 0;
-        this.bloomPass.threshold = 0.3; // Standard threshold when enabled
-        (this.bloomPass as any).edgeStrength = bloom.edgeBloomStrength || 0;
-        (this.bloomPass as any).nodeStrength = bloom.nodeBloomStrength || 0;
-        (this.bloomPass as any).environmentStrength = bloom.environmentBloomStrength || 0;
       }
+      
       logger.debug('Bloom settings updated:', {
         enabled: this.bloomPass.enabled,
         strength: this.bloomPass.strength,
         radius: this.bloomPass.radius,
-        threshold: this.bloomPass.threshold
+        threshold: this.bloomPass.threshold,
+        edgeStrength: (this.bloomPass as any).edgeStrength,
+        nodeStrength: (this.bloomPass as any).nodeStrength,
+        environmentStrength: (this.bloomPass as any).environmentStrength
       });
     }
 

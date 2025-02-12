@@ -192,16 +192,32 @@ async function init() {
         const viz = new GraphVisualization(settings);
         (window as any).visualization = viz;
 
-        // Subscribe to visualization settings changes
-        settingsStore.subscribe('visualization', (_, newVisualizationSettings) => {
-            if (viz && newVisualizationSettings) {
-                const updatedSettings: Settings = {
-                    ...settings,
-                    visualization: newVisualizationSettings as Settings['visualization']
-                };
-                viz.handleSettingsUpdate(updatedSettings);
-                logger.debug('Visualization settings updated:', newVisualizationSettings);
-            }
+        // Subscribe to all relevant visualization paths
+        const visualizationPaths = [
+            'visualization.nodes',
+            'visualization.edges',
+            'visualization.physics',
+            'visualization.rendering',
+            'visualization.animations',
+            'visualization.labels',
+            'visualization.bloom',
+            'visualization.hologram'
+        ];
+
+        // Subscribe to each path and update both visualization and scene
+        visualizationPaths.forEach(path => {
+            settingsStore.subscribe(path, () => {
+                if (viz) {
+                    const currentSettings = settingsStore.get('') as Settings;
+                    viz.handleSettingsUpdate(currentSettings);
+                    sceneManager.handleSettingsUpdate(currentSettings);
+                    logger.debug(`Visualization and scene updated from ${path} change:`, {
+                        path,
+                        bloom: currentSettings.visualization.bloom,
+                        rendering: currentSettings.visualization.rendering
+                    });
+                }
+            });
         });
 
         // Log successful initialization
