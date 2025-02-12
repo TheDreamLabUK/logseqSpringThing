@@ -329,7 +329,9 @@ export class XRSessionManager {
             
             // Apply AR scale if in AR mode
             if (platformManager.isQuest()) {
-                this.arGroup.scale.setScalar(this.currentSettings.roomScale);
+                // Apply additional 0.01 scale factor for Meta Quest AR mode
+                const arScale = this.currentSettings.roomScale * 0.01;
+                this.arGroup.scale.setScalar(arScale);
                 
                 // Move node instances to arGroup for proper scaling
                 const nodeInstances = Array.from(this.nodeManager.getNodes().values());
@@ -480,7 +482,9 @@ export class XRSessionManager {
         // Update room scale if changed
         if (this.currentSettings.roomScale !== undefined) {
             if (platformManager.isQuest()) {
-                this.arGroup.scale.setScalar(Number(this.currentSettings.roomScale));
+                // Apply additional 0.01 scale factor for Meta Quest AR mode
+                const arScale = Number(this.currentSettings.roomScale) * 0.01;
+                this.arGroup.scale.setScalar(arScale);
             } else {
                 this.cameraRig.scale.setScalar(Number(this.currentSettings.roomScale));
             }
