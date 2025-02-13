@@ -333,35 +333,12 @@ export class SceneManager {
       return;
     }
 
-    const { rendering, bloom } = settings.visualization;
-    this.currentRenderingSettings = rendering;
+    const { rendering: newRendering, bloom: newBloom } = settings.visualization;
+    const hasRenderingChanged = JSON.stringify(this.currentRenderingSettings) !== JSON.stringify(newRendering);
 
     // Update bloom settings
-    if (bloom) {
-      // Always update enabled state first
-      this.bloomPass.enabled = bloom.enabled;
-      
-      if (bloom.enabled) {
-        // When enabled, set all parameters
-        this.bloomPass.strength = bloom.strength || 1.5;
-        this.bloomPass.radius = bloom.radius || 0.4;
-        this.bloomPass.threshold = 0.3; // Lower threshold when enabled for better effect
-        
-        // Set custom strength parameters
-        (this.bloomPass as any).edgeStrength = bloom.edgeBloomStrength || 3.0;
-        (this.bloomPass as any).nodeStrength = bloom.nodeBloomStrength || 2.0;
-        (this.bloomPass as any).environmentStrength = bloom.environmentBloomStrength || 1.0;
-      } else {
-        // When disabled, zero out all parameters
-        this.bloomPass.strength = 0;
-        this.bloomPass.radius = 0;
-        this.bloomPass.threshold = 1.0;
-        (this.bloomPass as any).edgeStrength = 0;
-        (this.bloomPass as any).nodeStrength = 0;
-        (this.bloomPass as any).environmentStrength = 0;
-      }
-      
-      logger.debug('Bloom settings updated:', {
+    if (newBloom) {
+      const currentBloom = {
         enabled: this.bloomPass.enabled,
         strength: this.bloomPass.strength,
         radius: this.bloomPass.radius,
@@ -369,40 +346,75 @@ export class SceneManager {
         edgeStrength: (this.bloomPass as any).edgeStrength,
         nodeStrength: (this.bloomPass as any).nodeStrength,
         environmentStrength: (this.bloomPass as any).environmentStrength
+      };
+
+      const newBloomSettings = {
+        enabled: newBloom.enabled,
+        strength: newBloom.enabled ? (newBloom.strength || 1.5) : 0,
+        radius: newBloom.enabled ? (newBloom.radius || 0.4) : 0,
+        threshold: newBloom.enabled ? 0.3 : 1.0,
+        edgeStrength: newBloom.enabled ? (newBloom.edgeBloomStrength || 3.0) : 0,
+        nodeStrength: newBloom.enabled ? (newBloom.nodeBloomStrength || 2.0) : 0,
+        environmentStrength: newBloom.enabled ? (newBloom.environmentBloomStrength || 1.0) : 0
+      };
+
+      const hasBloomChanged = JSON.stringify(currentBloom) !== JSON.stringify(newBloomSettings);
+      
+      if (hasBloomChanged) {
+        this.bloomPass.enabled = newBloomSettings.enabled;
+        this.bloomPass.strength = newBloomSettings.strength;
+        this.bloomPass.radius = newBloomSettings.radius;
+        this.bloomPass.threshold = newBloomSettings.threshold;
+        (this.bloomPass as any).edgeStrength = newBloomSettings.edgeStrength;
+        (this.bloomPass as any).nodeStrength = newBloomSettings.nodeStrength;
+        (this.bloomPass as any).environmentStrength = newBloomSettings.environmentStrength;
+      }
+    }
+
+    if (hasRenderingChanged) {
+      this.currentRenderingSettings = newRendering;
+
+      // Update background color
+      if (newRendering.backgroundColor) {
+        this.scene.background = new Color(newRendering.backgroundColor);
+      }
+
+      // Update lighting
+      const lights = this.scene.children.filter(child => 
+        child instanceof AmbientLight || child instanceof DirectionalLight
+      );
+      
+      lights.forEach(light => {
+        if (light instanceof AmbientLight) {
+          light.intensity = newRendering.ambientLightIntensity;
+        } else if (light instanceof DirectionalLight) {
+          light.intensity = newRendering.directionalLightIntensity;
+        }
+      });
+
+      // Update renderer settings
+      if (this.renderer) {
+        // Note: Some settings can only be changed at renderer creation
+        if (newRendering.enableAntialiasing) {
+          logger.warn('Antialiasing setting change requires renderer recreation');
+          this.recreateRenderer();
+        }
+        if (newRendering.enableShadows) {
+          logger.warn('Shadow settings change requires renderer recreation');
+        }
+      }
+    }
+
+    // Only log if something actually changed
+    if (hasRenderingChanged) {
+      logger.debug('Scene settings updated:', {
+        rendering: newRendering,
+        bloom: {
+          enabled: this.bloomPass.enabled,
+          strength: this.bloomPass.strength
+        }
       });
     }
-
-    // Update background color
-    if (rendering.backgroundColor) {
-      this.scene.background = new Color(rendering.backgroundColor);
-    }
-
-    // Update lighting
-    const lights = this.scene.children.filter(child => 
-      child instanceof AmbientLight || child instanceof DirectionalLight
-    );
-    
-    lights.forEach(light => {
-      if (light instanceof AmbientLight) {
-        light.intensity = rendering.ambientLightIntensity;
-      } else if (light instanceof DirectionalLight) {
-        light.intensity = rendering.directionalLightIntensity;
-      }
-    });
-
-    // Update renderer settings
-    if (this.renderer) {
-      // Note: Some settings can only be changed at renderer creation
-      if (rendering.enableAntialiasing) {
-        logger.warn('Antialiasing setting change requires renderer recreation');
-        this.recreateRenderer();
-      }
-      if (rendering.enableShadows) {
-        logger.warn('Shadow settings change requires renderer recreation');
-      }
-    }
-
-    logger.debug('Scene settings updated:', rendering);
   }
 
   private recreateRenderer(): void {

@@ -1,0 +1,3477 @@
+diff --git a/client/core/constants.ts b/client/core/constants.ts
+index 9ff84999..b0ba67fa 100644
+--- a/client/core/constants.ts
++++ b/client/core/constants.ts
+@@ -32,7 +32,12 @@ export const API_ENDPOINTS = {
+     WEBSOCKET_CONTROL: '/api/websocket/control',
+     
+     // File endpoints
+-    FILES: '/api/files'
++    FILES: '/api/files',
++    
++    // Auth endpoints
++    AUTH_NOSTR: '/api/auth/nostr',
++    AUTH_NOSTR_VERIFY: '/api/auth/nostr/verify',
++    AUTH_NOSTR_LOGOUT: '/api/auth/nostr/logout'
+ } as const;
+ 
+ export type ApiEndpoints = typeof API_ENDPOINTS[keyof typeof API_ENDPOINTS];
+diff --git a/client/core/logger.ts b/client/core/logger.ts
+index 85b70a28..5da81479 100644
+--- a/client/core/logger.ts
++++ b/client/core/logger.ts
+@@ -1,5 +1,5 @@
+-let debugEnabled = true;
+-let logFullJson = true;
++let debugEnabled = false;
++let logFullJson = false;
+ 
+ export interface Logger {
+     debug: (...args: any[]) => void;
+@@ -40,10 +40,14 @@ export function createLogger(context: string): Logger {
+             }
+         },
+         log: (...args: any[]): void => {
+-            console.log(getPrefix(), ...formatArgs(args));
++            if (debugEnabled) {
++                console.log(getPrefix(), ...formatArgs(args));
++            }
+         },
+         info: (...args: any[]): void => {
+-            console.info(getPrefix(), ...formatArgs(args));
++            if (debugEnabled) {
++                console.info(getPrefix(), ...formatArgs(args));
++            }
+         },
+         warn: (...args: any[]): void => {
+             console.warn(getPrefix(), ...formatArgs(args));
+@@ -58,7 +62,9 @@ export function createLogger(context: string): Logger {
+ export const LoggerConfig = {
+     setGlobalDebug(enabled: boolean) {
+         debugEnabled = enabled;
+-        console.log(`[Logger] Debug logging ${enabled ? 'enabled' : 'disabled'}`);
++        if (enabled) {
++            console.log(`[Logger] Debug logging enabled`);
++        }
+     },
+     setFullJson(enabled: boolean) {
+         logFullJson = enabled;
+diff --git a/client/core/types.ts b/client/core/types.ts
+index 1357980b..4ce87111 100644
+--- a/client/core/types.ts
++++ b/client/core/types.ts
+@@ -421,7 +421,11 @@ export function transformNodeData(node: any): Node {
+   return {
+     id: node.id,
+     data: {
+-      position: node.data.position,
++      position: {
++        x: node.data.position.x,
++        y: node.data.position.y,
++        z: node.data.position.z
++      },
+       velocity: node.data.velocity || { x: 0, y: 0, z: 0 },
+       metadata: {
+         name: node.data.metadata?.name || node.id,
+diff --git a/client/index.ts b/client/index.ts
+index 7accdeb4..47157095 100644
+--- a/client/index.ts
++++ b/client/index.ts
+@@ -87,10 +87,11 @@ export class GraphVisualization {
+         // Initialize managers with SceneManager's scene and renderer
+         const scene = this.sceneManager.getScene();
+         const camera = this.sceneManager.getCamera();
++        const renderer = this.sceneManager.getRenderer();
+         
+         this.nodeManager = new EnhancedNodeManager(scene, settings);
+         this.edgeManager = new EdgeManager(scene, settings);
+-        this.hologramManager = new HologramManager(scene, settings);
++        this.hologramManager = new HologramManager(scene, renderer, settings);
+         this.textRenderer = new TextRenderer(camera, scene);
+         
+         // Apply initial settings to all components
+@@ -191,16 +192,32 @@ async function init() {
+         const viz = new GraphVisualization(settings);
+         (window as any).visualization = viz;
+ 
+-        // Subscribe to visualization settings changes
+-        settingsStore.subscribe('visualization', (_, newVisualizationSettings) => {
+-            if (viz && newVisualizationSettings) {
+-                const updatedSettings: Settings = {
+-                    ...settings,
+-                    visualization: newVisualizationSettings as Settings['visualization']
+-                };
+-                viz.handleSettingsUpdate(updatedSettings);
+-                logger.debug('Visualization settings updated:', newVisualizationSettings);
+-            }
++        // Subscribe to all relevant visualization paths
++        const visualizationPaths = [
++            'visualization.nodes',
++            'visualization.edges',
++            'visualization.physics',
++            'visualization.rendering',
++            'visualization.animations',
++            'visualization.labels',
++            'visualization.bloom',
++            'visualization.hologram'
++        ];
++
++        // Subscribe to each path and update both visualization and scene
++        visualizationPaths.forEach(path => {
++            settingsStore.subscribe(path, () => {
++                if (viz) {
++                    const currentSettings = settingsStore.get('') as Settings;
++                    viz.handleSettingsUpdate(currentSettings);
++                    sceneManager.handleSettingsUpdate(currentSettings);
++                    logger.debug(`Visualization and scene updated from ${path} change:`, {
++                        path,
++                        bloom: currentSettings.visualization.bloom,
++                        rendering: currentSettings.visualization.rendering
++                    });
++                }
++            });
+         });
+ 
+         // Log successful initialization
+diff --git a/client/rendering/EnhancedNodeManager.ts b/client/rendering/EnhancedNodeManager.ts
+index 86f5ce5a..f3a914f0 100644
+--- a/client/rendering/EnhancedNodeManager.ts
++++ b/client/rendering/EnhancedNodeManager.ts
+@@ -1,11 +1,8 @@
+ import {
+     Scene,
+-    InstancedMesh,
+-    Matrix4,
+     Vector3,
+     Mesh,
+     Object3D,
+-    Quaternion,
+     BufferGeometry,
+     Material,
+     PerspectiveCamera
+@@ -26,22 +23,22 @@ export class EnhancedNodeManager {
+     private nodes: Map<string, Mesh> = new Map();
+     private nodeGeometry: BufferGeometry;
+     private nodeMaterial: Material;
+-    private instancedMesh: InstancedMesh | null = null;
+     private geometryFactory: GeometryFactory;
+     private materialFactory: MaterialFactory;
+-    private isInstanced: boolean;
+     private isHologram: boolean = false;
+     private hologramMaterial: HologramShaderMaterial | null = null;
+     private metadataMaterial: Material | null = null;
+     private metadataVisualizer: MetadataVisualizer;
+-    private quaternion = new Quaternion();
+     private camera: PerspectiveCamera;
++    private updateFrameCount = 0;
++    private readonly AR_UPDATE_FREQUENCY = 2;
++    private readonly METADATA_DISTANCE_THRESHOLD = 50;
++    private readonly ANIMATION_DISTANCE_THRESHOLD = 30;
+ 
+     constructor(scene: Scene, settings: Settings) {
+         this.scene = scene;
+         this.settings = settings;
+ 
+-        // Find the camera in the scene
+         let camera: PerspectiveCamera | null = null;
+         scene.traverse((object) => {
+             if (object instanceof PerspectiveCamera) {
+@@ -58,8 +55,15 @@ export class EnhancedNodeManager {
+ 
+         this.geometryFactory = GeometryFactory.getInstance();
+         this.materialFactory = MaterialFactory.getInstance();
+-        this.isInstanced = settings.visualization.nodes.enableInstancing;
+-        this.nodeGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
++        
++        // Create geometry with the base size from settings
++        const baseSize = this.settings.visualization.nodes.sizeRange[0];
++        this.nodeGeometry = this.geometryFactory.getNodeGeometry(
++            settings.visualization.nodes.quality,
++            platformManager.isXRMode ? 'ar' : 'desktop',
++            baseSize
++        );
++        
+         this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
+         this.isHologram = settings.visualization.nodes.enableHologram;
+ 
+@@ -68,19 +72,7 @@ export class EnhancedNodeManager {
+         }
+ 
+         this.metadataMaterial = this.materialFactory.getMetadataMaterial();
+-
+-        // Initialize MetadataVisualizer with camera and scene
+         this.metadataVisualizer = new MetadataVisualizer(this.camera, this.scene, settings);
+-        this.setupInstancedMesh();
+-    }
+-
+-    private setupInstancedMesh() {
+-        if (this.isInstanced) {
+-            this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 1000);
+-            this.instancedMesh.count = 0;
+-            this.instancedMesh.layers.set(platformManager.isXRMode ? 1 : 0);
+-            this.scene.add(this.instancedMesh);
+-        }
+     }
+ 
+     public handleSettingsUpdate(settings: Settings): void {
+@@ -88,24 +80,23 @@ export class EnhancedNodeManager {
+         
+         // Update materials
+         this.nodeMaterial = this.materialFactory.getNodeMaterial(settings);
+-        if (!this.isInstanced) {
+-            this.nodes.forEach(node => {
+-                node.material = this.nodeMaterial;
+-            });
+-        }
++        this.nodes.forEach(node => {
++            node.material = this.nodeMaterial;
++        });
+ 
+         // Update geometry if needed
+-        const newGeometry = this.geometryFactory.getNodeGeometry(settings.visualization.nodes.quality);
++        const baseSize = settings.visualization.nodes.sizeRange[0];
++        const newGeometry = this.geometryFactory.getNodeGeometry(
++            settings.visualization.nodes.quality,
++            platformManager.isXRMode ? 'ar' : 'desktop',
++            baseSize
++        );
++        
+         if (this.nodeGeometry !== newGeometry) {
+             this.nodeGeometry = newGeometry;
+-            if (this.instancedMesh) {
+-                this.instancedMesh.geometry = this.nodeGeometry;
+-            }
+-            if (!this.isInstanced) {
+-                this.nodes.forEach(node => {
+-                    node.geometry = this.nodeGeometry;
+-                });
+-            }
++            this.nodes.forEach(node => {
++                node.geometry = this.nodeGeometry;
++            });
+         }
+ 
+         // Update material settings
+@@ -116,17 +107,16 @@ export class EnhancedNodeManager {
+             this.materialFactory.updateMaterial('hologram', settings);
+         }
+ 
+-        const newIsInstanced = settings.visualization.nodes.enableInstancing;
+         const newIsHologram = settings.visualization.nodes.enableHologram;
+-
+-        if (newIsInstanced !== this.isInstanced || newIsHologram !== this.isHologram) {
+-            this.isInstanced = newIsInstanced;
+-            this.isHologram = newIsHologram;
+-            this.rebuildInstancedMesh();
+-        }
++        this.isHologram = newIsHologram;
+ 
+         // Handle metadata visualization
+         if (settings.visualization.nodes.enableMetadataVisualization) {
++            const cameraPosition = this.camera.position;
++            const shouldShowMetadata = (position: Vector3) => {
++                return position.distanceTo(cameraPosition) < this.METADATA_DISTANCE_THRESHOLD;
++            };
++
+             this.nodes.forEach((node) => {
+                 // Remove existing metadata
+                 node.children.slice().forEach((child: Object3D) => {
+@@ -137,9 +127,11 @@ export class EnhancedNodeManager {
+ 
+                 // Add new metadata visualization
+                 const metadata = node.userData as NodeMetadata;
+-                if (metadata) {
++                if (metadata && shouldShowMetadata(node.position)) {
+                     this.metadataVisualizer.createMetadataLabel(metadata).then((group) => {
+-                        node.add(group);
++                        if (shouldShowMetadata(node.position)) {
++                            node.add(group);
++                        }
+                     });
+                 }
+             });
+@@ -156,21 +148,17 @@ export class EnhancedNodeManager {
+     }
+ 
+     updateNodes(nodes: { id: string, data: NodeData }[]) {
+-        // Clear existing nodes
+-        if (!this.isInstanced) {
+-            this.nodes.forEach(node => {
+-                this.scene.remove(node);
+-                if (node.geometry) node.geometry.dispose();
+-                if (node.material) node.material.dispose();
+-            });
+-            this.nodes.clear();
+-        }
+-
+-        if (this.isInstanced && this.instancedMesh) {
+-            this.instancedMesh.count = nodes.length;
+-        }
++        nodes.forEach((node) => {
++            const existingNode = this.nodes.get(node.id);
++            if (existingNode) {
++                existingNode.position.set(                    
++                    Array.isArray(node.data.position) ? node.data.position[0] : node.data.position.x,
++                    Array.isArray(node.data.position) ? node.data.position[1] : node.data.position.y,
++                    Array.isArray(node.data.position) ? node.data.position[2] : node.data.position.z
++                );
++                return;
++            }
+ 
+-        nodes.forEach((node, index) => {
+             const metadata: NodeMetadata = {
+                 id: node.id,
+                 name: node.data.metadata?.name || '',
+@@ -178,9 +166,9 @@ export class EnhancedNodeManager {
+                 hyperlinkCount: node.data.metadata?.links?.length || 0,
+                 importance: this.calculateImportance({ id: node.id, data: node.data }),
+                 position: {
+-                    x: node.data.position.x,
+-                    y: node.data.position.y,
+-                    z: node.data.position.z
++                    x: Array.isArray(node.data.position) ? node.data.position[0] : node.data.position.x,
++                    y: Array.isArray(node.data.position) ? node.data.position[1] : node.data.position.y,
++                    z: Array.isArray(node.data.position) ? node.data.position[2] : node.data.position.z
+                 }
+             };
+ 
+@@ -196,40 +184,27 @@ export class EnhancedNodeManager {
+                         nodeMesh.add(group);
+                     });
+                 }
+-
+-                this.scene.add(nodeMesh);
+-                this.nodes.set(node.id, nodeMesh);
+             } else {
+-                const scale = this.calculateNodeScale(metadata.importance);
+                 const position = new Vector3(metadata.position.x, metadata.position.y, metadata.position.z);
++                nodeMesh = new Mesh(this.nodeGeometry, this.nodeMaterial);
++                nodeMesh.position.copy(position);
++                nodeMesh.layers.enable(0);
++                nodeMesh.layers.enable(1);
++                nodeMesh.userData = metadata;
+ 
+-                if (this.isInstanced && this.instancedMesh) {
+-                    const matrix = new Matrix4();
+-                    matrix.compose(position, this.quaternion, new Vector3(scale, scale, scale));
+-                    this.instancedMesh.setMatrixAt(index, matrix);
+-                } else {
+-                    nodeMesh = new Mesh(this.nodeGeometry, this.nodeMaterial);
+-                    nodeMesh.position.copy(position);
+-                    nodeMesh.scale.set(scale, scale, scale);
+-                    nodeMesh.layers.enable(0);
+-                    nodeMesh.layers.enable(1);
+-                    nodeMesh.userData = metadata;
+-
+-                    if (this.settings.visualization.nodes.enableMetadataVisualization) {
+-                        this.metadataVisualizer.createMetadataLabel(metadata).then((group) => {
++                if (this.settings.visualization.nodes.enableMetadataVisualization && 
++                    position.distanceTo(this.camera.position) < this.METADATA_DISTANCE_THRESHOLD) {
++                    this.metadataVisualizer.createMetadataLabel(metadata).then((group) => {
++                        if (position.distanceTo(this.camera.position) < this.METADATA_DISTANCE_THRESHOLD) {
+                             nodeMesh.add(group);
+-                        });
+-                    }
+-
+-                    this.scene.add(nodeMesh);
+-                    this.nodes.set(node.id, nodeMesh);
++                        }
++                    });
+                 }
+             }
+-        });
+ 
+-        if (this.isInstanced && this.instancedMesh) {
+-            this.instancedMesh.instanceMatrix.needsUpdate = true;
+-        }
++            this.scene.add(nodeMesh);
++            this.nodes.set(node.id, nodeMesh);
++        });
+     }
+ 
+     private calculateCommitAge(timestamp: number): number {
+@@ -243,36 +218,24 @@ export class EnhancedNodeManager {
+         return Math.min(linkFactor + referenceFactor, 1);
+     }
+ 
+-    private calculateNodeScale(importance: number): number {
+-        const [min, max] = this.settings.visualization.nodes.sizeRange;
+-        return min + (max - min) * importance;
+-    }
++    update(deltaTime: number) {
++        this.updateFrameCount++;
++        const isARMode = platformManager.isXRMode;
+ 
+-    private rebuildInstancedMesh() {
+-        if (this.instancedMesh) {
+-            this.instancedMesh.geometry.dispose();
+-            this.instancedMesh.material.dispose();
+-            this.scene.remove(this.instancedMesh);
+-        }
+-        if (this.isInstanced) {
+-            this.instancedMesh = new InstancedMesh(this.nodeGeometry, this.nodeMaterial, 1000);
+-            this.instancedMesh.count = 0;
+-            this.instancedMesh.layers.set(platformManager.isXRMode ? 1 : 0);
+-            this.scene.add(this.instancedMesh);
++        if (isARMode && this.updateFrameCount % this.AR_UPDATE_FREQUENCY !== 0) {
++            return;
+         }
+-    }
+ 
+-    update(deltaTime: number) {
+         if (this.isHologram && this.hologramMaterial) {
+             this.hologramMaterial.update(deltaTime);
+         }
+ 
+         if (this.settings.visualization.animations.enableNodeAnimations) {
+-            if (this.instancedMesh) {
+-                this.instancedMesh.instanceMatrix.needsUpdate = true;
+-            }
++            const cameraPosition = this.camera.position;
+             this.scene.traverse((child: Object3D) => {
+-                if (child instanceof Mesh && (child.material as any).type === 'LineBasicMaterial') {
++                if (child instanceof Mesh && 
++                    (child.material as any).type === 'LineBasicMaterial' && 
++                    child.position.distanceTo(cameraPosition) < this.ANIMATION_DISTANCE_THRESHOLD) {
+                     child.rotateY(0.001 * deltaTime);
+                 }
+             });
+@@ -280,22 +243,16 @@ export class EnhancedNodeManager {
+     }
+ 
+     handleHandInteraction(hand: XRHandWithHaptics) {
+-        const position = new Vector3();
+         const indexTip = hand.hand.joints['index-finger-tip'] as Object3D | undefined;
+         if (indexTip) {
+-            position.setFromMatrixPosition(indexTip.matrixWorld);
+-            if (this.isHologram && this.hologramMaterial) {
++            if (this.isHologram && this.hologramMaterial && indexTip.matrixWorld) {
++                const position = new Vector3().setFromMatrixPosition(indexTip.matrixWorld);
+                 this.hologramMaterial.handleInteraction(position);
+             }
+         }
+     }
+ 
+     dispose() {
+-        if (this.instancedMesh) {
+-            this.instancedMesh.geometry.dispose();
+-            this.instancedMesh.material.dispose();
+-            this.scene.remove(this.instancedMesh);
+-        }
+         if (this.isHologram && this.hologramMaterial) {
+             this.hologramMaterial.dispose();
+         }
+@@ -311,38 +268,28 @@ export class EnhancedNodeManager {
+     }
+ 
+     public updateNodePositions(nodes: { id: string, data: { position: [number, number, number], velocity: [number, number, number] } }[]): void {
+-        nodes.forEach((node, index) => {
++        nodes.forEach((node) => {
+             const existingNode = this.nodes.get(node.id);
+             if (existingNode) {
++                // Convert array position to Vector3
++                const position = Array.isArray(node.data.position) 
++                    ? {
++                        x: node.data.position[0],
++                        y: node.data.position[1],
++                        z: node.data.position[2]
++                    }
++                    : node.data.position;
++                
+                 existingNode.position.set(
+-                    node.data.position[0],
+-                    node.data.position[1],
+-                    node.data.position[2]
++                    position.x,
++                    position.y,
++                    position.z
+                 );
+-            } else if (this.isInstanced && this.instancedMesh) {
+-                const matrix = new Matrix4();
+-                matrix.compose(
+-                    new Vector3(
+-                        node.data.position[0],
+-                        node.data.position[1],
+-                        node.data.position[2]
+-                    ),
+-                    this.quaternion,
+-                    new Vector3(1, 1, 1)
+-                );
+-                this.instancedMesh.setMatrixAt(index, matrix);
+             }
+         });
+-
+-        if (this.isInstanced && this.instancedMesh) {
+-            this.instancedMesh.instanceMatrix.needsUpdate = true;
+-        }
+     }
+ 
+     public setXRMode(enabled: boolean): void {
+-        if (this.instancedMesh) {
+-            this.instancedMesh.layers.set(enabled ? 1 : 0);
+-        }
+         this.nodes.forEach(node => {
+             node.layers.set(enabled ? 1 : 0);
+             node.traverse((child: Object3D) => {
+@@ -350,4 +297,8 @@ export class EnhancedNodeManager {
+             });
+         });
+     }
++
++    public getNodes(): Map<string, Mesh> {
++        return this.nodes;
++    }
+ }
+diff --git a/client/rendering/HologramManager.ts b/client/rendering/HologramManager.ts
+deleted file mode 100644
+index 4e1dfb8a..00000000
+--- a/client/rendering/HologramManager.ts
++++ /dev/null
+@@ -1,146 +0,0 @@
+-import {
+-    Scene,
+-    Group,
+-    Mesh,
+-    Vector3,
+-    WebGLRenderer
+-} from 'three';
+-import { Settings } from '../types/settings';
+-import { GeometryFactory } from './factories/GeometryFactory';
+-import { MaterialFactory } from './factories/MaterialFactory';
+-import { HologramShaderMaterial } from './materials/HologramShaderMaterial';
+-
+-export class HologramManager {
+-    private readonly group = new Group();
+-    private isXRMode = false;
+-    private readonly geometryFactory: GeometryFactory;
+-    private readonly materialFactory: MaterialFactory;
+-
+-    constructor(
+-        private readonly scene: Scene,
+-        _renderer: WebGLRenderer,  // Used by subclasses
+-        private settings: Settings
+-    ) {
+-        this.geometryFactory = GeometryFactory.getInstance();
+-        this.materialFactory = MaterialFactory.getInstance();
+-        this.createHolograms();
+-        this.scene.add(this.group);
+-    }
+-
+-    private createHolograms() {
+-        while (this.group.children.length > 0) {
+-            const child = this.group.children[0];
+-            this.group.remove(child);
+-            if (child instanceof Mesh) {
+-                child.geometry.dispose();
+-                child.material.dispose();
+-            }
+-        }
+-
+-        const quality = this.isXRMode ? 'high' : this.settings.xr.quality;
+-        const material = this.materialFactory.getHologramMaterial(this.settings);
+-
+-        for (let i = 0; i < this.settings.visualization.hologram.ringCount; i++) {
+-            const ring = new Mesh(
+-                this.geometryFactory.getHologramGeometry('ring', quality, true), // Use edge-only mode
+-                material.clone()
+-            );
+-            const scale = this.settings.visualization.hologram.ringSizes[i] || 20;
+-            ring.scale.set(scale, scale, scale);
+-            ring.rotateX(Math.PI / 2 * i);
+-            ring.rotateY(Math.PI / 4 * i);
+-            ring.userData.rotationSpeed = this.settings.visualization.hologram.ringRotationSpeed * (i + 1);
+-            (ring.material as HologramShaderMaterial).setEdgeOnly(true);
+-            this.group.add(ring);
+-        }
+-
+-        if (this.settings.visualization.hologram.enableBuckminster) {
+-            const mesh = new Mesh(
+-                this.geometryFactory.getHologramGeometry('buckminster', quality, true),
+-                material.clone()
+-            );
+-            const scale = this.settings.visualization.hologram.buckminsterScale;
+-            mesh.scale.set(scale, scale, scale);
+-            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.buckminsterOpacity;
+-            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
+-            this.group.add(mesh);
+-        }
+-
+-        if (this.settings.visualization.hologram.enableGeodesic) {
+-            const mesh = new Mesh(
+-                this.geometryFactory.getHologramGeometry('geodesic', quality, true),
+-                material.clone()
+-            );
+-            const scale = this.settings.visualization.hologram.geodesicScale;
+-            mesh.scale.set(scale, scale, scale);
+-            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.geodesicOpacity;
+-            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
+-            this.group.add(mesh);
+-        }
+-
+-        if (this.settings.visualization.hologram.enableTriangleSphere) {
+-            const mesh = new Mesh(
+-                this.geometryFactory.getHologramGeometry('triangleSphere', quality, true),
+-                material.clone()
+-            );
+-            const scale = this.settings.visualization.hologram.triangleSphereScale;
+-            mesh.scale.set(scale, scale, scale);
+-            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.triangleSphereOpacity;
+-            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
+-            this.group.add(mesh);
+-        }
+-    }
+-
+-    setXRMode(enabled: boolean) {
+-        this.isXRMode = enabled;
+-        this.group.traverse(child => {
+-            if (child instanceof Mesh && child.material instanceof HologramShaderMaterial) {
+-                child.material.defines = { USE_AR: '' };
+-                child.material.needsUpdate = true;
+-            }
+-        });
+-        this.createHolograms();
+-    }
+-
+-    handleInteraction(position: Vector3) {
+-        this.group.traverse(child => {
+-            if (child instanceof Mesh && child.material instanceof HologramShaderMaterial) {
+-                const distance = position.distanceTo(child.position);
+-                if (distance < 0.5) {
+-                    child.material.uniforms.pulseIntensity.value = 0.4;
+-                    setTimeout(() => {
+-                        if (child.material instanceof HologramShaderMaterial) {
+-                            child.material.uniforms.pulseIntensity.value = 0.2;
+-                        }
+-                    }, 500);
+-                }
+-            }
+-        });
+-    }
+-
+-    update(deltaTime: number) {
+-        this.group.traverse(child => {
+-            if (child instanceof Mesh) {
+-                child.rotateY((child.userData.rotationSpeed || this.settings.visualization.hologram.globalRotationSpeed) * deltaTime);
+-                if (child.material instanceof HologramShaderMaterial) {
+-                    child.material.uniforms.time.value += deltaTime;
+-                }
+-            }
+-        });
+-    }
+-
+-    updateSettings(newSettings: Settings) {
+-        this.settings = newSettings;
+-        this.materialFactory.updateMaterial('hologram', this.settings);
+-        this.createHolograms();
+-    }
+-
+-    getGroup() {
+-        return this.group;
+-    }
+-
+-    dispose() {
+-        // Geometries and materials are managed by the factories
+-        this.scene.remove(this.group);
+-    }
+-}
+diff --git a/client/rendering/VisualizationController.ts b/client/rendering/VisualizationController.ts
+index de905392..6f3fa303 100644
+--- a/client/rendering/VisualizationController.ts
++++ b/client/rendering/VisualizationController.ts
+@@ -4,9 +4,11 @@ import { Settings } from '../types/settings/base';
+ import { defaultSettings } from '../state/defaultSettings';
+ import { XRHandWithHaptics } from '../types/xr';
+ import { EdgeManager } from './EdgeManager';
++import { EnhancedNodeManager } from './EnhancedNodeManager';
+ import { graphDataManager } from '../state/graphData';
+ import { TextRenderer } from './textRenderer';
+ import { GraphData } from '../core/types';
++import { WebSocketService } from '../websocket/websocketService';
+ 
+ const logger = createLogger('VisualizationController');
+ 
+@@ -17,23 +19,44 @@ export class VisualizationController {
+     private static instance: VisualizationController | null = null;
+     private currentSettings: Settings;
+     private edgeManager: EdgeManager | null = null;
++    private nodeManager: EnhancedNodeManager | null = null;
+     private textRenderer: TextRenderer | null = null;
+     private isInitialized: boolean = false;
+     private pendingUpdates: Map<string, PendingUpdate> = new Map();
+-    private pendingEdgeUpdates: GraphData['edges'] | null = null;
++    private websocketService: WebSocketService;
+ 
+     private constructor() {
+         // Initialize with complete default settings
+-        this.currentSettings = { ...defaultSettings };
++        this.currentSettings = defaultSettings;
++        this.websocketService = WebSocketService.getInstance();
+         
+         // Subscribe to graph data updates
+         graphDataManager.subscribe((data: GraphData) => {
+-            if (this.isInitialized && this.edgeManager) {
+-                this.edgeManager.updateEdges(data.edges);
++            if (this.isInitialized) {
++                if (this.nodeManager) {
++                    this.nodeManager.updateNodes(data.nodes);
++                }
++                if (this.edgeManager) {
++                    this.edgeManager.updateEdges(data.edges);
++                }
+             } else {
+-                // Queue edge updates until initialized
+-                this.pendingEdgeUpdates = data.edges;
+-                logger.debug('Queuing edge updates until initialization');
++                // Queue updates until initialized
++                if (import.meta.env.DEV) logger.debug('Queuing updates until initialization');
++            }
++        });
++
++        // Subscribe to websocket binary updates
++        this.websocketService.onBinaryMessage((nodes) => {
++            if (this.nodeManager && this.isInitialized) {
++                // Convert binary node data to the format expected by updateNodePositions
++                const updates = nodes.map(node => ({
++                    id: node.id.toString(),
++                    data: {
++                        position: node.position,
++                        velocity: node.velocity
++                    }
++                }));
++                this.nodeManager.updateNodePositions(updates);
+             }
+         });
+     }
+@@ -41,52 +64,24 @@ export class VisualizationController {
+     public initializeScene(scene: Scene, camera: Camera): void {
+         logger.info('Initializing visualization scene');
+         
+-        // Initialize edge manager with scene and settings
++        // Initialize managers with scene and settings
+         this.edgeManager = new EdgeManager(scene, this.currentSettings);
++        this.nodeManager = new EnhancedNodeManager(scene, this.currentSettings);
+         this.textRenderer = new TextRenderer(camera, scene);
+         this.isInitialized = true;
+         
+-        // Apply any pending updates
+-        this.applyPendingUpdates();
+-        
+-        // Initialize with current graph data
++        if (import.meta.env.DEV) logger.debug('Scene managers initialized');
++
++        // Initialize with current graph data (if any)
+         const currentData = graphDataManager.getGraphData();
+-        if (this.pendingEdgeUpdates) {
+-            this.edgeManager.updateEdges(this.pendingEdgeUpdates);
+-            this.pendingEdgeUpdates = null;
+-        } else if (currentData.edges.length > 0) {
+-            this.edgeManager.updateEdges(currentData.edges);
++        if (currentData.nodes.length > 0 && this.nodeManager) {
++            this.nodeManager.updateNodes(currentData.nodes);
+         }
+-        
+-        logger.info('Visualization scene initialized');
+-    }
+ 
+-    private applyPendingUpdates(): void {
+-        if (!this.isInitialized || !this.edgeManager) {
+-            logger.debug('Cannot apply pending updates - not initialized');
+-            return;
+-        }
++        // Connect to websocket after scene initialization
++        this.websocketService.connect();
+ 
+-        logger.debug(`Applying ${this.pendingUpdates.size} pending updates`);
+-        this.pendingUpdates.forEach((update, path) => {
+-            let current = this.currentSettings as any;
+-            const parts = path.split('.');
+-            
+-            // Update the settings object
+-            for (let i = 0; i < parts.length - 1; i++) {
+-                const part = parts[i];
+-                if (!(part in current)) {
+-                    current[part] = {};
+-                }
+-                current = current[part];
+-            }
+-            current[parts[parts.length - 1]] = update.value;
+-            
+-            // Apply the update
+-            this.applySettingUpdate(update.category);
+-        });
+-        
+-        this.pendingUpdates.clear();
++        logger.info('Scene initialization complete');
+     }
+ 
+     public static getInstance(): VisualizationController {
+@@ -252,6 +247,9 @@ export class VisualizationController {
+     private updateNodeAppearance(): void {
+         if (!this.isInitialized) return;
+         logger.debug('Updating node appearance');
++        if (this.nodeManager) {
++            this.nodeManager.handleSettingsUpdate(this.currentSettings);
++        }
+     }
+ 
+     private updateEdgeAppearance(): void {
+@@ -278,37 +276,35 @@ export class VisualizationController {
+         logger.debug('Updating rendering quality');
+     }
+ 
+-    public updateEdges(edges: any[]): void {
+-        if (!this.isInitialized) {
+-            this.pendingEdgeUpdates = edges;
+-            logger.debug('Queuing edge updates', { count: edges.length });
+-            return;
+-        }
+-
+-        if (this.edgeManager) {
+-            this.edgeManager.updateEdges(edges);
+-            logger.debug('Edges updated', { count: edges.length });
+-        } else {
+-            logger.warn('EdgeManager not initialized');
++    public updateNodePositions(nodes: any[]): void {
++        if (this.nodeManager) {
++            this.nodeManager.updateNodePositions(nodes);
+         }
+     }
+ 
+     public update(): void {
+-        if (this.isInitialized && this.textRenderer) {
+-            this.textRenderer.update();
++        if (this.isInitialized) {
++            // Update node animations and state
++            if (this.nodeManager) {
++                this.nodeManager.update(1/60); // Standard 60fps delta time
++            }
++            
++            // Update text labels
++            if (this.textRenderer) {
++                this.textRenderer.update();
++            }
+         }
+     }
+ 
+     public dispose(): void {
+-        if (this.edgeManager) {
+-            this.edgeManager.dispose();
+-            this.edgeManager = null;
++        // Dispose of managers and cleanup websocket
++        if (this.textRenderer) {
++            this.textRenderer.dispose();
++            this.textRenderer = null;
+         }
+-        this.textRenderer?.dispose();
+-        this.currentSettings = { ...defaultSettings };
++        this.edgeManager?.dispose();
++        this.websocketService.dispose();
+         this.isInitialized = false;
+-        this.pendingUpdates.clear();
+-        this.pendingEdgeUpdates = null;
+         VisualizationController.instance = null;
+     }
+ }
+diff --git a/client/rendering/factories/GeometryFactory.ts b/client/rendering/factories/GeometryFactory.ts
+index 8db488cb..36932e4d 100644
+--- a/client/rendering/factories/GeometryFactory.ts
++++ b/client/rendering/factories/GeometryFactory.ts
+@@ -1,6 +1,5 @@
+ import { 
+     BufferGeometry, 
+-    SphereGeometry, 
+     CylinderGeometry, 
+     IcosahedronGeometry,
+     TorusGeometry
+@@ -19,60 +18,63 @@ export class GeometryFactory {
+         return GeometryFactory.instance;
+     }
+ 
+-    getNodeGeometry(quality: 'low' | 'medium' | 'high', context: 'ar' | 'desktop' = 'desktop'): BufferGeometry {
+-        const cacheKey = `node-${quality}-${context}`;
++    getNodeGeometry(quality: 'low' | 'medium' | 'high', context: 'ar' | 'desktop' = 'desktop', size: number = 40): BufferGeometry {
++        const cacheKey = `node-${quality}-${context}-${size}`;
+         if (this.geometryCache.has(cacheKey)) {
+             return this.geometryCache.get(cacheKey)!;
+         }
+ 
+         let geometry: BufferGeometry;
+-        let segmentCount: number;
++        let detail: number;
+         
+         switch (quality) {
+             case 'low':
+-               segmentCount = context === 'ar' ? 4 : 8;
++               detail = context === 'ar' ? 0 : 1;
+                  break;
+             case 'medium':
+-                segmentCount = context === 'ar' ? 8 : 16;
++                detail = context === 'ar' ? 1 : 2;
+                 break;
+             case 'high':
+-                segmentCount = context === 'ar' ? 16 : 24;
++                detail = context === 'ar' ? 1 : 2;
+                 break;
+             default:
+-                segmentCount = 16;
++                detail = context === 'ar' ? 1 : 2;
+         }
+-        geometry = new SphereGeometry(1, segmentCount, segmentCount);
++        // Use IcosahedronGeometry for better performance while maintaining visual quality
++        // Convert from native units (40-120) to scene scale (0.4-1.2)
++        geometry = new IcosahedronGeometry(size / 100, detail);
+         this.geometryCache.set(cacheKey, geometry);
+         return geometry;
+     }
+-    getHologramGeometry(type: string, quality: string, edgeOnly: boolean = false): BufferGeometry {
+-        const cacheKey = `hologram-${type}-${quality}${edgeOnly ? '-edge' : ''}`;
++
++    getHologramGeometry(type: string, quality: string, size: number = 40): BufferGeometry {
++        const cacheKey = `hologram-${type}-${quality}-${size}`;
+         if (this.geometryCache.has(cacheKey)) {
+             return this.geometryCache.get(cacheKey)!;
+         }
+ 
+         const segments = {
+-            low: { ring: 32, sphere: 16 },
+-            medium: { ring: 48, sphere: 24 },
+-            high: { ring: 64, sphere: 32 }
++            low: { ring: 16, sphere: 12 },
++            medium: { ring: 24, sphere: 16 },
++            high: { ring: 32, sphere: 24 }
+         }[quality] || { ring: 96, sphere: 48 };
+ 
+         let geometry: BufferGeometry;
+         switch (type) {
+             case 'ring':
+-                geometry = new TorusGeometry(1, 0.05, segments.ring, segments.ring * 2);
++                geometry = new TorusGeometry(size, size * 0.05, segments.ring, segments.ring * 2);
+                 break;
+             case 'buckminster':
+-                geometry = new IcosahedronGeometry(1, 2); // Icosahedron for Buckminster Fullerene
++                geometry = new IcosahedronGeometry(size * 1.2, 1); // One subdivision for buckminster
+                 break;
+             case 'geodesic':
+-                geometry = new IcosahedronGeometry(1, 5); // Higher detail Icosahedron
++                geometry = new IcosahedronGeometry(size * 1.5, 2); // Two subdivisions for geodesic
+                 break;
+             case 'triangleSphere':
+-                geometry = new SphereGeometry(1, 32, 16); // Sphere with triangular faces
++                geometry = new IcosahedronGeometry(size * 0.8, 1); // One subdivision for triangle sphere
+                 break;
+             default:
+-                geometry = new SphereGeometry(1, segments.sphere, segments.sphere);
++                geometry = new IcosahedronGeometry(size, 1); // Base size
+         }
+ 
+         this.geometryCache.set(cacheKey, geometry);
+@@ -86,15 +88,14 @@ export class GeometryFactory {
+         }
+ 
+         // Use CylinderGeometry for more reliable edge rendering
+-        const baseRadius = context === 'ar' ? 0.1 : 0.15; // Reduced base radius for better scaling
++        const baseRadius = context === 'ar' ? 0.5 : 1.0; // Native units for edge thickness
+         
+         // Adjust segments based on quality
+         const segments = {
+-            low: context === 'ar' ? 4 : 6,
+-            medium: context === 'ar' ? 6 : 8,
+-            high: context === 'ar' ? 8 : 10
++            low: context === 'ar' ? 4 : 5,
++            medium: context === 'ar' ? 5 : 6,
++            high: context === 'ar' ? 6 : 8
+         }[quality || 'medium'];
+-
+         const geometry = new CylinderGeometry(baseRadius, baseRadius, 1, segments);
+         
+         // Rotate 90 degrees to align with Z-axis
+diff --git a/client/rendering/factories/MaterialFactory.ts b/client/rendering/factories/MaterialFactory.ts
+index a63e90fa..5616ba85 100644
+--- a/client/rendering/factories/MaterialFactory.ts
++++ b/client/rendering/factories/MaterialFactory.ts
+@@ -24,7 +24,7 @@ export class MaterialFactory {
+         return new Color(`#${result[1]}${result[2]}${result[3]}`);
+     }
+ 
+-    public createHologramMaterial(settings: any): HologramShaderMaterial {
++    public createHologramMaterial(settings: any, context: 'ar' | 'desktop' = 'desktop'): HologramShaderMaterial {
+         const cacheKey = 'hologram';
+         if (this.materialCache.has(cacheKey)) {
+             return this.materialCache.get(cacheKey) as HologramShaderMaterial;
+@@ -36,13 +36,20 @@ export class MaterialFactory {
+             const materialColor = this.hexToRgb(settings.visualization.hologram.ringColor);
+             material.uniforms.color.value = materialColor;
+         }
++        
++        // Optimize for Quest
++        if (context === 'ar') {
++            material.transparent = true;
++            material.depthWrite = true; // Improve depth sorting
++            material.opacity = (settings.visualization?.hologram?.opacity || 0.6) * 0.8; // Reduce opacity for better performance
++        }
+ 
+         this.materialCache.set(cacheKey, material);
+         return material;
+     }
+ 
+-    public getHologramMaterial(settings: any): HologramShaderMaterial {
+-        return this.createHologramMaterial(settings);
++    public getHologramMaterial(settings: any, context: 'ar' | 'desktop' = 'desktop'): HologramShaderMaterial {
++        return this.createHologramMaterial(settings, context);
+     }
+ 
+     public getSceneSphereMaterial(settings: any): Material {
+@@ -54,20 +61,22 @@ export class MaterialFactory {
+             wireframe: true,
+             color: settings.visualization?.hologram?.ringColor || 0xffffff,
+             transparent: true,
++            depthWrite: true,
+             opacity: settings.visualization?.hologram?.opacity || 0.8
+         });
+         this.materialCache.set(cacheKey, material);
+         return material;
+     }
+ 
+-    public getRingMaterial(settings: any): Material {
+-        const cacheKey = 'ring';
++    public getRingMaterial(settings: any, context: 'ar' | 'desktop' = 'desktop'): Material {
++        const cacheKey = `ring-${context}`;
+         if (this.materialCache.has(cacheKey)) {
+             return this.materialCache.get(cacheKey)!;
+         }
+-        const material = this.getHologramMaterial(settings);
++        const material = this.getHologramMaterial(settings, context);
+         material.transparent = true;
+-        material.opacity = settings.visualization?.hologram?.opacity || 0.6;
++        material.depthWrite = true;
++        material.opacity = context === 'ar' ? (settings.visualization?.hologram?.opacity || 0.6) * 0.8 : (settings.visualization?.hologram?.opacity || 0.6);
+         this.materialCache.set(cacheKey, material);
+         return material;
+     }
+@@ -78,12 +87,14 @@ export class MaterialFactory {
+             return this.materialCache.get(cacheKey)!;
+         }
+ 
++        const opacity = context === 'ar' ? (settings.visualization?.nodes?.opacity || 0.9) * 0.8 : (settings.visualization?.nodes?.opacity || 0.9);
++
+         const material = new MeshBasicMaterial({
+             color: settings.visualization?.nodes?.baseColor || 0x4287f5,
+             transparent: true,
+-            opacity: settings.visualization?.nodes?.opacity || 0.9,
++            opacity,
+             wireframe: true,
+-            depthTest: true
++            depthWrite: true // Improve depth sorting
+         });
+         
+         this.materialCache.set(cacheKey, material);
+@@ -99,7 +110,8 @@ export class MaterialFactory {
+         const material = new MeshBasicMaterial({
+             color: 0xffffff,
+             transparent: true,
+-            opacity: 0.8
++            depthWrite: true,
++            opacity: 0.7 // Slightly reduced opacity for better performance
+         });
+ 
+         this.materialCache.set(cacheKey, material);
+@@ -115,7 +127,7 @@ export class MaterialFactory {
+             case 'node-phong': {
+                 const nodeMaterial = material as LineBasicMaterial;
+                 nodeMaterial.color = this.hexToRgb(settings.visualization?.nodes?.baseColor || '#4287f5');
+-                nodeMaterial.opacity = settings.visualization?.nodes?.opacity || 0.9;
++                nodeMaterial.opacity = type.includes('ar') ? (settings.visualization?.nodes?.opacity || 0.9) * 0.8 : (settings.visualization?.nodes?.opacity || 0.9);
+                 nodeMaterial.needsUpdate = true;
+                 break;
+             }
+diff --git a/client/rendering/materials/HologramShaderMaterial.ts b/client/rendering/materials/HologramShaderMaterial.ts
+index cd660ff4..d73b8743 100644
+--- a/client/rendering/materials/HologramShaderMaterial.ts
++++ b/client/rendering/materials/HologramShaderMaterial.ts
+@@ -14,13 +14,14 @@ export interface HologramUniforms {
+ export class HologramShaderMaterial extends THREE.ShaderMaterial {
+     declare uniforms: HologramUniforms;
+ 
+-    constructor(settings?: any) {
++    constructor(settings?: any, context: 'ar' | 'desktop' = 'desktop') {
++        const isAR = context === 'ar';
+         super({
+             uniforms: {
+                 time: { value: 0 },
+                 opacity: { value: settings?.visualization?.hologram?.opacity ?? 1.0 },
+                 color: { value: new THREE.Color(settings?.visualization?.hologram?.color ?? 0x00ff00) },
+-                pulseIntensity: { value: 0.2 },
++                pulseIntensity: { value: isAR ? 0.1 : 0.2 }, // Reduced pulse intensity for AR
+                 interactionPoint: { value: new THREE.Vector3() },
+                 interactionStrength: { value: 0.0 },
+                 isEdgeOnly: { value: false }
+@@ -46,16 +47,20 @@ export class HologramShaderMaterial extends THREE.ShaderMaterial {
+                 varying vec3 vPosition;
+ 
+                 void main() {
+-                    float pulse = sin(time * 2.0) * 0.5 + 0.5;
+-                    float dist = length(vPosition - interactionPoint);
+-                    float interaction = interactionStrength * (1.0 - smoothstep(0.0, 2.0, dist));
++                    // Simplified pulse calculation
++                    float pulse = sin(time) * 0.5 + 0.5;
++                    
++                    // Only calculate interaction if strength is significant
++                    float interaction = 0.0;
++                    if (interactionStrength > 0.01) {
++                        float dist = length(vPosition - interactionPoint);
++                        interaction = interactionStrength * (1.0 - smoothstep(0.0, 2.0, dist));
++                    }
+                     
+                     float alpha;
+                     if (isEdgeOnly) {
+-                        // Edge-only mode: stronger glow effect
+-                        alpha = opacity * (0.8 + pulse * pulseIntensity * 1.5 + interaction);
+-                        // Add edge enhancement
+-                        vec3 edgeColor = color + vec3(0.2) * pulse; // Slightly brighter edges
++                        alpha = opacity * (0.8 + pulse * pulseIntensity + interaction);
++                        vec3 edgeColor = color + vec3(0.1) * pulse; // Reduced edge brightness
+                         gl_FragColor = vec4(edgeColor, clamp(alpha, 0.0, 1.0));
+                     } else {
+                         alpha = opacity * (0.5 + pulse * pulseIntensity + interaction);
+@@ -64,24 +69,41 @@ export class HologramShaderMaterial extends THREE.ShaderMaterial {
+                 }
+             `,
+             transparent: true,
+-            side: THREE.DoubleSide,
+-            blending: THREE.AdditiveBlending
++            side: isAR ? 0 : 2, // THREE.FrontSide = 0, THREE.DoubleSide = 2
++            blending: THREE.AdditiveBlending,
++            wireframe: true,
++            wireframeLinewidth: 1
+         });
++
++        // Set update frequency based on context
++        this.updateFrequency = isAR ? 2 : 1; // Update every other frame in AR
++        this.frameCount = 0;
+     }
+ 
++    private updateFrequency: number;
++    private frameCount: number;
++
+     update(deltaTime: number): void {
+-        this.uniforms.time.value += deltaTime;
+-        this.uniforms.interactionStrength.value *= 0.95; // Decay interaction effect
++        this.frameCount++;
++        if (this.frameCount % this.updateFrequency === 0) {
++            this.uniforms.time.value += deltaTime;
++            if (this.uniforms.interactionStrength.value > 0.01) {
++                this.uniforms.interactionStrength.value *= 0.95; // Decay interaction effect
++            }
++        }
+     }
+ 
+     handleInteraction(position: THREE.Vector3): void {
+-        this.uniforms.interactionPoint.value.copy(position);
+-        this.uniforms.interactionStrength.value = 1.0;
++        if (this.frameCount % this.updateFrequency === 0) {
++            this.uniforms.interactionPoint.value.copy(position);
++            this.uniforms.interactionStrength.value = 1.0;
++        }
+     }
+ 
+     setEdgeOnly(enabled: boolean): void {
+         this.uniforms.isEdgeOnly.value = enabled;
+-        this.uniforms.pulseIntensity.value = enabled ? 0.3 : 0.2; // Stronger pulse for edges
++        // Increase pulse intensity for better visibility in wireframe mode
++        this.uniforms.pulseIntensity.value = enabled ? (this.side === 0 ? 0.15 : 0.3) : (this.side === 0 ? 0.1 : 0.2);
+     }
+ 
+     clone(): this {
+diff --git a/client/rendering/nodes.ts b/client/rendering/nodes.ts
+deleted file mode 100644
+index 3aba2604..00000000
+--- a/client/rendering/nodes.ts
++++ /dev/null
+@@ -1,250 +0,0 @@
+-import * as THREE from 'three';
+-import { Node } from '../core/types';
+-import { createLogger } from '../core/logger';
+-import { settingsManager } from '../state/settings';
+-import type { Settings } from '../types/settings';
+-import { GeometryFactory } from './factories/GeometryFactory';
+-import { MaterialFactory } from './factories/MaterialFactory';
+-import { SettingsObserver } from '../state/SettingsObserver';
+-
+-const logger = createLogger('NodeManager');
+-
+-const FLOATS_PER_NODE = 6;  // x, y, z, vx, vy, vz
+-
+-// Reusable objects for matrix calculations
+-const matrix = new THREE.Matrix4();
+-const quaternion = new THREE.Quaternion();
+-const position = new THREE.Vector3();
+-const scale = new THREE.Vector3(1, 1, 1);
+-
+-// Batch size for matrix updates
+-const MATRIX_UPDATE_BATCH_SIZE = 1000;
+-
+-export class NodeManager {
+-    private static instance: NodeManager;
+-    private currentSettings: Settings;
+-    private nodeInstances: THREE.InstancedMesh;
+-    private currentNodes: Node[] = [];
+-    private nodeIndices: Map<string, number> = new Map();
+-    private readonly materialFactory: MaterialFactory;
+-    private readonly geometryFactory: GeometryFactory;
+-    private readonly settingsObserver: SettingsObserver;
+-    
+-    // Matrix update queue for batching
+-    private pendingMatrixUpdates: Set<number> = new Set();
+-    private matrixUpdateScheduled: boolean = false;
+-
+-    private getRenderContext(): 'ar' | 'desktop' {
+-        return this.currentSettings.xr.mode === 'immersive-ar' ? 'ar' : 'desktop';
+-    }
+-
+-    private constructor() {
+-        this.currentSettings = settingsManager.getCurrentSettings();
+-        this.materialFactory = MaterialFactory.getInstance();
+-        this.geometryFactory = GeometryFactory.getInstance();
+-        this.settingsObserver = SettingsObserver.getInstance();
+-
+-        const context = this.getRenderContext();
+-
+-        // Create node instances with context-aware geometry and material
+-        this.nodeInstances = new THREE.InstancedMesh(
+-            this.geometryFactory.getNodeGeometry(this.currentSettings.xr.quality, context),
+-            this.materialFactory.getNodeMaterial(this.currentSettings, context),
+-            10000
+-        );
+-
+-        // Set AR layer for node instances
+-        this.nodeInstances.layers.enable(1);
+-        this.nodeInstances.frustumCulled = true; // Enable frustum culling
+-
+-        // Edge handling has been moved to EdgeManager
+-
+-        this.setupSettingsSubscriptions();
+-    }
+-
+-    private setupSettingsSubscriptions(): void {
+-        this.settingsObserver.subscribe('visualization', (_path: string, _value: any) => {
+-            const prevContext = this.getRenderContext();
+-            // Get fresh settings to ensure we have the complete state
+-            this.currentSettings = settingsManager.getCurrentSettings();
+-            const newContext = this.getRenderContext();
+-
+-            // Update materials and geometry if context changed
+-            if (prevContext !== newContext) {
+-                if (this.nodeInstances) {
+-                    // Update node geometry and material
+-                    const nodeGeometry = this.geometryFactory.getNodeGeometry(
+-                        this.currentSettings.xr.quality,
+-                        newContext
+-                    );
+-                    const nodeMaterial = this.materialFactory.getNodeMaterial(
+-                        this.currentSettings,
+-                        newContext
+-                    );
+-                    this.nodeInstances.geometry.dispose();
+-                    this.nodeInstances.material.dispose();
+-                    this.nodeInstances.geometry = nodeGeometry;
+-                    this.nodeInstances.material = nodeMaterial;
+-                }
+-
+-                // Edge handling has been moved to EdgeManager
+-            } else {
+-                // Just update material properties if context hasn't changed
+-                this.materialFactory.updateMaterial(`node-${newContext}`, this.currentSettings);
+-                this.materialFactory.updateMaterial(`edge-${newContext}`, this.currentSettings);
+-            }
+-        });
+-
+-        // Subscribe to XR settings changes
+-        this.settingsObserver.subscribe('xr', (_path: string, _value: any) => {
+-            this.currentSettings = settingsManager.getCurrentSettings();
+-            const context = this.getRenderContext();
+-            this.materialFactory.updateMaterial(`node-${context}`, this.currentSettings);
+-            this.materialFactory.updateMaterial(`edge-${context}`, this.currentSettings);
+-        });
+-    }
+-
+-    public static getInstance(): NodeManager {
+-        if (!NodeManager.instance) {
+-            NodeManager.instance = new NodeManager();
+-        }
+-        return NodeManager.instance;
+-    }
+-
+-    private scheduleBatchUpdate(): void {
+-        if (this.matrixUpdateScheduled) return;
+-        this.matrixUpdateScheduled = true;
+-
+-        requestAnimationFrame(() => {
+-            this.processBatchUpdate();
+-            this.matrixUpdateScheduled = false;
+-        });
+-    }
+-
+-    private processBatchUpdate(): void {
+-        if (!this.nodeInstances || this.pendingMatrixUpdates.size === 0) return;
+-
+-        let processed = 0;
+-        this.pendingMatrixUpdates.forEach(index => {
+-            if (processed >= MATRIX_UPDATE_BATCH_SIZE) {
+-                return; // Process remaining updates in next batch
+-            }
+-
+-            const node = this.currentNodes[index];
+-            if (!node) return;
+-
+-            position.set(
+-                node.data.position.x,
+-                node.data.position.y + 1.5,
+-                node.data.position.z
+-            );
+-
+-            const baseSize = this.currentSettings.visualization.nodes.baseSize || 1;
+-            scale.set(baseSize, baseSize, baseSize);
+-
+-            matrix.compose(position, quaternion, scale);
+-            this.nodeInstances.setMatrixAt(index, matrix);
+-
+-            processed++;
+-            this.pendingMatrixUpdates.delete(index);
+-        });
+-
+-        if (processed > 0) {
+-            this.nodeInstances.instanceMatrix.needsUpdate = true;
+-        }
+-
+-        if (this.pendingMatrixUpdates.size > 0) {
+-            this.scheduleBatchUpdate(); // Schedule next batch if needed
+-        }
+-    }
+-
+-    public updatePositions(positions: Float32Array): void {
+-        if (!this.nodeInstances) return;
+-
+-        const count = Math.min(positions.length / FLOATS_PER_NODE, this.nodeInstances.count);
+-        
+-        for (let i = 0; i < count; i++) {
+-            const baseIndex = i * FLOATS_PER_NODE;
+-            
+-            const x = positions[baseIndex];
+-            const y = positions[baseIndex + 1];
+-            const z = positions[baseIndex + 2];
+-            
+-            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) ||
+-                Math.abs(x) > 1000 || Math.abs(y) > 1000 || Math.abs(z) > 1000) {
+-                logger.warn(`Skipping invalid position for node ${i}: (${x}, ${y}, ${z})`);
+-                continue;
+-            }
+-
+-            this.pendingMatrixUpdates.add(i);
+-        }
+-
+-        this.scheduleBatchUpdate();
+-    }
+-
+-    public getAllNodeMeshes(): THREE.InstancedMesh[] {
+-        return [this.nodeInstances];
+-    }
+-
+-    public getNodePosition(nodeId: string): THREE.Vector3 {
+-        const node = this.currentNodes.find(n => n.id === nodeId);
+-        if (!node) {
+-            throw new Error(`Node ${nodeId} not found`);
+-        }
+-        return new THREE.Vector3(
+-            node.data.position.x,
+-            node.data.position.y,
+-            node.data.position.z
+-        );
+-    }
+-
+-    public updateNodePosition(nodeId: string, newPosition: THREE.Vector3): void {
+-        const index = this.nodeIndices.get(nodeId);
+-        if (index === undefined) {
+-            throw new Error(`Node ${nodeId} not found`);
+-        }
+-
+-        const node = this.currentNodes[index];
+-        if (node) {
+-            node.data.position = {
+-                x: newPosition.x,
+-                y: newPosition.y,
+-                z: newPosition.z
+-            };
+-            this.pendingMatrixUpdates.add(index);
+-            this.scheduleBatchUpdate();
+-        }
+-    }
+-
+-    public getCurrentNodes(): Node[] {
+-        return [...this.currentNodes];
+-    }
+-
+-    public updateNodes(nodes: Node[]): void {
+-        this.currentNodes = nodes;
+-        const positions = new Float32Array(nodes.length * FLOATS_PER_NODE);
+-        
+-        nodes.forEach((node, index) => {
+-            const baseIndex = index * FLOATS_PER_NODE;
+-            positions[baseIndex] = node.data.position.x;
+-            positions[baseIndex + 1] = node.data.position.y + 1.5;
+-            positions[baseIndex + 2] = node.data.position.z;
+-            positions[baseIndex + 3] = 0;
+-            positions[baseIndex + 4] = 0;
+-            positions[baseIndex + 5] = 0;
+-            
+-            this.nodeIndices.set(node.id, index);
+-        });
+-        
+-        this.updatePositions(positions);
+-    }
+-
+-    public dispose(): void {
+-        if (this.nodeInstances) {
+-            this.nodeInstances.geometry.dispose();
+-            this.nodeInstances.material.dispose();
+-        }
+-        // Edge cleanup has been moved to EdgeManager
+-        this.pendingMatrixUpdates.clear();
+-    }
+-}
+diff --git a/client/rendering/scene.ts b/client/rendering/scene.ts
+index 4382c35b..eaa54106 100644
+--- a/client/rendering/scene.ts
++++ b/client/rendering/scene.ts
+@@ -23,6 +23,8 @@ export class SceneManager {
+   private scene: Scene;
+   private camera: PerspectiveCamera;
+   private renderer: WebGLRenderer;
++  private canvas: HTMLCanvasElement;
++  private currentRenderingSettings: Settings['visualization']['rendering'] | null = null;
+   private controls: OrbitControls;
+   private sceneGrid: GridHelper | null = null;
+   
+@@ -37,6 +39,7 @@ export class SceneManager {
+ 
+   private constructor(canvas: HTMLCanvasElement) {
+     logger.log('Initializing SceneManager');
++    this.canvas = canvas;
+     
+     // Create scene
+     this.scene = new Scene();
+@@ -89,15 +92,19 @@ export class SceneManager {
+     const renderPass = new RenderPass(this.scene, this.camera);
+     this.composer.addPass(renderPass);
+ 
+-    // Initialize bloom with disabled state
++    // Initialize bloom with default state
+     this.bloomPass = new UnrealBloomPass(
+       new Vector2(window.innerWidth, window.innerHeight),
+-      0.0,  // Strength
+-      0.0,  // Radius
+-      1.0   // High threshold to effectively disable bloom
++      1.5,  // Default strength
++      0.4,  // Default radius
++      0.85  // Default threshold
+     );
+-    this.bloomPass.enabled = false;  // Explicitly disable bloom
+-    this.bloomPass.threshold = 1.0;  // Set high threshold to further ensure no bloom
++    
++    // Initialize custom bloom properties
++    (this.bloomPass as any).edgeStrength = 3.0;
++    (this.bloomPass as any).nodeStrength = 2.0;
++    (this.bloomPass as any).environmentStrength = 1.0;
++    
+     this.composer.addPass(this.bloomPass);
+ 
+     // Setup basic lighting
+@@ -154,6 +161,11 @@ export class SceneManager {
+ 
+     this.renderer.setSize(width, height);
+     this.composer.setSize(width, height);
++    
++    // Update bloom resolution
++    if (this.bloomPass) {
++      this.bloomPass.resolution.set(width, height);
++    }
+   }
+ 
+   start(): void {
+@@ -211,17 +223,8 @@ export class SceneManager {
+     // Update visualization controller
+     this.visualizationController?.update();
+ 
+-    // Determine if we should use post-processing
+-    const usePostProcessing = !this.renderer.xr.enabled &&
+-                            this.bloomPass.enabled &&
+-                            (this.bloomPass.strength > 0 ||
+-                             this.bloomPass.radius > 0 ||
+-                             (this.bloomPass as any).edgeStrength > 0 ||
+-                             (this.bloomPass as any).nodeStrength > 0 ||
+-                             (this.bloomPass as any).environmentStrength > 0);
+-
+-    // Render scene
+-    if (usePostProcessing) {
++    // Use post-processing in non-XR mode when bloom is enabled
++    if (!this.renderer.xr.enabled && this.bloomPass.enabled) {
+       this.composer.render();
+     } else {
+       this.renderer.render(this.scene, this.camera);
+@@ -331,33 +334,41 @@ export class SceneManager {
+     }
+ 
+     const { rendering, bloom } = settings.visualization;
++    this.currentRenderingSettings = rendering;
+ 
+     // Update bloom settings
+     if (bloom) {
+-      if (!bloom.enabled) {
+-        // When disabled, set all bloom parameters to zero/disabled state
+-        this.bloomPass.enabled = false;
++      // Always update enabled state first
++      this.bloomPass.enabled = bloom.enabled;
++      
++      if (bloom.enabled) {
++        // When enabled, set all parameters
++        this.bloomPass.strength = bloom.strength || 1.5;
++        this.bloomPass.radius = bloom.radius || 0.4;
++        this.bloomPass.threshold = 0.3; // Lower threshold when enabled for better effect
++        
++        // Set custom strength parameters
++        (this.bloomPass as any).edgeStrength = bloom.edgeBloomStrength || 3.0;
++        (this.bloomPass as any).nodeStrength = bloom.nodeBloomStrength || 2.0;
++        (this.bloomPass as any).environmentStrength = bloom.environmentBloomStrength || 1.0;
++      } else {
++        // When disabled, zero out all parameters
+         this.bloomPass.strength = 0;
+         this.bloomPass.radius = 0;
+         this.bloomPass.threshold = 1.0;
+         (this.bloomPass as any).edgeStrength = 0;
+         (this.bloomPass as any).nodeStrength = 0;
+         (this.bloomPass as any).environmentStrength = 0;
+-      } else {
+-        // Only enable and set parameters if explicitly enabled
+-        this.bloomPass.enabled = true;
+-        this.bloomPass.strength = bloom.strength || 0;
+-        this.bloomPass.radius = bloom.radius || 0;
+-        this.bloomPass.threshold = 0.3; // Standard threshold when enabled
+-        (this.bloomPass as any).edgeStrength = bloom.edgeBloomStrength || 0;
+-        (this.bloomPass as any).nodeStrength = bloom.nodeBloomStrength || 0;
+-        (this.bloomPass as any).environmentStrength = bloom.environmentBloomStrength || 0;
+       }
++      
+       logger.debug('Bloom settings updated:', {
+         enabled: this.bloomPass.enabled,
+         strength: this.bloomPass.strength,
+         radius: this.bloomPass.radius,
+-        threshold: this.bloomPass.threshold
++        threshold: this.bloomPass.threshold,
++        edgeStrength: (this.bloomPass as any).edgeStrength,
++        nodeStrength: (this.bloomPass as any).nodeStrength,
++        environmentStrength: (this.bloomPass as any).environmentStrength
+       });
+     }
+ 
+@@ -384,6 +395,7 @@ export class SceneManager {
+       // Note: Some settings can only be changed at renderer creation
+       if (rendering.enableAntialiasing) {
+         logger.warn('Antialiasing setting change requires renderer recreation');
++        this.recreateRenderer();
+       }
+       if (rendering.enableShadows) {
+         logger.warn('Shadow settings change requires renderer recreation');
+@@ -392,4 +404,32 @@ export class SceneManager {
+ 
+     logger.debug('Scene settings updated:', rendering);
+   }
++
++  private recreateRenderer(): void {
++    logger.log('Recreating renderer with updated settings');
++    
++    // Store current XR state
++    const wasXREnabled = this.renderer.xr.enabled;
++    
++    // Dispose of current renderer
++    this.renderer.dispose();
++    
++    // Create new renderer with updated settings
++    this.renderer = new WebGLRenderer({
++      canvas: this.canvas,
++      antialias: this.currentRenderingSettings?.enableAntialiasing || true,
++      alpha: true,
++      powerPreference: 'high-performance',
++      xr: {
++        enabled: wasXREnabled
++      }
++    });
++    this.renderer.setSize(window.innerWidth, window.innerHeight);
++    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
++    
++    // Recreate composer with new renderer
++    this.composer = new EffectComposer(this.renderer);
++    this.composer.addPass(new RenderPass(this.scene, this.camera));
++    this.composer.addPass(this.bloomPass);
++  }
+ }
+diff --git a/client/services/NostrAuthService.ts b/client/services/NostrAuthService.ts
+index 1d58a5c9..7754c199 100644
+--- a/client/services/NostrAuthService.ts
++++ b/client/services/NostrAuthService.ts
+@@ -1,6 +1,8 @@
+ import { SettingsEventEmitter, SettingsEventType } from './SettingsEventEmitter';
+ import { SettingsPersistenceService } from './SettingsPersistenceService';
+ import { createLogger } from '../core/logger';
++import { buildApiUrl } from '../core/api';
++import { API_ENDPOINTS } from '../core/constants';
+ 
+ const logger = createLogger('NostrAuthService');
+ 
+@@ -61,7 +63,16 @@ export class NostrAuthService {
+     public async initialize(): Promise<void> {
+         const storedPubkey = localStorage.getItem('nostr_pubkey');
+         if (storedPubkey) {
++            // Wait for checkAuthStatus to complete
+             await this.checkAuthStatus(storedPubkey);
++            
++            // Emit auth state change after initialization
++            this.eventEmitter.emit(SettingsEventType.AUTH_STATE_CHANGED, {
++                authState: {
++                    isAuthenticated: this.currentUser !== null,
++                    pubkey: this.currentUser?.pubkey
++                }
++            });
+         }
+     }
+ 
+@@ -119,7 +130,7 @@ export class NostrAuthService {
+             const signedEvent = await this.createAuthEvent(pubkey);
+ 
+             // Send authentication request to server
+-            const response = await fetch('/api/auth/nostr', {
++            const response = await fetch(buildApiUrl(API_ENDPOINTS.AUTH_NOSTR), {
+                 method: 'POST',
+                 headers: {
+                     'Content-Type': 'application/json',
+@@ -172,7 +183,7 @@ export class NostrAuthService {
+         
+         if (currentPubkey && token) {
+             try {
+-                await fetch('/api/auth/nostr', {
++                await fetch(buildApiUrl(API_ENDPOINTS.AUTH_NOSTR), {
+                     method: 'DELETE',
+                     headers: {
+                         'Content-Type': 'application/json',
+@@ -243,7 +254,7 @@ export class NostrAuthService {
+         }
+ 
+         try {
+-            const response = await fetch('/api/auth/nostr/verify', {
++            const response = await fetch(buildApiUrl(API_ENDPOINTS.AUTH_NOSTR_VERIFY), {
+                 method: 'POST',
+                 headers: {
+                     'Content-Type': 'application/json',
+@@ -263,6 +274,7 @@ export class NostrAuthService {
+                 throw new Error('Invalid session');
+             }
+ 
++            // Set currentUser before emitting event
+             this.currentUser = {
+                 pubkey,
+                 isPowerUser: verifyData.is_power_user,
+@@ -270,13 +282,6 @@ export class NostrAuthService {
+             };
+ 
+             this.settingsPersistence.setCurrentPubkey(pubkey);
+-            
+-            this.eventEmitter.emit(SettingsEventType.AUTH_STATE_CHANGED, {
+-                authState: {
+-                    isAuthenticated: true,
+-                    pubkey
+-                }
+-            });
+         } catch (error) {
+             logger.error('Auth check failed:', error);
+             await this.logout();
+diff --git a/client/state/SettingsStore.ts b/client/state/SettingsStore.ts
+index a84280ad..21da1e2c 100644
+--- a/client/state/SettingsStore.ts
++++ b/client/state/SettingsStore.ts
+@@ -3,7 +3,7 @@ import { createLogger } from '../core/logger';
+ import { defaultSettings } from './defaultSettings';
+ import { buildApiUrl } from '../core/api';
+ import { API_ENDPOINTS } from '../core/constants';
+-import { Logger } from '../core/logger';
++import { Logger, LoggerConfig } from '../core/logger';
+ import { validateSettings, validateSettingValue, ValidationError } from '../types/settings/validation';
+ import { convertObjectKeysToSnakeCase, convertObjectKeysToCamelCase } from '../core/utils';
+ 
+@@ -70,6 +70,12 @@ export class SettingsStore {
+                         // Use server settings as base, filling in any missing fields with defaults
+                         this.settings = this.deepMerge({ ...defaultSettings }, camelCaseSettings);
+                         this.settingsOrigin = 'server';
++                        
++                        // Initialize logger configuration from settings
++                        if (this.settings.system?.debug) {
++                            LoggerConfig.setGlobalDebug(this.settings.system.debug.enabled);
++                            LoggerConfig.setFullJson(this.settings.system.debug.logFullJson);
++                        }
+                         logger.info('Using server settings with defaults as fallback');
+                     } else {
+                         const errorText = await response.text();
+@@ -83,6 +89,12 @@ export class SettingsStore {
+                     }
+                     logger.warn('Error loading server settings, falling back to defaults:', error);
+                     this.settings = { ...defaultSettings };
++                    
++                    // Initialize logger with default settings
++                    if (this.settings.system?.debug) {
++                        LoggerConfig.setGlobalDebug(this.settings.system.debug.enabled);
++                        LoggerConfig.setFullJson(this.settings.system.debug.logFullJson);
++                    }
+                     this.settingsOrigin = 'default';
+                     
+                     // Validate default settings
+@@ -183,6 +195,14 @@ export class SettingsStore {
+     public async set(path: string, value: unknown): Promise<void> {
+         try {
+             // Validate the specific setting change
++            // Update logger config if debug settings change
++            if (path.startsWith('system.debug')) {
++                if (path === 'system.debug.enabled') {
++                    LoggerConfig.setGlobalDebug(value as boolean);
++                } else if (path === 'system.debug.logFullJson') {
++                    LoggerConfig.setFullJson(value as boolean);
++                }
++            }
+             const validationErrors = validateSettingValue(path, value, this.settings);
+             if (validationErrors.length > 0) {
+                 this.notifyValidationErrors(validationErrors);
+@@ -263,8 +283,8 @@ export class SettingsStore {
+             gestureSmoothing: preparedSettings.xr.gestureSmoothing ?? defaultXR.gestureSmoothing,
+             mode: preparedSettings.xr.mode ?? defaultXR.mode,
+             roomScale: preparedSettings.xr.roomScale ?? defaultXR.roomScale,
+-            quality: preparedSettings.xr.quality ?? defaultXR.quality,
+             spaceType: preparedSettings.xr.spaceType ?? defaultXR.spaceType,
++            quality: preparedSettings.xr.quality ?? defaultXR.quality,
+             enableHandTracking: preparedSettings.xr.enableHandTracking ?? defaultXR.enableHandTracking,
+             handMeshEnabled: preparedSettings.xr.handMeshEnabled ?? defaultXR.handMeshEnabled,
+             handMeshColor: preparedSettings.xr.handMeshColor ?? defaultXR.handMeshColor,
+@@ -393,33 +413,23 @@ export class SettingsStore {
+         return result;
+     }
+ 
+-    private updateSettingValue(path: string, value: unknown): void {
++   private updateSettingValue(path: string, value: unknown): void {
+         if (!path) {
+             throw new Error('Setting path cannot be empty');
+         }
+-        
++
+         const parts = path.split('.');
+         const section = parts[0];
+         const lastKey = parts.pop()!;
+-        const target = parts.reduce((obj: any, key) => {
+-            if (!(key in obj)) {
+-                obj[key] = {};
+-            }
+-            return obj[key];
+-        }, this.settings);
+-
+-        if (!target || typeof target !== 'object') {
+-            throw new Error(`Invalid settings path: ${path}`);
+-        }
+ 
+-        // Update the specific value
+-        target[lastKey] = value;
++        // Create a new settings object with the updated value
++        this.settings = this.deepUpdate(this.settings, parts, lastKey, value);
+ 
+         // If this is an XR setting, ensure all required fields are present
+         if (section === 'xr') {
+             const currentXR = this.settings.xr;
+             const defaultXR = defaultSettings.xr;
+-            
++
+             // Ensure all required XR fields are present with defaults
+             this.settings.xr = {
+                 ...currentXR,
+@@ -441,6 +451,18 @@ export class SettingsStore {
+         }
+     }
+ 
++    private deepUpdate(obj: any, path: string[], lastKey: string, value: unknown): any {
++        if (path.length === 0) {
++            return { ...obj, [lastKey]: value };
++        }
++
++        const key = path.shift()!;
++        return {
++            ...obj,
++            [key]: this.deepUpdate(obj[key] || {}, path, lastKey, value)
++        };
++    }
++
+     public dispose(): void {
+         this.subscribers.clear();
+         this.validationSubscribers = [];
+diff --git a/client/state/defaultSettings.ts b/client/state/defaultSettings.ts
+index dbf6d2fb..7fd1c508 100644
+--- a/client/state/defaultSettings.ts
++++ b/client/state/defaultSettings.ts
+@@ -4,11 +4,10 @@ export const defaultSettings: Settings = {
+     visualization: {
+         nodes: {
+             baseColor: '#32aeae',
+-            baseSize: 1.5,
+             metalness: 0.8,
+             opacity: 1.0,
+             roughness: 0.2,
+-            sizeRange: [1.0, 3.0],
++            sizeRange: [40, 120], // Native units for node sizes
+             quality: 'high',
+             enableInstancing: false,
+             enableHologram: false,
+@@ -24,8 +23,7 @@ export const defaultSettings: Settings = {
+             enableArrows: false,
+             opacity: 0.8,
+             widthRange: [1.5, 4.0],
+-            quality: 'medium',
+-            scaleFactor: 2.0
++            quality: 'medium'
+         },
+         physics: {
+             attractionStrength: 0.015,
+@@ -82,19 +80,19 @@ export const defaultSettings: Settings = {
+         },
+         hologram: {
+             ringCount: 3,
+-            ringColor: '#00ffff',
+-            ringOpacity: 0.8,
+-            ringSizes: [0.8, 1.2, 1.6, 2.0],
++            sphereSizes: [40, 80, 120],  // Native world units
+             ringRotationSpeed: 1.0,
++            ringColor: '#00ffff',
++            ringOpacity: 0.6,
+             enableBuckminster: true,
+-            buckminsterScale: 0.6,
++            buckminsterSize: 120,  // Native world units
+             buckminsterOpacity: 0.6,
+             enableGeodesic: false,
+-            geodesicScale: 0.4,
++            geodesicSize: 100,  // Native world units
+             geodesicOpacity: 0.5,
+             enableTriangleSphere: true,
+-            triangleSphereScale: 0.5,
+-            triangleSphereOpacity: 0.5,
++            triangleSphereSize: 140,  // Native world units
++            triangleSphereOpacity: 0.4,
+             globalRotationSpeed: 1.0
+         }
+     },
+diff --git a/client/types/settings/base.ts b/client/types/settings/base.ts
+index 49f870b4..18068bc1 100644
+--- a/client/types/settings/base.ts
++++ b/client/types/settings/base.ts
+@@ -25,7 +25,6 @@ export interface NodeSettings {
+     enableHologram: boolean;
+     enableMetadataShape: boolean;
+     enableMetadataVisualization: boolean;
+-    baseSize: number;
+     sizeRange: [number, number];
+     baseColor: string;
+     opacity: number;
+@@ -42,8 +41,7 @@ export interface EdgeSettings {
+     baseWidth: number;
+     enableArrows: boolean;
+     widthRange: [number, number];
+-    quality: 'low' | 'medium' | 'high';
+-    scaleFactor: number;
++    quality: 'low' | 'medium' | 'high'
+ }
+ 
+ export interface AnimationSettings {
+@@ -80,19 +78,19 @@ export interface BloomSettings {
+ 
+ export interface HologramSettings {
+     ringCount: number;
+-    ringSizes: number[];
++    sphereSizes: number[];  // Native world units (e.g. [40, 80, 120])
+     ringRotationSpeed: number;
+     globalRotationSpeed: number;
+     ringColor: string;
+     ringOpacity: number;
+     enableBuckminster: boolean;
+-    buckminsterScale: number;
++    buckminsterSize: number;  // Native world units (e.g. 120)
+     buckminsterOpacity: number;
+     enableGeodesic: boolean;
+-    geodesicScale: number;
++    geodesicSize: number;  // Native world units (e.g. 100)
+     geodesicOpacity: number;
+     enableTriangleSphere: boolean;
+-    triangleSphereScale: number;
++    triangleSphereSize: number;  // Native world units (e.g. 140)
+     triangleSphereOpacity: number;
+ }
+ 
+diff --git a/client/ui/ModularControlPanel.css b/client/ui/ModularControlPanel.css
+index 9f3a65e5..afa70e9b 100644
+--- a/client/ui/ModularControlPanel.css
++++ b/client/ui/ModularControlPanel.css
+@@ -1,4 +1,23 @@
+ /* Panel styles are now in index.html */
++.nested-object-container {
++    margin-left: 1rem;
++    padding-left: 0.5rem;
++    border-left: 2px solid rgba(255, 255, 255, 0.1);
++}
++
++.debug-disabled-message {
++    color: #666;
++    font-style: italic;
++    padding: 0.5rem;
++    background: rgba(0, 0, 0, 0.1);
++    border-radius: 4px;
++    margin: 0.5rem 0;
++}
++
++.value-display {
++    color: #666;
++    font-style: italic;
++}
+ 
+ .panel-toggle-btn {
+     position: fixed;
+@@ -152,10 +171,39 @@
+ .setting-control input[type="color"] {
+     width: 40px;
+     height: 24px;
+-    padding: 0;
+-    border: none;
++    padding: 2px;
++    border: 1px solid rgba(255, 255, 255, 0.1);
+     border-radius: 4px;
+     cursor: pointer;
++    background: rgba(0, 0, 0, 0.2);
++}
++
++.array-input {
++    display: flex;
++    gap: 0.5rem;
++    flex-wrap: wrap;
++    min-width: 120px;
++}
++
++.array-input .array-item {
++    width: 60px;
++    background: rgba(0, 0, 0, 0.2);
++    border: 1px solid rgba(255, 255, 255, 0.1);
++    border-radius: 4px;
++    color: #fff;
++    padding: 0.25rem 0.5rem;
++    font-size: 0.9rem;
++    text-align: center;
++}
++
++.array-input .array-item[type="number"] {
++    -moz-appearance: textfield;
++}
++
++.array-input .array-item[type="number"]::-webkit-outer-spin-button,
++.array-input .array-item[type="number"]::-webkit-inner-spin-button {
++    -webkit-appearance: none;
++    margin: 0;
+ }
+ 
+ .setting-control input[type="checkbox"] {
+@@ -164,6 +212,30 @@
+     cursor: pointer;
+ }
+ 
++.value-display {
++    color: #ddd;
++    font-family: monospace;
++    background: rgba(0, 0, 0, 0.2);
++    padding: 0.25rem 0.5rem;
++    border-radius: 4px;
++    min-width: 120px;
++    text-align: right;
++    white-space: pre;
++    overflow-x: auto;
++}
++
++.value-display.subcategory-value {
++    text-align: left;
++    margin: 0.5rem 0 1rem;
++    padding: 0.75rem;
++    background: rgba(0, 0, 0, 0.15);
++    border-left: 3px solid #4287f5;
++    font-size: 0.85rem;
++    min-width: unset;
++    width: 100%;
++    box-sizing: border-box;
++}
++
+ .nested-object-subsection {
+     background: rgba(0, 0, 0, 0.15);
+     border-radius: 4px;
+@@ -268,16 +340,6 @@
+     font-style: italic;
+ }
+ 
+-.value-display {
+-    color: #ddd;
+-    font-family: monospace;
+-    background: rgba(0, 0, 0, 0.2);
+-    padding: 0.25rem 0.5rem;
+-    border-radius: 4px;
+-    min-width: 120px;
+-    text-align: right;
+-}
+-
+ .control-panel {
+     position: fixed;
+     top: 20px;
+diff --git a/client/ui/ModularControlPanel.ts b/client/ui/ModularControlPanel.ts
+index f4b306c5..6225444c 100644
+--- a/client/ui/ModularControlPanel.ts
++++ b/client/ui/ModularControlPanel.ts
+@@ -4,7 +4,7 @@ import { getAllSettingPaths, formatSettingName } from '../types/settings/utils';
+ import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDisplay';
+ import { createLogger } from '../core/logger';
+ import { platformManager } from '../platform/platformManager';
+-import { nostrAuth, NostrUser } from '../services/NostrAuthService';
++import { nostrAuth } from '../services/NostrAuthService';
+ import { EventEmitter } from '../utils/eventEmitter';
+ 
+ const logger = createLogger('ModularControlPanel');
+@@ -203,47 +203,11 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
+ 
+         const loginBtn = document.createElement('button');
+         loginBtn.className = 'nostr-login-btn';
+-        loginBtn.onclick = async () => {
+-            try {
+-                // Show loading state
+-                loginBtn.disabled = true;
+-                loginBtn.textContent = 'Connecting...';
+-                
+-                const result = await nostrAuth.login();
+-                if (result.authenticated) {
+-                    this.updateAuthUI(result.user);
+-                } else {
+-                    throw new Error(result.error || 'Authentication failed');
+-                }
+-            } catch (error) {
+-                logger.error('Nostr login failed:', error);
+-                const errorMsg = document.createElement('div');
+-                errorMsg.className = 'auth-error';
+-                
+-                // Provide more user-friendly error messages
+-                let errorText = 'Login failed';
+-                if (error instanceof Error) {
+-                    if (error.message.includes('Alby extension not found')) {
+-                        errorText = 'Please install Alby extension to use Nostr login';
+-                    } else if (error.message.includes('Failed to get public key')) {
+-                        errorText = 'Please allow access to your Nostr public key';
+-                    } else {
+-                        errorText = error.message;
+-                    }
+-                }
+-                
+-                errorMsg.textContent = errorText;
+-                content.appendChild(errorMsg);
+-                setTimeout(() => errorMsg.remove(), 5000);
+-            } finally {
+-                // Reset button state
+-                loginBtn.disabled = false;
+-                this.updateAuthUI(nostrAuth.getCurrentUser());
+-            }
+-        };
+-
++        loginBtn.textContent = 'Login with Nostr';  // Set initial text
++        
+         const statusDisplay = document.createElement('div');
+         statusDisplay.className = 'auth-status';
++        statusDisplay.innerHTML = '<div class="not-authenticated">Not authenticated</div>';  // Set initial state
+         
+         content.appendChild(loginBtn);
+         content.appendChild(statusDisplay);
+@@ -251,7 +215,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
+ 
+         this.container.insertBefore(authSection, this.container.firstChild);
+ 
+-        // Add some basic styles for the auth section
++        // Add styles
+         const style = document.createElement('style');
+         style.textContent = `
+             .auth-section {
+@@ -308,48 +272,74 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
+         `;
+         document.head.appendChild(style);
+ 
++        // Set up login button click handler
++        loginBtn.onclick = async () => {
++            try {
++                loginBtn.disabled = true;
++                loginBtn.textContent = 'Connecting...';
++                
++                const result = await nostrAuth.login();
++                if (!result.authenticated) {
++                    throw new Error(result.error || 'Authentication failed');
++                }
++            } catch (error) {
++                logger.error('Nostr login failed:', error);
++                const errorMsg = document.createElement('div');
++                errorMsg.className = 'auth-error';
++                
++                let errorText = 'Login failed';
++                if (error instanceof Error) {
++                    if (error.message.includes('Alby extension not found')) {
++                        errorText = 'Please install Alby extension to use Nostr login';
++                    } else if (error.message.includes('Failed to get public key')) {
++                        errorText = 'Please allow access to your Nostr public key';
++                    } else {
++                        errorText = error.message;
++                    }
++                }
++                
++                errorMsg.textContent = errorText;
++                content.appendChild(errorMsg);
++                setTimeout(() => errorMsg.remove(), 5000);
++            } finally {
++                loginBtn.disabled = false;
++            }
++        };
++
++        // Subscribe to auth state changes
+         this.unsubscribers.push(
+-            nostrAuth.onAuthStateChanged(({ user }) => {
+-                this.updateAuthUI(user);
++            nostrAuth.onAuthStateChanged(({ authenticated, user }) => {
++                if (authenticated && user) {
++                    loginBtn.textContent = 'Logout';
++                    loginBtn.onclick = async () => {
++                        try {
++                            loginBtn.disabled = true;
++                            loginBtn.textContent = 'Logging out...';
++                            await nostrAuth.logout();
++                        } catch (error) {
++                            logger.error('Logout failed:', error);
++                        }
++                    };
++                    statusDisplay.innerHTML = `
++                        <div class="user-info">
++                            <div class="pubkey">${user.pubkey.substring(0, 8)}...</div>
++                            <div class="role">${user.isPowerUser ? 'Power User' : 'Basic User'}</div>
++                        </div>
++                    `;
++                } else {
++                    loginBtn.textContent = 'Login with Nostr';
++                    loginBtn.onclick = () => nostrAuth.login();
++                    statusDisplay.innerHTML = '<div class="not-authenticated">Not authenticated</div>';
++                }
++                loginBtn.disabled = false;
+             })
+         );
+ 
++        // Initialize Nostr auth and wait for it to complete
+         await nostrAuth.initialize();
+-        this.updateAuthUI(nostrAuth.getCurrentUser());
+     }
+ 
+-    private updateAuthUI(user: NostrUser | null | undefined): void {
+-        const loginBtn = this.container.querySelector('.nostr-login-btn') as HTMLButtonElement;
+-        const statusDisplay = this.container.querySelector('.auth-status') as HTMLDivElement;
+-
+-        if (!loginBtn || !statusDisplay) return;
+-
+-        if (user) {
+-            loginBtn.textContent = 'Logout';
+-            loginBtn.onclick = async () => {
+-                try {
+-                    loginBtn.disabled = true;
+-                    loginBtn.textContent = 'Logging out...';
+-                    await nostrAuth.logout();
+-                } catch (error) {
+-                    logger.error('Logout failed:', error);
+-                } finally {
+-                    loginBtn.disabled = false;
+-                }
+-            };
+-            statusDisplay.innerHTML = `
+-                <div class="user-info">
+-                    <div class="pubkey">${user.pubkey.substring(0, 8)}...</div>
+-                    <div class="role">${user.isPowerUser ? 'Power User' : 'Basic User'}</div>
+-                </div>
+-            `;
+-        } else {
+-            loginBtn.textContent = 'Login with Nostr';
+-            loginBtn.onclick = () => nostrAuth.login();
+-            statusDisplay.innerHTML = '<div class="not-authenticated">Not authenticated</div>';
+-        }
+-        loginBtn.disabled = false;
+-    }
++
+ 
+     private isAdvancedCategory(category: string): boolean {
+         const advancedCategories = ['physics', 'rendering', 'debug', 'network'];
+@@ -471,15 +461,22 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
+     private async createSubsection(subcategory: string, paths: string[]): Promise<HTMLElement> {
+         const subsection = document.createElement('div');
+         subsection.className = 'settings-subsection';
+-        
++
+         const header = document.createElement('h3');
+         header.textContent = formatSettingName(subcategory);
+         header.className = 'settings-subsection-header';
+         subsection.appendChild(header);
+         
++        // Sort paths to ensure consistent ordering
++        paths.sort();
++
++        // Create controls for each property
+         for (const path of paths) {
+-            const control = await this.createSettingControl(path);
+-            subsection.appendChild(control);
++            const value = this.settingsStore.get(path);
++            if (value !== undefined && value !== null) {
++                const control = await this.createSettingControl(path);
++                subsection.appendChild(control);
++            }
+         }
+         
+         return subsection;
+@@ -505,6 +502,70 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
+         const type = typeof value;
+         let input: HTMLElement;
+ 
++        // Handle nested objects
++        if (type === 'object' && value !== null && !Array.isArray(value)) {
++            const container = document.createElement('div');
++            container.className = 'nested-object-container';
++
++            // Skip rendering for debug objects unless debug is enabled
++            if (path.includes('system.debug') && !this.settingsStore.get('system.debug.enabled')) {
++                const debugDisabled = document.createElement('div');
++                debugDisabled.className = 'debug-disabled-message';
++                debugDisabled.textContent = 'Enable debug settings to configure';
++                return debugDisabled;
++            }
++
++            // Create controls for each nested property
++            for (const [key] of Object.entries(value)) {
++                const propPath = `${path}.${key}`;
++                const propControl = await this.createSettingControl(propPath);
++                container.appendChild(propControl);
++            }
++
++            input = container;
++            return input;
++        }
++        
++        const getNumericStep = (path: string): string => {
++            if (path.includes('size') || path.includes('iterations')) return '1';
++            if (path.includes('opacity') || path.includes('strength')) return '0.1';
++            if (path.includes('intensity')) return '0.1';
++            return '0.01';
++        };
++
++        // Handle arrays specially
++        if (Array.isArray(value)) {
++            const div = document.createElement('div');
++            div.className = 'array-input';
++
++            // Create inputs for each array element
++            value.forEach((item, index) => {
++                const itemInput = document.createElement('input');
++                itemInput.type = typeof item === 'number' ? 'number' : 'text';
++                if (itemInput.type === 'number') {
++                    itemInput.step = getNumericStep(path);
++                    itemInput.min = '0';
++                }
++                itemInput.value = item.toString();
++                itemInput.className = 'array-item';
++                itemInput.onchange = (e) => {
++                    const target = e.target as HTMLInputElement;
++                    const newValue = [...value];
++                    if (typeof item === 'number') {
++                        const parsed = parseFloat(target.value);
++                        newValue[index] = isNaN(parsed) ? item : Math.max(0, parsed);
++                    } else {
++                        newValue[index] = target.value;
++                    }
++                    this.updateSetting(path, newValue);
++                };
++                div.appendChild(itemInput);
++            });
++
++            input = div;
++            return input;
++        }
++
+         switch (type) {
+             case 'boolean': {
+                 const checkbox = document.createElement('input');
+@@ -521,8 +582,9 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
+             case 'number': {
+                 const numberInput = document.createElement('input');
+                 numberInput.type = 'number';
++                numberInput.step = getNumericStep(path);
++                numberInput.min = '0';
+                 numberInput.value = value.toString();
+-                numberInput.step = '0.01';
+                 numberInput.onchange = (e) => {
+                     const target = e.target as HTMLInputElement;
+                     this.updateSetting(path, parseFloat(target.value));
+@@ -535,6 +597,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
+                 if (path.toLowerCase().includes('color')) {
+                     const colorInput = document.createElement('input');
+                     colorInput.type = 'color';
++                    colorInput.className = 'color-input';
+                     colorInput.value = value;
+                     colorInput.onchange = (e) => {
+                         const target = e.target as HTMLInputElement;
+@@ -557,7 +620,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
+             default: {
+                 const div = document.createElement('div');
+                 div.className = 'value-display';
+-                div.textContent = value?.toString() || '';
++                div.textContent = value === null || value === undefined ? 'Not set' : String(value);
+                 input = div;
+             }
+         }
+@@ -566,18 +629,50 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
+     }
+ 
+     private updateSetting(path: string, value: any): void {
+-        if (this.updateTimeout !== null) {
+-            window.clearTimeout(this.updateTimeout);
+-        }
++        // Remove the setTimeout
++        try {
++            // Get the current value to compare types
++            const currentValue = this.settingsStore.get(path);
++            
++            // Ensure we maintain the correct type
++            let processedValue = value;
++            if (Array.isArray(currentValue)) {
++                // Ensure array values maintain their original types
++                processedValue = value.map((v: any, i: number) => {
++                    const originalValue = currentValue[i];
++                    if (typeof originalValue === 'number') {
++                        const parsed = parseFloat(v);
++                        return isNaN(parsed) ? originalValue : parsed;
++                    }
++                    return v;
++                });
++            } else if (typeof currentValue === 'number') {
++                const parsed = parseFloat(value);
++                processedValue = isNaN(parsed) ? currentValue : parsed;
++            }
+ 
+-        this.updateTimeout = window.setTimeout(async () => {
+-            try {
+-                await this.settingsStore.set(path, value);
+-                this.emit('settings:updated', { path, value });
+-            } catch (error) {
+-                logger.error(`Failed to update setting ${path}:`, error);
++            this.settingsStore.set(path, processedValue);
++            this.emit('settings:updated', { path, value: processedValue });
++        } catch (error) {
++            logger.error(`Failed to update setting ${path}:`, error);
++            
++            // Revert the input to the current value
++            const control = this.container.querySelector(`[data-setting-path="${path}"]`);
++            if (control) {
++                const input = control.querySelector('input, select') as HTMLInputElement;
++                if (input) {
++                    const currentValue = this.settingsStore.get(path);
++                    if (Array.isArray(currentValue)) {
++                        const inputs = control.querySelectorAll('.array-item') as NodeListOf<HTMLInputElement>;
++                        inputs.forEach((input, i) => {
++                            input.value = currentValue[i].toString();
++                        });
++                    } else {
++                        input.value = currentValue?.toString() || '';
++                    }
++                }
+             }
+-        }, 100);
++        }
+     }
+ 
+     private toggleDetached(sectionId: string): void {
+diff --git a/client/visualization/HologramManager.ts b/client/visualization/HologramManager.ts
+index 570a6576..0c15fff7 100644
+--- a/client/visualization/HologramManager.ts
++++ b/client/visualization/HologramManager.ts
+@@ -1,146 +1,145 @@
+-import * as THREE from 'three';
++import {
++    Scene,
++    Group,
++    Mesh,
++    Vector3,
++    WebGLRenderer
++} from 'three';
++import { Settings } from '../types/settings';
+ import { GeometryFactory } from '../rendering/factories/GeometryFactory';
+ import { MaterialFactory } from '../rendering/factories/MaterialFactory';
++import { HologramShaderMaterial } from '../rendering/materials/HologramShaderMaterial';
+ 
+ export class HologramManager {
+-    private readonly hologramGroup: THREE.Group;
+-    private readonly settings: any;
+-    private isXRMode: boolean = false;
++    private readonly group = new Group();
++    private isXRMode = false;
+     private readonly geometryFactory: GeometryFactory;
+     private readonly materialFactory: MaterialFactory;
+-    
+-    // Store scene objects
+-    private rings: THREE.Mesh[] = [];
+-    private spheres: THREE.Mesh[] = [];
+-    private ringQuaternions: THREE.Quaternion[] = [];
+ 
+     constructor(
+-        private readonly scene: THREE.Scene,
+-        settings: any
++        private readonly scene: Scene,
++        _renderer: WebGLRenderer,  // Used by subclasses
++        private settings: Settings
+     ) {
+-        this.settings = settings;
+-        this.hologramGroup = new THREE.Group();
+-        this.scene.add(this.hologramGroup);
+-        this.hologramGroup.layers.set(this.isXRMode ? 1 : 0);
+-        
+         this.geometryFactory = GeometryFactory.getInstance();
+         this.materialFactory = MaterialFactory.getInstance();
+-        
+-        this.createHolographicStructures();
++        this.createHolograms();
++        this.scene.add(this.group);
+     }
+ 
+-    private createHolographicStructures(): void {
+-        // Clean up existing objects
+-        this.rings.forEach(ring => {
+-            ring.geometry.dispose();
+-            ring.material.dispose();
+-            this.hologramGroup.remove(ring);
+-        });
+-        this.spheres.forEach(sphere => {
+-            sphere.geometry.dispose();
+-            sphere.material.dispose();
+-            this.hologramGroup.remove(sphere);
+-        });
+-        this.rings = [];
+-        this.spheres = [];
++    private createHolograms() {
++        while (this.group.children.length > 0) {
++            const child = this.group.children[0];
++            this.group.remove(child);
++            if (child instanceof Mesh) {
++                child.geometry.dispose();
++                child.material.dispose();
++            }
++        }
+ 
+-        const quality = this.isXRMode ? 'high' : (this.settings.quality || 'medium');
++        const quality = this.isXRMode ? 'high' : this.settings.xr.quality;
++        const material = this.materialFactory.getHologramMaterial(this.settings);
+ 
+-        // Create spheres
+-        const sphereRadii = [40, 100, 200];
+-        sphereRadii.forEach(radius => {
+-            const geometry = this.geometryFactory.getHologramGeometry('innerSphere', quality);
+-            const material = this.materialFactory.getSceneSphereMaterial(this.settings);
+-            const sphere = new THREE.Mesh(geometry, material);
+-            sphere.scale.setScalar(radius / 40); // Base geometry is radius 40
+-            sphere.layers.set(this.isXRMode ? 1 : 0);
+-            this.hologramGroup.add(sphere);
+-            this.spheres.push(sphere);
+-        });
++        // Create rings using native world units (40, 80, 120)
++        const sphereSizes = this.settings.visualization.hologram.sphereSizes;
++        for (let i = 0; i < this.settings.visualization.hologram.ringCount; i++) {
++            const size = sphereSizes[i] || 40 * (i + 1); // Default to 40, 80, 120 pattern if not specified
++            const ring = new Mesh(
++                this.geometryFactory.getHologramGeometry('ring', quality, size),
++                material.clone()
++            );
++            // Position rings at different angles to make them more visible
++            ring.rotateX(Math.PI / 3 * i);  // Changed from PI/2 to PI/3
++            ring.rotateY(Math.PI / 6 * i);  // Changed from PI/4 to PI/6
++            ring.userData.rotationSpeed = this.settings.visualization.hologram.ringRotationSpeed * (i + 1);
++            (ring.material as HologramShaderMaterial).setEdgeOnly(true);
++            this.group.add(ring);
++        }
+ 
+-        // Create rings
+-        sphereRadii.forEach(radius => {
+-            const scale = radius / 40; // Base ring geometry is radius 40
+-            for (let i = 0; i < 3; i++) {
+-                const geometry = this.geometryFactory.getHologramGeometry('ring', quality);
+-                const material = this.materialFactory.getRingMaterial(this.settings);
+-                const ring = new THREE.Mesh(geometry, material);
+-                
+-                ring.scale.setScalar(scale);
+-                ring.layers.set(this.isXRMode ? 1 : 0);
+-                const quaternion = new THREE.Quaternion();
+-                quaternion.setFromEuler(new THREE.Euler(Math.PI / 3 * i, Math.PI / 4 * i, 0));
+-                ring.quaternion.copy(quaternion);
+-                this.ringQuaternions.push(quaternion);
+-                
+-                this.hologramGroup.add(ring);
+-                this.rings.push(ring);
+-            }
+-        });
++        if (this.settings.visualization.hologram.enableBuckminster) {
++            const size = this.settings.visualization.hologram.buckminsterSize;
++            const mesh = new Mesh(
++                this.geometryFactory.getHologramGeometry('buckminster', quality, size),
++                material.clone()
++            );
++            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.buckminsterOpacity;
++            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
++            this.group.add(mesh);
++        }
++
++        if (this.settings.visualization.hologram.enableGeodesic) {
++            const size = this.settings.visualization.hologram.geodesicSize;
++            const mesh = new Mesh(
++                this.geometryFactory.getHologramGeometry('geodesic', quality, size),
++                material.clone()
++            );
++            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.geodesicOpacity;
++            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
++            this.group.add(mesh);
++        }
++
++        if (this.settings.visualization.hologram.enableTriangleSphere) {
++            const size = this.settings.visualization.hologram.triangleSphereSize;
++            const mesh = new Mesh(
++                this.geometryFactory.getHologramGeometry('triangleSphere', quality, size),
++                material.clone()
++            );
++            (mesh.material as HologramShaderMaterial).uniforms.opacity.value = this.settings.visualization.hologram.triangleSphereOpacity;
++            (mesh.material as HologramShaderMaterial).setEdgeOnly(true);
++            this.group.add(mesh);
++        }
+     }
+-    public setXRMode(enabled: boolean): void {
++
++    setXRMode(enabled: boolean) {
+         this.isXRMode = enabled;
+-        this.hologramGroup.layers.set(enabled ? 1 : 0);
+-        [...this.rings, ...this.spheres].forEach(mesh => {
+-            mesh.layers.set(enabled ? 1 : 0);
++        this.group.traverse(child => {
++            if (child instanceof Mesh && child.material instanceof HologramShaderMaterial) {
++                child.material.defines = { USE_AR: '' };
++                child.material.needsUpdate = true;
++            }
+         });
+-        this.createHolographicStructures();
++        this.createHolograms();
+     }
+ 
+-
+-    public update(deltaTime: number): void {
+-        // Update ring rotations using quaternions
+-        const rotationQuat = new THREE.Quaternion();
+-        rotationQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), deltaTime * 0.1);
+-        
+-        this.rings.forEach((ring, index) => {
+-            this.ringQuaternions[index].multiply(rotationQuat);
+-            ring.quaternion.copy(this.ringQuaternions[index]);
++    handleInteraction(position: Vector3) {
++        this.group.traverse(child => {
++            if (child instanceof Mesh && child.material instanceof HologramShaderMaterial) {
++                const distance = position.distanceTo(child.position);
++                if (distance < 0.5 && child.material.uniforms) {
++                    child.material.uniforms.pulseIntensity.value = 0.4;
++                    setTimeout(() => {
++                        if (child.material instanceof HologramShaderMaterial && child.material.uniforms) {
++                            child.material.uniforms.pulseIntensity.value = 0.2;
++                        }
++                    }, 500);
++                }
++            }
+         });
+     }
+ 
+-    public handleHandInteraction(hand: THREE.XRHand): void {
+-        if (!this.isXRMode) return;
+-
+-        const indexTip = hand.joints['index-finger-tip'];
+-        if (!indexTip) return;
+-
+-        const position = new THREE.Vector3();
+-        position.set(
+-            indexTip.position.x,
+-            indexTip.position.y,
+-            indexTip.position.z
+-        );
+-        position.applyMatrix4(indexTip.matrixWorld);
+-
+-        [...this.rings, ...this.spheres].forEach(mesh => {
+-            const distance = position.distanceTo(mesh.position);
+-            if (distance < 0.1) {
+-                if (mesh.material instanceof THREE.MeshBasicMaterial) {
+-                    const originalOpacity = mesh.material.opacity;
+-                    mesh.material.opacity = Math.min(originalOpacity * 2, 1);
+-                    setTimeout(() => {
+-                        mesh.material.opacity = originalOpacity;
+-                    }, 200);
++    update(deltaTime: number) {
++        this.group.traverse(child => {
++            if (child instanceof Mesh) {
++                child.rotateY((child.userData.rotationSpeed || this.settings.visualization.hologram.globalRotationSpeed) * deltaTime);
++                if (child.material instanceof HologramShaderMaterial && child.material.uniforms) {
++                    child.material.uniforms.time.value += deltaTime;
+                 }
+             }
+         });
+     }
+ 
+-    public updateSettings(settings: any): void {
+-        Object.assign(this.settings, settings);
+-        this.createHolographicStructures();
++    updateSettings(newSettings: Settings) {
++        this.settings = newSettings;
++        this.materialFactory.updateMaterial('hologram', this.settings);
++        this.createHolograms();
+     }
+ 
+-    public dispose(): void {
+-        this.rings.forEach(ring => {
+-            ring.geometry.dispose();
+-            ring.material.dispose();
+-        });
+-        this.spheres.forEach(sphere => {
+-            sphere.geometry.dispose();
+-            sphere.material.dispose();
+-        });
+-        this.scene.remove(this.hologramGroup);
++    getGroup() {
++        return this.group;
++    }
++
++    dispose() {
++        // Geometries and materials are managed by the factories
++        this.scene.remove(this.group);
+     }
+ }
+diff --git a/client/xr/handInteraction.ts b/client/xr/handInteraction.ts
+index d4b16e1f..4888265c 100644
+--- a/client/xr/handInteraction.ts
++++ b/client/xr/handInteraction.ts
+@@ -1,7 +1,7 @@
+-import { Vector3 } from 'three';
++import { Vector3, Mesh } from 'three';
+ import { XRHandWithHaptics } from '../types/xr';
+ import { WebSocketService } from '../websocket/websocketService';
+-import { NodeManager } from '../rendering/nodes';
++import { EnhancedNodeManager } from '../rendering/EnhancedNodeManager';
+ import { createLogger } from '../core/logger';
+ import { Node } from '../core/types';
+ 
+@@ -11,11 +11,11 @@ export class HandInteractionManager {
+     private static instance: HandInteractionManager;
+     private lastPinchState: boolean = false;
+     private websocketService: WebSocketService;
+-    private nodeManager: NodeManager;
++    private nodeManager?: EnhancedNodeManager;
+ 
+     private constructor() {
+         this.websocketService = WebSocketService.getInstance();
+-        this.nodeManager = NodeManager.getInstance();
++        // Note: nodeManager will be set via setNodeManager
+     }
+ 
+     public static getInstance(): HandInteractionManager {
+@@ -25,7 +25,13 @@ export class HandInteractionManager {
+         return HandInteractionManager.instance;
+     }
+ 
++    public setNodeManager(nodeManager: EnhancedNodeManager): void {
++        this.nodeManager = nodeManager;
++    }
++
+     public processHandInput(hand: XRHandWithHaptics): void {
++        if (!this.nodeManager) return;
++
+         const thumbTip = hand.hand.joints['thumb-tip'];
+         const indexTip = hand.hand.joints['index-finger-tip'];
+ 
+@@ -46,20 +52,25 @@ export class HandInteractionManager {
+     }
+ 
+     private handlePinchGesture(position: Vector3): void {
++        if (!this.nodeManager) return;
++
+         // Find closest node to index finger tip
+-        const nodes = this.nodeManager.getCurrentNodes();
+-        let closestNode: Node | null = null;
++        const nodes = Array.from(this.nodeManager.getNodes().values());
++        let closestNodeMesh: Mesh | null = null;
+         let closestDistance = Infinity;
+ 
+-        for (const node of nodes) {
+-            const nodePos = this.nodeManager.getNodePosition(node.id);
++        for (const nodeMesh of nodes) {
++            const nodePos = nodeMesh.position;
+             const distance = nodePos.distanceTo(position);
+             if (distance < closestDistance && distance < 0.1) { // 10cm threshold
+-                closestNode = node;
++                closestNodeMesh = nodeMesh;
+                 closestDistance = distance;
+             }
+         }
+ 
++        const closestNode = closestNodeMesh?.userData as Node | undefined;
++        if (!closestNode) return;
++
+         if (closestNode && closestNode.id) {
+             _logger.debug(`Pinch gesture detected on node ${closestNode.id}`);
+             
+@@ -79,7 +90,7 @@ export class HandInteractionManager {
+             }]);
+ 
+             // Also update local node position
+-            this.nodeManager.updateNodePosition(closestNode.id, position);
++            this.nodeManager.updateNodePositions([{ id: closestNode.id, data: { position: [position.x, position.y, position.z], velocity: [0, 0, 0] } }]);
+         }
+     }
+ 
+diff --git a/client/xr/xrInteraction.ts b/client/xr/xrInteraction.ts
+index 8790dcd9..e2831dd8 100644
+--- a/client/xr/xrInteraction.ts
++++ b/client/xr/xrInteraction.ts
+@@ -1,5 +1,4 @@
+ import { XRSessionManager } from './xrSessionManager';
+-import { NodeManager } from '../rendering/nodes';
+ import { SettingsStore } from '../state/SettingsStore';
+ import { createLogger } from '../core/logger';
+ import { WebSocketService } from '../websocket/websocketService';
+@@ -18,7 +17,7 @@ export class XRInteraction {
+     private websocketService: WebSocketService;
+ 
+     private xrManager: XRSessionManager;
+-    private constructor(xrManager: XRSessionManager, _: NodeManager) {
++    private constructor(xrManager: XRSessionManager) {
+         this.xrManager = xrManager;
+         this.settingsStore = SettingsStore.getInstance();
+         this.websocketService = WebSocketService.getInstance();
+@@ -49,9 +48,9 @@ export class XRInteraction {
+         }
+     }
+ 
+-    public static getInstance(xrManager: XRSessionManager, nodeManager: NodeManager): XRInteraction {
++    public static getInstance(xrManager: XRSessionManager): XRInteraction {
+         if (!XRInteraction.instance) {
+-            XRInteraction.instance = new XRInteraction(xrManager, nodeManager);
++            XRInteraction.instance = new XRInteraction(xrManager);
+         }
+         return XRInteraction.instance;
+     }
+diff --git a/client/xr/xrSessionManager.ts b/client/xr/xrSessionManager.ts
+index 23a8621a..a3cb7a35 100644
+--- a/client/xr/xrSessionManager.ts
++++ b/client/xr/xrSessionManager.ts
+@@ -16,9 +16,11 @@ import { createLogger } from '../core/utils';
+ import { platformManager } from '../platform/platformManager';
+ import { SceneManager } from '../rendering/scene';
+ import { BACKGROUND_COLOR } from '../core/constants';
+-import { NodeManager } from '../rendering/nodes';
++import { debugState } from '../core/debugState';
++import { EnhancedNodeManager } from '../rendering/EnhancedNodeManager';
+ import { ModularControlPanel } from '../ui/ModularControlPanel';
+ import { SettingsStore } from '../state/SettingsStore';
++import { Settings } from '../types/settings/base';
+ import { XRSettings } from '../types/settings/xr';
+ const logger = createLogger('XRSessionManager');
+ 
+@@ -26,7 +28,7 @@ export class XRSessionManager {
+     private static instance: XRSessionManager | null = null;
+     private readonly sceneManager: SceneManager;
+     private readonly settingsStore: SettingsStore;
+-    private readonly nodeManager: NodeManager;
++    private readonly nodeManager: EnhancedNodeManager;
+     private session: XRSession | null = null;
+     /* @ts-ignore - Used in XR session lifecycle */
+     private referenceSpace: XRReferenceSpace | null = null;
+@@ -63,7 +65,8 @@ export class XRSessionManager {
+     private constructor(sceneManager: SceneManager) {
+         this.sceneManager = sceneManager;
+         this.settingsStore = SettingsStore.getInstance();
+-        this.nodeManager = NodeManager.getInstance();
++        const settings = this.settingsStore.get('') as Settings;
++        this.nodeManager = new EnhancedNodeManager(sceneManager.getScene(), settings);
+         // Initialize with current settings
+         this.currentSettings = this.settingsStore.get('xr') as XRSettings;
+         
+@@ -101,17 +104,18 @@ export class XRSessionManager {
+     }
+ 
+     private createGridHelper(): GridHelper {
+-        const grid = new GridHelper(10, 10, 0x808080, 0x808080);
++        const grid = new GridHelper(0.5, 5, 0x808080, 0x808080); // 0.5 meter grid with 5x5 divisions
+         grid.material.transparent = true;
+         grid.material.opacity = 0.5;
+         grid.position.y = -0.01; // Slightly below ground to avoid z-fighting
+         grid.visible = false; // Start hidden until AR session begins
+-        grid.layers.set(1); // Set to AR layer
++        grid.layers.enable(0); // Enable default layer
++        grid.layers.enable(1); // Enable AR layer
+         return grid;
+     }
+ 
+     private createGroundPlane(): Mesh {
+-        const geometry = new PlaneGeometry(10, 10);
++        const geometry = new PlaneGeometry(0.5, 0.5); // 0.5x0.5 meter plane
+         const material = new MeshPhongMaterial({
+             color: 0x999999,
+             transparent: true,
+@@ -122,7 +126,8 @@ export class XRSessionManager {
+         plane.rotateX(-Math.PI / 2);
+         plane.position.y = -0.02; // Below grid
+         plane.visible = false; // Start hidden until AR session begins
+-        plane.layers.set(1); // Set to AR layer
++        plane.layers.enable(0); // Enable default layer
++        plane.layers.enable(1); // Enable AR layer
+         return plane;
+     }
+ 
+@@ -137,20 +142,30 @@ export class XRSessionManager {
+         const marker = new Mesh(geometry, material);
+         marker.rotateX(-Math.PI / 2);
+         marker.visible = false;
+-        marker.layers.set(1); // Set to AR layer
++        marker.layers.enable(0); // Enable default layer
++        marker.layers.enable(1); // Enable AR layer
+         return marker;
+     }
+ 
+     private createARLight(): DirectionalLight {
+         const light = new DirectionalLight(0xffffff, 1);
+         light.position.set(1, 1, 1);
+-        light.layers.set(1); // Set to AR layer
++        light.layers.enable(0); // Enable default layer
++        light.layers.enable(1); // Enable AR layer
+         return light;
+     }
+ 
+     private setupXRObjects(): void {
+         const scene = this.sceneManager.getScene();
+         
++        // Reset and verify initial scales
++        this.cameraRig.scale.setScalar(1);
++        this.arGroup.scale.setScalar(1);
++        this.arGraphGroup.scale.setScalar(1);
++        if (debugState.isEnabled() && platformManager.isQuest()) {
++            logger.info('Initial scales:', { cameraRig: this.cameraRig.scale.x, arGroup: this.arGroup.scale.x, arGraphGroup: this.arGraphGroup.scale.x });
++        }
++        
+         // Add camera rig to scene
+         scene.add(this.cameraRig);
+ 
+@@ -244,7 +259,9 @@ export class XRSessionManager {
+ 
+     public async initXRSession(): Promise<void> {
+         if (this.isPresenting) {
+-            logger.warn('XR session already active');
++            if (debugState.isEnabled()) {
++                logger.warn('XR session already active');
++            }
+             return;
+         }
+ 
+@@ -284,10 +301,12 @@ export class XRSessionManager {
+                 domOverlay: platformManager.isQuest() ? { root: document.body } : undefined
+             };
+             
+-            logger.info('Requesting XR session with config:', {
+-                mode,
+-                features: sessionInit
+-            });
++            if (debugState.isEnabled()) {
++                logger.info('Requesting XR session with config:', {
++                    mode,
++                    features: sessionInit
++                });
++            }
+             
+             const session = await navigator.xr.requestSession(mode, sessionInit);
+ 
+@@ -327,11 +346,34 @@ export class XRSessionManager {
+             
+             // Apply AR scale if in AR mode
+             if (platformManager.isQuest()) {
+-                this.arGroup.scale.setScalar(this.currentSettings.roomScale);
++                // Use direct room scale for better AR sizing
++                // Apply a base scale of 0.001 for AR to make objects more manageable
++                const arScale = this.currentSettings.roomScale * 0.001;
++                if (debugState.isEnabled()) {
++                    logger.info('Setting initial AR scale:', { 
++                        arScale, 
++                        roomScale: this.currentSettings.roomScale,
++                        cameraRigScale: this.cameraRig.scale.x,
++                        arGroupScale: this.arGroup.scale.x,
++                        arGraphGroupScale: this.arGraphGroup.scale.x,
++                        currentGroupScale: this.arGroup.scale.x
++                    });
++                }
++
++                this.arGroup.scale.setScalar(arScale);
+                 
+                 // Move node instances to arGroup for proper scaling
+-                const nodeInstances = this.nodeManager.getAllNodeMeshes();
+-                nodeInstances.forEach(mesh => {
++                const nodeInstances = Array.from(this.nodeManager.getNodes().values());
++                nodeInstances.forEach((mesh: Mesh) => {
++                    // Enable both layers for the mesh and its children
++                    mesh.layers.enable(0);
++                    mesh.layers.enable(1);
++                    mesh.traverse((child: any) => {
++                        if (child.layers) {
++                            child.layers.enable(0);
++                            child.layers.enable(1);
++                        }
++                    });
+                     this.arGroup.add(mesh);
+                 });
+             }
+@@ -348,7 +390,9 @@ export class XRSessionManager {
+             }, 1000);
+             
+             this.isPresenting = true;
+-            logger.info('XR session initialized');
++            if (debugState.isEnabled()) {
++                logger.info('XR session initialized');
++            }
+ 
+             // Hide control panel in XR mode
+             const controlPanel = ModularControlPanel.getInstance();
+@@ -361,7 +405,9 @@ export class XRSessionManager {
+                 this.xrSessionStartCallback();
+             }
+         } catch (error) {
+-            logger.error('Failed to initialize XR session:', error);
++            if (debugState.isEnabled()) {
++                logger.error('Failed to initialize XR session:', error);
++            }
+             throw error;
+         }
+     }
+@@ -413,8 +459,8 @@ export class XRSessionManager {
+             this.arLight.visible = false;
+             
+             // Move node instances back to main scene
+-            const nodeInstances = this.nodeManager.getAllNodeMeshes();
+-            nodeInstances.forEach(mesh => {
++            const nodeInstances = Array.from(this.nodeManager.getNodes().values());
++            nodeInstances.forEach((mesh: Mesh) => {
+                 this.sceneManager.getScene().add(mesh);
+             });
+         }
+@@ -435,7 +481,9 @@ export class XRSessionManager {
+         const renderer = this.sceneManager.getRenderer();
+         renderer.xr.enabled = false;
+ 
+-        logger.info('XR session ended');
++        if (debugState.isEnabled()) {
++            logger.info('XR session ended');
++        }
+ 
+         // Show control panel and notify session end (only once)
+         ModularControlPanel.getInstance()?.show();
+@@ -478,7 +526,19 @@ export class XRSessionManager {
+         // Update room scale if changed
+         if (this.currentSettings.roomScale !== undefined) {
+             if (platformManager.isQuest()) {
+-                this.arGroup.scale.setScalar(Number(this.currentSettings.roomScale));
++                // Apply a base scale of 0.001 for AR to make objects more manageable
++                const arScale = Number(this.currentSettings.roomScale) * 0.001;
++                if (debugState.isEnabled()) {
++                    logger.info('Updating AR scale:', { 
++                        arScale, 
++                        roomScale: this.currentSettings.roomScale,
++                        cameraRigScale: this.cameraRig.scale.x,
++                        arGroupScale: this.arGroup.scale.x,
++                        arGraphGroupScale: this.arGraphGroup.scale.x,
++                        currentGroupScale: this.arGroup.scale.x
++                    });
++                }
++                this.arGroup.scale.setScalar(arScale);
+             } else {
+                 this.cameraRig.scale.setScalar(Number(this.currentSettings.roomScale));
+             }
+diff --git a/scripts/generateCodebase.sh b/scripts/generateCodebase.sh
+index fdae6923..fad1dc28 100755
+--- a/scripts/generateCodebase.sh
++++ b/scripts/generateCodebase.sh
+@@ -67,8 +67,8 @@ export_network_info() {
+ # Export both directories and combine them
+ export_and_combine() {
+     # Export server (src) code
+-    python "$EXPORT_REPO/export-repository-to-file.py" "../src"
+-    mv output.txt server.txt
++    #python "$EXPORT_REPO/export-repository-to-file.py" "../src"
++    #mv output.txt server.txt
+ 
+     # Export client code
+     python "$EXPORT_REPO/export-repository-to-file.py" "../client"
+diff --git a/scripts/launch-docker.sh b/scripts/launch-docker.sh
+index a97e94db..a07d8ed4 100755
+--- a/scripts/launch-docker.sh
++++ b/scripts/launch-docker.sh
+@@ -241,7 +241,7 @@ verify_client_structure() {
+         "$PROJECT_ROOT/client/core/logger.ts"
+         "$PROJECT_ROOT/client/websocket/websocketService.ts"
+         "$PROJECT_ROOT/client/rendering/scene.ts"
+-        "$PROJECT_ROOT/client/rendering/nodes.ts"
++        "$PROJECT_ROOT/client/rendering/EnhancedNodeManager.ts"
+         "$PROJECT_ROOT/client/rendering/textRenderer.ts"
+         "$PROJECT_ROOT/client/state/settings.ts"
+         "$PROJECT_ROOT/client/state/graphData.ts"
+diff --git a/settings.yaml b/settings.yaml
+index 54a74fda..e12ab1b9 100644
+--- a/settings.yaml
++++ b/settings.yaml
+@@ -1,83 +1,88 @@
+ visualization:
+   nodes:
+-    base_color: '#4287f5'
+-    base_size: 1.0
++    base_color: '#df90c2'
+     metalness: 0.2
+-    opacity: 0.6
+-    roughness: 0.8
++    opacity: 1.0
++    roughness: 0.7
+     size_range:
+-    - 0.5
+-    - 1.5
++    - 200.0
++    - 700.0
+     quality: high
+-    enable_instancing: false
+-    enable_hologram: false
++    enable_instancing: true
++    enable_hologram: true
+     enable_metadata_shape: true
+     enable_metadata_visualization: true
+   edges:
+-    arrow_size: 5.0
++    arrow_size: 2.0
+     base_width: 2.0
+-    color: '#6087c3'
+-    enable_arrows: true
+-    opacity: 0.9
++    color: '#0c2140'
++    enable_arrows: false
++    opacity: 0.5
+     width_range:
+-    - 1.0
++    - 2.0
+     - 3.0
++    quality: high
+   physics:
+     attraction_strength: 0.02
+-    bounds_size: 200.0
+-    collision_radius: 0.5
+-    damping: 0.8
++    bounds_size: 0.33
++    collision_radius: 1.0
++    damping: 1.0
+     enable_bounds: true
+     enabled: true
+-    iterations: 200
+-    max_velocity: 0.5
+-    repulsion_strength: 800.0
+-    spring_strength: 0.025
++    iterations: 100
++    max_velocity: 0.4
++    repulsion_strength: 700.0
++    spring_strength: 0.02
+   rendering:
+-    ambient_light_intensity: 0.4
++    ambient_light_intensity: 0.41
+     background_color: '#1a1a2e'
+-    directional_light_intensity: 0.6
+-    enable_ambient_occlusion: false
++    directional_light_intensity: 0.7
++    enable_ambient_occlusion: true
+     enable_antialiasing: true
+     enable_shadows: false
+-    environment_intensity: 0.3
++    environment_intensity: 0.7
+   animations:
+-    enable_motion_blur: false
+-    enable_node_animations: false
++    enable_motion_blur: true
++    enable_node_animations: true
+     motion_blur_strength: 0.2
+-    selection_wave_enabled: false
+-    pulse_enabled: false
++    selection_wave_enabled: true
++    pulse_enabled: true
+     pulse_speed: 0.8
+     pulse_strength: 0.6
+     wave_speed: 0.5
+   labels:
+-    desktop_font_size: 14
++    desktop_font_size: 10
+     enable_labels: true
+     text_color: '#ffffff'
++    text_outline_color: '#000000'
++    text_outline_width: 0.1
++    text_resolution: 32
++    text_padding: 2
++    billboard_mode: camera
+   bloom:
+-    edge_bloom_strength: 0.8
++    edge_bloom_strength: 2.0
+     enabled: true
+     environment_bloom_strength: 0.4
+-    node_bloom_strength: 1.2
++    node_bloom_strength: 2.5
+     radius: 0.8
+-    strength: 0.7
++    strength: 1.5
+   hologram:
+-    ring_count: 3
++    ring_count: 1
+     ring_color: '#c2a200'
+-    ring_opacity: 0.1
+-    ring_sizes:
+-    - 0.9
+-    - 1.3
+-    - 1.7
+-    ring_rotation_speed: 0.05
+-    enable_buckminster: false
+-    buckminster_scale: 7.01
++    ring_opacity: 0.001
++    sphere_sizes:
++    - 40.0
++    - 80.0
++    - 120.0
++    ring_rotation_speed: 10.0
++    enable_buckminster: true
++    buckminster_size: 40.0
+     buckminster_opacity: 0.05
+-    enable_geodesic: false
+-    geodesic_scale: 9.0
++    enable_geodesic: true
++    geodesic_size: 80.0
+     geodesic_opacity: 0.05
+-    enable_triangle_sphere: false
+-    triangle_sphere_scale: 0.8
++    enable_triangle_sphere: true
++    triangle_sphere_size: 120.0
+     triangle_sphere_opacity: 0.1
+     global_rotation_speed: 0.03
+ system:
+@@ -130,7 +135,7 @@ system:
+     enable_websocket_debug: false
+     log_binary_headers: false
+     log_full_json: false
+-    log_level: info
++    log_level: debug
+     log_format: json
+ xr:
+   mode: inline
+diff --git a/src/config/mod.rs b/src/config/mod.rs
+index 2b4c14a0..d13f1d79 100644
+--- a/src/config/mod.rs
++++ b/src/config/mod.rs
+@@ -50,7 +50,6 @@ pub struct Settings {
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+ pub struct NodeSettings {
+     pub base_color: String,
+-    pub base_size: f32,
+     pub metalness: f32,
+     pub opacity: f32,
+     pub roughness: f32,
+@@ -70,6 +69,7 @@ pub struct EdgeSettings {
+     pub enable_arrows: bool,
+     pub opacity: f32,
+     pub width_range: Vec<f32>,
++    pub quality: String
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+@@ -106,7 +106,7 @@ pub struct AnimationSettings {
+     pub pulse_enabled: bool,
+     pub pulse_speed: f32,
+     pub pulse_strength: f32,
+-    pub wave_speed: f32,
++    pub wave_speed: f32
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+@@ -114,6 +114,11 @@ pub struct LabelSettings {
+     pub desktop_font_size: u32,
+     pub enable_labels: bool,
+     pub text_color: String,
++    pub text_outline_color: String,
++    pub text_outline_width: f32,
++    pub text_resolution: u32,
++    pub text_padding: u32,
++    pub billboard_mode: String
+ }
+ 
+ #[derive(Debug, Serialize, Deserialize, Clone)]
+@@ -131,16 +136,16 @@ pub struct HologramSettings {
+     pub ring_count: u32,
+     pub ring_color: String,
+     pub ring_opacity: f32,
+-    pub ring_sizes: Vec<f32>,
++    pub sphere_sizes: Vec<f32>,  // Native world units
+     pub ring_rotation_speed: f32,
+     pub enable_buckminster: bool,
+-    pub buckminster_scale: f32,
++    pub buckminster_size: f32,  // Native world units
+     pub buckminster_opacity: f32,
+     pub enable_geodesic: bool,
+-    pub geodesic_scale: f32,
++    pub geodesic_size: f32,  // Native world units
+     pub geodesic_opacity: f32,
+     pub enable_triangle_sphere: bool,
+-    pub triangle_sphere_scale: f32,
++    pub triangle_sphere_size: f32,  // Native world units
+     pub triangle_sphere_opacity: f32,
+     pub global_rotation_speed: f32,
+ }
+@@ -393,11 +398,10 @@ impl Default for Settings {
+             visualization: VisualizationSettings {
+                 nodes: NodeSettings {
+                     base_color: "#c3ab6f".to_string(),
+-                    base_size: 0.5,
+                     metalness: 0.3,
+                     opacity: 0.4,
+                     roughness: 0.35,
+-                    size_range: vec![0.5, 1.0],
++                    size_range: vec![40.0, 120.0],  // Native world units
+                     quality: "medium".to_string(),
+                     enable_instancing: false,
+                     enable_hologram: false,
+@@ -411,6 +415,7 @@ impl Default for Settings {
+                     enable_arrows: false,
+                     opacity: 0.6,
+                     width_range: vec![1.0, 3.0],
++                    quality: "medium".to_string()
+                 },
+                 physics: PhysicsSettings {
+                     attraction_strength: 0.015,
+@@ -441,12 +446,17 @@ impl Default for Settings {
+                     pulse_enabled: false,
+                     pulse_speed: 1.0,
+                     pulse_strength: 1.0,
+-                    wave_speed: 1.0,
++                    wave_speed: 1.0
+                 },
+                 labels: LabelSettings {
+                     desktop_font_size: 48,
+                     enable_labels: true,
+                     text_color: "#FFFFFF".to_string(),
++                    text_outline_color: "#000000".to_string(),
++                    text_outline_width: 0.1,
++                    text_resolution: 32,
++                    text_padding: 2,
++                    billboard_mode: "camera".to_string(),
+                 },
+                 bloom: BloomSettings {
+                     edge_bloom_strength: 0.3,
+@@ -460,16 +470,16 @@ impl Default for Settings {
+                     ring_count: 3,
+                     ring_color: "#00ff00".to_string(),
+                     ring_opacity: 0.5,
+-                    ring_sizes: vec![1.0, 1.2, 1.5],
++                    sphere_sizes: vec![40.0, 80.0, 120.0],  // Native world units
+                     ring_rotation_speed: 0.001,
+                     enable_buckminster: false,
+-                    buckminster_scale: 1.0,
++                    buckminster_size: 120.0,  // Native world units
+                     buckminster_opacity: 0.3,
+                     enable_geodesic: false,
+-                    geodesic_scale: 1.0,
++                    geodesic_size: 100.0,  // Native world units
+                     geodesic_opacity: 0.3,
+                     enable_triangle_sphere: false,
+-                    triangle_sphere_scale: 1.0,
++                    triangle_sphere_size: 140.0,  // Native world units
+                     triangle_sphere_opacity: 0.3,
+                     global_rotation_speed: 0.0005,
+                 },
+@@ -520,11 +530,11 @@ impl Default for Settings {
+                     session_timeout: 3600,
+                 },
+                 debug: DebugSettings {
+-                    enabled: true,
+-                    enable_data_debug: true,
+-                    enable_websocket_debug: true,
+-                    log_binary_headers: true,
+-                    log_full_json: true,
++                    enabled: false,
++                    enable_data_debug: false,
++                    enable_websocket_debug: false,
++                    log_binary_headers: false,
++                    log_full_json: false,
+                     log_level: "debug".to_string(),
+                     log_format: "json".to_string(),
+                 },
+diff --git a/src/handlers/socket_flow_handler.rs b/src/handlers/socket_flow_handler.rs
+index f71598b9..2b41ebe0 100644
+--- a/src/handlers/socket_flow_handler.rs
++++ b/src/handlers/socket_flow_handler.rs
+@@ -55,11 +55,7 @@ impl SocketFlowServer {
+                 if encoder.write_all(&data).is_ok() {
+                     if let Ok(compressed) = encoder.finish() {
+                         if compressed.len() < data.len() {
+-                            debug!(
+-                                "Compressed binary message: {} -> {} bytes",
+-                                data.len(),
+-                                compressed.len()
+-                            );
++                            debug!("Compressed binary message: {} -> {} bytes", data.len(), compressed.len());
+                             return compressed;
+                         }
+                     }
+@@ -77,16 +73,11 @@ impl SocketFlowServer {
+                 match decoder.read_to_end(&mut decompressed) {
+                     Ok(_) => {
+                         if decompressed.len() > data.len() {
+-                            debug!(
+-                                "Decompressed binary message: {} -> {} bytes",
+-                                data.len(),
+-                                decompressed.len()
+-                            );
++                            debug!("Decompressed binary message: {} -> {} bytes", data.len(), decompressed.len());
+                             return Ok(decompressed);
+                         }
+                     }
+                     Err(e) => {
+-                        // If decompression fails, assume the data wasn't compressed
+                         debug!("Decompression failed (data likely uncompressed): {}", e);
+                     }
+                 }
+@@ -149,7 +140,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer
+                                 // Start sending GPU-computed position updates
+                                 let app_state = self.app_state.clone();
+                                 
+-                                ctx.run_interval(self.update_interval, move |actor, ctx| {
++                                ctx.run_interval(self.update_interval, move |act, ctx| {
+                                     let app_state_clone = app_state.clone();
+ 
+                                     let fut = async move {
+@@ -160,10 +151,16 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer
+ 
+                                         // Only process and send updates if we have nodes
+                                         if !raw_nodes.is_empty() {
+-                                            debug!(
+-                                                "Processing binary update for {} nodes",
+-                                                raw_nodes.len()
+-                                            );
++                                            // Check debug settings
++                                            let should_debug = if let Ok(settings) = app_state_clone.settings.try_read() {
++                                                settings.system.debug.enabled && 
++                                                settings.system.debug.enable_websocket_debug
++                                            } else {
++                                                 false
++                                           };
++                                            if should_debug {
++                                                debug!("Processing binary update for {} nodes", raw_nodes.len());
++                                            }
+                                             let nodes: Vec<NodeData> = raw_nodes
+                                                 .into_iter()
+                                                 .map(|node| NodeData {
+@@ -181,26 +178,27 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer
+                                                 })
+                                                 .collect::<Vec<_>>();
+ 
+-                                            debug!(
+-                                                "Encoding binary update with {} nodes",
+-                                                nodes.len()
+-                                            );
++                                            if should_debug {
++                                                debug!("Encoding binary update with {} nodes", nodes.len());
++                                            }
+                                             let data = binary_protocol::encode_node_data(
+                                                 &nodes,
+                                                 MessageType::PositionVelocityUpdate,
+                                             );
+-                                            debug!("Binary message size: {} bytes", data.len());
++                                            if should_debug {
++                                                debug!("Binary message size: {} bytes", data.len());
++                                            }
+                                             Some(data)
+                                         } else {
+-                                            debug!("No nodes to update, skipping binary message");
++                                            // Skip debug log when no nodes to update
+                                             None
+                                         }
+                                     };
+ 
+-                                    let fut = fut.into_actor(actor);
+-                                    ctx.spawn(fut.map(|maybe_binary_data, actor, ctx| {
++                                    let fut = fut.into_actor(act);
++                                    ctx.spawn(fut.map(|maybe_binary_data, act, ctx| {
+                                         if let Some(binary_data) = maybe_binary_data {
+-                                            let final_data = actor.maybe_compress(binary_data);
++                                            let final_data = act.maybe_compress(binary_data);
+                                             ctx.binary(final_data);
+                                         }
+                                         // Do not send any message if there are no nodes
+@@ -298,11 +296,16 @@ pub async fn socket_flow_handler(
+     app_state: web::Data<AppState>,
+     settings: web::Data<Arc<RwLock<crate::config::Settings>>>,
+ ) -> Result<HttpResponse, Error> {
+-    debug!("WebSocket connection attempt from {:?}", req.peer_addr());
++    let should_debug = settings.try_read().map(|s| {
++        s.system.debug.enabled && s.system.debug.enable_websocket_debug
++    }).unwrap_or(false);
++
++    if should_debug {
++        debug!("WebSocket connection attempt from {:?}", req.peer_addr());
++    }
+ 
+     // Check for WebSocket upgrade
+     if !req.headers().contains_key("Upgrade") {
+-        debug!("Not a WebSocket upgrade request");
+         return Ok(HttpResponse::BadRequest().body("WebSocket upgrade required"));
+     }
+ 
+diff --git a/src/main.rs b/src/main.rs
+index 361695a5..1864b5d6 100755
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -44,21 +44,12 @@ async fn main() -> std::io::Result<()> {
+     // Initialize logging with settings-based configuration
+     let log_config = {
+         let settings_read = settings.read().await;
+-        let file_level = if settings_read.system.debug.enabled {
+-            "debug"
+-        } else {
+-            &settings_read.system.debug.log_level
+-        };
+-        
+-        let console_level = if settings_read.system.debug.enable_websocket_debug {
+-            "debug"
+-        } else {
+-            &settings_read.system.debug.log_level
+-        };
++        // Only use debug level if debug is enabled, otherwise use configured level
++        let log_level = &settings_read.system.debug.log_level;
+         
+         LogConfig::new(
+-            file_level,
+-            console_level,
++            log_level,
++            log_level,
+         )
+     };
+ 

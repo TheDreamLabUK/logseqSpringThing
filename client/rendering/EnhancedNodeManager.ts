@@ -270,6 +270,11 @@ export class EnhancedNodeManager {
     public updateNodePositions(nodes: { id: string, data: { position: [number, number, number], velocity: [number, number, number] } }[]): void {
         nodes.forEach((node) => {
             const existingNode = this.nodes.get(node.id);
+            if (!existingNode) {
+                // Skip updates for nodes that don't exist yet
+                return;
+            }
+
             if (existingNode) {
                 // Convert array position to Vector3
                 const position = Array.isArray(node.data.position) 
@@ -279,12 +284,14 @@ export class EnhancedNodeManager {
                         z: node.data.position[2]
                     }
                     : node.data.position;
-                
-                existingNode.position.set(
-                    position.x,
-                    position.y,
-                    position.z
-                );
+
+                // Only update if position has changed
+                if (existingNode.position.x !== position.x ||
+                    existingNode.position.y !== position.y ||
+                    existingNode.position.z !== position.z) {
+                    existingNode.position.set(position.x, position.y, position.z);
+                    (existingNode as Object3D).updateMatrixWorld(true);
+                }
             }
         });
     }

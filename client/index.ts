@@ -32,35 +32,29 @@ export class GraphVisualization {
     private hologramManager: HologramManager;
     private textRenderer: TextRenderer;
     private websocketService!: WebSocketService;
+    private initialized: boolean = false;
 
     private async initializeWebSocket(): Promise<void> {
         debugLog('Initializing WebSocket connection');
         
-        // Load initial graph data
-        debugLog('Loading initial graph data');
-        try {
-            await graphDataManager.fetchInitialData();
-            // Update visualization with initial data
-            const graphData = graphDataManager.getGraphData();
-            this.nodeManager.updateNodes(graphData.nodes);
-            this.edgeManager.updateEdges(graphData.edges);
-            debugLog('Initial graph data loaded and visualization updated');
-        } catch (error) {
-            logger.error('Failed to load initial graph data:', error);
-        }
-
         // Initialize WebSocket for position updates only
         this.websocketService = WebSocketService.getInstance();
+        
+        // Set up binary message handler before connecting
         this.websocketService.onBinaryMessage((nodes) => {
-            debugLog('Received binary node update', { nodeCount: nodes.length });
-            this.nodeManager.updateNodePositions(nodes.map(node => ({
-                id: node.id.toString(),
-                data: {
-                    position: node.position,
-                    velocity: node.velocity
-                }
-            })));
+            if (this.initialized) {
+                debugLog('Received binary node update', { nodeCount: nodes.length });
+                this.nodeManager.updateNodePositions(nodes.map(node => ({
+                    id: node.id.toString(),
+                    data: {
+                        position: node.position,
+                        velocity: node.velocity
+                    }
+                })));
+            }
         });
+        
+        // Set up connection status handler
         this.websocketService.onConnectionStatusChange((connected) => {
             logger.info(`WebSocket connection status changed: ${connected}`);
             if (connected) {
@@ -68,8 +62,20 @@ export class GraphVisualization {
                 this.websocketService.sendMessage({ type: 'requestInitialData' });
             }
         });
-        this.websocketService.connect();
-        debugLog('WebSocket initialization complete');
+        
+        // Load initial graph data before connecting
+        debugLog('Loading initial graph data');
+        try {
+            await graphDataManager.fetchInitialData();
+            const graphData = graphDataManager.getGraphData();
+            this.nodeManager.updateNodes(graphData.nodes);
+            this.edgeManager.updateEdges(graphData.edges);
+            this.initialized = true; // Mark as initialized after initial data is loaded
+            this.websocketService.connect(); // Connect only after initialization
+            debugLog('Initial graph data loaded and WebSocket connected');
+        } catch (error) {
+            logger.error('Failed to load initial graph data:', error);
+        }
     }
 
     constructor(settings: Settings) {
@@ -205,19 +211,46 @@ async function init() {
         ];
 
         // Subscribe to each path and update both visualization and scene
-        visualizationPaths.forEach(path => {
-            settingsStore.subscribe(path, () => {
-                if (viz) {
-                    const currentSettings = settingsStore.get('') as Settings;
-                    viz.handleSettingsUpdate(currentSettings);
-                    sceneManager.handleSettingsUpdate(currentSettings);
-                    logger.debug(`Visualization and scene updated from ${path} change:`, {
-                        path,
+        let pendingUpdate = false;
+        let pendingSettings: Settings | null = null;
+
+        const handleSettingsChange = () => {
+            if (!viz || !pendingSettings) return;
+            
+            try {
+                // Use the pending settings and clear it
+                const currentSettings = pendingSettings;
+                pendingSettings = null;
+                pendingUpdate = false;
+
+                if (!currentSettings) {
+                    return;
+                }
+                
+                // Batch updates to avoid cascading changes
+                viz.handleSettingsUpdate(currentSettings);
+                sceneManager.handleSettingsUpdate(currentSettings);
+                
+                if (debugState.isEnabled()) {
+                    logger.debug('Settings updated:', {
                         bloom: currentSettings.visualization.bloom,
                         rendering: currentSettings.visualization.rendering
                     });
                 }
-            });
+            } catch (error) {
+                logger.error('Error handling settings update:', error);
+            }
+        };
+
+        // Use a single subscription for all visualization paths
+        visualizationPaths.forEach(path => {
+            settingsStore.subscribe(path, () => {
+                if (!pendingUpdate) {
+                    pendingUpdate = true;
+                    pendingSettings = settingsStore.get('') as Settings;
+                    window.requestAnimationFrame(handleSettingsChange);
+                }
+            }, false); // Don't trigger immediate update on subscription
         });
 
         // Log successful initialization

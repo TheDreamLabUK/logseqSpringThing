@@ -158,7 +158,7 @@ export class SettingsStore {
         };
     }
 
-    public async subscribe(path: string, callback: SettingsChangeCallback): Promise<() => void> {
+    public async subscribe(path: string, callback: SettingsChangeCallback, immediate: boolean = false): Promise<() => void> {
         if (!this.initialized) {
             await this.initialize();
         }
@@ -172,10 +172,12 @@ export class SettingsStore {
             subscribers.push(callback);
         }
 
-        // Immediately call callback with current value
-        const value = this.get(path);
-        if (value !== undefined) {
-            callback(path, value);
+        // Only call callback immediately if explicitly requested
+        if (immediate) {
+            const value = this.get(path);
+            if (value !== undefined) {
+                callback(path, value);
+            }
         }
 
         return () => {
@@ -382,11 +384,20 @@ export class SettingsStore {
     private notifySubscribers(path: string, value: unknown): void {
         const subscribers = this.subscribers.get(path);
         if (subscribers) {
+            let scheduledCallbacks = new Set<SettingsChangeCallback>();
+            
             subscribers.forEach(callback => {
                 try {
-                    callback(path, value);
+                    if (!scheduledCallbacks.has(callback)) {
+                        scheduledCallbacks.add(callback);
+                        window.requestAnimationFrame(() => {
+                            if (scheduledCallbacks.has(callback)) {
+                                callback(path, value);
+                            }
+                        });
+                    }
                 } catch (error) {
-                    this.logger.error(`Error in settings subscriber for ${path}:`, error);
+                    this.logger.error(`Error scheduling settings notification for ${path}:`, error);
                 }
             });
         }
