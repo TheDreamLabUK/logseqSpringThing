@@ -282,11 +282,11 @@ export class VisualizationController {
         }
     }
 
-    public update(): void {
+    public update(deltaTime: number): void {
         if (this.isInitialized) {
-            // Update node animations and state
+            // Update node animations and state using actual deltaTime
             if (this.nodeManager) {
-                this.nodeManager.update(1/60); // Standard 60fps delta time
+                this.nodeManager.update(deltaTime);
             }
             
             // Update text labels

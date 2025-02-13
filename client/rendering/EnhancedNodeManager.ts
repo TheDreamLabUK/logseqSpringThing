@@ -275,25 +275,25 @@ export class EnhancedNodeManager {
                 return;
             }
 
-            if (existingNode) {
-                // Convert array position to Vector3
-                const position = Array.isArray(node.data.position) 
-                    ? {
-                        x: node.data.position[0],
-                        y: node.data.position[1],
-                        z: node.data.position[2]
-                    }
-                    : node.data.position;
-
-                // Only update if position has changed
-                if (existingNode.position.x !== position.x ||
-                    existingNode.position.y !== position.y ||
-                    existingNode.position.z !== position.z) {
-                    existingNode.position.set(position.x, position.y, position.z);
-                    (existingNode as Object3D).updateMatrixWorld(true);
+            // Convert array position to Vector3
+            const position = Array.isArray(node.data.position) 
+                ? {
+                    x: node.data.position[0],
+                    y: node.data.position[1],
+                    z: node.data.position[2]
                 }
+                : node.data.position;
+
+            // Only update if position has changed
+            if (existingNode.position.x !== position.x ||
+                existingNode.position.y !== position.y ||
+                existingNode.position.z !== position.z) {
+                existingNode.position.set(position.x, position.y, position.z);
+                // Removed individual updateMatrixWorld call for batching efficiency
             }
         });
+        // Batch update matrix world once after processing all node updates
+        this.scene.updateMatrixWorld(true);
     }
 
     public setXRMode(enabled: boolean): void {

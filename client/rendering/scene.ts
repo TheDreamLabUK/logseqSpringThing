@@ -37,7 +37,7 @@ export class SceneManager {
   private isRunning: boolean = false;
   private visualizationController: VisualizationController | null = null;
   private lastFrameTime: number = 0;
-  private readonly FRAME_BUDGET: number = 33; // Target 30fps (1000ms/30)
+  private readonly FRAME_BUDGET: number = 16; // Target 60fps (1000ms/60)
 
   private constructor(canvas: HTMLCanvasElement) {
     logger.log('Initializing SceneManager');
@@ -237,8 +237,8 @@ export class SceneManager {
     const elapsedTime = currentTime - startTime;
     
     if (elapsedTime < this.FRAME_BUDGET) {
-      // Update visualization controller with remaining time budget
-      this.visualizationController?.update();
+      // Update visualization controller with actual delta time; using type assertion to accommodate new signature
+      (this.visualizationController as any)?.update(deltaTime || 0);
     }
 
     // Check remaining time for rendering
