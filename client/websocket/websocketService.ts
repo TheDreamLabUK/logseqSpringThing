@@ -221,7 +221,9 @@ export class WebSocketService {
 
     private handleBinaryMessage(buffer: ArrayBuffer): void {
         try {
+            debugLog('Processing binary message:', { size: buffer.byteLength });
             const decompressedBuffer = this.tryDecompress(buffer);
+            debugLog('After decompression:', { size: decompressedBuffer.byteLength });
             
             if (!decompressedBuffer || decompressedBuffer.byteLength < 8) {
                 throw new Error(`Invalid buffer size: ${decompressedBuffer?.byteLength ?? 0} bytes`);
@@ -231,6 +233,7 @@ export class WebSocketService {
             let offset = 0;
 
             const messageType = dataView.getUint32(offset, true);
+            debugLog('Binary message type:', { type: messageType });
             offset += 4;
 
             if (messageType !== this.MessageType.PositionVelocityUpdate) {
@@ -239,6 +242,7 @@ export class WebSocketService {
             }
 
             const nodeCount = dataView.getUint32(offset, true);
+            debugLog('Node count:', { count: nodeCount });
             offset += 4;
 
             const expectedSize = 8 + (nodeCount * 28);
@@ -273,7 +277,13 @@ export class WebSocketService {
             }
 
             if (nodes.length > 0 && this.binaryMessageCallback) {
+                debugLog('Calling binary message callback with nodes:', { count: nodes.length });
                 this.binaryMessageCallback(nodes);
+            } else {
+                debugLog('No nodes to process or no callback registered', {
+                    nodesLength: nodes.length,
+                    hasCallback: !!this.binaryMessageCallback
+                });
             }
         } catch (error) {
             logger.error('Failed to process binary message:', error);

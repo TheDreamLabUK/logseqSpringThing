@@ -64,6 +64,24 @@ export class VisualizationController {
     public initializeScene(scene: Scene, camera: Camera): void {
         logger.info('Initializing visualization scene');
         
+        // Enable WebSocket debugging
+        this.currentSettings.system.debug.enabled = true;
+        this.currentSettings.system.debug.enableWebsocketDebug = true;
+        
+        // Connect to websocket first
+        this.websocketService.connect().then(() => {
+            logger.info('WebSocket connected, enabling binary updates');
+            graphDataManager.enableBinaryUpdates();
+            
+            // Send initial request for data
+            this.websocketService.sendMessage({ 
+                type: 'requestInitialData',
+                timestamp: Date.now()
+            });
+        }).catch(error => {
+            logger.error('Failed to connect WebSocket:', error);
+        });
+        
         // Initialize managers with scene and settings
         this.edgeManager = new EdgeManager(scene, this.currentSettings);
         this.nodeManager = new EnhancedNodeManager(scene, this.currentSettings);
@@ -77,9 +95,6 @@ export class VisualizationController {
         if (currentData.nodes.length > 0 && this.nodeManager) {
             this.nodeManager.updateNodes(currentData.nodes);
         }
-
-        // Connect to websocket after scene initialization
-        this.websocketService.connect();
 
         logger.info('Scene initialization complete');
     }

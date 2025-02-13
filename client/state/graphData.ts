@@ -234,46 +234,9 @@ export class GraphDataManager {
    * Enable binary position updates via WebSocket
    */
   public enableBinaryUpdates(): void {
-    try {
-      const ws = new WebSocket(`wss://${window.location.host}/wss`);
-      ws.binaryType = 'arraybuffer';
-      
-      ws.onopen = () => {
-        logger.info('WebSocket connection established');
-        this.setWebSocketService({
-          send: (data: ArrayBuffer) => {
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(data);
-            }
-          }
-        });
-        this.setBinaryUpdatesEnabled(true);
-      };
-      
-      ws.onmessage = (event: MessageEvent) => {
-        if (event.data instanceof ArrayBuffer) {
-          const positions = new Float32Array(event.data);
-          this.updateNodePositions(positions);
-          this.notifyPositionUpdateListeners(positions);
-        }
-      };
-      
-      ws.onerror = (error) => {
-        logger.error('WebSocket error:', error);
-        this.setBinaryUpdatesEnabled(false);
-      };
-      
-      ws.onclose = () => {
-        logger.warn('WebSocket connection closed');
-        this.setBinaryUpdatesEnabled(false);
-        // Attempt to reconnect after a delay
-        setTimeout(() => this.enableBinaryUpdates(), 5000);
-      };
-      
-    } catch (error) {
-      logger.error('Failed to initialize WebSocket:', error);
-      this.setBinaryUpdatesEnabled(false);
-    }
+    // Enable binary updates flag - actual WebSocket connection is handled by WebSocketService
+    this.setBinaryUpdatesEnabled(true);
+    logger.info('Binary updates enabled');
   }
 
   /**
@@ -425,22 +388,15 @@ export class GraphDataManager {
     if (!this.binaryUpdatesEnabled) {
       return;
     }
-  
-    // Log for debugging
     logger.debug('Received binary position update:', positions);
-  
+       
     if (positions.length % FLOATS_PER_NODE !== 0) {
       logger.error('Invalid position array length:', positions.length);
       return;
-    }
-  
-    this.positionUpdateListeners.forEach(listener => {
-      try {
-        listener(positions);
-      } catch (error) {
-        logger.error('Error in position update listener:', error);
-      }
-    });
+    }  
+
+        // Notify listeners of position updates
+        this.notifyPositionUpdateListeners(positions);
   }
 }
 
