@@ -17,6 +17,12 @@ import { MaterialFactory } from './factories/MaterialFactory';
 import { HologramShaderMaterial } from './materials/HologramShaderMaterial';
 import { platformManager } from '../platform/platformManager';
 
+// Reusable objects for matrix calculations to avoid garbage collection
+const tempPosition = new Vector3();
+
+// Batch processing constants
+const MATRIX_UPDATE_BATCH_SIZE = 100;
+
 export class EnhancedNodeManager {
     private scene: Scene;
     private settings: Settings;
@@ -32,6 +38,8 @@ export class EnhancedNodeManager {
     private camera: PerspectiveCamera;
     private updateFrameCount = 0;
     private readonly AR_UPDATE_FREQUENCY = 2;
+    private pendingMatrixUpdates: Set<string> = new Set();
+    private matrixUpdateScheduled: boolean = false;
     private readonly METADATA_DISTANCE_THRESHOLD = 50;
     private readonly ANIMATION_DISTANCE_THRESHOLD = 30;
 
@@ -267,33 +275,55 @@ export class EnhancedNodeManager {
         this.nodes.clear();
     }
 
+    private scheduleBatchUpdate(): void {
+        if (this.matrixUpdateScheduled) return;
+        this.matrixUpdateScheduled = true;
+
+        requestAnimationFrame(() => {
+            this.processBatchUpdate();
+            this.matrixUpdateScheduled = false;
+        });
+    }
+
+    private processBatchUpdate(): void {
+        if (this.pendingMatrixUpdates.size === 0) return;
+
+        let processed = 0;
+        for (const nodeId of this.pendingMatrixUpdates) {
+            if (processed >= MATRIX_UPDATE_BATCH_SIZE) {
+                break; // Process remaining updates in next batch
+            }
+
+            const node = this.nodes.get(nodeId);
+            if (node) {
+                node.updateMatrixWorld(true);
+                processed++;
+                this.pendingMatrixUpdates.delete(nodeId);
+            }
+        }
+    }
+
     public updateNodePositions(nodes: { id: string, data: { position: [number, number, number], velocity: [number, number, number] } }[]): void {
         nodes.forEach((node) => {
             const existingNode = this.nodes.get(node.id);
-            if (!existingNode) {
-                // Skip updates for nodes that don't exist yet
-                return;
-            }
+            if (!existingNode) return;
 
-            // Convert array position to Vector3
-            const position = Array.isArray(node.data.position) 
-                ? {
-                    x: node.data.position[0],
-                    y: node.data.position[1],
-                    z: node.data.position[2]
-                }
-                : node.data.position;
+            // Use reusable tempPosition Vector3
+            tempPosition.set(
+                node.data.position[0],
+                node.data.position[1],
+                node.data.position[2]
+            );
 
             // Only update if position has changed
-            if (existingNode.position.x !== position.x ||
-                existingNode.position.y !== position.y ||
-                existingNode.position.z !== position.z) {
-                existingNode.position.set(position.x, position.y, position.z);
-                // Removed individual updateMatrixWorld call for batching efficiency
+            if (existingNode.position.x !== tempPosition.x ||
+                existingNode.position.y !== tempPosition.y ||
+                existingNode.position.z !== tempPosition.z) {
+                existingNode.position.copy(tempPosition);
+                this.pendingMatrixUpdates.add(node.id);
             }
         });
-        // Batch update matrix world once after processing all node updates
-        this.scene.updateMatrixWorld(true);
+        this.scheduleBatchUpdate();
     }
 
     public setXRMode(enabled: boolean): void {

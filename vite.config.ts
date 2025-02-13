@@ -14,12 +14,15 @@ export default defineConfig(({ mode, command }) => {
       outDir: resolve(__dirname, 'data/public/dist'),
       emptyOutDir: true,
       sourcemap: !isProd,
-      // Disable all minification and optimization
-      minify: false, 
-      target: 'esnext', // Avoid transformations
+      minify: isProd ? 'terser' : false,
+      target: 'esnext',
       terserOptions: {
-        compress: false,
-        mangle: false
+        compress: {
+          passes: 2,
+          drop_console: isProd,
+          drop_debugger: isProd
+        },
+        mangle: isProd
       },
       rollupOptions: {
         input: {
@@ -69,7 +72,7 @@ export default defineConfig(({ mode, command }) => {
 
     optimizeDeps: {
       include: ['three'],
-      disabled: true // Disable dependency optimization
+      disabled: false
     },
 
     define: {
