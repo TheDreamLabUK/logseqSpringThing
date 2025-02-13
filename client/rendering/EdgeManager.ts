@@ -17,6 +17,8 @@ export class EdgeManager {
     private edges: Map<string, Mesh> = new Map();
     private edgeGroup: Group;
     private settings: Settings;
+    private updateFrameCount = 0;
+    private readonly UPDATE_FREQUENCY = 2; // Update every other frame
 
     constructor(scene: Scene, settings: Settings) {
         this.scene = scene;
@@ -161,9 +163,12 @@ export class EdgeManager {
     }
     
     public update(deltaTime: number): void {
+        this.updateFrameCount++;
+        if (this.updateFrameCount % this.UPDATE_FREQUENCY !== 0) return;
+
         this.edges.forEach((edge) => {
             if (edge.material instanceof EdgeShaderMaterial) {
-                edge.material.update(deltaTime);
+                edge.material.update(deltaTime * this.UPDATE_FREQUENCY);
             }
         });
     }

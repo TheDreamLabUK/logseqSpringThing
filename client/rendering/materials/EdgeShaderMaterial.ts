@@ -44,6 +44,7 @@ export class EdgeShaderMaterial extends THREE.ShaderMaterial {
                 varying vec2 vUv;
                 varying vec3 vPosition;
                 varying float vDistance;
+                const float PI = 3.14159265359;
                 
                 uniform vec3 sourcePosition;
                 uniform vec3 targetPosition;
@@ -52,10 +53,10 @@ export class EdgeShaderMaterial extends THREE.ShaderMaterial {
                     vUv = uv;
                     vPosition = position;
                     
-                    // Calculate distance along the edge (0 to 1)
-                    vec3 edgeVector = targetPosition - sourcePosition;
-                    vec3 positionVector = position - sourcePosition;
-                    vDistance = dot(normalize(edgeVector), normalize(positionVector));
+                    // Optimize distance calculation
+                    vec3 edgeDir = normalize(targetPosition - sourcePosition);
+                    vec3 posVector = position - sourcePosition;
+                    vDistance = dot(edgeDir, normalize(posVector));
                     
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
@@ -77,42 +78,37 @@ export class EdgeShaderMaterial extends THREE.ShaderMaterial {
                 varying float vDistance;
                 
                 void main() {
-                    // Flow effect
-                    float flow = sin(vDistance * 10.0 - time * flowSpeed) * 0.5 + 0.5;
+                    // Simplified flow calculation
+                    float flow = sin(vDistance * 8.0 - time * flowSpeed) * 0.5 + 0.5;
                     flow *= flowIntensity;
-                    
-                    // Distance-based intensity
-                    float distanceFactor = mix(1.0, 0.5, abs(vDistance - 0.5) * 2.0);
+
+                    // Optimized distance-based intensity
+                    float distanceFactor = 1.0 - abs(vDistance - 0.5) * 2.0;
                     distanceFactor = pow(distanceFactor, distanceIntensity);
                     
-                    // Base color
-                    vec3 finalColor;
-                    if (useGradient) {
-                        finalColor = mix(gradientColorA, gradientColorB, vDistance);
-                    } else {
-                        finalColor = color;
-                    }
-                    
-                    // Add flow effect
+                    // Base color with gradient
+                    vec3 finalColor = useGradient ? 
+                        mix(gradientColorA, gradientColorB, vDistance) : 
+                        color;
+
+                    // Add flow and glow effects
                     finalColor += flow * 0.2;
+                    finalColor += (1.0 - vUv.y) * glowStrength * 0.3;
                     
-                    // Add glow
-                    float glow = (1.0 - vUv.y) * glowStrength;
-                    finalColor += glow * 0.5;
-                    
-                    // Apply distance-based intensity
-                    finalColor *= distanceFactor;
+                    // Apply distance factor
+                    finalColor *= mix(0.5, 1.0, distanceFactor);
                     
                     gl_FragColor = vec4(finalColor, opacity * (0.7 + flow * 0.3));
                 }
             `,
             transparent: true,
             side: isAR ? 0 : 2, // THREE.FrontSide = 0, THREE.DoubleSide = 2
-            blending: THREE.AdditiveBlending,
+            blending: isAR ? THREE.NormalBlending : THREE.AdditiveBlending, // Use normal blending in VR for better performance
+            depthWrite: !isAR // Disable depth write in VR for better performance
         });
 
         // Set update frequency based on context
-        this.updateFrequency = isAR ? 2 : 1; // Update every other frame in AR
+        this.updateFrequency = isAR ? 3 : 2; // Update less frequently in AR
     }
 
     update(deltaTime: number): void {
