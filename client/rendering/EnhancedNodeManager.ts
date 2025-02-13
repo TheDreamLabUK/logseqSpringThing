@@ -151,10 +151,10 @@ export class EnhancedNodeManager {
         nodes.forEach((node) => {
             const existingNode = this.nodes.get(node.id);
             if (existingNode) {
-                existingNode.position.set(
-                    node.data.position.x,
-                    node.data.position.y,
-                    node.data.position.z
+                existingNode.position.set(                    
+                    Array.isArray(node.data.position) ? node.data.position[0] : node.data.position.x,
+                    Array.isArray(node.data.position) ? node.data.position[1] : node.data.position.y,
+                    Array.isArray(node.data.position) ? node.data.position[2] : node.data.position.z
                 );
                 return;
             }
@@ -166,9 +166,9 @@ export class EnhancedNodeManager {
                 hyperlinkCount: node.data.metadata?.links?.length || 0,
                 importance: this.calculateImportance({ id: node.id, data: node.data }),
                 position: {
-                    x: node.data.position.x,
-                    y: node.data.position.y,
-                    z: node.data.position.z
+                    x: Array.isArray(node.data.position) ? node.data.position[0] : node.data.position.x,
+                    y: Array.isArray(node.data.position) ? node.data.position[1] : node.data.position.y,
+                    z: Array.isArray(node.data.position) ? node.data.position[2] : node.data.position.z
                 }
             };
 
@@ -271,10 +271,19 @@ export class EnhancedNodeManager {
         nodes.forEach((node) => {
             const existingNode = this.nodes.get(node.id);
             if (existingNode) {
+                // Convert array position to Vector3
+                const position = Array.isArray(node.data.position) 
+                    ? {
+                        x: node.data.position[0],
+                        y: node.data.position[1],
+                        z: node.data.position[2]
+                    }
+                    : node.data.position;
+                
                 existingNode.position.set(
-                    node.data.position[0],
-                    node.data.position[1],
-                    node.data.position[2]
+                    position.x,
+                    position.y,
+                    position.z
                 );
             }
         });
