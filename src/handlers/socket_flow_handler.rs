@@ -20,25 +20,6 @@ pub struct SocketFlowServer {
 }
 
 impl SocketFlowServer {
-    fn should_log_debug(&self) -> bool {
-        if let Ok(settings) = self.settings.try_read() {
-            settings.system.debug.enabled && settings.system.debug.enable_websocket_debug
-        } else {
-            false
-        }
-    }
-
-    fn debug_log(&self, message: &str, args: Option<&dyn std::fmt::Debug>) {
-        if self.should_log_debug() {
-            match args {
-                Some(args) => debug!("{}: {:?}", message, args),
-                None => debug!("{}", message),
-            }
-        }
-    }
-}
-
-impl SocketFlowServer {
     pub fn new(app_state: Arc<AppState>, settings: Arc<RwLock<crate::config::Settings>>) -> Self {
         // Calculate update interval from settings
         let update_rate = settings
@@ -74,13 +55,7 @@ impl SocketFlowServer {
                 if encoder.write_all(&data).is_ok() {
                     if let Ok(compressed) = encoder.finish() {
                         if compressed.len() < data.len() {
-                            if self.should_log_debug() {
-                                debug!(
-                                    "Compressed binary message: {} -> {} bytes",
-                                    data.len(),
-                                    compressed.len()
-                                );
-                            }
+                            debug!("Compressed binary message: {} -> {} bytes", data.len(), compressed.len());
                             return compressed;
                         }
                     }
@@ -98,19 +73,12 @@ impl SocketFlowServer {
                 match decoder.read_to_end(&mut decompressed) {
                     Ok(_) => {
                         if decompressed.len() > data.len() {
-                            if self.should_log_debug() {
-                                debug!(
-                                    "Decompressed binary message: {} -> {} bytes",
-                                    data.len(),
-                                    decompressed.len()
-                                );
-                            }
+                            debug!("Decompressed binary message: {} -> {} bytes", data.len(), decompressed.len());
                             return Ok(decompressed);
                         }
                     }
                     Err(e) => {
-                        // If decompression fails, assume the data wasn't compressed
-                        self.debug_log("Decompression failed (data likely uncompressed)", Some(&e));
+                        debug!("Decompression failed (data likely uncompressed): {}", e);
                     }
                 }
             }
@@ -146,11 +114,11 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
             Ok(ws::Message::Ping(msg)) => {
-                self.debug_log("[WebSocket] Received ping", None);
+                debug!("[WebSocket] Received ping");
                 ctx.pong(&msg);
             }
             Ok(ws::Message::Pong(_)) => {
-                self.debug_log("[WebSocket] Received pong", None);
+                debug!("[WebSocket] Received pong");
                 // Update last pong time if needed
             }
             Ok(ws::Message::Text(text)) => {
@@ -312,7 +280,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SocketFlowServer 
                 warn!("[WebSocket] Received unexpected continuation frame");
             }
             Ok(ws::Message::Nop) => {
-                self.debug_log("[WebSocket] Received Nop", None);
+                debug!("[WebSocket] Received Nop");
             }
             Err(e) => {
                 error!("[WebSocket] Error in WebSocket connection: {}", e);

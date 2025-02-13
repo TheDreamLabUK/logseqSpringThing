@@ -8,6 +8,7 @@ import { EnhancedNodeManager } from './EnhancedNodeManager';
 import { graphDataManager } from '../state/graphData';
 import { TextRenderer } from './textRenderer';
 import { GraphData } from '../core/types';
+import { WebSocketService } from '../websocket/websocketService';
 
 const logger = createLogger('VisualizationController');
 
@@ -22,12 +23,12 @@ export class VisualizationController {
     private textRenderer: TextRenderer | null = null;
     private isInitialized: boolean = false;
     private pendingUpdates: Map<string, PendingUpdate> = new Map();
-    private pendingEdgeUpdates: GraphData['edges'] | null = null;
-    private pendingNodeUpdates: GraphData['nodes'] | null = null;
+    private websocketService: WebSocketService;
 
     private constructor() {
         // Initialize with complete default settings
-        this.currentSettings = { ...defaultSettings };
+        this.currentSettings = defaultSettings;
+        this.websocketService = WebSocketService.getInstance();
         
         // Subscribe to graph data updates
         graphDataManager.subscribe((data: GraphData) => {
@@ -40,9 +41,22 @@ export class VisualizationController {
                 }
             } else {
                 // Queue updates until initialized
-                this.pendingNodeUpdates = data.nodes;
-                this.pendingEdgeUpdates = data.edges;
-                logger.debug('Queuing updates until initialization');
+                if (import.meta.env.DEV) logger.debug('Queuing updates until initialization');
+            }
+        });
+
+        // Subscribe to websocket binary updates
+        this.websocketService.onBinaryMessage((nodes) => {
+            if (this.nodeManager && this.isInitialized) {
+                // Convert binary node data to the format expected by updateNodePositions
+                const updates = nodes.map(node => ({
+                    id: node.id.toString(),
+                    data: {
+                        position: node.position,
+                        velocity: node.velocity
+                    }
+                }));
+                this.nodeManager.updateNodePositions(updates);
             }
         });
     }
@@ -56,57 +70,18 @@ export class VisualizationController {
         this.textRenderer = new TextRenderer(camera, scene);
         this.isInitialized = true;
         
-        // Apply any pending updates
-        this.applyPendingUpdates();
-        
-        // Initialize with current graph data
+        if (import.meta.env.DEV) logger.debug('Scene managers initialized');
+
+        // Initialize with current graph data (if any)
         const currentData = graphDataManager.getGraphData();
-        
-        // Handle pending node updates
-        if (this.pendingNodeUpdates && this.nodeManager) {
-            this.nodeManager.updateNodes(this.pendingNodeUpdates);
-            this.pendingNodeUpdates = null;
-        } else if (currentData.nodes.length > 0 && this.nodeManager) {
+        if (currentData.nodes.length > 0 && this.nodeManager) {
             this.nodeManager.updateNodes(currentData.nodes);
         }
-        
-        // Handle pending edge updates
-        if (this.pendingEdgeUpdates && this.edgeManager) {
-            this.edgeManager.updateEdges(this.pendingEdgeUpdates);
-            this.pendingEdgeUpdates = null;
-        } else if (currentData.edges.length > 0 && this.edgeManager) {
-            this.edgeManager.updateEdges(currentData.edges);
-        }
-        
-        logger.info('Visualization scene initialized');
-    }
 
-    private applyPendingUpdates(): void {
-        if (!this.isInitialized) {
-            logger.debug('Cannot apply pending updates - not initialized');
-            return;
-        }
+        // Connect to websocket after scene initialization
+        this.websocketService.connect();
 
-        logger.debug(`Applying ${this.pendingUpdates.size} pending updates`);
-        this.pendingUpdates.forEach((update, path) => {
-            let current = this.currentSettings as any;
-            const parts = path.split('.');
-            
-            // Update the settings object
-            for (let i = 0; i < parts.length - 1; i++) {
-                const part = parts[i];
-                if (!(part in current)) {
-                    current[part] = {};
-                }
-                current = current[part];
-            }
-            current[parts[parts.length - 1]] = update.value;
-            
-            // Apply the update
-            this.applySettingUpdate(update.category);
-        });
-        
-        this.pendingUpdates.clear();
+        logger.info('Scene initialization complete');
     }
 
     public static getInstance(): VisualizationController {
@@ -322,20 +297,14 @@ export class VisualizationController {
     }
 
     public dispose(): void {
-        if (this.nodeManager) {
-            this.nodeManager.dispose();
-            this.nodeManager = null;
+        // Dispose of managers and cleanup websocket
+        if (this.textRenderer) {
+            this.textRenderer.dispose();
+            this.textRenderer = null;
         }
-        if (this.edgeManager) {
-            this.edgeManager.dispose();
-            this.edgeManager = null;
-        }
-        this.textRenderer?.dispose();
-        this.currentSettings = { ...defaultSettings };
+        this.edgeManager?.dispose();
+        this.websocketService.dispose();
         this.isInitialized = false;
-        this.pendingUpdates.clear();
-        this.pendingEdgeUpdates = null;
-        this.pendingNodeUpdates = null;
         VisualizationController.instance = null;
     }
 }
