@@ -14,7 +14,13 @@ export default defineConfig(({ mode, command }) => {
       outDir: resolve(__dirname, 'data/public/dist'),
       emptyOutDir: true,
       sourcemap: !isProd,
-      minify: false,
+      // Disable all minification and optimization
+      minify: false, 
+      target: 'esnext', // Avoid transformations
+      terserOptions: {
+        compress: false,
+        mangle: false
+      },
       rollupOptions: {
         input: {
           main: resolve(__dirname, 'client/index.html')
@@ -62,7 +68,8 @@ export default defineConfig(({ mode, command }) => {
     },
 
     optimizeDeps: {
-      include: ['three']
+      include: ['three'],
+      disabled: true // Disable dependency optimization
     },
 
     define: {

@@ -36,6 +36,8 @@ export class SceneManager {
   private animationFrameId: number | null = null;
   private isRunning: boolean = false;
   private visualizationController: VisualizationController | null = null;
+  private lastFrameTime: number = 0;
+  private readonly FRAME_BUDGET: number = 33; // Target 30fps (1000ms/30)
 
   private constructor(canvas: HTMLCanvasElement) {
     logger.log('Initializing SceneManager');
@@ -171,7 +173,7 @@ export class SceneManager {
   start(): void {
     if (this.isRunning) return;
     this.isRunning = true;
-    this.animate();
+    requestAnimationFrame(this.animate);
     logger.log('Scene rendering started');
   }
 
@@ -195,8 +197,11 @@ export class SceneManager {
     logger.log('Scene rendering stopped');
   }
 
-  private animate = (): void => {
+  private animate = (timestamp: number): void => {
     if (!this.isRunning) return;
+
+    const deltaTime = timestamp - this.lastFrameTime;
+    this.lastFrameTime = timestamp;
 
     // Set up animation loop
     if (this.renderer.xr.enabled) {
@@ -204,28 +209,54 @@ export class SceneManager {
       this.renderer.setAnimationLoop(this.render);
     } else {
       // For non-XR, use requestAnimationFrame
-      this.animationFrameId = requestAnimationFrame(this.animate);
-      this.render();
+      this.render(deltaTime);
+      if (this.isRunning) {
+        this.animationFrameId = requestAnimationFrame(this.animate);
+      }
     }
   }
 
-  private render = (): void => {
+  private render = (deltaTime?: number): void => {
+    const startTime = performance.now();
+
     // Update controls only in non-XR mode
     if (!this.renderer.xr.enabled) {
-      this.controls.update();
-      // Show scene grid in non-XR mode
-      if (this.sceneGrid) this.sceneGrid.visible = true;
+      // Only update controls if enough time has passed
+      if (!deltaTime || deltaTime >= this.FRAME_BUDGET) {
+        this.controls.update();
+        // Show scene grid in non-XR mode
+        if (this.sceneGrid) this.sceneGrid.visible = true;
+      }
     } else {
       // Hide scene grid in XR mode
       if (this.sceneGrid) this.sceneGrid.visible = false;
     }
 
-    // Update visualization controller
-    this.visualizationController?.update();
+    // Check if we have time for visualization update
+    const currentTime = performance.now();
+    const elapsedTime = currentTime - startTime;
+    
+    if (elapsedTime < this.FRAME_BUDGET) {
+      // Update visualization controller with remaining time budget
+      this.visualizationController?.update();
+    }
 
-    // Use post-processing in non-XR mode when bloom is enabled
-    if (!this.renderer.xr.enabled && this.bloomPass.enabled) {
-      this.composer.render();
+    // Check remaining time for rendering
+    const preRenderTime = performance.now();
+    const remainingTime = this.FRAME_BUDGET - (preRenderTime - startTime);
+
+    if (remainingTime >= 0) {
+      // Use post-processing in non-XR mode when bloom is enabled
+      if (!this.renderer.xr.enabled && this.bloomPass.enabled) {
+        // Skip bloom if we're running low on time
+        if (remainingTime >= 8) { // Give bloom half our frame budget
+          this.composer.render();
+        } else {
+          this.renderer.render(this.scene, this.camera);
+        }
+      } else {
+        this.renderer.render(this.scene, this.camera);
+      }
     } else {
       this.renderer.render(this.scene, this.camera);
     }

@@ -34,10 +34,10 @@ export class GraphVisualization {
     private websocketService!: WebSocketService;
     private initialized: boolean = false;
 
-    private async initializeWebSocket(): Promise<void> {
+    public async initializeWebSocket(): Promise<void> {
         debugLog('Initializing WebSocket connection');
         
-        // Initialize WebSocket for position updates only
+        // Initialize WebSocket but don't connect yet
         this.websocketService = WebSocketService.getInstance();
         
         // Set up binary message handler before connecting
@@ -70,8 +70,10 @@ export class GraphVisualization {
             const graphData = graphDataManager.getGraphData();
             this.nodeManager.updateNodes(graphData.nodes);
             this.edgeManager.updateEdges(graphData.edges);
-            this.initialized = true; // Mark as initialized after initial data is loaded
-            this.websocketService.connect(); // Connect only after initialization
+            
+            // Mark as initialized and connect websocket only after initial data is loaded
+            this.initialized = true;
+            await this.websocketService.connect();
             debugLog('Initial graph data loaded and WebSocket connected');
         } catch (error) {
             logger.error('Failed to load initial graph data:', error);
@@ -100,11 +102,8 @@ export class GraphVisualization {
         this.hologramManager = new HologramManager(scene, renderer, settings);
         this.textRenderer = new TextRenderer(camera, scene);
         
-        // Apply initial settings to all components
+        // Apply initial settings to all components but don't connect websocket yet
         this.handleSettingsUpdate(settings);
-        
-        // Initialize WebSocket after settings are loaded
-        this.initializeWebSocket();
         
         // Start rendering
         this.sceneManager.start();
@@ -197,6 +196,9 @@ async function init() {
         // Initialize main visualization and store globally
         const viz = new GraphVisualization(settings);
         (window as any).visualization = viz;
+        
+        // Initialize WebSocket after visualization is created
+        await viz.initializeWebSocket();
 
         // Subscribe to all relevant visualization paths
         const visualizationPaths = [
