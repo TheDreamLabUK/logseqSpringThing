@@ -288,6 +288,11 @@ export class VisualizationController {
             if (this.nodeManager) {
                 this.nodeManager.update(deltaTime);
             }
+
+            // Update edge animations
+            if (this.edgeManager) {
+                this.edgeManager.update(deltaTime);
+            }
             
             // Update text labels
             if (this.textRenderer) {

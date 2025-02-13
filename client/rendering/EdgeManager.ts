@@ -6,13 +6,11 @@ import {
     Group,
     Object3D,
     Material,
-    Mesh,
-    MeshBasicMaterial,
-    DoubleSide
+    Mesh
 } from 'three';
 import { Edge } from '../core/types';
 import { Settings } from '../types/settings';
-import { HologramShaderMaterial } from './materials/HologramShaderMaterial';
+import { EdgeShaderMaterial } from './materials/EdgeShaderMaterial';
 
 export class EdgeManager {
     private scene: Scene;
@@ -32,12 +30,12 @@ export class EdgeManager {
         scene.add(this.edgeGroup);
     }
 
-    private createEdgeGeometry(source: Vector3, target: Vector3, isHologram: boolean = false): BufferGeometry {
+    private createEdgeGeometry(source: Vector3, target: Vector3): BufferGeometry {
         const geometry = new BufferGeometry();
         
         // Calculate direction and create vertices directly in world space
         const direction = new Vector3().subVectors(target, source);
-        const width = this.settings.visualization.edges.baseWidth * (isHologram ? 0.15 : 0.1);
+        const width = this.settings.visualization.edges.baseWidth * 0.1;
         
         // Calculate perpendicular vector for width
         const up = new Vector3(0, 1, 0);
@@ -93,28 +91,10 @@ export class EdgeManager {
         return geometry;
     }
 
-    private createEdgeMaterial(isHologram: boolean = false): Material {
-        if (isHologram) {
-            return new HologramShaderMaterial({
-                visualization: {
-                    hologram: {
-                        opacity: this.settings.visualization.edges.opacity,
-                        color: this.settings.visualization.edges.color
-                    },
-                    edges: {
-                        baseWidth: this.settings.visualization.edges.baseWidth
-                    }
-                }
-            });
-        }
-        
-        // Default edge material
-        return new MeshBasicMaterial({
-            color: this.settings.visualization.edges.color,
-            transparent: true,
-            opacity: this.settings.visualization.edges.opacity,
-            side: DoubleSide
-        });
+    private createEdgeMaterial(): Material {
+        return new EdgeShaderMaterial(this.settings, 
+            this.settings.visualization.rendering.context || 'desktop'
+        );
     }
 
     public updateEdges(edges: Edge[]): void {
@@ -143,9 +123,8 @@ export class EdgeManager {
                 edge.targetPosition.z
             );
 
-            const isHologram = edge.type === 'hologram';
-            const geometry = this.createEdgeGeometry(source, target, isHologram);
-            const material = this.createEdgeMaterial(isHologram);
+            const geometry = this.createEdgeGeometry(source, target);
+            const material = this.createEdgeMaterial();
             const mesh = new Mesh(geometry, material);
 
             // Enable both layers for the edge
@@ -153,6 +132,11 @@ export class EdgeManager {
             mesh.layers.enable(1);
             
             this.edgeGroup.add(mesh);
+            
+            // Set source and target positions for the shader
+            if (material instanceof EdgeShaderMaterial) {
+                material.setSourceTarget(source, target);
+            }
             this.edges.set(edge.id, mesh);
         });
     }
@@ -160,17 +144,26 @@ export class EdgeManager {
     public handleSettingsUpdate(settings: Settings): void {
         this.settings = settings;
         this.edges.forEach((edge) => {
-            if (edge.material instanceof HologramShaderMaterial) {
-                edge.material.uniforms.opacity.value = settings.visualization.edges.opacity;
-                edge.material.uniforms.color.value.set(settings.visualization.edges.color);
-                edge.material.uniforms.edgeWidth.value = settings.visualization.edges.baseWidth;
+            if (edge.material instanceof EdgeShaderMaterial) {
+                const uniforms = edge.material.uniforms;
+                uniforms.opacity.value = settings.visualization.edges.opacity;
+                uniforms.color.value.set(settings.visualization.edges.color);
+                uniforms.flowSpeed.value = settings.visualization.edges.flowSpeed;
+                uniforms.flowIntensity.value = settings.visualization.edges.flowIntensity;
+                uniforms.glowStrength.value = settings.visualization.edges.glowStrength;
+                uniforms.distanceIntensity.value = settings.visualization.edges.distanceIntensity;
+                uniforms.useGradient.value = settings.visualization.edges.useGradient;
+                uniforms.gradientColorA.value.set(settings.visualization.edges.gradientColors[0]);
+                uniforms.gradientColorB.value.set(settings.visualization.edges.gradientColors[1]);
                 edge.material.needsUpdate = true;
-            } else if (edge.material instanceof MeshBasicMaterial) {
-                edge.material.color.set(settings.visualization.edges.color);
-                edge.material.opacity = settings.visualization.edges.opacity;
-                edge.material.transparent = true;
-                edge.material.side = DoubleSide;
-                edge.material.needsUpdate = true;
+            }
+        });
+    }
+    
+    public update(deltaTime: number): void {
+        this.edges.forEach((edge) => {
+            if (edge.material instanceof EdgeShaderMaterial) {
+                edge.material.update(deltaTime);
             }
         });
     }

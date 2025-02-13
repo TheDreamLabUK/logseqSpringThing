@@ -23,7 +23,15 @@ export const defaultSettings: Settings = {
             enableArrows: false,
             opacity: 0.8,
             widthRange: [1.5, 4.0],
-            quality: 'medium'
+            quality: 'medium',
+            // New shader-based edge settings
+            enableFlowEffect: true,
+            flowSpeed: 1.0,
+            flowIntensity: 0.6,
+            glowStrength: 0.4,
+            distanceIntensity: 0.3,
+            useGradient: false,
+            gradientColors: ['#888888', '#aaaaaa']
         },
         physics: {
             attractionStrength: 0.015,

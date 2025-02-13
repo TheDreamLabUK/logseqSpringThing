@@ -7,7 +7,7 @@ visualization:
     size_range:
     - 200.0
     - 700.0
-    quality: high
+    quality: medium
     enable_instancing: true
     enable_hologram: true
     enable_metadata_shape: true
@@ -16,7 +16,7 @@ visualization:
     arrow_size: 2.0
     base_width: 2.0
     color: '#0c2140'
-    enable_arrows: false
+    enable_arrows: true
     opacity: 0.5
     width_range:
     - 2.0
@@ -42,30 +42,30 @@ visualization:
     enable_shadows: false
     environment_intensity: 0.7
   animations:
-    enable_motion_blur: false
-    enable_node_animations: false
+    enable_motion_blur: true
+    enable_node_animations: true
     motion_blur_strength: 0.2
-    selection_wave_enabled: false
-    pulse_enabled: false
+    selection_wave_enabled: true
+    pulse_enabled: true
     pulse_speed: 0.8
     pulse_strength: 0.6
     wave_speed: 0.5
   labels:
     desktop_font_size: 10
-    enable_labels: false
-    text_color: '#ffffff'
+    enable_labels: true
+    text_color: '#000000'
     text_outline_color: '#000000'
     text_outline_width: 0.1
     text_resolution: 32
     text_padding: 2
     billboard_mode: camera
   bloom:
-    edge_bloom_strength: 2.0
-    enabled: false
+    edge_bloom_strength: 0.4
+    enabled: true
     environment_bloom_strength: 0.4
-    node_bloom_strength: 2.5
+    node_bloom_strength: 0.1
     radius: 0.8
-    strength: 1.5
+    strength: 0.2
   hologram:
     ring_count: 3
     ring_color: '#c2a200'
