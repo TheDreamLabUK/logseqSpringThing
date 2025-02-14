@@ -22,7 +22,7 @@ const tempPosition = new Vector3();
 
 // Batch processing constants
 const MATRIX_UPDATE_BATCH_SIZE = 200;  // Increased to handle larger updates
-const DISTANCE_UPDATE_THRESHOLD = 0.001;  // Minimum distance for position updates
+const DISTANCE_UPDATE_THRESHOLD = 0.0001;  // Minimum distance for position updates
 const MATRIX_UPDATE_INTERVAL = 2;  // Update matrices every N frames
 const VIEW_CULLING_DISTANCE = 100;  // Maximum distance for node visibility
 

@@ -45,8 +45,8 @@ visualization:
     enable_motion_blur: true
     enable_node_animations: true
     motion_blur_strength: 0.2
-    selection_wave_enabled: true
-    pulse_enabled: true
+    selection_wave_enabled: false
+    pulse_enabled: false
     pulse_speed: 0.8
     pulse_strength: 0.6
     wave_speed: 0.5
@@ -61,7 +61,7 @@ visualization:
     billboard_mode: camera
   bloom:
     edge_bloom_strength: 0.4
-    enabled: true
+    enabled: false
     environment_bloom_strength: 0.4
     node_bloom_strength: 0.1
     radius: 0.8
