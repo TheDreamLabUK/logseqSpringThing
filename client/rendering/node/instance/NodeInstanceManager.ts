@@ -15,7 +15,6 @@ const logger = createLogger('NodeInstanceManager');
 
 // Constants for optimization
 const MAX_INSTANCES = 10000;
-const BATCH_SIZE = 200;
 const VISIBILITY_UPDATE_INTERVAL = 10; // frames
 
 // Reusable objects for matrix calculations
@@ -129,20 +128,13 @@ export class NodeInstanceManager {
     }
 
     private processBatchUpdate(): void {
-        let processed = 0;
-        for (const index of this.pendingUpdates) {
-            this.nodeInstances.instanceMatrix.needsUpdate = true;
-            if (processed >= BATCH_SIZE) break;
-            processed++;
-        }
-
-        if (processed > 0) {
+        if (this.pendingUpdates.size > 0) {
+            // Update all pending changes
             this.nodeInstances.instanceMatrix.needsUpdate = true;
             if (this.nodeInstances.instanceColor) {
                 this.nodeInstances.instanceColor.needsUpdate = true;
             }
-            // Clear processed updates
-            this.pendingUpdates.clear();
+            this.pendingUpdates.clear(); // Clear all pending updates
         }
     }
 
@@ -190,7 +182,7 @@ export class NodeInstanceManager {
             const distance = position.distanceTo(cameraPosition);
             
             // Update geometry based on distance
-            const geometry = this.geometryManager.getGeometryForDistance(distance);
+            void this.geometryManager.getGeometryForDistance(distance); // Keep LOD calculation for future use
 
             // Update visibility
             const visible = distance < this.geometryManager.getThresholdForLOD(LODLevel.LOW);
