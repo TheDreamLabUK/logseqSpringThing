@@ -210,4 +210,12 @@ export class NodeManagerFacade implements NodeManagerInterface {
     public getNodeId(index: number): string | undefined {
         return this.instanceManager.getNodeId(index);
     }
+
+    /**
+     * Get the underlying NodeInstanceManager
+     * @returns The NodeInstanceManager instance
+     */
+    public getNodeInstanceManager(): NodeInstanceManager {
+        return this.instanceManager;
+    }
 }

@@ -88,14 +88,13 @@ export class VisualizationController {
             logger.error('Failed to connect WebSocket:', error);
         });
         
-        // Initialize managers with scene and settings
-        this.edgeManager = new EdgeManager(scene, this.currentSettings);
         const materialFactory = MaterialFactory.getInstance();
         this.nodeManager = NodeManagerFacade.getInstance(
             scene,
             camera,
             materialFactory.getNodeMaterial(this.currentSettings)
         );
+        this.edgeManager = new EdgeManager(scene, this.currentSettings, this.nodeManager.getNodeInstanceManager());
         this.textRenderer = new TextRenderer(camera, scene);
         this.isInitialized = true;
         

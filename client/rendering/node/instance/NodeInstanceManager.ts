@@ -221,4 +221,20 @@ export class NodeInstanceManager {
         // Find the node ID that maps to this index
         return Array.from(this.nodeIndices.entries()).find(([_, idx]) => idx === index)?.[0];
     }
+
+    /**
+     * Get current position of a node by its ID
+     * @param nodeId The ID of the node
+     * @returns Vector3 position or undefined if node not found
+     */
+    public getNodePosition(nodeId: string): Vector3 | undefined {
+        const index = this.nodeIndices.get(nodeId);
+        if (index !== undefined) {
+            this.nodeInstances.getMatrixAt(index, matrix);
+            const position = new Vector3();
+            position.setFromMatrixPosition(matrix);
+            return position;
+        }
+        return undefined;
+    }
 }

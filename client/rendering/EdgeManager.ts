@@ -11,17 +11,21 @@ import {
 import { Edge } from '../core/types';
 import { Settings } from '../types/settings';
 import { EdgeShaderMaterial } from './materials/EdgeShaderMaterial';
+import { NodeInstanceManager } from './node/instance/NodeInstanceManager';
 
 export class EdgeManager {
     private scene: Scene;
     private edges: Map<string, Mesh> = new Map();
     private edgeGroup: Group;
+    private nodeManager: NodeInstanceManager;
+    private edgeData: Map<string, Edge> = new Map();
     private settings: Settings;
     private updateFrameCount = 0;
     private readonly UPDATE_FREQUENCY = 2; // Update every other frame
 
-    constructor(scene: Scene, settings: Settings) {
+    constructor(scene: Scene, settings: Settings, nodeManager: NodeInstanceManager) {
         this.scene = scene;
+        this.nodeManager = nodeManager;
         this.settings = settings;
         this.edgeGroup = new Group();
         
@@ -101,6 +105,7 @@ export class EdgeManager {
 
     public updateEdges(edges: Edge[]): void {
         // Clear existing edges
+        this.edgeData.clear();
         this.edges.forEach(edge => {
             this.edgeGroup.remove(edge);
             edge.geometry.dispose();
@@ -140,6 +145,7 @@ export class EdgeManager {
                 material.setSourceTarget(source, target);
             }
             this.edges.set(edge.id, mesh);
+            this.edgeData.set(edge.id, edge);
         });
     }
 
@@ -165,10 +171,29 @@ export class EdgeManager {
     public update(deltaTime: number): void {
         this.updateFrameCount++;
         if (this.updateFrameCount % this.UPDATE_FREQUENCY !== 0) return;
+        
+        // Update edge positions based on current node positions
+        this.edgeData.forEach((edgeData, edgeId) => {
+            const mesh = this.edges.get(edgeId);
+            if (!mesh) return;
 
-        this.edges.forEach((edge) => {
-            if (edge.material instanceof EdgeShaderMaterial) {
-                edge.material.update(deltaTime * this.UPDATE_FREQUENCY);
+            const sourcePos = this.nodeManager.getNodePosition(edgeData.source);
+            const targetPos = this.nodeManager.getNodePosition(edgeData.target);
+
+            if (sourcePos && targetPos) {
+                // Update edge geometry
+                mesh.geometry.dispose();
+                mesh.geometry = this.createEdgeGeometry(sourcePos, targetPos);
+
+                // Update shader material source/target
+                if (mesh.material instanceof EdgeShaderMaterial) {
+                    mesh.material.setSourceTarget(sourcePos, targetPos);
+                    mesh.material.update(deltaTime * this.UPDATE_FREQUENCY);
+                }
+            }
+            // If positions not found, edge will remain at last known position
+            else if (mesh.material instanceof EdgeShaderMaterial) {
+                mesh.material.update(deltaTime * this.UPDATE_FREQUENCY);
             }
         });
     }

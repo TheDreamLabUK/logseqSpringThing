@@ -104,7 +104,7 @@ export class GraphVisualization {
             camera,
             materialFactory.getNodeMaterial(settings)
         );
-        this.edgeManager = new EdgeManager(scene, settings);
+        this.edgeManager = new EdgeManager(scene, settings, this.nodeManager.getNodeInstanceManager());
         this.hologramManager = new HologramManager(scene, renderer, settings);
         this.textRenderer = new TextRenderer(camera, scene);
         
