@@ -22,6 +22,9 @@ const tempPosition = new Vector3();
 
 // Batch processing constants
 const MATRIX_UPDATE_BATCH_SIZE = 200;  // Increased to handle larger updates
+const DISTANCE_UPDATE_THRESHOLD = 0.001;  // Minimum distance for position updates
+const MATRIX_UPDATE_INTERVAL = 2;  // Update matrices every N frames
+const VIEW_CULLING_DISTANCE = 100;  // Maximum distance for node visibility
 
 export class EnhancedNodeManager {
     private scene: Scene;
@@ -42,6 +45,8 @@ export class EnhancedNodeManager {
     private matrixUpdateScheduled: boolean = false;
     private readonly METADATA_DISTANCE_THRESHOLD = 50;
     private readonly ANIMATION_DISTANCE_THRESHOLD = 30;
+    private frameCount: number = 0;
+    private visibleNodes: Set<string> = new Set();
 
     constructor(scene: Scene, settings: Settings) {
         this.scene = scene;
@@ -81,6 +86,18 @@ export class EnhancedNodeManager {
 
         this.metadataMaterial = this.materialFactory.getMetadataMaterial();
         this.metadataVisualizer = new MetadataVisualizer(this.camera, this.scene, settings);
+    }
+
+    private updateVisibleNodes(): void {
+        const cameraPosition = this.camera.position;
+        this.visibleNodes.clear();
+
+        this.nodes.forEach((node, id) => {
+            const distance = node.position.distanceTo(cameraPosition);
+            if (distance < VIEW_CULLING_DISTANCE) {
+                this.visibleNodes.add(id);
+            }
+        });
     }
 
     public handleSettingsUpdate(settings: Settings): void {
@@ -229,26 +246,44 @@ export class EnhancedNodeManager {
     update(deltaTime: number) {
         this.updateFrameCount++;
         const isARMode = platformManager.isXRMode;
+        this.frameCount++;
 
         if (isARMode && this.updateFrameCount % this.AR_UPDATE_FREQUENCY !== 0) {
             return;
+        }
+
+        // Update visible nodes every N frames
+        if (this.frameCount % MATRIX_UPDATE_INTERVAL === 0) {
+            this.updateVisibleNodes();
         }
 
         if (this.isHologram && this.hologramMaterial) {
             this.hologramMaterial.update(deltaTime);
         }
 
-        if (this.settings.visualization.animations.enableNodeAnimations) {
+        // Only process visible nodes
+        for (const nodeId of this.visibleNodes) {
+            const node = this.nodes.get(nodeId);
+            if (!node) continue;
+
             const cameraPosition = this.camera.position;
-            this.scene.traverse((child: Object3D) => {
-                if (child instanceof Mesh && 
-                    (child.material as any).type === 'LineBasicMaterial' && 
-                    child.position.distanceTo(cameraPosition) < this.ANIMATION_DISTANCE_THRESHOLD) {
-                    child.rotateY(0.001 * deltaTime);
+            const distance = node.position.distanceTo(cameraPosition);
+
+            // Only animate close nodes
+            if (this.settings.visualization.animations.enableNodeAnimations &&
+                distance < this.ANIMATION_DISTANCE_THRESHOLD) {
+                node.rotateY(0.001 * deltaTime);
+            }
+
+            // Update matrices less frequently for better performance
+            if (this.frameCount % MATRIX_UPDATE_INTERVAL === 0) {
+                if (distance < this.METADATA_DISTANCE_THRESHOLD) {
+                    node.updateMatrix();
                 }
-            });
+            }
         }
     }
+
 
     handleHandInteraction(hand: XRHandWithHaptics) {
         const indexTip = hand.hand.joints['index-finger-tip'] as Object3D | undefined;
@@ -313,6 +348,16 @@ export class EnhancedNodeManager {
             const existingNode = this.nodes.get(node.id);
             if (!existingNode) return;
 
+            // Skip tiny movements for performance
+            const dx = node.data.position[0] - existingNode.position.x;
+            const dy = node.data.position[1] - existingNode.position.y;
+            const dz = node.data.position[2] - existingNode.position.z;
+            const distanceSquared = dx * dx + dy * dy + dz * dz;
+            
+            if (distanceSquared < DISTANCE_UPDATE_THRESHOLD * DISTANCE_UPDATE_THRESHOLD) {
+                return;
+            }
+
             // Use reusable tempPosition Vector3
             tempPosition.set(
                 node.data.position[0],
@@ -320,18 +365,11 @@ export class EnhancedNodeManager {
                 node.data.position[2]
             );
 
-            // Only update if position has changed
-            if (existingNode.position.x !== tempPosition.x ||
-                existingNode.position.y !== tempPosition.y ||
-                existingNode.position.z !== tempPosition.z) {
-                // Update position
-                existingNode.position.copy(tempPosition);
-                // Force immediate matrix update for this frame
-                existingNode.updateMatrix();
-                this.pendingMatrixUpdates.add(node.id);
-            }
+            // Update position
+            existingNode.position.copy(tempPosition);
+            existingNode.updateMatrix();
+            this.pendingMatrixUpdates.add(node.id);
         });
-        this.scheduleBatchUpdate();
     }
 
     public setXRMode(enabled: boolean): void {

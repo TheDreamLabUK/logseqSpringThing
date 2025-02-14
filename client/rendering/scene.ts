@@ -2,7 +2,19 @@
  * Three.js scene management with simplified setup
  */
 
-import { Scene, PerspectiveCamera, WebGLRenderer, Color, AmbientLight, DirectionalLight, GridHelper, Vector2, Material, Mesh, Object3D } from 'three';
+import {
+  Scene,
+  PerspectiveCamera,
+  WebGLRenderer,
+  Color,
+  AmbientLight,
+  DirectionalLight,
+  GridHelper,
+  Vector2,
+  Material,
+  Mesh,
+  Object3D
+} from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
@@ -15,6 +27,7 @@ const logger = createLogger('SceneManager');
 
 // Constants
 const BACKGROUND_COLOR = 0x212121;  // Material Design Grey 900
+const LOW_PERF_FPS_THRESHOLD = 45;  // FPS threshold for low performance mode
 
 export class SceneManager {
   private static instance: SceneManager;
@@ -38,6 +51,9 @@ export class SceneManager {
   private visualizationController: VisualizationController | null = null;
   private lastFrameTime: number = 0;
   private readonly FRAME_BUDGET: number = 16; // Target 60fps (1000ms/60)
+  private frameCount: number = 0;
+  private lastFpsUpdate: number = 0;
+  private currentFps: number = 60;
 
   private constructor(canvas: HTMLCanvasElement) {
     logger.log('Initializing SceneManager');
@@ -74,6 +90,10 @@ export class SceneManager {
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    
+    // Enable performance optimizations
+    (this.renderer as any).sortObjects = false;  // Disable automatic object sorting
+    (this.renderer as any).physicallyCorrectLights = false;  // Disable physically correct lighting
 
     // Create controls
     this.controls = new OrbitControls(this.camera, canvas);
@@ -200,6 +220,19 @@ export class SceneManager {
   private animate = (timestamp: number): void => {
     if (!this.isRunning) return;
 
+    // Calculate FPS
+    this.frameCount++;
+    if (timestamp - this.lastFpsUpdate >= 1000) {
+      this.currentFps = (this.frameCount * 1000) / (timestamp - this.lastFpsUpdate);
+      this.frameCount = 0;
+      this.lastFpsUpdate = timestamp;
+
+      // Apply performance optimizations if FPS is low
+      if (this.currentFps < LOW_PERF_FPS_THRESHOLD) {
+        this.applyLowPerformanceOptimizations();
+      }
+    }
+
     const deltaTime = timestamp - this.lastFrameTime;
     this.lastFrameTime = timestamp;
 
@@ -233,10 +266,7 @@ export class SceneManager {
     }
 
     // Check if we have time for visualization update
-    const currentTime = performance.now();
-    const elapsedTime = currentTime - startTime;
-    
-    // Always update visualization controller regardless of frame budget
+    // Always update visualization to maintain smooth movement
     (this.visualizationController as any)?.update(deltaTime || 0);
 
     // Check remaining time for rendering
@@ -472,5 +502,37 @@ export class SceneManager {
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.composer.addPass(this.bloomPass);
+  }
+
+  private applyLowPerformanceOptimizations(): void {
+    // Optimize materials
+    this.scene.traverse((object: Object3D) => {
+      if (object instanceof Mesh) {
+        const material = object.material as Material;
+        if (material) {
+          // Disable expensive material features using type assertion
+          (material as any).fog = false;
+          (material as any).side = 0; // FrontSide = 0
+          
+          // Disable shadows
+          (object as any).castShadow = false;
+          (object as any).receiveShadow = false;
+          
+          // Force material update
+          material.needsUpdate = true;
+        }
+      }
+    });
+
+    // Optimize renderer
+    (this.renderer as any).shadowMap.enabled = false;
+    
+    // Disable bloom in low performance mode
+    if (this.bloomPass && this.currentFps < 30) {
+      this.bloomPass.enabled = false;
+    }
+
+    // Log optimization application
+    logger.debug(`Applied low performance optimizations at ${this.currentFps.toFixed(1)} FPS`);
   }
 }
