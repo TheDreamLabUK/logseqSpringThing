@@ -89,7 +89,6 @@ export class NodeManagerFacade implements NodeManagerInterface {
      */
     public updateNodes(nodes: { id: string, data: NodeData }[]): void {
         if (!this.isInitialized) return;
-        if (!this.isInitialized) return;
 
         // Update instance positions
         this.instanceManager.updateNodePositions(nodes.map(node => ({
@@ -160,12 +159,11 @@ export class NodeManagerFacade implements NodeManagerInterface {
      * Update the visualization state
      * @param deltaTime Time since last update
      */
-    public update(_deltaTime: number): void {
-        if (!this.isInitialized) return;
+    public update(deltaTime: number): void {
         if (!this.isInitialized) return;
 
         // Update instance visibility and LOD
-        this.instanceManager.update(this.camera);
+        this.instanceManager.update(this.camera, deltaTime);
 
         // Update metadata labels
         this.metadataManager.update(this.camera);

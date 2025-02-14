@@ -24,6 +24,7 @@ export class VisualizationController {
     private textRenderer: TextRenderer | null = null;
     private isInitialized: boolean = false;
     private pendingUpdates: Map<string, PendingUpdate> = new Map();
+    private lastUpdateTime: number = performance.now();
     private websocketService: WebSocketService;
 
     private constructor() {
@@ -65,6 +66,10 @@ export class VisualizationController {
     public initializeScene(scene: Scene, camera: Camera): void {
         logger.info('Initializing visualization scene');
         
+        // Ensure camera can see nodes
+        camera.layers.enable(0);
+        logger.debug('Camera layers configured');
+        
         // Enable WebSocket debugging
         this.currentSettings.system.debug.enabled = true;
         this.currentSettings.system.debug.enableWebsocketDebug = true;
@@ -101,6 +106,9 @@ export class VisualizationController {
         if (currentData.nodes.length > 0 && this.nodeManager) {
             this.nodeManager.updateNodes(currentData.nodes);
         }
+
+        // Start animation loop
+        this.animate();
 
         logger.info('Scene initialization complete');
     }
@@ -303,9 +311,22 @@ export class VisualizationController {
         }
     }
 
+    private animate = (): void => {
+        if (!this.isInitialized) return;
+
+        requestAnimationFrame(this.animate);
+        const currentTime = performance.now();
+        const deltaTime = (currentTime - this.lastUpdateTime) / 1000;
+        this.update(deltaTime);
+    }
+
     public update(deltaTime: number): void {
         if (this.isInitialized) {
-            // Update node animations and state using actual deltaTime
+            const currentTime = performance.now();
+            if (deltaTime === 0) {
+                deltaTime = (currentTime - this.lastUpdateTime) / 1000;
+            }
+            this.lastUpdateTime = currentTime;
             if (this.nodeManager) {
                 this.nodeManager.update(deltaTime);
             }

@@ -22,6 +22,7 @@ const VISIBILITY_UPDATE_INTERVAL = 10; // frames
 const matrix = new Matrix4();
 const position = new Vector3();
 const quaternion = new Quaternion();
+const velocity = new Vector3();
 const scale = new Vector3(1, 1, 1);
 
 // Visibility states (using setRGB for proper initialization)
@@ -43,6 +44,8 @@ export class NodeInstanceManager {
     private pendingUpdates: Set<number> = new Set();
     private frameCount: number = 0;
     private updateScheduled: boolean = false;
+    private velocities: Map<number, Vector3> = new Map();
+    private lastUpdateTime: number = performance.now();
 
     private constructor(scene: Scene, material: Material) {
         this.scene = scene;
@@ -53,7 +56,7 @@ export class NodeInstanceManager {
         this.nodeInstances = new InstancedMesh(initialGeometry, material, MAX_INSTANCES);
         this.nodeInstances.count = 0; // Start with 0 visible instances
         this.nodeInstances.frustumCulled = true;
-        this.nodeInstances.layers.enable(1); // Enable AR layer
+        this.nodeInstances.layers.enable(0); // Enable default layer
 
         // Add to scene
         this.scene.add(this.nodeInstances);
@@ -80,6 +83,10 @@ export class NodeInstanceManager {
                     // Set initial position
                     position.fromArray(update.position);
                     matrix.compose(position, quaternion, scale);
+                    if (update.velocity) {
+                        const vel = new Vector3().fromArray(update.velocity);
+                        this.velocities.set(newIndex, vel);
+                    }
                     this.nodeInstances.setMatrixAt(newIndex, matrix);
                     this.nodeInstances.setColorAt(newIndex, VISIBLE);
                     
@@ -93,6 +100,10 @@ export class NodeInstanceManager {
 
             // Update existing node
             position.fromArray(update.position);
+            if (update.velocity) {
+                const vel = new Vector3().fromArray(update.velocity);
+                this.velocities.set(index, vel);
+            }
             matrix.compose(position, quaternion, scale);
             this.nodeInstances.setMatrixAt(index, matrix);
             this.pendingUpdates.add(index);
@@ -120,9 +131,9 @@ export class NodeInstanceManager {
     private processBatchUpdate(): void {
         let processed = 0;
         for (const index of this.pendingUpdates) {
+            this.nodeInstances.instanceMatrix.needsUpdate = true;
             if (processed >= BATCH_SIZE) break;
             processed++;
-            this.pendingUpdates.delete(index);
         }
 
         if (processed > 0) {
@@ -130,11 +141,37 @@ export class NodeInstanceManager {
             if (this.nodeInstances.instanceColor) {
                 this.nodeInstances.instanceColor.needsUpdate = true;
             }
+            // Clear processed updates
+            this.pendingUpdates.clear();
         }
     }
 
-    public update(camera: Camera): void {
+    public update(camera: Camera, passedDeltaTime?: number): void {
         this.frameCount++;
+        
+        // Update positions based on velocity
+        const currentTime = performance.now();
+        const deltaTime = passedDeltaTime !== undefined ? 
+            passedDeltaTime : 
+            (currentTime - this.lastUpdateTime) / 1000; // Convert to seconds
+        this.lastUpdateTime = currentTime;
+
+        // Update positions based on velocities
+        this.velocities.forEach((nodeVelocity, index) => {
+            if (nodeVelocity.lengthSq() > 0) {
+                this.nodeInstances.getMatrixAt(index, matrix);
+                position.setFromMatrixPosition(matrix);
+                
+                // Apply velocity
+                velocity.copy(nodeVelocity).multiplyScalar(deltaTime);
+                position.add(velocity);
+                
+                // Update matrix
+                matrix.compose(position, quaternion, scale);
+                this.nodeInstances.setMatrixAt(index, matrix);
+                this.pendingUpdates.add(index);
+            }
+        });
 
         // Update visibility and LOD every N frames
         if (this.frameCount % VISIBILITY_UPDATE_INTERVAL === 0) {
@@ -154,10 +191,6 @@ export class NodeInstanceManager {
             
             // Update geometry based on distance
             const geometry = this.geometryManager.getGeometryForDistance(distance);
-            if (this.nodeInstances.geometry !== geometry) {
-                this.nodeInstances.geometry.dispose();
-                this.nodeInstances.geometry = geometry;
-            }
 
             // Update visibility
             const visible = distance < this.geometryManager.getThresholdForLOD(LODLevel.LOW);
@@ -177,6 +210,7 @@ export class NodeInstanceManager {
         }
         this.nodeIndices.clear();
         this.pendingUpdates.clear();
+        this.velocities.clear();
         // Reset the singleton instance
         NodeInstanceManager.instance = null!;
         logger.info('Disposed NodeInstanceManager');
