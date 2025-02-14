@@ -42,7 +42,7 @@ export function buildWsUrl(): string {
     const isProduction = host.endsWith('visionflow.info');
     const port = isProduction ? '' : ':4000';
     const base = `${protocol}//${host}${port}`;
-    const wsPath = '/api/ws';
+    const wsPath = '/wss';
     return `${base}${wsPath}`;
 }
 

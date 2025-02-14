@@ -21,7 +21,7 @@ import { platformManager } from '../platform/platformManager';
 const tempPosition = new Vector3();
 
 // Batch processing constants
-const MATRIX_UPDATE_BATCH_SIZE = 100;
+const MATRIX_UPDATE_BATCH_SIZE = 200;  // Increased to handle larger updates
 
 export class EnhancedNodeManager {
     private scene: Scene;
@@ -278,10 +278,15 @@ export class EnhancedNodeManager {
     private scheduleBatchUpdate(): void {
         if (this.matrixUpdateScheduled) return;
         this.matrixUpdateScheduled = true;
-
+        
         requestAnimationFrame(() => {
             this.processBatchUpdate();
             this.matrixUpdateScheduled = false;
+            
+            // If there are remaining updates, schedule another batch
+            if (this.pendingMatrixUpdates.size > 0) {
+                this.scheduleBatchUpdate();
+            }
         });
     }
 
@@ -290,7 +295,7 @@ export class EnhancedNodeManager {
 
         let processed = 0;
         for (const nodeId of this.pendingMatrixUpdates) {
-            if (processed >= MATRIX_UPDATE_BATCH_SIZE) {
+            if (processed >= MATRIX_UPDATE_BATCH_SIZE && this.pendingMatrixUpdates.size > MATRIX_UPDATE_BATCH_SIZE) {
                 break; // Process remaining updates in next batch
             }
 
@@ -319,7 +324,10 @@ export class EnhancedNodeManager {
             if (existingNode.position.x !== tempPosition.x ||
                 existingNode.position.y !== tempPosition.y ||
                 existingNode.position.z !== tempPosition.z) {
+                // Update position
                 existingNode.position.copy(tempPosition);
+                // Force immediate matrix update for this frame
+                existingNode.updateMatrix();
                 this.pendingMatrixUpdates.add(node.id);
             }
         });

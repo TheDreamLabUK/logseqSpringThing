@@ -236,10 +236,8 @@ export class SceneManager {
     const currentTime = performance.now();
     const elapsedTime = currentTime - startTime;
     
-    if (elapsedTime < this.FRAME_BUDGET) {
-      // Update visualization controller with actual delta time; using type assertion to accommodate new signature
-      (this.visualizationController as any)?.update(deltaTime || 0);
-    }
+    // Always update visualization controller regardless of frame budget
+    (this.visualizationController as any)?.update(deltaTime || 0);
 
     // Check remaining time for rendering
     const preRenderTime = performance.now();
