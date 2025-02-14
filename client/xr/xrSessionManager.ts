@@ -17,7 +17,8 @@ import { platformManager } from '../platform/platformManager';
 import { SceneManager } from '../rendering/scene';
 import { BACKGROUND_COLOR } from '../core/constants';
 import { debugState } from '../core/debugState';
-import { EnhancedNodeManager } from '../rendering/EnhancedNodeManager';
+import { NodeManagerFacade } from '../rendering/node/NodeManagerFacade';
+import { MaterialFactory } from '../rendering/factories/MaterialFactory';
 import { ModularControlPanel } from '../ui/ModularControlPanel';
 import { SettingsStore } from '../state/SettingsStore';
 import { Settings } from '../types/settings/base';
@@ -28,7 +29,7 @@ export class XRSessionManager {
     private static instance: XRSessionManager | null = null;
     private readonly sceneManager: SceneManager;
     private readonly settingsStore: SettingsStore;
-    private readonly nodeManager: EnhancedNodeManager;
+    private readonly nodeManager: NodeManagerFacade;
     private session: XRSession | null = null;
     /* @ts-ignore - Used in XR session lifecycle */
     private referenceSpace: XRReferenceSpace | null = null;
@@ -66,7 +67,12 @@ export class XRSessionManager {
         this.sceneManager = sceneManager;
         this.settingsStore = SettingsStore.getInstance();
         const settings = this.settingsStore.get('') as Settings;
-        this.nodeManager = new EnhancedNodeManager(sceneManager.getScene(), settings);
+        const materialFactory = MaterialFactory.getInstance();
+        this.nodeManager = NodeManagerFacade.getInstance(
+            sceneManager.getScene(),
+            sceneManager.getCamera(),
+            materialFactory.getNodeMaterial(settings)
+        );
         // Initialize with current settings
         this.currentSettings = this.settingsStore.get('xr') as XRSettings;
         
@@ -363,19 +369,19 @@ export class XRSessionManager {
                 this.arGroup.scale.setScalar(arScale);
                 
                 // Move node instances to arGroup for proper scaling
-                const nodeInstances = Array.from(this.nodeManager.getNodes().values());
-                nodeInstances.forEach((mesh: Mesh) => {
+                const instanceMesh = this.nodeManager.getInstancedMesh();
+                if (instanceMesh) {
                     // Enable both layers for the mesh and its children
-                    mesh.layers.enable(0);
-                    mesh.layers.enable(1);
-                    mesh.traverse((child: any) => {
+                    instanceMesh.layers.enable(0);
+                    instanceMesh.layers.enable(1);
+                    instanceMesh.traverse((child: any) => {
                         if (child.layers) {
                             child.layers.enable(0);
                             child.layers.enable(1);
                         }
                     });
-                    this.arGroup.add(mesh);
-                });
+                    this.arGroup.add(instanceMesh);
+                }
             }
 
             // Reset camera rig position
@@ -459,10 +465,10 @@ export class XRSessionManager {
             this.arLight.visible = false;
             
             // Move node instances back to main scene
-            const nodeInstances = Array.from(this.nodeManager.getNodes().values());
-            nodeInstances.forEach((mesh: Mesh) => {
-                this.sceneManager.getScene().add(mesh);
-            });
+            const instanceMesh = this.nodeManager.getInstancedMesh();
+            if (instanceMesh) {
+                this.sceneManager.getScene().add(instanceMesh);
+            }
         }
 
         // Reset camera and scene

@@ -1,5 +1,5 @@
 import { Settings } from './types/settings';
-import { EnhancedNodeManager } from './rendering/EnhancedNodeManager';
+import { NodeManagerFacade } from './rendering/node/NodeManagerFacade';
 import { EdgeManager } from './rendering/EdgeManager';
 import { HologramManager } from './visualization/HologramManager';
 import { TextRenderer } from './rendering/textRenderer';
@@ -14,6 +14,7 @@ import { graphDataManager } from './state/graphData';
 import { debugState } from './core/debugState';
 import { ModularControlPanel } from './ui/ModularControlPanel';
 import { defaultSettings } from './state/defaultSettings';
+import { MaterialFactory } from './rendering/factories/MaterialFactory';
 import './ui'; // Import UI initialization
 
 const logger = createLogger('GraphVisualization');
@@ -27,7 +28,7 @@ function debugLog(message: string, ...args: any[]) {
 
 export class GraphVisualization {
     private sceneManager: SceneManager;
-    private nodeManager: EnhancedNodeManager;
+    private nodeManager: NodeManagerFacade;
     private edgeManager: EdgeManager;
     private hologramManager: HologramManager;
     private textRenderer: TextRenderer;
@@ -96,8 +97,13 @@ export class GraphVisualization {
         const scene = this.sceneManager.getScene();
         const camera = this.sceneManager.getCamera();
         const renderer = this.sceneManager.getRenderer();
+        const materialFactory = MaterialFactory.getInstance();
         
-        this.nodeManager = new EnhancedNodeManager(scene, settings);
+        this.nodeManager = NodeManagerFacade.getInstance(
+            scene,
+            camera,
+            materialFactory.getNodeMaterial(settings)
+        );
         this.edgeManager = new EdgeManager(scene, settings);
         this.hologramManager = new HologramManager(scene, renderer, settings);
         this.textRenderer = new TextRenderer(camera, scene);

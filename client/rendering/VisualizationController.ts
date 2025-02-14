@@ -4,11 +4,12 @@ import { Settings } from '../types/settings/base';
 import { defaultSettings } from '../state/defaultSettings';
 import { XRHandWithHaptics } from '../types/xr';
 import { EdgeManager } from './EdgeManager';
-import { EnhancedNodeManager } from './EnhancedNodeManager';
+import { NodeManagerFacade } from './node/NodeManagerFacade';
 import { graphDataManager } from '../state/graphData';
 import { TextRenderer } from './textRenderer';
 import { GraphData } from '../core/types';
 import { WebSocketService } from '../websocket/websocketService';
+import { MaterialFactory } from './factories/MaterialFactory';
 
 const logger = createLogger('VisualizationController');
 
@@ -19,7 +20,7 @@ export class VisualizationController {
     private static instance: VisualizationController | null = null;
     private currentSettings: Settings;
     private edgeManager: EdgeManager | null = null;
-    private nodeManager: EnhancedNodeManager | null = null;
+    private nodeManager: NodeManagerFacade | null = null;
     private textRenderer: TextRenderer | null = null;
     private isInitialized: boolean = false;
     private pendingUpdates: Map<string, PendingUpdate> = new Map();
@@ -84,7 +85,12 @@ export class VisualizationController {
         
         // Initialize managers with scene and settings
         this.edgeManager = new EdgeManager(scene, this.currentSettings);
-        this.nodeManager = new EnhancedNodeManager(scene, this.currentSettings);
+        const materialFactory = MaterialFactory.getInstance();
+        this.nodeManager = NodeManagerFacade.getInstance(
+            scene,
+            camera,
+            materialFactory.getNodeMaterial(this.currentSettings)
+        );
         this.textRenderer = new TextRenderer(camera, scene);
         this.isInitialized = true;
         
@@ -322,6 +328,7 @@ export class VisualizationController {
             this.textRenderer.dispose();
             this.textRenderer = null;
         }
+        this.nodeManager?.dispose();
         this.edgeManager?.dispose();
         this.websocketService.dispose();
         this.isInitialized = false;

@@ -1,0 +1,198 @@
+import {
+    Scene,
+    InstancedMesh,
+    Matrix4,
+    Vector3,
+    Quaternion,
+    Color,
+    Camera,
+    Material
+} from 'three';
+import { NodeGeometryManager, LODLevel } from '../geometry/NodeGeometryManager';
+import { createLogger } from '../../../core/logger';
+
+const logger = createLogger('NodeInstanceManager');
+
+// Constants for optimization
+const MAX_INSTANCES = 10000;
+const BATCH_SIZE = 200;
+const VISIBILITY_UPDATE_INTERVAL = 10; // frames
+
+// Reusable objects for matrix calculations
+const matrix = new Matrix4();
+const position = new Vector3();
+const quaternion = new Quaternion();
+const scale = new Vector3(1, 1, 1);
+
+// Visibility states (using setRGB for proper initialization)
+const VISIBLE = new Color(0xffffff);
+const INVISIBLE = new Color(0x000000);
+
+interface NodeUpdate {
+    id: string;
+    position: [number, number, number];
+    velocity?: [number, number, number];
+}
+
+export class NodeInstanceManager {
+    private static instance: NodeInstanceManager;
+    private scene: Scene;
+    private nodeInstances: InstancedMesh;
+    private geometryManager: NodeGeometryManager;
+    private nodeIndices: Map<string, number> = new Map();
+    private pendingUpdates: Set<number> = new Set();
+    private frameCount: number = 0;
+    private updateScheduled: boolean = false;
+
+    private constructor(scene: Scene, material: Material) {
+        this.scene = scene;
+        this.geometryManager = NodeGeometryManager.getInstance();
+
+        // Initialize InstancedMesh with high-detail geometry
+        const initialGeometry = this.geometryManager.getGeometryForDistance(0);
+        this.nodeInstances = new InstancedMesh(initialGeometry, material, MAX_INSTANCES);
+        this.nodeInstances.count = 0; // Start with 0 visible instances
+        this.nodeInstances.frustumCulled = true;
+        this.nodeInstances.layers.enable(1); // Enable AR layer
+
+        // Add to scene
+        this.scene.add(this.nodeInstances);
+        logger.info('Initialized NodeInstanceManager');
+    }
+
+    public static getInstance(scene: Scene, material: Material): NodeInstanceManager {
+        if (!NodeInstanceManager.instance) {
+            NodeInstanceManager.instance = new NodeInstanceManager(scene, material);
+        }
+        return NodeInstanceManager.instance;
+    }
+
+    public updateNodePositions(updates: NodeUpdate[]): void {
+        updates.forEach(update => {
+            const index = this.nodeIndices.get(update.id);
+            if (index === undefined) {
+                // New node
+                const newIndex = this.nodeInstances.count;
+                if (newIndex < MAX_INSTANCES) {
+                    this.nodeIndices.set(update.id, newIndex);
+                    this.nodeInstances.count++;
+                    
+                    // Set initial position
+                    position.fromArray(update.position);
+                    matrix.compose(position, quaternion, scale);
+                    this.nodeInstances.setMatrixAt(newIndex, matrix);
+                    this.nodeInstances.setColorAt(newIndex, VISIBLE);
+                    
+                    this.pendingUpdates.add(newIndex);
+                    logger.debug(`Added new node at index ${newIndex}`);
+                } else {
+                    logger.warn('Maximum instance count reached, cannot add more nodes');
+                }
+                return;
+            }
+
+            // Update existing node
+            position.fromArray(update.position);
+            matrix.compose(position, quaternion, scale);
+            this.nodeInstances.setMatrixAt(index, matrix);
+            this.pendingUpdates.add(index);
+        });
+
+        if (this.pendingUpdates.size > 0) {
+            this.scheduleBatchUpdate();
+        }
+    }
+
+    private scheduleBatchUpdate(): void {
+        if (this.updateScheduled) return;
+        this.updateScheduled = true;
+
+        requestAnimationFrame(() => {
+            this.processBatchUpdate();
+            this.updateScheduled = false;
+
+            if (this.pendingUpdates.size > 0) {
+                this.scheduleBatchUpdate();
+            }
+        });
+    }
+
+    private processBatchUpdate(): void {
+        let processed = 0;
+        for (const index of this.pendingUpdates) {
+            if (processed >= BATCH_SIZE) break;
+            processed++;
+            this.pendingUpdates.delete(index);
+        }
+
+        if (processed > 0) {
+            this.nodeInstances.instanceMatrix.needsUpdate = true;
+            if (this.nodeInstances.instanceColor) {
+                this.nodeInstances.instanceColor.needsUpdate = true;
+            }
+        }
+    }
+
+    public update(camera: Camera): void {
+        this.frameCount++;
+
+        // Update visibility and LOD every N frames
+        if (this.frameCount % VISIBILITY_UPDATE_INTERVAL === 0) {
+            this.updateVisibilityAndLOD(camera);
+        }
+    }
+
+    private updateVisibilityAndLOD(camera: Camera): void {
+        const cameraPosition = camera.position;
+        
+        // Check each instance
+        for (let i = 0; i < this.nodeInstances.count; i++) {
+            this.nodeInstances.getMatrixAt(i, matrix);
+            position.setFromMatrixPosition(matrix);
+            
+            const distance = position.distanceTo(cameraPosition);
+            
+            // Update geometry based on distance
+            const geometry = this.geometryManager.getGeometryForDistance(distance);
+            if (this.nodeInstances.geometry !== geometry) {
+                this.nodeInstances.geometry.dispose();
+                this.nodeInstances.geometry = geometry;
+            }
+
+            // Update visibility
+            const visible = distance < this.geometryManager.getThresholdForLOD(LODLevel.LOW);
+            this.nodeInstances.setColorAt(i, visible ? VISIBLE : INVISIBLE);
+        }
+
+        // Ensure updates are applied
+        if (this.nodeInstances.instanceColor) {
+            this.nodeInstances.instanceColor.needsUpdate = true;
+        }
+    }
+
+    public dispose(): void {
+        if (this.nodeInstances) {
+            this.nodeInstances.geometry.dispose();
+            this.scene.remove(this.nodeInstances);
+        }
+        this.nodeIndices.clear();
+        this.pendingUpdates.clear();
+        // Reset the singleton instance
+        NodeInstanceManager.instance = null!;
+        logger.info('Disposed NodeInstanceManager');
+    }
+
+    public getInstanceMesh(): InstancedMesh {
+        return this.nodeInstances;
+    }
+
+    /**
+     * Get node ID from instance index
+     * @param index Instance index in the InstancedMesh
+     * @returns Node ID or undefined if not found
+     */
+    public getNodeId(index: number): string | undefined {
+        // Find the node ID that maps to this index
+        return Array.from(this.nodeIndices.entries()).find(([_, idx]) => idx === index)?.[0];
+    }
+}
