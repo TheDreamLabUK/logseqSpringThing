@@ -22,16 +22,22 @@ const matrix = new Matrix4();
 const position = new Vector3();
 const quaternion = new Quaternion();
 const velocity = new Vector3();
-const scale = new Vector3(1, 1, 1);
+const scale = new Vector3();
+const BASE_SCALE = 0.01; // Scale factor to convert from units to scene scale
 
 // Visibility states (using setRGB for proper initialization)
 const VISIBLE = new Color(0xffffff);
 const INVISIBLE = new Color(0x000000);
 
+interface NodeUpdateMetadata {
+    nodeSize: number;
+}
+
 interface NodeUpdate {
     id: string;
     position: [number, number, number];
     velocity?: [number, number, number];
+    metadata?: NodeUpdateMetadata;
 }
 
 export class NodeInstanceManager {
@@ -81,7 +87,9 @@ export class NodeInstanceManager {
                     
                     // Set initial position
                     position.fromArray(update.position);
-                    matrix.compose(position, quaternion, scale);
+                    const nodeScale = update.metadata?.nodeSize || 200;
+                    const scaleValue = nodeScale * BASE_SCALE;
+                    scale.set(scaleValue, scaleValue, scaleValue);
                     if (update.velocity) {
                         const vel = new Vector3().fromArray(update.velocity);
                         this.velocities.set(newIndex, vel);
@@ -103,6 +111,10 @@ export class NodeInstanceManager {
                 const vel = new Vector3().fromArray(update.velocity);
                 this.velocities.set(index, vel);
             }
+            
+            const nodeScale = update.metadata?.nodeSize || 200;
+            const scaleValue = nodeScale * BASE_SCALE;
+            scale.set(scaleValue, scaleValue, scaleValue);
             matrix.compose(position, quaternion, scale);
             this.nodeInstances.setMatrixAt(index, matrix);
             this.pendingUpdates.add(index);

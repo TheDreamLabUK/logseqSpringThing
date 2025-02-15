@@ -3,6 +3,8 @@ export interface NodeMetadata {
     name: string;
     commitAge: number;        // Age in days
     hyperlinkCount: number;   // Number of hyperlinks
+    fileSize: number;         // Size in bytes
+    nodeSize: number;         // Normalized node size (0-50)
     importance: number;       // Normalized importance (0-1)
     position: {
         x: number;

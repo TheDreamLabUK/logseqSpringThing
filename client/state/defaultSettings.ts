@@ -7,7 +7,7 @@ export const defaultSettings: Settings = {
             metalness: 0.8,
             opacity: 1.0,
             roughness: 0.2,
-            sizeRange: [20, 60], // Reduced node sizes
+            sizeRange: [200, 700], // Wider range for better size differentiation
             quality: 'medium', // Default to medium quality for better performance
             enableInstancing: true,
             enableHologram: true,

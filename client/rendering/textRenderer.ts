@@ -98,22 +98,27 @@ export class TextRenderer {
         if (!context) throw new Error('Could not get 2D context');
 
         // Set canvas size
-        const padding = 10;
+        const padding = this.settings.textPadding || 2;
         context.font = `${fontSize}px Arial`;
         const textMetrics = context.measureText(text);
         canvas.width = textMetrics.width + padding * 2;
         canvas.height = fontSize + padding * 2;
 
-        // Draw background (optional, for better visibility)
-        context.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-
         // Draw text
         context.font = `${fontSize}px Arial`;
         context.textAlign = 'center';
         context.textBaseline = 'middle';
+        
+        // Draw text outline if enabled
+        if (this.settings.textOutlineWidth > 0) {
+            context.strokeStyle = this.settings.textOutlineColor;
+            context.lineWidth = this.settings.textOutlineWidth;
+            context.strokeText(text, canvas.width / 2, canvas.height / 2);
+        }
+        
+        // Draw text fill
         context.fillStyle = this.settings.textColor;
-        context.strokeStyle = 'rgba(0, 0, 0, 0.5)';  // Add outline for better visibility
+        context.lineWidth = 1;
         context.fillText(text, canvas.width / 2, canvas.height / 2);
 
         // Create sprite material
@@ -127,7 +132,14 @@ export class TextRenderer {
 
         // Create sprite
         const sprite = new Sprite(material);
-        sprite.scale.set(canvas.width / fontSize, canvas.height / fontSize, 1);
+        
+        // Scale based on text resolution
+        const resolution = this.settings.textResolution || 16;
+        const scale = resolution / fontSize;
+        sprite.scale.set(
+            (canvas.width / fontSize) * scale,
+            (canvas.height / fontSize) * scale,
+            1);
 
         return sprite;
     }
@@ -232,7 +244,14 @@ export class TextRenderer {
                 if (state.sprite) {
                     state.sprite.position.copy(state.position);
                     // Make sprite face camera
-                    state.sprite.quaternion.copy(this.camera.quaternion);
+                    if (this.settings.billboardMode === 'camera') {
+                        // Full billboard - always face camera
+                        state.sprite.quaternion.copy(this.camera.quaternion);
+                    } else {
+                        // Vertical billboard - only rotate around Y axis
+                        const tempVec = new Vector3().copy(this.camera.position).sub(state.position);
+                        state.sprite.lookAt(tempVec.add(state.position));
+                    }
                 }
             });
         } catch (error) {

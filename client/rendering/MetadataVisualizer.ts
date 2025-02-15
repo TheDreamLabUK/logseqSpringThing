@@ -48,12 +48,12 @@ export class MetadataVisualizer {
         this.font = null;
         this.fontPath = '/fonts/helvetiker_regular.typeface.json';
         this.labelGroup = new THREE.Group();
+        this.settings = settings;
         
         // Enable both layers by default for desktop mode
         this.labelGroup.layers.enable(0);
         this.labelGroup.layers.enable(1);
         
-        this.settings = settings;
         this.scene.add(this.labelGroup);
         this.loadFont();
         
@@ -105,29 +105,49 @@ export class MetadataVisualizer {
         group.name = 'metadata-label';
         group.userData = { isMetadata: true };
 
-        // Create text for name
-        const nameMesh = await this.createTextMesh(metadata.name);
+        // Format file size
+        const fileSizeFormatted = metadata.fileSize > 1024 * 1024 
+            ? `${(metadata.fileSize / (1024 * 1024)).toFixed(1)}MB`
+            : metadata.fileSize > 1024
+                ? `${(metadata.fileSize / 1024).toFixed(1)}KB`
+                : `${metadata.fileSize}B`;
+
+        // Create text for file name and size
+        const nameMesh = await this.createTextMesh(`${metadata.name} (${fileSizeFormatted})`);
         if (nameMesh) {
-            nameMesh.position.y = 1.2;
+            nameMesh.position.y = 1.5;
             nameMesh.scale.setScalar(0.8);
             group.add(nameMesh);
         }
 
-        // Create text for commit age
-        const ageMesh = await this.createTextMesh(`${Math.round(metadata.commitAge)} days`);
-        if (ageMesh) {
-            ageMesh.position.y = 0.8;
-            ageMesh.scale.setScalar(0.7);
-            group.add(ageMesh);
+        // Create text for node size
+        const nodeSizeMesh = await this.createTextMesh(`Size: ${metadata.nodeSize.toFixed(1)}`);
+        if (nodeSizeMesh) {
+            nodeSizeMesh.position.y = 1.0;
+            nodeSizeMesh.scale.setScalar(0.7);
+            group.add(nodeSizeMesh);
         }
 
         // Create text for hyperlink count
         const linksMesh = await this.createTextMesh(`${metadata.hyperlinkCount} links`);
         if (linksMesh) {
-            linksMesh.position.y = 0.4;
+            linksMesh.position.y = 0.5;
             linksMesh.scale.setScalar(0.7);
             group.add(linksMesh);
         }
+
+        // Center all text meshes horizontally
+        group.children.forEach(child => {
+            if (child instanceof Mesh) {
+                const geometry = child.geometry as BufferGeometry;
+                if (!geometry.boundingSphere) {
+                    geometry.computeBoundingSphere();
+                }
+                if (geometry.boundingSphere) {
+                    child.position.x = -geometry.boundingSphere.radius;
+                }
+            }
+        });
 
         // Set up billboarding
         const tempVec = new Vector3();
@@ -146,10 +166,7 @@ export class MetadataVisualizer {
         };
 
         // Add to render loop
-        const onBeforeRender = () => {
-            updateBillboard();
-        };
-        group.onBeforeRender = onBeforeRender;
+        group.onBeforeRender = updateBillboard;
 
         // Set initial layer
         this.setGroupLayer(group, platformManager.isXRMode);
@@ -165,9 +182,9 @@ export class MetadataVisualizer {
 
         const textGeometry = new TextGeometry(text, {
             font: this.font,
-            size: this.settings.visualization.labels.desktopFontSize / 10 || 0.5,
+            size: this.settings.visualization.labels.desktopFontSize / 12 || 0.4,
             height: 0.01,
-            curveSegments: this.settings.visualization.labels.textResolution || 4,
+            curveSegments: Math.max(4, this.settings.visualization.labels.textResolution || 4),
             bevelEnabled: false
         }) as ExtendedTextGeometry;
 
@@ -192,9 +209,9 @@ export class MetadataVisualizer {
             const outlineWidth = this.settings.visualization.labels.textOutlineWidth;
             const outlineGeometry = new TextGeometry(text, {
                 font: this.font,
-                size: this.settings.visualization.labels.desktopFontSize / 10 || 0.5,
+                size: this.settings.visualization.labels.desktopFontSize / 12 || 0.4,
                 height: 0.01,
-                curveSegments: this.settings.visualization.labels.textResolution || 4,
+                curveSegments: Math.max(4, this.settings.visualization.labels.textResolution || 4),
                 bevelEnabled: false
             }) as unknown as BufferGeometry;
             
@@ -216,6 +233,12 @@ export class MetadataVisualizer {
 
         // Create mesh with the text geometry and center it
         const mesh = new Mesh(textGeometry as unknown as BufferGeometry, material);
+        
+        // Center the mesh if bounding box exists
+        if (textGeometry.boundingBox) {
+            const width = textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x;
+            mesh.position.x -= width / 2;
+        }
         return mesh;
     }
 

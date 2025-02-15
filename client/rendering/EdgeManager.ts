@@ -182,8 +182,14 @@ export class EdgeManager {
 
             if (sourcePos && targetPos) {
                 // Update edge geometry
+                const oldGeometry = mesh.geometry;
                 mesh.geometry.dispose();
+                
+                // Create new geometry and update mesh
                 mesh.geometry = this.createEdgeGeometry(sourcePos, targetPos);
+                
+                // Clean up old resources after successful update
+                oldGeometry.dispose();
 
                 // Update shader material source/target
                 if (mesh.material instanceof EdgeShaderMaterial) {
@@ -219,14 +225,27 @@ export class EdgeManager {
     }
 
     public dispose(): void {
+        this.clearEdges();
+        this.scene.remove(this.edgeGroup);
+    }
+
+    private clearEdges(): void {
         this.edges.forEach(edge => {
-            edge.geometry.dispose();
-            if (edge.material instanceof Material) {
-                edge.material.dispose();
+            if (edge) {
+                // Remove from group first
+                this.edgeGroup.remove(edge);
+                
+                // Dispose of geometry
+                if (edge.geometry) {
+                    edge.geometry.dispose();
+                }
+                
+                // Dispose of material
+                if (edge.material instanceof Material) {
+                    edge.material.dispose();
+                }
             }
-            this.edgeGroup.remove(edge);
         });
         this.edges.clear();
-        this.scene.remove(this.edgeGroup);
     }
 }

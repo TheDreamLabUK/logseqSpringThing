@@ -90,9 +90,15 @@ export class NodeManagerFacade implements NodeManagerInterface {
     public updateNodes(nodes: { id: string, data: NodeData }[]): void {
         if (!this.isInitialized) return;
 
+        const calculateNodeSize = (fileSize?: number) => 
+            fileSize ? Math.min(700, Math.max(200, Math.log2(fileSize + 1) * 50)) : 200;
+
         // Update instance positions
         this.instanceManager.updateNodePositions(nodes.map(node => ({
             id: node.id,
+            metadata: {
+                nodeSize: calculateNodeSize(node.data.metadata?.fileSize)
+            },
             position: [
                 node.data.position.x,
                 node.data.position.y,
@@ -108,13 +114,18 @@ export class NodeManagerFacade implements NodeManagerInterface {
         // Update metadata for each node
         nodes.forEach(node => {
             if (node.data.metadata) {
+                const nodeSize = calculateNodeSize(node.data.metadata.fileSize);
+                
+                // Update metadata with calculated node size
                 this.metadataManager.updateMetadata(node.id, {
                     id: node.id,
                     name: node.data.metadata.name || '',
                     position: node.data.position,
                     commitAge: 0,
                     hyperlinkCount: node.data.metadata.links?.length || 0,
-                    importance: 0
+                    importance: 0,
+                    fileSize: node.data.metadata.fileSize || 0,
+                    nodeSize: nodeSize
                 });
             }
         });
@@ -134,6 +145,9 @@ export class NodeManagerFacade implements NodeManagerInterface {
             this.instanceManager.updateNodePositions(nodes.map(node => ({
                 id: node.id,
                 position: node.data.position,
+                metadata: {
+                    nodeSize: 200 // Default size for position-only updates
+                },
                 velocity: node.data.velocity
             })));
         } catch (error) {
