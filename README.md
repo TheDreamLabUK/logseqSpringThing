@@ -510,6 +510,7 @@ sequenceDiagram
     end
 
     deactivate Server
+```
 
 ### AR Features Implementation Status
 
