@@ -10,8 +10,8 @@ visualization:
     quality: medium
     enable_instancing: true
     enable_hologram: true
-    enable_metadata_shape: true
-    enable_metadata_visualization: true
+    enable_metadata_shape: false
+    enable_metadata_visualization: false
   edges:
     arrow_size: 2.0
     base_width: 2.0
@@ -54,36 +54,35 @@ visualization:
     desktop_font_size: 10
     enable_labels: true
     text_color: '#000000'
-    text_outline_color: '#000000'
+    text_outline_color: '#ffffff'
     text_outline_width: 0.1
-    text_resolution: 32
+    text_resolution: 16
     text_padding: 2
     billboard_mode: camera
   bloom:
     edge_bloom_strength: 0.4
-    enabled: false
-    environment_bloom_strength: 0.4
-    node_bloom_strength: 0.1
-    radius: 0.8
-    strength: 0.2
+    enabled: true
+    environment_bloom_strength: 1.0
+    node_bloom_strength: 2.0
+    radius: 1.0
+    strength: 1.0
   hologram:
-    ring_count: 3
+    ring_count: 2
     ring_color: '#c2a200'
     ring_opacity: 0.001
     sphere_sizes:
     - 40.0
     - 80.0
-    - 120.0
     ring_rotation_speed: 10.0
-    enable_buckminster: true
-    buckminster_size: 40.0
-    buckminster_opacity: 0.05
-    enable_geodesic: true
-    geodesic_size: 80.0
-    geodesic_opacity: 0.05
+    enable_buckminster: false
+    buckminster_size: 0.0
+    buckminster_opacity: 0.0
+    enable_geodesic: false
+    geodesic_size: 0.0
+    geodesic_opacity: 0.0
     enable_triangle_sphere: true
-    triangle_sphere_size: 120.0
-    triangle_sphere_opacity: 0.1
+    triangle_sphere_size: 80.0
+    triangle_sphere_opacity: 0.15
     global_rotation_speed: 0.03
 system:
   network:

@@ -13,14 +13,22 @@ export default defineConfig(({ mode, command }) => {
     build: {
       outDir: resolve(__dirname, 'data/public/dist'),
       emptyOutDir: true,
+      chunkSizeWarningLimit: 600,
       sourcemap: !isProd,
       minify: isProd ? 'terser' : false,
       target: 'esnext',
       terserOptions: {
         compress: {
           passes: 2,
+          pure_funcs: ['console.log', 'console.info', 'console.debug'],
           drop_console: isProd,
-          drop_debugger: isProd
+          drop_debugger: isProd,
+          unsafe_math: true,
+          unsafe_methods: true,
+          unsafe_proto: true,
+          keep_infinity: true,
+          ecma: 2020,
+          module: true
         },
         mangle: isProd
       },
@@ -44,7 +52,16 @@ export default defineConfig(({ mode, command }) => {
             return `assets/[name][extname]`;
           },
           chunkFileNames: 'assets/js/[name]-[hash].js',
-          entryFileNames: 'assets/js/[name]-[hash].js'
+          entryFileNames: 'assets/js/[name]-[hash].js',
+          manualChunks: {
+            three: ['three'],
+            'three-extras': [
+              'three/examples/jsm/controls/OrbitControls',
+              'three/examples/jsm/loaders/GLTFLoader'
+            ],
+            visualization: ['./client/visualization/HologramManager.ts', './client/rendering/node/geometry/NodeGeometryManager.ts'],
+            core: ['./client/core/types.ts', './client/core/constants.ts', './client/core/utils.ts']
+          }
         }
       }
     },
@@ -71,8 +88,12 @@ export default defineConfig(({ mode, command }) => {
     },
 
     optimizeDeps: {
-      include: ['three'],
-      disabled: false
+      include: [
+        'three',
+        'three/examples/jsm/controls/OrbitControls',
+        'three/examples/jsm/loaders/GLTFLoader'
+      ],
+      exclude: []
     },
 
     define: {

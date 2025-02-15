@@ -1,7 +1,7 @@
 import {
     BufferGeometry,
     IcosahedronGeometry,
-    SphereGeometry
+    OctahedronGeometry
 } from 'three';
 import { GeometryFactory } from '../../factories/GeometryFactory';
 import { createLogger } from '../../../core/logger';
@@ -38,9 +38,9 @@ export class NodeGeometryManager {
     };
 
     private readonly qualitySettings: Record<LODLevel, GeometryQuality> = {
-        [LODLevel.HIGH]: { segments: 16, radius: 1 },
-        [LODLevel.MEDIUM]: { segments: 8, radius: 1 },
-        [LODLevel.LOW]: { segments: 4, radius: 1 }
+        [LODLevel.HIGH]: { segments: 1, radius: 1 },     // 1 subdivision for icosahedron
+        [LODLevel.MEDIUM]: { segments: 0, radius: 1 },   // Basic octahedron
+        [LODLevel.LOW]: { segments: 0, radius: 0.8 }     // Smaller octahedron for distance
     };
 
     private constructor() {
@@ -74,34 +74,30 @@ export class NodeGeometryManager {
 
         switch (level) {
             case LODLevel.HIGH:
-                // High detail: Icosahedron for smooth spherical shape
-                geometry = new IcosahedronGeometry(quality.radius, quality.segments);
+                // High detail: Icosahedron with 1 subdivision
+                geometry = new IcosahedronGeometry(quality.radius, 1);
                 break;
 
             case LODLevel.MEDIUM:
-                // Medium detail: Sphere with reduced segments
-                geometry = new SphereGeometry(
-                    quality.radius,
-                    quality.segments,
-                    quality.segments
-                );
+                // Medium detail: Basic octahedron
+                geometry = new OctahedronGeometry(quality.radius);
                 break;
 
             case LODLevel.LOW:
-                // Low detail: Simple box for distant nodes
-                // Use SphereGeometry with minimal segments for low detail
-                geometry = new SphereGeometry(
-                    quality.radius,
-                    4, // minimal segments
-                    4  // minimal segments
-                );
+                // Low detail: Smaller octahedron
+                geometry = new OctahedronGeometry(quality.radius);
                 break;
 
             default:
                 logger.warn(`Unknown LOD level: ${level}, falling back to medium quality`);
-                geometry = new SphereGeometry(quality.radius, 8, 8);
+                geometry = new OctahedronGeometry(quality.radius);
         }
 
+        // Compute and adjust bounding sphere for better frustum culling
+        geometry.computeBoundingSphere();
+        if (geometry.boundingSphere) {
+            geometry.boundingSphere.radius *= 1.2;
+        }
 
         return geometry;
     }

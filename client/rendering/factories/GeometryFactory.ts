@@ -56,22 +56,16 @@ export class GeometryFactory {
         const segments = {
             low: { ring: 16, sphere: 12 },
             medium: { ring: 24, sphere: 16 },
-            high: { ring: 32, sphere: 24 }
-        }[quality] || { ring: 96, sphere: 48 };
+            high: { ring: 32, sphere: 16 }
+        }[quality] || { ring: 32, sphere: 16 };
 
         let geometry: BufferGeometry;
         switch (type) {
             case 'ring':
                 geometry = new TorusGeometry(size, size * 0.05, segments.ring, segments.ring * 2);
                 break;
-            case 'buckminster':
-                geometry = new IcosahedronGeometry(size * 1.2, 1); // One subdivision for buckminster
-                break;
-            case 'geodesic':
-                geometry = new IcosahedronGeometry(size * 1.5, 2); // Two subdivisions for geodesic
-                break;
             case 'triangleSphere':
-                geometry = new IcosahedronGeometry(size * 0.8, 1); // One subdivision for triangle sphere
+                geometry = new IcosahedronGeometry(size, 1); // One subdivision for all spheres
                 break;
             default:
                 geometry = new IcosahedronGeometry(size, 1); // Base size
