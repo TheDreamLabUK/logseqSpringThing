@@ -1,11 +1,12 @@
-import { Settings } from '../types/settings';
 import { SettingsStore } from '../state/SettingsStore';
-import { getAllSettingPaths, formatSettingName } from '../types/settings/utils';
+import { formatSettingName } from '../types/settings/utils';
 import { ValidationErrorDisplay } from '../components/settings/ValidationErrorDisplay';
 import { createLogger } from '../core/logger';
 import { platformManager } from '../platform/platformManager';
 import { nostrAuth } from '../services/NostrAuthService';
 import { EventEmitter } from '../utils/eventEmitter';
+import { settingsMap, SettingControl } from './controlPanelConfig';
+import './ModularControlPanel.css';
 
 const logger = createLogger('ModularControlPanel');
 
@@ -73,15 +74,11 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
 
     private async initializeComponents(): Promise<void> {
         try {
-            // Initialize settings first
             await this.initializeSettings();
-            
-            // Then initialize UI components
             await this.initializePanel();
             this.initializeDragAndDrop();
             await this.initializeNostrAuth();
             
-            // Mark as initialized and emit ready event
             this.isInitialized = true;
             this.emit('settings:ready', null);
             
@@ -104,32 +101,23 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
 
     private async initializePanel(): Promise<void> {
         try {
-            const settings = this.settingsStore.get('') as Settings;
-            const paths = getAllSettingPaths(settings);
-            
             // Create main categories container
             const categoriesContainer = document.createElement('div');
             categoriesContainer.className = 'settings-categories';
             
-            // Group settings by main category
-            const mainCategories = ['visualization', 'system', 'xr'];
-            const groupedSettings = this.groupSettingsByCategory(paths);
-            
-            // Create sections for each main category first
-            for (const category of mainCategories) {
-                if (groupedSettings[category]) {
-                    const sectionConfig: SectionConfig = {
-                        id: category,
-                        title: formatSettingName(category),
-                        isDetached: false,
-                        isCollapsed: false,
-                        isAdvanced: this.isAdvancedCategory(category)
-                    };
-                    
-                    this.sections.set(category, sectionConfig);
-                    const section = await this.createSection(sectionConfig, groupedSettings[category]);
-                    categoriesContainer.appendChild(section);
-                }
+            // Create sections for each main category in settingsMap
+            for (const [category, settings] of Object.entries(settingsMap)) {
+                const sectionConfig: SectionConfig = {
+                    id: category,
+                    title: formatSettingName(category),
+                    isDetached: false,
+                    isCollapsed: false,
+                    isAdvanced: this.isAdvancedCategory(category)
+                };
+                
+                this.sections.set(category, sectionConfig);
+                const section = await this.createSection(sectionConfig, settings);
+                categoriesContainer.appendChild(section);
             }
             
             this.container.appendChild(categoriesContainer);
@@ -203,74 +191,17 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
 
         const loginBtn = document.createElement('button');
         loginBtn.className = 'nostr-login-btn';
-        loginBtn.textContent = 'Login with Nostr';  // Set initial text
+        loginBtn.textContent = 'Login with Nostr';
         
         const statusDisplay = document.createElement('div');
         statusDisplay.className = 'auth-status';
-        statusDisplay.innerHTML = '<div class="not-authenticated">Not authenticated</div>';  // Set initial state
+        statusDisplay.innerHTML = '<div class="not-authenticated">Not authenticated</div>';
         
         content.appendChild(loginBtn);
         content.appendChild(statusDisplay);
         authSection.appendChild(content);
 
         this.container.insertBefore(authSection, this.container.firstChild);
-
-        // Add styles
-        const style = document.createElement('style');
-        style.textContent = `
-            .auth-section {
-                margin-bottom: 1rem;
-                padding: 1rem;
-                background: rgba(0, 0, 0, 0.1);
-                border-radius: 4px;
-            }
-            .nostr-login-btn {
-                padding: 8px 16px;
-                background: #4a90e2;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 14px;
-                transition: background 0.2s;
-            }
-            .nostr-login-btn:hover {
-                background: #357abd;
-            }
-            .nostr-login-btn:disabled {
-                background: #ccc;
-                cursor: wait;
-            }
-            .auth-error {
-                color: #d32f2f;
-                margin-top: 8px;
-                padding: 8px;
-                background: rgba(211, 47, 47, 0.1);
-                border-radius: 4px;
-                font-size: 14px;
-            }
-            .user-info {
-                margin-top: 8px;
-                font-size: 14px;
-            }
-            .user-info .pubkey {
-                font-family: monospace;
-                background: rgba(0, 0, 0, 0.1);
-                padding: 2px 4px;
-                border-radius: 2px;
-            }
-            .user-info .role {
-                color: #4a90e2;
-                font-weight: bold;
-                margin-top: 4px;
-            }
-            .not-authenticated {
-                color: #666;
-                font-style: italic;
-                margin-top: 8px;
-            }
-        `;
-        document.head.appendChild(style);
 
         // Set up login button click handler
         loginBtn.onclick = async () => {
@@ -335,32 +266,15 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             })
         );
 
-        // Initialize Nostr auth and wait for it to complete
         await nostrAuth.initialize();
     }
-
-
 
     private isAdvancedCategory(category: string): boolean {
         const advancedCategories = ['physics', 'rendering', 'debug', 'network'];
         return advancedCategories.includes(category.toLowerCase());
     }
 
-    private groupSettingsByCategory(paths: string[]): Record<string, string[]> {
-        const groups: Record<string, string[]> = {};
-        
-        paths.forEach(path => {
-            const [category] = path.split('.');
-            if (!groups[category]) {
-                groups[category] = [];
-            }
-            groups[category].push(path);
-        });
-        
-        return groups;
-    }
-
-    private async createSection(config: SectionConfig, paths: string[]): Promise<HTMLElement> {
+    private async createSection(config: SectionConfig, settings: Record<string, SettingControl | Record<string, SettingControl>>): Promise<HTMLElement> {
         const section = document.createElement('div');
         section.className = `settings-section ${config.isAdvanced ? 'advanced' : 'basic'}`;
         section.dataset.sectionId = config.id;
@@ -411,180 +325,140 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
             content.style.display = 'none';
         }
 
-        const validPaths = paths.filter(path => {
-            const value = this.settingsStore.get(path);
-            return value !== undefined && value !== null;
-        });
-
-        if (validPaths.length > 0) {
-            const subcategories = this.groupBySubcategory(validPaths);
-            
-            for (const [subcategory, subPaths] of Object.entries(subcategories)) {
-                if (subPaths.length > 0) {
-                    const subsection = await this.createSubsection(subcategory, subPaths);
-                    content.appendChild(subsection);
-                }
-            }
-        } else {
-            const emptyMessage = document.createElement('div');
-            emptyMessage.className = 'empty-section-message';
-            emptyMessage.textContent = 'No configurable settings in this section';
-            content.appendChild(emptyMessage);
+        // Create subsections for each group of settings
+        for (const [subsectionKey, subsectionSettings] of Object.entries(settings)) {
+            const subsection = await this.createSubsection(subsectionKey, subsectionSettings);
+            content.appendChild(subsection);
         }
 
         section.appendChild(content);
         return section;
     }
 
-    private groupBySubcategory(paths: string[]): Record<string, string[]> {
-        const groups: Record<string, string[]> = {};
-        
-        paths.forEach(path => {
-            const parts = path.split('.');
-            if (parts.length > 2) {
-                const subcategory = parts[1];
-                if (!groups[subcategory]) {
-                    groups[subcategory] = [];
-                }
-                groups[subcategory].push(path);
-            } else if (parts.length === 2) {
-                if (!groups['general']) {
-                    groups['general'] = [];
-                }
-                groups['general'].push(path);
-            }
-        });
-        
-        return groups;
-    }
-
-    private async createSubsection(subcategory: string, paths: string[]): Promise<HTMLElement> {
+    private async createSubsection(title: string, settings: Record<string, SettingControl> | SettingControl): Promise<HTMLElement> {
         const subsection = document.createElement('div');
         subsection.className = 'settings-subsection';
 
         const header = document.createElement('h3');
-        header.textContent = formatSettingName(subcategory);
+        header.textContent = formatSettingName(title);
         header.className = 'settings-subsection-header';
         subsection.appendChild(header);
-        
-        // Sort paths to ensure consistent ordering
-        paths.sort();
 
-        // Create controls for each property
-        for (const path of paths) {
-            const value = this.settingsStore.get(path);
-            if (value !== undefined && value !== null) {
-                const control = await this.createSettingControl(path);
+        if (this.isSettingControl(settings)) {
+            // Single setting
+            const control = await this.createSettingControl(title, settings);
+            subsection.appendChild(control);
+        } else {
+            // Group of settings
+            for (const [key, setting] of Object.entries(settings)) {
+                const control = await this.createSettingControl(key, setting);
                 subsection.appendChild(control);
             }
         }
-        
+
         return subsection;
     }
 
-    private async createSettingControl(path: string): Promise<HTMLElement> {
+    private isSettingControl(value: any): value is SettingControl {
+        return value && typeof value === 'object' && 'type' in value;
+    }
+
+    private async createSettingControl(key: string, setting: SettingControl): Promise<HTMLElement> {
         const container = document.createElement('div');
         container.className = 'setting-control';
-        container.dataset.settingPath = path;
+        container.dataset.settingPath = key;
+
+        if (setting.tooltip) {
+            container.title = setting.tooltip;
+        }
 
         const label = document.createElement('label');
-        label.textContent = formatSettingName(path.split('.').pop() || '');
+        label.textContent = setting.label;
         container.appendChild(label);
 
-        const currentValue = this.settingsStore.get(path);
-        const control = await this.createInputElement(path, currentValue);
+        const control = await this.createInputElement(key, setting);
         container.appendChild(control);
 
         return container;
     }
 
-    private async createInputElement(path: string, value: any): Promise<HTMLElement> {
-        const type = typeof value;
+    private async createInputElement(path: string, setting: SettingControl): Promise<HTMLElement> {
+        const currentValue = this.settingsStore.get(path);
         let input: HTMLElement;
 
-        // Handle nested objects
-        if (type === 'object' && value !== null && !Array.isArray(value)) {
-            const container = document.createElement('div');
-            container.className = 'nested-object-container';
-
-            // Skip rendering for debug objects unless debug is enabled
-            if (path.includes('system.debug') && !this.settingsStore.get('system.debug.enabled')) {
-                const debugDisabled = document.createElement('div');
-                debugDisabled.className = 'debug-disabled-message';
-                debugDisabled.textContent = 'Enable debug settings to configure';
-                return debugDisabled;
-            }
-
-            // Create controls for each nested property
-            for (const [key] of Object.entries(value)) {
-                const propPath = `${path}.${key}`;
-                const propControl = await this.createSettingControl(propPath);
-                container.appendChild(propControl);
-            }
-
-            input = container;
-            return input;
-        }
-        
-        const getNumericStep = (path: string): string => {
-            if (path.includes('size') || path.includes('iterations')) return '1';
-            if (path.includes('opacity') || path.includes('strength')) return '0.1';
-            if (path.includes('intensity')) return '0.1';
-            return '0.01';
-        };
-
-        // Handle arrays specially
-        if (Array.isArray(value)) {
-            const div = document.createElement('div');
-            div.className = 'array-input';
-
-            // Create inputs for each array element
-            value.forEach((item, index) => {
-                const itemInput = document.createElement('input');
-                itemInput.type = typeof item === 'number' ? 'number' : 'text';
-                if (itemInput.type === 'number') {
-                    itemInput.step = getNumericStep(path);
-                    itemInput.min = '0';
-                }
-                itemInput.value = item.toString();
-                itemInput.className = 'array-item';
-                itemInput.onchange = (e) => {
+        switch (setting.type) {
+            case 'slider': {
+                const slider = document.createElement('input');
+                slider.type = 'range';
+                slider.min = setting.min?.toString() ?? '0';
+                slider.max = setting.max?.toString() ?? '1';
+                slider.step = setting.step?.toString() ?? '0.1';
+                slider.value = (currentValue ?? slider.min).toString();
+                slider.onchange = (e) => {
                     const target = e.target as HTMLInputElement;
-                    const newValue = [...value];
-                    if (typeof item === 'number') {
-                        const parsed = parseFloat(target.value);
-                        newValue[index] = isNaN(parsed) ? item : Math.max(0, parsed);
-                    } else {
-                        newValue[index] = target.value;
-                    }
-                    this.updateSetting(path, newValue);
+                    this.updateSetting(path, parseFloat(target.value));
                 };
-                div.appendChild(itemInput);
-            });
+                input = slider;
+                break;
+            }
 
-            input = div;
-            return input;
-        }
-
-        switch (type) {
-            case 'boolean': {
+            case 'toggle': {
+                const toggleContainer = document.createElement('div');
+                toggleContainer.className = 'toggle-switch';
+                
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
-                checkbox.checked = value;
+                checkbox.checked = Boolean(currentValue);
                 checkbox.onchange = (e) => {
                     const target = e.target as HTMLInputElement;
                     this.updateSetting(path, target.checked);
                 };
-                input = checkbox;
+                
+                const slider = document.createElement('span');
+                slider.className = 'slider';
+                
+                toggleContainer.appendChild(checkbox);
+                toggleContainer.appendChild(slider);
+                input = toggleContainer;
+                break;
+            }
+
+            case 'color': {
+                const colorInput = document.createElement('input');
+                colorInput.type = 'color';
+                colorInput.value = (currentValue as string) ?? '#ffffff';
+                colorInput.onchange = (e) => {
+                    const target = e.target as HTMLInputElement;
+                    this.updateSetting(path, target.value);
+                };
+                input = colorInput;
+                break;
+            }
+
+            case 'select': {
+                const select = document.createElement('select');
+                setting.options?.forEach(option => {
+                    const optionElement = document.createElement('option');
+                    optionElement.value = option;
+                    optionElement.textContent = formatSettingName(option);
+                    select.appendChild(optionElement);
+                });
+                select.value = (currentValue as string) ?? setting.options?.[0] ?? '';
+                select.onchange = (e) => {
+                    const target = e.target as HTMLSelectElement;
+                    this.updateSetting(path, target.value);
+                };
+                input = select;
                 break;
             }
 
             case 'number': {
                 const numberInput = document.createElement('input');
                 numberInput.type = 'number';
-                numberInput.step = getNumericStep(path);
-                numberInput.min = '0';
-                numberInput.value = value.toString();
+                numberInput.min = setting.min?.toString() ?? '0';
+                if (setting.max !== undefined) numberInput.max = setting.max.toString();
+                numberInput.step = setting.step?.toString() ?? '1';
+                numberInput.value = (currentValue ?? 0).toString();
                 numberInput.onchange = (e) => {
                     const target = e.target as HTMLInputElement;
                     this.updateSetting(path, parseFloat(target.value));
@@ -593,35 +467,17 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
                 break;
             }
 
-            case 'string': {
-                if (path.toLowerCase().includes('color')) {
-                    const colorInput = document.createElement('input');
-                    colorInput.type = 'color';
-                    colorInput.className = 'color-input';
-                    colorInput.value = value;
-                    colorInput.onchange = (e) => {
-                        const target = e.target as HTMLInputElement;
-                        this.updateSetting(path, target.value);
-                    };
-                    input = colorInput;
-                } else {
-                    const textInput = document.createElement('input');
-                    textInput.type = 'text';
-                    textInput.value = value;
-                    textInput.onchange = (e) => {
-                        const target = e.target as HTMLInputElement;
-                        this.updateSetting(path, target.value);
-                    };
-                    input = textInput;
-                }
-                break;
-            }
-
+            case 'text':
             default: {
-                const div = document.createElement('div');
-                div.className = 'value-display';
-                div.textContent = value === null || value === undefined ? 'Not set' : String(value);
-                input = div;
+                const textInput = document.createElement('input');
+                textInput.type = 'text';
+                textInput.value = (currentValue ?? '').toString();
+                textInput.onchange = (e) => {
+                    const target = e.target as HTMLInputElement;
+                    this.updateSetting(path, target.value);
+                };
+                input = textInput;
+                break;
             }
         }
 
@@ -629,15 +485,11 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
     }
 
     private updateSetting(path: string, value: any): void {
-        // Remove the setTimeout
         try {
-            // Get the current value to compare types
             const currentValue = this.settingsStore.get(path);
             
-            // Ensure we maintain the correct type
             let processedValue = value;
             if (Array.isArray(currentValue)) {
-                // Ensure array values maintain their original types
                 processedValue = value.map((v: any, i: number) => {
                     const originalValue = currentValue[i];
                     if (typeof originalValue === 'number') {
@@ -656,9 +508,26 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         } catch (error) {
             logger.error(`Failed to update setting ${path}:`, error);
             
-            // Revert the input to the current value
+            // Create an error element
+            const errorElement = document.createElement('div');
+            errorElement.className = 'error-message';
+            errorElement.textContent = error instanceof Error ? error.message : 'Unknown error occurred';
+            
             const control = this.container.querySelector(`[data-setting-path="${path}"]`);
             if (control) {
+                // Add error class to the control
+                control.classList.add('error');
+                
+                // Add error message
+                control.appendChild(errorElement);
+                
+                // Remove error after 5 seconds
+                setTimeout(() => {
+                    control.classList.remove('error');
+                    errorElement.remove();
+                }, 5000);
+                
+                // Revert the input value
                 const input = control.querySelector('input, select') as HTMLInputElement;
                 if (input) {
                     const currentValue = this.settingsStore.get(path);
@@ -730,6 +599,14 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         return this.isInitialized;
     }
 
+    private updateVisibilityForPlatform(): void {
+        if (platformManager.isQuest() || platformManager.isXRMode) {
+            this.hide();
+        } else {
+            this.show();
+        }
+    }
+
     public static getInstance(): ModularControlPanel {
         if (!ModularControlPanel.instance) {
             ModularControlPanel.instance = new ModularControlPanel(document.body);
@@ -747,13 +624,7 @@ export class ModularControlPanel extends EventEmitter<ModularControlPanelEvents>
         this.toggleButton.remove();
         ModularControlPanel.instance = null;
     }
-
-    private updateVisibilityForPlatform(): void {
-        // Hide on Quest or when in XR mode
-        if (platformManager.isQuest() || platformManager.isXRMode) {
-            this.hide();
-        } else {
-            this.show();
-        }
-    }
 }
+
+// Export the class as default as well to maintain compatibility
+export default ModularControlPanel;
